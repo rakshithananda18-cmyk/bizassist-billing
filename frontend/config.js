@@ -4,7 +4,7 @@
    Change API_BASE here and it updates everywhere.
 ========================================= */
 
-const API_BASE       = "http://127.0.0.1:8001";
+const API_BASE       = "https://bizassist-backend-jgz2.onrender.com";
 const DEBUG          = true;
 const DEFAULT_BIZ    = "My Business";   // fallback if not set by user
 
