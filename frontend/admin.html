@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BIZASSIST Admin Workspace</title>
+    <!-- Prevent flicker -->
+    <script>
+        (function () {
+            var admin = null;
+            try { admin = localStorage.getItem('admin_user'); } catch (e) {}
+            if (admin) {
+                document.documentElement.setAttribute('data-logged', 'true');
+            } else {
+                document.documentElement.setAttribute('data-logged', 'false');
+            }
+
+            const savedTheme = localStorage.getItem('theme') || "system";
+            const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+            if (savedTheme === "dark" || (savedTheme === "system" && prefersDark)) {
+                document.documentElement.classList.add("dark-mode");
+            }
+        })();
+    </script>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Admin specific layouts */
+        .admin-main {
+            flex: 1;
+            padding: 32px 40px;
+            overflow-y: auto;
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            width: 100%;
+        }
+        .admin-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1.5px solid var(--border-color);
+            padding-bottom: 20px;
+        }
+        .admin-title-group h1 {
+            font-family: 'Crimson Pro', Georgia, serif;
+            font-size: 28px;
+            font-weight: 600;
+            color: var(--text-color);
+            letter-spacing: -0.02em;
+        }
+        .admin-title-group p {
+            font-size: 13px;
+            color: var(--secondary-text);
+            margin-top: 4px;
+        }
+        .admin-stat-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+        .admin-table-widget {
+            background: var(--card-gradient);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 24px;
+            box-shadow: var(--shadow-sm);
+        }
+        .admin-table-title {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--secondary-text);
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .admin-table-title::before {
+            content: '';
+            display: inline-block;
+            width: 3px;
+            height: 13px;
+            background: var(--accent-color);
+            border-radius: 2px;
+        }
+        table.admin-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table.admin-table th {
+            background: var(--accent-softer);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            color: var(--secondary-text);
+            padding: 12px 16px;
+            border-bottom: 1.5px solid var(--border-color);
+            text-align: left;
+        }
+        table.admin-table td {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 13.5px;
+            color: var(--text-color);
+        }
+        table.admin-table tr:hover td {
+            background: var(--accent-softer);
+        }
+        table.admin-table tr:last-child td {
+            border-bottom: none;
+        }
+        .back-to-app {
+            display: inline-block;
+            margin-top: 14px;
+            font-size: 13px;
+            color: var(--secondary-text);
+            text-decoration: none;
+            transition: color 0.15s;
+        }
+        .back-to-app:hover {
+            color: var(--accent-color);
+        }
+    </style>
+</head>
+<body class="preload">
+
+    <!-- LOGIN PANEL -->
+    <div class="login-container" id="admin-login-container">
+        <div class="login-card">
+            <div class="login-glow"></div>
+            <div class="login-symbol">✦</div>
+            <h1 class="login-title">BIZASSIST</h1>
+            <p class="login-subtitle">Admin Monitoring Workspace</p>
+            
+            <form id="admin-login-form" onsubmit="handleAdminLogin(event)">
+                <div class="form-group">
+                    <label for="username">Admin Username</label>
+                    <input type="text" id="username" placeholder="e.g. admin" required autocomplete="username">
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+                </div>
+                
+                <div id="login-error" class="login-error"></div>
+                
+                <button type="submit" class="login-submit-btn">Admin Sign In</button>
+            </form>
+            
+            <div class="login-footer">
+                <div class="demo-title">Default Admin Account:</div>
+                <div class="demo-credentials" style="margin-bottom: 10px;">
+                    <div><span>User:</span> admin | <span>Pass:</span> admin123</div>
+                </div>
+                <a href="index.html" class="admin-link">Looking for Enterprise App? Go to Sign In →</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADMIN CONTENT -->
+    <div class="app admin-layout-wrap" style="flex-direction: column; overflow-y: auto;">
+        <div class="admin-main">
+            <div class="admin-header-row">
+                <div class="admin-title-group">
+                    <h1>✦ BIZASSIST ADMIN WORKSPACE</h1>
+                    <p>Aggregated tracking & telemetry for all enterprise business accounts</p>
+                </div>
+                <button class="logout-btn" onclick="adminLogout()" style="padding: 10px 16px !important; font-size: 13px !important;">
+                    Sign Out ➔
+                </button>
+            </div>
+
+            <!-- STATS STRIP -->
+            <div class="admin-stat-grid">
+                <div class="vstat-card" style="border-left-color: var(--accent-color); cursor: default;">
+                    <div class="vstat-label">Registered Businesses</div>
+                    <div class="vstat-value" id="stat-biz-count">0</div>
+                    <div class="vstat-sub">active sandboxes</div>
+                </div>
+                <div class="vstat-card" style="border-left-color: #3a9a5c; cursor: default;">
+                    <div class="vstat-label">Combined Revenue</div>
+                    <div class="vstat-value" id="stat-combined-revenue">₹0</div>
+                    <div class="vstat-sub">across all accounts</div>
+                </div>
+                <div class="vstat-card" style="border-left-color: #c97c22; cursor: default;">
+                    <div class="vstat-label">Total Files Logged</div>
+                    <div class="vstat-value" id="stat-files-count">0</div>
+                    <div class="vstat-sub">billing/inventory datasets</div>
+                </div>
+            </div>
+
+            <!-- REGISTERED ENTERPRISES TABLE -->
+            <div class="admin-table-widget">
+                <div class="admin-table-title">Enterprise Business Directory</div>
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Business Name</th>
+                            <th>Username</th>
+                            <th>Total Invoices</th>
+                            <th>Tracked Revenue</th>
+                            <th>Inventory Stock Count</th>
+                            <th>Upload History</th>
+                        </tr>
+                    </thead>
+                    <tbody id="businesses-table-body">
+                        <!-- Filled by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script>
+        // UI tabs/flows
+        async function handleAdminLogin(e) {
+            e.preventDefault();
+            const uInput = document.getElementById("username");
+            const pInput = document.getElementById("password");
+            const errEl = document.getElementById("login-error");
+
+            const username = uInput.value.trim();
+            const password = pInput.value.trim();
+
+            if (errEl) errEl.style.display = "none";
+
+            try {
+                const res = await fetch(`${API_BASE}/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.detail || "Invalid login credentials.");
+                }
+
+                const user = await res.json();
+
+                if (user.role !== "admin") {
+                    throw new Error("Access denied. Admin rights required.");
+                }
+
+                localStorage.setItem("admin_user", JSON.stringify(user));
+                document.documentElement.setAttribute("data-logged", "true");
+
+                // Clear input
+                uInput.value = "";
+                pInput.value = "";
+
+                // Load stats
+                loadAdminDirectory();
+
+            } catch (err) {
+                if (errEl) {
+                    errEl.textContent = err.message || "Failed to sign in.";
+                    errEl.style.display = "block";
+                }
+            }
+        }
+
+        function adminLogout() {
+            localStorage.removeItem("admin_user");
+            document.documentElement.setAttribute("data-logged", "false");
+            location.reload();
+        }
+
+        async function loadAdminDirectory() {
+            const admin = localStorage.getItem("admin_user");
+            if (!admin) return;
+
+            try {
+                const res = await fetch(`${API_BASE}/admin/businesses`);
+                if (!res.ok) throw new Error("Could not load tracking data");
+
+                const list = await res.json();
+
+                // Compute aggregates
+                let totalBiz = list.length;
+                let combinedRevenue = list.reduce((sum, b) => sum + (b.total_revenue || 0), 0);
+                let combinedFiles = list.reduce((sum, b) => sum + (b.upload_count || 0), 0);
+
+                document.getElementById("stat-biz-count").textContent = totalBiz;
+                document.getElementById("stat-combined-revenue").textContent = "₹" + combinedRevenue.toLocaleString('en-IN');
+                document.getElementById("stat-files-count").textContent = combinedFiles;
+
+                // Build table
+                const body = document.getElementById("businesses-table-body");
+                body.innerHTML = "";
+
+                if (list.length === 0) {
+                    body.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--secondary-text);padding:30px;">No enterprise businesses registered yet.</td></tr>`;
+                    return;
+                }
+
+                list.forEach(b => {
+                    const tr = document.createElement("tr");
+                    tr.innerHTML = `
+                        <td style="font-family:'Geist Mono',monospace;opacity:0.75;">${b.id}</td>
+                        <td style="font-weight:600;color:var(--accent-color);">${b.business_name}</td>
+                        <td>${b.username}</td>
+                        <td>${b.invoice_count}</td>
+                        <td style="font-family:'Crimson Pro',serif;font-size:16px;font-weight:600;">₹${b.total_revenue.toLocaleString('en-IN')}</td>
+                        <td>${b.inventory_count} items</td>
+                        <td>${b.upload_count} datasets</td>
+                    `;
+                    body.appendChild(tr);
+                });
+
+            } catch (err) {
+                console.error("Admin load error:", err);
+            }
+        }
+
+        // Boot
+        window.addEventListener("DOMContentLoaded", () => {
+            document.body.classList.remove("preload");
+            const admin = localStorage.getItem("admin_user");
+            if (admin) {
+                loadAdminDirectory();
+            }
+        });
+    </script>
+</body>
+</html>

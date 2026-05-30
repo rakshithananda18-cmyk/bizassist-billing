@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8" />
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    />
+
+    <title>BIZASSIST</title>
+
+    <!-- PREVENT THEME FLICKER -->
+
+    <script>
+        // Immediately set initial active sidebar from localStorage
+        // so the correct button appears active before DOM loads.
+        (function () {
+            var user = null;
+            try { user = localStorage.getItem('user'); } catch (e) {}
+            if (user) {
+                document.documentElement.setAttribute('data-logged', 'true');
+            } else {
+                document.documentElement.setAttribute('data-logged', 'false');
+            }
+
+            var saved = null;
+            try { saved = localStorage.getItem('selected_sidebar'); } catch (e) { saved = null; }
+            if (!saved) saved = 'ai';
+            try { document.documentElement.setAttribute('data-active', saved); } catch (e) {}
+
+            const savedTheme =
+                (function() { try { return localStorage.getItem('theme'); } catch(e) { return null; } })()
+                || "system";
+
+            const prefersDark =
+                window.matchMedia(
+                    "(prefers-color-scheme: dark)"
+                ).matches;
+
+            if (
+                savedTheme === "dark" ||
+                (
+                    savedTheme === "system"
+                    && prefersDark
+                )
+            ) {
+                document.documentElement.classList.add("dark-mode");
+            }
+        })();
+    </script>
+
+    <link rel="stylesheet" href="style.css" />
+
+</head>
+
+<body class="preload">
+
+    <!-- LOGIN PANEL -->
+    <div class="login-container" id="login-container">
+        <div class="login-card">
+            <div class="login-glow"></div>
+            <div class="login-symbol">✦</div>
+            <h1 class="login-title">BIZASSIST</h1>
+            <p class="login-subtitle">Enterprise Business Intelligence Portal</p>
+            
+            <div class="login-tabs">
+                <button class="login-tab-btn active" id="tab-login" onclick="switchLoginTab('login')">Sign In</button>
+                <button class="login-tab-btn" id="tab-signup" onclick="switchLoginTab('signup')">Register</button>
+            </div>
+            
+            <form id="login-form" onsubmit="handleAuthSubmit(event)">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" placeholder="e.g. pharmacy" required autocomplete="username">
+                </div>
+                
+                <div class="form-group" id="group-bizname" style="display: none;">
+                    <label for="bizname">Business Name</label>
+                    <input type="text" id="bizname" placeholder="e.g. Medicare Pharmacy">
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+                </div>
+                
+                <div id="login-error" class="login-error"></div>
+                
+                <button type="submit" class="login-submit-btn" id="submit-btn">Sign In</button>
+            </form>
+            
+            <div class="login-footer">
+                <div class="demo-title">Demo Enterprise Accounts:</div>
+                <div class="demo-credentials">
+                    <div><span>User:</span> pharmacy | <span>Pass:</span> pharmacy123</div>
+                    <div><span>User:</span> supermarket | <span>Pass:</span> supermarket123</div>
+                    <div><span>User:</span> store | <span>Pass:</span> store123</div>
+                </div>
+                <a href="admin.html" class="admin-link">Looking for Admin Portal? Go to Admin Portal →</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="app">
+
+        <!-- SIDEBAR -->
+
+        <div class="sidebar">
+
+            <!-- BRAND + ORG -->
+            <div class="sidebar-brand">
+                <div class="sidebar-app-name">BIZASSIST</div>
+                <div class="sidebar-org-row">
+                    <span class="sidebar-org-dot"></span>
+                    <span class="sidebar-org-name" id="biz-name" onclick="editBizName()" title="Click to rename">My Business</span>
+                </div>
+            </div>
+
+            <div class="sidebar-sep"></div>
+
+            <button id="ai-btn" class="matte-glass" onclick="selectSidebar('ai')">
+                ✦ AI Assistant
+            </button>
+
+            <button id="dashboard-btn" class="matte-glass" onclick="selectSidebar('dashboard')">
+                ⌂ Dashboard
+            </button>
+
+            <button id="invoices-btn" class="matte-glass" onclick="selectSidebar('invoices')">
+                ◫ Invoices
+            </button>
+
+            <button id="payments-btn" class="matte-glass" onclick="selectSidebar('payments')">
+                ◌ Payments
+            </button>
+
+            <button id="clients-btn" class="matte-glass" onclick="selectSidebar('clients')">
+                ◎ Clients
+            </button>
+
+            <!-- Uploaded files button removed (available in Database Viewer) -->
+
+            <button id="db-btn" class="matte-glass" onclick="selectSidebar('database')">
+                🗄 Database Viewer
+            </button>
+
+            <!-- SIDEBAR FOOTER (THEME + LOGOUT) -->
+            <div class="sidebar-footer">
+                <div class="theme-dropdown">
+                    <button class="theme-btn" onclick="toggleThemeMenu()" title="Switch theme">◐</button>
+                    <div class="theme-menu" id="themeMenu">
+                        <div onclick="setTheme('light')">☀ Light</div>
+                        <div onclick="setTheme('dark')">☾ Dark</div>
+                        <div onclick="setTheme('system')">◐ System</div>
+                    </div>
+                </div>
+                <button class="logout-btn" onclick="logout()" title="Sign out">
+                    Logout ➔
+                </button>
+            </div>
+
+        </div>
+
+        <!-- MAIN -->
+
+        <div class="main">
+
+            <!-- AI PAGE: Business name banner (hidden on other views via CSS) -->
+            <div class="ai-biz-banner" id="ai-biz-banner">
+                <div class="ai-biz-banner-name" id="ai-biz-banner-name" onclick="editBannerBizName()" title="Click to rename">My Business</div>
+                <div class="ai-biz-banner-sub" id="ai-biz-banner-date"></div>
+            </div>
+
+            <!-- CARDS -->
+
+            <div class="cards">
+
+                <div class="card">
+                    <span class="card-icon">₹</span>
+                    <h3>Total Revenue</h3>
+                    <p id="total-revenue">₹0</p>
+                </div>
+
+                <div class="card">
+                    <span class="card-icon">⏳</span>
+                    <h3>Pending Payments</h3>
+                    <p id="pending-payments">0</p>
+                </div>
+
+                <div class="card">
+                    <span class="card-icon">📋</span>
+                    <h3>Invoices</h3>
+                    <p id="invoice-count">0</p>
+                </div>
+
+            </div>
+
+            <!-- GRID -->
+
+            <div class="dashboard-grid">
+
+                <!-- LEFT -->
+
+                <div id="dashboard-left" class="dashboard-left">
+
+                    <div class="widget">
+
+                        <div class="widget-title">
+                            Recent Invoices
+                        </div>
+
+                        <table>
+
+                            <tr>
+                                <th>ID</th>
+                                <th>Client</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                            </tr>
+
+                            <tr>
+                                <td>INV-102</td>
+                                <td>ABC Corp</td>
+                                <td>₹12,000</td>
+                                <td class="paid">Paid</td>
+                            </tr>
+
+                            <tr>
+                                <td>INV-103</td>
+                                <td>Vision Tech</td>
+                                <td>₹18,500</td>
+                                <td class="pending">Pending</td>
+                            </tr>
+
+                            <tr>
+                                <td>INV-104</td>
+                                <td>RK Traders</td>
+                                <td>₹7,800</td>
+                                <td class="overdue">Overdue</td>
+                            </tr>
+
+                        </table>
+
+                    </div>
+
+                    <div class="widget">
+
+                        <div class="widget-title">
+                            Quick Actions
+                        </div>
+
+                        <div class="actions">
+
+                            <button class="matte-glass">
+                                + New Invoice
+                            </button>
+
+                            <button class="matte-glass">
+                                + Send Reminder
+                            </button>
+
+                            <button class="matte-glass">
+                                + GST Report
+                            </button>
+
+                            <button class="matte-glass">
+                                + Export CSV
+                            </button>
+                            
+                            <button
+                                class="matte-glass"
+                                onclick="document.getElementById('file-upload').click()"
+                            >
+                                + Upload Billing Data
+                            </button>
+
+                            <input
+                                type="file"
+                                id="file-upload"
+                                accept=".csv,.xlsx"
+                                hidden
+                            >
+                        </div>
+
+                    </div>
+                    <div class="widget">
+
+                        <div class="widget-title">
+                            Dev Testing
+                        </div>
+
+                        <div class="actions">
+
+                            <button onclick="testInvoices()">
+                                Test Invoices
+                            </button>
+
+                            <button onclick="testOverdue()">
+                                Test Overdue
+                            </button>
+
+                            <button onclick="testUpload()">
+                                Test Upload
+                            </button>
+
+                        </div>
+
+                    </div>
+                    <div class="widget">
+
+                        <div class="widget-title">
+                            Uploaded Files
+                        </div>
+
+                        <div id="uploads-list">
+                        </div>
+
+                    </div>
+
+                    <div class="widget">
+
+                        <div class="widget-title">
+                            Recent Activity
+                        </div>
+
+                        <ul class="activity-list">
+
+                            <li>
+                                Invoice sent to Rahul Traders
+                            </li>
+
+                            <li>
+                                Payment received ₹12,500
+                            </li>
+
+                            <li>
+                                GST report generated
+                            </li>
+
+                            <li>
+                                Payment reminder sent
+                            </li>
+
+                        </ul>
+
+                    </div>
+
+                </div>
+
+                <!-- AI PANEL -->
+
+                <div id="assistant-panel" class="assistant-panel">
+
+                    <div class="assistant-header matte-glass">
+                        <span class="assistant-header-star">✦</span> BIZASSIST AI
+                    </div>
+
+                    <div class="chat-box" id="chat-box">
+
+                        <!-- EMPTY STATE — replaced by messages on first send -->
+                        <div class="chat-empty-state" id="chat-empty-state">
+
+                            <div class="ces-glow"></div>
+
+                            <div class="ces-symbol">✦</div>
+
+                            <div class="ces-greeting" id="ces-greeting">Good morning</div>
+
+                            <div class="ces-sub">
+                                Ask anything about your business —<br>
+                                revenue, stock, payments, customers.
+                            </div>
+
+                            <div class="ces-chips" id="prompt-chips">
+                                <button class="chip" onclick="sendChip('Who owes me the most?')">💰 Who owes most?</button>
+                                <button class="chip" onclick="sendChip('Which medicines are expiring soon?')">⏰ Expiring soon</button>
+                                <button class="chip" onclick="sendChip('Show me the total revenue and pending payments summary')">📊 Revenue summary</button>
+                                <button class="chip" onclick="sendChip('Which products are low on stock?')">📦 Low stock</button>
+                                <button class="chip" onclick="sendChip('List all overdue invoices with amounts')">🔴 Overdue invoices</button>
+                                <button class="chip" onclick="sendChip('Who are my top 5 customers by revenue?')">🏆 Top customers</button>
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- INPUT -->
+
+                    <div class="input-area">
+
+                        <textarea
+                            id="user-input"
+                            rows="1"
+                            placeholder="Ask BIZASSIST anything..."
+                        ></textarea>
+
+                        <button onclick="sendMessage()">
+                            ↑
+                        </button>
+
+                    </div>
+
+                </div>
+
+                <!-- INSIGHTS PANEL (shown when AI Assistant is active) -->
+                <div id="insights-panel" class="hidden" style="grid-column: 2 / 3;">
+
+                    <!-- Revenue & key metrics -->
+                    <div>
+                        <div class="insights-section-title">Business Overview</div>
+                        <div id="insights-metrics">
+                            <div class="insights-skeleton"></div>
+                            <div class="insights-skeleton"></div>
+                            <div class="insights-skeleton"></div>
+                        </div>
+                    </div>
+
+                    <!-- Top customers -->
+                    <div>
+                        <div class="insights-section-title">Top Customers</div>
+                        <div id="insights-customers">
+                            <div class="insights-skeleton"></div>
+                            <div class="insights-skeleton"></div>
+                        </div>
+                    </div>
+
+                    <!-- Alerts -->
+                    <div>
+                        <div class="insights-section-title">Alerts</div>
+                        <div id="insights-alerts">
+                            <div class="insights-skeleton"></div>
+                            <div class="insights-skeleton"></div>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+        <!-- DATABASE PANEL -->
+
+        <div
+            id="database-panel"
+            class="widget hidden"
+        >
+
+            <div class="widget-title">
+                Business Database
+            </div>
+
+            <div id="database-content">
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <script src="config.js"></script>
+    <script src="theme.js"></script>
+    <script src="dashboard.js"></script>
+    <script src="upload.js"></script>
+    <script src="database.js"></script>
+    <script src="views.js"></script>
+    <script src="chat.js"></script>
+
+</body>
+
+</html>

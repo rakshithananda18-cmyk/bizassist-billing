@@ -1,0 +1,531 @@
+/* =========================================
+   theme.js
+   Handles: theme switching, sidebar active
+   state, layout switching (AI vs Dashboard
+   vs Database view).
+========================================= */
+
+
+/* -----------------------------------------
+   THEME
+----------------------------------------- */
+
+function toggleThemeMenu() {
+
+    const menu = document.getElementById("themeMenu");
+
+    menu.style.display =
+        menu.style.display === "block"
+            ? "none"
+            : "block";
+}
+
+function setTheme(theme) {
+
+    localStorage.setItem("theme", theme);
+
+    applyTheme(theme);
+}
+
+function applyTheme(theme) {
+
+    document.body.classList.add("theme-animating");
+
+    document.documentElement.classList.remove("dark-mode");
+
+    if (theme === "dark") {
+
+        document.documentElement.classList.add("dark-mode");
+
+    } else if (theme === "system") {
+
+        if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+            document.documentElement.classList.add("dark-mode");
+        }
+    }
+
+    document.getElementById("themeMenu").style.display = "none";
+
+    setTimeout(() => {
+        document.body.classList.remove("theme-animating");
+    }, 220);
+}
+
+/* Close theme menu when clicking outside it */
+window.addEventListener("click", function (e) {
+
+    const dropdown = document.querySelector(".theme-dropdown");
+
+    if (dropdown && !dropdown.contains(e.target)) {
+        document.getElementById("themeMenu").style.display = "none";
+    }
+});
+
+
+/* -----------------------------------------
+   SIDEBAR ACTIVE BUTTON
+----------------------------------------- */
+
+function setActiveButton(name) {
+
+    const map = {
+        dashboard : "dashboard-btn",
+        invoices  : "invoices-btn",
+        payments  : "payments-btn",
+        clients   : "clients-btn",
+        ai        : "ai-btn",
+        uploads   : "uploads-btn",
+        database  : "db-btn"
+    };
+
+    Object.values(map).forEach(id => {
+        const b = document.getElementById(id);
+        if (b) b.classList.remove("active");
+    });
+
+    const active = document.getElementById(map[name]);
+    if (active) active.classList.add("active");
+
+    /* Keep html[data-active] in sync so CSS shows the correct state
+       immediately without waiting for JS paint */
+    try { document.documentElement.setAttribute("data-active", name); } catch (e) {}
+}
+
+
+/* -----------------------------------------
+   LAYOUT SWITCHING
+----------------------------------------- */
+
+/* Cached panel references — set once DOM is ready */
+let dashboardLeft   = null;
+let assistantPanel  = null;
+let insightsPanel   = null;
+let originalLeftDisplay = "";
+let originalLeftHTML    = "";
+
+function selectSidebar(name) {
+
+    setActiveButton(name);
+
+    /* Persist so the selection survives page refresh */
+    try { localStorage.setItem("selected_sidebar", name); } catch (e) {}
+
+    /* Database view has its own full-panel renderer */
+    if (name === "database") {
+        openDatabasePanel();
+        return;
+    }
+
+    if (!dashboardLeft || !assistantPanel || !insightsPanel) return;
+
+    const statCards = document.querySelector(".main > .cards");
+
+    if (name === "ai") {
+
+        /* AI mode: hide stat cards + left panel; chat fills full height */
+        if (statCards) statCards.style.display = "none";
+        dashboardLeft.style.display = "none";
+
+        assistantPanel.style.gridColumn = "1 / 2";
+
+        insightsPanel.classList.remove("hidden");
+        insightsPanel.style.display    = "";
+        insightsPanel.style.gridColumn = "2 / 3";
+
+        setBizHeaderRight("AI Assistant");
+
+        /* Populate insights panel with live data */
+        if (typeof loadInsightsPanel === "function") {
+            loadInsightsPanel();
+        }
+
+    } else {
+
+        /* All non-AI views: restore panels, call view renderer */
+        if (statCards) statCards.style.display = "";
+
+        dashboardLeft.style.display     = (originalLeftDisplay && originalLeftDisplay !== "none") ? originalLeftDisplay : "flex";
+        assistantPanel.style.display    = "";
+        assistantPanel.style.gridColumn = "2 / 3";
+
+        insightsPanel.classList.add("hidden");
+        insightsPanel.style.display = "none";
+
+        /* Update header subtitle */
+        const subtitles = {
+            dashboard: "Overview",
+            invoices:  "Invoices",
+            payments:  "Payments",
+            clients:   "Clients",
+        };
+        setBizHeaderRight(subtitles[name] || "");
+
+        /* Route to the correct view renderer */
+        try {
+            if      (name === "dashboard") renderDashboardView();
+            else if (name === "invoices")  renderInvoicesView();
+            else if (name === "payments")  renderPaymentsView();
+            else if (name === "clients")   renderClientsView();
+        } catch (e) {
+            if (DEBUG) console.error("View render failed", e);
+        }
+    }
+}
+
+
+/* -----------------------------------------
+   BOOT — runs after DOM is ready
+----------------------------------------- */
+
+/* -----------------------------------------
+   BUSINESS NAME
+----------------------------------------- */
+
+function loadBizName() {
+    const stored = localStorage.getItem("biz_name") || DEFAULT_BIZ;
+    const el = document.getElementById("biz-name");
+    if (el) {
+        el.textContent = stored;
+        el.className   = "sidebar-org-name";
+    }
+    const bannerEl = document.getElementById("ai-biz-banner-name");
+    if (bannerEl) {
+        bannerEl.textContent = stored;
+    }
+}
+
+function editBizName() {
+    const el = document.getElementById("biz-name");
+    if (!el) return;
+
+    const current = el.textContent.trim();
+
+    const input = document.createElement("input");
+    input.value = current;
+    input.style.cssText =
+        "font-family:inherit;font-size:inherit;font-weight:inherit;" +
+        "letter-spacing:inherit;color:var(--accent-color);background:transparent;" +
+        "border:none;border-bottom:1.5px solid var(--accent-color);" +
+        "outline:none;width:" + Math.max(current.length * 8, 100) + "px;padding:0;" +
+        "max-width:140px";
+
+    el.replaceWith(input);
+    input.focus();
+    input.select();
+
+    function commit() {
+        const val = input.value.trim() || DEFAULT_BIZ;
+        localStorage.setItem("biz_name", val);
+        const span = document.createElement("span");
+        span.id          = "biz-name";
+        span.className   = "sidebar-org-name";
+        span.title       = "Click to rename";
+        span.textContent = val;
+        span.onclick     = editBizName;
+        input.replaceWith(span);
+
+        const bannerEl = document.getElementById("ai-biz-banner-name");
+        if (bannerEl) {
+            bannerEl.textContent = val;
+        }
+    }
+
+    input.addEventListener("blur",    commit);
+    input.addEventListener("keydown", e => {
+        if (e.key === "Enter")  { e.preventDefault(); input.blur(); }
+        if (e.key === "Escape") { input.value = current; input.blur(); }
+    });
+}
+
+function editBannerBizName() {
+    const el = document.getElementById("ai-biz-banner-name");
+    if (!el) return;
+
+    const current = el.textContent.trim();
+
+    const input = document.createElement("input");
+    input.value = current;
+    input.style.cssText =
+        "font-family:inherit;font-size:inherit;font-weight:inherit;" +
+        "letter-spacing:inherit;color:var(--accent-color);background:transparent;" +
+        "border:none;border-bottom:2.5px solid var(--accent-color);" +
+        "outline:none;text-align:center;width:" + Math.max(current.length * 16, 150) + "px;padding:0;" +
+        "max-width:600px";
+
+    el.replaceWith(input);
+    input.focus();
+    input.select();
+
+    function commit() {
+        const val = input.value.trim() || DEFAULT_BIZ;
+        localStorage.setItem("biz_name", val);
+        const div = document.createElement("div");
+        div.id          = "ai-biz-banner-name";
+        div.className   = "ai-biz-banner-name";
+        div.title       = "Click to rename";
+        div.textContent = val;
+        div.onclick     = editBannerBizName;
+        input.replaceWith(div);
+
+        const sidebarEl = document.getElementById("biz-name");
+        if (sidebarEl) {
+            sidebarEl.textContent = val;
+        }
+    }
+
+    input.addEventListener("blur",    commit);
+    input.addEventListener("keydown", e => {
+        if (e.key === "Enter")  { e.preventDefault(); input.blur(); }
+        if (e.key === "Escape") { input.value = current; input.blur(); }
+    });
+}
+
+function loadBizDate() {
+    const el = document.getElementById("ai-biz-banner-date");
+    if (el) {
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        const today = new Date();
+        el.textContent = today.toLocaleDateString('en-US', options);
+    }
+}
+
+function setBizHeaderRight(content) {
+    const el = document.getElementById("biz-header-right");
+    if (el) el.innerHTML = content;
+}
+
+
+window.addEventListener("DOMContentLoaded", () => {
+
+    /* Resolve panel refs */
+    dashboardLeft  = document.getElementById("dashboard-left");
+    assistantPanel = document.getElementById("assistant-panel");
+    insightsPanel  = document.getElementById("insights-panel");
+
+    if (dashboardLeft) {
+        originalLeftDisplay = getComputedStyle(dashboardLeft).display;
+        originalLeftHTML    = dashboardLeft.innerHTML;
+    }
+
+    /* Load business name */
+    loadBizName();
+    loadBizDate();
+
+    /* Apply saved theme */
+    const savedTheme = localStorage.getItem("theme") || "system";
+    applyTheme(savedTheme);
+
+    /* Remove preload class so layout becomes visible */
+    document.body.classList.remove("preload");
+
+    /* Restore last-used sidebar (default: ai) */
+    let saved = null;
+    try { saved = localStorage.getItem("selected_sidebar"); } catch (e) {}
+
+    if (!saved) {
+        saved = "ai";
+        try { localStorage.setItem("selected_sidebar", "ai"); } catch (e) {}
+    }
+
+    selectSidebar(saved);
+});
+
+/* -----------------------------------------
+   USER AUTHENTICATION
+----------------------------------------- */
+let authMode = "login";
+
+function switchLoginTab(mode) {
+    authMode = mode;
+    const tabLogin = document.getElementById("tab-login");
+    const tabSignup = document.getElementById("tab-signup");
+    const groupBizname = document.getElementById("group-bizname");
+    const submitBtn = document.getElementById("submit-btn");
+    const errEl = document.getElementById("login-error");
+
+    if (errEl) errEl.style.display = "none";
+
+    if (mode === "login") {
+        tabLogin.classList.add("active");
+        tabSignup.classList.remove("active");
+        if (groupBizname) groupBizname.style.display = "none";
+        if (submitBtn) submitBtn.textContent = "Sign In";
+    } else {
+        tabLogin.classList.remove("active");
+        tabSignup.classList.add("active");
+        if (groupBizname) groupBizname.style.display = "flex";
+        if (submitBtn) submitBtn.textContent = "Register";
+    }
+}
+
+async function handleAuthSubmit(e) {
+    e.preventDefault();
+    const uInput = document.getElementById("username");
+    const pInput = document.getElementById("password");
+    const bInput = document.getElementById("bizname");
+    const errEl = document.getElementById("login-error");
+
+    const username = uInput ? uInput.value.trim() : "";
+    const password = pInput ? pInput.value.trim() : "";
+    const bizname = bInput ? bInput.value.trim() : "";
+
+    if (errEl) errEl.style.display = "none";
+
+    if (authMode === "signup" && !bizname) {
+        if (errEl) {
+            errEl.textContent = "Business name is required for registration.";
+            errEl.style.display = "block";
+        }
+        return;
+    }
+
+    try {
+        const url = authMode === "login" ? `${API_BASE}/login` : `${API_BASE}/signup`;
+        const body = authMode === "login" 
+            ? { username, password } 
+            : { username, password, business_name: bizname };
+
+        const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.detail || "Authentication failed");
+        }
+
+        const user = await res.json();
+        
+        // Save session
+        localStorage.setItem("user", JSON.stringify(user));
+        localStorage.setItem("biz_name", user.business_name);
+        document.documentElement.setAttribute("data-logged", "true");
+
+        // Clear forms
+        if (uInput) uInput.value = "";
+        if (pInput) pInput.value = "";
+        if (bInput) bInput.value = "";
+
+        // Reload names and dashboard views
+        loadBizName();
+        loadBizDate();
+        
+        if (typeof loadDashboardSummary === "function") loadDashboardSummary();
+        if (typeof loadTopCustomers === "function") loadTopCustomers();
+        
+        let saved = localStorage.getItem("selected_sidebar") || "ai";
+        selectSidebar(saved);
+
+    } catch (err) {
+        if (errEl) {
+            errEl.textContent = err.message || "Connection to authentication server failed.";
+            errEl.style.display = "block";
+        }
+    }
+}
+
+function logout() {
+    localStorage.removeItem("user");
+    localStorage.removeItem("biz_name");
+    document.documentElement.setAttribute("data-logged", "false");
+    
+    // Reset view
+    location.reload();
+}
+
+/* -----------------------------------------
+   REUSABLE LOADING INDICATOR
+   Disables a button/element and inserts a spinner
+----------------------------------------- */
+function setElementLoading(element, isLoading, loadingText = "") {
+    if (!element) return;
+    
+    if (isLoading) {
+        if (element.classList.contains("loading-active")) return;
+        
+        element.dataset.originalHtml = element.innerHTML;
+        element.disabled = true;
+        element.classList.add("loading-active");
+        
+        const spinner = `<span class="loading-spinner"></span>`;
+        if (loadingText) {
+            element.innerHTML = `${spinner}<span>${loadingText}</span>`;
+        } else {
+            const text = element.innerText || 'Loading...';
+            element.innerHTML = `${spinner}<span>${text}</span>`;
+        }
+    } else {
+        if (element.dataset.originalHtml !== undefined) {
+            element.innerHTML = element.dataset.originalHtml;
+            delete element.dataset.originalHtml;
+        }
+        element.disabled = false;
+        element.classList.remove("loading-active");
+    }
+}
+
+/* -----------------------------------------
+   CUSTOM ALERT / CONFIRM SYSTEM
+   Returns promises to allow async/await usage
+----------------------------------------- */
+async function showCustomAlert(message, title = "Notification") {
+    return new Promise((resolve) => {
+        const modal = document.createElement("div");
+        modal.className = "custom-modal-overlay";
+        modal.innerHTML = `
+            <div class="custom-modal-card">
+                <div class="custom-modal-title">${title}</div>
+                <div class="custom-modal-body">${message.replace(/\n/g, "<br>")}</div>
+                <div class="custom-modal-actions">
+                    <button class="custom-modal-btn confirm-btn">OK</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        const confirmBtn = modal.querySelector(".confirm-btn");
+        confirmBtn.addEventListener("click", () => {
+            modal.remove();
+            resolve(true);
+        });
+        
+        // Auto-focus OK button so hitting space/enter works naturally
+        setTimeout(() => confirmBtn.focus(), 50);
+    });
+}
+
+async function showCustomConfirm(message, title = "Confirm Action") {
+    return new Promise((resolve) => {
+        const modal = document.createElement("div");
+        modal.className = "custom-modal-overlay";
+        modal.innerHTML = `
+            <div class="custom-modal-card">
+                <div class="custom-modal-title">${title}</div>
+                <div class="custom-modal-body">${message.replace(/\n/g, "<br>")}</div>
+                <div class="custom-modal-actions">
+                    <button class="custom-modal-btn cancel-btn">Cancel</button>
+                    <button class="custom-modal-btn confirm-btn">Confirm</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        const cancelBtn = modal.querySelector(".cancel-btn");
+        const confirmBtn = modal.querySelector(".confirm-btn");
+
+        cancelBtn.addEventListener("click", () => {
+            modal.remove();
+            resolve(false);
+        });
+
+        confirmBtn.addEventListener("click", () => {
+            modal.remove();
+            resolve(true);
+        });
+
+        // Auto-focus confirm button
+        setTimeout(() => confirmBtn.focus(), 50);
+    });
+}
