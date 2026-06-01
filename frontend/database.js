@@ -74,6 +74,22 @@ async function openDatabasePanel() {
 
     setActiveButton("database");
 
+    if (!dashboardLeft) {
+        dashboardLeft = document.getElementById("dashboard-left");
+    }
+    if (!dashboardLeft) return;
+
+    /* Show loading skeleton immediately to clear static index.html content */
+    dashboardLeft.innerHTML = `
+        <div class="vheader" style="margin-bottom:16px">
+            <div>
+                <div class="vheader-title">Business Database</div>
+                <div class="vheader-sub">View and manage uploaded files and records</div>
+            </div>
+        </div>
+        <div class="widget">${typeof skeleton === "function" ? skeleton(4) : '<div class="vskel"></div>'}</div>
+    `;
+
     const refreshBtn = document.querySelector('button[onclick="openDatabasePanel()"]');
     if (typeof setElementLoading === "function" && refreshBtn) {
         setElementLoading(refreshBtn, true, "Refreshing...");
@@ -86,10 +102,33 @@ async function openDatabasePanel() {
 
         /* Layout: show left panel, push assistant to right, hide insights */
         dashboardLeft.style.display     = "flex";
-        assistantPanel.style.display    = "";
-        assistantPanel.style.gridColumn = "2 / 3";
-        insightsPanel.classList.add("hidden");
-        insightsPanel.style.display     = "none";
+        if (assistantPanel) {
+            assistantPanel.style.display    = "";
+            assistantPanel.style.gridColumn = "2 / 3";
+        }
+        if (insightsPanel) {
+            insightsPanel.classList.add("hidden");
+            insightsPanel.style.display     = "none";
+        }
+
+        const isDbEmpty = (data.uploads || []).length === 0 && 
+                          (data.invoices || []).length === 0 && 
+                          (data.inventory || []).length === 0;
+
+        if (isDbEmpty) {
+            dashboardLeft.innerHTML = `
+                <div class="vheader" style="margin-bottom:16px">
+                    <div>
+                        <div class="vheader-title">Business Database</div>
+                        <div class="vheader-sub">View and manage uploaded files and records</div>
+                    </div>
+                </div>
+                ${typeof emptyState === "function" 
+                  ? emptyState('🗄', 'Database is empty', 'Upload CSV/XLSX billing files to populate the database.')
+                  : '<div style="text-align:center;padding:40px;">Database is empty. Please upload data.</div>'}
+            `;
+            return;
+        }
 
         /* --- Uploads table --- */
         const uploadsPage  = currentPage.uploads;

@@ -318,7 +318,6 @@ window.addEventListener("DOMContentLoaded", () => {
     /* Remove preload class so layout becomes visible */
     document.body.classList.remove("preload");
 
-    /* Restore last-used sidebar (default: ai) */
     let saved = null;
     try { saved = localStorage.getItem("selected_sidebar"); } catch (e) {}
 
@@ -327,13 +326,103 @@ window.addEventListener("DOMContentLoaded", () => {
         try { localStorage.setItem("selected_sidebar", "ai"); } catch (e) {}
     }
 
-    selectSidebar(saved);
+    if (localStorage.getItem("user")) {
+        selectSidebar(saved);
+    } else {
+        setActiveButton(saved);
+    }
+
+    /* Password dynamic validation event binding (1s debounce) */
+    let validationTimeout = null;
+    const passwordInput = document.getElementById("password");
+    if (passwordInput) {
+        passwordInput.addEventListener("input", (e) => {
+            const val = e.target.value;
+            
+            // Clear pending timeout
+            if (validationTimeout) {
+                clearTimeout(validationTimeout);
+            }
+            
+            // Hide the checklist container instantly while typing
+            const passwordConditions = document.getElementById("password-conditions");
+            if (passwordConditions) {
+                passwordConditions.style.display = "none";
+            }
+            
+            // Wait for 1 second of inactivity before evaluating and showing unmet rules
+            validationTimeout = setTimeout(() => {
+                validatePasswordConditions(val);
+            }, 1000);
+        });
+    }
 });
 
 /* -----------------------------------------
    USER AUTHENTICATION
 ----------------------------------------- */
 let authMode = "login";
+
+const EYE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="eye-icon"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+const EYE_OFF_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="eye-icon"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
+
+function togglePasswordVisibility(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const wrapper = input.parentElement;
+    const button = wrapper ? wrapper.querySelector('.password-toggle-btn') : null;
+    if (!button) return;
+
+    if (input.type === "password") {
+        input.type = "text";
+        button.innerHTML = EYE_OFF_SVG;
+    } else {
+        input.type = "password";
+        button.innerHTML = EYE_SVG;
+    }
+}
+
+function validatePasswordConditions(value) {
+    const condLength = document.getElementById("cond-length");
+    const condCapital = document.getElementById("cond-capital");
+    const condLowercase = document.getElementById("cond-lowercase");
+    const condNumber = document.getElementById("cond-number");
+    const condSpecial = document.getElementById("cond-special");
+    const passwordConditions = document.getElementById("password-conditions");
+
+    const hasLength = value.length >= 8;
+    const hasCapital = /[A-Z]/.test(value);
+    const hasLowercase = /[a-z]/.test(value);
+    const hasNumber = /\d/.test(value);
+    const hasSpecial = /[^A-Za-z0-9]/.test(value);
+
+    const toggleClass = (el, isValid) => {
+        if (!el) return;
+        if (isValid) {
+            el.classList.add("valid");
+        } else {
+            el.classList.remove("valid");
+        }
+    };
+
+    toggleClass(condLength, hasLength);
+    toggleClass(condCapital, hasCapital);
+    toggleClass(condLowercase, hasLowercase);
+    toggleClass(condNumber, hasNumber);
+    toggleClass(condSpecial, hasSpecial);
+
+    const allValid = hasLength && hasCapital && hasLowercase && hasNumber && hasSpecial;
+
+    if (passwordConditions) {
+        if (allValid || value === "") {
+            passwordConditions.style.display = "none";
+        } else if (authMode === "signup") {
+            passwordConditions.style.display = "flex";
+        }
+    }
+
+    return allValid;
+}
 
 function switchLoginTab(mode) {
     authMode = mode;
@@ -342,6 +431,7 @@ function switchLoginTab(mode) {
     const groupBizname = document.getElementById("group-bizname");
     const submitBtn = document.getElementById("submit-btn");
     const errEl = document.getElementById("login-error");
+    const passwordConditions = document.getElementById("password-conditions");
 
     if (errEl) errEl.style.display = "none";
 
@@ -350,11 +440,15 @@ function switchLoginTab(mode) {
         tabSignup.classList.remove("active");
         if (groupBizname) groupBizname.style.display = "none";
         if (submitBtn) submitBtn.textContent = "Sign In";
+        if (passwordConditions) passwordConditions.style.display = "none";
     } else {
         tabLogin.classList.remove("active");
         tabSignup.classList.add("active");
         if (groupBizname) groupBizname.style.display = "flex";
         if (submitBtn) submitBtn.textContent = "Register";
+        if (passwordConditions) {
+            passwordConditions.style.display = "none"; // Hide initially on register tab switch
+        }
     }
 }
 
@@ -371,12 +465,24 @@ async function handleAuthSubmit(e) {
 
     if (errEl) errEl.style.display = "none";
 
-    if (authMode === "signup" && !bizname) {
-        if (errEl) {
-            errEl.textContent = "Business name is required for registration.";
-            errEl.style.display = "block";
+    if (authMode === "signup") {
+        if (!bizname) {
+            if (errEl) {
+                errEl.textContent = "Business name is required for registration.";
+                errEl.style.display = "block";
+            }
+            return;
         }
-        return;
+
+        // Validate password strength conditions
+        const isPasswordValid = validatePasswordConditions(password);
+        if (!isPasswordValid) {
+            if (errEl) {
+                errEl.textContent = "Password must meet all security conditions (Length, Capital, Lowercase, Number, Special).";
+                errEl.style.display = "block";
+            }
+            return;
+        }
     }
 
     try {
@@ -415,8 +521,8 @@ async function handleAuthSubmit(e) {
         if (typeof loadDashboardSummary === "function") loadDashboardSummary();
         if (typeof loadTopCustomers === "function") loadTopCustomers();
         
-        let saved = localStorage.getItem("selected_sidebar") || "ai";
-        selectSidebar(saved);
+        localStorage.setItem("selected_sidebar", "ai");
+        selectSidebar("ai");
 
     } catch (err) {
         if (errEl) {
@@ -429,6 +535,7 @@ async function handleAuthSubmit(e) {
 function logout() {
     localStorage.removeItem("user");
     localStorage.removeItem("biz_name");
+    localStorage.setItem("selected_sidebar", "ai");
     document.documentElement.setAttribute("data-logged", "false");
     
     // Reset view

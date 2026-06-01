@@ -18,6 +18,19 @@ if (!textarea && DEBUG) console.warn("`#user-input` not found");
 textarea.addEventListener("input", () => {
     textarea.style.height = "auto";
     textarea.style.height = textarea.scrollHeight + "px";
+
+    // Collapse banner on typing, restore when input is empty and chat has no messages
+    const currentActive = document.documentElement.getAttribute("data-active");
+    if (currentActive === "ai") {
+        const isEmptyStatePresent = !!document.getElementById("chat-empty-state");
+        if (isEmptyStatePresent) {
+            if (textarea.value.trim().length > 0) {
+                document.documentElement.classList.add("chat-active");
+            } else {
+                document.documentElement.classList.remove("chat-active");
+            }
+        }
+    }
 });
 
 textarea.addEventListener("keydown", function (e) {
@@ -309,6 +322,7 @@ async function sendMessage() {
 function hideChips() {
     const emptyState = document.getElementById("chat-empty-state");
     if (emptyState) {
+        document.documentElement.classList.add("chat-active");
         emptyState.style.transition = "opacity 0.25s ease, transform 0.25s ease";
         emptyState.style.opacity   = "0";
         emptyState.style.transform = "translateY(-8px)";

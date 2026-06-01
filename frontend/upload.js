@@ -259,8 +259,6 @@ async function testUpload() {
 }
 
 
-/* -----------------------------------------
-   INITIAL LOAD
------------------------------------------ */
-
-loadUploads();
+if (localStorage.getItem("user")) {
+    loadUploads();
+}

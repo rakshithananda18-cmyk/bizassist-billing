@@ -9,6 +9,42 @@
 ========================================= */
 
 
+/* ─── Pagination State for Views ────────────────── */
+let _invoicesPage = 1;
+let _paymentsOverduePage = 1;
+let _paymentsPendingPage = 1;
+let _clientsPage = 1;
+
+const INVOICES_PER_PAGE = 10;
+const PAYMENTS_PER_PAGE = 5;
+const CLIENTS_PER_PAGE = 10;
+
+function _viewsPaginationControls(viewKey, total, page, itemsPerPage, changePageFnName) {
+    const totalPages = Math.ceil(total / itemsPerPage);
+    if (totalPages <= 1) return "";
+
+    return `
+        <div class="db-pagination" style="display:flex;justify-content:center;align-items:center;gap:12px;margin-top:16px;margin-bottom:12px;flex-shrink:0;">
+            <button
+                class="matte-glass"
+                style="padding:6px 12px;cursor:pointer;border-radius:6px;font-size:12px;border:1px solid var(--border-color);background:var(--card-color);color:var(--text-color)"
+                onclick="${changePageFnName}(${page - 1})"
+                ${page === 1 ? "disabled" : ""}
+            >← Previous</button>
+            <span style="font-size:12.5px;color:var(--secondary-text);font-weight:600">
+                Page ${page} / ${totalPages}
+            </span>
+            <button
+                class="matte-glass"
+                style="padding:6px 12px;cursor:pointer;border-radius:6px;font-size:12px;border:1px solid var(--border-color);background:var(--card-color);color:var(--text-color)"
+                onclick="${changePageFnName}(${page + 1})"
+                ${page >= totalPages ? "disabled" : ""}
+            >Next →</button>
+        </div>
+    `;
+}
+
+
 /* ─── Shared Helpers ────────────────────── */
 
 function fmtAmount(n) {
@@ -234,8 +270,12 @@ function _paintInvoices(left) {
         return `<button class="vtab${active}" onclick="_setInvoiceFilter('${t}')">${t.charAt(0).toUpperCase()+t.slice(1)} <span class="vtab-count">${count}</span></button>`;
     }).join('');
 
-    const rows = filtered.length
-        ? filtered.map(inv => `
+    const sliceStart = (_invoicesPage - 1) * INVOICES_PER_PAGE;
+    const sliceEnd = _invoicesPage * INVOICES_PER_PAGE;
+    const paginatedInvoices = filtered.slice(sliceStart, sliceEnd);
+
+    const rows = paginatedInvoices.length
+        ? paginatedInvoices.map(inv => `
             <tr>
                 <td><span style="font-family:'Geist Mono',monospace;font-size:12px;opacity:0.7">${inv.invoice_id || '—'}</span></td>
                 <td style="font-weight:500">${inv.customer || '—'}</td>
@@ -247,7 +287,7 @@ function _paintInvoices(left) {
 
     left.innerHTML = viewHeader('Invoices', `${all.length} total · ${fmtAmount(total)} revenue`, all.length) + `
 
-        <!-- FILTER TABS -->
+         <!-- FILTER TABS -->
         <div class="vtabs">${tabs}</div>
 
         <!-- TABLE -->
@@ -262,6 +302,9 @@ function _paintInvoices(left) {
                 </table>
             </div>
         </div>
+
+        <!-- PAGINATION CONTROLS -->
+        ${_viewsPaginationControls('invoices', filtered.length, _invoicesPage, INVOICES_PER_PAGE, '_changeInvoicesPage')}
 
         <!-- SUMMARY STRIP -->
         <div class="vsummary-strip">
@@ -284,8 +327,14 @@ function _paintInvoices(left) {
         </div>`;
 }
 
+function _changeInvoicesPage(newPage) {
+    _invoicesPage = newPage;
+    _paintInvoices(getLeft());
+}
+
 function _setInvoiceFilter(f) {
     _invoiceFilter = f;
+    _invoicesPage = 1;
     _paintInvoices(getLeft());
 }
 
@@ -302,9 +351,23 @@ async function renderPaymentsView() {
     try {
         const data = await fetch(`${API_BASE}/payments`).then(r => r.json());
 
-        const overdueRows = (data.invoice_dues || [])
-            .filter(p => (p.status || '').toLowerCase() === 'overdue')
-            .map(p => `
+        const overdueList = (data.invoice_dues || [])
+            .filter(p => (p.status || '').toLowerCase() === 'overdue');
+
+        const pendingList = (data.invoice_dues || [])
+            .filter(p => (p.status || '').toLowerCase() === 'pending');
+
+        const overdueSlice = overdueList.slice(
+            (_paymentsOverduePage - 1) * PAYMENTS_PER_PAGE,
+            _paymentsOverduePage * PAYMENTS_PER_PAGE
+        );
+
+        const pendingSlice = pendingList.slice(
+            (_paymentsPendingPage - 1) * PAYMENTS_PER_PAGE,
+            _paymentsPendingPage * PAYMENTS_PER_PAGE
+        );
+
+        const overdueRows = overdueSlice.map(p => `
                 <tr>
                     <td style="font-weight:500">${p.customer || '—'}</td>
                     <td>${p.invoice_id || '—'}</td>
@@ -313,9 +376,7 @@ async function renderPaymentsView() {
                     <td><button class="vlink" onclick="sendChip('How much does ${p.customer} owe me?')">Ask AI</button></td>
                 </tr>`).join('');
 
-        const pendingRows = (data.invoice_dues || [])
-            .filter(p => (p.status || '').toLowerCase() === 'pending')
-            .map(p => `
+        const pendingRows = pendingSlice.map(p => `
                 <tr>
                     <td style="font-weight:500">${p.customer || '—'}</td>
                     <td>${p.invoice_id || '—'}</td>
@@ -357,6 +418,7 @@ async function renderPaymentsView() {
                         <tbody>${overdueRows}</tbody>
                     </table>
                 </div>
+                ${_viewsPaginationControls('paymentsOverdue', overdueList.length, _paymentsOverduePage, PAYMENTS_PER_PAGE, '_changePaymentsOverduePage')}
             </div>` : ''}
 
             ${data.pending_count > 0 ? `
@@ -372,6 +434,7 @@ async function renderPaymentsView() {
                         <tbody>${pendingRows}</tbody>
                     </table>
                 </div>
+                ${_viewsPaginationControls('paymentsPending', pendingList.length, _paymentsPendingPage, PAYMENTS_PER_PAGE, '_changePaymentsPendingPage')}
             </div>` : ''}
 
             ${!hasDues ? emptyState('✓', 'All clear!', 'No overdue or pending payments found.') : ''}`;
@@ -380,6 +443,16 @@ async function renderPaymentsView() {
         left.innerHTML = viewHeader('Payments', '') +
             emptyState('💳', 'No payment data', 'Upload invoices with due_date column to track payments.');
     }
+}
+
+function _changePaymentsOverduePage(newPage) {
+    _paymentsOverduePage = newPage;
+    renderPaymentsView();
+}
+
+function _changePaymentsPendingPage(newPage) {
+    _paymentsPendingPage = newPage;
+    renderPaymentsView();
 }
 
 
@@ -404,15 +477,21 @@ async function renderClientsView() {
 
         const maxTotal = clients[0].total || 1;
 
-        const clientCards = clients.map((c, i) => {
+        const clientSlice = clients.slice(
+            (_clientsPage - 1) * CLIENTS_PER_PAGE,
+            _clientsPage * CLIENTS_PER_PAGE
+        );
+
+        const clientCards = clientSlice.map((c, i) => {
             const barW = Math.round((c.total / maxTotal) * 100);
             const health = c.overdue > 0 ? 'overdue' : c.pending > 0 ? 'pending' : 'paid';
             const healthColor = { overdue: '#c02a2a', pending: '#c97c22', paid: '#27864a' }[health];
             const barColors = ['#e06535','#c97c22','#3a9a5c','#4a90c9','#9b59b6','#e91e63'];
+            const absoluteIdx = (_clientsPage - 1) * CLIENTS_PER_PAGE + i;
             return `
             <div class="vclient-card" onclick="sendChip('Give me a full summary for customer ${c.customer}')">
                 <div class="vclient-top">
-                    <div class="vclient-avatar" style="background:${barColors[i % barColors.length]}22;color:${barColors[i % barColors.length]}">
+                    <div class="vclient-avatar" style="background:${barColors[absoluteIdx % barColors.length]}22;color:${barColors[absoluteIdx % barColors.length]}">
                         ${c.customer.charAt(0).toUpperCase()}
                     </div>
                     <div class="vclient-info">
@@ -422,7 +501,7 @@ async function renderClientsView() {
                     <div class="vclient-amount">${fmtAmount(c.total)}</div>
                 </div>
                 <div class="vclient-bar-track">
-                    <div class="vclient-bar-fill" style="width:${barW}%;background:${barColors[i % barColors.length]}"></div>
+                    <div class="vclient-bar-fill" style="width:${barW}%;background:${barColors[absoluteIdx % barColors.length]}"></div>
                 </div>
                 <div class="vclient-pills">
                     ${c.paid    > 0 ? `<span class="vpill" style="color:#27864a;background:rgba(39,134,74,0.10)">${c.paid} paid</span>` : ''}
@@ -434,10 +513,16 @@ async function renderClientsView() {
         }).join('');
 
         left.innerHTML = viewHeader('Clients', `${clients.length} customers tracked`, clients.length) + `
-            <div class="vclient-grid">${clientCards}</div>`;
+            <div class="vclient-grid">${clientCards}</div>
+            ${_viewsPaginationControls('clients', clients.length, _clientsPage, CLIENTS_PER_PAGE, '_changeClientsPage')}`;
 
     } catch (e) {
         left.innerHTML = viewHeader('Clients', '') +
             emptyState('👥', 'No clients yet', 'Upload invoices to see your client list.');
     }
+}
+
+function _changeClientsPage(newPage) {
+    _clientsPage = newPage;
+    renderClientsView();
 }

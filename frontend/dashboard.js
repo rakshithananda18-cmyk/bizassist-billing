@@ -298,9 +298,7 @@ async function testOverdue() {
 }
 
 
-/* -----------------------------------------
-   INITIAL LOAD
------------------------------------------ */
-
-loadDashboardSummary();
-loadTopCustomers();
+if (localStorage.getItem("user")) {
+    loadDashboardSummary();
+    loadTopCustomers();
+}
