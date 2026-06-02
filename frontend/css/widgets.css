@@ -65,8 +65,6 @@
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
     gap: 14px;
     min-height: 0;
-    height: 100%;
-    max-height: 100%;
     overflow: hidden;
     align-items: stretch;
     grid-auto-rows: 1fr;
@@ -757,6 +755,27 @@ html[data-active="database"]  .sidebar button#db-btn::before {
     margin-bottom: 0 !important;
 }
 
+.clear-chat-btn {
+    position: absolute;
+    right: 16px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 6px;
+    cursor: pointer;
+    color: var(--secondary-text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.clear-chat-btn:hover {
+    color: #c02a2a;
+    background: rgba(192, 42, 42, 0.09);
+    border-color: rgba(192, 42, 42, 0.2);
+}
+
 .assistant-header-star {
     color: var(--accent-color);
     font-size: 22px;
@@ -1112,8 +1131,6 @@ tr:last-child { border-bottom: none; }
     grid-template-rows: minmax(0, 1fr);
     flex: 1;
     min-height: 0;
-    height: 100%;
-    max-height: 100%;
 }
 
 /* AI view: chat on left, insights on right — equal-ish split */
@@ -1705,4 +1722,199 @@ html[data-active="ai"] .dashboard-grid {
     .db-cards {
         grid-template-columns: 1fr !important;
     }
+}
+
+/* =========================================
+   CHAT SIDEBAR & FLOATING POPUP LAYOUT
+========================================= */
+
+.chat-main-area {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    gap: 12px;
+    min-height: 0;
+    position: relative;
+}
+
+.history-toggle-btn {
+    background: var(--glass-bg) !important;
+    backdrop-filter: var(--glass-blur) !important;
+    -webkit-backdrop-filter: var(--glass-blur) !important;
+    border: 1px solid var(--glass-border) !important;
+    color: var(--secondary-text);
+    border-radius: 10px;
+    width: 50px;
+    height: 50px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.18s ease;
+    box-shadow: var(--glass-highlight), var(--shadow-sm) !important;
+    flex-shrink: 0;
+}
+
+.history-toggle-btn:hover {
+    color: var(--accent-color);
+    background: var(--glass-bg-hover) !important;
+    border-color: var(--accent-color) !important;
+    transform: scale(1.04);
+}
+
+.history-toggle-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* Floating Chat History Dropdown Popup */
+.chat-history-popup {
+    position: absolute;
+    bottom: 62px; /* Aligned right above the input area */
+    left: 0;
+    width: 260px;
+    max-height: 380px;
+    background: var(--card-bg-solid);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    z-index: 1000;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.dark-mode .chat-history-popup {
+    background: var(--card-bg-solid); /* matches dark mode variables */
+}
+
+.chat-history-popup.hidden {
+    display: none !important;
+}
+
+/* Popup Header */
+.popup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1.5px solid var(--border-color);
+    padding-bottom: 8px;
+}
+
+.popup-title {
+    font-family: 'Crimson Pro', Georgia, serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-color);
+}
+
+.popup-close-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    color: var(--secondary-text);
+    padding: 2px 6px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background-color 0.15s;
+}
+
+.popup-close-btn:hover {
+    color: var(--accent-color);
+    background: var(--accent-softer);
+}
+
+/* Inside Popup */
+.chat-history-popup .new-chat-btn {
+    width: 100%;
+    background: var(--accent-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.chat-history-popup .new-chat-btn:hover {
+    background: var(--accent-hover);
+    transform: translateY(-1px);
+}
+
+.chat-history-popup .chat-sessions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+    flex: 1;
+    padding-right: 2px;
+}
+
+.chat-history-popup .chat-session-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+    color: var(--text-color);
+    font-size: 13px;
+    position: relative;
+    user-select: none;
+}
+
+.chat-history-popup .chat-session-item:hover {
+    background: var(--glass-bg-hover);
+    border-color: var(--glass-border);
+}
+
+.chat-history-popup .chat-session-item.active {
+    background: var(--sidebar-active-bg);
+    border-color: var(--glass-border);
+    font-weight: 600;
+}
+
+.chat-history-popup .chat-session-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 8px;
+}
+
+.chat-history-popup .chat-session-delete {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--secondary-text);
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background-color 0.15s;
+    opacity: 0.6;
+}
+
+.chat-history-popup .chat-session-delete:hover {
+    color: #c02a2a;
+    background: rgba(192, 42, 42, 0.09);
+    opacity: 1;
 }

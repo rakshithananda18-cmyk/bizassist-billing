@@ -173,6 +173,11 @@ function inlineFormat(text) {
 
 
 /* -----------------------------------------
+   ACTIVE SESSION STATE
+----------------------------------------- */
+let activeSessionId = localStorage.getItem("active_session_id") || null;
+
+/* -----------------------------------------
    SEND MESSAGE
 ----------------------------------------- */
 
@@ -206,12 +211,14 @@ async function sendMessage() {
     chatBox.appendChild(loading);
     chatBox.scrollTop = chatBox.scrollHeight;
 
+    const isNewSession = !activeSessionId;
+
     try {
         console.log(`Sending POST request to ${API_BASE}/ask...`);
         const response = await fetch(`${API_BASE}/ask`, {
             method  : "POST",
             headers : { "Content-Type": "application/json" },
-            body    : JSON.stringify({ message })
+            body    : JSON.stringify({ message, session_id: activeSessionId })
         });
 
         console.timeEnd("API Latency");
@@ -261,6 +268,13 @@ async function sendMessage() {
 
             console.groupEnd();
             return;
+        }
+
+        // Set session state
+        if (data.session_id) {
+            activeSessionId = data.session_id;
+            localStorage.setItem("active_session_id", activeSessionId);
+            loadChatSessions(isNewSession); // refresh sidebar list
         }
 
         const text = data.response || "";
@@ -365,3 +379,251 @@ function sendChip(question) {
 
     sendMessage();
 }
+
+/* -----------------------------------------
+   PERSISTENT HISTORY & MULTI-SESSION
+----------------------------------------- */
+
+function removeEmptyStateImmediately() {
+    const emptyState = document.getElementById("chat-empty-state");
+    if (emptyState) {
+        document.documentElement.classList.add("chat-active");
+        emptyState.remove();
+    }
+}
+
+async function loadChatSessions(selectFirstIfNoActive = false) {
+    const listContainer = document.getElementById("chat-sessions-list");
+    if (!listContainer) return;
+
+    try {
+        console.log("Loading chat sessions list...");
+        const response = await fetch(`${API_BASE}/chat/sessions`);
+        if (!response.ok) throw new Error("Failed to load sessions");
+
+        const sessions = await response.json();
+        listContainer.innerHTML = "";
+
+        if (sessions.length === 0) {
+            startNewChat();
+            return;
+        }
+
+        sessions.forEach(s => {
+            const activeClass = s.session_id === activeSessionId ? "active" : "";
+            const sessionDiv = document.createElement("div");
+            sessionDiv.className = `chat-session-item ${activeClass}`;
+            sessionDiv.setAttribute("data-session-id", s.session_id);
+            sessionDiv.onclick = () => selectChatSession(s.session_id);
+
+            sessionDiv.innerHTML = `
+                <span class="chat-session-title" title="${s.session_title}">${s.session_title}</span>
+                <button class="chat-session-delete" onclick="deleteChatSession(event, '${s.session_id}')" title="Delete thread">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                </button>
+            `;
+            listContainer.appendChild(sessionDiv);
+        });
+
+        // Set active session selection on load/refresh
+        if (selectFirstIfNoActive) {
+            // Find if saved activeSessionId exists in returned sessions
+            const exists = sessions.some(s => s.session_id === activeSessionId);
+            if (exists) {
+                selectChatSession(activeSessionId);
+            } else {
+                selectChatSession(sessions[0].session_id);
+            }
+        } else if (activeSessionId) {
+            // Check if active session still exists
+            const exists = sessions.some(s => s.session_id === activeSessionId);
+            if (!exists) {
+                selectChatSession(sessions[0].session_id);
+            } else {
+                // Ensure proper active CSS class is maintained
+                const items = listContainer.querySelectorAll(".chat-session-item");
+                items.forEach(item => {
+                    if (item.getAttribute("data-session-id") === activeSessionId) {
+                        item.classList.add("active");
+                    } else {
+                        item.classList.remove("active");
+                    }
+                });
+            }
+        }
+    } catch (e) {
+        console.error("Error loading chat sessions list:", e);
+    }
+}
+
+async function selectChatSession(sessionId) {
+    if (!sessionId) return;
+    activeSessionId = sessionId;
+    localStorage.setItem("active_session_id", sessionId);
+
+    // Hide popup after selecting
+    const popup = document.getElementById("chat-history-popup");
+    if (popup) {
+        popup.classList.add("hidden");
+    }
+
+    // Update UI active styles in sidebar
+    const items = document.querySelectorAll(".chat-session-item");
+    items.forEach(item => {
+        if (item.getAttribute("data-session-id") === sessionId) {
+            item.classList.add("active");
+        } else {
+            item.classList.remove("active");
+        }
+    });
+
+    // Clear chat display and fetch history
+    const chatBox = document.getElementById("chat-box");
+    if (chatBox) {
+        chatBox.innerHTML = "";
+    }
+    await fetchChatHistory(sessionId);
+}
+
+async function fetchChatHistory(sessionId) {
+    const chatBox = document.getElementById("chat-box");
+    if (!chatBox) return;
+
+    try {
+        console.log(`Loading chat history for session_id=${sessionId}...`);
+        const response = await fetch(`${API_BASE}/chat/history?session_id=${sessionId}`);
+        if (!response.ok) throw new Error("Failed to fetch chat history");
+        
+        const history = await response.json();
+        if (history.length > 0) {
+            removeEmptyStateImmediately();
+            
+            history.forEach(m => {
+                const div = document.createElement("div");
+                div.className = m.role === "user" ? "message user" : "message bot";
+                if (m.role === "user") {
+                    div.textContent = m.content;
+                } else {
+                    div.innerHTML = renderMarkdown(m.content);
+                }
+                chatBox.appendChild(div);
+            });
+            chatBox.scrollTop = chatBox.scrollHeight;
+        } else {
+            restoreEmptyState();
+        }
+    } catch (e) {
+        console.error("Error loading chat history:", e);
+    }
+}
+
+function startNewChat() {
+    activeSessionId = null;
+    localStorage.removeItem("active_session_id");
+
+    // Remove active styles from sidebar
+    const items = document.querySelectorAll(".chat-session-item");
+    items.forEach(item => item.classList.remove("active"));
+
+    // Restore empty welcome screen
+    restoreEmptyState();
+    console.log("Started a fresh conversation session.");
+}
+
+async function deleteChatSession(event, sessionId) {
+    event.stopPropagation(); // prevent clicking delete from selecting session
+
+    const confirmed = await showCustomConfirm(
+        "Are you sure you want to delete this chat conversation? This cannot be undone.",
+        "Delete Conversation"
+    );
+    if (!confirmed) return;
+
+    try {
+        console.log(`Deleting chat session_id=${sessionId}...`);
+        const response = await fetch(`${API_BASE}/chat/history?session_id=${sessionId}`, {
+            method: "DELETE"
+        });
+        if (!response.ok) throw new Error("Failed to delete session history");
+
+        console.log("Session history deleted successfully on backend.");
+        
+        if (activeSessionId === sessionId) {
+            activeSessionId = null;
+            localStorage.removeItem("active_session_id");
+        }
+
+        // Reload lists
+        await loadChatSessions(true);
+    } catch (e) {
+        console.error("Error deleting session history:", e);
+        showCustomAlert("Failed to delete conversation: " + e.message, "Error");
+    }
+}
+
+function restoreEmptyState() {
+    const chatBox = document.getElementById("chat-box");
+    if (!chatBox) return;
+
+    document.documentElement.classList.remove("chat-active");
+
+    const h = new Date().getHours();
+    const greeting =
+        h < 12 ? "Good morning" :
+        h < 17 ? "Good afternoon" :
+                 "Good evening";
+
+    chatBox.innerHTML = `
+        <div class="chat-empty-state" id="chat-empty-state">
+            <div class="ces-glow"></div>
+            <div class="ces-symbol">✦</div>
+            <div class="ces-greeting" id="ces-greeting">${greeting}</div>
+            <div class="ces-sub">
+                Ask anything about your business —<br>
+                revenue, stock, payments, customers.
+            </div>
+            <div class="ces-chips" id="prompt-chips">
+                <button class="chip" onclick="sendChip('Who owes me the most?')">💰 Who owes most?</button>
+                <button class="chip" onclick="sendChip('Which medicines are expiring soon?')">⏰ Expiring soon</button>
+                <button class="chip" onclick="sendChip('Show me the total revenue and pending payments summary')">📊 Revenue summary</button>
+                <button class="chip" onclick="sendChip('Which products are low on stock?')">📦 Low stock</button>
+                <button class="chip" onclick="sendChip('List all overdue invoices with amounts')">🔴 Overdue invoices</button>
+                <button class="chip" onclick="sendChip('Who are my top 5 customers by revenue?')">🏆 Top customers</button>
+            </div>
+        </div>
+    `;
+}
+
+// Load sessions list and select default on startup if authenticated
+window.addEventListener("DOMContentLoaded", () => {
+    if (localStorage.getItem("user")) {
+        const active = localStorage.getItem("active_session_id");
+        if (active) {
+            loadChatSessions(true);
+        } else {
+            startNewChat();
+            loadChatSessions(false);
+        }
+    }
+});
+
+function toggleHistoryPopup() {
+    const popup = document.getElementById("chat-history-popup");
+    if (!popup) return;
+    popup.classList.toggle("hidden");
+}
+
+// Close the history popup when clicking outside of it
+window.addEventListener("click", (e) => {
+    const popup = document.getElementById("chat-history-popup");
+    const toggleBtn = document.querySelector(".history-toggle-btn");
+    if (popup && !popup.classList.contains("hidden")) {
+        // Close if click target is outside the popup and not the toggle button itself
+        if (!popup.contains(e.target) && (!toggleBtn || !toggleBtn.contains(e.target))) {
+            popup.classList.add("hidden");
+        }
+    }
+});

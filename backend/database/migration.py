@@ -1,7 +1,7 @@
 import logging
 from sqlalchemy import text
 from database.db import engine, SessionLocal
-from database.models import Base, User
+from database.models import Base, User, ChatMessage
 from services.auth import hash_password
 
 logger = logging.getLogger("bizassist.migration")
@@ -41,6 +41,20 @@ def run_migrations_and_seed():
                         logger.info(f"Added file_id column to {table}")
                     except Exception as e:
                         logger.error(f"Failed to add file_id column to {table}: {e}")
+            conn.commit()
+
+        # Check if session_id exists in chat_messages, if not add columns
+        with engine.connect() as conn:
+            try:
+                conn.execute(text("SELECT session_id FROM chat_messages LIMIT 1"))
+            except Exception:
+                try:
+                    conn.execute(text("ALTER TABLE chat_messages ADD COLUMN session_id TEXT"))
+                    conn.execute(text("ALTER TABLE chat_messages ADD COLUMN session_title TEXT"))
+                    conn.execute(text("UPDATE chat_messages SET session_id = 'default', session_title = 'Previous Chat' WHERE session_id IS NULL"))
+                    logger.info("Added session_id and session_title columns to chat_messages")
+                except Exception as e:
+                    logger.error(f"Failed to add session columns to chat_messages: {e}")
             conn.commit()
 
         # Seed users if they don't exist

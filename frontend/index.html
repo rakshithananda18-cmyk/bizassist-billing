@@ -227,56 +227,74 @@
 
                 <!-- AI PANEL -->
 
-                <div id="assistant-panel" class="assistant-panel">
+                <div id="assistant-panel" class="assistant-panel" style="position: relative;">
 
-                    <div class="assistant-header matte-glass">
+                    <div class="assistant-header matte-glass" style="position: relative;">
                         <span class="assistant-header-star">✦</span> BIZASSIST AI
                     </div>
 
-                    <div class="chat-box" id="chat-box">
-
-                        <!-- EMPTY STATE — replaced by messages on first send -->
-                        <div class="chat-empty-state" id="chat-empty-state">
-
-                            <div class="ces-glow"></div>
-
-                            <div class="ces-symbol">✦</div>
-
-                            <div class="ces-greeting" id="ces-greeting">Good morning</div>
-
-                            <div class="ces-sub">
-                                Ask anything about your business —<br>
-                                revenue, stock, payments, customers.
+                    <!-- MAIN CHAT AREA -->
+                    <div class="chat-main-area">
+                        <!-- FLOATING CHAT HISTORY POPUP -->
+                        <div id="chat-history-popup" class="chat-history-popup hidden">
+                            <div class="popup-header">
+                                <span class="popup-title">Conversations</span>
+                                <button class="popup-close-btn" onclick="toggleHistoryPopup()" title="Close History">×</button>
                             </div>
+                            <button class="new-chat-btn" onclick="startNewChat(); toggleHistoryPopup()">+ New Chat</button>
+                            <div class="chat-sessions-list" id="chat-sessions-list">
+                                <!-- Rendered dynamically -->
+                            </div>
+                        </div>
 
-                            <div class="ces-chips" id="prompt-chips">
-                                <button class="chip" onclick="sendChip('Who owes me the most?')">💰 Who owes most?</button>
-                                <button class="chip" onclick="sendChip('Which medicines are expiring soon?')">⏰ Expiring soon</button>
-                                <button class="chip" onclick="sendChip('Show me the total revenue and pending payments summary')">📊 Revenue summary</button>
-                                <button class="chip" onclick="sendChip('Which products are low on stock?')">📦 Low stock</button>
-                                <button class="chip" onclick="sendChip('List all overdue invoices with amounts')">🔴 Overdue invoices</button>
-                                <button class="chip" onclick="sendChip('Who are my top 5 customers by revenue?')">🏆 Top customers</button>
+                        <div class="chat-box" id="chat-box">
+
+                            <!-- EMPTY STATE — replaced by messages on first send -->
+                            <div class="chat-empty-state" id="chat-empty-state">
+
+                                <div class="ces-glow"></div>
+
+                                <div class="ces-symbol">✦</div>
+
+                                <div class="ces-greeting" id="ces-greeting">Good morning</div>
+
+                                <div class="ces-sub">
+                                    Ask anything about your business —<br>
+                                    revenue, stock, payments, customers.
+                                </div>
+
+                                <div class="ces-chips" id="prompt-chips">
+                                    <button class="chip" onclick="sendChip('Who owes me the most?')">💰 Who owes most?</button>
+                                    <button class="chip" onclick="sendChip('Which medicines are expiring soon?')">⏰ Expiring soon</button>
+                                    <button class="chip" onclick="sendChip('Show me the total revenue and pending payments summary')">📊 Revenue summary</button>
+                                    <button class="chip" onclick="sendChip('Which products are low on stock?')">📦 Low stock</button>
+                                    <button class="chip" onclick="sendChip('List all overdue invoices with amounts')">🔴 Overdue invoices</button>
+                                    <button class="chip" onclick="sendChip('Who are my top 5 customers by revenue?')">🏆 Top customers</button>
+                                </div>
+
                             </div>
 
                         </div>
 
-                    </div>
-
-
-                    <!-- INPUT -->
-
-                    <div class="input-area">
-
-                        <textarea
-                            id="user-input"
-                            rows="1"
-                            placeholder="Ask BIZASSIST anything..."
-                        ></textarea>
-
-                        <button onclick="sendMessage()">
-                            ↑
-                        </button>
-
+                        <!-- INPUT -->
+                        <div class="input-area">
+                            <button class="history-toggle-btn" onclick="toggleHistoryPopup()" title="View Chat History">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                                    <polyline points="3 3 3 8 8 8"></polyline>
+                                    <line x1="12" y1="7" x2="12" y2="12"></line>
+                                    <line x1="12" y1="12" x2="16" y2="14"></line>
+                                </svg>
+                            </button>
+                            <textarea
+                                id="user-input"
+                                rows="1"
+                                placeholder="Ask BIZASSIST anything..."
+                            ></textarea>
+                            <button onclick="sendMessage()">
+                                ↑
+                            </button>
+                        </div>
                     </div>
 
                 </div>

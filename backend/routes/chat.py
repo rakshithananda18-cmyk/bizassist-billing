@@ -1,0 +1,115 @@
+import logging
+from fastapi import APIRouter, Depends, HTTPException
+from database.db import SessionLocal
+from database.models import ChatMessage
+from services.auth import get_active_user
+from sqlalchemy import func
+
+router = APIRouter()
+logger = logging.getLogger("bizassist.chat")
+
+
+@router.get("/chat/sessions")
+def get_chat_sessions(current_user: dict = Depends(get_active_user)):
+    active_user_id = current_user["id"]
+    logger.info(f"User {active_user_id} fetching list of chat sessions...")
+    db = SessionLocal()
+    try:
+        # Query distinct sessions ordered by last active timestamp descending
+        sessions = db.query(
+            ChatMessage.session_id,
+            ChatMessage.session_title,
+            func.max(ChatMessage.timestamp).label("last_active")
+        ).filter(
+            ChatMessage.business_id == active_user_id
+        ).group_by(
+            ChatMessage.session_id,
+            ChatMessage.session_title
+        ).order_by(
+            func.max(ChatMessage.timestamp).desc()
+        ).all()
+
+        result = []
+        for s in sessions:
+            if s.session_id:
+                result.append({
+                    "session_id": s.session_id,
+                    "session_title": s.session_title or "Untitled Conversation",
+                    "last_active": s.last_active.isoformat() if s.last_active else None
+                })
+        logger.info(f"Retrieved {len(result)} sessions for user {active_user_id}.")
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching chat sessions for user {active_user_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch chat sessions")
+    finally:
+        db.close()
+
+
+@router.get("/chat/history")
+def get_chat_history(session_id: str = None, current_user: dict = Depends(get_active_user)):
+    active_user_id = current_user["id"]
+    logger.info(f"User {active_user_id} fetching session chat history for session_id={session_id}...")
+    db = SessionLocal()
+    try:
+        query = db.query(ChatMessage).filter(ChatMessage.business_id == active_user_id)
+        if session_id:
+            query = query.filter(ChatMessage.session_id == session_id)
+        else:
+            # Fall back to latest active session_id if none specified
+            latest_msg = db.query(ChatMessage).filter(
+                ChatMessage.business_id == active_user_id
+            ).order_by(ChatMessage.timestamp.desc()).first()
+            if latest_msg and latest_msg.session_id:
+                query = query.filter(ChatMessage.session_id == latest_msg.session_id)
+            else:
+                return [] # No history
+
+        messages = query.order_by(ChatMessage.id.asc()).all()
+        
+        result = []
+        for m in messages:
+            result.append({
+                "role": m.role,
+                "content": m.content,
+                "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+                "session_id": m.session_id,
+                "session_title": m.session_title
+            })
+        logger.info(f"Retrieved {len(result)} historical chat messages for user {active_user_id}.")
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching chat history for user {active_user_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch chat history")
+    finally:
+        db.close()
+
+
+@router.delete("/chat/history")
+def delete_chat_history(session_id: str = None, current_user: dict = Depends(get_active_user)):
+    active_user_id = current_user["id"]
+    logger.warning(f"User {active_user_id} requested deletion of chat history for session_id={session_id}.")
+    db = SessionLocal()
+    try:
+        query = db.query(ChatMessage).filter(ChatMessage.business_id == active_user_id)
+        if session_id:
+            query = query.filter(ChatMessage.session_id == session_id)
+            deleted = query.delete()
+        else:
+            # Clear all conversations if no session specified
+            deleted = query.delete()
+            
+        db.commit()
+        logger.info(f"Successfully deleted {deleted} chat messages for user {active_user_id}.")
+        
+        # Also invalidate query response cache because conversation history changed
+        from services.context_cache import invalidate
+        invalidate()
+        
+        return {"message": "Chat history cleared", "deleted_count": deleted}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting chat history for user {active_user_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to clear chat history")
+    finally:
+        db.close()

@@ -68,12 +68,13 @@ def get_context(user_id: int) -> str:
         return user_cache["context"]
 
 
-def get_cached_query_response(user_id: int, query: str) -> dict:
+def get_cached_query_response(user_id: int, query: str, history_salt: str = "") -> dict:
     """
     Retrieves a cached AI response for the user + query if valid.
     """
     import hashlib
-    q_hash = hashlib.md5(query.strip().lower().encode("utf-8")).hexdigest()
+    key_str = f"{query.strip().lower()}:{history_salt}"
+    q_hash = hashlib.md5(key_str.encode("utf-8")).hexdigest()
     with _lock:
         user_responses = _query_response_cache.get(user_id)
         if not user_responses or q_hash not in user_responses:
@@ -87,12 +88,13 @@ def get_cached_query_response(user_id: int, query: str) -> dict:
         return entry["response"]
 
 
-def set_cached_query_response(user_id: int, query: str, response: dict):
+def set_cached_query_response(user_id: int, query: str, response: dict, history_salt: str = ""):
     """
     Caches an AI response for a user query.
     """
     import hashlib
-    q_hash = hashlib.md5(query.strip().lower().encode("utf-8")).hexdigest()
+    key_str = f"{query.strip().lower()}:{history_salt}"
+    q_hash = hashlib.md5(key_str.encode("utf-8")).hexdigest()
     with _lock:
         if user_id not in _query_response_cache:
             _query_response_cache[user_id] = {}

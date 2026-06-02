@@ -507,6 +507,7 @@ async function handleAuthSubmit(e) {
         // Save session
         localStorage.setItem("user", JSON.stringify(user));
         localStorage.setItem("biz_name", user.business_name);
+        localStorage.removeItem("active_session_id"); // Reset active session for new user
         document.documentElement.setAttribute("data-logged", "true");
 
         // Clear forms
@@ -520,6 +521,12 @@ async function handleAuthSubmit(e) {
         
         if (typeof loadDashboardSummary === "function") loadDashboardSummary();
         if (typeof loadTopCustomers === "function") loadTopCustomers();
+        if (typeof startNewChat === "function") {
+            startNewChat(); // Start with a fresh/new conversation state
+        }
+        if (typeof loadChatSessions === "function") {
+            loadChatSessions(false); // Load chat sessions list without auto-selecting
+        }
         
         localStorage.setItem("selected_sidebar", "ai");
         selectSidebar("ai");
@@ -535,6 +542,7 @@ async function handleAuthSubmit(e) {
 function logout() {
     localStorage.removeItem("user");
     localStorage.removeItem("biz_name");
+    localStorage.removeItem("active_session_id");
     localStorage.setItem("selected_sidebar", "ai");
     document.documentElement.setAttribute("data-logged", "false");
     

@@ -141,3 +141,5 @@ class ChatMessage(Base):
     role = Column(String)  # "user" or "assistant"
     content = Column(String)
     timestamp = Column(DateTime, default=datetime.utcnow)
+    session_id = Column(String, index=True, nullable=True)
+    session_title = Column(String, nullable=True)

@@ -259,3 +259,72 @@ def test_dynamic_numeric_queries_bypass_direct():
     route, key = classify("Who are my top 5 customers by revenue?")
     assert route == "DIRECT"
     assert key == "top_customers"
+
+
+def test_chat_history_endpoints():
+    # Login to get valid token
+    login_response = client.post("/login", json={
+        "username": "pharmacy",
+        "password": "pharmacy123"
+    })
+    token = login_response.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Clear history to start with clean state
+    client.delete("/chat/history", headers=headers)
+    
+    # Check sessions is empty
+    response = client.get("/chat/sessions", headers=headers)
+    assert response.status_code == 200
+    assert response.json() == []
+
+    # Send a DIRECT path query which logs user and assistant message automatically
+    response = client.post("/ask", json={"message": "how many invoices"}, headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert "session_id" in data
+    session_id = data["session_id"]
+    assert "session_title" in data
+
+    # Check sessions list contains the new session
+    response = client.get("/chat/sessions", headers=headers)
+    assert response.status_code == 200
+    sessions = response.json()
+    assert len(sessions) == 1
+    assert sessions[0]["session_id"] == session_id
+
+    # Retrieve history for this session specifically
+    response = client.get(f"/chat/history?session_id={session_id}", headers=headers)
+    assert response.status_code == 200
+    history = response.json()
+    assert len(history) == 2
+    assert history[0]["role"] == "user"
+    assert history[0]["content"] == "how many invoices"
+    assert history[1]["role"] == "assistant"
+
+    # Send a query on a NEW session_id explicitly
+    new_session_id = "test-session-abc"
+    response = client.post("/ask", json={"message": "low stock", "session_id": new_session_id}, headers=headers)
+    assert response.status_code == 200
+    assert response.json()["session_id"] == new_session_id
+
+    # Verify sessions list now has 2 sessions
+    response = client.get("/chat/sessions", headers=headers)
+    assert response.status_code == 200
+    sessions = response.json()
+    assert len(sessions) == 2
+    
+    # Clear only the second session
+    response = client.delete(f"/chat/history?session_id={new_session_id}", headers=headers)
+    assert response.status_code == 200
+    
+    # Verify sessions list is back to 1
+    response = client.get("/chat/sessions", headers=headers)
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+
+    # Verify we can clear remaining conversations
+    response = client.delete("/chat/history", headers=headers)
+    assert response.status_code == 200
+    response = client.get("/chat/sessions", headers=headers)
+    assert response.json() == []

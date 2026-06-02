@@ -4,6 +4,14 @@ from sqlalchemy import func, or_
 from database.db import SessionLocal
 from database.models import Invoice, Inventory, Payment
 
+def safe_int(val, default=None):
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
 # ==========================================
 # TOOL FUNCTIONS
 # ==========================================
@@ -221,10 +229,10 @@ def execute_tool(name: str, args: dict, user_id: int) -> str:
     """Executes a tool function by name with parsed arguments and user_id."""
     tool_map = {
         "get_invoice_summary": lambda u, a: get_invoice_summary(u),
-        "get_invoice_list": lambda u, a: get_invoice_list(u, a.get("status"), a.get("customer"), a.get("limit", 15)),
-        "get_top_customers": lambda u, a: get_top_customers(u, a.get("limit", 5)),
-        "get_inventory_status": lambda u, a: get_inventory_status(u, a.get("filter_stock_under"), a.get("filter_expiry_days")),
-        "get_payment_list": lambda u, a: get_payment_list(u, a.get("paid_status"), a.get("customer"), a.get("limit", 15)),
+        "get_invoice_list": lambda u, a: get_invoice_list(u, a.get("status"), a.get("customer"), safe_int(a.get("limit"), 15)),
+        "get_top_customers": lambda u, a: get_top_customers(u, safe_int(a.get("limit"), 5)),
+        "get_inventory_status": lambda u, a: get_inventory_status(u, safe_int(a.get("filter_stock_under")), safe_int(a.get("filter_expiry_days"))),
+        "get_payment_list": lambda u, a: get_payment_list(u, a.get("paid_status"), a.get("customer"), safe_int(a.get("limit"), 15)),
         "get_business_overview": lambda u, a: get_business_overview(u),
         "search_database": lambda u, a: search_database(u, a.get("query"))
     }
@@ -266,7 +274,10 @@ schemas = [
                         "description": "Filter by customer name (partial match)."
                     },
                     "limit": {
-                        "type": "integer",
+                        "anyOf": [
+                            {"type": "integer"},
+                            {"type": "string"}
+                        ],
                         "description": "Max invoices to return. Defaults to 15."
                     }
                 }
@@ -282,7 +293,10 @@ schemas = [
                 "type": "object",
                 "properties": {
                     "limit": {
-                        "type": "integer",
+                        "anyOf": [
+                            {"type": "integer"},
+                            {"type": "string"}
+                        ],
                         "description": "Max customers to return. Defaults to 5."
                     }
                 }
@@ -298,11 +312,17 @@ schemas = [
                 "type": "object",
                 "properties": {
                     "filter_stock_under": {
-                        "type": "integer",
+                        "anyOf": [
+                            {"type": "integer"},
+                            {"type": "string"}
+                        ],
                         "description": "Filter products with stock level below or equal to this count."
                     },
                     "filter_expiry_days": {
-                        "type": "integer",
+                        "anyOf": [
+                            {"type": "integer"},
+                            {"type": "string"}
+                        ],
                         "description": "Filter products expiring within this number of days from today."
                     }
                 }
@@ -326,7 +346,10 @@ schemas = [
                         "description": "Filter by customer name (partial match)."
                     },
                     "limit": {
-                        "type": "integer",
+                        "anyOf": [
+                            {"type": "integer"},
+                            {"type": "string"}
+                        ],
                         "description": "Max rows to return. Defaults to 15."
                     }
                 }
