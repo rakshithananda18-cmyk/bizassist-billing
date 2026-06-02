@@ -1,3 +1,4 @@
+import logging
 from services.context_cache import invalidate as invalidate_cache
 from fastapi import (
     APIRouter,
@@ -9,9 +10,7 @@ from fastapi import (
 )
 
 import pandas as pd
-
 from datetime import datetime
-
 from database.db import SessionLocal
 
 from database.models import (
@@ -29,6 +28,7 @@ from services.parser import (
 from services.auth import get_active_user
 
 router = APIRouter()
+logger = logging.getLogger("bizassist.upload")
 
 # -----------------------------------
 # FILE UPLOAD
@@ -42,13 +42,20 @@ async def upload_file(
     active_user_id = current_user["id"]
     filename = file.filename
 
+    logger.info(f"User {active_user_id} starting upload of file '{filename}'...")
+
     # READ FILE
-    if filename.endswith(".csv"):
-        df = pd.read_csv(file.file)
-    elif filename.endswith(".xlsx"):
-        df = pd.read_excel(file.file)
-    else:
-        raise HTTPException(status_code=400, detail="Unsupported file format")
+    try:
+        if filename.endswith(".csv"):
+            df = pd.read_csv(file.file)
+        elif filename.endswith(".xlsx"):
+            df = pd.read_excel(file.file)
+        else:
+            logger.warning(f"Failed upload attempt by user {active_user_id}: Unsupported file extension on '{filename}'")
+            raise HTTPException(status_code=400, detail="Unsupported file format")
+    except Exception as e:
+        logger.error(f"Failed to read upload file '{filename}': {str(e)}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Failed to parse file: {str(e)}")
 
     # COLUMN DETECTION
     columns = [col.lower() for col in df.columns]
@@ -66,8 +73,10 @@ async def upload_file(
 
     if file_type == "unknown":
         db.close()
+        logger.warning(f"Unrecognized file schema in upload '{filename}' by user {active_user_id}. Columns: {columns}")
         raise HTTPException(status_code=400, detail="Could not detect schema/file type (unsupported columns)")
 
+    logger.info(f"Detected file schema: {file_type} for file '{filename}' ({len(df)} rows) from user {active_user_id}.")
     try:
         # SAVE FILE HISTORY FIRST TO GENERATE FILE_ID WITHOUT COMMITTING
         uploaded_file = UploadedFile(
@@ -108,6 +117,7 @@ async def upload_file(
         db.commit()
         invalidate_cache()  # bust context cache — new data uploaded
 
+        logger.info(f"Successfully processed {file_type} file upload '{filename}' for user {active_user_id}. Added: {stats['added']}, Updated: {stats['updated']}.")
         return {
             "message": "Upload successful",
             "file_type": file_type,
@@ -118,6 +128,7 @@ async def upload_file(
         }
     except Exception as e:
         db.rollback()
+        logger.error(f"Error parsing file upload '{filename}' for user_id={active_user_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         db.close()
@@ -135,58 +146,71 @@ async def delete_upload(
     current_user: dict = Depends(get_active_user)
 ):
     active_user_id = current_user["id"]
+    logger.info(f"User {active_user_id} requesting deletion of upload file ID {file_id} (cascade={cascade})...")
 
     db = SessionLocal()
+    try:
+        uploaded = db.query(UploadedFile).filter(
+            UploadedFile.id == file_id,
+            UploadedFile.business_id == active_user_id
+        ).first()
 
-    uploaded = db.query(UploadedFile).filter(
-        UploadedFile.id == file_id,
-        UploadedFile.business_id == active_user_id
-    ).first()
+        if not uploaded:
+            logger.warning(f"Deletion failed: Upload file ID {file_id} not found or doesn't belong to user {active_user_id}")
+            db.close()
+            raise HTTPException(status_code=404, detail="File not found")
 
-    if not uploaded:
-        db.close()
-        raise HTTPException(status_code=404, detail="File not found")
+        file_type = uploaded.file_type
+        logger.info(f"Deleting upload record for file '{uploaded.filename}' of type '{file_type}'...")
 
-    file_type = uploaded.file_type
-
-    # Delete all database records parsed from this specific file (file_id matches)
-    if file_type == "invoice":
-        db.query(Invoice).filter(
-            Invoice.file_id == file_id,
-            Invoice.business_id == active_user_id
-        ).delete()
-    elif file_type == "inventory":
-        db.query(Inventory).filter(
-            Inventory.file_id == file_id,
-            Inventory.business_id == active_user_id
-        ).delete()
-    elif file_type == "payment":
-        db.query(Payment).filter(
-            Payment.file_id == file_id,
-            Payment.business_id == active_user_id
-        ).delete()
-
-    # delete the uploaded file record
-    db.delete(uploaded)
-
-    # optional cascade: delete all rows of that type for this business
-    if cascade:
+        # Delete all database records parsed from this specific file (file_id matches)
         if file_type == "invoice":
-            db.query(Invoice).filter(Invoice.business_id == active_user_id).delete()
-
+            deleted = db.query(Invoice).filter(
+                Invoice.file_id == file_id,
+                Invoice.business_id == active_user_id
+            ).delete()
+            logger.info(f"Deleted {deleted} associated Invoice records.")
         elif file_type == "inventory":
-            db.query(Inventory).filter(Inventory.business_id == active_user_id).delete()
-
+            deleted = db.query(Inventory).filter(
+                Inventory.file_id == file_id,
+                Inventory.business_id == active_user_id
+            ).delete()
+            logger.info(f"Deleted {deleted} associated Inventory records.")
         elif file_type == "payment":
-            db.query(Payment).filter(Payment.business_id == active_user_id).delete()
+            deleted = db.query(Payment).filter(
+                Payment.file_id == file_id,
+                Payment.business_id == active_user_id
+            ).delete()
+            logger.info(f"Deleted {deleted} associated Payment records.")
 
-    db.commit()
-    invalidate_cache()   # bust context cache — data deleted
+        # delete the uploaded file record
+        db.delete(uploaded)
 
-    db.close()
+        # optional cascade: delete all rows of that type for this business
+        if cascade:
+            logger.info(f"Cascading deletion of all '{file_type}' records for user {active_user_id}...")
+            if file_type == "invoice":
+                deleted_all = db.query(Invoice).filter(Invoice.business_id == active_user_id).delete()
+                logger.info(f"Cascaded delete of all invoices: {deleted_all} records removed.")
+            elif file_type == "inventory":
+                deleted_all = db.query(Inventory).filter(Inventory.business_id == active_user_id).delete()
+                logger.info(f"Cascaded delete of all inventory: {deleted_all} records removed.")
+            elif file_type == "payment":
+                deleted_all = db.query(Payment).filter(Payment.business_id == active_user_id).delete()
+                logger.info(f"Cascaded delete of all payments: {deleted_all} records removed.")
 
-    return {
-        "message": "deleted",
-        "file_id": file_id,
-        "cascade": cascade
-    }
+        db.commit()
+        invalidate_cache()   # bust context cache — data deleted
+        logger.info(f"Successfully deleted file ID {file_id} and committed database changes.")
+
+        return {
+            "message": "deleted",
+            "file_id": file_id,
+            "cascade": cascade
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error during deletion of file ID {file_id} for user {active_user_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Database deletion failed: {str(e)}")
+    finally:
+        db.close()

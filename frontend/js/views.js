@@ -114,15 +114,21 @@ async function renderDashboardView() {
     const left = getLeft();
     if (!left) return;
 
+    console.group("%c[BizAssist View] Loading Dashboard...", "color: #3f51b5; font-weight: bold;");
+
     left.innerHTML = viewHeader('Dashboard', 'Your business at a glance') +
         `<div class="widget">${skeleton(3)}</div>`;
 
     try {
-        const [summary, customers, dbData] = await Promise.all([
+        const [summary, customers, dbData, charts] = await Promise.all([
             fetch(`${API_BASE}/dashboard-summary`).then(r => r.json()),
             fetch(`${API_BASE}/top-customers`).then(r => r.json()),
             fetch(`${API_BASE}/database`).then(r => r.json()),
+            fetch(`${API_BASE}/dashboard-charts`).then(r => r.json()),
         ]);
+
+        console.log("Dashboard components fetched successfully:", { summary, customers, dbData, charts });
+        console.groupEnd();
 
         const isDbEmpty = (summary.invoice_count === 0 && summary.inventory_count === 0) || 
                           ((dbData.invoices || []).length === 0 && (dbData.inventory || []).length === 0);
@@ -221,9 +227,30 @@ async function renderDashboardView() {
                         ${buildBarChart(customers)}
                     </div>
                 </div>
+            </div>
+
+            <!-- SECOND ROW CHART GRID -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-top: 12px;">
+                <!-- Monthly Revenue Trends -->
+                <div class="widget" style="min-height: 240px; display: flex; flex-direction: column;">
+                    <div class="widget-title" style="margin-bottom: 16px;">Monthly Revenue Trend</div>
+                    <div id="monthly-trend-chart" style="flex: 1; display: flex; align-items: center; justify-content: center; min-height: 150px;">
+                        ${buildAreaChart(charts.monthly_revenue)}
+                    </div>
+                </div>
+
+                <!-- Invoice Aging -->
+                <div class="widget" style="min-height: 240px; display: flex; flex-direction: column;">
+                    <div class="widget-title" style="margin-bottom: 16px;">Overdue Debt Aging</div>
+                    <div id="aging-overview-chart" style="flex: 1; display: flex; flex-direction: column; justify-content: center;">
+                        ${buildAgingBars(charts.aging_overview)}
+                    </div>
+                </div>
             </div>`;
 
     } catch (e) {
+        console.error("Dashboard components load failed:", e);
+        console.groupEnd();
         left.innerHTML = viewHeader('Dashboard', '') +
             emptyState('📊', 'No data yet', 'Upload invoices or inventory to see your dashboard.');
     }
@@ -239,6 +266,8 @@ async function renderInvoicesView() {
     const left = getLeft();
     if (!left) return;
 
+    console.group("%c[BizAssist View] Loading Invoices...", "color: #3f51b5; font-weight: bold;");
+
     left.innerHTML = viewHeader('Invoices', 'All billing records') +
         `<div class="widget">${skeleton(5)}</div>`;
 
@@ -246,8 +275,12 @@ async function renderInvoicesView() {
         const data = await fetch(`${API_BASE}/database`).then(r => r.json());
         _invoicesData = data.invoices || [];
         _invoiceFilter = 'all';
+        console.log(`Loaded ${_invoicesData.length} total invoices from database.`);
+        console.groupEnd();
         _paintInvoices(left);
     } catch (e) {
+        console.error("Failed to load invoices database:", e);
+        console.groupEnd();
         left.innerHTML = viewHeader('Invoices', '') +
             emptyState('📋', 'No invoices found', 'Upload a CSV/XLSX with invoice_id column.');
     }
@@ -345,11 +378,15 @@ async function renderPaymentsView() {
     const left = getLeft();
     if (!left) return;
 
+    console.group("%c[BizAssist View] Loading Payments...", "color: #3f51b5; font-weight: bold;");
+
     left.innerHTML = viewHeader('Payments', 'Dues and recovery') +
         `<div class="widget">${skeleton(4)}</div>`;
 
     try {
         const data = await fetch(`${API_BASE}/payments`).then(r => r.json());
+        console.log("Payments detail loaded successfully:", data);
+        console.groupEnd();
 
         const overdueList = (data.invoice_dues || [])
             .filter(p => (p.status || '').toLowerCase() === 'overdue');
@@ -440,6 +477,8 @@ async function renderPaymentsView() {
             ${!hasDues ? emptyState('✓', 'All clear!', 'No overdue or pending payments found.') : ''}`;
 
     } catch (e) {
+        console.error("Failed to load payments database:", e);
+        console.groupEnd();
         left.innerHTML = viewHeader('Payments', '') +
             emptyState('💳', 'No payment data', 'Upload invoices with due_date column to track payments.');
     }
@@ -462,12 +501,17 @@ async function renderClientsView() {
     const left = getLeft();
     if (!left) return;
 
+    console.group("%c[BizAssist View] Loading Clients...", "color: #3f51b5; font-weight: bold;");
+
     left.innerHTML = viewHeader('Clients', 'Customer overview') +
         `<div class="widget">${skeleton(5)}</div>`;
 
     try {
         const data = await fetch(`${API_BASE}/clients`).then(r => r.json());
         const clients = data.clients || [];
+
+        console.log(`Loaded ${clients.length} total clients.`);
+        console.groupEnd();
 
         if (!clients.length) {
             left.innerHTML = viewHeader('Clients', '') +
@@ -517,6 +561,8 @@ async function renderClientsView() {
             ${_viewsPaginationControls('clients', clients.length, _clientsPage, CLIENTS_PER_PAGE, '_changeClientsPage')}`;
 
     } catch (e) {
+        console.error("Failed to load clients database:", e);
+        console.groupEnd();
         left.innerHTML = viewHeader('Clients', '') +
             emptyState('👥', 'No clients yet', 'Upload invoices to see your client list.');
     }

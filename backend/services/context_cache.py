@@ -27,6 +27,7 @@ from database.models import Invoice, Inventory, Payment
 # ── Cache store ─────────────────────────────────────────────────────
 
 _cache: dict = {}  # user_id -> { "context": str, "built_at": float }
+_query_response_cache: dict = {}  # user_id -> { q_hash: { "response": dict, "cached_at": float } }
 
 _lock = Lock()
 
@@ -39,10 +40,11 @@ CACHE_TTL = 600   # 10 minutes
 def invalidate():
     """
     Call this whenever the DB changes (upload, delete).
-    Forces contexts to be rebuilt.
+    Forces contexts and cached queries to be rebuilt.
     """
     with _lock:
         _cache.clear()
+        _query_response_cache.clear()
 
 
 def get_context(user_id: int) -> str:
@@ -64,6 +66,40 @@ def get_context(user_id: int) -> str:
             user_cache["built_at"] = now
 
         return user_cache["context"]
+
+
+def get_cached_query_response(user_id: int, query: str) -> dict:
+    """
+    Retrieves a cached AI response for the user + query if valid.
+    """
+    import hashlib
+    q_hash = hashlib.md5(query.strip().lower().encode("utf-8")).hexdigest()
+    with _lock:
+        user_responses = _query_response_cache.get(user_id)
+        if not user_responses or q_hash not in user_responses:
+            return None
+        
+        entry = user_responses[q_hash]
+        if time.time() - entry["cached_at"] > CACHE_TTL:
+            del user_responses[q_hash]
+            return None
+        
+        return entry["response"]
+
+
+def set_cached_query_response(user_id: int, query: str, response: dict):
+    """
+    Caches an AI response for a user query.
+    """
+    import hashlib
+    q_hash = hashlib.md5(query.strip().lower().encode("utf-8")).hexdigest()
+    with _lock:
+        if user_id not in _query_response_cache:
+            _query_response_cache[user_id] = {}
+        _query_response_cache[user_id][q_hash] = {
+            "response": response,
+            "cached_at": time.time()
+        }
 
 
 def get_focused_context(query: str, user_id: int) -> str:

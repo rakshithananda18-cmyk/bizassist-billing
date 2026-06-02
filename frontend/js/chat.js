@@ -184,6 +184,10 @@ async function sendMessage() {
 
     if (!message) return;
 
+    // Start a console trace group for this query lifecycle
+    console.group(`%c[BizAssist AI Client] Query: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`, "color: #4caf50; font-weight: bold;");
+    console.time("API Latency");
+
     hideChips();
 
     /* --- User bubble --- */
@@ -203,12 +207,14 @@ async function sendMessage() {
     chatBox.scrollTop = chatBox.scrollHeight;
 
     try {
-
+        console.log(`Sending POST request to ${API_BASE}/ask...`);
         const response = await fetch(`${API_BASE}/ask`, {
             method  : "POST",
             headers : { "Content-Type": "application/json" },
             body    : JSON.stringify({ message })
         });
+
+        console.timeEnd("API Latency");
 
         if (!response.ok) throw new Error(`Server Error ${response.status}`);
 
@@ -216,6 +222,7 @@ async function sendMessage() {
 
         /* ===== CHECK FOR 429 RATE LIMIT ===== */
         if (data.status_code === 429) {
+            console.warn("%c[Rate Limit Triggered] API returned 429 status code.", "color: #ff9800; font-weight: bold;", data);
             loading.remove();
 
             /* --- Rate limit error bubble --- */
@@ -252,10 +259,24 @@ async function sendMessage() {
                 }
             }, 120000); /* 2 minutes */
 
+            console.groupEnd();
             return;
         }
 
         const text = data.response || "";
+        const source = data.source || "unknown";
+        const isCached = !!data.cached;
+        
+        let pathMsg = "Groq AI Tool-Calling (LLM Tokens Used)";
+        if (source === "db") {
+            pathMsg = "0 tokens used (Direct DB/Local SQL)";
+        } else if (isCached) {
+            pathMsg = "0 tokens used (Cached AI Response)";
+        }
+        
+        console.log(`%c[BizAssist Route Decision] Path Chosen: ${isCached ? "CACHE" : source.toUpperCase()} | ${pathMsg}`, "color: #c9532a; font-weight: bold;");
+        console.log(`Response length: ${text.length} chars. Beginning streaming render.`);
+        console.groupEnd();
 
         loading.remove();
 
@@ -291,6 +312,9 @@ async function sendMessage() {
         typeEffect();
 
     } catch (error) {
+        console.timeEnd("API Latency");
+        console.error("%c[BizAssist Network Error] Request failed:", "color: #f44336; font-weight: bold;", error);
+        console.groupEnd();
 
         loading.remove();
 

@@ -27,6 +27,14 @@ from typing import Optional, Tuple
 
 DIRECT_PATTERNS = [
 
+    # Overdue range click (specific template containing digits)
+    (re.compile(r"overdue payments in range (\d+-\d+ days|90\+ days)", re.I),
+     "overdue_range_detail"),
+
+    # Revenue month click (specific template containing digits)
+    (re.compile(r"revenue in\s+([a-zA-Z]+)\s+(\d{4})", re.I),
+     "revenue_month_detail"),
+
     # Invoice counts
     (re.compile(r"how many invoices|invoice count|total invoices", re.I),
      "invoice_count"),
@@ -46,8 +54,8 @@ DIRECT_PATTERNS = [
     (re.compile(r"pending (invoices?|payments?|list)|how many (are )?pending", re.I),
      "pending_list"),
 
-    # Top customers
-    (re.compile(r"top (customers?|clients?)|who owes (me )?the most|highest (paying|revenue) customer", re.I),
+    # Top customers (allowing optional count parameter like "top 5")
+    (re.compile(r"top\s*(?:\d+\s+)?(?:customers?|clients?)|who owes (me )?the most|highest (paying|revenue) customer", re.I),
      "top_customers"),
 
     # Inventory / stock
@@ -79,6 +87,29 @@ def classify(user_query: str) -> Tuple[str, Optional[str]]:
     """
     q = user_query.strip()
 
+    # 1. First, check if it matches the specific dashboard quick actions that contain digits
+    for pattern, handler_key in DIRECT_PATTERNS:
+        if handler_key in ("overdue_range_detail", "revenue_month_detail") and pattern.search(q):
+            return ("DIRECT", handler_key)
+
+    # 2. Next, check for digits to see if this is a custom dynamic query (e.g., "15 days", "top 3")
+    if any(char.isdigit() for char in q):
+        # Allow default template numbers to pass through to the direct path
+        # Example: "expiring in 30 days" matches default expiring_soon (30 days)
+        # "top 5 customers" matches default top_customers (5)
+        # "low stock" with 10 matches default low_stock (10)
+        is_default = False
+        if "30" in q and re.search(r"expir", q, re.I):
+            is_default = True
+        elif "5" in q and re.search(r"top", q, re.I):
+            is_default = True
+        elif "10" in q and re.search(r"low|stock|reorder", q, re.I):
+            is_default = True
+            
+        if not is_default:
+            return ("AI", None)
+
+    # 3. Standard routing for general queries without digits or matching default numbers
     for pattern, handler_key in DIRECT_PATTERNS:
         if pattern.search(q):
             return ("DIRECT", handler_key)

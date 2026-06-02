@@ -1,0 +1,418 @@
+/* =========================================
+   SIDEBAR
+========================================= */
+
+.sidebar {
+    width: 200px;
+    background: var(--sidebar-color);
+    padding: 20px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-right: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+/* ── Sidebar brand block ── */
+.sidebar-brand {
+    padding: 4px 10px 14px;
+    margin-bottom: 2px;
+}
+
+.sidebar-app-name {
+    font-family: 'Crimson Pro', Georgia, serif;
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    background: linear-gradient(135deg, var(--accent-color) 0%, #e07840 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 6px;
+}
+
+.sidebar-org-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+}
+
+.sidebar-org-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    opacity: 0.6;
+    flex-shrink: 0;
+}
+
+.sidebar-org-name {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--secondary-text);
+    letter-spacing: 0.01em;
+    transition: color 0.15s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+}
+
+.sidebar-org-row:hover .sidebar-org-name { color: var(--accent-color); }
+
+.sidebar-sep {
+    height: 1px;
+    background: var(--border-color);
+    margin: 0 4px 10px;
+    opacity: 0.7;
+}
+
+/* Sidebar nav buttons */
+.sidebar button {
+    border: none;
+    background: transparent;
+    color: var(--text-color);
+    padding: 10px 12px;
+    border-radius: 8px;
+    text-align: left;
+    cursor: pointer;
+    font-size: 13.5px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 400;
+    transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    letter-spacing: 0.01em;
+}
+
+.sidebar button:hover {
+    background: var(--accent-soft);
+    color: var(--text-color);
+    transform: none;          /* removed floaty lift — feels more grounded */
+}
+
+/* Active state — clean left-bar indicator */
+.sidebar button.active,
+html[data-active="ai"]        .sidebar button#ai-btn,
+html[data-active="dashboard"] .sidebar button#dashboard-btn,
+html[data-active="invoices"]  .sidebar button#invoices-btn,
+html[data-active="payments"]  .sidebar button#payments-btn,
+html[data-active="clients"]   .sidebar button#clients-btn,
+html[data-active="uploads"]   .sidebar button#uploads-btn,
+html[data-active="database"]  .sidebar button#db-btn {
+    background: var(--accent-soft);
+    color: var(--accent-color);
+    font-weight: 500;
+    position: relative;
+    padding-left: 12px;
+}
+
+.sidebar button.active::before,
+html[data-active="ai"]        .sidebar button#ai-btn::before,
+html[data-active="dashboard"] .sidebar button#dashboard-btn::before,
+html[data-active="invoices"]  .sidebar button#invoices-btn::before,
+html[data-active="payments"]  .sidebar button#payments-btn::before,
+html[data-active="clients"]   .sidebar button#clients-btn::before,
+html[data-active="uploads"]   .sidebar button#uploads-btn::before,
+html[data-active="database"]  .sidebar button#db-btn::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    background: var(--accent-color);
+    border-radius: 0 3px 3px 0;
+}
+
+/* =========================================
+   MAIN AREA
+========================================= */
+
+.main {
+    flex: 1;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+    gap: 0;
+}
+
+/* =========================================
+   THEME SWITCHER
+========================================= */
+
+.theme-dropdown {
+    margin-top: auto;
+    position: relative;
+}
+
+.theme-btn {
+    width: 38px;
+    height: 38px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--secondary-text);
+    cursor: pointer;
+    font-size: 16px;
+    transition: background 0.18s ease, color 0.18s ease;
+}
+
+.theme-btn:hover {
+    background: var(--accent-soft);
+    color: var(--accent-color);
+}
+
+.theme-menu {
+    position: absolute;
+    bottom: 46px;
+    left: 0;
+    width: 148px;
+    background: var(--card-color);
+    border-radius: 10px;
+    overflow: hidden;
+    display: none;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-md);
+}
+
+.theme-menu div {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--secondary-text);
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.theme-menu div:hover {
+    background: var(--accent-soft);
+    color: var(--accent-color);
+}
+
+/* =========================================
+   DATABASE / HIDDEN PANEL
+========================================= */
+
+.hidden { display: none; }
+
+.database-panel { margin-top: 20px; }
+
+.database-table { overflow-x: auto; margin-top: 20px; }
+
+.database-table table { width: 100%; border-collapse: collapse; }
+
+.database-table th,
+.database-table td {
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* =========================================
+   SCROLLBARS
+========================================= */
+
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+    background: rgba(201,100,66,0.18);
+    border-radius: 20px;
+}
+*::-webkit-scrollbar-thumb:hover {
+    background: rgba(201,100,66,0.32);
+}
+
+/* =========================================
+   RESPONSIVE — TABLET
+========================================= */
+
+@media (max-width: 1200px) {
+    .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+    .assistant-panel { height: 500px; }
+}
+
+/* =========================================
+   RESPONSIVE — MOBILE
+========================================= */
+
+@media (max-width: 768px) {
+    body { overflow: auto; }
+
+    .app { flex-direction: column; height: auto; }
+
+    .main { min-width: 0; padding: 12px; overflow: visible; height: auto; max-height: none; }
+
+    .dashboard-left { overflow: visible; }
+
+    .assistant-panel { height: auto; min-height: 520px; }
+
+    .sidebar {
+        width: 100%;
+        flex-direction: row;
+        overflow-x: auto;
+        gap: 6px;
+        padding: 10px 12px;
+        align-items: center;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .sidebar button {
+        white-space: nowrap;
+        min-width: fit-content;
+        font-size: 13px;
+    }
+
+    .sidebar button.active::before,
+    html[data-active="ai"]        .sidebar button#ai-btn::before,
+    html[data-active="dashboard"] .sidebar button#dashboard-btn::before,
+    html[data-active="invoices"]  .sidebar button#invoices-btn::before,
+    html[data-active="payments"]  .sidebar button#payments-btn::before,
+    html[data-active="clients"]   .sidebar button#clients-btn::before,
+    html[data-active="uploads"]   .sidebar button#uploads-btn::before,
+    html[data-active="database"]  .sidebar button#db-btn::before {
+        display: none;   /* left-bar indicator looks odd in horizontal mode */
+    }
+
+    .logo {
+        margin-right: 8px;
+        margin-bottom: 0;
+        font-size: 18px;
+        white-space: nowrap;
+    }
+
+    .theme-dropdown { margin-top: 0; margin-left: auto; }
+
+    .cards { grid-template-columns: 1fr; }
+
+    .card p { font-size: 26px; }
+
+    .dashboard-grid { display: flex; flex-direction: column; }
+
+    table { font-size: 13px; }
+    th, td { padding: 9px 8px; }
+
+    .actions { flex-direction: column; }
+    .actions button { width: 100%; }
+
+    .message { max-width: 95%; font-size: 13px; }
+
+    textarea { font-size: 14px; padding: 12px; }
+
+    .input-area button { width: 46px; height: 46px; }
+}
+
+@media (max-width: 480px) {
+    .logo { font-size: 16px; }
+    .sidebar { padding: 8px 10px; }
+    .sidebar button { padding: 9px 10px; font-size: 12.5px; }
+    .card { border-radius: 10px; }
+    .widget { border-radius: 10px; padding: 16px; }
+    .assistant-panel { border-radius: 10px; padding: 14px; }
+    .widget-title { font-size: 11px; }
+    .card p { font-size: 24px; }
+    .theme-menu { width: 132px; }
+}
+
+/* =========================================
+   AI BUSINESS BANNER
+========================================= */
+.ai-biz-banner {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 73px;
+    min-height: 73px;
+    max-height: 73px;
+    background: var(--card-gradient);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    box-shadow: var(--shadow-sm);
+    padding: 16px 24px;
+    margin-bottom: 5px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    transition: 
+        transform 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.15s, 
+        opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.15s,
+        max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1) 0s,
+        min-height 0.3s cubic-bezier(0.16, 1, 0.3, 1) 0s,
+        margin-bottom 0.3s cubic-bezier(0.16, 1, 0.3, 1) 0s,
+        padding 0.3s cubic-bezier(0.16, 1, 0.3, 1) 0s,
+        border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1) 0s,
+        box-shadow 0.2s ease 0s;
+}
+
+.ai-biz-banner:hover {
+    box-shadow: var(--shadow-md);
+    border-color: var(--border-subtle);
+}
+
+.ai-biz-banner::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 0%, var(--accent-softer) 0%, transparent 75%);
+    pointer-events: none;
+}
+
+.ai-biz-banner-name {
+    font-family: 'Crimson Pro', Georgia, serif;
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--text-color);
+    letter-spacing: -0.02em;
+    cursor: pointer;
+    transition: color 0.15s ease;
+    line-height: 1.2;
+    z-index: 1;
+}
+
+.ai-biz-banner-name:hover {
+    color: var(--accent-color);
+}
+
+.ai-biz-banner-sub {
+    font-size: 11px;
+    color: var(--secondary-text);
+    margin-top: 4px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-weight: 600;
+    z-index: 1;
+}
+
+/* ---- SIDEBAR FOOTER & LOGOUT ---- */
+.sidebar-footer {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-color);
+}
+.logout-btn {
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--secondary-text) !important;
+    padding: 8px 12px !important;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12.5px !important;
+    font-family: inherit;
+    font-weight: 500 !important;
+    transition: all 0.18s ease;
+}
+.logout-btn:hover {
+    background: rgba(192, 42, 42, 0.08) !important;
+    border-color: rgba(192, 42, 42, 0.25) !important;
+    color: #c02a2a !important;
+}
+

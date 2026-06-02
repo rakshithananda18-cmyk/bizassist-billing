@@ -24,6 +24,7 @@ function changePage(tableId, newPage) {
 
     if (newPage < 1) return;
 
+    console.log(`%c[BizAssist DB Pagination] Table: ${tableId} | Navigating to Page ${newPage}`, "color: #9c27b0;");
     currentPage[tableId] = newPage;
 
     openDatabasePanel();
@@ -32,7 +33,7 @@ function changePage(tableId, newPage) {
 
 /* -----------------------------------------
    PAGINATION CONTROLS  (reusable helper)
------------------------------------------ */
+   ----------------------------------------- */
 
 function paginationControls(tableId, total, page) {
 
@@ -68,7 +69,7 @@ function paginationControls(tableId, total, page) {
 
 /* -----------------------------------------
    DATABASE PANEL
------------------------------------------ */
+   ----------------------------------------- */
 
 async function openDatabasePanel() {
 
@@ -78,6 +79,9 @@ async function openDatabasePanel() {
         dashboardLeft = document.getElementById("dashboard-left");
     }
     if (!dashboardLeft) return;
+
+    console.group(`%c[BizAssist DB Viewer] Fetching table page states...`, "color: #2196f3; font-weight: bold;");
+    console.log("Current page parameters:", currentPage);
 
     /* Show loading skeleton immediately to clear static index.html content */
     dashboardLeft.innerHTML = `
@@ -99,6 +103,9 @@ async function openDatabasePanel() {
 
         const response = await fetch(`${API_BASE}/database`);
         const data     = await response.json();
+
+        console.log("Database metadata loaded successfully. Row counts: Invoices =", data.invoice_count, ", Inventory =", data.inventory_count, ", Uploads =", data.upload_count);
+        console.groupEnd();
 
         /* Layout: show left panel, push assistant to right, hide insights */
         dashboardLeft.style.display     = "flex";
@@ -214,7 +221,7 @@ async function openDatabasePanel() {
 
                 </div>
 
-                <div class="cards">
+                <div class="cards db-cards">
 
                     <div class="card">
                         <h3>Invoices</h3>
@@ -298,7 +305,8 @@ async function openDatabasePanel() {
 
     } catch (error) {
 
-        console.error(error);
+        console.error("%c[BizAssist DB Viewer] Failed to retrieve database metadata:", "color: #f44336; font-weight: bold;", error);
+        console.groupEnd();
         await showCustomAlert("Failed to load database", "Error");
     } finally {
         const refreshBtnLive = document.querySelector('button[onclick="openDatabasePanel()"]');
@@ -546,6 +554,7 @@ function updateDeleteButton() {
 
 async function confirmDeleteStep2() {
     // Step 2 → Execute deletion
+    console.warn("%c[BizAssist DB Wipe] User confirmed DELETE database operation. Sending API request...", "color: #f44336; font-weight: bold;");
     
     const modal = document.getElementById("deleteDbModal");
     
@@ -585,6 +594,7 @@ async function confirmDeleteStep2() {
         
         if (response.ok) {
             const data = await response.json();
+            console.log("%c[BizAssist DB Wipe] Database wiped successfully! Details:", "color: #4caf50; font-weight: bold;", data);
             
             // Success!
             modal.innerHTML = `
@@ -607,7 +617,7 @@ async function confirmDeleteStep2() {
                         font-weight: 700;
                         margin-bottom: 8px;
                         color: #4caf50;
-                    ">Database Deleted</div>
+                     ">Database Deleted</div>
                     <div style="
                         font-size: 13px;
                         color: var(--secondary-text);
@@ -632,7 +642,7 @@ async function confirmDeleteStep2() {
             throw new Error("Failed to delete database");
         }
     } catch (error) {
-        console.error(error);
+        console.error("%c[BizAssist DB Wipe Error] Failed to delete database:", "color: #f44336; font-weight: bold;", error);
         modal.innerHTML = `
             <div style="
                 background: var(--card-color);

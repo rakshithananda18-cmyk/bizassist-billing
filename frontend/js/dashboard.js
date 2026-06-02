@@ -109,6 +109,105 @@ function buildBarChart(customers) {
     }).join('');
 }
 
+/* Area chart for monthly revenue trends */
+function buildAreaChart(trends) {
+    if (!trends || !trends.length || (trends.length === 1 && trends[0].revenue === 0)) {
+        return `<div style="color:var(--secondary-text);font-size:12px;text-align:center;padding:50px 0;width:100%;">No revenue trends recorded yet</div>`;
+    }
+    
+    const maxVal = Math.max(...trends.map(t => t.revenue), 1);
+    const width = 500;
+    const height = 150;
+    const padding = { top: 20, right: 20, bottom: 25, left: 50 };
+    
+    const chartWidth = width - padding.left - padding.right;
+    const chartHeight = height - padding.top - padding.bottom;
+    
+    const points = trends.map((t, idx) => {
+        const x = padding.left + (idx / Math.max(trends.length - 1, 1)) * chartWidth;
+        const y = padding.top + chartHeight - (t.revenue / maxVal) * chartHeight;
+        return { x, y, label: t.month, val: t.revenue };
+    });
+    
+    const linePath = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+    const firstP = points[0];
+    const lastP = points[points.length - 1];
+    const areaPath = `${linePath} L ${lastP.x} ${padding.top + chartHeight} L ${firstP.x} ${padding.top + chartHeight} Z`;
+    
+    const gridLines = [];
+    for (let i = 0; i <= 3; i++) {
+        const y = padding.top + (i / 3) * chartHeight;
+        const val = maxVal - (i / 3) * maxVal;
+        gridLines.push(`
+            <line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="var(--border-color)" stroke-dasharray="3 3" />
+            <text x="${padding.left - 8}" y="${y + 4}" fill="var(--secondary-text)" font-size="9" text-anchor="end">₹${(val/1000).toFixed(0)}k</text>
+        `);
+    }
+    
+    let labelInterval = 1;
+    if (trends.length > 18) {
+        labelInterval = 4;
+    } else if (trends.length > 12) {
+        labelInterval = 3;
+    } else if (trends.length > 6) {
+        labelInterval = 2;
+    }
+
+    const xLabels = points.map((p, idx) => {
+        if (idx % labelInterval === 0 || idx === points.length - 1) {
+            return `<text x="${p.x}" y="${height - 6}" fill="var(--secondary-text)" font-size="9" text-anchor="middle">${p.label}</text>`;
+        }
+        return '';
+    }).join('');
+    
+    const dots = points.map((p, idx) => `
+        <g class="chart-dot-group" style="cursor:pointer;" onclick="sendChip('Tell me about revenue in ${p.label}')">
+            <circle cx="${p.x}" cy="${p.y}" r="4" fill="var(--card-color)" stroke="var(--accent-color)" stroke-width="2" class="chart-dot" />
+            <circle cx="${p.x}" cy="${p.y}" r="12" fill="transparent" class="chart-dot-hitbox" />
+            <title>${p.label}: ₹${Number(p.val).toLocaleString('en-IN')}</title>
+        </g>
+    `).join('');
+    
+    return `
+    <svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" class="area-chart-svg">
+        <defs>
+            <linearGradient id="chart-area-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--accent-color)" stop-opacity="0.25" />
+                <stop offset="100%" stop-color="var(--accent-color)" stop-opacity="0.0" />
+            </linearGradient>
+        </defs>
+        ${gridLines.join('')}
+        ${xLabels}
+        <path d="${areaPath}" fill="url(#chart-area-grad)" style="opacity:0.85;" />
+        <path d="${linePath}" fill="none" stroke="var(--accent-color)" stroke-width="2.5" stroke-linecap="round" class="chart-line-path" />
+        ${dots}
+    </svg>
+    `;
+}
+
+/* Horizontal aging chart for overdue/pending invoices */
+function buildAgingBars(aging) {
+    if (!aging || !aging.length || aging.every(a => a.amount === 0)) {
+        return '<div style="color:var(--secondary-text);font-size:12px;padding:50px 0;text-anchor:middle;text-align:center;width:100%;">No outstanding debt recorded</div>';
+    }
+    const maxVal = Math.max(...aging.map(a => a.amount), 1);
+    const colors = ['#c97c22', '#c95e22', '#c94242', '#962424'];
+    
+    return aging.map((a, i) => {
+        const pct = Math.max(2, (a.amount / maxVal) * 100);
+        return `
+        <div class="bar-row" onclick="sendChip('Tell me about overdue payments in range ${a.range}')"
+             title="${a.range} — ₹${Number(a.amount).toLocaleString('en-IN')}">
+            <div class="bar-label">${a.range}</div>
+            <div class="bar-track">
+                <div class="bar-fill" style="width:${pct}%;background:${colors[i]};
+                     transition:width 0.7s cubic-bezier(.4,0,.2,1) ${i*0.1}s"></div>
+            </div>
+            <div class="bar-value">₹${(a.amount/1000).toFixed(1)}k</div>
+        </div>`;
+    }).join('');
+}
+
 
 /* -----------------------------------------
    LIVE INSIGHTS PANEL

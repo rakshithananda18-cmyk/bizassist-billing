@@ -1,0 +1,107 @@
+/* ==========================================================================
+   BIZASSIST — CSS STYLE SHEET
+   ==========================================================================
+   Table of Contents:
+   1. FONTS & THEME VARIABLES (Light / Dark Mode palette definitions)
+   2. RESET & BASE HTML ELEMENT STYLING
+   3. APP SHELL LAYOUT (Flex containers and transitions)
+   4. SIDEBAR NAVIGATION (Logo, business selectors, nav links, active states)
+   5. DASHBOARD LAYOUT & VIEW PANELS
+   6. WIDGETS & CARDS (Stat counters, charts, tables, pagination)
+   7. CHAT ASSISTANT INTERFACE (Input textareas, chat bubbles, markdown)
+   8. NOTIFICATION ALERTS & CUSTOM MODAL OVERLAYS
+   9. GLASSMORPHISM & DYNAMIC ANIMATIONS (Micro-interactions, keyframe spins)
+   ========================================================================== */
+
+/* =========================================
+   BIZASSIST — Claude-Inspired Theme
+   Palette: Claude's warm cream, soft coral
+   accent, deep charcoal, refined neutrals
+========================================= */
+
+/* ---- FONTS ---- */
+@import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Geist+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');
+
+/* ---- LIGHT MODE (Cozy Warm Beige) ---- */
+:root {
+    --bg-color:        #f4efe2;      /* Cozy warm beige background */
+    --sidebar-color:   #ebdcb9;      /* Warmer cozy beige sidebar */
+    --card-color:      #faf8f5;      /* Soft warm cream cards */
+    --text-color:      #2e2a22;      /* Deep warm charcoal text */
+    --secondary-text:  #857460;      /* Warm muted brown secondary text */
+    --accent-color:    #c96442;      /* Warm coral-orange */
+    --accent-hover:    #b5542f;
+    --accent-soft:     rgba(201,100,66,0.10);
+    --accent-softer:   rgba(201,100,66,0.06);
+    --input-bg:        #e5d8b8;
+    --bot-bg:          #e5d8b8;
+    --border-color:    #ebdcb9;
+    --border-subtle:   rgba(201,100,66,0.12);
+    --shadow-sm:       0 1px 4px rgba(46,42,34,0.07);
+    --shadow-md:       0 4px 16px rgba(46,42,34,0.10);
+    --shadow-lg:       0 8px 32px rgba(46,42,34,0.13);
+    --highlight-bg:    rgba(201,100,66,0.08);
+    --code-bg:         #e5d8b8;
+    --tag-bg:          rgba(201,100,66,0.10);
+}
+
+/* ---- DARK MODE (Claude's dark charcoal) ---- */
+.dark-mode {
+    --bg-color:        #1a1915;
+    --sidebar-color:   #141411;
+    --card-color:      #212119;
+    --text-color:      #f0ece5;
+    --secondary-text:  #8a8070;
+    --accent-color:    #da7756;      /* slightly brighter in dark */
+    --accent-hover:    #e8896a;
+    --accent-soft:     rgba(218,119,86,0.12);
+    --accent-softer:   rgba(218,119,86,0.06);
+    --input-bg:        #2a2924;
+    --bot-bg:          #272521;
+    --border-color:    #2e2c27;
+    --border-subtle:   rgba(218,119,86,0.15);
+    --shadow-sm:       0 1px 4px rgba(0,0,0,0.25);
+    --shadow-md:       0 4px 16px rgba(0,0,0,0.35);
+    --shadow-lg:       0 8px 32px rgba(0,0,0,0.45);
+    --highlight-bg:    rgba(218,119,86,0.10);
+    --code-bg:         #1e1d1a;
+    --tag-bg:          rgba(218,119,86,0.12);
+}
+
+/* ---- RESET ---- */
+*, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    color-scheme: light dark;
+    scrollbar-color: rgba(201,100,66,0.22) transparent;
+}
+
+/* ---- BASE ---- */
+body {
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg-color);
+    color: var(--text-color);
+    height: 100vh;
+    overflow: hidden;
+    transition: background-color 280ms ease, color 280ms ease;
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ---- APP SHELL ---- */
+.app {
+    display: flex;
+    height: 100vh;
+    transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.theme-animating .app {
+    opacity: 0.97;
+    transform: scale(0.994);
+}
+

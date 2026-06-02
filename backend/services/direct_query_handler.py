@@ -1,8 +1,10 @@
+import logging
 from datetime import datetime, timedelta
 from sqlalchemy import func
 from database.db import SessionLocal
 from database.models import Invoice, Inventory, Payment
 
+logger = logging.getLogger("bizassist.direct_query")
 
 # ── Public entry point ──────────────────────────────────────────────
 
@@ -12,16 +14,18 @@ def handle(handler_key: str, user_query: str, user_id: int) -> str:
     All handlers open/close their own DB session.
     """
     handlers = {
-        "invoice_count"    : _invoice_count,
-        "total_revenue"    : _total_revenue,
-        "overdue_list"     : _overdue_list,
-        "overdue_amount"   : _overdue_amount,
-        "pending_list"     : _pending_list,
-        "top_customers"    : _top_customers,
-        "inventory_count"  : _inventory_count,
-        "low_stock"        : _low_stock,
-        "expiring_soon"    : _expiring_soon,
-        "business_summary" : _business_summary,
+        "invoice_count"        : _invoice_count,
+        "total_revenue"        : _total_revenue,
+        "overdue_list"         : _overdue_list,
+        "overdue_amount"       : _overdue_amount,
+        "pending_list"         : _pending_list,
+        "top_customers"        : _top_customers,
+        "inventory_count"      : _inventory_count,
+        "low_stock"            : _low_stock,
+        "expiring_soon"        : _expiring_soon,
+        "business_summary"     : _business_summary,
+        "overdue_range_detail" : _overdue_range_detail,
+        "revenue_month_detail" : _revenue_month_detail,
     }
 
     fn = handlers.get(handler_key)
@@ -30,8 +34,11 @@ def handle(handler_key: str, user_query: str, user_id: int) -> str:
         return None   # fall through to AI layer
 
     try:
+        if handler_key in ("overdue_range_detail", "revenue_month_detail"):
+            return fn(user_id, user_query)
         return fn(user_id)
     except Exception as e:
+        logger.error(f"DB Error in direct handler '{handler_key}': {str(e)}", exc_info=True)
         return None   # on any DB error, fall through to AI layer
 
 
@@ -266,5 +273,97 @@ def _business_summary(user_id: int) -> str:
             f"**Top Customer**\n"
             f"- {top.customer} — ₹{top.t:,.0f}" if top else ""
         )
+    finally:
+        db.close()
+
+def _overdue_range_detail(user_id: int, query: str) -> str:
+    db = SessionLocal()
+    import re
+    try:
+        m = re.search(r"range\s+(\d+)-(\d+)\s+days", query, re.I)
+        if m:
+            min_days = int(m.group(1))
+            max_days = int(m.group(2))
+        else:
+            m_plus = re.search(r"range\s+90\+\s+days", query, re.I)
+            if m_plus:
+                min_days = 91
+                max_days = 99999
+            else:
+                return "Invalid range details requested."
+
+        rows = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").all()
+        today = datetime.today()
+        matched = []
+        for r in rows:
+            if not r.due_date:
+                continue
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+                try:
+                    due = datetime.strptime(str(r.due_date), fmt)
+                    overdue_days = (today - due).days
+                    if min_days <= overdue_days <= max_days:
+                        matched.append(r)
+                    break
+                except ValueError:
+                    continue
+
+        range_label = f"{min_days}-{max_days if max_days < 99999 else ''}{'+' if max_days == 99999 else ''} days"
+        if not matched:
+            return f"✅ No overdue invoices found in the {range_label} range."
+
+        total = sum(r.amount or 0 for r in matched)
+        lines = [f"**Overdue Invoices ({range_label})** — {len(matched)} invoices, total ₹{total:,.0f}:\n"]
+        for r in matched:
+            lines.append(f"- **{r.customer}** — ₹{r.amount:,.0f} (due {r.due_date})")
+        return "\n".join(lines)
+    finally:
+        db.close()
+
+def _revenue_month_detail(user_id: int, query: str) -> str:
+    db = SessionLocal()
+    import re
+    try:
+        m = re.search(r"revenue in\s+([a-zA-Z]+)\s+(\d{4})", query, re.I)
+        if not m:
+            return "Invalid monthly revenue query."
+        month_str = m.group(1).lower()
+        year_str = m.group(2)
+
+        month_map = {
+            "jan": "01", "january": "01",
+            "feb": "02", "february": "02",
+            "mar": "03", "march": "03",
+            "apr": "04", "april": "04",
+            "may": "05",
+            "jun": "06", "june": "06",
+            "jul": "07", "july": "07",
+            "aug": "08", "august": "08",
+            "sep": "09", "september": "09",
+            "oct": "10", "october": "10",
+            "nov": "11", "november": "11",
+            "dec": "12", "december": "12"
+        }
+
+        month_num = month_map.get(month_str[:3])
+        if not month_num:
+            return "Invalid month specified."
+
+        rows = db.query(Invoice).filter(Invoice.business_id == user_id).all()
+        matched = []
+        for r in rows:
+            if not r.invoice_date:
+                continue
+            date_str = str(r.invoice_date)
+            is_match = False
+            if date_str.startswith(f"{year_str}-{month_num}"):
+                is_match = True
+            elif f"/{month_num}/{year_str}" in date_str or f"-{month_num}-{year_str}" in date_str:
+                is_match = True
+            if is_match:
+                matched.append(r)
+
+        total = sum(r.amount or 0 for r in matched)
+        return f"**Revenue in {m.group(1)} {year_str}**\n\nTotal revenue: **₹{total:,.0f}** across **{len(matched)} invoices**."
     finally:
         db.close()

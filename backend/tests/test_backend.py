@@ -178,3 +178,84 @@ def test_ask_ai_flow(mock_chat_create):
     data = response.json()
     assert data["source"] == "ai"
     assert "Mocked LLM answer" in data["response"]
+
+@patch("main_groq.client.chat.completions.create")
+def test_ask_ai_tool_calling_flow(mock_chat_create):
+    # We mock two completions:
+    # First completion returns a tool call to 'get_top_customers'.
+    # Second completion returns the final response summarizing the tool output.
+    mock_msg1 = MagicMock()
+    mock_tool_call = MagicMock()
+    mock_tool_call.id = "call_123"
+    mock_tool_call.function.name = "get_top_customers"
+    mock_tool_call.function.arguments = '{"limit": 3}'
+    mock_msg1.tool_calls = [mock_tool_call]
+    mock_msg1.content = None
+    
+    mock_response1 = MagicMock()
+    mock_response1.choices = [MagicMock(message=mock_msg1)]
+    
+    mock_msg2 = MagicMock()
+    mock_msg2.tool_calls = None
+    mock_msg2.content = "Based on tool output, top customer is MediCare Pharmacy."
+    
+    mock_response2 = MagicMock()
+    mock_response2.choices = [MagicMock(message=mock_msg2)]
+    
+    mock_chat_create.side_effect = [mock_response1, mock_response2]
+
+    # Login to get valid session
+    login_response = client.post("/login", json={
+        "username": "pharmacy",
+        "password": "pharmacy123"
+    })
+    token = login_response.json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post("/ask", json={"message": "can you give me general advice about increasing sales?"}, headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["source"] == "ai"
+    assert "MediCare Pharmacy" in data["response"]
+
+def test_dynamic_numeric_queries_bypass_direct():
+    from services.query_router import classify
+    # "expiring soon" has no digits -> DIRECT
+    route, key = classify("expiring soon")
+    assert route == "DIRECT"
+    assert key == "expiring_soon"
+
+    # "expiring in 15 days" has digits -> AI
+    route, key = classify("expiring in 15 days")
+    assert route == "AI"
+    assert key is None
+
+    # "top customers" has no digits -> DIRECT
+    route, key = classify("top customers")
+    assert route == "DIRECT"
+    assert key == "top_customers"
+
+    # "top 3 customers" has digits -> AI
+    route, key = classify("top 3 customers")
+    assert route == "AI"
+    assert key is None
+
+    # Standard dashboard aging bar click -> DIRECT (overdue_range_detail)
+    route, key = classify("Tell me about overdue payments in range 61-90 days")
+    assert route == "DIRECT"
+    assert key == "overdue_range_detail"
+
+    # Standard dashboard revenue month click -> DIRECT (revenue_month_detail)
+    route, key = classify("Tell me about revenue in Oct 2025")
+    assert route == "DIRECT"
+    assert key == "revenue_month_detail"
+
+    # Dynamic query with default expiring_soon days -> DIRECT (expiring_soon)
+    route, key = classify("Which products are expiring in the next 30 days?")
+    assert route == "DIRECT"
+    assert key == "expiring_soon"
+
+    # Dynamic query with default top_customers count -> DIRECT (top_customers)
+    route, key = classify("Who are my top 5 customers by revenue?")
+    assert route == "DIRECT"
+    assert key == "top_customers"
