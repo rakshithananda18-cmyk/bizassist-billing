@@ -51,6 +51,8 @@
     --highlight-bg:    rgba(193,95,60,0.07);
     --code-bg:         #eceae4;
     --tag-bg:          rgba(193,95,60,0.09);
+    --scrollbar-thumb: rgba(0, 0, 0, 0.18);
+    --scrollbar-thumb-hover: rgba(0, 0, 0, 0.32);
 }
 
 /* ---- DARK MODE — Claude's warm charcoal ---- */
@@ -74,6 +76,8 @@
     --highlight-bg:    rgba(212,113,74,0.10);
     --code-bg:         #1e1b17;
     --tag-bg:          rgba(212,113,74,0.12);
+    --scrollbar-thumb: rgba(255, 255, 255, 0.22);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.38);
 }
 
 /* ---- RESET ---- */
@@ -85,7 +89,7 @@
 
 html {
     color-scheme: light dark;
-    scrollbar-color: rgba(193,95,60,0.22) transparent;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 /* ---- BASE ---- */
