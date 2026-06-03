@@ -37,7 +37,7 @@
 }
 
 .ah-biz-name {
-    font-family: 'Lora', 'Crimson Pro', Georgia, serif;
+    font-family: 'DM Sans', sans-serif;
     font-size: 30px;             /* larger than Good morning (24px) */
     font-weight: 500;            /* matches weight in the second pic reference */
     color: var(--text-color);
@@ -84,6 +84,12 @@
     border: none;
     border-radius: 0;
     scroll-behavior: smooth;
+}
+
+/* Bottom scroll fade when chat is active (flowing into the input box) */
+html.chat-active .chat-box {
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, black calc(100% - 40px), transparent 100%);
+    mask-image: linear-gradient(to bottom, black 0%, black calc(100% - 40px), transparent 100%);
 }
 
 /* ---- MESSAGES — Claude-style ---- */
