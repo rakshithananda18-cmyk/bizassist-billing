@@ -1,7 +1,7 @@
 import logging
 from sqlalchemy import text
 from database.db import engine, SessionLocal
-from database.models import Base, User, ChatMessage
+from database.models import Base, User, ChatMessage, DocumentEmbedding
 from services.auth import hash_password
 
 logger = logging.getLogger("bizassist.migration")
@@ -58,12 +58,35 @@ def run_migrations_and_seed():
             conn.commit()
 
         # Seed users if they don't exist
-        default_users = [
-            {"id": 1, "username": "admin", "password": "admin123", "business_name": "Admin Central", "role": "admin"},
-            {"id": 2, "username": "pharmacy", "password": "pharmacy123", "business_name": "MediCare Pharmacy", "role": "enterprise"},
-            {"id": 3, "username": "supermarket", "password": "supermarket123", "business_name": "Daily Needs Supermarket", "role": "enterprise"},
-            {"id": 4, "username": "store", "password": "store123", "business_name": "Apna Bazaar Store", "role": "enterprise"}
-        ]
+        import os
+        is_test = "test" in os.environ.get("DATABASE_URL", "")
+        
+        if is_test:
+            default_users = [
+                {"id": 1, "username": "admin", "password": "admin123", "business_name": "Admin Central", "role": "admin"},
+                {"id": 2, "username": "pharmacy", "password": "pharmacy123", "business_name": "MediCare Pharmacy", "role": "enterprise"},
+                {"id": 3, "username": "supermarket", "password": "supermarket123", "business_name": "Daily Needs Supermarket", "role": "enterprise"},
+                {"id": 4, "username": "store", "password": "store123", "business_name": "Apna Bazaar Store", "role": "enterprise"}
+            ]
+        else:
+            default_users = [
+                {"id": 1, "username": "admin", "password": "admin123", "business_name": "Admin Central", "role": "admin"}
+            ]
+            
+            # Delete demo users and their data in production
+            from database.models import Invoice, Inventory, Payment, UploadedFile, DocumentEmbedding, ChatMessage
+            demo_usernames = ["pharmacy", "supermarket", "store"]
+            demo_users = db.query(User).filter(User.username.in_(demo_usernames)).all()
+            for du in demo_users:
+                logger.info(f"Removing demo user '{du.username}' and their associated data...")
+                db.query(Invoice).filter(Invoice.business_id == du.id).delete()
+                db.query(Inventory).filter(Inventory.business_id == du.id).delete()
+                db.query(Payment).filter(Payment.business_id == du.id).delete()
+                db.query(UploadedFile).filter(UploadedFile.business_id == du.id).delete()
+                db.query(DocumentEmbedding).filter(DocumentEmbedding.business_id == du.id).delete()
+                db.query(ChatMessage).filter(ChatMessage.business_id == du.id).delete()
+                db.delete(du)
+            db.commit()
         
         for u in default_users:
             existing = db.query(User).filter(User.username == u["username"]).first()

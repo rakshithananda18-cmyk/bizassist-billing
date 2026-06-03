@@ -17,7 +17,8 @@ from database.models import (
     UploadedFile,
     Invoice,
     Inventory,
-    Payment
+    Payment,
+    DocumentEmbedding
 )
 
 from services.parser import (
@@ -26,6 +27,12 @@ from services.parser import (
     save_payments
 )
 from services.auth import get_active_user
+from services.embeddings import index_new_file_records
+from services.pdf_parser import (
+    parse_pdf_text,
+    extract_structured_invoice,
+    save_pdf_invoice_to_db
+)
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.upload")
@@ -46,7 +53,27 @@ async def upload_file(
 
     # READ FILE
     try:
-        if filename.endswith(".csv"):
+        if filename.endswith(".pdf"):
+            # Process PDF through structured parser
+            file_bytes = await file.read()
+            raw_text = parse_pdf_text(file_bytes)
+            if not raw_text.strip():
+                raise HTTPException(status_code=400, detail="Could not extract readable text from PDF. Ensure it is not a scanned image.")
+            
+            structured_data = extract_structured_invoice(raw_text)
+            save_result = save_pdf_invoice_to_db(structured_data, active_user_id, filename)
+            
+            invalidate_cache()
+            
+            return {
+                "message": "Upload successful",
+                "file_type": "invoice",
+                "rows": save_result["items_count"],
+                "added": save_result["items_count"],
+                "updated": 0,
+                "columns": ["invoice_id", "supplier", "customer", "invoice_date", "due_date", "total_amount", "items"]
+            }
+        elif filename.endswith(".csv"):
             df = pd.read_csv(file.file)
         elif filename.endswith(".xlsx"):
             df = pd.read_excel(file.file)
@@ -115,6 +142,13 @@ async def upload_file(
 
         # Commit everything on success
         db.commit()
+
+        # Generate and save document embeddings for semantic search (RAG)
+        try:
+            index_new_file_records(db, file_type, file_id, active_user_id)
+        except Exception as embed_err:
+            logger.error(f"Failed indexing file {file_id} embeddings: {embed_err}", exc_info=True)
+
         invalidate_cache()  # bust context cache — new data uploaded
 
         logger.info(f"Successfully processed {file_type} file upload '{filename}' for user {active_user_id}. Added: {stats['added']}, Updated: {stats['updated']}.")
@@ -185,6 +219,13 @@ async def delete_upload(
 
         # delete the uploaded file record
         db.delete(uploaded)
+
+        # Delete associated document embeddings
+        deleted_embs = db.query(DocumentEmbedding).filter(
+            DocumentEmbedding.file_id == file_id,
+            DocumentEmbedding.business_id == active_user_id
+        ).delete()
+        logger.info(f"Deleted {deleted_embs} associated DocumentEmbedding records.")
 
         # optional cascade: delete all rows of that type for this business
         if cascade:

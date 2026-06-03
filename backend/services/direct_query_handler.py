@@ -324,11 +324,13 @@ def _revenue_month_detail(user_id: int, query: str) -> str:
     db = SessionLocal()
     import re
     try:
-        m = re.search(r"revenue in\s+([a-zA-Z]+)\s+(\d{4})", query, re.I)
+        m = re.search(r"revenue in\s+([a-zA-Z]+)\s+(\d{2,4})", query, re.I)
         if not m:
             return "Invalid monthly revenue query."
         month_str = m.group(1).lower()
         year_str = m.group(2)
+        if len(year_str) == 2:
+            year_str = "20" + year_str
 
         month_map = {
             "jan": "01", "january": "01",

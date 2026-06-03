@@ -202,7 +202,17 @@ async function openDatabasePanel() {
                         Database Overview
                     </div>
 
-                    <div style="display:flex;gap:8px">
+                    <div style="display:flex;gap:8px;align-items:center">
+                        <button
+                            class="upload-btn-highlight"
+                            onclick="document.getElementById('file-upload-db').click()"
+                            style="padding:8px 12px;border-radius:8px;
+                                   cursor:pointer;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px"
+                        >
+                            <span style="font-size:13px;font-weight:bold">↑</span> Upload Data
+                        </button>
+                        <input type="file" id="file-upload-db" accept=".csv,.xlsx,.pdf" hidden>
+
                         <button
                             onclick="openDatabasePanel()"
                             style="padding:8px 12px;border:1px solid var(--border-color);border-radius:8px;

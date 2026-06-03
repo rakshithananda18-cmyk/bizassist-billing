@@ -32,7 +32,7 @@ DIRECT_PATTERNS = [
      "overdue_range_detail"),
 
     # Revenue month click (specific template containing digits)
-    (re.compile(r"revenue in\s+([a-zA-Z]+)\s+(\d{4})", re.I),
+    (re.compile(r"revenue in\s+([a-zA-Z]+)\s+(\d{2,4})", re.I),
      "revenue_month_detail"),
 
     # Invoice counts
@@ -86,6 +86,25 @@ def classify(user_query: str) -> Tuple[str, Optional[str]]:
         ("AI",     None)         — needs LLM
     """
     q = user_query.strip()
+
+    # 0. Bypass to AI if query contains strategic, planning, or reasoning keywords
+    reasoning_keywords = [
+        r"\bstrategy\b", r"\bstrategies\b",
+        r"\bplan\b", r"\bplanning\b",
+        r"\bsystem\b", r"\bmanagement\b",
+        r"\bhow\s+(?!many\b|much\b)", r"\bimprove\b", r"\bgrow\b",
+        r"\boptimize\b", r"\boptimization\b",
+        r"\bminimize\b", r"\bwaste\b",
+        r"\bdevelop\b", r"\bdevelopment\b",
+        r"\bpromotional\b", r"\bpromotion\b", r"\bpromotions\b",
+        r"\bmarketing\b", r"\bcampaign\b", r"\bcampaigns\b",
+        r"\badvice\b", r"\brecommendation\b", r"\brecommendations\b",
+        r"\bsuggestion\b", r"\bsuggestions\b", r"\bidea\b", r"\bideas\b",
+        r"\bimplement\b", r"\bimplementation\b", r"\bdesign\b"
+    ]
+    for kw_pattern in reasoning_keywords:
+        if re.search(kw_pattern, q, re.I):
+            return ("AI", None)
 
     # 1. First, check if it matches the specific dashboard quick actions that contain digits
     for pattern, handler_key in DIRECT_PATTERNS:

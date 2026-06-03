@@ -15,8 +15,8 @@
 
 document.addEventListener("change", async function (e) {
 
-    /* Handle both #file-upload and #file-upload-dash inputs */
-    if (!e.target || (e.target.id !== "file-upload" && e.target.id !== "file-upload-dash")) return;
+    /* Handle #file-upload, #file-upload-dash, #file-upload-db, and #file-upload-chat inputs */
+    if (!e.target || (e.target.id !== "file-upload" && e.target.id !== "file-upload-dash" && e.target.id !== "file-upload-db" && e.target.id !== "file-upload-chat")) return;
 
     if (DEBUG) console.log("File upload input changed:", e.target.id);
 

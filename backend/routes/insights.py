@@ -5,7 +5,8 @@ from database.models import (
     Invoice,
     Inventory,
     Payment,
-    UploadedFile
+    UploadedFile,
+    DocumentEmbedding
 )
 from sqlalchemy import func
 from services.auth import get_active_user
@@ -253,6 +254,7 @@ def delete_entire_database(authorization: str = Header(None)):
         db.query(Inventory).filter(Inventory.business_id == active_user_id).delete()
         db.query(Payment).filter(Payment.business_id == active_user_id).delete()
         db.query(UploadedFile).filter(UploadedFile.business_id == active_user_id).delete()
+        db.query(DocumentEmbedding).filter(DocumentEmbedding.business_id == active_user_id).delete()
         
         db.commit()
         logger.info(f"Database wipe successful for user {active_user_id}. All records deleted and committed.")

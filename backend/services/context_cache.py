@@ -47,6 +47,43 @@ def invalidate():
         _query_response_cache.clear()
 
 
+def invalidate_user_cache(user_id: int):
+    """
+    Forces the cache for a specific user to be cleared/rebuilt.
+    """
+    with _lock:
+        if user_id in _cache:
+            del _cache[user_id]
+        if user_id in _query_response_cache:
+            del _query_response_cache[user_id]
+
+
+def get_cache_stats() -> dict:
+    """
+    Returns metrics on the current caches (contexts and queries) for visualization.
+    """
+    with _lock:
+        context_stats = []
+        for user_id, entry in _cache.items():
+            context_stats.append({
+                "user_id": user_id,
+                "built_at": entry["built_at"],
+                "size_chars": len(entry["context"]) if entry["context"] else 0
+            })
+            
+        query_stats = []
+        for user_id, responses in _query_response_cache.items():
+            query_stats.append({
+                "user_id": user_id,
+                "query_count": len(responses)
+            })
+            
+        return {
+            "context_cache": context_stats,
+            "query_cache": query_stats
+        }
+
+
 def get_context(user_id: int) -> str:
     """
     Returns cached context string, rebuilding only if stale.

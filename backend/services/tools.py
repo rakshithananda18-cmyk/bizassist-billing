@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, or_
 from database.db import SessionLocal
 from database.models import Invoice, Inventory, Payment
+from services.embeddings import semantic_search_records
 
 def safe_int(val, default=None):
     if val is None:
@@ -191,8 +192,8 @@ def get_business_overview(user_id: int) -> str:
     finally:
         db.close()
 
-def search_database(user_id: int, query: str) -> str:
-    """Searches products, customers, and suppliers across all tables."""
+def search_exact_keywords(user_id: int, query: str) -> str:
+    """Searches products, customers, and suppliers across all tables using exact matches."""
     db = SessionLocal()
     try:
         inv_matches = db.query(Invoice).filter(
@@ -228,13 +229,14 @@ def search_database(user_id: int, query: str) -> str:
 def execute_tool(name: str, args: dict, user_id: int) -> str:
     """Executes a tool function by name with parsed arguments and user_id."""
     tool_map = {
-        "get_invoice_summary": lambda u, a: get_invoice_summary(u),
-        "get_invoice_list": lambda u, a: get_invoice_list(u, a.get("status"), a.get("customer"), safe_int(a.get("limit"), 15)),
-        "get_top_customers": lambda u, a: get_top_customers(u, safe_int(a.get("limit"), 5)),
-        "get_inventory_status": lambda u, a: get_inventory_status(u, safe_int(a.get("filter_stock_under")), safe_int(a.get("filter_expiry_days"))),
-        "get_payment_list": lambda u, a: get_payment_list(u, a.get("paid_status"), a.get("customer"), safe_int(a.get("limit"), 15)),
-        "get_business_overview": lambda u, a: get_business_overview(u),
-        "search_database": lambda u, a: search_database(u, a.get("query"))
+        "summarize_invoices": lambda u, a: get_invoice_summary(u),
+        "list_invoices": lambda u, a: get_invoice_list(u, a.get("status"), a.get("customer"), safe_int(a.get("limit"), 15)),
+        "rank_top_customers": lambda u, a: get_top_customers(u, safe_int(a.get("limit"), 5)),
+        "check_inventory_stock": lambda u, a: get_inventory_status(u, safe_int(a.get("filter_stock_under")), safe_int(a.get("filter_expiry_days"))),
+        "list_payment_records": lambda u, a: get_payment_list(u, a.get("paid_status"), a.get("customer"), safe_int(a.get("limit"), 15)),
+        "view_business_metrics": lambda u, a: get_business_overview(u),
+        "search_exact_keywords": lambda u, a: search_exact_keywords(u, a.get("query")),
+        "query_semantic_index": lambda u, a: query_semantic_index(u, a.get("query"), a.get("limit"))
     }
     
     fn = tool_map.get(name)
@@ -245,6 +247,15 @@ def execute_tool(name: str, args: dict, user_id: int) -> str:
     except Exception as e:
         return json.dumps({"error": f"Error running tool '{name}': {str(e)}"})
 
+def query_semantic_index(user_id: int, query: str, limit: int = 5) -> str:
+    """Searches the business records (invoices, inventory, payments) semantically using OpenAI embeddings and cosine similarity."""
+    try:
+        limit_val = safe_int(limit, 5)
+        results = semantic_search_records(user_id, query, limit_val)
+        return json.dumps(results)
+    except Exception as e:
+        return json.dumps({"error": f"Semantic search failed: {str(e)}"})
+
 # ==========================================
 # TOOL SCHEMAS FOR LLM
 # ==========================================
@@ -253,14 +264,18 @@ schemas = [
     {
         "type": "function",
         "function": {
-            "name": "get_invoice_summary",
-            "description": "Returns counts and total amounts of invoices grouped by status (Paid, Pending, Overdue)."
+            "name": "summarize_invoices",
+            "description": "Returns counts and total amounts of invoices grouped by status (Paid, Pending, Overdue).",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
         }
     },
     {
         "type": "function",
         "function": {
-            "name": "get_invoice_list",
+            "name": "list_invoices",
             "description": "Returns a list of invoices, optionally filtered by status or customer name.",
             "parameters": {
                 "type": "object",
@@ -287,7 +302,7 @@ schemas = [
     {
         "type": "function",
         "function": {
-            "name": "get_top_customers",
+            "name": "rank_top_customers",
             "description": "Returns top customers ranked by total billing revenue.",
             "parameters": {
                 "type": "object",
@@ -306,7 +321,7 @@ schemas = [
     {
         "type": "function",
         "function": {
-            "name": "get_inventory_status",
+            "name": "check_inventory_stock",
             "description": "Returns stock items, optionally filtering for low stock levels or products expiring soon.",
             "parameters": {
                 "type": "object",
@@ -332,7 +347,7 @@ schemas = [
     {
         "type": "function",
         "function": {
-            "name": "get_payment_list",
+            "name": "list_payment_records",
             "description": "Returns payment details, optionally filtered by paid status ('Yes' or 'No') or customer name.",
             "parameters": {
                 "type": "object",
@@ -359,14 +374,18 @@ schemas = [
     {
         "type": "function",
         "function": {
-            "name": "get_business_overview",
-            "description": "Returns a high-level overview of overall business health, revenue metrics, collection rate, and outstanding dues."
+            "name": "view_business_metrics",
+            "description": "Returns a high-level overview of overall business health, revenue metrics, collection rate, and outstanding dues.",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            }
         }
     },
     {
         "type": "function",
         "function": {
-            "name": "search_database",
+            "name": "search_exact_keywords",
             "description": "Searches for matching keywords across customers, product names, and suppliers in all tables.",
             "parameters": {
                 "type": "object",
@@ -374,6 +393,30 @@ schemas = [
                     "query": {
                         "type": "string",
                         "description": "Search keyword (e.g. a specific product, customer name, or supplier name)."
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_semantic_index",
+            "description": "Searches the business database semantically using OpenAI embeddings and cosine similarity. Ideal for conceptual queries, natural language, and questions that do not have exact keywords matching the records.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query expressing the concept to find (e.g. 'unpaid clients', 'medicines expiring soon')."
+                    },
+                    "limit": {
+                        "anyOf": [
+                            {"type": "integer"},
+                            {"type": "string"}
+                        ],
+                        "description": "Max matching records to return. Defaults to 5."
                     }
                 },
                 "required": ["query"]

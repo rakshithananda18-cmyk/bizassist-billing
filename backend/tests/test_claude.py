@@ -94,7 +94,7 @@ def test_ask_ai_tool_calling_flow_claude(mock_messages_create):
     mock_tool_block = MagicMock()
     mock_tool_block.type = "tool_use"
     mock_tool_block.id = "call_top_cust"
-    mock_tool_block.name = "get_top_customers"
+    mock_tool_block.name = "rank_top_customers"
     mock_tool_block.input = {"limit": 3}
     
     mock_response1 = MagicMock()

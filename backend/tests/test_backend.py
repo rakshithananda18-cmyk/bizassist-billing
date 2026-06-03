@@ -187,7 +187,7 @@ def test_ask_ai_tool_calling_flow(mock_chat_create):
     mock_msg1 = MagicMock()
     mock_tool_call = MagicMock()
     mock_tool_call.id = "call_123"
-    mock_tool_call.function.name = "get_top_customers"
+    mock_tool_call.function.name = "rank_top_customers"
     mock_tool_call.function.arguments = '{"limit": 3}'
     mock_msg1.tool_calls = [mock_tool_call]
     mock_msg1.content = None
@@ -250,6 +250,11 @@ def test_dynamic_numeric_queries_bypass_direct():
     assert route == "DIRECT"
     assert key == "revenue_month_detail"
 
+    # Support 2-digit years in dashboard monthly revenue queries
+    route, key = classify("Tell me about revenue in Apr 26")
+    assert route == "DIRECT"
+    assert key == "revenue_month_detail"
+
     # Dynamic query with default expiring_soon days -> DIRECT (expiring_soon)
     route, key = classify("Which products are expiring in the next 30 days?")
     assert route == "DIRECT"
@@ -259,6 +264,15 @@ def test_dynamic_numeric_queries_bypass_direct():
     route, key = classify("Who are my top 5 customers by revenue?")
     assert route == "DIRECT"
     assert key == "top_customers"
+
+    # Test reasoning/strategy keyword bypass to AI path
+    route, key = classify("Develop a promotional strategy to clear expiring products and minimize waste.")
+    assert route == "AI"
+    assert key is None
+
+    route, key = classify("Implement a stock management system to track low-stock products and optimize reorder times.")
+    assert route == "AI"
+    assert key is None
 
 
 def test_chat_history_endpoints():
@@ -328,3 +342,231 @@ def test_chat_history_endpoints():
     assert response.status_code == 200
     response = client.get("/chat/sessions", headers=headers)
     assert response.json() == []
+
+
+def test_admin_endpoints():
+    # 1. Login as admin
+    admin_login = client.post("/login", json={
+        "username": "admin",
+        "password": "admin123"
+    })
+    assert admin_login.status_code == 200
+    admin_token = admin_login.json()["token"]
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # 2. Login as enterprise user
+    user_login = client.post("/login", json={
+        "username": "pharmacy",
+        "password": "pharmacy123"
+    })
+    assert user_login.status_code == 200
+    user_token = user_login.json()["token"]
+    user_id = user_login.json()["id"]
+    user_headers = {"Authorization": f"Bearer {user_token}"}
+
+    # 2.1 Test 403 Forbidden on create and update user for non-admin
+    resp = client.post("/admin/create-user", json={
+        "username": "new_biz",
+        "password": "new_password",
+        "business_name": "New Business"
+    }, headers=user_headers)
+    assert resp.status_code == 403
+
+    resp = client.put(f"/admin/update-user/{user_id}", json={
+        "business_name": "Updated Business"
+    }, headers=user_headers)
+    assert resp.status_code == 403
+
+    # 2.2 Test Create User as Admin
+    create_resp = client.post("/admin/create-user", json={
+        "username": "new_biz",
+        "password": "new_password",
+        "business_name": "New Business"
+    }, headers=admin_headers)
+    assert create_resp.status_code == 200
+    assert create_resp.json()["status"] == "success"
+    new_user_id = create_resp.json()["user_id"]
+
+    # Verify duplicate username returns 400
+    dup_resp = client.post("/admin/create-user", json={
+        "username": "new_biz",
+        "password": "other_password",
+        "business_name": "Duplicate Business"
+    }, headers=admin_headers)
+    assert dup_resp.status_code == 400
+
+    # Test login of new merchant
+    new_login = client.post("/login", json={
+        "username": "new_biz",
+        "password": "new_password"
+    })
+    assert new_login.status_code == 200
+    assert new_login.json()["business_name"] == "New Business"
+
+    # 2.3 Test Update User as Admin
+    update_resp = client.put(f"/admin/update-user/{new_user_id}", json={
+        "username": "updated_biz",
+        "password": "updated_password",
+        "business_name": "Updated Business"
+    }, headers=admin_headers)
+    assert update_resp.status_code == 200
+
+    # Test login of updated merchant with old credentials (should fail)
+    old_login = client.post("/login", json={
+        "username": "new_biz",
+        "password": "new_password"
+    })
+    assert old_login.status_code == 401
+
+    # Test login of updated merchant with new credentials (should succeed)
+    updated_login = client.post("/login", json={
+        "username": "updated_biz",
+        "password": "updated_password"
+    })
+    assert updated_login.status_code == 200
+    assert updated_login.json()["business_name"] == "Updated Business"
+
+    # 3. Test 403 Forbidden for non-admin on the new endpoints
+    resp = client.post(f"/admin/flush-cache/{user_id}", headers=user_headers)
+    assert resp.status_code == 403
+
+    resp = client.delete(f"/admin/wipe-user-data/{user_id}", headers=user_headers)
+    assert resp.status_code == 403
+
+    resp = client.delete("/admin/wipe-all-data", headers=user_headers)
+    assert resp.status_code == 403
+
+    resp = client.get("/admin/cache-stats", headers=user_headers)
+    assert resp.status_code == 403
+
+    resp = client.get(f"/admin/business-details/{user_id}", headers=user_headers)
+    assert resp.status_code == 403
+
+    # 4. Test POST /admin/flush-cache/{user_id} as admin
+    resp = client.post(f"/admin/flush-cache/{user_id}", headers=admin_headers)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "success"
+
+    # Test invalid user cache flush
+    resp = client.post("/admin/flush-cache/9999", headers=admin_headers)
+    assert resp.status_code == 404
+
+    # 4.1 Test GET /admin/cache-stats as admin
+    resp = client.get("/admin/cache-stats", headers=admin_headers)
+    assert resp.status_code == 200
+    stats = resp.json()
+    assert "context_cache" in stats
+    assert "query_cache" in stats
+
+    # 4.2 Test GET /admin/business-details/{user_id} as admin
+    resp = client.get(f"/admin/business-details/{user_id}", headers=admin_headers)
+    assert resp.status_code == 200
+    details = resp.json()
+    assert details["username"] == "pharmacy"
+    assert "uploads" in details
+    assert "invoices" in details
+    assert "inventory" in details
+    assert "payments" in details
+    assert "chat_history" in details
+
+    # Test invalid business details request
+    resp = client.get("/admin/business-details/9999", headers=admin_headers)
+    assert resp.status_code == 404
+
+    # 4.5 Test DELETE /admin/wipe-user-data/{user_id} as admin
+    resp = client.delete(f"/admin/wipe-user-data/{user_id}", headers=admin_headers)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "success"
+
+    # Test invalid user wipe
+    resp = client.delete("/admin/wipe-user-data/9999", headers=admin_headers)
+    assert resp.status_code == 404
+
+    # 5. Test DELETE /admin/wipe-all-data as admin
+    resp = client.delete("/admin/wipe-all-data", headers=admin_headers)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "success"
+
+    # 6. Verify data tables are empty for the enterprise user
+    resp = client.get("/database", headers=user_headers)
+    assert resp.status_code == 200
+    db_data = resp.json()
+    assert len(db_data["invoices"]) == 0
+    assert len(db_data["inventory"]) == 0
+    assert len(db_data["uploads"]) == 0
+
+
+def test_pdf_upload_flow():
+    # Sign up a new user
+    signup_resp = client.post("/signup", json={
+        "username": "pdf_merchant",
+        "password": "pdf_password123",
+        "business_name": "PDF Business"
+    })
+    assert signup_resp.status_code == 200
+    
+    # Login as the new user
+    response = client.post("/login", json={
+        "username": "pdf_merchant",
+        "password": "pdf_password123"
+    })
+    assert response.status_code == 200
+    token = response.json()["token"]
+    user_headers = {"Authorization": f"Bearer {token}"}
+
+    # Prepare mock extracted data
+    mock_invoice_data = {
+        "invoice_id": "INV-PDF-999",
+        "supplier": "Astra Pharma",
+        "customer": "MediCare Pharmacy",
+        "invoice_date": "2026-06-01",
+        "due_date": "2026-07-01",
+        "total_amount": 1000.0,
+        "status": "Pending",
+        "items": [
+            {
+                "product_name": "Test Medicine X",
+                "stock": 50,
+                "expiry_date": "2028-06-01",
+                "price_per_unit": 20.0
+            }
+        ]
+    }
+
+    # Mock extraction and PDF text helpers to avoid external API calls
+    with patch("routes.upload.parse_pdf_text", return_value="Dummy PDF raw invoice text content") as mock_parse, \
+         patch("routes.upload.extract_structured_invoice", return_value=mock_invoice_data) as mock_extract, \
+         patch("services.pdf_parser.index_new_file_records") as mock_rag_index:
+
+        # Upload dummy PDF file
+        pdf_content = b"%PDF-1.4 mock content"
+        files = {"file": ("invoice_test.pdf", pdf_content, "application/pdf")}
+        
+        upload_resp = client.post("/upload", files=files, headers=user_headers)
+        
+        assert upload_resp.status_code == 200
+        resp_data = upload_resp.json()
+        assert resp_data["message"] == "Upload successful"
+        assert resp_data["file_type"] == "invoice"
+        assert resp_data["rows"] == 1
+
+        mock_parse.assert_called_once_with(pdf_content)
+        mock_extract.assert_called_once_with("Dummy PDF raw invoice text content")
+        assert mock_rag_index.call_count == 3 # Should generate index for invoices, inventory, and payments
+
+    # Verify that the database tables contain the uploaded records
+    db_resp = client.get("/database", headers=user_headers)
+    assert db_resp.status_code == 200
+    db_data = db_resp.json()
+    
+    assert len(db_data["invoices"]) == 1
+    assert db_data["invoices"][0]["invoice_id"] == "INV-PDF-999"
+    assert db_data["invoices"][0]["amount"] == 1000.0
+    
+    assert len(db_data["inventory"]) == 1
+    assert db_data["inventory"][0]["product"] == "Test Medicine X"
+    assert db_data["inventory"][0]["stock"] == 50
+    
+    assert len(db_data["uploads"]) == 1
+    assert db_data["uploads"][0]["filename"] == "invoice_test.pdf"
+

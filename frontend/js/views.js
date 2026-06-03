@@ -86,7 +86,7 @@ function emptyState(icon, title, sub) {
                 onclick="document.getElementById('file-upload').click()">
                 + Upload data
             </button>
-            <input type="file" id="file-upload" accept=".csv,.xlsx" hidden>
+            <input type="file" id="file-upload" accept=".csv,.xlsx,.pdf" hidden>
         </div>`;
 }
 
@@ -178,7 +178,7 @@ async function renderDashboardView() {
                     <button class="vaction-btn ${isDbEmpty ? 'upload-btn-highlight' : ''}" onclick="document.getElementById('file-upload-dash').click()">
                         <span class="vaction-icon">↑</span> Upload Data
                     </button>
-                    <input type="file" id="file-upload-dash" accept=".csv,.xlsx" hidden>
+                    <input type="file" id="file-upload-dash" accept=".csv,.xlsx,.pdf" hidden>
                     <button class="vaction-btn" onclick="sendChip('Generate a business summary')">
                         <span class="vaction-icon">✦</span> Business Summary
                     </button>

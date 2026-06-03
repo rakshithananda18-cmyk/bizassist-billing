@@ -217,6 +217,8 @@ async function loadInsightsPanel() {
 
     const panel = document.getElementById("insights-panel");
     if (!panel || panel.classList.contains("hidden")) return;
+    const contentContainer = document.getElementById("insights-content");
+    if (!contentContainer) return;
 
     try {
 
@@ -241,12 +243,34 @@ async function loadInsightsPanel() {
         const collectedAmt = revenue - overdueAmt;
         const healthPct    = revenue > 0 ? Math.round((collectedAmt / revenue) * 100) : 0;
 
-        panel.innerHTML = `
+        /* ── BUILD DONUT SVG ── */
+        const r = 36, circ = 2 * Math.PI * r;
+        const paidPct    = paid    / Math.max(total, 1);
+        const pendPct    = pending / Math.max(total, 1);
+        const overPct    = Math.max(0, 1 - paidPct - pendPct);
+        const paidDash   = paidPct  * circ;
+        const pendDash   = pendPct  * circ;
+        const overDash   = overPct  * circ;
+        const pendOffset = -(paidPct * circ);
+        const overOffset = -((paidPct + pendPct) * circ);
+        const donutSVG   = `
+          <svg width="68" height="68" viewBox="0 0 88 88" style="transform:rotate(-90deg);flex-shrink:0">
+            <circle cx="44" cy="44" r="${r}" fill="none" stroke="var(--border-color)" stroke-width="10"/>
+            <circle cx="44" cy="44" r="${r}" fill="none" stroke="#3a9a5c" stroke-width="10"
+              stroke-dasharray="${paidDash} ${circ}" stroke-dashoffset="0"/>
+            <circle cx="44" cy="44" r="${r}" fill="none" stroke="#c97c22" stroke-width="10"
+              stroke-dasharray="${pendDash} ${circ}" stroke-dashoffset="${pendOffset}"/>
+            <circle cx="44" cy="44" r="${r}" fill="none" stroke="#c94242" stroke-width="10"
+              stroke-dasharray="${overDash} ${circ}" stroke-dashoffset="${overOffset}"/>
+          </svg>`;
 
-        <!-- ═══ ROW 1: Visual stat cards ═══ -->
-        <div class="ip-cards-row">
+        const overPctBar = Math.min(100, (overdueAmt / Math.max(revenue, 1)) * 100);
+        const maxCust    = customers[0] ? customers[0].total : 1;
 
-            <!-- Revenue card with mini donut -->
+        /* ── Revenue card ── */
+        const metricsEl = document.getElementById("insights-metrics");
+        if (metricsEl) {
+            metricsEl.innerHTML = `
             <div class="ip-card ip-card-accent"
                  onclick="sendChip('Give me a complete revenue breakdown — paid, pending and overdue')">
                 <div class="ip-card-top">
@@ -255,112 +279,92 @@ async function loadInsightsPanel() {
                         <div class="ip-card-value">₹${(revenue/100000).toFixed(1)}L</div>
                         <div class="ip-card-sub">${total} invoices total</div>
                     </div>
-                    <div class="ip-donut-wrap">
-                        <svg width="64" height="64" viewBox="0 0 88 88" style="transform:rotate(-90deg)">
-                            <circle cx="44" cy="44" r="36" fill="none" stroke="var(--border-color)" stroke-width="10"/>
-                            <circle cx="44" cy="44" r="36" fill="none" stroke="#3a9a5c" stroke-width="10"
-                                stroke-dasharray="${(paid/Math.max(total,1))*226} 226"
-                                stroke-dashoffset="0" style="transition:stroke-dasharray 0.8s ease"/>
-                            <circle cx="44" cy="44" r="36" fill="none" stroke="#c97c22" stroke-width="10"
-                                stroke-dasharray="${(pending/Math.max(total,1))*226} 226"
-                                stroke-dashoffset="${-(paid/Math.max(total,1))*226}"
-                                style="transition:stroke-dasharray 0.8s ease 0.1s"/>
-                            <circle cx="44" cy="44" r="36" fill="none" stroke="#c94242" stroke-width="10"
-                                stroke-dasharray="${((total-paid-pending)/Math.max(total,1))*226} 226"
-                                stroke-dashoffset="${-((paid+pending)/Math.max(total,1))*226}"
-                                style="transition:stroke-dasharray 0.8s ease 0.2s"/>
-                        </svg>
+                    <div class="ip-donut-wrap" style="position:relative;width:64px;height:64px;flex-shrink:0">
+                        ${donutSVG}
                         <div class="ip-donut-center">${healthPct}%</div>
                     </div>
                 </div>
                 <div class="ip-legend">
                     <span class="ip-dot" style="background:#3a9a5c"></span><span>Paid</span>
-                    <span class="ip-dot" style="background:#c97c22"></span><span>Pending</span>
-                    <span class="ip-dot" style="background:#c94242"></span><span>Overdue</span>
+                    <span class="ip-dot" style="background:#c97c22"></span><span>Pend</span>
+                    <span class="ip-dot" style="background:#c94242"></span><span>Over</span>
                 </div>
-            </div>
+            </div>`;
+        }
 
-            <!-- Overdue alert card -->
+        /* ── Overdue card ── */
+        const customersEl = document.getElementById("insights-customers");
+        if (customersEl) {
+            customersEl.innerHTML = `
             <div class="ip-card ip-card-danger"
-                 onclick="sendChip('List all overdue invoices with customer names and amounts')">
+                 onclick="sendChip('List all overdue invoices with amounts and due dates')">
                 <div class="ip-card-label">Overdue Amount</div>
                 <div class="ip-card-value" style="color:#c94242">
                     ₹${Number(overdueAmt).toLocaleString('en-IN')}
                 </div>
                 <div class="ip-card-sub">${pending} pending invoices</div>
                 <div class="ip-alert-bar">
-                    <div class="ip-alert-fill"
-                         style="width:${Math.min(100,(overdueAmt/Math.max(revenue,1))*100)}%">
-                    </div>
+                    <div class="ip-alert-fill" style="width:${overPctBar}%"></div>
                 </div>
                 <div class="ip-card-cta">Tap to see full list →</div>
-            </div>
+            </div>`;
+        }
 
-        </div>
-
-        <!-- ═══ ROW 2: Bar chart — top customers ═══ -->
-        <div class="ip-section" onclick="sendChip('Who are my top customers by revenue? Give full details')">
-            <div class="ip-section-header">
-                <span class="ip-section-title">Top Customers</span>
-                <span class="ip-section-cta">View all →</span>
-            </div>
-            <div class="ip-bars">
-                ${buildBarChart(customers)}
-            </div>
-        </div>
-
-        <!-- ═══ ROW 3: Alert rows ═══ -->
-        <div class="ip-alerts-section">
-            <div class="ip-section-header" style="margin-bottom:8px">
-                <span class="ip-section-title">Quick Actions</span>
-            </div>
-
-            <div class="ip-alert-row ip-alert-warn"
-                 onclick="sendChip('Which medicines and products are expiring in the next 30 days?')">
-                <div class="ip-alert-icon">⏰</div>
-                <div class="ip-alert-text">
-                    <strong>Expiry check</strong>
-                    <span>See items expiring soon</span>
+        /* ── Top customers bar chart + alert action rows ── */
+        const alertsEl = document.getElementById("insights-alerts");
+        if (alertsEl) {
+            alertsEl.innerHTML = `
+            <div class="ip-section"
+                 onclick="sendChip('Who are my top customers by revenue? Give full details')">
+                <div class="ip-section-header">
+                    <span class="ip-section-title">Top Customers</span>
+                    <span class="ip-section-cta">View all →</span>
                 </div>
-                <div class="ip-alert-arrow">›</div>
-            </div>
-
-            <div class="ip-alert-row ip-alert-info"
-                 onclick="sendChip('Which products have low stock and need reordering?')">
-                <div class="ip-alert-icon">📦</div>
-                <div class="ip-alert-text">
-                    <strong>Low stock</strong>
-                    <span>Items needing reorder</span>
+                <div class="ip-bars">
+                    ${customers.slice(0, 4).map(c => {
+                        const pct = Math.max(4, (c.total / maxCust) * 100);
+                        const label = c.customer.length > 12 ? c.customer.slice(0, 11) + '…' : c.customer;
+                        return `<div class="bar-row">
+                            <div class="bar-label">${label}</div>
+                            <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:var(--accent-color)"></div></div>
+                            <div class="bar-value">₹${Math.round(c.total/1000)}k</div>
+                        </div>`;
+                    }).join('')}
                 </div>
-                <div class="ip-alert-arrow">›</div>
             </div>
 
-            <div class="ip-alert-row ip-alert-red"
-                 onclick="sendChip('List all overdue invoices with amounts and due dates')">
-                <div class="ip-alert-icon">🔴</div>
-                <div class="ip-alert-text">
-                    <strong>Overdue invoices</strong>
-                    <span>₹${Number(overdueAmt).toLocaleString('en-IN')} pending recovery</span>
+            <div class="ip-alerts-section">
+                <div class="ip-alert-row ip-alert-warn"
+                     onclick="sendChip('Which medicines and products are expiring in the next 30 days?')">
+                    <div class="ip-alert-icon">⏰</div>
+                    <div class="ip-alert-text"><strong>Expiry check</strong><span>See items expiring soon</span></div>
+                    <div class="ip-alert-arrow">›</div>
                 </div>
-                <div class="ip-alert-arrow">›</div>
-            </div>
-
-            <div class="ip-alert-row ip-alert-green"
-                 onclick="sendChip('Who are my top 5 customers by revenue this period?')">
-                <div class="ip-alert-icon">🏆</div>
-                <div class="ip-alert-text">
-                    <strong>Top customers</strong>
-                    <span>${customers[0] ? customers[0].customer + ' leads' : 'See rankings'}</span>
+                <div class="ip-alert-row ip-alert-info"
+                     onclick="sendChip('Which products have low stock and need reordering?')">
+                    <div class="ip-alert-icon">📦</div>
+                    <div class="ip-alert-text"><strong>Low stock</strong><span>Items needing reorder</span></div>
+                    <div class="ip-alert-arrow">›</div>
                 </div>
-                <div class="ip-alert-arrow">›</div>
-            </div>
-
-        </div>`;
+                <div class="ip-alert-row ip-alert-red"
+                     onclick="sendChip('List all overdue invoices with amounts and due dates')">
+                    <div class="ip-alert-icon">🔴</div>
+                    <div class="ip-alert-text"><strong>Overdue invoices</strong><span>₹${Number(overdueAmt).toLocaleString('en-IN')} pending</span></div>
+                    <div class="ip-alert-arrow">›</div>
+                </div>
+                <div class="ip-alert-row ip-alert-green"
+                     onclick="sendChip('Who are my top 5 customers by revenue this period?')">
+                    <div class="ip-alert-icon">🏆</div>
+                    <div class="ip-alert-text"><strong>Top customers</strong><span>${customers[0] ? customers[0].customer + ' leads' : 'See rankings'}</span></div>
+                    <div class="ip-alert-arrow">›</div>
+                </div>
+            </div>`;
+        }
 
     } catch (e) {
         if (DEBUG) console.error("Insights panel failed:", e);
-        const panel = document.getElementById("insights-panel");
-        if (panel) panel.innerHTML = `
+        const contentContainer = document.getElementById("insights-content");
+        if (contentContainer) contentContainer.innerHTML = `
             <div style="color:var(--secondary-text);font-size:13px;padding:20px;text-align:center">
                 Could not load insights. Is the backend running?
             </div>`;

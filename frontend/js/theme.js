@@ -31,6 +31,9 @@ function applyTheme(theme) {
 
     document.body.classList.add("theme-animating");
 
+    /* classic is removed — treat as light */
+    if (theme === "classic") { theme = "light"; localStorage.setItem("theme", "light"); }
+
     document.documentElement.classList.remove("dark-mode");
 
     if (theme === "dark") {
@@ -134,10 +137,9 @@ function selectSidebar(name) {
 
         setBizHeaderRight("AI Assistant");
 
-        /* Populate insights panel with live data */
-        if (typeof loadInsightsPanel === "function") {
-            loadInsightsPanel();
-        }
+        /* Populate right panel */
+        if (typeof loadInsightsPanel === "function") loadInsightsPanel();
+        loadRpChatHistory();
 
     } else {
 
@@ -186,12 +188,12 @@ function loadBizName() {
     const el = document.getElementById("biz-name");
     if (el) {
         el.textContent = stored;
-        el.className   = "sidebar-org-name";
     }
     const bannerEl = document.getElementById("ai-biz-banner-name");
     if (bannerEl) {
         bannerEl.textContent = stored;
     }
+    updateProfileInitials();
 }
 
 function editBizName() {
@@ -218,15 +220,23 @@ function editBizName() {
         localStorage.setItem("biz_name", val);
         const span = document.createElement("span");
         span.id          = "biz-name";
-        span.className   = "sidebar-org-name";
+        span.className   = "sidebar-text profile-biz-name-text";
         span.title       = "Click to rename";
         span.textContent = val;
-        span.onclick     = editBizName;
+        span.onclick     = (e) => { editBizName(); e.stopPropagation(); };
         input.replaceWith(span);
 
         const bannerEl = document.getElementById("ai-biz-banner-name");
         if (bannerEl) {
             bannerEl.textContent = val;
+        }
+        updateProfileInitials();
+
+        // Restore collapsed state if it was collapsed
+        const sidebarCollapsed = localStorage.getItem("sidebar_collapsed") === "true";
+        const sidebarNav = document.getElementById("sidebar-nav");
+        if (sidebarNav && sidebarCollapsed) {
+            sidebarNav.classList.add("collapsed");
         }
     }
 
@@ -271,6 +281,7 @@ function editBannerBizName() {
         if (sidebarEl) {
             sidebarEl.textContent = val;
         }
+        updateProfileInitials();
     }
 
     input.addEventListener("blur",    commit);
@@ -310,6 +321,31 @@ window.addEventListener("DOMContentLoaded", () => {
     /* Load business name */
     loadBizName();
     loadBizDate();
+
+    /* Apply saved sidebar collapse state */
+    const sidebarCollapsed = localStorage.getItem("sidebar_collapsed") === "true";
+    const sidebarNav = document.getElementById("sidebar-nav");
+    if (sidebarNav && sidebarCollapsed) {
+        sidebarNav.classList.add("collapsed");
+    }
+
+    /* Apply saved insights collapse state */
+    const insightsCollapsed = localStorage.getItem("insights_collapsed") === "true";
+    if (insightsPanel && insightsCollapsed) {
+        insightsPanel.classList.add("collapsed");
+        const grid = insightsPanel.parentElement;
+        if (grid && grid.classList.contains("dashboard-grid")) {
+            grid.classList.add("insights-collapsed");
+        }
+    }
+
+    /* Restore right-panel section collapse states */
+    ["progress", "context"].forEach(name => {
+        if (localStorage.getItem(`rp_section_${name}`) === "collapsed") {
+            const section = document.getElementById(`rp-section-${name}`);
+            if (section) section.classList.add("collapsed");
+        }
+    });
 
     /* Apply saved theme */
     const savedTheme = localStorage.getItem("theme") || "system";
@@ -643,4 +679,138 @@ async function showCustomConfirm(message, title = "Confirm Action") {
         // Auto-focus confirm button
         setTimeout(() => confirmBtn.focus(), 50);
     });
+}
+
+// ── SIDEBAR TOGGLE & FOOTER LOGIC ────────────────────────────────────
+
+function toggleSidebarCollapse() {
+    const sidebar = document.getElementById("sidebar-nav");
+    if (!sidebar) return;
+    sidebar.classList.toggle("collapsed");
+    const isCollapsed = sidebar.classList.contains("collapsed");
+    localStorage.setItem("sidebar_collapsed", isCollapsed);
+}
+
+function updateProfileInitials() {
+    const stored = localStorage.getItem("biz_name") || DEFAULT_BIZ;
+    const initial = stored.charAt(0).toUpperCase();
+    const initialsBadge = document.getElementById("profile-badge-initials");
+    if (initialsBadge) {
+        initialsBadge.textContent = initial;
+    }
+    const menuBiz = document.getElementById("profile-menu-biz-name");
+    if (menuBiz) {
+        menuBiz.textContent = stored;
+    }
+}
+
+function toggleProfileMenu(event) {
+    event.stopPropagation();
+    const menu = document.getElementById("profileMenu");
+    if (!menu) return;
+    const currentDisplay = menu.style.display;
+    
+    // Close other dropdowns
+    const themeMenu = document.getElementById("themeMenu");
+    if (themeMenu) themeMenu.style.display = "none";
+    
+    if (currentDisplay === "block") {
+        menu.style.display = "none";
+    } else {
+        menu.style.display = "block";
+    }
+}
+
+function editBizNameFromMenu(event) {
+    event.stopPropagation();
+    const menu = document.getElementById("profileMenu");
+    if (menu) menu.style.display = "none";
+    
+    const sidebarNav = document.getElementById("sidebar-nav");
+    if (sidebarNav && sidebarNav.classList.contains("collapsed")) {
+        sidebarNav.classList.remove("collapsed");
+    }
+    
+    // Trigger rename on the sidebar footer name element
+    editBizName();
+}
+
+// Global click handler to close dropdowns when clicking outside
+window.addEventListener("click", (e) => {
+    const profileMenu = document.getElementById("profileMenu");
+    if (profileMenu && profileMenu.style.display === "block") {
+        const wrap = document.querySelector(".profile-badge-wrap");
+        if (wrap && !wrap.contains(e.target)) {
+            profileMenu.style.display = "none";
+        }
+    }
+});
+
+// ── INSIGHTS PANEL COLLAPSE LOGIC ────────────────────────────────────
+function toggleInsightsCollapse() {
+    const panel = document.getElementById("insights-panel");
+    if (!panel) return;
+    panel.classList.toggle("collapsed");
+
+    const grid = panel.parentElement;
+    if (grid && grid.classList.contains("dashboard-grid")) {
+        grid.classList.toggle("insights-collapsed");
+    }
+
+    const isCollapsed = panel.classList.contains("collapsed");
+    localStorage.setItem("insights_collapsed", isCollapsed);
+}
+
+// ── RIGHT PANEL SECTION COLLAPSE ─────────────────────────────────────
+function toggleRpSection(name) {
+    const section = document.getElementById(`rp-section-${name}`);
+    if (!section) return;
+    section.classList.toggle("collapsed");
+    const isCollapsed = section.classList.contains("collapsed");
+    try { localStorage.setItem(`rp_section_${name}`, isCollapsed ? "collapsed" : "open"); } catch(e) {}
+}
+
+// ── RIGHT PANEL CHAT HISTORY ─────────────────────────────────────────
+async function loadRpChatHistory() {
+    const container = document.getElementById("rp-chat-sessions-list");
+    const navLabel  = document.getElementById("rp-nav-label");
+    if (!container) return;
+
+    try {
+        const user = localStorage.getItem("user");
+        if (!user) { container.innerHTML = `<div class="rp-empty">Sign in to see history</div>`; return; }
+
+        const res      = await fetch(`${typeof API_BASE !== "undefined" ? API_BASE : "http://localhost:8001"}/chat/sessions`);
+        if (!res.ok) throw new Error("Failed");
+        const sessions = await res.json();
+
+        if (navLabel) navLabel.textContent = `${sessions.length} chat${sessions.length !== 1 ? "s" : ""}`;
+
+        if (sessions.length === 0) {
+            container.innerHTML = `<div class="rp-empty">No conversations yet</div>`;
+            return;
+        }
+
+        const curSession = typeof activeSessionId !== "undefined" ? activeSessionId : "";
+        container.innerHTML = sessions.map(s => `
+            <div class="rp-chat-item ${s.session_id === curSession ? "active" : ""}"
+                 data-session-id="${s.session_id}"
+                 onclick="selectChatSession && selectChatSession('${s.session_id}')">
+                <div class="rp-chat-title-wrapper">
+                    <svg class="rp-chat-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    <span class="rp-chat-title" title="${s.session_title || 'Untitled'}">${s.session_title || "Untitled"}</span>
+                </div>
+                <button class="rp-chat-delete" onclick="event.stopPropagation(); deleteChatSession && deleteChatSession(event, '${s.session_id}')" title="Delete conversation">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                </button>
+            </div>
+        `).join("");
+    } catch (e) {
+        container.innerHTML = `<div class="rp-empty">Could not load history</div>`;
+    }
 }

@@ -8,6 +8,15 @@
 
 
 /* -----------------------------------------
+   HEADER HELPERS — dynamic title
+----------------------------------------- */
+
+/* Header always shows biz name + date — never changes to session title */
+function setAssistantHeader(title) { /* no-op — header stays as biz name */ }
+function resetAssistantHeader()    { /* no-op */ }
+
+
+/* -----------------------------------------
    TEXTAREA — auto-resize + Enter to send
 ----------------------------------------- */
 
@@ -18,6 +27,16 @@ if (!textarea && DEBUG) console.warn("`#user-input` not found");
 textarea.addEventListener("input", () => {
     textarea.style.height = "auto";
     textarea.style.height = textarea.scrollHeight + "px";
+
+    // Toggle send button active style by adding/removing has-content class
+    const inputArea = textarea.closest(".input-area");
+    if (inputArea) {
+        if (textarea.value.trim().length > 0) {
+            inputArea.classList.add("has-content");
+        } else {
+            inputArea.classList.remove("has-content");
+        }
+    }
 
     // Collapse banner on typing, restore when input is empty and chat has no messages
     const currentActive = document.documentElement.getAttribute("data-active");
@@ -196,19 +215,27 @@ async function sendMessage() {
     hideChips();
 
     /* --- User bubble --- */
+    const userRow       = document.createElement("div");
+    userRow.className   = "message-row user-row";
     const userDiv       = document.createElement("div");
     userDiv.className   = "message user";
     userDiv.textContent = message;
-    chatBox.appendChild(userDiv);
+    userRow.appendChild(userDiv);
+    chatBox.appendChild(userRow);
 
     input.value           = "";
     textarea.style.height = "auto";
+    const inputArea = textarea.closest(".input-area");
+    if (inputArea) {
+        inputArea.classList.remove("has-content");
+    }
 
-    /* --- Typing indicator --- */
-    const loading     = document.createElement("div");
-    loading.className = "loading-dots";
-    loading.innerHTML = `<div class="typing"><span></span><span></span><span></span></div>`;
-    chatBox.appendChild(loading);
+    /* --- Typing indicator (inside a bot-row) --- */
+    const loadingRow     = document.createElement("div");
+    loadingRow.className = "message-row bot-row";
+    loadingRow.innerHTML = `<div class="bot-avatar">B</div><div class="loading-dots"><div class="typing"><span></span><span></span><span></span></div></div>`;
+    const loading        = loadingRow;
+    chatBox.appendChild(loadingRow);
     chatBox.scrollTop = chatBox.scrollHeight;
 
     const isNewSession = !activeSessionId;
@@ -240,7 +267,10 @@ async function sendMessage() {
                 <div style="margin-bottom: 8px;">${data.error}</div>
                 <div style="font-size: 12px; opacity: 0.85;">Please wait 1-2 minutes before trying again.</div>
             `;
-            chatBox.appendChild(errorDiv);
+            const errRow = document.createElement("div");
+            errRow.className = "message-row bot-row";
+            errRow.appendChild(errorDiv);
+            chatBox.appendChild(errRow);
             chatBox.scrollTop = chatBox.scrollHeight;
 
             /* --- Disable input for 2 minutes --- */
@@ -248,7 +278,7 @@ async function sendMessage() {
             input.placeholder = "⏳ Rate limited... Please wait 2 minutes";
 
             /* --- Also disable send button --- */
-            const sendBtn = document.querySelector(".input-area button");
+            const sendBtn = document.querySelector(".input-area .send-btn");
             if (sendBtn) {
                 sendBtn.disabled = true;
                 sendBtn.style.opacity = "0.5";
@@ -277,6 +307,11 @@ async function sendMessage() {
             loadChatSessions(isNewSession); // refresh sidebar list
         }
 
+        // Update header to show session title
+        if (data.session_title) {
+            setAssistantHeader(data.session_title);
+        }
+
         const text = data.response || "";
         const source = data.source || "unknown";
         const isCached = !!data.cached;
@@ -294,10 +329,14 @@ async function sendMessage() {
 
         loading.remove();
 
-        /* --- Bot bubble — render markdown then typewrite --- */
-        const botDiv     = document.createElement("div");
+        /* --- Bot message — avatar + plain text, no name label --- */
+        const botRow = document.createElement("div");
+        botRow.className = "message-row bot-row";
+        botRow.innerHTML = `<div class="bot-avatar">B</div>`;
+        const botDiv = document.createElement("div");
         botDiv.className = "message bot";
-        chatBox.appendChild(botDiv);
+        botRow.appendChild(botDiv);
+        chatBox.appendChild(botRow);
 
         /* Typewrite the raw text, re-render markdown on each tick.
            This gives the "typing" feel while keeping proper HTML. */
@@ -336,7 +375,10 @@ async function sendMessage() {
         const errorDiv = document.createElement("div");
         errorDiv.className = "message message-error";
         errorDiv.textContent = `${error.message} → Error connecting to AI. Please try again.`;
-        chatBox.appendChild(errorDiv);
+        const errRow2 = document.createElement("div");
+        errRow2.className = "message-row bot-row";
+        errRow2.appendChild(errorDiv);
+        chatBox.appendChild(errRow2);
         chatBox.scrollTop = chatBox.scrollHeight;
     }
 }
@@ -385,9 +427,9 @@ function sendChip(question) {
 ----------------------------------------- */
 
 function removeEmptyStateImmediately() {
+    document.documentElement.classList.add("chat-active");
     const emptyState = document.getElementById("chat-empty-state");
     if (emptyState) {
-        document.documentElement.classList.add("chat-active");
         emptyState.remove();
     }
 }
@@ -395,6 +437,9 @@ function removeEmptyStateImmediately() {
 async function loadChatSessions(selectFirstIfNoActive = false) {
     const listContainer = document.getElementById("chat-sessions-list");
     if (!listContainer) return;
+
+    /* Also refresh the right panel chat history */
+    if (typeof loadRpChatHistory === "function") loadRpChatHistory();
 
     try {
         console.log("Loading chat sessions list...");
@@ -412,14 +457,19 @@ async function loadChatSessions(selectFirstIfNoActive = false) {
         sessions.forEach(s => {
             const activeClass = s.session_id === activeSessionId ? "active" : "";
             const sessionDiv = document.createElement("div");
-            sessionDiv.className = `chat-session-item ${activeClass}`;
+            sessionDiv.className = `rp-chat-item ${activeClass}`;
             sessionDiv.setAttribute("data-session-id", s.session_id);
             sessionDiv.onclick = () => selectChatSession(s.session_id);
 
             sessionDiv.innerHTML = `
-                <span class="chat-session-title" title="${s.session_title}">${s.session_title}</span>
-                <button class="chat-session-delete" onclick="deleteChatSession(event, '${s.session_id}')" title="Delete thread">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <div class="rp-chat-title-wrapper">
+                    <svg class="rp-chat-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    <span class="rp-chat-title" title="${s.session_title || 'Untitled'}">${s.session_title || 'Untitled'}</span>
+                </div>
+                <button class="rp-chat-delete" onclick="event.stopPropagation(); deleteChatSession(event, '${s.session_id}')" title="Delete conversation">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="3 6 5 6 21 6"></polyline>
                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                     </svg>
@@ -444,7 +494,7 @@ async function loadChatSessions(selectFirstIfNoActive = false) {
                 selectChatSession(sessions[0].session_id);
             } else {
                 // Ensure proper active CSS class is maintained
-                const items = listContainer.querySelectorAll(".chat-session-item");
+                const items = listContainer.querySelectorAll(".rp-chat-item");
                 items.forEach(item => {
                     if (item.getAttribute("data-session-id") === activeSessionId) {
                         item.classList.add("active");
@@ -471,7 +521,7 @@ async function selectChatSession(sessionId) {
     }
 
     // Update UI active styles in sidebar
-    const items = document.querySelectorAll(".chat-session-item");
+    const items = document.querySelectorAll(".rp-chat-item");
     items.forEach(item => {
         if (item.getAttribute("data-session-id") === sessionId) {
             item.classList.add("active");
@@ -500,16 +550,30 @@ async function fetchChatHistory(sessionId) {
         const history = await response.json();
         if (history.length > 0) {
             removeEmptyStateImmediately();
+
+            // Set header to session title from first message
+            const sessionTitle = history[0]?.session_title;
+            if (sessionTitle) setAssistantHeader(sessionTitle);
             
             history.forEach(m => {
-                const div = document.createElement("div");
-                div.className = m.role === "user" ? "message user" : "message bot";
                 if (m.role === "user") {
+                    const row = document.createElement("div");
+                    row.className = "message-row user-row";
+                    const div = document.createElement("div");
+                    div.className = "message user";
                     div.textContent = m.content;
+                    row.appendChild(div);
+                    chatBox.appendChild(row);
                 } else {
+                    const row = document.createElement("div");
+                    row.className = "message-row bot-row";
+                    row.innerHTML = `<div class="bot-avatar">B</div>`;
+                    const div = document.createElement("div");
+                    div.className = "message bot";
                     div.innerHTML = renderMarkdown(m.content);
+                    row.appendChild(div);
+                    chatBox.appendChild(row);
                 }
-                chatBox.appendChild(div);
             });
             chatBox.scrollTop = chatBox.scrollHeight;
         } else {
@@ -525,8 +589,11 @@ function startNewChat() {
     localStorage.removeItem("active_session_id");
 
     // Remove active styles from sidebar
-    const items = document.querySelectorAll(".chat-session-item");
+    const items = document.querySelectorAll(".rp-chat-item");
     items.forEach(item => item.classList.remove("active"));
+
+    // Reset header to default
+    resetAssistantHeader();
 
     // Restore empty welcome screen
     restoreEmptyState();
@@ -618,12 +685,15 @@ function toggleHistoryPopup() {
 
 // Close the history popup when clicking outside of it
 window.addEventListener("click", (e) => {
-    const popup = document.getElementById("chat-history-popup");
-    const toggleBtn = document.querySelector(".history-toggle-btn");
+    const popup     = document.getElementById("chat-history-popup");
+    const toggleBtn = document.querySelector(".history-btn");
     if (popup && !popup.classList.contains("hidden")) {
-        // Close if click target is outside the popup and not the toggle button itself
         if (!popup.contains(e.target) && (!toggleBtn || !toggleBtn.contains(e.target))) {
             popup.classList.add("hidden");
         }
     }
 });
+
+async function showFutureVoiceAlert() {
+    await showCustomAlert("Voice integration (voice commands and speech readout) is coming in a future update! Stay tuned.", "Voice Assistant");
+}

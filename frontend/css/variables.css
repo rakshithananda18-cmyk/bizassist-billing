@@ -22,50 +22,58 @@
 /* ---- FONTS ---- */
 @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Geist+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');
 
-/* ---- LIGHT MODE (Cozy Warm Beige) ---- */
+/* ---- LIGHT MODE — Exact Claude brand colors ---- */
+/*
+   Pampas  #F4F3EE  — background (Claude's page bg)
+   White   #FFFFFF  — cards/panels
+   Crail   #C15F3C  — accent (Claude's terracotta orange)
+   Cloudy  #B1ADA1  — secondary text (Claude's muted gray)
+*/
 :root {
-    --bg-color:        #f4efe2;      /* Cozy warm beige background */
-    --sidebar-color:   #ebdcb9;      /* Warmer cozy beige sidebar */
-    --card-color:      #faf8f5;      /* Soft warm cream cards */
-    --text-color:      #2e2a22;      /* Deep warm charcoal text */
-    --secondary-text:  #857460;      /* Warm muted brown secondary text */
-    --accent-color:    #c96442;      /* Warm coral-orange */
-    --accent-hover:    #b5542f;
-    --accent-soft:     rgba(201,100,66,0.10);
-    --accent-softer:   rgba(201,100,66,0.06);
-    --input-bg:        #e5d8b8;
-    --bot-bg:          #e5d8b8;
-    --border-color:    #ebdcb9;
-    --border-subtle:   rgba(201,100,66,0.12);
-    --shadow-sm:       0 1px 4px rgba(46,42,34,0.07);
-    --shadow-md:       0 4px 16px rgba(46,42,34,0.10);
-    --shadow-lg:       0 8px 32px rgba(46,42,34,0.13);
-    --highlight-bg:    rgba(201,100,66,0.08);
-    --code-bg:         #e5d8b8;
-    --tag-bg:          rgba(201,100,66,0.10);
+    --bg-color:        #fdfdfc;      /* Near-white warm page background */
+    --sidebar-color:   #ffffff;      /* Pure white — left sidebar */
+    --card-color:      #ffffff;      /* Pure white — cards & panels */
+    --text-color:      #000000;      /* Pure Black body text & headings */
+    --secondary-text:  #a2a2a1;      /* Grey subtext & subheadings (#A2A2A1) */
+    --accent-color:    #c15f3c;      /* Crail — Claude's exact terracotta */
+    --accent-hover:    #a84e2e;      /* Crail-dark */
+    --accent-soft:     rgba(193,95,60,0.10);
+    --accent-softer:   rgba(193,95,60,0.05);
+    --input-bg:        #ffffff;      /* Pure white — input box background */
+    --hover-bg:        #f4f4f1;      /* Light soft grey hover */
+    --cards-title-color: #000000;    /* Pure Black cards title text */
+    --bot-bg:          transparent;
+    --border-color:    #e6e4de;      /* Warm light border */
+    --border-subtle:   rgba(193,95,60,0.12);
+    --shadow-sm:       0 1px 4px rgba(26,23,20,0.08), 0 0 1px rgba(26,23,20,0.04);
+    --shadow-md:       0 4px 16px rgba(26,23,20,0.10), 0 1px 4px rgba(26,23,20,0.06);
+    --shadow-lg:       0 8px 32px rgba(26,23,20,0.14), 0 2px 8px rgba(26,23,20,0.08);
+    --highlight-bg:    rgba(193,95,60,0.07);
+    --code-bg:         #eceae4;
+    --tag-bg:          rgba(193,95,60,0.09);
 }
 
-/* ---- DARK MODE (Claude's dark charcoal) ---- */
+/* ---- DARK MODE — Claude's warm charcoal ---- */
 .dark-mode {
-    --bg-color:        #1a1915;
-    --sidebar-color:   #141411;
-    --card-color:      #212119;
-    --text-color:      #f0ece5;
-    --secondary-text:  #8a8070;
-    --accent-color:    #da7756;      /* slightly brighter in dark */
-    --accent-hover:    #e8896a;
-    --accent-soft:     rgba(218,119,86,0.12);
-    --accent-softer:   rgba(218,119,86,0.06);
-    --input-bg:        #2a2924;
-    --bot-bg:          #272521;
-    --border-color:    #2e2c27;
-    --border-subtle:   rgba(218,119,86,0.15);
-    --shadow-sm:       0 1px 4px rgba(0,0,0,0.25);
-    --shadow-md:       0 4px 16px rgba(0,0,0,0.35);
-    --shadow-lg:       0 8px 32px rgba(0,0,0,0.45);
-    --highlight-bg:    rgba(218,119,86,0.10);
-    --code-bg:         #1e1d1a;
-    --tag-bg:          rgba(218,119,86,0.12);
+    --bg-color:        #1c1917;      /* Claude dark — warm near-black */
+    --sidebar-color:   #15120f;      /* Darker strip */
+    --card-color:      #252018;      /* Warm dark card */
+    --text-color:      #ede8e0;      /* Warm off-white */
+    --secondary-text:  #857f74;      /* Cloudy dark */
+    --accent-color:    #d4714a;      /* Crail lightened for dark bg */
+    --accent-hover:    #e07f58;
+    --accent-soft:     rgba(212,113,74,0.13);
+    --accent-softer:   rgba(212,113,74,0.07);
+    --input-bg:        #2a2620;
+    --bot-bg:          transparent;
+    --border-color:    #302c26;
+    --border-subtle:   rgba(212,113,74,0.18);
+    --shadow-sm:       0 1px 4px rgba(0,0,0,0.28);
+    --shadow-md:       0 4px 16px rgba(0,0,0,0.38);
+    --shadow-lg:       0 8px 32px rgba(0,0,0,0.48);
+    --highlight-bg:    rgba(212,113,74,0.10);
+    --code-bg:         #1e1b17;
+    --tag-bg:          rgba(212,113,74,0.12);
 }
 
 /* ---- RESET ---- */
@@ -77,7 +85,7 @@
 
 html {
     color-scheme: light dark;
-    scrollbar-color: rgba(201,100,66,0.22) transparent;
+    scrollbar-color: rgba(193,95,60,0.22) transparent;
 }
 
 /* ---- BASE ---- */

@@ -143,3 +143,25 @@ class ChatMessage(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     session_id = Column(String, index=True, nullable=True)
     session_title = Column(String, nullable=True)
+
+
+# -------------------------
+# DOCUMENT EMBEDDINGS TABLE
+# -------------------------
+
+class DocumentEmbedding(Base):
+
+    __tablename__ = "document_embeddings"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True
+    )
+
+    business_id = Column(Integer, index=True)
+    file_id = Column(Integer, nullable=True, index=True)
+    document_type = Column(String)  # "invoice", "inventory", "payment"
+    record_id = Column(Integer, nullable=True)  # References the ID of the matched row
+    text_content = Column(String)  # The text representation that was embedded
+    embedding_json = Column(String)  # JSON-serialized list of floats (embedding vector)

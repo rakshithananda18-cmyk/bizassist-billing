@@ -2,8 +2,9 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from database.db import SessionLocal
-from database.models import User, Invoice, Inventory, UploadedFile
-from services.auth import get_active_user
+from database.models import User, Invoice, Inventory, UploadedFile, Payment, ChatMessage, DocumentEmbedding
+from services.auth import get_active_user, hash_password
+from services.context_cache import invalidate, invalidate_user_cache, get_cache_stats
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.admin")
@@ -47,5 +48,324 @@ def admin_businesses(current_user: dict = Depends(get_active_user)):
     except Exception as e:
         logger.error(f"Error fetching admin businesses database statistics: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error retrieving admin database records")
+    finally:
+        db.close()
+
+
+@router.delete("/admin/wipe-all-data")
+def wipe_all_data(current_user: dict = Depends(get_active_user)):
+    logger.info(f"User {current_user['id']} requesting admin data wipe...")
+    db = SessionLocal()
+    try:
+        # Verify admin role
+        admin_user = db.query(User).filter(User.id == current_user["id"]).first()
+        if not admin_user or admin_user.role != "admin":
+            logger.warning(f"Access denied: User {current_user['id']} is not an admin (role={getattr(admin_user, 'role', None)})")
+            raise HTTPException(status_code=403, detail="Access denied. Admin role required.")
+        
+        # Delete all dynamic data
+        db.query(Invoice).delete()
+        db.query(Inventory).delete()
+        db.query(Payment).delete()
+        db.query(UploadedFile).delete()
+        db.query(DocumentEmbedding).delete()
+        db.query(ChatMessage).delete()
+        db.commit()
+        
+        # Invalidate all context and query response caches
+        invalidate()
+        logger.info("Admin successfully wiped all dynamic database records and flushed global context caches.")
+        return {"status": "success", "message": "All business invoices, inventory, payments, uploads, document embeddings, and chat messages have been deleted, and cache is flushed."}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error wiping all dynamic database records: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error wiping database records")
+    finally:
+        db.close()
+
+
+@router.post("/admin/flush-cache/{user_id}")
+def flush_user_cache(user_id: int, current_user: dict = Depends(get_active_user)):
+    logger.info(f"User {current_user['id']} requesting cache flush for user {user_id}...")
+    db = SessionLocal()
+    try:
+        # Verify admin role
+        admin_user = db.query(User).filter(User.id == current_user["id"]).first()
+        if not admin_user or admin_user.role != "admin":
+            logger.warning(f"Access denied: User {current_user['id']} is not an admin (role={getattr(admin_user, 'role', None)})")
+            raise HTTPException(status_code=403, detail="Access denied. Admin role required.")
+        
+        # Verify target user exists
+        target_user = db.query(User).filter(User.id == user_id).first()
+        if not target_user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Invalidate user cache
+        invalidate_user_cache(user_id)
+        logger.info(f"Admin successfully flushed cache for user {user_id} ({target_user.username}).")
+        return {"status": "success", "message": f"Cache flushed for user {target_user.username} (ID: {user_id})."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error flushing cache for user {user_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error flushing user cache")
+    finally:
+        db.close()
+
+
+@router.delete("/admin/wipe-user-data/{user_id}")
+def wipe_user_data(user_id: int, current_user: dict = Depends(get_active_user)):
+    logger.info(f"User {current_user['id']} requesting admin data wipe for user {user_id}...")
+    db = SessionLocal()
+    try:
+        # Verify admin role
+        admin_user = db.query(User).filter(User.id == current_user["id"]).first()
+        if not admin_user or admin_user.role != "admin":
+            logger.warning(f"Access denied: User {current_user['id']} is not an admin (role={getattr(admin_user, 'role', None)})")
+            raise HTTPException(status_code=403, detail="Access denied. Admin role required.")
+        
+        # Verify target user exists
+        target_user = db.query(User).filter(User.id == user_id).first()
+        if not target_user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Delete dynamic data for target user
+        db.query(Invoice).filter(Invoice.business_id == user_id).delete()
+        db.query(Inventory).filter(Inventory.business_id == user_id).delete()
+        db.query(Payment).filter(Payment.business_id == user_id).delete()
+        db.query(UploadedFile).filter(UploadedFile.business_id == user_id).delete()
+        db.query(DocumentEmbedding).filter(DocumentEmbedding.business_id == user_id).delete()
+        db.query(ChatMessage).filter(ChatMessage.business_id == user_id).delete()
+        
+        # Also delete the User account itself
+        db.delete(target_user)
+        db.commit()
+        
+        # Invalidate target user's context and query response cache
+        invalidate_user_cache(user_id)
+        logger.info(f"Admin successfully wiped dynamic database records and flushed context cache for user {user_id} ({target_user.username}).")
+        return {"status": "success", "message": f"All dynamic business data for user {target_user.username} has been deleted and cache is flushed."}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error wiping dynamic database records for user {user_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error wiping user database records")
+    finally:
+        db.close()
+
+
+@router.get("/admin/cache-stats")
+def get_admin_cache_stats(current_user: dict = Depends(get_active_user)):
+    logger.info(f"User {current_user['id']} requesting admin cache stats...")
+    db = SessionLocal()
+    try:
+        # Verify admin role
+        admin_user = db.query(User).filter(User.id == current_user["id"]).first()
+        if not admin_user or admin_user.role != "admin":
+            logger.warning(f"Access denied: User {current_user['id']} is not an admin")
+            raise HTTPException(status_code=403, detail="Access denied. Admin role required.")
+        
+        return get_cache_stats()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching admin cache statistics: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error retrieving cache stats")
+    finally:
+        db.close()
+
+
+@router.get("/admin/business-details/{user_id}")
+def get_business_details(user_id: int, current_user: dict = Depends(get_active_user)):
+    logger.info(f"User {current_user['id']} requesting details tree for user {user_id}...")
+    db = SessionLocal()
+    try:
+        # Verify admin role
+        admin_user = db.query(User).filter(User.id == current_user["id"]).first()
+        if not admin_user or admin_user.role != "admin":
+            logger.warning(f"Access denied: User {current_user['id']} is not an admin")
+            raise HTTPException(status_code=403, detail="Access denied. Admin role required.")
+        
+        # Verify target user exists
+        target_user = db.query(User).filter(User.id == user_id).first()
+        if not target_user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Retrieve all details
+        uploads = db.query(UploadedFile).filter(UploadedFile.business_id == user_id).all()
+        invoices = db.query(Invoice).filter(Invoice.business_id == user_id).all()
+        inventory = db.query(Inventory).filter(Inventory.business_id == user_id).all()
+        payments = db.query(Payment).filter(Payment.business_id == user_id).all()
+        chat_messages = db.query(ChatMessage).filter(ChatMessage.business_id == user_id).order_by(ChatMessage.timestamp.desc()).all()
+        
+        return {
+            "id": target_user.id,
+            "username": target_user.username,
+            "business_name": target_user.business_name,
+            "uploads": [
+                {
+                    "id": u.id,
+                    "filename": u.filename,
+                    "file_type": u.file_type,
+                    "rows_count": u.rows_count,
+                    "upload_time": u.upload_time
+                } for u in uploads
+            ],
+            "invoices": [
+                {
+                    "id": inv.id,
+                    "invoice_id": inv.invoice_id,
+                    "customer": inv.customer,
+                    "product": inv.product,
+                    "amount": inv.amount,
+                    "status": inv.status,
+                    "invoice_date": inv.invoice_date,
+                    "due_date": inv.due_date
+                } for inv in invoices
+            ],
+            "inventory": [
+                {
+                    "id": item.id,
+                    "product_name": item.product_name,
+                    "stock": item.stock,
+                    "expiry_date": item.expiry_date,
+                    "supplier": item.supplier
+                } for item in inventory
+            ],
+            "payments": [
+                {
+                    "id": p.id,
+                    "customer": p.customer,
+                    "amount": p.amount,
+                    "due_date": p.due_date,
+                    "paid": p.paid
+                } for p in payments
+            ],
+            "chat_history": [
+                {
+                    "id": m.id,
+                    "role": m.role,
+                    "content": m.content,
+                    "session_id": m.session_id,
+                    "session_title": m.session_title,
+                    "timestamp": m.timestamp.isoformat() if m.timestamp else None
+                } for m in chat_messages
+            ]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching details tree for user {user_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error retrieving user details tree")
+    finally:
+        db.close()
+
+
+# ── USER MANAGEMENT SCHEMAS & ROUTES ─────────────────────────────────
+from pydantic import BaseModel
+from typing import Optional
+
+class AdminCreateUserRequest(BaseModel):
+    username: str
+    password: str
+    business_name: str
+
+class AdminUpdateUserRequest(BaseModel):
+    username: Optional[str] = None
+    password: Optional[str] = None
+    business_name: Optional[str] = None
+
+
+@router.post("/admin/create-user")
+def create_merchant_user(req: AdminCreateUserRequest, current_user: dict = Depends(get_active_user)):
+    logger.info(f"User {current_user['id']} requesting admin user creation for username '{req.username}'...")
+    db = SessionLocal()
+    try:
+        # Verify admin role
+        admin_user = db.query(User).filter(User.id == current_user["id"]).first()
+        if not admin_user or admin_user.role != "admin":
+            logger.warning(f"Access denied: User {current_user['id']} is not an admin")
+            raise HTTPException(status_code=403, detail="Access denied. Admin role required.")
+        
+        # Verify username uniqueness
+        existing = db.query(User).filter(User.username == req.username).first()
+        if existing:
+            logger.warning(f"Failed user creation: username '{req.username}' already exists.")
+            raise HTTPException(status_code=400, detail="Username already exists")
+        
+        # Create merchant user
+        new_user = User(
+            username=req.username,
+            password=hash_password(req.password),
+            business_name=req.business_name,
+            role="enterprise"
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        
+        logger.info(f"Admin successfully created new merchant account ID {new_user.id} ({req.username}).")
+        return {"status": "success", "message": f"Merchant user {req.username} created successfully.", "user_id": new_user.id}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating merchant account: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error creating merchant user")
+    finally:
+        db.close()
+
+
+@router.put("/admin/update-user/{user_id}")
+def update_merchant_user(user_id: int, req: AdminUpdateUserRequest, current_user: dict = Depends(get_active_user)):
+    logger.info(f"User {current_user['id']} requesting admin user edit for user {user_id}...")
+    db = SessionLocal()
+    try:
+        # Verify admin role
+        admin_user = db.query(User).filter(User.id == current_user["id"]).first()
+        if not admin_user or admin_user.role != "admin":
+            logger.warning(f"Access denied: User {current_user['id']} is not an admin")
+            raise HTTPException(status_code=403, detail="Access denied. Admin role required.")
+        
+        # Verify target user exists
+        target_user = db.query(User).filter(User.id == user_id).first()
+        if not target_user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # If username is changing, verify uniqueness
+        if req.username and req.username != target_user.username:
+            existing = db.query(User).filter(User.username == req.username).first()
+            if existing:
+                logger.warning(f"Failed user update: username '{req.username}' already exists.")
+                raise HTTPException(status_code=400, detail="Username already exists")
+            target_user.username = req.username
+        
+        # Update fields if provided
+        if req.business_name:
+            target_user.business_name = req.business_name
+        
+        if req.password:
+            target_user.password = hash_password(req.password)
+            
+        db.commit()
+        
+        # Invalidate target user's cache to avoid any inconsistencies
+        invalidate_user_cache(user_id)
+        
+        logger.info(f"Admin successfully updated merchant account ID {user_id} ({target_user.username}).")
+        return {"status": "success", "message": f"Merchant user {target_user.username} updated successfully."}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating merchant account: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error updating merchant user")
     finally:
         db.close()

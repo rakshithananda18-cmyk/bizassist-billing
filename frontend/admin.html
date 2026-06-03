@@ -124,6 +124,163 @@
         .back-to-app:hover {
             color: var(--accent-color);
         }
+        .btn-wipe {
+            background: #d32f2f;
+            color: #ffffff;
+            border: 1px solid #d32f2f;
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .btn-wipe:hover {
+            background: #b71c1c;
+            border-color: #b71c1c;
+        }
+        .btn-flush {
+            background: transparent;
+            color: var(--accent-color);
+            border: 1px solid var(--accent-color);
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+        .btn-flush:hover {
+            background: var(--accent-color);
+            color: #ffffff;
+        }
+        .btn-wipe-row {
+            background: transparent;
+            color: #d32f2f;
+            border: 1px solid #d32f2f;
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+        .btn-wipe-row:hover {
+            background: #d32f2f;
+            color: #ffffff;
+        }
+        .cache-entry-card {
+            background: rgba(201,100,66,0.03);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .cache-meta-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+        }
+        .cache-bar-bg {
+            height: 6px;
+            background: var(--accent-softer);
+            border-radius: 3px;
+            overflow: hidden;
+            width: 100%;
+        }
+        .cache-bar-fill {
+            height: 100%;
+            background: var(--accent-color);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: scale(0.97); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .tree-node {
+            display: block !important;
+            height: auto !important;
+            flex-shrink: 0;
+            border: 1.5px solid var(--border-color);
+            border-radius: 10px;
+            background: var(--card-gradient);
+            overflow: hidden;
+            margin-bottom: 12px;
+            transition: border-color 0.2s;
+        }
+        .tree-node:hover {
+            border-color: var(--accent-color);
+        }
+        .tree-summary {
+            padding: 14px 18px;
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-color);
+            cursor: pointer;
+            list-style: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+        }
+        .tree-summary::-webkit-details-marker {
+            display: none;
+        }
+        .tree-summary::after {
+            content: '📁';
+            font-size: 14px;
+            transition: transform 0.2s;
+        }
+        details[open] > .tree-summary::after {
+            content: '📂';
+        }
+        .tree-content {
+            padding: 0 18px 18px 18px;
+            border-top: 1px solid var(--border-color);
+            background: var(--accent-softer);
+        }
+        .tree-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+            font-size: 13px;
+            text-align: left;
+        }
+        .tree-table th {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1.5px solid var(--border-color);
+            color: var(--secondary-text);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .tree-table td {
+            padding: 8px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-color);
+        }
+        .tree-table tr:last-child td {
+            border-bottom: none;
+        }
+        .chat-tree-bubble {
+            background: var(--card-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 8px;
+            font-size: 13px;
+            text-align: left;
+        }
+        .chat-tree-bubble.user {
+            border-left: 3px solid var(--accent-color);
+        }
+        .chat-tree-bubble.assistant {
+            border-left: 3px solid #3a9a5c;
+        }
     </style>
 </head>
 <body class="preload">
@@ -174,9 +331,14 @@
                     <h1>✦ BIZASSIST ADMIN WORKSPACE</h1>
                     <p>Aggregated tracking & telemetry for all enterprise business accounts</p>
                 </div>
-                <button class="logout-btn" onclick="adminLogout()" style="padding: 10px 16px !important; font-size: 13px !important;">
-                    Sign Out ➔
-                </button>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <button class="btn-wipe" onclick="wipeAllData()">
+                        Wipe All Business Data ⚠
+                    </button>
+                    <button class="logout-btn" onclick="adminLogout()" style="padding: 10px 16px !important; font-size: 13px !important;">
+                        Sign Out ➔
+                    </button>
+                </div>
             </div>
 
             <!-- STATS STRIP -->
@@ -198,9 +360,34 @@
                 </div>
             </div>
 
+            <!-- CACHE & TELEMETRY MONITOR -->
+            <div class="admin-table-widget">
+                <div class="admin-table-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <span>Cache & Telemetry Monitor</span>
+                    <button onclick="loadCacheStats()" class="btn-flush" style="padding: 4px 10px; font-size: 11px;">Refresh Stats ⟳</button>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                    <div>
+                        <h3 style="font-size: 13px; color: var(--secondary-text); margin-bottom: 12px; font-weight: 600;">ACTIVE CONTEXT CACHES</h3>
+                        <div id="context-cache-list" style="display: flex; flex-direction: column; gap: 12px;">
+                            <!-- Filled dynamically -->
+                        </div>
+                    </div>
+                    <div>
+                        <h3 style="font-size: 13px; color: var(--secondary-text); margin-bottom: 12px; font-weight: 600;">ACTIVE QUERY RESPONSE CACHES</h3>
+                        <div id="query-cache-list" style="display: flex; flex-direction: column; gap: 12px;">
+                            <!-- Filled dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- REGISTERED ENTERPRISES TABLE -->
             <div class="admin-table-widget">
-                <div class="admin-table-title">Enterprise Business Directory</div>
+                <div class="admin-table-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <span>Enterprise Business Directory</span>
+                    <button class="btn-flush" onclick="openCreateMerchantModal()" style="padding: 4px 10px; font-size: 11px;">+ Add New Merchant</button>
+                </div>
                 <table class="admin-table">
                     <thead>
                         <tr>
@@ -211,6 +398,7 @@
                             <th>Tracked Revenue</th>
                             <th>Inventory Stock Count</th>
                             <th>Upload History</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="businesses-table-body">
@@ -320,7 +508,7 @@
                 body.innerHTML = "";
 
                 if (list.length === 0) {
-                    body.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--secondary-text);padding:30px;">No enterprise businesses registered yet.</td></tr>`;
+                    body.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--secondary-text);padding:30px;">No enterprise businesses registered yet.</td></tr>`;
                     return;
                 }
 
@@ -334,16 +522,485 @@
                         <td style="font-family:'Crimson Pro',serif;font-size:16px;font-weight:600;">₹${b.total_revenue.toLocaleString('en-IN')}</td>
                         <td>${b.inventory_count} items</td>
                         <td>${b.upload_count} datasets</td>
+                        <td style="display: flex; gap: 8px; align-items: center;">
+                            <button class="btn-flush" onclick="inspectBusiness(${b.id})">Inspect</button>
+                            <button class="btn-flush" onclick="editBusiness(${b.id}, '${b.business_name.replace(/'/g, "\\'")}', '${b.username.replace(/'/g, "\\'")}')">Edit</button>
+                            <button class="btn-flush" onclick="flushCache(${b.id}, '${b.business_name.replace(/'/g, "\\'")}')">Flush Cache</button>
+                            <button class="btn-wipe-row" onclick="wipeUserData(${b.id}, '${b.business_name.replace(/'/g, "\\'")}')">Wipe Data</button>
+                        </td>
                     `;
                     body.appendChild(tr);
                 });
 
+                // Reload cache stats too
+                loadCacheStats();
             } catch (err) {
                 console.error("Admin load error:", err);
             }
         }
 
+        async function wipeAllData() {
+            if (!confirm("WARNING: This will permanently delete all dynamic business data (invoices, inventory, payments, uploads, document embeddings, and chat messages) across all user accounts. Are you absolutely sure you want to proceed?")) {
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/admin/wipe-all-data`, {
+                    method: "DELETE"
+                });
+
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.detail || "Failed to wipe database data.");
+                }
+
+                const data = await res.json();
+                alert(data.message || "All dynamic business data has been wiped successfully.");
+                
+                // Reload statistics and directory table
+                await loadAdminDirectory();
+            } catch (err) {
+                alert("Error: " + err.message);
+            }
+        }
+
+        async function flushCache(userId, businessName) {
+            if (!confirm(`Are you sure you want to flush the cached context and query response lookups for ${businessName}?`)) {
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/admin/flush-cache/${userId}`, {
+                    method: "POST"
+                });
+
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.detail || "Failed to flush cache.");
+                }
+
+                const data = await res.json();
+                alert(data.message || `Cache flushed for ${businessName} successfully.`);
+            } catch (err) {
+                alert("Error: " + err.message);
+            }
+        }
+
+        async function loadCacheStats() {
+            const admin = localStorage.getItem("admin_user");
+            if (!admin) return;
+
+            try {
+                const res = await fetch(`${API_BASE}/admin/cache-stats`);
+                if (!res.ok) throw new Error("Could not load cache stats");
+
+                const stats = await res.json();
+                
+                const contextList = document.getElementById("context-cache-list");
+                const queryList = document.getElementById("query-cache-list");
+
+                contextList.innerHTML = "";
+                queryList.innerHTML = "";
+
+                if (stats.context_cache.length === 0) {
+                    contextList.innerHTML = `<div style="color:var(--secondary-text);font-size:13px;padding:10px;">No context caches built yet.</div>`;
+                } else {
+                    stats.context_cache.forEach(item => {
+                        const builtAtStr = item.built_at ? new Date(item.built_at * 1000).toLocaleTimeString() : "N/A";
+                        const estTokens = Math.round(item.size_chars / 4);
+                        const pct = Math.min((estTokens / 4000) * 100, 100);
+
+                        const card = document.createElement("div");
+                        card.className = "cache-entry-card";
+                        card.innerHTML = `
+                            <div class="cache-meta-row">
+                                <span style="font-weight:600;color:var(--accent-color);">User ID: ${item.user_id}</span>
+                                <span style="color:var(--secondary-text);">Built: ${builtAtStr}</span>
+                            </div>
+                            <div class="cache-meta-row" style="margin-top:2px;">
+                                <span>Size: ${item.size_chars.toLocaleString()} chars (~${estTokens.toLocaleString()} tokens)</span>
+                            </div>
+                            <div class="cache-bar-bg" style="margin-top:6px;">
+                                <div class="cache-bar-fill" style="width: ${pct}%"></div>
+                            </div>
+                        `;
+                        contextList.appendChild(card);
+                    });
+                }
+
+                if (stats.query_cache.length === 0) {
+                    queryList.innerHTML = `<div style="color:var(--secondary-text);font-size:13px;padding:10px;">No query responses cached yet.</div>`;
+                } else {
+                    stats.query_cache.forEach(item => {
+                        const card = document.createElement("div");
+                        card.className = "cache-entry-card";
+                        card.innerHTML = `
+                            <div class="cache-meta-row">
+                                <span style="font-weight:600;color:var(--accent-color);">User ID: ${item.user_id}</span>
+                                <span style="font-weight:500;">${item.query_count} cached queries</span>
+                            </div>
+                            <div class="cache-meta-row" style="margin-top:2px;font-size:11px;color:var(--secondary-text);">
+                                <span>Answers stored to prevent Rate Limits</span>
+                            </div>
+                        `;
+                        queryList.appendChild(card);
+                    });
+                }
+            } catch (err) {
+                console.error("Cache load error:", err);
+            }
+        }
+
+        async function inspectBusiness(userId) {
+            try {
+                const res = await fetch(`${API_BASE}/admin/business-details/${userId}`);
+                if (!res.ok) throw new Error("Could not fetch business details explorer data");
+
+                const data = await res.json();
+
+                // Setup header
+                document.getElementById("inspector-biz-name").textContent = data.business_name || "Unknown Business";
+                document.getElementById("inspector-user-meta").textContent = `User ID: ${data.id} | Username: ${data.username}`;
+
+                const treeBody = document.getElementById("inspector-tree-body");
+                treeBody.innerHTML = "";
+
+                // Folder 1: Uploaded Datasets
+                const uploadsNode = document.createElement("details");
+                uploadsNode.className = "tree-node";
+                uploadsNode.innerHTML = `
+                    <summary class="tree-summary">📦 Uploaded Datasets (${data.uploads.length})</summary>
+                    <div class="tree-content">
+                        ${data.uploads.length === 0 ? '<div style="color:var(--secondary-text);padding:10px 0;">No datasets uploaded.</div>' : `
+                            <table class="tree-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Filename</th>
+                                        <th>Type</th>
+                                        <th>Row Count</th>
+                                        <th>Uploaded Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.uploads.map(u => `
+                                        <tr>
+                                            <td style="font-family:monospace;">${u.id}</td>
+                                            <td style="font-weight:600;color:var(--accent-color);">${u.filename}</td>
+                                            <td><span class="tag">${u.file_type}</span></td>
+                                            <td>${u.rows_count} rows</td>
+                                            <td>${u.upload_time}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        `}
+                    </div>
+                `;
+                treeBody.appendChild(uploadsNode);
+
+                // Folder 2: Invoices
+                const invoicesNode = document.createElement("details");
+                invoicesNode.className = "tree-node";
+                invoicesNode.innerHTML = `
+                    <summary class="tree-summary">📄 Invoices & Sales (${data.invoices.length})</summary>
+                    <div class="tree-content">
+                        ${data.invoices.length === 0 ? '<div style="color:var(--secondary-text);padding:10px 0;">No invoices present.</div>' : `
+                            <table class="tree-table">
+                                <thead>
+                                    <tr>
+                                        <th>Invoice ID</th>
+                                        <th>Customer</th>
+                                        <th>Product</th>
+                                        <th>Amount</th>
+                                        <th>Status</th>
+                                        <th>Due Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.invoices.slice(0, 50).map(inv => `
+                                        <tr>
+                                            <td style="font-family:monospace;">${inv.invoice_id || 'N/A'}</td>
+                                            <td style="font-weight:500;">${inv.customer}</td>
+                                            <td>${inv.product}</td>
+                                            <td style="font-weight:600;">₹${inv.amount.toLocaleString('en-IN')}</td>
+                                            <td><span class="tag" style="background:${inv.status === 'Paid' ? 'rgba(58,154,92,0.12)' : 'rgba(201,100,66,0.12)'};color:${inv.status === 'Paid' ? '#3a9a5c' : 'var(--accent-color)'}">${inv.status}</span></td>
+                                            <td>${inv.due_date || 'N/A'}</td>
+                                        </tr>
+                                    `).join('')}
+                                    ${data.invoices.length > 50 ? `<tr><td colspan="6" style="text-align:center;color:var(--secondary-text);padding:8px;">Showing first 50 of ${data.invoices.length} invoices.</td></tr>` : ''}
+                                </tbody>
+                            </table>
+                        `}
+                    </div>
+                `;
+                treeBody.appendChild(invoicesNode);
+
+                // Folder 3: Inventory Items
+                const inventoryNode = document.createElement("details");
+                inventoryNode.className = "tree-node";
+                inventoryNode.innerHTML = `
+                    <summary class="tree-summary">📦 Inventory Stock (${data.inventory.length} items)</summary>
+                    <div class="tree-content">
+                        ${data.inventory.length === 0 ? '<div style="color:var(--secondary-text);padding:10px 0;">No inventory records.</div>' : `
+                            <table class="tree-table">
+                                <thead>
+                                    <tr>
+                                        <th>Product Name</th>
+                                        <th>Stock</th>
+                                        <th>Expiry Date</th>
+                                        <th>Supplier</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.inventory.slice(0, 50).map(item => `
+                                        <tr>
+                                            <td style="font-weight:600;color:var(--accent-color);">${item.product_name}</td>
+                                            <td>${item.stock} items</td>
+                                            <td>${item.expiry_date || 'N/A'}</td>
+                                            <td>${item.supplier || 'N/A'}</td>
+                                        </tr>
+                                    `).join('')}
+                                    ${data.inventory.length > 50 ? `<tr><td colspan="4" style="text-align:center;color:var(--secondary-text);padding:8px;">Showing first 50 of ${data.inventory.length} products.</td></tr>` : ''}
+                                </tbody>
+                            </table>
+                        `}
+                    </div>
+                `;
+                treeBody.appendChild(inventoryNode);
+
+                // Folder 4: Payments
+                const paymentsNode = document.createElement("details");
+                paymentsNode.className = "tree-node";
+                paymentsNode.innerHTML = `
+                    <summary class="tree-summary">💳 Logged Payments & Dues (${data.payments.length})</summary>
+                    <div class="tree-content">
+                        ${data.payments.length === 0 ? '<div style="color:var(--secondary-text);padding:10px 0;">No payment entries.</div>' : `
+                            <table class="tree-table">
+                                <thead>
+                                    <tr>
+                                        <th>Customer</th>
+                                        <th>Amount</th>
+                                        <th>Due Date</th>
+                                        <th>Paid Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.payments.slice(0, 50).map(p => `
+                                        <tr>
+                                            <td style="font-weight:500;">${p.customer}</td>
+                                            <td style="font-weight:600;">₹${p.amount.toLocaleString('en-IN')}</td>
+                                            <td>${p.due_date || 'N/A'}</td>
+                                            <td><span class="tag" style="background:${p.paid === 'Yes' ? 'rgba(58,154,92,0.12)' : 'rgba(201,100,66,0.12)'};color:${p.paid === 'Yes' ? '#3a9a5c' : 'var(--accent-color)'}">${p.paid === 'Yes' ? 'Paid' : 'Unpaid'}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                    ${data.payments.length > 50 ? `<tr><td colspan="4" style="text-align:center;color:var(--secondary-text);padding:8px;">Showing first 50 of ${data.payments.length} payments.</td></tr>` : ''}
+                                </tbody>
+                            </table>
+                        `}
+                    </div>
+                `;
+                treeBody.appendChild(paymentsNode);
+
+                // Folder 5: Chat History
+                const chatHistoryNode = document.createElement("details");
+                chatHistoryNode.className = "tree-node";
+                
+                const sessions = {};
+                data.chat_history.forEach(m => {
+                    const sid = m.session_id || 'default';
+                    if (!sessions[sid]) {
+                        sessions[sid] = {
+                            title: m.session_title || 'Previous Chat Session',
+                            messages: []
+                        };
+                    }
+                    sessions[sid].messages.push(m);
+                });
+
+                const sessionKeys = Object.keys(sessions);
+
+                chatHistoryNode.innerHTML = `
+                    <summary class="tree-summary">💬 Chat Threads History (${sessionKeys.length} sessions)</summary>
+                    <div class="tree-content" style="padding-top:14px;max-height:450px;overflow-y:auto;">
+                        ${sessionKeys.length === 0 ? '<div style="color:var(--secondary-text);padding:10px 0;">No chat history threads found.</div>' : `
+                            ${sessionKeys.map(sid => {
+                                const s = sessions[sid];
+                                const sortedMsgs = [...s.messages].reverse();
+                                return `
+                                    <details style="margin-bottom:12px;border:1px dashed var(--border-color);border-radius:8px;padding:6px 12px;background:rgba(255,255,255,0.2);">
+                                        <summary style="font-weight:600;font-size:13px;padding:6px 0;cursor:pointer;color:var(--text-color);">${s.title}</summary>
+                                        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+                                            ${sortedMsgs.map(msg => `
+                                                <div class="chat-tree-bubble ${msg.role}">
+                                                    <span style="font-weight:600;font-size:10px;text-transform:uppercase;color:${msg.role === 'user' ? 'var(--accent-color)' : '#3a9a5c'};display:block;margin-bottom:2px;">${msg.role}</span>
+                                                    <span>${msg.content}</span>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </details>
+                                `;
+                            }).join('')}
+                        `}
+                    </div>
+                `;
+                treeBody.appendChild(chatHistoryNode);
+
+                // Open modal
+                document.getElementById("inspector-modal").style.display = "flex";
+
+            } catch (err) {
+                alert("Error opening database explorer tree: " + err.message);
+            }
+        }
+
+        function closeInspector() {
+            document.getElementById("inspector-modal").style.display = "none";
+        }
+
+        async function wipeUserData(userId, businessName) {
+            if (!confirm(`WARNING: This will permanently delete the user account and all dynamic business data (invoices, inventory, payments, uploads, document embeddings, and chat messages) specifically for ${businessName}. Are you absolutely sure you want to proceed?`)) {
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/admin/wipe-user-data/${userId}`, {
+                    method: "DELETE"
+                });
+
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.detail || "Failed to wipe user data.");
+                }
+
+                const data = await res.json();
+                alert(data.message || `The user account and all dynamic business data for ${businessName} have been wiped successfully.`);
+                
+                // Reload statistics and directory table
+                await loadAdminDirectory();
+            } catch (err) {
+                alert("Error: " + err.message);
+            }
+        }
+
         // Boot
+        // Create Merchant Modal Handlers
+        function openCreateMerchantModal() {
+            document.getElementById("create-biz-name").value = "";
+            document.getElementById("create-username").value = "";
+            document.getElementById("create-password").value = "";
+            const errEl = document.getElementById("create-merchant-error");
+            if (errEl) {
+                errEl.textContent = "";
+                errEl.style.display = "none";
+            }
+            document.getElementById("create-merchant-modal").style.display = "flex";
+        }
+
+        function closeCreateMerchant() {
+            document.getElementById("create-merchant-modal").style.display = "none";
+        }
+
+        async function submitCreateMerchant(e) {
+            e.preventDefault();
+            const business_name = document.getElementById("create-biz-name").value.trim();
+            const username = document.getElementById("create-username").value.trim();
+            const password = document.getElementById("create-password").value.trim();
+            const errEl = document.getElementById("create-merchant-error");
+            if (errEl) {
+                errEl.style.display = "none";
+            }
+
+            const admin = JSON.parse(localStorage.getItem("admin_user") || "{}");
+            const token = admin.token;
+
+            try {
+                const res = await fetch(`${API_BASE}/admin/create-user`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ username, password, business_name })
+                });
+
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.detail || "Failed to create merchant user");
+                }
+
+                closeCreateMerchant();
+                await loadAdminDirectory();
+            } catch (err) {
+                if (errEl) {
+                    errEl.textContent = err.message;
+                    errEl.style.display = "block";
+                }
+            }
+        }
+
+        // Edit Merchant Modal Handlers
+        function editBusiness(userId, businessName, username) {
+            document.getElementById("edit-user-id").value = userId;
+            document.getElementById("edit-biz-name").value = businessName;
+            document.getElementById("edit-username").value = username;
+            document.getElementById("edit-password").value = "";
+            const errEl = document.getElementById("edit-merchant-error");
+            if (errEl) {
+                errEl.textContent = "";
+                errEl.style.display = "none";
+            }
+            document.getElementById("edit-merchant-modal").style.display = "flex";
+        }
+
+        function closeEditMerchant() {
+            document.getElementById("edit-merchant-modal").style.display = "none";
+        }
+
+        async function submitEditMerchant(e) {
+            e.preventDefault();
+            const userId = document.getElementById("edit-user-id").value;
+            const business_name = document.getElementById("edit-biz-name").value.trim();
+            const username = document.getElementById("edit-username").value.trim();
+            const password = document.getElementById("edit-password").value.trim();
+            const errEl = document.getElementById("edit-merchant-error");
+            if (errEl) {
+                errEl.style.display = "none";
+            }
+
+            const admin = JSON.parse(localStorage.getItem("admin_user") || "{}");
+            const token = admin.token;
+
+            const reqBody = { username, business_name };
+            if (password) {
+                reqBody.password = password;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/admin/update-user/${userId}`, {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    },
+                    body: JSON.stringify(reqBody)
+                });
+
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.detail || "Failed to update merchant user");
+                }
+
+                closeEditMerchant();
+                await loadAdminDirectory();
+            } catch (err) {
+                if (errEl) {
+                    errEl.textContent = err.message;
+                    errEl.style.display = "block";
+                }
+            }
+        }
+
         window.addEventListener("DOMContentLoaded", () => {
             document.body.classList.remove("preload");
             const admin = localStorage.getItem("admin_user");
@@ -352,5 +1009,82 @@
             }
         });
     </script>
+
+    <!-- DATA INSPECTOR MODAL -->
+    <div id="inspector-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(4px);">
+        <div class="inspector-card" style="background: var(--card-color); border: 1px solid var(--border-color); border-radius: 16px; width: 90%; max-width: 800px; height: 85vh; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); overflow: hidden; animation: modalFadeIn 0.25s ease;">
+            <div class="inspector-header" style="padding: 20px 24px; border-bottom: 1.5px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h2 id="inspector-biz-name" style="font-family: 'Crimson Pro', Georgia, serif; font-size: 22px; color: var(--text-color);">MediCare Pharmacy</h2>
+                    <p id="inspector-user-meta" style="font-size: 12px; color: var(--secondary-text);">User ID: 2 | Username: pharmacy</p>
+                </div>
+                <button onclick="closeInspector()" style="background: transparent; border: none; color: var(--secondary-text); font-size: 24px; cursor: pointer; transition: color 0.15s; font-weight: bold;">&times;</button>
+            </div>
+            <div id="inspector-tree-body" class="inspector-body" style="flex: 1; padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
+                <!-- Collapsible Database Tree renders here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- CREATE MERCHANT MODAL -->
+    <div id="create-merchant-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(4px);">
+        <div class="login-card" style="width: 90%; max-width: 420px; animation: modalFadeIn 0.25s ease; box-shadow: var(--shadow-lg); border: 1px solid var(--border-color); background: var(--card-color); border-radius: 16px; padding: 24px; position: relative;">
+            <div class="login-glow"></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="font-family: 'Crimson Pro', Georgia, serif; font-size: 22px; color: var(--text-color); margin: 0;">✦ Add New Merchant</h2>
+                <button onclick="closeCreateMerchant()" style="background: transparent; border: none; color: var(--secondary-text); font-size: 24px; cursor: pointer; font-weight: bold; padding: 0;">&times;</button>
+            </div>
+            
+            <form id="create-merchant-form" onsubmit="submitCreateMerchant(event)">
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label for="create-biz-name" style="display: block; font-size: 12px; font-weight: 600; color: var(--secondary-text); margin-bottom: 6px;">Business Name</label>
+                    <input type="text" id="create-biz-name" placeholder="e.g. Apex Biotech" required style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-color); font-size: 13.5px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label for="create-username" style="display: block; font-size: 12px; font-weight: 600; color: var(--secondary-text); margin-bottom: 6px;">Username</label>
+                    <input type="text" id="create-username" placeholder="e.g. apex_store" required style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-color); font-size: 13.5px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label for="create-password" style="display: block; font-size: 12px; font-weight: 600; color: var(--secondary-text); margin-bottom: 6px;">Password</label>
+                    <input type="password" id="create-password" placeholder="••••••••" required style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-color); font-size: 13.5px;">
+                </div>
+                
+                <div id="create-merchant-error" class="login-error" style="display: none; color: #d32f2f; font-size: 12.5px; margin-bottom: 12px;"></div>
+                
+                <button type="submit" class="login-submit-btn" style="width: 100%; padding: 12px; border-radius: 8px; background: var(--accent-color); color: #ffffff; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s;">Create Merchant</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- EDIT MERCHANT MODAL -->
+    <div id="edit-merchant-modal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(4px);">
+        <div class="login-card" style="width: 90%; max-width: 420px; animation: modalFadeIn 0.25s ease; box-shadow: var(--shadow-lg); border: 1px solid var(--border-color); background: var(--card-color); border-radius: 16px; padding: 24px; position: relative;">
+            <div class="login-glow"></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="font-family: 'Crimson Pro', Georgia, serif; font-size: 22px; color: var(--text-color); margin: 0;">✦ Edit Merchant Profile</h2>
+                <button onclick="closeEditMerchant()" style="background: transparent; border: none; color: var(--secondary-text); font-size: 24px; cursor: pointer; font-weight: bold; padding: 0;">&times;</button>
+            </div>
+            
+            <form id="edit-merchant-form" onsubmit="submitEditMerchant(event)">
+                <input type="hidden" id="edit-user-id">
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label for="edit-biz-name" style="display: block; font-size: 12px; font-weight: 600; color: var(--secondary-text); margin-bottom: 6px;">Business Name</label>
+                    <input type="text" id="edit-biz-name" placeholder="e.g. Apex Biotech" required style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-color); font-size: 13.5px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 16px;">
+                    <label for="edit-username" style="display: block; font-size: 12px; font-weight: 600; color: var(--secondary-text); margin-bottom: 6px;">Username</label>
+                    <input type="text" id="edit-username" placeholder="e.g. apex_store" required style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-color); font-size: 13.5px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label for="edit-password" style="display: block; font-size: 12px; font-weight: 600; color: var(--secondary-text); margin-bottom: 6px;">New Password (Optional)</label>
+                    <input type="password" id="edit-password" placeholder="Leave blank to keep current" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-color); font-size: 13.5px;">
+                </div>
+                
+                <div id="edit-merchant-error" class="login-error" style="display: none; color: #d32f2f; font-size: 12.5px; margin-bottom: 12px;"></div>
+                
+                <button type="submit" class="login-submit-btn" style="width: 100%; padding: 12px; border-radius: 8px; background: var(--accent-color); color: #ffffff; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s;">Update Merchant</button>
+            </form>
+        </div>
+    </div>
 </body>
 </html>
