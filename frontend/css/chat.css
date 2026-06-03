@@ -37,13 +37,14 @@
 }
 
 .ah-biz-name {
-    font-family: 'Crimson Pro', Georgia, serif;
+    font-family: 'Lora', 'Crimson Pro', Georgia, serif;
     font-size: 30px;             /* larger than Good morning (24px) */
-    font-weight: 700;
+    font-weight: 500;            /* matches weight in the second pic reference */
     color: var(--text-color);
-    letter-spacing: -0.01em;
+    letter-spacing: 0.03em;
     cursor: pointer;
     line-height: 1.2;
+    text-transform: uppercase;   /* always capital */
     transition: color 0.15s;
 }
 .ah-biz-name:hover { color: var(--accent-color); }
