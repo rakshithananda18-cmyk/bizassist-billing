@@ -405,7 +405,7 @@ textarea::placeholder {
     gap: 5px;
     padding: 6px 12px;
     border-radius: 999px;
-    border: 1px solid var(--text-color);
+    border: none;
     background: var(--card-color);
     color: var(--text-color);
     font-size: 12.5px;
@@ -413,21 +413,23 @@ textarea::placeholder {
     cursor: pointer;
     white-space: nowrap;
     transition: background 0.15s ease,
-                border-color 0.15s ease,
                 color 0.15s ease,
-                transform 0.15s ease;
+                transform 0.15s ease,
+                box-shadow 0.15s ease;
     line-height: 1;
+    box-shadow: var(--shadow-sm);
 }
 
 .chip:hover {
     background: var(--accent-soft);
-    border-color: var(--accent-color);
     color: var(--accent-color);
     transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
 }
 
 .chip:active {
     transform: translateY(0);
+    box-shadow: var(--shadow-sm);
 }
 
 @media (max-width: 768px) {
