@@ -101,7 +101,7 @@
 }
 
 /* Sidebar nav buttons */
-.sidebar button.matte-glass {
+.sidebar button.matte-glass:not(.sidebar-toggle-btn):not(.theme-btn) {
     border: none;
     background: transparent;
     color: var(--text-color);
@@ -122,7 +122,7 @@
     overflow: hidden;
 }
 
-.sidebar.collapsed button.matte-glass {
+.sidebar.collapsed button.matte-glass:not(.sidebar-toggle-btn):not(.theme-btn) {
     padding: 0;
     justify-content: center;
     width: 40px;
@@ -130,18 +130,18 @@
     border-radius: 8px;
 }
 
-.sidebar button.matte-glass:hover {
+.sidebar button.matte-glass:not(.sidebar-toggle-btn):not(.theme-btn):hover {
     background: var(--hover-bg);
     color: var(--text-color);
 }
 
-.sidebar button.matte-glass svg {
+.sidebar button.matte-glass:not(.sidebar-toggle-btn):not(.theme-btn) svg {
     flex-shrink: 0;
     color: var(--text-color);
     transition: color 0.18s ease;
 }
 
-.sidebar button.matte-glass:hover svg {
+.sidebar button.matte-glass:not(.sidebar-toggle-btn):not(.theme-btn):hover svg {
     color: var(--accent-color);
 }
 
