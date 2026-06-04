@@ -4,9 +4,8 @@
    Change API_BASE here and it updates everywhere.
 ========================================= */
 
-// Auto-switch: use the local backend when developing (localhost / 127.0.0.1 /
-// opening index.html as a file), otherwise the deployed backend. This keeps the
-// file safe to commit without shipping a localhost URL to production.
+// Auto-switch: local backend when developing (localhost / 127.0.0.1 / file://),
+// otherwise the deployed backend. Safe to commit — never ships localhost to prod.
 const _isLocal = (
     location.hostname === "localhost" ||
     location.hostname === "127.0.0.1" ||
@@ -16,12 +15,9 @@ const API_BASE       = _isLocal
     ? "http://localhost:8001"
     : "https://bizassist-backend-jgz2.onrender.com";
 const DEBUG          = _isLocal;
-const DEFAULT_BIZ    = "My Business";   // fallback if not set by user
+const DEFAULT_BIZ    = "My Business";
 
-/* Escape untrusted strings before inserting into innerHTML, to prevent
-   stored XSS from uploaded data (customer/product/supplier names, chat
-   content, session titles, etc.). Use on ANY value that originates from
-   user input or the database. */
+/* Escape untrusted strings before inserting into innerHTML (stored-XSS guard). */
 function escapeHtml(value) {
     if (value === null || value === undefined) return "";
     return String(value)
@@ -33,17 +29,33 @@ function escapeHtml(value) {
 }
 window.escapeHtml = escapeHtml;
 
-// Intercept all fetch calls to automatically append Authorization header
+// Clear the stored session and return to the login screen.
+var _handlingUnauthorized = false;
+function forceLogout() {
+    if (_handlingUnauthorized) return;
+    _handlingUnauthorized = true;
+    try {
+        localStorage.removeItem("user");
+        localStorage.removeItem("admin_user");
+        localStorage.removeItem("biz_name");
+        localStorage.removeItem("active_session_id");
+    } catch (e) {}
+    document.documentElement.setAttribute("data-logged", "false");
+    location.reload();
+}
+window.forceLogout = forceLogout;
+
+// Intercept all fetch calls: attach the auth header and handle expired sessions.
 const originalFetch = window.fetch;
 window.fetch = function (url, options) {
     options = options || {};
     options.headers = options.headers || {};
-    
+
     var userJson = null;
-    try { 
-        userJson = localStorage.getItem("user") || localStorage.getItem("admin_user"); 
+    try {
+        userJson = localStorage.getItem("user") || localStorage.getItem("admin_user");
     } catch (e) {}
-    
+
     if (userJson) {
         try {
             var user = JSON.parse(userJson);
@@ -56,5 +68,15 @@ window.fetch = function (url, options) {
             }
         } catch (e) {}
     }
-    return originalFetch(url, options);
+
+    // Don't auto-logout on login/signup (a wrong password also returns 401).
+    var urlStr = (typeof url === "string") ? url : ((url && url.url) || "");
+    var isAuthEndpoint = /\/(login|signup)(\?|$)/.test(urlStr);
+
+    return originalFetch(url, options).then(function (response) {
+        if (response.status === 401 && !isAuthEndpoint) {
+            forceLogout();
+        }
+        return response;
+    });
 };
