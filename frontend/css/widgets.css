@@ -453,17 +453,18 @@ tr:last-child {
 }
 
 .dark-mode {
-    --bg-color:          #1c1917;   /* Claude dark warm charcoal */
-    --sidebar-color:     #15120f;
-    --card-color:        #252018;
-    --card-bg-solid:     #252018;
+    --bg-color:          #1F1F1E;   /* Custom dark page background */
+    --sidebar-color:     #262626;   /* Custom dark panel sidebar */
+    --card-color:        #262626;   /* Custom dark panel background */
+    --card-bg-solid:     #262626;
     --text-color:        #ede8e0;
     --secondary-text:    #857f74;   /* Cloudy-dark */
     --accent-color:      #d4714a;   /* Crail for dark */
     --accent-hover:      #e07f58;
-    --accent-soft:       rgba(212,113,74,0.13);
+    --accent-soft:       #171716;   /* Custom selected button background */
     --accent-softer:     rgba(212,113,74,0.07);
-    --input-bg:          #2a2620;
+    --input-bg:          #2C2C2A;   /* Custom input area background */
+    --hover-bg:          #5A5A5A;   /* Custom hover background */
     --bot-bg:            transparent;
     --border-color:      #302c26;
     --border-subtle:     rgba(212,113,74,0.18);
