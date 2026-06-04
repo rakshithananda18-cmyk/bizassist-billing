@@ -862,6 +862,9 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
     color: var(--secondary-text);
     white-space: nowrap;
 }
+.rp-close-btn {
+    display: none;
+}
 
 /* Collapse / expand button */
 .rp-collapse-btn,
@@ -1168,6 +1171,28 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
     #insights-panel .rp-expand-btn,
     .assistant-header .rp-collapse-btn {
         display: none !important;
+    }
+
+    .rp-close-btn {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        color: var(--text-color);
+        font-size: 22px;
+        cursor: pointer;
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        transition: background 0.15s, color 0.15s;
+        margin-left: 8px;
+        flex-shrink: 0;
+    }
+    
+    .rp-close-btn:hover {
+        background: var(--hover-bg);
+        color: var(--accent-color);
     }
 }
 

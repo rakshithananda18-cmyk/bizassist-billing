@@ -457,6 +457,8 @@ div.main {
         height: calc(100vh - 56px) !important;
         max-height: none !important;
         flex: 1 !important;
+        position: relative !important;
+        z-index: 1006 !important;
     }
 
     .dashboard-left { 
