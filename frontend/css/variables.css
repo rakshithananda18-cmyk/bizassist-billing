@@ -44,6 +44,7 @@
     --cards-title-color: #000000;    /* Pure Black cards title text */
     --bot-bg:          transparent;
     --border-color:    #e6e4de;      /* Warm light border */
+    --border-focus:    #c5c3bc;      /* Warm medium-grey border for focus */
     --border-subtle:   rgba(193,95,60,0.12);
     --shadow-sm:       0 1px 4px rgba(26,23,20,0.08), 0 0 1px rgba(26,23,20,0.04);
     --shadow-md:       0 4px 16px rgba(26,23,20,0.10), 0 1px 4px rgba(26,23,20,0.06);
@@ -69,6 +70,7 @@
     --input-bg:        #2a2620;
     --bot-bg:          transparent;
     --border-color:    #302c26;
+    --border-focus:    #504b45;
     --border-subtle:   rgba(212,113,74,0.18);
     --shadow-sm:       0 1px 4px rgba(0,0,0,0.28);
     --shadow-md:       0 4px 16px rgba(0,0,0,0.38);

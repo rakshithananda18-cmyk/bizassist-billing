@@ -276,8 +276,8 @@ html.chat-active .chat-box {
 }
 
 .input-area:focus-within {
-    border-color: var(--accent-color);
-    box-shadow: var(--shadow-md), 0 0 0 3px var(--accent-softer);
+    border-color: var(--border-focus);
+    box-shadow: var(--shadow-md);
 }
 
 .input-text-row {
@@ -1266,6 +1266,6 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
 
 /* ── Input focus — Crail orange border ── */
 .input-area:focus-within {
-    border-color: var(--accent-color) !important;
-    box-shadow: var(--shadow-md), 0 0 0 3px var(--accent-softer) !important;
+    border-color: var(--border-focus) !important;
+    box-shadow: var(--shadow-md) !important;
 }
