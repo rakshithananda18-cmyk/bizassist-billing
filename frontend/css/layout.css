@@ -10,9 +10,9 @@
     flex-direction: column;
     gap: 8px;
     border: 1px solid var(--border-color);
-    border-radius: 16px;
+    border-radius: 12px;
     box-shadow: var(--shadow-sm);
-    margin: 16px 0 16px 16px;
+    margin: 5px 0 7px 7px;
     flex-shrink: 0;
     position: relative;
     z-index: 2;
@@ -223,7 +223,7 @@ html[data-active="database"]  .sidebar.collapsed button#db-btn::before {
 
 div.main {
     flex: 1;
-    padding: 16px 20px 16px 16px;
+    padding: 5px 20px 7px 12px;
     display: flex;
     flex-direction: column;
     overflow: hidden;

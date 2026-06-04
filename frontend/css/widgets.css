@@ -1067,7 +1067,7 @@ tr:last-child { border-bottom: none; }
 /* ---- MAIN AREA ---- */
 div.main {
     background: transparent;
-    padding: 16px 20px 16px 16px;
+    padding: 5px 20px 7px 12px;
     gap: 12px;
     height: 100%;
     max-height: 100%;
