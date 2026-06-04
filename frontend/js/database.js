@@ -12,13 +12,18 @@
    PAGINATION STATE
 ----------------------------------------- */
 
+let currentDatabaseData = null;
+
 let currentPage = {
-    uploads   : 1,
-    invoices  : 1,
-    inventory : 1
+    uploads        : 1,
+    folder_uploads : 1,
+    invoices       : 1,
+    inventory      : 1,
+    payments       : 1,
+    chat           : 1
 };
 
-const itemsPerPage = 5;
+const itemsPerPage = 7;
 
 function changePage(tableId, newPage) {
 
@@ -27,7 +32,19 @@ function changePage(tableId, newPage) {
     console.log(`%c[BizAssist DB Pagination] Table: ${tableId} | Navigating to Page ${newPage}`, "color: #9c27b0;");
     currentPage[tableId] = newPage;
 
-    openDatabasePanel();
+    if (tableId === "uploads") {
+        renderMainUploadsTable();
+    } else if (tableId === "folder_uploads") {
+        renderFolderUploadsTable();
+    } else if (tableId === "invoices") {
+        renderFolderInvoicesTable();
+    } else if (tableId === "inventory") {
+        renderFolderInventoryTable();
+    } else if (tableId === "payments") {
+        renderFolderPaymentsTable();
+    } else if (tableId === "chat") {
+        renderFolderChatTable();
+    }
 }
 
 
@@ -35,9 +52,9 @@ function changePage(tableId, newPage) {
    PAGINATION CONTROLS  (reusable helper)
    ----------------------------------------- */
 
-function paginationControls(tableId, total, page) {
+function paginationControls(tableId, total, page, limit = 7) {
 
-    const totalPages = Math.ceil(total / itemsPerPage);
+    const totalPages = Math.ceil(total / limit);
 
     if (totalPages <= 1) return "";
 
@@ -107,6 +124,16 @@ async function openDatabasePanel() {
         console.log("Database metadata loaded successfully. Row counts: Invoices =", data.invoice_count, ", Inventory =", data.inventory_count, ", Uploads =", data.upload_count);
         console.groupEnd();
 
+        currentDatabaseData = data;
+        currentPage = {
+            uploads        : 1,
+            folder_uploads : 1,
+            invoices       : 1,
+            inventory      : 1,
+            payments       : 1,
+            chat           : 1
+        };
+
         /* Layout: show left panel, push assistant to right, hide insights */
         dashboardLeft.style.display     = "flex";
         if (assistantPanel) {
@@ -137,60 +164,22 @@ async function openDatabasePanel() {
             return;
         }
 
-        /* --- Uploads table --- */
-        const uploadsPage  = currentPage.uploads;
-        const uploadsSlice = data.uploads.slice(
-            (uploadsPage - 1) * itemsPerPage,
-            uploadsPage * itemsPerPage
-        );
+        // Calculate session count for folders layout summary
+        const chatHistoryList = data.chat_history || [];
+        const sessions = {};
+        chatHistoryList.forEach(m => {
+            const sid = m.session_id || 'default';
+            if (!sessions[sid]) {
+                sessions[sid] = {
+                    title: m.session_title || 'Previous Chat Session',
+                    messages: []
+                };
+            }
+            sessions[sid].messages.push(m);
+        });
+        const sessionKeys = Object.keys(sessions);
 
-        const uploadsRows = uploadsSlice.map(file => `
-            <tr>
-                <td>${file.filename}</td>
-                <td>${file.type}</td>
-                <td>${file.rows}</td>
-                <td>${file.uploaded}</td>
-                <td>
-                    <button
-                        class="delete-btn-small"
-                        onclick="deleteUpload(${file.id})"
-                        title="Delete file"
-                    >✕ Delete</button>
-                </td>
-            </tr>
-        `).join("");
-
-        /* --- Invoices table --- */
-        const invoicesPage  = currentPage.invoices;
-        const invoicesSlice = data.invoices.slice(
-            (invoicesPage - 1) * itemsPerPage,
-            invoicesPage * itemsPerPage
-        );
-
-        const invoiceRows = invoicesSlice.map(inv => `
-            <tr>
-                <td>${inv.customer}</td>
-                <td>₹${inv.amount}</td>
-                <td>${inv.status}</td>
-            </tr>
-        `).join("");
-
-        /* --- Inventory table --- */
-        const inventoryPage  = currentPage.inventory;
-        const inventorySlice = data.inventory.slice(
-            (inventoryPage - 1) * itemsPerPage,
-            inventoryPage * itemsPerPage
-        );
-
-        const inventoryRows = inventorySlice.map(item => `
-            <tr>
-                <td>${item.product}</td>
-                <td>${item.stock}</td>
-                <td>${item.expiry}</td>
-            </tr>
-        `).join("");
-
-        /* --- Assemble full panel --- */
+        /* --- Assemble full panel template with content placeholders --- */
         dashboardLeft.innerHTML = `
 
             <!-- OVERVIEW CARDS -->
@@ -257,61 +246,48 @@ async function openDatabasePanel() {
 
                 <div class="widget-title">Uploaded Files</div>
 
-                <div class="database-table">
-                    <table>
-                        <tr>
-                            <th>Filename</th>
-                            <th>Type</th>
-                            <th>Rows</th>
-                            <th>Uploaded</th>
-                            <th>Action</th>
-                        </tr>
-                        ${uploadsRows}
-                    </table>
-                    ${paginationControls("uploads", data.uploads.length, uploadsPage)}
+                <div id="main-uploads-container" class="database-table">
+                    <!-- Loaded dynamically -->
                 </div>
 
             </div>
 
-            <!-- INVOICE RECORDS -->
+            <!-- DATABASE EXPLORER -->
             <div class="widget">
-
-                <div class="widget-title">Invoice Records</div>
-
-                <div class="database-table">
-                    <table>
-                        <tr>
-                            <th>Customer</th>
-                            <th>Amount</th>
-                            <th>Status</th>
-                        </tr>
-                        ${invoiceRows}
-                    </table>
-                    ${paginationControls("invoices", data.invoices.length, invoicesPage)}
+                <div class="widget-title" style="margin-bottom: 16px">Database Explorer</div>
+                <div style="display: flex; flex-direction: column; gap: 16px">
+                    <details class="tree-node">
+                        <summary class="tree-summary">Uploaded Datasets (${(data.uploads || []).length})</summary>
+                        <div class="tree-content" id="folder-uploads-container"></div>
+                    </details>
+                    <details class="tree-node">
+                        <summary class="tree-summary">Invoices & Sales (${(data.invoices || []).length})</summary>
+                        <div class="tree-content" id="folder-invoices-container"></div>
+                    </details>
+                    <details class="tree-node">
+                        <summary class="tree-summary">Inventory Stock (${(data.inventory || []).length} items)</summary>
+                        <div class="tree-content" id="folder-inventory-container"></div>
+                    </details>
+                    <details class="tree-node">
+                        <summary class="tree-summary">Logged Payments & Dues (${(data.payments || []).length})</summary>
+                        <div class="tree-content" id="folder-payments-container"></div>
+                    </details>
+                    <details class="tree-node">
+                        <summary class="tree-summary">Chat Threads History (${sessionKeys.length} sessions)</summary>
+                        <div class="tree-content" id="folder-chat-container"></div>
+                    </details>
                 </div>
-
-            </div>
-
-            <!-- INVENTORY RECORDS -->
-            <div class="widget">
-
-                <div class="widget-title">Inventory Records</div>
-
-                <div class="database-table">
-                    <table>
-                        <tr>
-                            <th>Product</th>
-                            <th>Stock</th>
-                            <th>Expiry</th>
-                        </tr>
-                        ${inventoryRows}
-                    </table>
-                    ${paginationControls("inventory", data.inventory.length, inventoryPage)}
-                </div>
-
             </div>
 
         `;
+
+        // Render subcomponents initially
+        renderMainUploadsTable();
+        renderFolderUploadsTable();
+        renderFolderInvoicesTable();
+        renderFolderInventoryTable();
+        renderFolderPaymentsTable();
+        renderFolderChatTable();
 
     } catch (error) {
 
@@ -324,6 +300,267 @@ async function openDatabasePanel() {
             setElementLoading(refreshBtnLive, false);
         }
     }
+}
+
+
+/* -----------------------------------------
+   SUB-COMPONENT RENDERING FUNCTIONS
+   ----------------------------------------- */
+
+function renderMainUploadsTable() {
+    const container = document.getElementById("main-uploads-container");
+    if (!container || !currentDatabaseData) return;
+
+    const uploadsList = currentDatabaseData.uploads || [];
+    const page = currentPage.uploads || 1;
+    const limit = 7;
+    const sliced = uploadsList.slice((page - 1) * limit, page * limit);
+
+    const rows = sliced.map(file => `
+        <tr>
+            <td>${file.filename}</td>
+            <td>${file.type}</td>
+            <td>${file.rows}</td>
+            <td>${file.uploaded}</td>
+            <td>
+                <button
+                    class="delete-btn-small"
+                    onclick="deleteUpload(${file.id})"
+                    title="Delete file"
+                >✕ Delete</button>
+            </td>
+        </tr>
+    `).join("");
+
+    container.innerHTML = `
+        <table>
+            <tr>
+                <th>Filename</th>
+                <th>Type</th>
+                <th>Rows</th>
+                <th>Uploaded</th>
+                <th>Action</th>
+            </tr>
+            ${rows}
+        </table>
+        ${paginationControls("uploads", uploadsList.length, page, limit)}
+    `;
+}
+
+function renderFolderUploadsTable() {
+    const container = document.getElementById("folder-uploads-container");
+    if (!container || !currentDatabaseData) return;
+
+    const uploadsList = currentDatabaseData.uploads || [];
+    const page = currentPage.folder_uploads || 1;
+    const limit = 7;
+    const sliced = uploadsList.slice((page - 1) * limit, page * limit);
+
+    let html = '';
+    if (uploadsList.length === 0) {
+        html = '<div style="color:var(--secondary-text);padding:10px 0;">No datasets uploaded.</div>';
+    } else {
+        html = `
+            <table class="tree-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Filename</th>
+                        <th>Type</th>
+                        <th>Row Count</th>
+                        <th>Uploaded Time</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${sliced.map(u => `
+                        <tr>
+                            <td style="font-family:monospace;">${u.id}</td>
+                            <td style="font-weight:600;color:var(--accent-color);">${u.filename}</td>
+                            <td><span class="tag">${u.file_type || u.type}</span></td>
+                            <td>${u.rows_count || u.rows} rows</td>
+                            <td>${u.upload_time || u.uploaded}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            ${paginationControls("folder_uploads", uploadsList.length, page, limit)}
+        `;
+    }
+    container.innerHTML = html;
+}
+
+function renderFolderInvoicesTable() {
+    const container = document.getElementById("folder-invoices-container");
+    if (!container || !currentDatabaseData) return;
+
+    const invoicesList = currentDatabaseData.invoices || [];
+    const page = currentPage.invoices || 1;
+    const limit = 7;
+    const sliced = invoicesList.slice((page - 1) * limit, page * limit);
+
+    let html = '';
+    if (invoicesList.length === 0) {
+        html = '<div style="color:var(--secondary-text);padding:10px 0;">No invoices present.</div>';
+    } else {
+        html = `
+            <table class="tree-table">
+                <thead>
+                    <tr>
+                        <th>Invoice ID</th>
+                        <th>Customer</th>
+                        <th>Product</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                        <th>Due Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${sliced.map(inv => `
+                        <tr>
+                            <td style="font-family:monospace;">${inv.invoice_id || 'N/A'}</td>
+                            <td style="font-weight:500;">${inv.customer}</td>
+                            <td>${inv.product || 'N/A'}</td>
+                            <td style="font-weight:600;">₹${(inv.amount || 0).toLocaleString('en-IN')}</td>
+                            <td><span class="tag" style="background:${inv.status === 'Paid' ? 'rgba(58,154,92,0.12)' : 'rgba(201,100,66,0.12)'};color:${inv.status === 'Paid' ? '#3a9a5c' : 'var(--accent-color)'}">${inv.status}</span></td>
+                            <td>${inv.due_date || 'N/A'}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            ${paginationControls("invoices", invoicesList.length, page, limit)}
+        `;
+    }
+    container.innerHTML = html;
+}
+
+function renderFolderInventoryTable() {
+    const container = document.getElementById("folder-inventory-container");
+    if (!container || !currentDatabaseData) return;
+
+    const inventoryList = currentDatabaseData.inventory || [];
+    const page = currentPage.inventory || 1;
+    const limit = 7;
+    const sliced = inventoryList.slice((page - 1) * limit, page * limit);
+
+    let html = '';
+    if (inventoryList.length === 0) {
+        html = '<div style="color:var(--secondary-text);padding:10px 0;">No inventory records.</div>';
+    } else {
+        html = `
+            <table class="tree-table">
+                <thead>
+                    <tr>
+                        <th>Product Name</th>
+                        <th>Stock</th>
+                        <th>Expiry Date</th>
+                        <th>Supplier</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${sliced.map(item => `
+                        <tr>
+                            <td style="font-weight:600;color:var(--accent-color);">${item.product_name || item.product}</td>
+                            <td>${item.stock} items</td>
+                            <td>${item.expiry_date || item.expiry || 'N/A'}</td>
+                            <td>${item.supplier || 'N/A'}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            ${paginationControls("inventory", inventoryList.length, page, limit)}
+        `;
+    }
+    container.innerHTML = html;
+}
+
+function renderFolderPaymentsTable() {
+    const container = document.getElementById("folder-payments-container");
+    if (!container || !currentDatabaseData) return;
+
+    const paymentsList = currentDatabaseData.payments || [];
+    const page = currentPage.payments || 1;
+    const limit = 7;
+    const sliced = paymentsList.slice((page - 1) * limit, page * limit);
+
+    let html = '';
+    if (paymentsList.length === 0) {
+        html = '<div style="color:var(--secondary-text);padding:10px 0;">No payment entries.</div>';
+    } else {
+        html = `
+            <table class="tree-table">
+                <thead>
+                    <tr>
+                        <th>Customer</th>
+                        <th>Amount</th>
+                        <th>Due Date</th>
+                        <th>Paid Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${sliced.map(p => `
+                        <tr>
+                            <td style="font-weight:500;">${p.customer}</td>
+                            <td style="font-weight:600;">₹${(p.amount || 0).toLocaleString('en-IN')}</td>
+                            <td>${p.due_date || 'N/A'}</td>
+                            <td><span class="tag" style="background:${p.paid === 'Yes' ? 'rgba(58,154,92,0.12)' : 'rgba(201,100,66,0.12)'};color:${p.paid === 'Yes' ? '#3a9a5c' : 'var(--accent-color)'}">${p.paid === 'Yes' ? 'Paid' : 'Unpaid'}</span></td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            ${paginationControls("payments", paymentsList.length, page, limit)}
+        `;
+    }
+    container.innerHTML = html;
+}
+
+function renderFolderChatTable() {
+    const container = document.getElementById("folder-chat-container");
+    if (!container || !currentDatabaseData) return;
+
+    const chatHistoryList = currentDatabaseData.chat_history || [];
+    const sessions = {};
+    chatHistoryList.forEach(m => {
+        const sid = m.session_id || 'default';
+        if (!sessions[sid]) {
+            sessions[sid] = {
+                title: m.session_title || 'Previous Chat Session',
+                messages: []
+            };
+        }
+        sessions[sid].messages.push(m);
+    });
+    const sessionKeys = Object.keys(sessions);
+
+    const page = currentPage.chat || 1;
+    const limit = 7;
+    const slicedKeys = sessionKeys.slice((page - 1) * limit, page * limit);
+
+    let html = '';
+    if (sessionKeys.length === 0) {
+        html = '<div style="color:var(--secondary-text);padding:10px 0;">No chat history threads found.</div>';
+    } else {
+        html = `
+            ${slicedKeys.map(sid => {
+                const s = sessions[sid];
+                const sortedMsgs = [...s.messages].reverse();
+                return `
+                    <details style="margin-bottom:12px;border:1px dashed var(--border-color);border-radius:8px;padding:6px 12px;background:var(--input-bg);">
+                        <summary style="font-weight:600;font-size:13px;padding:6px 0;cursor:pointer;color:var(--text-color);">${s.title}</summary>
+                        <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">
+                            ${sortedMsgs.map(msg => `
+                                <div class="chat-tree-bubble ${msg.role}">
+                                    <span style="font-weight:600;font-size:10px;text-transform:uppercase;color:${msg.role === 'user' ? 'var(--accent-color)' : '#3a9a5c'};display:block;margin-bottom:2px;">${msg.role}</span>
+                                    <span>${msg.content}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </details>
+                `;
+            }).join('')}
+            ${paginationControls("chat", sessionKeys.length, page, limit)}
+        `;
+    }
+    container.innerHTML = html;
 }
 
 

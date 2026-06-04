@@ -810,7 +810,7 @@ div#insights-panel {
     border-radius: 12px !important;
     box-shadow: var(--shadow-sm) !important;
     margin: 0 !important;
-    padding: 16px 12px !important;
+    padding: 10px 8px !important;
     display: flex !important;
     flex-direction: column !important;
     gap: 8px !important;
@@ -832,7 +832,7 @@ div#insights-panel {
     width: 56px !important;
     min-width: 56px !important;
     max-width: 56px !important;
-    padding: 16px 8px !important;
+    padding: 10px 6px !important;
     overflow: visible !important;
     align-items: center !important;
     background: var(--sidebar-color) !important;

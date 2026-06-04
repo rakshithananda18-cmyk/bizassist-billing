@@ -6,7 +6,8 @@ from database.models import (
     Inventory,
     Payment,
     UploadedFile,
-    DocumentEmbedding
+    DocumentEmbedding,
+    ChatMessage
 )
 from sqlalchemy import func
 from services.auth import get_active_user
@@ -187,42 +188,81 @@ def get_database(authorization: str = Header(None)):
             UploadedFile.business_id == active_user_id
         ).all()
 
+        payments = db.query(Payment).filter(
+            Payment.business_id == active_user_id
+        ).all()
+
+        chat_messages = db.query(ChatMessage).filter(
+            ChatMessage.business_id == active_user_id
+        ).order_by(ChatMessage.timestamp.desc()).all()
+
         database_data = {
             "invoice_count": len(invoices),
             "inventory_count": len(inventory),
             "upload_count": len(uploads),
+            "payment_count": len(payments),
             "invoices": [
                 {
                     "id": invoice.id,
+                    "invoice_id": invoice.invoice_id,
                     "customer": invoice.customer,
+                    "product": invoice.product,
                     "amount": invoice.amount,
                     "status": invoice.status,
-                    "invoice_id": invoice.invoice_id
+                    "invoice_date": invoice.invoice_date,
+                    "due_date": invoice.due_date
                 }
-                for invoice in invoices[:50]
+                for invoice in invoices
             ],
             "inventory": [
                 {
                     "id": item.id,
                     "product": item.product_name,
+                    "product_name": item.product_name,
                     "stock": item.stock,
-                    "expiry": item.expiry_date
+                    "expiry": item.expiry_date,
+                    "expiry_date": item.expiry_date,
+                    "supplier": item.supplier
                 }
-                for item in inventory[:50]
+                for item in inventory
             ],
             "uploads": [
                 {
                     "id": upload.id,
                     "filename": upload.filename,
                     "type": upload.file_type,
+                    "file_type": upload.file_type,
                     "rows": upload.rows_count,
-                    "uploaded": upload.upload_time
+                    "rows_count": upload.rows_count,
+                    "uploaded": upload.upload_time,
+                    "upload_time": upload.upload_time
                 }
                 for upload in uploads
+            ],
+            "payments": [
+                {
+                    "id": p.id,
+                    "customer": p.customer,
+                    "amount": p.amount,
+                    "due_date": p.due_date,
+                    "paid": p.paid
+                }
+                for p in payments
+            ],
+            "chat_history": [
+                {
+                    "id": m.id,
+                    "role": m.role,
+                    "content": m.content,
+                    "session_id": m.session_id,
+                    "session_title": m.session_title,
+                    "timestamp": m.timestamp.isoformat() if m.timestamp else None
+                }
+                for m in chat_messages
             ]
         }
 
-        logger.info(f"Database state successfully fetched for user {active_user_id}. Invoices={len(invoices)}, Inventory={len(inventory)}, Uploads={len(uploads)}")
+        logger.info(f"Database state successfully fetched for user {active_user_id}. Invoices={len(invoices)}, Inventory={len(inventory)}, Uploads={len(uploads)}, Payments={len(payments)}, ChatSessions={len(chat_messages)}")
         return database_data
     except Exception as e:
         logger.error(f"Error retrieving database state for user {active_user_id}: {str(e)}", exc_info=True)

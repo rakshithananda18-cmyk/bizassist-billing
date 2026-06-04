@@ -62,7 +62,7 @@
 .dashboard-grid {
     flex: 1;
     display: grid;
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
     gap: 14px;
     min-height: 0;
     overflow: hidden;
@@ -1068,7 +1068,7 @@ tr:last-child { border-bottom: none; }
 /* ---- MAIN AREA ---- */
 div.main {
     background: transparent;
-    padding: 5px 20px 7px 12px;
+    padding: 5px 7px 7px 12px;
     gap: 12px;
     height: 100%;
     max-height: 100%;
@@ -1078,7 +1078,7 @@ div.main {
 /* ---- DASHBOARD GRID spacing & proportions ---- */
 .dashboard-grid {
     gap: 12px;
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
     grid-template-rows: minmax(0, 1fr);
     flex: 1;
     min-height: 0;
@@ -1086,7 +1086,7 @@ div.main {
 
 /* AI view: chat on left, insights on right — equal-ish split */
 html[data-active="ai"] .dashboard-grid {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) calc(8vw + 13rem);
     gap: 12px;
 }
 
@@ -1980,4 +1980,87 @@ html[data-active="ai"] .dashboard-grid {
 }
 .chat-history-popup .rp-chat-delete:hover {
     color: #c94242;
+}
+
+/* Collapsible Inspector/Tree Styles */
+.tree-node {
+    display: block !important;
+    height: auto !important;
+    flex-shrink: 0;
+    border: 1.5px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--card-color);
+    overflow: hidden;
+    margin-bottom: 12px;
+    transition: border-color 0.2s;
+}
+.tree-node:hover {
+    border-color: var(--accent-color);
+}
+.tree-summary {
+    padding: 14px 18px;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-color);
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+}
+.tree-summary::-webkit-details-marker {
+    display: none;
+}
+.tree-summary::after {
+    content: '📁';
+    font-size: 14px;
+    transition: transform 0.2s;
+}
+details[open] > .tree-summary::after {
+    content: '📂';
+}
+.tree-content {
+    padding: 0 18px 18px 18px;
+    border-top: 1px solid var(--border-color);
+    background: var(--accent-softer);
+}
+.tree-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+    font-size: 13px;
+    text-align: left;
+}
+.tree-table th {
+    text-align: left;
+    padding: 8px;
+    border-bottom: 1.5px solid var(--border-color);
+    color: var(--secondary-text);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.tree-table td {
+    padding: 8px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-color);
+}
+.tree-table tr:last-child td {
+    border-bottom: none;
+}
+.chat-tree-bubble {
+    background: var(--card-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    text-align: left;
+}
+.chat-tree-bubble.user {
+    border-left: 3px solid var(--accent-color);
+}
+.chat-tree-bubble.assistant {
+    border-left: 3px solid #3a9a5c;
 }
