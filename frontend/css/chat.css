@@ -1130,6 +1130,11 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
 .rp-alert-arrow { font-size: 13px; color: var(--secondary-text); flex-shrink: 0; transition: transform 0.13s; }
 .rp-alert-item:hover .rp-alert-arrow { transform: translateX(2px); }
 
+/* Mobile-only header, hidden on desktop */
+.assistant-mobile-header {
+    display: none;
+}
+
 /* ── Mobile ── */
 @media (max-width: 768px) {
     #insights-panel {
