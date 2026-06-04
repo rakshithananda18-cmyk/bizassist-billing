@@ -651,7 +651,7 @@ div.main {
         height: 32px !important;
         border-radius: 6px !important;
     }
-    .sidebar.collapsed button.matte-glass {
+    .sidebar.collapsed button.matte-glass:not(.sidebar-toggle-btn):not(.theme-btn) {
         padding: 0 10px !important;
         justify-content: flex-start !important;
         width: 100% !important;
