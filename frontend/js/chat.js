@@ -466,7 +466,7 @@ async function loadChatSessions(selectFirstIfNoActive = false) {
                     <svg class="rp-chat-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                     </svg>
-                    <span class="rp-chat-title" title="${s.session_title || 'Untitled'}">${s.session_title || 'Untitled'}</span>
+                    <span class="rp-chat-title" title="${escapeHtml(s.session_title || 'Untitled')}">${escapeHtml(s.session_title || 'Untitled')}</span>
                 </div>
                 <button class="rp-chat-delete" onclick="event.stopPropagation(); deleteChatSession(event, '${s.session_id}')" title="Delete conversation">
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

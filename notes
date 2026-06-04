@@ -247,3 +247,13 @@ This path aligns directly with your original goal:
 AI agent website
 prompt-created agents
 AI OS-like platform
+
+
+Done. Here's what I patched:
+1. JWT secret (backend/services/auth.py) — Removed the hardcoded "super-secret-bizassist-key-1337" fallback. The app now reads JWT_SECRET from the environment and refuses to start if it's missing. I generated a strong random value and added it to backend/.env (and the existing .env.example already documents it).
+2. CORS (backend/main_claude.py, backend/main_groq.py) — Replaced allow_origins=["*"] with an env-driven allowlist (ALLOWED_ORIGINS, comma-separated; defaults to http://localhost:5500) and narrowed methods/headers. Set ALLOWED_ORIGINS to your real frontend URL in production.
+3. Frontend XSS (frontend/js/config.js + dashboard/database/chat) — Added a global escapeHtml() helper and applied it to every untrusted value rendered via innerHTML: customer/product/supplier names, invoice IDs, statuses, filenames, chat content, and session titles. This closes the stored-XSS path where a malicious uploaded record could execute script in an admin's session. Also flipped DEBUG to false.
+Two things still on you, outside the code:
+
+Rotate the API keys in backend/.env (OpenAI/Gemini/Groq/Claude/SMTP) — they were exposed and should be considered compromised.
+Set JWT_SECRET and ALLOWED_ORIGINS in your production environment (Render), not just the local .env. Note that rotating JWT_SECRET invalidates all existing login tokens, so users will need to log in again.

@@ -45,7 +45,7 @@ async function loadTopCustomers() {
         data.forEach(c => {
             const d = document.createElement("div");
             d.className = "customer-item";
-            d.innerHTML = `<div><strong>${c.customer}</strong></div>
+            d.innerHTML = `<div><strong>${escapeHtml(c.customer)}</strong></div>
                            <div>₹${Number(c.total).toLocaleString('en-IN')}</div>`;
             el.appendChild(d);
         });
@@ -97,8 +97,8 @@ function buildBarChart(customers) {
         const pct = Math.max(4, (c.total / max) * 100);
         const label = c.customer.length > 14 ? c.customer.slice(0, 13) + '…' : c.customer;
         return `
-        <div class="bar-row" onclick="sendChip('Tell me about ${c.customer} payment status and invoices')"
-             title="${c.customer} — ₹${Number(c.total).toLocaleString('en-IN')}">
+        <div class="bar-row" onclick="sendChip('Tell me about ${escapeHtml(c.customer)} payment status and invoices')"
+             title="${escapeHtml(c.customer)} — ₹${Number(c.total).toLocaleString('en-IN')}">
             <div class="bar-label">${label}</div>
             <div class="bar-track">
                 <div class="bar-fill" style="width:${pct}%;background:${colors[i]};
@@ -355,7 +355,7 @@ async function loadInsightsPanel() {
                 <div class="ip-alert-row ip-alert-green"
                      onclick="sendChip('Who are my top 5 customers by revenue this period?')">
                     <div class="ip-alert-icon">🏆</div>
-                    <div class="ip-alert-text"><strong>Top customers</strong><span>${customers[0] ? customers[0].customer + ' leads' : 'See rankings'}</span></div>
+                    <div class="ip-alert-text"><strong>Top customers</strong><span>${customers[0] ? escapeHtml(customers[0].customer) + ' leads' : 'See rankings'}</span></div>
                     <div class="ip-alert-arrow">›</div>
                 </div>
             </div>`;

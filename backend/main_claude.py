@@ -51,12 +51,23 @@ start_scheduler()
 def shutdown_event():
     stop_scheduler()
 
+# Restrict CORS to an explicit allowlist. Set ALLOWED_ORIGINS in the environment
+# as a comma-separated list of frontend origins, e.g.
+#   ALLOWED_ORIGINS=https://app.bizassist.com
+# The default covers local development: opening index.html as a file sends
+# "Origin: null"; running it via a local web server uses localhost:5500/3000.
+_default_origins = "null,http://localhost:5500,http://127.0.0.1:5500,http://localhost:3000"
+_allowed_origins = [
+    o.strip() for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_allowed_origins,
+    # Auth is via the Authorization Bearer header (not cookies), so credentialed
+    # CORS isn't needed — and disabling it lets the "null" file:// origin work.
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(auth_router)

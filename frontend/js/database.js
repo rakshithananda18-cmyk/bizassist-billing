@@ -318,7 +318,7 @@ function renderMainUploadsTable() {
 
     const rows = sliced.map(file => `
         <tr>
-            <td>${file.filename}</td>
+            <td>${escapeHtml(file.filename)}</td>
             <td>${file.type}</td>
             <td>${file.rows}</td>
             <td>${file.uploaded}</td>
@@ -375,7 +375,7 @@ function renderFolderUploadsTable() {
                     ${sliced.map(u => `
                         <tr>
                             <td style="font-family:monospace;">${u.id}</td>
-                            <td style="font-weight:600;color:var(--accent-color);">${u.filename}</td>
+                            <td style="font-weight:600;color:var(--accent-color);">${escapeHtml(u.filename)}</td>
                             <td><span class="tag">${u.file_type || u.type}</span></td>
                             <td>${u.rows_count || u.rows} rows</td>
                             <td>${u.upload_time || u.uploaded}</td>
@@ -417,11 +417,11 @@ function renderFolderInvoicesTable() {
                 <tbody>
                     ${sliced.map(inv => `
                         <tr>
-                            <td style="font-family:monospace;">${inv.invoice_id || 'N/A'}</td>
-                            <td style="font-weight:500;">${inv.customer}</td>
-                            <td>${inv.product || 'N/A'}</td>
+                            <td style="font-family:monospace;">${escapeHtml(inv.invoice_id || 'N/A')}</td>
+                            <td style="font-weight:500;">${escapeHtml(inv.customer)}</td>
+                            <td>${escapeHtml(inv.product || 'N/A')}</td>
                             <td style="font-weight:600;">₹${(inv.amount || 0).toLocaleString('en-IN')}</td>
-                            <td><span class="tag" style="background:${inv.status === 'Paid' ? 'rgba(58,154,92,0.12)' : 'rgba(201,100,66,0.12)'};color:${inv.status === 'Paid' ? '#3a9a5c' : 'var(--accent-color)'}">${inv.status}</span></td>
+                            <td><span class="tag" style="background:${inv.status === 'Paid' ? 'rgba(58,154,92,0.12)' : 'rgba(201,100,66,0.12)'};color:${inv.status === 'Paid' ? '#3a9a5c' : 'var(--accent-color)'}">${escapeHtml(inv.status)}</span></td>
                             <td>${inv.due_date || 'N/A'}</td>
                         </tr>
                     `).join('')}
@@ -459,10 +459,10 @@ function renderFolderInventoryTable() {
                 <tbody>
                     ${sliced.map(item => `
                         <tr>
-                            <td style="font-weight:600;color:var(--accent-color);">${item.product_name || item.product}</td>
+                            <td style="font-weight:600;color:var(--accent-color);">${escapeHtml(item.product_name || item.product)}</td>
                             <td>${item.stock} items</td>
                             <td>${item.expiry_date || item.expiry || 'N/A'}</td>
-                            <td>${item.supplier || 'N/A'}</td>
+                            <td>${escapeHtml(item.supplier || 'N/A')}</td>
                         </tr>
                     `).join('')}
                 </tbody>
@@ -499,7 +499,7 @@ function renderFolderPaymentsTable() {
                 <tbody>
                     ${sliced.map(p => `
                         <tr>
-                            <td style="font-weight:500;">${p.customer}</td>
+                            <td style="font-weight:500;">${escapeHtml(p.customer)}</td>
                             <td style="font-weight:600;">₹${(p.amount || 0).toLocaleString('en-IN')}</td>
                             <td>${p.due_date || 'N/A'}</td>
                             <td><span class="tag" style="background:${p.paid === 'Yes' ? 'rgba(58,154,92,0.12)' : 'rgba(201,100,66,0.12)'};color:${p.paid === 'Yes' ? '#3a9a5c' : 'var(--accent-color)'}">${p.paid === 'Yes' ? 'Paid' : 'Unpaid'}</span></td>
@@ -550,7 +550,7 @@ function renderFolderChatTable() {
                             ${sortedMsgs.map(msg => `
                                 <div class="chat-tree-bubble ${msg.role}">
                                     <span style="font-weight:600;font-size:10px;text-transform:uppercase;color:${msg.role === 'user' ? 'var(--accent-color)' : '#3a9a5c'};display:block;margin-bottom:2px;">${msg.role}</span>
-                                    <span>${msg.content}</span>
+                                    <span>${escapeHtml(msg.content)}</span>
                                 </div>
                             `).join('')}
                         </div>
