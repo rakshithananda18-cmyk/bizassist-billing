@@ -335,23 +335,23 @@ div.main {
 
     .app { flex-direction: column; height: auto; }
 
-    .main { min-width: 0; padding: 12px; overflow: visible; height: auto; max-height: none; }
+    div.main { min-width: 0; padding: 12px !important; overflow: visible; height: auto; max-height: none; }
 
     .dashboard-left { overflow: visible; }
 
     .assistant-panel { height: auto; min-height: 520px; }
 
     .sidebar {
-        width: 100%;
-        flex-direction: row;
-        overflow-x: auto;
-        gap: 6px;
-        padding: 10px 12px;
-        align-items: center;
-        border: none;
-        border-bottom: 1px solid var(--border-color);
-        border-radius: 0;
-        margin: 0;
+        width: 100% !important;
+        flex-direction: row !important;
+        overflow-x: auto !important;
+        gap: 6px !important;
+        padding: 10px 12px !important;
+        align-items: center !important;
+        border: none !important;
+        border-bottom: 1px solid var(--border-color) !important;
+        border-radius: 0 !important;
+        margin: 0 !important;
     }
 
     .sidebar button {
