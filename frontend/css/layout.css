@@ -7,7 +7,7 @@
     min-width: calc(8vw + 13rem) !important;
     max-width: calc(8vw + 13rem) !important;
     background: var(--sidebar-color);
-    padding: 10px 8px;
+    padding: 10px 4px;
     display: flex;
     flex-direction: column;
     gap: 8px;

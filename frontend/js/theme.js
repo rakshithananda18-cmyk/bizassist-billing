@@ -935,3 +935,216 @@ function editBizNameFromMenuMobile(event) {
         editBizName();
     }, 100);
 }
+
+/* =========================================
+   PROACTIVE ALERTS DIALOG LOGIC
+========================================= */
+
+function openAlertsSettingsModal(event) {
+    if (event) {
+        event.stopPropagation();
+        // Hide dropdowns
+        const menu = document.getElementById("profileMenu");
+        if (menu) menu.style.display = "none";
+        const mobileMenu = document.getElementById("mobileProfileMenu");
+        if (mobileMenu) mobileMenu.style.display = "none";
+    }
+
+    const modal = document.getElementById("alerts-modal");
+    if (!modal) return;
+
+    // Reset status label
+    const statusEl = document.getElementById("alerts-save-status");
+    if (statusEl) {
+        statusEl.style.color = "var(--secondary-text)";
+        statusEl.textContent = "Loading preferences...";
+    }
+
+    modal.classList.remove("hidden");
+
+    // Fetch config from backend
+    fetch(`${API_BASE}/alerts/config`)
+    .then(res => {
+        if (!res.ok) {
+            throw new Error("Failed to fetch alert configuration");
+        }
+        return res.json();
+    })
+    .then(data => {
+        if (statusEl) statusEl.textContent = "";
+
+        const emailInput = document.getElementById("alerts-email");
+        const waInput = document.getElementById("alerts-whatsapp");
+        const activeToggle = document.getElementById("alerts-active-toggle");
+        const overdueToggle = document.getElementById("alerts-overdue");
+        const lowStockToggle = document.getElementById("alerts-low-stock");
+        const lowStockThresh = document.getElementById("alerts-low-stock-threshold");
+        const expiryToggle = document.getElementById("alerts-expiry");
+        const expiryThresh = document.getElementById("alerts-expiry-threshold");
+        const dailyToggle = document.getElementById("alerts-daily-summary");
+
+        if (data.configured) {
+            if (emailInput) emailInput.value = data.email || "";
+            if (waInput) waInput.value = data.whatsapp_number || "";
+            if (activeToggle) activeToggle.checked = !!data.active;
+            if (overdueToggle) overdueToggle.checked = !!data.alert_overdue;
+            if (lowStockToggle) lowStockToggle.checked = !!data.alert_low_stock;
+            if (lowStockThresh) lowStockThresh.value = data.low_stock_threshold || 10;
+            if (expiryToggle) expiryToggle.checked = !!data.alert_expiry;
+            if (expiryThresh) expiryThresh.value = data.expiry_days_threshold || 30;
+            if (dailyToggle) dailyToggle.checked = !!data.alert_daily_summary;
+            
+            toggleAlertsSection(!!data.active);
+            toggleSubInputGroup("alerts-low-stock", "alerts-low-stock-threshold-group");
+            toggleSubInputGroup("alerts-expiry", "alerts-expiry-threshold-group");
+        } else {
+            // New or unconfigured user: defaults to inactive/off (so no cron runs)
+            if (emailInput) {
+                const user = getLoggedUser();
+                emailInput.value = (user && user.email) ? user.email : "";
+            }
+            if (waInput) waInput.value = "";
+            if (activeToggle) activeToggle.checked = false;
+            
+            // Sub-checkboxes default to true once turned on
+            if (overdueToggle) overdueToggle.checked = true;
+            if (lowStockToggle) lowStockToggle.checked = true;
+            if (lowStockThresh) lowStockThresh.value = 10;
+            if (expiryToggle) expiryToggle.checked = true;
+            if (expiryThresh) expiryThresh.value = 30;
+            if (dailyToggle) dailyToggle.checked = true;
+
+            toggleAlertsSection(false);
+            toggleSubInputGroup("alerts-low-stock", "alerts-low-stock-threshold-group");
+            toggleSubInputGroup("alerts-expiry", "alerts-expiry-threshold-group");
+        }
+
+        // Attach listeners to update threshold sub-inputs dynamically
+        if (lowStockToggle) {
+            lowStockToggle.onchange = () => toggleSubInputGroup("alerts-low-stock", "alerts-low-stock-threshold-group");
+        }
+        if (expiryToggle) {
+            expiryToggle.onchange = () => toggleSubInputGroup("alerts-expiry", "alerts-expiry-threshold-group");
+        }
+    })
+    .catch(err => {
+        console.error("Failed to load alert configs:", err);
+        if (statusEl) {
+            statusEl.style.color = "#c02a2a";
+            statusEl.textContent = "Failed to load preferences.";
+        }
+    });
+}
+
+function closeAlertsSettingsModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    const modal = document.getElementById("alerts-modal");
+    if (modal) modal.classList.add("hidden");
+}
+
+function toggleAlertsSection(isChecked) {
+    const section = document.getElementById("alerts-settings-section");
+    if (!section) return;
+    if (isChecked) {
+        section.classList.remove("hidden");
+    } else {
+        section.classList.add("hidden");
+    }
+}
+
+function toggleSubInputGroup(checkboxId, groupId) {
+    const checkbox = document.getElementById(checkboxId);
+    const group = document.getElementById(groupId);
+    if (!checkbox || !group) return;
+    if (checkbox.checked) {
+        group.classList.remove("hidden");
+    } else {
+        group.classList.add("hidden");
+    }
+}
+
+function saveAlertSettings() {
+    const statusEl = document.getElementById("alerts-save-status");
+    if (statusEl) statusEl.textContent = "";
+
+    const activeToggle = document.getElementById("alerts-active-toggle");
+    const active = activeToggle ? activeToggle.checked : false;
+
+    const emailVal = document.getElementById("alerts-email") ? document.getElementById("alerts-email").value.trim() : "";
+    const waVal = document.getElementById("alerts-whatsapp") ? document.getElementById("alerts-whatsapp").value.trim() : "";
+
+    // Validation if alerts are enabled
+    if (active) {
+        if (!emailVal) {
+            if (statusEl) {
+                statusEl.style.color = "#c02a2a";
+                statusEl.textContent = "Email is required to enable alerts.";
+            }
+            return;
+        }
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(emailVal)) {
+            if (statusEl) {
+                statusEl.style.color = "#c02a2a";
+                statusEl.textContent = "Please enter a valid email address.";
+            }
+            return;
+        }
+    }
+
+    const payload = {
+        email: emailVal || null,
+        whatsapp_number: waVal || null,
+        alert_overdue: document.getElementById("alerts-overdue") ? document.getElementById("alerts-overdue").checked : false,
+        alert_low_stock: document.getElementById("alerts-low-stock") ? document.getElementById("alerts-low-stock").checked : false,
+        alert_expiry: document.getElementById("alerts-expiry") ? document.getElementById("alerts-expiry").checked : false,
+        alert_daily_summary: document.getElementById("alerts-daily-summary") ? document.getElementById("alerts-daily-summary").checked : false,
+        low_stock_threshold: document.getElementById("alerts-low-stock-threshold") ? parseInt(document.getElementById("alerts-low-stock-threshold").value) || 10 : 10,
+        expiry_days_threshold: document.getElementById("alerts-expiry-threshold") ? parseInt(document.getElementById("alerts-expiry-threshold").value) || 30 : 30,
+        active: active
+    };
+
+    if (statusEl) {
+        statusEl.style.color = "var(--secondary-text)";
+        statusEl.textContent = "Saving preferences...";
+    }
+
+    fetch(`${API_BASE}/alerts/config`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(res => {
+        if (!res.ok) {
+            return res.json().then(e => { throw new Error(e.detail || "Save failed"); });
+        }
+        return res.json();
+    })
+    .then(data => {
+        if (statusEl) {
+            statusEl.style.color = "#27864a";
+            statusEl.textContent = "Settings saved successfully!";
+        }
+        setTimeout(() => {
+            closeAlertsSettingsModal();
+        }, 1200);
+    })
+    .catch(err => {
+        console.error("Save failed:", err);
+        if (statusEl) {
+            statusEl.style.color = "#c02a2a";
+            statusEl.textContent = err.message || "Failed to save settings.";
+        }
+    });
+}
+
+function getLoggedUser() {
+    try {
+        const u = localStorage.getItem("user");
+        return u ? JSON.parse(u) : null;
+    } catch(e) {
+        return null;
+    }
+}
