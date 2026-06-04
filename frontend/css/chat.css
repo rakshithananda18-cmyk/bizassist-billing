@@ -1030,6 +1030,22 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
 .rp-chat-item:hover .rp-chat-delete { display: flex; }
 .rp-chat-delete:hover { color: #c94242; }
 
+/* Right panel chat sessions list */
+#rp-chat-sessions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 130px; /* Show exactly 4 items on desktop */
+    overflow-y: auto;
+}
+#rp-chat-sessions-list::-webkit-scrollbar {
+    width: 4px;
+}
+#rp-chat-sessions-list::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
 .rp-empty {
     font-size: 12px;
     color: var(--secondary-text);
@@ -1269,6 +1285,10 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
     .amh-close-btn:hover {
         background: var(--hover-bg);
         color: var(--accent-color);
+    }
+
+    #rp-chat-sessions-list {
+        max-height: 98px !important; /* Show exactly 3 items on mobile */
     }
 }
 

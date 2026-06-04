@@ -1903,9 +1903,22 @@ html[data-active="ai"] .dashboard-grid {
     display: flex;
     flex-direction: column;
     padding: 4px 0;
-    scrollbar-width: none;
+    max-height: 154px; /* Show exactly 4 items on desktop */
 }
-.chat-history-popup .chat-sessions-list::-webkit-scrollbar { display: none; }
+.chat-history-popup .chat-sessions-list::-webkit-scrollbar {
+    width: 4px;
+    display: block !important;
+}
+.chat-history-popup .chat-sessions-list::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+@media (max-width: 768px) {
+    .chat-history-popup .chat-sessions-list {
+        max-height: 116px !important; /* Show exactly 3 items on mobile */
+    }
+}
 
 /* Each session row */
 .chat-history-popup .rp-chat-item {
