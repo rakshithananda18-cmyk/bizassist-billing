@@ -1166,7 +1166,7 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
         border: none !important;
         border-left: 1px solid var(--border-color) !important;
         transform: translateX(100%);
-        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.3s step-end !important;
         z-index: 1010 !important;
         display: flex !important;
         flex-direction: column !important;
@@ -1174,11 +1174,14 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
         box-shadow: var(--shadow-lg) !important;
         overflow-y: auto !important;
         padding: 0 !important;
+        visibility: hidden;
     }
     
     #insights-panel.mobile-open {
         transform: translateX(0) !important;
         display: flex !important;
+        visibility: visible !important;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s step-start !important;
     }
 
     #insights-panel.collapsed {
@@ -1234,14 +1237,17 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
         width: 100% !important;
         z-index: 1010 !important;
         transform: translateY(100%);
-        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.3s step-end !important;
         box-shadow: var(--shadow-lg) !important;
         pointer-events: none;
+        visibility: hidden;
     }
 
     html:not([data-active="ai"]) #assistant-panel.mobile-open {
         transform: translateY(0) !important;
         pointer-events: auto;
+        visibility: visible !important;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s step-start !important;
     }
 
     /* Modal drawer header inside assistant panel */
@@ -1289,6 +1295,48 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
 
     #rp-chat-sessions-list {
         max-height: 98px !important; /* Show exactly 3 items on mobile */
+    }
+
+    /* Reduce chat text, padding, and layout size on mobile */
+    .message-row.user-row {
+        padding: 4px 12px 4px 40px !important;
+    }
+    .message-row.bot-row {
+        padding: 6px 12px 6px 12px !important;
+    }
+    .message {
+        font-size: 13.5px !important;
+        line-height: 1.5 !important;
+    }
+    .user {
+        font-size: 13px !important;
+        padding: 7px 11px !important;
+        border-radius: 14px 14px 4px 14px !important;
+    }
+    .bot .md-p {
+        margin: 0 0 6px !important;
+        line-height: 1.5 !important;
+    }
+    .bot .md-h1, .bot .md-h2, .bot .md-h3 {
+        margin: 10px 0 4px !important;
+        font-size: 1.15em !important;
+    }
+    .md-ul, .md-ol {
+        margin-bottom: 6px !important;
+        padding-left: 16px !important;
+    }
+    .md-ul li, .md-ol li {
+        margin-bottom: 3px !important;
+        line-height: 1.45 !important;
+        font-size: 13px !important;
+    }
+    .chat-box {
+        padding: 10px !important;
+    }
+    /* Reduce chip font size and padding to fit better */
+    .chip {
+        font-size: 11.5px !important;
+        padding: 5px 9px !important;
     }
 }
 

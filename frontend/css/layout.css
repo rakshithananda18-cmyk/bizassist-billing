@@ -492,15 +492,19 @@ div.main {
         left: 0;
         right: 0;
         bottom: 0;
-        background: rgba(0, 0, 0, 0.4);
-        backdrop-filter: blur(1.5px);
+        background: rgba(0, 0, 0, 0);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
         opacity: 0;
         pointer-events: none;
-        transition: opacity 0.3s ease;
+        transition: opacity 0.3s ease, backdrop-filter 0.3s ease, -webkit-backdrop-filter 0.3s ease, background-color 0.3s ease;
         z-index: 1008;
     }
 
     .mobile-overlay.active {
+        background: rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(1.5px);
+        -webkit-backdrop-filter: blur(1.5px);
         opacity: 1;
         pointer-events: auto;
     }
@@ -547,7 +551,7 @@ div.main {
         border: none !important;
         border-right: 1px solid var(--border-color) !important;
         transform: translateX(-100%);
-        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.3s step-end !important;
         z-index: 1010 !important;
         display: flex !important;
         flex-direction: column !important;
@@ -556,10 +560,13 @@ div.main {
         padding: 16px 12px !important;
         gap: 8px !important;
         align-items: stretch !important;
+        visibility: hidden;
     }
 
     .sidebar.mobile-open {
         transform: translateX(0) !important;
+        visibility: visible !important;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s step-start !important;
     }
 
     .sidebar button {
