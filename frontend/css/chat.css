@@ -441,7 +441,7 @@ textarea::placeholder {
     box-shadow: var(--shadow-sm);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
     .prompt-chips {
         gap: 6px;
         max-height: 160px;
@@ -798,69 +798,85 @@ textarea::placeholder {
    RIGHT PANEL — Claude-style floating cards
    ============================================== */
 
-/* Panel container: transparent bg, same as chat */
+/* In AI mode, pad main content area symmetrically so right panel distance matches left sidebar distance */
+html[data-active="ai"] div.main {
+    padding-right: 7px !important;
+}
+
+/* Panel container: aligned to sidebar, margin adjusted for main padding container */
 div#insights-panel {
-    background: transparent !important;
-    border: none !important;
-    border-left: none !important;
-    box-shadow: none !important;
-    padding: 0 !important;
+    background: var(--sidebar-color) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 12px !important;
+    box-shadow: var(--shadow-sm) !important;
+    margin: 0 !important;
+    padding: 16px 12px !important;
     display: flex !important;
     flex-direction: column !important;
     gap: 8px !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
-    width: 100% !important;
-    min-width: 0 !important;
-    transition: width 0.22s cubic-bezier(.4,0,.2,1),
-                min-width 0.22s cubic-bezier(.4,0,.2,1),
-                padding 0.22s cubic-bezier(.4,0,.2,1);
+    width: calc(8vw + 13rem) !important;
+    min-width: calc(8vw + 13rem) !important;
+    max-width: calc(8vw + 13rem) !important;
+    box-sizing: border-box !important;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                padding 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                margin 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
     scrollbar-width: none;
 }
 #insights-panel::-webkit-scrollbar { display: none; }
 
-/* Collapsed: just enough for the icon */
+/* Collapsed: matches sidebar collapsed */
 #insights-panel.collapsed {
-    width: 44px !important;
-    min-width: 44px !important;
-    padding: 10px 6px !important;
-    overflow: hidden !important;
-    background: transparent !important;
+    width: 56px !important;
+    min-width: 56px !important;
+    max-width: 56px !important;
+    padding: 16px 8px !important;
+    overflow: visible !important;
     align-items: center !important;
+    background: var(--sidebar-color) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 12px !important;
+    box-shadow: var(--shadow-sm) !important;
+    margin: 0 !important;
 }
 
-/* Grid adjusts when panel is collapsed */
 html[data-active="ai"] .dashboard-grid {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) !important;
-    transition: grid-template-columns 0.22s cubic-bezier(.4,0,.2,1);
+    grid-template-columns: minmax(0, 1fr) calc(8vw + 13rem) !important;
+    transition: grid-template-columns 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 html[data-active="ai"] .dashboard-grid.insights-collapsed,
 html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
-    grid-template-columns: minmax(0, 1fr) 44px !important;
+    grid-template-columns: minmax(0, 1fr) 56px !important;
 }
 
 /* ── Progress header row (no card bg) ── */
-.rp-topbar {
+.rp-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 16px;
-    height: 64px;
+    height: 38px;
+    padding: 0 4px;
+    width: 100%;
     box-sizing: border-box;
-    border-bottom: 1px solid var(--border-color) !important;
     flex-shrink: 0;
     gap: 6px;
 }
-.rp-topbar-title {
-    font-size: 13px;
+.rp-brand-text {
+    font-family: 'Crimson Pro', Georgia, serif;
+    font-size: 19px;
     font-weight: 700;
     color: var(--text-color);
-    flex: 1;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    opacity: 1;
+    transition: opacity 0.2s ease;
 }
 .rp-topbar-right {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 10px;
 }
 .rp-nav-label {
     font-size: 12px;
@@ -871,47 +887,46 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
     display: none;
 }
 
-/* Collapse / expand button */
-.rp-collapse-btn,
-.rp-expand-btn {
-    width: 28px;
-    height: 28px;
-    border: 1px solid var(--border-color);
-    background: transparent;
-    color: var(--secondary-text);
+/* Collapse toggle button inside header */
+.rp-collapse-btn {
+    width: 32px;
+    height: 32px;
     border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    padding: 0;
     flex-shrink: 0;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.rp-collapse-btn:hover,
-.rp-expand-btn:hover {
-    background: var(--accent-soft);
-    color: var(--accent-color);
-    border-color: var(--accent-color);
+
+/* Centered layout when collapsed */
+#insights-panel.collapsed .rp-header,
+.insights-collapsed #insights-panel .rp-header {
+    justify-content: center;
+    padding: 0;
 }
-.assistant-header .rp-collapse-btn {
-    position: absolute;
-    right: 16px;
-    top: 18px;
-    z-index: 10;
+#insights-panel.collapsed .rp-topbar-right,
+.insights-collapsed #insights-panel .rp-topbar-right {
+    display: contents !important;
 }
-.insights-collapsed .rp-collapse-btn {
+#insights-panel.collapsed .rp-brand-text,
+#insights-panel.collapsed .rp-nav-label,
+#insights-panel.collapsed .rp-close-btn,
+#insights-panel.collapsed .rp-sep,
+#insights-panel.collapsed .rp-content,
+.insights-collapsed #insights-panel .rp-brand-text,
+.insights-collapsed #insights-panel .rp-nav-label,
+.insights-collapsed #insights-panel .rp-close-btn,
+.insights-collapsed #insights-panel .rp-sep,
+.insights-collapsed #insights-panel .rp-content {
     display: none !important;
 }
 
-/* Expand btn shows only when collapsed; collapse btn hides */
-.rp-expand-btn { display: none; }
-
-#insights-panel.collapsed .rp-topbar    { display: none !important; }
-#insights-panel.collapsed .rp-content   { display: none !important; }
-#insights-panel.collapsed .rp-expand-btn {
-    display: flex !important;
-    margin: 0 auto;
+#insights-panel.collapsed .sidebar-toggle-btn,
+.insights-collapsed #insights-panel .sidebar-toggle-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
 }
 
 /* ── Scrollable content area ── */
@@ -921,12 +936,11 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
     gap: 8px;
     flex: 1;
     min-height: 0;
-    padding: 0 10px 16px 8px;
+    padding: 0 0 16px 0;
 }
 
-/* ── Each section = white floating card ── */
 .rp-section {
-    background: var(--card-color);
+    background: var(--input-bg);
     border: 1px solid var(--border-color);
     border-radius: 12px;
     overflow: hidden;
@@ -1157,13 +1171,14 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
 }
 
 /* ── Mobile ── */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
     #insights-panel {
         position: fixed !important;
         top: 0 !important;
         right: 0 !important;
         bottom: 0 !important;
-        width: 280px !important;
+        width: 75vw !important;
+        max-width: 340px !important;
         height: 100vh !important;
         height: 100dvh !important;
         margin: 0 !important;
@@ -1191,15 +1206,15 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
 
     #insights-panel.collapsed {
         transform: translateX(100%) !important;
-        width: 280px !important;
-        min-width: 280px !important;
+        width: 75vw !important;
+        max-width: 340px !important;
+        min-width: 0 !important;
         padding: 0 !important;
         background: var(--sidebar-color) !important;
     }
 
     /* Hide desktop expand/collapse buttons on mobile since we toggle drawer from mobile top navbar */
-    #insights-panel .rp-expand-btn,
-    .assistant-header .rp-collapse-btn {
+    #insights-panel .rp-collapse-btn {
         display: none !important;
     }
 

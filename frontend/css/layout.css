@@ -3,7 +3,9 @@
 ========================================= */
 
 .sidebar {
-    width: 25%;
+    width: calc(8vw + 13rem) !important;
+    min-width: calc(8vw + 13rem) !important;
+    max-width: calc(8vw + 13rem) !important;
     background: var(--sidebar-color);
     padding: 16px 12px;
     display: flex;
@@ -23,6 +25,7 @@
 .sidebar.collapsed {
     width: 56px !important;
     min-width: 56px !important;
+    max-width: 56px !important;
     padding: 16px 8px;
     align-items: center;
     overflow: visible;
@@ -258,33 +261,6 @@ div.main {
     color: var(--accent-color);
 }
 
-.theme-menu {
-    position: absolute;
-    bottom: 46px;
-    left: 0;
-    width: 148px;
-    background: var(--card-color);
-    border-radius: 10px;
-    overflow: hidden;
-    display: none;
-    border: 1px solid var(--border-color);
-    box-shadow: var(--shadow-md);
-    z-index: 1000;
-    animation: modalFadeIn 0.15s ease;
-}
-
-.theme-menu div {
-    padding: 10px 14px;
-    cursor: pointer;
-    font-size: 13px;
-    color: var(--text-color);
-    transition: background 0.15s ease, color 0.15s ease;
-}
-
-.theme-menu div:hover {
-    background: var(--hover-bg);
-    color: var(--accent-color);
-}
 
 /* =========================================
    DATABASE / HIDDEN PANEL
@@ -347,7 +323,7 @@ div.main {
    RESPONSIVE — MOBILE
 ========================================= */
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
     body { overflow: hidden !important; }
 
     .app { 
@@ -544,7 +520,8 @@ div.main {
         top: 0 !important;
         left: 0 !important;
         bottom: 0 !important;
-        width: 250px !important;
+        width: 70vw !important;
+        max-width: 320px !important;
         height: 100vh !important;
         height: 100dvh !important;
         margin: 0 !important;
@@ -627,9 +604,9 @@ div.main {
         width: 100% !important;
     }
 
-    /* Force expanded drawer display even if html has .collapsed */
     .sidebar.collapsed {
-        width: 250px !important;
+        width: 70vw !important;
+        max-width: 320px !important;
         padding: 16px 12px !important;
         align-items: stretch !important;
     }
@@ -718,7 +695,7 @@ div.main {
     .assistant-panel { border-radius: 10px; padding: 14px; }
     .widget-title { font-size: 11px; }
     .card p { font-size: 24px; }
-    .theme-menu { width: 132px; }
+
 }
 
 /* =========================================
@@ -792,6 +769,7 @@ div.main {
 }
 
 /* ---- SIDEBAR FOOTER & PROFILE BADGE ─── */
+/* ---- SIDEBAR FOOTER & PROFILE BADGE ─── */
 .sidebar-footer {
     margin-top: auto;
     display: flex;
@@ -808,31 +786,54 @@ div.main {
     padding-top: 14px;
 }
 
-/* Align theme dropdown container */
-.sidebar-footer .theme-dropdown {
-    width: 100%;
+
+
+/* Integrated Theme Selector inside Profile Popup Menu */
+.profile-menu-theme {
     display: flex;
-    justify-content: center;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: transparent;
 }
 
-.sidebar-footer .theme-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background: transparent;
+.profile-menu-theme-label {
+    font-size: 12px;
+    font-weight: 500;
     color: var(--secondary-text);
+}
+
+.profile-theme-toggle {
+    display: flex;
+    background: var(--hover-bg);
+    border-radius: 6px;
+    padding: 2px;
+    gap: 2px;
+}
+
+.theme-opt-btn {
+    background: transparent;
+    border: none;
+    color: var(--secondary-text);
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.18s, color 0.18s;
+    font-size: 12px;
+    transition: background 0.15s, color 0.15s;
 }
 
-.sidebar.collapsed .sidebar-footer .theme-btn {
-    width: 40px;
-    height: 40px;
-    border-radius: 8px;
+.theme-opt-btn:hover {
+    color: var(--text-color);
+}
+
+.theme-opt-btn.active {
+    background: var(--card-color) !important;
+    color: var(--accent-color) !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12) !important;
 }
 
 /* User profile initials wrapper */
@@ -848,7 +849,6 @@ div.main {
     transition: background 0.18s;
     position: relative;
 }
-
 .profile-badge-wrap:hover {
     background: var(--hover-bg);
 }
@@ -920,10 +920,6 @@ div.main {
     bottom: 0px;
 }
 
-.sidebar.collapsed .theme-menu {
-    left: 58px;
-    bottom: 0px;
-}
 
 @keyframes modalFadeIn {
     from { opacity: 0; transform: scale(0.97); }
@@ -978,17 +974,15 @@ div.main {
     color: #c02a2a;
 }
 
-/* Align sidebar collapse and theme selector buttons with right panel collapse button style */
-.sidebar-toggle-btn,
-.theme-btn {
+/* Align sidebar collapse button with right panel collapse button style */
+.sidebar-toggle-btn {
     border: 1px solid var(--border-color) !important;
     background: transparent !important;
     color: var(--secondary-text) !important;
     box-shadow: none !important;
 }
 
-.sidebar-toggle-btn:hover,
-.theme-btn:hover {
+.sidebar-toggle-btn:hover {
     background: var(--accent-soft) !important;
     color: var(--accent-color) !important;
     border-color: var(--accent-color) !important;

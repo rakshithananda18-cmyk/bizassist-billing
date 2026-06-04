@@ -10,25 +10,12 @@
    THEME
 ----------------------------------------- */
 
-function toggleThemeMenu() {
-
-    const menu = document.getElementById("themeMenu");
-
-    menu.style.display =
-        menu.style.display === "block"
-            ? "none"
-            : "block";
-}
-
 function setTheme(theme) {
-
     localStorage.setItem("theme", theme);
-
     applyTheme(theme);
 }
 
 function applyTheme(theme) {
-
     document.body.classList.add("theme-animating");
 
     /* classic is removed — treat as light */
@@ -37,32 +24,25 @@ function applyTheme(theme) {
     document.documentElement.classList.remove("dark-mode");
 
     if (theme === "dark") {
-
         document.documentElement.classList.add("dark-mode");
-
     } else if (theme === "system") {
-
         if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
             document.documentElement.classList.add("dark-mode");
         }
     }
 
-    document.getElementById("themeMenu").style.display = "none";
+    // Set active option state on profile theme toggle buttons
+    document.querySelectorAll(".theme-opt-btn").forEach(btn => {
+        btn.classList.remove("active");
+    });
+    document.querySelectorAll(`.theme-opt-btn.${theme}-opt`).forEach(btn => {
+        btn.classList.add("active");
+    });
 
     setTimeout(() => {
         document.body.classList.remove("theme-animating");
     }, 220);
 }
-
-/* Close theme menu when clicking outside it */
-window.addEventListener("click", function (e) {
-
-    const dropdown = document.querySelector(".theme-dropdown");
-
-    if (dropdown && !dropdown.contains(e.target)) {
-        document.getElementById("themeMenu").style.display = "none";
-    }
-});
 
 
 /* -----------------------------------------
@@ -741,9 +721,7 @@ function toggleProfileMenu(event) {
     if (!menu) return;
     const currentDisplay = menu.style.display;
     
-    // Close other dropdowns
-    const themeMenu = document.getElementById("themeMenu");
-    if (themeMenu) themeMenu.style.display = "none";
+
     
     if (currentDisplay === "block") {
         menu.style.display = "none";
@@ -931,8 +909,6 @@ function toggleProfileMenuMobile(event) {
     const currentDisplay = menu.style.display;
     
     // Close other dropdowns
-    const themeMenu = document.getElementById("themeMenu");
-    if (themeMenu) themeMenu.style.display = "none";
     const profileMenu = document.getElementById("profileMenu");
     if (profileMenu) profileMenu.style.display = "none";
     

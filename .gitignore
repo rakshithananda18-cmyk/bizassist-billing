@@ -25,3 +25,5 @@ Thumbs.db
 # Scratch directory
 scratch/
 
+# Local config
+frontend/js/config.js

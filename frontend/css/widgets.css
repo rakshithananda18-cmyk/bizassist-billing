@@ -1753,7 +1753,7 @@ html[data-active="ai"] .dashboard-grid {
     grid-template-columns: repeat(3, 1fr) !important;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
     .db-cards {
         grid-template-columns: 1fr !important;
     }
@@ -1915,7 +1915,7 @@ html[data-active="ai"] .dashboard-grid {
     border-radius: 4px;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
     .chat-history-popup .chat-sessions-list {
         max-height: 116px !important; /* Show exactly 3 items on mobile */
     }
