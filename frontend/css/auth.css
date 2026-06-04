@@ -320,7 +320,7 @@ html[data-logged="false"] .app {
 }
 
 html[data-logged="true"] .app {
-    filter: blur(0px) saturate(1);
+    filter: none;
     opacity: 1;
     transition: 
         filter 0.8s cubic-bezier(0.16, 1, 0.3, 1), 

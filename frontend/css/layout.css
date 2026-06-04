@@ -411,6 +411,10 @@ div.main {
         display: none !important;
     }
 
+    #mobile-overlay.active ~ #mobile-assistant-toggle {
+        display: none !important;
+    }
+
     html[data-active="ai"] #mobile-insights-toggle {
         display: flex !important;
     }
