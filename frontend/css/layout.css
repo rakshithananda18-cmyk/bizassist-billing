@@ -352,6 +352,7 @@ div.main {
     .app { 
         flex-direction: column !important; 
         height: 100vh !important; 
+        height: 100dvh !important;
         overflow: hidden !important; 
     }
 
@@ -379,15 +380,15 @@ div.main {
     html:not([data-active="ai"]) #mobile-assistant-toggle {
         display: flex !important;
         position: fixed !important;
-        bottom: 20px !important;
-        right: 20px !important;
+        bottom: 32px !important;
+        right: 32px !important;
         width: 56px !important;
         height: 56px !important;
         border-radius: 50% !important;
-        background: linear-gradient(135deg, var(--accent-color) 0%, #e07840 100%) !important;
-        color: #ffffff !important;
-        box-shadow: 0 4px 16px rgba(193, 95, 60, 0.4) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        background: #FAFAF9 !important;
+        color: var(--accent-color) !important;
+        box-shadow: var(--shadow-md) !important;
+        border: 1px solid var(--border-color) !important;
         align-items: center !important;
         justify-content: center !important;
         z-index: 999 !important;
@@ -506,6 +507,7 @@ div.main {
         padding: 12px !important; 
         overflow: hidden !important; 
         height: calc(100vh - 56px) !important;
+        height: calc(100dvh - 56px) !important;
         max-height: none !important;
         flex: 1 !important;
         position: relative !important;
@@ -535,6 +537,7 @@ div.main {
         bottom: 0 !important;
         width: 250px !important;
         height: 100vh !important;
+        height: 100dvh !important;
         margin: 0 !important;
         border-radius: 0 !important;
         border: none !important;

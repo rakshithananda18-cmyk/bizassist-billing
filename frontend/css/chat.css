@@ -1139,6 +1139,7 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
         bottom: 0 !important;
         width: 280px !important;
         height: 100vh !important;
+        height: 100dvh !important;
         margin: 0 !important;
         border-radius: 0 !important;
         border: none !important;
@@ -1208,6 +1209,7 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
         right: 0 !important;
         bottom: 0 !important;
         height: 100vh !important;
+        height: 100dvh !important;
         width: 100% !important;
         z-index: 1010 !important;
         transform: translateY(100%);
