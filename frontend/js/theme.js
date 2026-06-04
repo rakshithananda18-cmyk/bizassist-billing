@@ -982,6 +982,7 @@ function openAlertsSettingsModal(event) {
         const expiryToggle = document.getElementById("alerts-expiry");
         const expiryThresh = document.getElementById("alerts-expiry-threshold");
         const dailyToggle = document.getElementById("alerts-daily-summary");
+        const testBtn = document.getElementById("alerts-test-btn");
 
         if (data.configured) {
             if (emailInput) emailInput.value = data.email || "";
@@ -997,6 +998,10 @@ function openAlertsSettingsModal(event) {
             toggleAlertsSection(!!data.active);
             toggleSubInputGroup("alerts-low-stock", "alerts-low-stock-threshold-group");
             toggleSubInputGroup("alerts-expiry", "alerts-expiry-threshold-group");
+
+            if (testBtn) {
+                testBtn.style.display = data.active ? "inline-block" : "none";
+            }
         } else {
             // New or unconfigured user: defaults to inactive/off (so no cron runs)
             if (emailInput) {
@@ -1017,6 +1022,10 @@ function openAlertsSettingsModal(event) {
             toggleAlertsSection(false);
             toggleSubInputGroup("alerts-low-stock", "alerts-low-stock-threshold-group");
             toggleSubInputGroup("alerts-expiry", "alerts-expiry-threshold-group");
+
+            if (testBtn) {
+                testBtn.style.display = "none";
+            }
         }
 
         // Attach listeners to update threshold sub-inputs dynamically
@@ -1127,6 +1136,10 @@ function saveAlertSettings() {
             statusEl.style.color = "#27864a";
             statusEl.textContent = "Settings saved successfully!";
         }
+        const testBtn = document.getElementById("alerts-test-btn");
+        if (testBtn) {
+            testBtn.style.display = active ? "inline-block" : "none";
+        }
         setTimeout(() => {
             closeAlertsSettingsModal();
         }, 1200);
@@ -1136,6 +1149,47 @@ function saveAlertSettings() {
         if (statusEl) {
             statusEl.style.color = "#c02a2a";
             statusEl.textContent = err.message || "Failed to save settings.";
+        }
+    });
+}
+
+function sendTestAlertEmail() {
+    const statusEl = document.getElementById("alerts-save-status");
+    const testBtn = document.getElementById("alerts-test-btn");
+    
+    if (statusEl) {
+        statusEl.style.color = "var(--secondary-text)";
+        statusEl.textContent = "Sending test email...";
+    }
+    if (testBtn) {
+        testBtn.disabled = true;
+    }
+
+    fetch(`${API_BASE}/alerts/test/daily_summary`, {
+        method: "POST"
+    })
+    .then(res => {
+        if (!res.ok) {
+            return res.json().then(e => { throw new Error(e.detail || "Test trigger failed"); });
+        }
+        return res.json();
+    })
+    .then(data => {
+        if (statusEl) {
+            statusEl.style.color = "#27864a";
+            statusEl.textContent = "Test email sent successfully!";
+        }
+    })
+    .catch(err => {
+        console.error("Test email failed:", err);
+        if (statusEl) {
+            statusEl.style.color = "#c02a2a";
+            statusEl.textContent = err.message || "Failed to send test email.";
+        }
+    })
+    .finally(() => {
+        if (testBtn) {
+            testBtn.disabled = false;
         }
     });
 }
