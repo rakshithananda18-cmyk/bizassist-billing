@@ -872,7 +872,7 @@ function toggleMobileSidebar() {
 }
 
 // Close mobile panels when click navigation link
-document.querySelectorAll(".sidebar button").forEach(btn => {
+document.querySelectorAll(".sidebar button:not(.sidebar-toggle-btn):not(.theme-btn)").forEach(btn => {
     btn.addEventListener("click", () => {
         closeAllMobilePanels();
     });

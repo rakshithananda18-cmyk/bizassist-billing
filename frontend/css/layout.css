@@ -569,7 +569,7 @@ div.main {
         transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s step-start !important;
     }
 
-    .sidebar button {
+    .sidebar button:not(.sidebar-toggle-btn):not(.theme-btn) {
         width: 100% !important;
         justify-content: flex-start !important;
         padding: 0 10px !important;
@@ -711,7 +711,7 @@ div.main {
 @media (max-width: 480px) {
     .logo { font-size: 16px; }
     .sidebar { padding: 16px 12px !important; }
-    .sidebar button { padding: 0 10px !important; font-size: 13.5px !important; }
+    .sidebar button:not(.sidebar-toggle-btn):not(.theme-btn) { padding: 0 10px !important; font-size: 13.5px !important; }
     .card { border-radius: 10px; }
     .widget { border-radius: 10px; padding: 16px; }
     .assistant-panel { border-radius: 10px; padding: 14px; }
