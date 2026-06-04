@@ -9,12 +9,14 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    border-right: 1px solid var(--border-color);
-    box-shadow: 4px 0 20px rgba(26,23,20,0.06), 1px 0 4px rgba(26,23,20,0.04);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
+    margin: 16px 0 16px 16px;
     flex-shrink: 0;
     position: relative;
     z-index: 2;
-    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1), margin 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow-x: hidden;
 }
 
@@ -221,7 +223,7 @@ html[data-active="database"]  .sidebar.collapsed button#db-btn::before {
 
 div.main {
     flex: 1;
-    padding: 3px 20px 20px 20px;
+    padding: 16px 20px 16px 16px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -346,8 +348,10 @@ div.main {
         gap: 6px;
         padding: 10px 12px;
         align-items: center;
-        border-right: none;
+        border: none;
         border-bottom: 1px solid var(--border-color);
+        border-radius: 0;
+        margin: 0;
     }
 
     .sidebar button {

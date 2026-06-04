@@ -90,6 +90,7 @@
 html.chat-active .chat-box {
     -webkit-mask-image: linear-gradient(to bottom, black 0%, black calc(100% - 40px), transparent 100%);
     mask-image: linear-gradient(to bottom, black 0%, black calc(100% - 40px), transparent 100%);
+    padding-bottom: 50px;
 }
 
 /* ---- MESSAGES — Claude-style ---- */
