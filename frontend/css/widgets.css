@@ -469,8 +469,8 @@ tr:last-child {
     --border-color:      #302c26;
     --border-subtle:     rgba(212,113,74,0.18);
 
-    --glass-bg:          rgba(37,32,24,0.80);
-    --glass-bg-hover:    rgba(255,255,255,0.08);
+    --glass-bg:          #262626;   /* Custom dark card background */
+    --glass-bg-hover:    #333333;   /* Custom dark card background hover */
     --glass-border:      rgba(255,255,255,0.10);
     --glass-highlight:   none;
     --glass-shadow:      none;
