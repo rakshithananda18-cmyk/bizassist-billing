@@ -3,7 +3,7 @@
 ========================================= */
 
 .sidebar {
-    width: 220px;
+    width: 25%;
     background: var(--sidebar-color);
     padding: 16px 12px;
     display: flex;
@@ -21,7 +21,8 @@
 }
 
 .sidebar.collapsed {
-    width: 56px;
+    width: 56px !important;
+    min-width: 56px !important;
     padding: 16px 8px;
     align-items: center;
     overflow: visible;

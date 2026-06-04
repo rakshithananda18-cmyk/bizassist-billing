@@ -810,8 +810,8 @@ div#insights-panel {
     gap: 8px !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
-    width: 268px;
-    min-width: 268px;
+    width: 100% !important;
+    min-width: 0 !important;
     transition: width 0.22s cubic-bezier(.4,0,.2,1),
                 min-width 0.22s cubic-bezier(.4,0,.2,1),
                 padding 0.22s cubic-bezier(.4,0,.2,1);
@@ -831,7 +831,7 @@ div#insights-panel {
 
 /* Grid adjusts when panel is collapsed */
 html[data-active="ai"] .dashboard-grid {
-    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) !important;
     transition: grid-template-columns 0.22s cubic-bezier(.4,0,.2,1);
 }
 html[data-active="ai"] .dashboard-grid.insights-collapsed,
