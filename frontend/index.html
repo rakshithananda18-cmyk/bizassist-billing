@@ -171,7 +171,7 @@
             <!-- SIDEBAR HEADER (TOGGLE & BRAND) -->
             <div class="sidebar-header">
                 <div class="sidebar-brand-text">BizzAssist</div>
-                <button class="sidebar-toggle-btn matte-glass" onclick="toggleSidebarCollapse()" title="Toggle Sidebar">
+                <button class="sidebar-toggle-btn matte-glass" onclick="window.innerWidth <= 768 ? toggleMobileSidebar() : toggleSidebarCollapse()" title="Toggle Sidebar">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                         <line x1="9" y1="3" x2="9" y2="21"></line>
@@ -536,10 +536,10 @@
 
         </div>
 
-    </div>
-
     <!-- MOBILE BACKDROP OVERLAY -->
     <div class="mobile-overlay" id="mobile-overlay" onclick="closeAllMobilePanels()"></div>
+
+    </div>
 
     <script src="js/config.js"></script>
     <script src="js/theme.js"></script>
