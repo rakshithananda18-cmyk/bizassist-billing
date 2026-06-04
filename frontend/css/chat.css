@@ -799,7 +799,7 @@ div#insights-panel {
     border: none !important;
     border-left: none !important;
     box-shadow: none !important;
-    padding: 0PX 10px 16px 8px !important;
+    padding: 0 !important;
     display: flex !important;
     flex-direction: column !important;
     gap: 8px !important;
@@ -842,7 +842,7 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
     padding: 0 16px;
     height: 64px;
     box-sizing: border-box;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color) !important;
     flex-shrink: 0;
     gap: 6px;
 }
@@ -913,6 +913,7 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
     gap: 8px;
     flex: 1;
     min-height: 0;
+    padding: 0 10px 16px 8px;
 }
 
 /* ── Each section = white floating card ── */
