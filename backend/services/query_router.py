@@ -18,7 +18,10 @@ for the most common business queries.
 """
 
 import re
+import logging
 from typing import Optional, Tuple
+
+logger = logging.getLogger("bizassist.query_router")
 
 
 # ── Patterns that map directly to a DB query function ──────────────

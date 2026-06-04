@@ -1,9 +1,12 @@
 import json
+import logging
 from datetime import datetime, timedelta
 from sqlalchemy import func, or_
 from database.db import SessionLocal
 from database.models import Invoice, Inventory, Payment
 from services.embeddings import semantic_search_records
+
+logger = logging.getLogger("bizassist.tools")
 
 def safe_int(val, default=None):
     if val is None:

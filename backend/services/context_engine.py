@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 from database.db import SessionLocal
 from database.models import Invoice, Inventory, Payment
@@ -5,6 +6,8 @@ from sqlalchemy import func, and_
 from datetime import datetime, timedelta
 import hashlib
 import time
+
+logger = logging.getLogger("bizassist.context_engine")
 
 # ============================================================
 #  CACHE SYSTEM  —  Reduces DB queries for same request

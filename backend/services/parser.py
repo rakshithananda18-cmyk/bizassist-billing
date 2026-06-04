@@ -1,9 +1,12 @@
+import logging
 import pandas as pd
 from database.models import (
     Invoice,
     Inventory,
     Payment
 )
+
+logger = logging.getLogger("bizassist.parser")
 
 def save_invoices(df, db, business_id, file_id=None):
     """

@@ -16,12 +16,15 @@ After:  context is built once and reused until data changes.
 """
 
 import time
+import logging
 from threading import Lock
 from sqlalchemy import func
 from datetime import datetime, timedelta
 
 from database.db import SessionLocal
 from database.models import Invoice, Inventory, Payment
+
+logger = logging.getLogger("bizassist.context_cache")
 
 
 # ── Cache store ─────────────────────────────────────────────────────
@@ -45,6 +48,7 @@ def invalidate():
     with _lock:
         _cache.clear()
         _query_response_cache.clear()
+    logger.info("[ContextCache] Global cache invalidated (all users).")
 
 
 def invalidate_user_cache(user_id: int):
@@ -56,6 +60,7 @@ def invalidate_user_cache(user_id: int):
             del _cache[user_id]
         if user_id in _query_response_cache:
             del _query_response_cache[user_id]
+    logger.info(f"[ContextCache] Cache invalidated for user {user_id}.")
 
 
 def get_cache_stats() -> dict:
@@ -99,8 +104,11 @@ def get_context(user_id: int) -> str:
         is_stale = (user_cache["context"] is None) or (age > CACHE_TTL)
 
         if is_stale:
+            logger.info(f"[ContextCache] Cache miss / stale for user {user_id}. Rebuilding context...")
             user_cache["context"]  = _build_context(user_id)
             user_cache["built_at"] = now
+        else:
+            logger.debug(f"[ContextCache] Cache hit for user {user_id} (age={age:.1f}s).")
 
         return user_cache["context"]
 
@@ -234,9 +242,12 @@ def _build_context(user_id: int) -> str:
                 lines.append(f"  {r.customer} ₹{r.amount:,.0f}{f' due:{r.due_date}' if r.due_date else ''}")
 
         lines.append("\n=== END ===")
-        return "\n".join(lines)
+        context_str = "\n".join(lines)
+        logger.info(f"[ContextCache] Context built for user {user_id} ({len(context_str)} chars).")
+        return context_str
 
     except Exception as e:
+        logger.error(f"[ContextCache] Failed to build context for user {user_id}: {e}", exc_info=True)
         return f"[Context build error: {e}]"
 
     finally:
