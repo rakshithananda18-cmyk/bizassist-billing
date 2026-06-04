@@ -385,7 +385,7 @@ div.main {
         width: 56px !important;
         height: 56px !important;
         border-radius: 50% !important;
-        background: #FAFAF9 !important;
+        background: var(--bg-color) !important;
         color: var(--accent-color) !important;
         box-shadow: var(--shadow-md) !important;
         border: 1px solid var(--border-color) !important;
@@ -400,7 +400,7 @@ div.main {
 
     html:not([data-active="ai"]) #mobile-assistant-toggle:hover {
         transform: scale(1.06) !important;
-        box-shadow: 0 6px 20px rgba(193, 95, 60, 0.5) !important;
+        box-shadow: 0 6px 20px var(--accent-soft) !important;
     }
 
     html:not([data-active="ai"]) #mobile-assistant-toggle:active {

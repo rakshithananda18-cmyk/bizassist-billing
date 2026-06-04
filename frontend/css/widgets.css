@@ -246,8 +246,8 @@ tr:last-child {
 }
 
 .actions button {
-    border: 1px solid rgba(253, 252, 249, 0.65);
-    background: rgba(253, 252, 249, 0.6);
+    border: 1px solid var(--border-subtle);
+    background: var(--glass-bg);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     color: var(--text-color);
@@ -261,7 +261,7 @@ tr:last-child {
 }
 
 .actions button:hover {
-    background: rgba(253, 252, 249, 0.85);
+    background: var(--glass-bg-hover);
     border-color: var(--accent-color);
     color: var(--accent-color);
     transform: translateY(-1.5px);
@@ -522,7 +522,7 @@ body {
     position: absolute;
     top: -20px; right: -20px;
     width: 80px; height: 80px;
-    background: radial-gradient(circle, rgba(193,95,60,0.08) 0%, transparent 70%);
+    background: radial-gradient(circle, var(--accent-softer) 0%, transparent 70%);
     pointer-events: none;
 }
 
@@ -818,7 +818,7 @@ tr:last-child { border-bottom: none; }
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(135deg, rgba(193,95,60,0.04) 0%, transparent 60%);
+    background: linear-gradient(135deg, var(--accent-softer) 0%, transparent 60%);
     pointer-events: none;
 }
 
@@ -1039,7 +1039,7 @@ tr:last-child { border-bottom: none; }
 .bot .md-rupee {
     font-weight: 700;
     color: var(--accent-color);
-    background: rgba(193,95,60,0.08);
+    background: var(--accent-softer);
     border-radius: 4px;
     padding: 0 3px;
 }
@@ -1235,7 +1235,7 @@ html[data-active="ai"] .dashboard-grid {
 }
 
 .vtab-active .vtab-count {
-    background: rgba(193,95,60,0.15);
+    background: var(--accent-soft);
 }
 
 /* ── Table wrapper ── */
