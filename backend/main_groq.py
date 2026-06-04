@@ -24,6 +24,7 @@ from services.auth import get_active_user
 from services.tools import execute_tool, schemas as tool_schemas
 from database.migration import run_migrations_and_seed
 from services.scheduler import start_scheduler, stop_scheduler
+from services.embeddings import search_chat_memories, save_chat_memory
 
 from sqlalchemy import text
 from database.db import SessionLocal
@@ -230,6 +231,10 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
 
         # ── Layer 3: Groq with Tool Calling ──────────────────────
         logger.info(f"[BizAssist Router Decision] -> AI/Tool Calling Path | Query: '{user_query}'")
+        
+        # Retrieve past memories across sessions
+        past_memories = search_chat_memories(active_user_id, user_query, limit=3)
+        
         system_prompt = (
             "You are BIZASSIST, a proactive AI business intelligence and growth advisor "
             "for Indian retail businesses (pharmacies, supermarkets, stores).\n\n"
@@ -247,6 +252,9 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
             "- STRICT SCOPE FILTER: You are a dedicated retail business operations and intelligence assistant. Politely refuse to answer any queries that are not related to retail store business operations, inventory, billing, sales, invoices, cash flows, or business growth. If asked about personal topics, health/diet, recipes, general knowledge, or other non-business subjects, politely state that your capabilities are strictly focused on business assistance.\n"
             "- Ensure function call arguments are strictly valid JSON with NO trailing commas (e.g. use {\"status\": \"Pending\"}, never {\"status\": \"Pending\",}).\n"
         )
+        
+        if past_memories:
+            system_prompt += f"\n\n{past_memories}"
 
         messages = [{"role": "system", "content": system_prompt}]
         for msg in history:
@@ -316,6 +324,15 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
                 session_title=session_title
             ))
             db.commit()
+
+            # Save QA turn to Chroma persistent vector database
+            save_chat_memory(
+                business_id=active_user_id,
+                session_id=session_id,
+                session_title=session_title,
+                user_query=user_query,
+                assistant_response=final_response
+            )
         except Exception as e:
             db.rollback()
             logger.error(f"Error logging AI transaction: {str(e)}", exc_info=True)

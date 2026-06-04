@@ -227,6 +227,13 @@ async def delete_upload(
         ).delete()
         logger.info(f"Deleted {deleted_embs} associated DocumentEmbedding records.")
 
+        # Sync deletion with Chroma persistent vector database
+        try:
+            from services.embeddings import delete_file_chroma_embeddings
+            delete_file_chroma_embeddings(file_id, active_user_id)
+        except Exception as chroma_err:
+            logger.error(f"Error purging Chroma document embeddings: {chroma_err}", exc_info=True)
+
         # optional cascade: delete all rows of that type for this business
         if cascade:
             logger.info(f"Cascading deletion of all '{file_type}' records for user {active_user_id}...")

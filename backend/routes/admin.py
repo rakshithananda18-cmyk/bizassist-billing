@@ -140,6 +140,13 @@ def wipe_user_data(user_id: int, current_user: dict = Depends(get_active_user)):
         db.query(DocumentEmbedding).filter(DocumentEmbedding.business_id == user_id).delete()
         db.query(ChatMessage).filter(ChatMessage.business_id == user_id).delete()
         
+        # Sync deletion with Chroma persistent vector database
+        try:
+            from services.embeddings import delete_user_chroma_memories
+            delete_user_chroma_memories(user_id)
+        except Exception as chroma_err:
+            logger.error(f"Error purging Chroma user data: {chroma_err}", exc_info=True)
+
         # Also delete the User account itself
         db.delete(target_user)
         db.commit()

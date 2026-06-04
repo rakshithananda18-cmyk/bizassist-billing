@@ -27,3 +27,6 @@ scratch/
 
 # Local config
 frontend/js/config.js
+
+# Vector database persistence
+backend/chroma_db/

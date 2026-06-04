@@ -102,6 +102,16 @@ def delete_chat_history(session_id: str = None, current_user: dict = Depends(get
         db.commit()
         logger.info(f"Successfully deleted {deleted} chat messages for user {active_user_id}.")
         
+        # Sync deletion with Chroma persistent vector database
+        try:
+            from services.embeddings import delete_session_chroma_memories, delete_user_chroma_memories
+            if session_id:
+                delete_session_chroma_memories(session_id, active_user_id)
+            else:
+                delete_user_chroma_memories(active_user_id)
+        except Exception as chroma_err:
+            logger.error(f"Error purging Chroma memories: {chroma_err}", exc_info=True)
+
         # Also invalidate query response cache because conversation history changed
         from services.context_cache import invalidate
         invalidate()
