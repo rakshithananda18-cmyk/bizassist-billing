@@ -1173,6 +1173,10 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
         display: none !important;
     }
 
+    #assistant-header {
+        display: none !important;
+    }
+
     .rp-close-btn {
         display: flex !important;
         align-items: center;

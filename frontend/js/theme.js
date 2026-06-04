@@ -316,13 +316,6 @@ function loadBizDate() {
 function setBizHeaderRight(content) {
     const el = document.getElementById("biz-header-right");
     if (el) el.innerHTML = content;
-
-    const mobTitle = document.getElementById("mobile-navbar-title");
-    if (mobTitle) {
-        let mapped = content;
-        if (content === "AI Assistant") mapped = "Chat Assistant";
-        mobTitle.textContent = mapped;
-    }
 }
 
 
@@ -730,6 +723,12 @@ function updateProfileInitials() {
     const mobileMenuBiz = document.getElementById("mobile-profile-menu-biz-name");
     if (mobileMenuBiz) {
         mobileMenuBiz.textContent = stored;
+    }
+
+    // Set mobile top middle title to business name (uppercase title heading)
+    const mobTitle = document.getElementById("mobile-navbar-title");
+    if (mobTitle) {
+        mobTitle.textContent = stored.toUpperCase();
     }
 }
 
