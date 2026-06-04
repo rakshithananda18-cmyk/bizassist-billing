@@ -277,8 +277,8 @@ tr:last-child {
 }
 
 .dark-mode .matte-glass {
-    background: rgba(193,95,60,0.05);
-    border: 1px solid rgba(193,95,60,0.10);
+    background: var(--accent-softer);
+    border: 1px solid var(--border-subtle);
 }
 
 /* =========================================
