@@ -515,7 +515,7 @@ div.main {
         max-height: none !important;
         flex: 1 !important;
         position: relative !important;
-        z-index: 1006 !important;
+        z-index: auto !important;
     }
 
     .dashboard-left { 
