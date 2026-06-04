@@ -142,9 +142,6 @@
                         <line x1="15" y1="3" x2="15" y2="21"></line>
                     </svg>
                 </button>
-                <button class="mobile-nav-btn mobile-assistant-toggle" id="mobile-assistant-toggle" onclick="toggleMobileAssistant()" title="Toggle AI Assistant" style="font-size: 20px; line-height: 1;">
-                    ✦
-                </button>
                 <div class="profile-badge-wrap mobile-profile" onclick="toggleProfileMenuMobile(event)">
                     <div class="profile-badge-circle" id="mobile-profile-badge-initials">M</div>
                     
@@ -548,6 +545,11 @@
 
     <!-- MOBILE BACKDROP OVERLAY -->
     <div class="mobile-overlay" id="mobile-overlay" onclick="closeAllMobilePanels()"></div>
+
+    <!-- FLOATING ACTION BUTTON FOR AI ASSISTANT -->
+    <button class="mobile-assistant-toggle" id="mobile-assistant-toggle" onclick="toggleMobileAssistant()" title="Toggle AI Assistant">
+        ✦
+    </button>
 
     </div>
 

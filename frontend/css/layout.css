@@ -329,6 +329,10 @@ div.main {
     display: none;
 }
 
+.mobile-assistant-toggle {
+    display: none;
+}
+
 /* =========================================
    RESPONSIVE — TABLET
 ========================================= */
@@ -367,12 +371,45 @@ div.main {
     }
 
     /* Flicker-free navbar toggle buttons based on active view state */
+    /* Floating Action Button (FAB) for AI Assistant on mobile */
+    .mobile-assistant-toggle {
+        display: none;
+    }
+
+    html:not([data-active="ai"]) #mobile-assistant-toggle {
+        display: flex !important;
+        position: fixed !important;
+        bottom: 20px !important;
+        right: 20px !important;
+        width: 56px !important;
+        height: 56px !important;
+        border-radius: 50% !important;
+        background: linear-gradient(135deg, var(--accent-color) 0%, #e07840 100%) !important;
+        color: #ffffff !important;
+        box-shadow: 0 4px 16px rgba(193, 95, 60, 0.4) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        align-items: center !important;
+        justify-content: center !important;
+        z-index: 999 !important;
+        font-size: 24px !important;
+        cursor: pointer;
+        transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease !important;
+        line-height: 1 !important;
+    }
+
+    html:not([data-active="ai"]) #mobile-assistant-toggle:hover {
+        transform: scale(1.06) !important;
+        box-shadow: 0 6px 20px rgba(193, 95, 60, 0.5) !important;
+    }
+
+    html:not([data-active="ai"]) #mobile-assistant-toggle:active {
+        transform: scale(0.96) !important;
+    }
+
     html[data-active="ai"] #mobile-assistant-toggle {
         display: none !important;
     }
-    html:not([data-active="ai"]) #mobile-assistant-toggle {
-        display: flex !important;
-    }
+
     html[data-active="ai"] #mobile-insights-toggle {
         display: flex !important;
     }
