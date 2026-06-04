@@ -63,7 +63,7 @@
     flex: 1;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
-    gap: 14px;
+    gap: 8px;
     min-height: 0;
     overflow: hidden;
     align-items: stretch;
@@ -139,7 +139,7 @@ html:not([data-active="ai"]) #assistant-panel { grid-column: 2 / 3; }
     min-width: 0;
     width: 100%;
     max-width: 100%;
-    padding-right: 20px;
+    padding-right: 8px;
 }
 
 .dashboard-left > * {
@@ -1077,7 +1077,7 @@ div.main {
 
 /* ---- DASHBOARD GRID spacing & proportions ---- */
 .dashboard-grid {
-    gap: 12px;
+    gap: 8px;
     grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
     grid-template-rows: minmax(0, 1fr);
     flex: 1;

@@ -307,7 +307,7 @@ div.main {
 }
 
 .mobile-assistant-toggle {
-    display: none;
+    display: none !important;
 }
 
 /* =========================================

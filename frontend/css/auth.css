@@ -332,6 +332,12 @@ html[data-logged="true"] .login-container {
     visibility: hidden;
     pointer-events: none;
     transform: scale(1.05); /* Slight lift effect on unlock */
+    display: none !important;
+}
+
+html[data-logged="true"] .login-symbol {
+    animation: none !important;
+    display: none !important;
 }
 
 /* ─── LOADING SPINNER & EMPTY STATE HIGHLIGHTS ─── */

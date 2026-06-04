@@ -13,6 +13,7 @@ from routes.insights import router as insights_router
 from routes.auth import router as auth_router
 from routes.admin import router as admin_router
 from routes.chat import router as chat_router
+from routes.alerts import router as alerts_router
 from database.db import engine
 from database.models import Base, ChatMessage
 
@@ -22,6 +23,7 @@ from services.context_cache import get_focused_context
 from services.auth import get_active_user
 from services.tools import execute_tool, schemas as tool_schemas
 from database.migration import run_migrations_and_seed
+from services.scheduler import start_scheduler, stop_scheduler
 
 from sqlalchemy import text
 from database.db import SessionLocal
@@ -40,6 +42,14 @@ app = FastAPI(title="BizAssist API")
 # Run DB migration and seeds
 run_migrations_and_seed()
 
+# Start proactive alert scheduler
+start_scheduler()
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    stop_scheduler()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -53,6 +63,7 @@ app.include_router(admin_router)
 app.include_router(upload_router)
 app.include_router(insights_router)
 app.include_router(chat_router)
+app.include_router(alerts_router)
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 

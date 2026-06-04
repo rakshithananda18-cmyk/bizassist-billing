@@ -42,8 +42,13 @@ echo  SETUP COMPLETE
 echo ==================================
 echo.
 echo Next steps:
-echo  1. Copy .env.example to .env and add your GROQ_API_KEY
+echo  1. Copy .env.example to .env and fill in your keys:
+echo       - GROQ_API_KEY (required for AI)
+echo       - EMAIL_USER / EMAIL_PASS (for email alerts)
+echo       - TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN (for WhatsApp alerts)
 echo  2. Run start.bat to launch the backend
 echo  3. Open frontend\index.html with VS Code Live Server (port 5500)
+echo  4. Configure alerts via: POST /alerts/config
+echo  5. Test alerts via:      POST /alerts/test/daily_summary
 echo.
 pause

@@ -3,7 +3,8 @@ from sqlalchemy import (
     Integer,
     String,
     Float,
-    DateTime
+    DateTime,
+    Boolean
 )
 
 from database.db import Base
@@ -165,3 +166,34 @@ class DocumentEmbedding(Base):
     record_id = Column(Integer, nullable=True)  # References the ID of the matched row
     text_content = Column(String)  # The text representation that was embedded
     embedding_json = Column(String)  # JSON-serialized list of floats (embedding vector)
+
+
+# -------------------------
+# ALERT CONFIG TABLE
+# -------------------------
+
+class AlertConfig(Base):
+
+    __tablename__ = "alert_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    business_id = Column(Integer, unique=True, index=True)
+    business_name = Column(String, nullable=True)
+
+    # Notification channels
+    email = Column(String, nullable=True)
+    whatsapp_number = Column(String, nullable=True)  # e.g. "+919876543210"
+
+    # Alert toggles
+    alert_overdue = Column(Boolean, default=True)
+    alert_low_stock = Column(Boolean, default=True)
+    alert_expiry = Column(Boolean, default=True)
+    alert_daily_summary = Column(Boolean, default=True)
+
+    # Thresholds
+    low_stock_threshold = Column(Integer, default=10)
+    expiry_days_threshold = Column(Integer, default=30)
+
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

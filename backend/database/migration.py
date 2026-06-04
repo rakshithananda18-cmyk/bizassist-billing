@@ -1,7 +1,7 @@
 import logging
 from sqlalchemy import text
 from database.db import engine, SessionLocal
-from database.models import Base, User, ChatMessage, DocumentEmbedding
+from database.models import Base, User, ChatMessage, DocumentEmbedding, AlertConfig
 from services.auth import hash_password
 
 logger = logging.getLogger("bizassist.migration")
@@ -116,6 +116,10 @@ def run_migrations_and_seed():
                 except Exception as e:
                     logger.error(f"Failed migrating null values in {table}: {e}")
             conn.commit()
+
+        # Ensure alert_configs table exists (created by Base.metadata.create_all above)
+        # No extra columns to migrate for now — table is new
+        logger.info("alert_configs table ensured.")
 
         logger.info("Database schema migration and seeding completed successfully.")
 
