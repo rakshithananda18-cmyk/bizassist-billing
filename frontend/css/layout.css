@@ -977,3 +977,19 @@ div.main {
     color: #c02a2a;
 }
 
+/* Align sidebar collapse and theme selector buttons with right panel collapse button style */
+.sidebar-toggle-btn,
+.theme-btn {
+    border: 1px solid var(--border-color) !important;
+    background: transparent !important;
+    color: var(--secondary-text) !important;
+    box-shadow: none !important;
+}
+
+.sidebar-toggle-btn:hover,
+.theme-btn:hover {
+    background: var(--accent-soft) !important;
+    color: var(--accent-color) !important;
+    border-color: var(--accent-color) !important;
+}
+
