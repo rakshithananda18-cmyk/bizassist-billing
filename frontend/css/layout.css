@@ -391,7 +391,7 @@ div.main {
         border: 1px solid var(--border-color) !important;
         align-items: center !important;
         justify-content: center !important;
-        z-index: 999 !important;
+        z-index: 1009 !important;
         font-size: 24px !important;
         cursor: pointer;
         transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease !important;
