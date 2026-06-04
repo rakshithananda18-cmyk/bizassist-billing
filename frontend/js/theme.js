@@ -108,6 +108,19 @@ let originalLeftHTML    = "";
 
 function selectSidebar(name) {
 
+    if (typeof closeAllMobilePanels === "function") {
+        closeAllMobilePanels();
+    }
+
+    const insightsToggle = document.getElementById("mobile-insights-toggle");
+    if (insightsToggle) {
+        if (name === "ai") {
+            insightsToggle.style.display = "flex";
+        } else {
+            insightsToggle.style.display = "none";
+        }
+    }
+
     setActiveButton(name);
 
     /* Persist so the selection survives page refresh */
@@ -303,6 +316,13 @@ function loadBizDate() {
 function setBizHeaderRight(content) {
     const el = document.getElementById("biz-header-right");
     if (el) el.innerHTML = content;
+
+    const mobTitle = document.getElementById("mobile-navbar-title");
+    if (mobTitle) {
+        let mapped = content;
+        if (content === "AI Assistant") mapped = "Chat Assistant";
+        mobTitle.textContent = mapped;
+    }
 }
 
 
@@ -702,6 +722,15 @@ function updateProfileInitials() {
     if (menuBiz) {
         menuBiz.textContent = stored;
     }
+
+    const mobileInitials = document.getElementById("mobile-profile-badge-initials");
+    if (mobileInitials) {
+        mobileInitials.textContent = initial;
+    }
+    const mobileMenuBiz = document.getElementById("mobile-profile-menu-biz-name");
+    if (mobileMenuBiz) {
+        mobileMenuBiz.textContent = stored;
+    }
 }
 
 function toggleProfileMenu(event) {
@@ -742,6 +771,13 @@ window.addEventListener("click", (e) => {
         const wrap = document.querySelector(".profile-badge-wrap");
         if (wrap && !wrap.contains(e.target)) {
             profileMenu.style.display = "none";
+        }
+    }
+    const mobileProfileMenu = document.getElementById("mobileProfileMenu");
+    if (mobileProfileMenu && mobileProfileMenu.style.display === "block") {
+        const wrapMobile = document.querySelector(".mobile-profile");
+        if (wrapMobile && !wrapMobile.contains(e.target)) {
+            mobileProfileMenu.style.display = "none";
         }
     }
 });
@@ -813,4 +849,91 @@ async function loadRpChatHistory() {
     } catch (e) {
         container.innerHTML = `<div class="rp-empty">Could not load history</div>`;
     }
+}
+
+// ── MOBILE RESPONSIVE TOGGLES & UTILITIES ──────────────────────────────
+
+function toggleMobileSidebar() {
+    const sidebar = document.getElementById("sidebar-nav");
+    const overlay = document.getElementById("mobile-overlay");
+    if (!sidebar || !overlay) return;
+    
+    const insights = document.getElementById("insights-panel");
+    if (insights) insights.classList.remove("mobile-open");
+    
+    sidebar.classList.toggle("mobile-open");
+    if (sidebar.classList.contains("mobile-open")) {
+        overlay.classList.add("active");
+    } else {
+        overlay.classList.remove("active");
+    }
+}
+
+// Close mobile panels when click navigation link
+document.querySelectorAll(".sidebar button").forEach(btn => {
+    btn.addEventListener("click", () => {
+        closeAllMobilePanels();
+    });
+});
+
+function toggleMobileInsights() {
+    const insights = document.getElementById("insights-panel");
+    const overlay = document.getElementById("mobile-overlay");
+    if (!insights || !overlay) return;
+    
+    const sidebar = document.getElementById("sidebar-nav");
+    if (sidebar) sidebar.classList.remove("mobile-open");
+    
+    insights.classList.toggle("mobile-open");
+    if (insights.classList.contains("mobile-open")) {
+        overlay.classList.add("active");
+    } else {
+        overlay.classList.remove("active");
+    }
+}
+
+function closeAllMobilePanels() {
+    const sidebar = document.getElementById("sidebar-nav");
+    const insights = document.getElementById("insights-panel");
+    const overlay = document.getElementById("mobile-overlay");
+    
+    if (sidebar) sidebar.classList.remove("mobile-open");
+    if (insights) insights.classList.remove("mobile-open");
+    if (overlay) overlay.classList.remove("active");
+}
+
+function toggleProfileMenuMobile(event) {
+    event.stopPropagation();
+    const menu = document.getElementById("mobileProfileMenu");
+    if (!menu) return;
+    const currentDisplay = menu.style.display;
+    
+    // Close other dropdowns
+    const themeMenu = document.getElementById("themeMenu");
+    if (themeMenu) themeMenu.style.display = "none";
+    const profileMenu = document.getElementById("profileMenu");
+    if (profileMenu) profileMenu.style.display = "none";
+    
+    if (currentDisplay === "block") {
+        menu.style.display = "none";
+    } else {
+        menu.style.display = "block";
+    }
+}
+
+function editBizNameFromMenuMobile(event) {
+    event.stopPropagation();
+    const menu = document.getElementById("mobileProfileMenu");
+    if (menu) menu.style.display = "none";
+    
+    const sidebar = document.getElementById("sidebar-nav");
+    if (sidebar) {
+        sidebar.classList.add("mobile-open");
+        const overlay = document.getElementById("mobile-overlay");
+        if (overlay) overlay.classList.add("active");
+    }
+    
+    setTimeout(() => {
+        editBizName();
+    }, 100);
 }

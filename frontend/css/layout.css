@@ -318,6 +318,18 @@ div.main {
 }
 
 /* =========================================
+   MOBILE NAVBAR & OVERLAY (DESKTOP HIDDEN)
+========================================= */
+
+.mobile-navbar {
+    display: none;
+}
+
+.mobile-overlay {
+    display: none;
+}
+
+/* =========================================
    RESPONSIVE — TABLET
 ========================================= */
 
@@ -331,60 +343,290 @@ div.main {
 ========================================= */
 
 @media (max-width: 768px) {
-    body { overflow: auto; }
+    body { overflow: hidden !important; }
 
-    .app { flex-direction: column; height: auto; }
+    .app { 
+        flex-direction: column !important; 
+        height: 100vh !important; 
+        overflow: hidden !important; 
+    }
 
-    div.main { min-width: 0; padding: 12px !important; overflow: visible; height: auto; max-height: none; }
+    /* Top navbar display */
+    .mobile-navbar {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between;
+        height: 56px;
+        padding: 0 16px;
+        background: var(--sidebar-color);
+        border-bottom: 1px solid var(--border-color);
+        position: relative;
+        z-index: 1005;
+        box-shadow: var(--shadow-sm);
+        flex-shrink: 0;
+    }
 
-    .dashboard-left { overflow: visible; }
+    .mobile-nav-btn {
+        background: transparent;
+        border: none;
+        color: var(--text-color);
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+    }
 
-    .assistant-panel { height: auto; min-height: 520px; }
+    .mobile-nav-btn:hover {
+        background: var(--hover-bg);
+        color: var(--accent-color);
+    }
 
+    .mobile-navbar-title {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-color);
+        font-family: 'DM Sans', sans-serif;
+        letter-spacing: -0.01em;
+        white-space: nowrap;
+        pointer-events: none;
+    }
+
+    .mobile-navbar-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* Mobile profile badge inside navbar */
+    .mobile-profile {
+        position: relative;
+        padding: 0 !important;
+        width: 36px !important;
+        height: 36px !important;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+    }
+
+    #mobileProfileMenu {
+        position: absolute;
+        top: 44px !important;
+        bottom: auto !important;
+        right: 0 !important;
+        left: auto !important;
+        width: 178px !important;
+        z-index: 1009 !important;
+    }
+
+    /* Dark dimming backdrop overlay */
+    .mobile-overlay {
+        display: block !important;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(1.5px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+        z-index: 1008;
+    }
+
+    .mobile-overlay.active {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    /* Main Area setup */
+    div.main { 
+        min-width: 0 !important; 
+        padding: 12px !important; 
+        overflow: hidden !important; 
+        height: calc(100vh - 56px) !important;
+        max-height: none !important;
+        flex: 1 !important;
+    }
+
+    .dashboard-left { 
+        overflow-y: auto !important; 
+        flex: 1 !important;
+        min-height: 0 !important;
+        padding-right: 0 !important;
+    }
+
+    .assistant-panel { 
+        height: 100% !important; 
+        min-height: 0 !important; 
+        display: flex !important;
+        flex-direction: column !important;
+        flex: 1 !important;
+    }
+
+    /* Sidebar configured as vertical sliding drawer panel */
     .sidebar {
-        width: 100% !important;
-        flex-direction: row !important;
-        overflow-x: auto !important;
-        gap: 6px !important;
-        padding: 10px 12px !important;
-        align-items: center !important;
-        border: none !important;
-        border-bottom: 1px solid var(--border-color) !important;
-        border-radius: 0 !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        bottom: 0 !important;
+        width: 250px !important;
+        height: 100vh !important;
         margin: 0 !important;
+        border-radius: 0 !important;
+        border: none !important;
+        border-right: 1px solid var(--border-color) !important;
+        transform: translateX(-100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        z-index: 1010 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        background: var(--sidebar-color) !important;
+        box-shadow: var(--shadow-lg) !important;
+        padding: 16px 12px !important;
+        gap: 8px !important;
+        align-items: stretch !important;
+    }
+
+    .sidebar.mobile-open {
+        transform: translateX(0) !important;
     }
 
     .sidebar button {
-        white-space: nowrap;
-        min-width: fit-content;
-        font-size: 13px;
+        width: 100% !important;
+        justify-content: flex-start !important;
+        padding: 0 10px !important;
+        height: 38px !important;
+        border-radius: 8px !important;
     }
 
-    .sidebar button.active::before,
-    html[data-active="ai"]        .sidebar button#ai-btn::before,
-    html[data-active="dashboard"] .sidebar button#dashboard-btn::before,
-    html[data-active="invoices"]  .sidebar button#invoices-btn::before,
-    html[data-active="payments"]  .sidebar button#payments-btn::before,
-    html[data-active="clients"]   .sidebar button#clients-btn::before,
-    html[data-active="uploads"]   .sidebar button#uploads-btn::before,
-    html[data-active="database"]  .sidebar button#db-btn::before {
-        display: none;   /* left-bar indicator looks odd in horizontal mode */
+    /* Make sure texts are shown in mobile view drawer */
+    .sidebar .sidebar-text {
+        opacity: 1 !important;
+        display: inline-block !important;
+        pointer-events: auto !important;
+        width: auto !important;
     }
 
-    .logo {
-        margin-right: 8px;
-        margin-bottom: 0;
-        font-size: 18px;
-        white-space: nowrap;
+    .sidebar .sidebar-brand-text {
+        opacity: 1 !important;
+        display: block !important;
     }
 
-    .theme-dropdown { margin-top: 0; margin-left: auto; }
+    .sidebar .sidebar-header {
+        justify-content: space-between !important;
+        padding: 0 4px !important;
+    }
+
+    .sidebar .sidebar-toggle-btn {
+        width: 32px !important;
+        height: 32px !important;
+        border-radius: 6px !important;
+    }
+
+    .sidebar .sidebar-sep {
+        width: auto !important;
+        margin: 4px 4px 8px !important;
+    }
+
+    .sidebar .sidebar-footer {
+        padding-top: 14px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 14px !important;
+    }
+
+    .sidebar .sidebar-footer .theme-btn {
+        width: 36px !important;
+        height: 36px !important;
+        border-radius: 8px !important;
+    }
+
+    .sidebar .profile-badge-wrap {
+        padding: 6px 8px !important;
+        justify-content: flex-start !important;
+        width: 100% !important;
+    }
+
+    /* Force expanded drawer display even if html has .collapsed */
+    .sidebar.collapsed {
+        width: 250px !important;
+        padding: 16px 12px !important;
+        align-items: stretch !important;
+    }
+    .sidebar.collapsed .sidebar-text {
+        opacity: 1 !important;
+        display: inline-block !important;
+        pointer-events: auto !important;
+        width: auto !important;
+    }
+    .sidebar.collapsed .sidebar-brand-text {
+        opacity: 1 !important;
+        display: block !important;
+    }
+    .sidebar.collapsed .sidebar-header {
+        justify-content: space-between !important;
+        padding: 0 4px !important;
+    }
+    .sidebar.collapsed .sidebar-toggle-btn {
+        width: 32px !important;
+        height: 32px !important;
+        border-radius: 6px !important;
+    }
+    .sidebar.collapsed button.matte-glass {
+        padding: 0 10px !important;
+        justify-content: flex-start !important;
+        width: 100% !important;
+        height: 38px !important;
+        border-radius: 8px !important;
+    }
+    .sidebar.collapsed .sidebar-sep {
+        width: auto !important;
+        margin: 4px 4px 8px !important;
+    }
+    .sidebar.collapsed .sidebar-footer {
+        padding-top: 14px !important;
+    }
+    .sidebar.collapsed .sidebar-footer .theme-btn {
+        width: 36px !important;
+        height: 36px !important;
+        border-radius: 8px !important;
+    }
+    .sidebar.collapsed .profile-badge-wrap {
+        padding: 6px 8px !important;
+        justify-content: flex-start !important;
+        width: 100% !important;
+    }
+    .sidebar.collapsed .profile-menu {
+        left: 4px !important;
+        bottom: 50px !important;
+    }
+
+    .theme-dropdown { margin-top: auto; margin-left: 0; }
 
     .cards { grid-template-columns: 1fr; }
 
     .card p { font-size: 26px; }
 
-    .dashboard-grid { display: flex; flex-direction: column; }
+    .dashboard-grid { 
+        display: flex !important; 
+        flex-direction: column !important; 
+        height: 100% !important;
+        min-height: 0 !important;
+        gap: 12px !important;
+        flex: 1 !important;
+    }
 
     table { font-size: 13px; }
     th, td { padding: 9px 8px; }
@@ -401,8 +643,8 @@ div.main {
 
 @media (max-width: 480px) {
     .logo { font-size: 16px; }
-    .sidebar { padding: 8px 10px; }
-    .sidebar button { padding: 9px 10px; font-size: 12.5px; }
+    .sidebar { padding: 16px 12px !important; }
+    .sidebar button { padding: 0 10px !important; font-size: 13.5px !important; }
     .card { border-radius: 10px; }
     .widget { border-radius: 10px; padding: 16px; }
     .assistant-panel { border-radius: 10px; padding: 14px; }

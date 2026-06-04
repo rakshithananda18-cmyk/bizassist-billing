@@ -1129,7 +1129,46 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
 
 /* ── Mobile ── */
 @media (max-width: 768px) {
-    #insights-panel { display: none !important; }
+    #insights-panel {
+        position: fixed !important;
+        top: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 280px !important;
+        height: 100vh !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        border: none !important;
+        border-left: 1px solid var(--border-color) !important;
+        transform: translateX(100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        z-index: 1010 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        background: var(--sidebar-color) !important;
+        box-shadow: var(--shadow-lg) !important;
+        overflow-y: auto !important;
+        padding: 0 !important;
+    }
+    
+    #insights-panel.mobile-open {
+        transform: translateX(0) !important;
+        display: flex !important;
+    }
+
+    #insights-panel.collapsed {
+        transform: translateX(100%) !important;
+        width: 280px !important;
+        min-width: 280px !important;
+        padding: 0 !important;
+        background: var(--sidebar-color) !important;
+    }
+
+    /* Hide desktop expand/collapse buttons on mobile since we toggle drawer from mobile top navbar */
+    #insights-panel .rp-expand-btn,
+    .assistant-header .rp-collapse-btn {
+        display: none !important;
+    }
 }
 
 /* ── Insight mini-cards (revenue, overdue, top customers) ── */
