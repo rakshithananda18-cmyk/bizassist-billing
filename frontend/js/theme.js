@@ -113,11 +113,14 @@ function selectSidebar(name) {
     }
 
     const insightsToggle = document.getElementById("mobile-insights-toggle");
-    if (insightsToggle) {
+    const assistantToggle = document.getElementById("mobile-assistant-toggle");
+    if (insightsToggle && assistantToggle) {
         if (name === "ai") {
             insightsToggle.style.display = "flex";
+            assistantToggle.style.display = "none";
         } else {
             insightsToggle.style.display = "none";
+            assistantToggle.style.display = "flex";
         }
     }
 
@@ -894,11 +897,31 @@ function toggleMobileInsights() {
 function closeAllMobilePanels() {
     const sidebar = document.getElementById("sidebar-nav");
     const insights = document.getElementById("insights-panel");
+    const assistant = document.getElementById("assistant-panel");
     const overlay = document.getElementById("mobile-overlay");
     
     if (sidebar) sidebar.classList.remove("mobile-open");
     if (insights) insights.classList.remove("mobile-open");
+    if (assistant) assistant.classList.remove("mobile-open");
     if (overlay) overlay.classList.remove("active");
+}
+
+function toggleMobileAssistant() {
+    const assistant = document.getElementById("assistant-panel");
+    const overlay = document.getElementById("mobile-overlay");
+    if (!assistant || !overlay) return;
+    
+    const sidebar = document.getElementById("sidebar-nav");
+    if (sidebar) sidebar.classList.remove("mobile-open");
+    const insights = document.getElementById("insights-panel");
+    if (insights) insights.classList.remove("mobile-open");
+    
+    assistant.classList.toggle("mobile-open");
+    if (assistant.classList.contains("mobile-open")) {
+        overlay.classList.add("active");
+    } else {
+        overlay.classList.remove("active");
+    }
 }
 
 function toggleProfileMenuMobile(event) {

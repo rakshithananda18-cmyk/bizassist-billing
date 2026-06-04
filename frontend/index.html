@@ -142,6 +142,9 @@
                         <line x1="15" y1="3" x2="15" y2="21"></line>
                     </svg>
                 </button>
+                <button class="mobile-nav-btn mobile-assistant-toggle" id="mobile-assistant-toggle" onclick="toggleMobileAssistant()" title="Toggle AI Assistant" style="font-size: 20px; line-height: 1;">
+                    ✦
+                </button>
                 <div class="profile-badge-wrap mobile-profile" onclick="toggleProfileMenuMobile(event)">
                     <div class="profile-badge-circle" id="mobile-profile-badge-initials">M</div>
                     
@@ -311,6 +314,12 @@
                 <!-- AI PANEL -->
 
                 <div id="assistant-panel" class="assistant-panel">
+
+                    <!-- Mobile-only header when opened as drawer/modal -->
+                    <div class="assistant-mobile-header">
+                        <span class="amh-title">AI Assistant</span>
+                        <button class="amh-close-btn" onclick="toggleMobileAssistant()" title="Close Assistant">×</button>
+                    </div>
 
                     <div class="assistant-header" id="assistant-header">
                         <!-- Empty state: biz name + date (same style as old banner) -->

@@ -1198,6 +1198,71 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
         background: var(--hover-bg);
         color: var(--accent-color);
     }
+
+    /* AI Assistant slide-up drawer when not in main AI view */
+    html:not([data-active="ai"]) #assistant-panel {
+        display: flex !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        height: 100vh !important;
+        width: 100% !important;
+        z-index: 1010 !important;
+        transform: translateY(100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        box-shadow: var(--shadow-lg) !important;
+        pointer-events: none;
+    }
+
+    html:not([data-active="ai"]) #assistant-panel.mobile-open {
+        transform: translateY(0) !important;
+        pointer-events: auto;
+    }
+
+    /* Modal drawer header inside assistant panel */
+    .assistant-mobile-header {
+        display: none;
+    }
+    
+    html:not([data-active="ai"]) .assistant-mobile-header {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        height: 56px;
+        background: var(--sidebar-color);
+        border-bottom: 1px solid var(--border-color);
+        flex-shrink: 0;
+    }
+    
+    .amh-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-color);
+        font-family: 'DM Sans', sans-serif;
+    }
+    
+    .amh-close-btn {
+        background: transparent;
+        border: none;
+        color: var(--text-color);
+        font-size: 24px;
+        cursor: pointer;
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.15s, color 0.15s;
+    }
+
+    .amh-close-btn:hover {
+        background: var(--hover-bg);
+        color: var(--accent-color);
+    }
 }
 
 /* ── Insight mini-cards (revenue, overdue, top customers) ── */

@@ -366,6 +366,20 @@ div.main {
         flex-shrink: 0;
     }
 
+    /* Flicker-free navbar toggle buttons based on active view state */
+    html[data-active="ai"] #mobile-assistant-toggle {
+        display: none !important;
+    }
+    html:not([data-active="ai"]) #mobile-assistant-toggle {
+        display: flex !important;
+    }
+    html[data-active="ai"] #mobile-insights-toggle {
+        display: flex !important;
+    }
+    html:not([data-active="ai"]) #mobile-insights-toggle {
+        display: none !important;
+    }
+
     .mobile-nav-btn {
         background: transparent;
         border: none;
