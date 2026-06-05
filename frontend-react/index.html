@@ -29,6 +29,17 @@
         }
       })();
     </script>
+    <style>
+      /* Prevent initial blank page white flash in dark mode */
+      html, body {
+        background-color: #fdfdfc;
+        color: #000000;
+      }
+      html.dark-mode, html.dark-mode body {
+        background-color: #1F1F1E;
+        color: #ede8e0;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

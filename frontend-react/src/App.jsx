@@ -12,6 +12,7 @@ import Payments       from './pages/Payments'
 import Clients        from './pages/Clients'
 import Database       from './pages/Database'
 import Upload         from './pages/Upload'
+import Alerts         from './pages/Alerts'
 import NotFound       from './pages/NotFound'
 
 import AdminLogin      from './pages/admin/AdminLogin'
@@ -40,6 +41,7 @@ export default function App() {
             <Route path="/chat"         element={<div />} /> {/* Rendered inside AppLayout */}
             <Route path="/upload"       element={<Upload />} />
             <Route path="/database"     element={<Database />} />
+            <Route path="/alerts"       element={<Alerts />} />
           </Route>
 
           {/* Admin portal */}

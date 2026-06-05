@@ -58,7 +58,18 @@ def shutdown_event():
     stop_scheduler()
 
 import os as _os
-_default_origins = "null,http://localhost:5500,http://127.0.0.1:5500,http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173"
+_default_origins = (
+    "null,"
+    "http://localhost:5500,http://127.0.0.1:5500,"
+    "http://localhost:3000,"
+    "http://localhost:5173,http://127.0.0.1:5173,"
+    # Vercel production — update with your real Vercel URL
+    "https://bizassist-react.vercel.app,"
+    "https://bizassist.vercel.app,"
+    # Hugging Face Spaces — format: https://<owner>-<space-name>.hf.space
+    # Set ALLOWED_ORIGINS env var in HF Space secrets to add your exact URL
+    "https://rakshit-dev-bizassist.hf.space"
+)
 _allowed_origins = [
     o.strip() for o in _os.getenv("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()
 ]

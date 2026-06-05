@@ -125,6 +125,26 @@ export default function Invoices() {
         </div>
       </div>
 
+      {/* SUMMARY STRIP */}
+      <div className="vsummary-strip" style={{ marginBottom: 16 }}>
+        <div className="vsummary-item" onClick={() => sendChip('List all paid invoices')}>
+          <div className="vsummary-val" style={{ color: '#27864a' }}>{paidCount}</div>
+          <div className="vsummary-key">Paid</div>
+        </div>
+        <div className="vsummary-item" onClick={() => sendChip('List all pending invoices')}>
+          <div className="vsummary-val" style={{ color: '#b06510' }}>{pendingCount}</div>
+          <div className="vsummary-key">Pending</div>
+        </div>
+        <div className="vsummary-item" onClick={() => sendChip('List all overdue invoices with amounts')}>
+          <div className="vsummary-val" style={{ color: '#c02a2a' }}>{overdueCount}</div>
+          <div className="vsummary-key">Overdue</div>
+        </div>
+        <div className="vsummary-item" onClick={() => sendChip('What is my total revenue?')}>
+          <div className="vsummary-val">{fmtAmount(totalAmount)}</div>
+          <div className="vsummary-key">Total</div>
+        </div>
+      </div>
+
       {/* FILTER TABS */}
       <div className="vtabs">{tabs}</div>
 
@@ -205,27 +225,6 @@ export default function Invoices() {
           </button>
         </div>
       )}
-
-      {/* SUMMARY STRIP — below table+pagination, matching legacy */}
-      <div className="vsummary-strip">
-        <div className="vsummary-item" onClick={() => sendChip('List all paid invoices')}>
-          <div className="vsummary-val" style={{ color: '#27864a' }}>{paidCount}</div>
-          <div className="vsummary-key">Paid</div>
-        </div>
-        <div className="vsummary-item" onClick={() => sendChip('List all pending invoices')}>
-          <div className="vsummary-val" style={{ color: '#b06510' }}>{pendingCount}</div>
-          <div className="vsummary-key">Pending</div>
-        </div>
-        <div className="vsummary-item" onClick={() => sendChip('List all overdue invoices with amounts')}>
-          <div className="vsummary-val" style={{ color: '#c02a2a' }}>{overdueCount}</div>
-          <div className="vsummary-key">Overdue</div>
-        </div>
-        <div className="vsummary-item" onClick={() => sendChip('What is my total revenue?')}>
-          <div className="vsummary-val">{fmtAmount(totalAmount)}</div>
-          <div className="vsummary-key">Total</div>
-        </div>
-      </div>
-
     </>
   )
 }

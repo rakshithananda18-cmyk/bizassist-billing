@@ -1,0 +1,39 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Tests
+tests/
+.pytest_cache/
+test_*.db
+*.test.db
+
+# Dev databases (the app creates a fresh one in /app)
+bizassist.db
+test_bizassist.db
+
+# Chroma DB data (re-built from user data at runtime)
+chroma_db/
+
+# Local env file — secrets go into HF Space secrets UI
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

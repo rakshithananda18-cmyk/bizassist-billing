@@ -88,7 +88,7 @@ function TypingIndicator() {
   )
 }
 
-function MessageBubble({ msg }) {
+function MessageBubble({ msg, innerRef }) {
   if (msg.role === 'user') {
     return (
       <div className="message-row user-row">
@@ -101,6 +101,7 @@ function MessageBubble({ msg }) {
       <div className="bot-message-wrap">
         <div className="bot-name-label">BizAssist</div>
         <div
+          ref={innerRef}
           className="message bot"
           dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
         />
@@ -157,6 +158,8 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   const chatRef = useRef(null)
   const inputRef = useRef(null)
   const rlInterval = useRef(null)
+  const activeBotMessageRef = useRef(null)
+  const typingTimeoutRef = useRef(null)
 
   // Sync biz_name dynamically when updated elsewhere
   useEffect(() => {
@@ -191,6 +194,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
 
   // Select session
   const selectSession = useCallback(async (id) => {
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
     setActiveId(id)
     localStorage.setItem('active_session_id', id || '')
     // Notify the right-panel history so its highlight follows the popup selection
@@ -210,6 +214,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
 
   // Start new chat
   const startNewChat = useCallback(() => {
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
     setActiveId(null)
     setMessages([])
     localStorage.removeItem('active_session_id')
@@ -275,6 +280,8 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
     const msg = (text || input).trim()
     if (!msg || loading || rateLimited) return
 
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+
     setInput('')
     if (inputRef.current) inputRef.current.style.height = 'auto'
 
@@ -322,17 +329,24 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
 
       let i = 0
       const delay = fullText.length > 500 ? 3 : 6
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+
       function typeNext() {
         if (i < fullText.length) {
           i++
+          if (activeBotMessageRef.current) {
+            activeBotMessageRef.current.innerHTML = renderMarkdown(fullText.slice(0, i))
+          }
+          chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'auto' })
+          typingTimeoutRef.current = setTimeout(typeNext, delay)
+        } else {
           setMessages(prev => {
             const updated = [...prev]
             if (updated.length > 0) {
-              updated[updated.length - 1] = { ...botMsg, content: fullText.slice(0, i) }
+              updated[updated.length - 1] = { ...botMsg, content: fullText }
             }
             return updated
           })
-          setTimeout(typeNext, delay)
         }
       }
       typeNext()
@@ -364,6 +378,13 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
       window.removeEventListener('ai-new-chat', handleStartNewChat)
     }
   }, [selectSession, startNewChat])
+
+  // General unmount cleanup
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+    }
+  }, [])
 
   // Listen to shortcuts globally
   useEffect(() => {
@@ -520,7 +541,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
       <div className="chat-main-area">
         <div className="chat-box" id="chat-box" ref={chatRef}>
           {/* EMPTY STATE — replaced by messages on first send */}
-          {messages.length === 0 && !loading && (
+          {messages.length === 0 && !loading && !activeId && (
             <div className="chat-empty-state" id="chat-empty-state">
               <div className="ces-glow"></div>
               <div className="ces-symbol">✦</div>
@@ -541,7 +562,11 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
 
           {/* MESSAGE BUBBLES */}
           {messages.map((msg, i) => (
-            <MessageBubble key={i} msg={msg} />
+            <MessageBubble
+              key={i}
+              msg={msg}
+              innerRef={i === messages.length - 1 && msg.role === 'assistant' ? activeBotMessageRef : null}
+            />
           ))}
 
           {/* TYPING INDICATOR */}

@@ -69,8 +69,9 @@ def run_migrations_and_seed():
                 {"id": 4, "username": "store", "password": "store123", "business_name": "Apna Bazaar Store", "role": "enterprise"}
             ]
         else:
+            _admin_pw = os.environ.get("ADMIN_SEED_PASSWORD", "admin123")
             default_users = [
-                {"id": 1, "username": "admin", "password": "admin123", "business_name": "Admin Central", "role": "admin"}
+                {"id": 1, "username": "admin", "password": _admin_pw, "business_name": "Admin Central", "role": "admin"}
             ]
             
             # Delete demo users and their data in production
