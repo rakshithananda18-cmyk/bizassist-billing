@@ -221,52 +221,54 @@ export default function AdminBusinesses() {
         {loading ? (
           <div className="vskel"></div>
         ) : (
-          <table className="admin-table" style={{ width: '100%', marginTop: 12 }}>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Business Name</th>
-                <th>Username</th>
-                <th>Total Invoices</th>
-                <th>Tracked Revenue</th>
-                <th>Inventory Stock Count</th>
-                <th>Upload History</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {businesses.length === 0 ? (
+          <div className="admin-table-wrap" style={{ overflowX: 'auto', width: '100%' }}>
+            <table className="admin-table" style={{ width: '100%', marginTop: 12 }}>
+              <thead>
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 30 }}>
-                    No enterprise businesses registered yet.
-                  </td>
+                  <th>ID</th>
+                  <th>Business Name</th>
+                  <th>Username</th>
+                  <th>Total Invoices</th>
+                  <th>Tracked Revenue</th>
+                  <th>Inventory Stock Count</th>
+                  <th>Upload History</th>
+                  <th>Actions</th>
                 </tr>
-              ) : (
-                businesses.map(b => (
-                  <tr key={b.id}>
-                    <td style={{ fontFamily: "'Geist Mono',monospace", opacity: 0.75 }}>{b.id}</td>
-                    <td style={{ fontWeight: 600, color: 'var(--accent-color)' }}>{b.business_name}</td>
-                    <td>{b.username}</td>
-                    <td>{b.invoice_count}</td>
-                    <td style={{ fontFamily: "'Crimson Pro',serif", fontSize: 16, fontWeight: 600 }}>
-                      ₹{b.total_revenue.toLocaleString('en-IN')}
-                    </td>
-                    <td>{b.inventory_count} items</td>
-                    <td>{b.upload_count} datasets</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn-flush" onClick={() => openInspectModal(b)}>Inspect</button>
-                        <button className="btn-flush" onClick={() => openEditModal(b)}>Edit</button>
-                        <button className="btn-flush" onClick={() => openLimitsModal(b)}>⚙ Limits</button>
-                        <button className="btn-flush" onClick={() => handleFlushCache(b.id, b.business_name)}>Flush Cache</button>
-                        <button className="btn-wipe-row" onClick={() => handleWipeUser(b.id, b.business_name)}>Wipe Data</button>
-                      </div>
+              </thead>
+              <tbody>
+                {businesses.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 30 }}>
+                      No enterprise businesses registered yet.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  businesses.map(b => (
+                    <tr key={b.id}>
+                      <td style={{ fontFamily: "'Geist Mono',monospace", opacity: 0.75 }}>{b.id}</td>
+                      <td style={{ fontWeight: 600, color: 'var(--accent-color)' }}>{b.business_name}</td>
+                      <td>{b.username}</td>
+                      <td>{b.invoice_count}</td>
+                      <td style={{ fontFamily: "'Crimson Pro',serif", fontSize: 16, fontWeight: 600 }}>
+                        ₹{b.total_revenue.toLocaleString('en-IN')}
+                      </td>
+                      <td>{b.inventory_count} items</td>
+                      <td>{b.upload_count} datasets</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button className="btn-flush" onClick={() => openInspectModal(b)}>Inspect</button>
+                          <button className="btn-flush" onClick={() => openEditModal(b)}>Edit</button>
+                          <button className="btn-flush" onClick={() => openLimitsModal(b)}>⚙ Limits</button>
+                          <button className="btn-flush" onClick={() => handleFlushCache(b.id, b.business_name)}>Flush Cache</button>
+                          <button className="btn-wipe-row" onClick={() => handleWipeUser(b.id, b.business_name)}>Wipe Data</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 

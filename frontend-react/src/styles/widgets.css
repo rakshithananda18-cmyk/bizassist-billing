@@ -2067,6 +2067,7 @@ details[open] > .tree-summary::after {
     padding: 0 18px 18px 18px;
     border-top: 1px solid var(--border-color);
     background: var(--accent-softer);
+    overflow-x: auto;
 }
 .tree-table {
     width: 100%;
