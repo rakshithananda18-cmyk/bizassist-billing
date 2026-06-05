@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function Login() {
-  const { login } = useAuth()
+  const { login, signup } = useAuth()
   const navigate  = useNavigate()
 
   const [tab,      setTab]      = useState('login')   // 'login' | 'signup'
@@ -38,7 +38,12 @@ export default function Login() {
           setLoading(false)
           return
         }
-        await login(username, password)
+        if (!bizname.trim()) {
+          setError('Business name is required.')
+          setLoading(false)
+          return
+        }
+        await signup(username, password, bizname.trim())
         navigate('/chat')
       }
     } catch (err) {

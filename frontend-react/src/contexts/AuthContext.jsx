@@ -36,6 +36,24 @@ export function AuthProvider({ children }) {
     return data
   }
 
+  // ── Enterprise signup ─────────────────────────────────────────
+  async function signup(username, password, businessName) {
+    const res = await fetch(`${API_BASE}/signup`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ username, password, business_name: businessName })
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.detail || 'Registration failed')
+    }
+    const data = await res.json()
+    localStorage.setItem('user', JSON.stringify(data))
+    if (data.business_name) localStorage.setItem('biz_name', data.business_name)
+    setUser(data)
+    return data
+  }
+
   function logout() {
     localStorage.removeItem('user')
     localStorage.removeItem('active_session_id')
@@ -90,7 +108,7 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       user, adminUser, loading,
-      login, logout,
+      login, signup, logout,
       adminLogin, adminLogout,
       authFetch
     }}>
