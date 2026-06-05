@@ -5,7 +5,6 @@ import time
 from datetime import datetime
 from typing import Optional, Any
 import numpy as np
-from openai import OpenAI
 import chromadb
 from database.db import SessionLocal
 from database.models import DocumentEmbedding, Invoice, Inventory, Payment
@@ -14,6 +13,62 @@ logger = logging.getLogger("bizassist.embeddings")
 
 CHROMA_DB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "chroma_db"))
 _chroma_client = None
+
+# ── Local embedding model (free, no API key needed) ──────────────────
+# all-MiniLM-L6-v2: 22MB, 384-dim, fast on CPU, good semantic quality.
+# Downloaded once to ~/.cache/huggingface on first run.
+# Suppress Windows symlink warning (cosmetic only, no functionality impact)
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+
+_embedding_model = None
+_model_ready = False   # True once model is loaded and warm
+
+
+def get_embedding_model():
+    global _embedding_model, _model_ready
+    if _embedding_model is None:
+        from sentence_transformers import SentenceTransformer
+        _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+        # Warm up: run one dummy encode so first real request is instant
+        _embedding_model.encode("warmup", convert_to_numpy=True)
+        _model_ready = True
+        logger.info("[Embeddings] Loaded local model: all-MiniLM-L6-v2 (free, no API cost)")
+    return _embedding_model
+
+
+def preload_model_async():
+    """
+    Call once at app startup (in a background thread).
+    Loads + warms up the model so the first real request is instant.
+    """
+    import threading
+    def _load():
+        try:
+            logger.info("[Embeddings] Pre-loading embedding model in background...")
+            get_embedding_model()
+            logger.info("[Embeddings] Model ready ✓")
+        except Exception as e:
+            logger.error(f"[Embeddings] Background model preload failed: {e}", exc_info=True)
+    threading.Thread(target=_load, daemon=True).start()
+
+
+def is_model_ready() -> bool:
+    return _model_ready
+
+def generate_embedding(text: str) -> list:
+    """Generates a 384-dim embedding locally using all-MiniLM-L6-v2. Zero API cost."""
+    model = get_embedding_model()
+    vector = model.encode(text, convert_to_numpy=True)
+    return vector.tolist()
+
+def generate_embeddings_batch(texts: list) -> list:
+    """Generates embeddings for a list of texts in one local forward pass."""
+    if not texts:
+        return []
+    model = get_embedding_model()
+    vectors = model.encode(texts, convert_to_numpy=True, batch_size=64, show_progress_bar=False)
+    return [v.tolist() for v in vectors]
+# ─────────────────────────────────────────────────────────────────────
 
 def get_chroma_client():
     global _chroma_client
@@ -29,48 +84,12 @@ def get_chroma_client():
 
 def get_chat_memory_collection():
     client = get_chroma_client()
-    return client.get_or_create_collection(name="chat_history_memory")
+    # v2 suffix: new 384-dim collection (MiniLM), avoids conflict with old 1536-dim OpenAI data
+    return client.get_or_create_collection(name="chat_history_memory_v2")
 
 def get_document_embeddings_collection():
     client = get_chroma_client()
-    return client.get_or_create_collection(name="document_embeddings")
-
-def get_openai_client() -> Optional[OpenAI]:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        logger.error("OPENAI_API_KEY environment variable is not set!")
-        return None
-    try:
-        return OpenAI(api_key=api_key)
-    except Exception as e:
-        logger.error(f"Failed to initialize OpenAI client: {e}")
-        return None
-
-def generate_embedding(text: str) -> list:
-    """Generates embedding for a single text input using text-embedding-3-small."""
-    client = get_openai_client()
-    if not client:
-        raise ValueError("OpenAI client not configured or API key missing.")
-    
-    response = client.embeddings.create(
-        input=text,
-        model="text-embedding-3-small"
-    )
-    return response.data[0].embedding
-
-def generate_embeddings_batch(texts: list) -> list:
-    """Generates embeddings for a list of text inputs in a single batch."""
-    if not texts:
-        return []
-    client = get_openai_client()
-    if not client:
-        raise ValueError("OpenAI client not configured or API key missing.")
-    
-    response = client.embeddings.create(
-        input=texts,
-        model="text-embedding-3-small"
-    )
-    return [item.embedding for item in response.data]
+    return client.get_or_create_collection(name="document_embeddings_v2")
 
 # ==========================================
 # TEXT SERIALIZATION HELPERS
@@ -140,7 +159,11 @@ def search_chat_memories(business_id: int, query: str, limit: int = 3) -> str:
     """
     Searches Chroma for semantically similar previous queries by this user,
     returning a formatted context block.
+    Skips gracefully if model is still loading (returns empty string).
     """
+    if not is_model_ready():
+        logger.debug("[Chroma Memory] Model not ready yet — skipping memory search.")
+        return ""
     try:
         collection = get_chat_memory_collection()
         query_vector = generate_embedding(query)

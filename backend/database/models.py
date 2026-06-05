@@ -169,6 +169,26 @@ class DocumentEmbedding(Base):
 
 
 # -------------------------
+# TOKEN USAGE TABLE
+# -------------------------
+
+class TokenUsage(Base):
+
+    __tablename__ = "token_usage"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    business_id   = Column(Integer, index=True)
+    model         = Column(String)              # e.g. "llama-3.1-8b-instant"
+    model_tier    = Column(String)              # "AI_SIMPLE" or "AI_COMPLEX"
+    input_tokens  = Column(Integer, default=0)
+    output_tokens = Column(Integer, default=0)
+    total_tokens  = Column(Integer, default=0)
+    cached_tokens = Column(Integer, default=0)  # prompt cache hits (Claude)
+    endpoint      = Column(String, default="/ask")
+    timestamp     = Column(DateTime, default=datetime.utcnow)
+
+
+# -------------------------
 # ALERT CONFIG TABLE
 # -------------------------
 

@@ -2,7 +2,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from database.db import SessionLocal
-from database.models import User, Invoice, Inventory, UploadedFile, Payment, ChatMessage, DocumentEmbedding
+from database.models import User, Invoice, Inventory, UploadedFile, Payment, ChatMessage, DocumentEmbedding, TokenUsage
 from services.auth import get_active_user, hash_password
 from services.context_cache import invalidate, invalidate_user_cache, get_cache_stats
 
@@ -162,6 +162,52 @@ def wipe_user_data(user_id: int, current_user: dict = Depends(get_active_user)):
         db.rollback()
         logger.error(f"Error wiping dynamic database records for user {user_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error wiping user database records")
+    finally:
+        db.close()
+
+
+@router.get("/admin/token-usage")
+def get_token_usage(current_user: dict = Depends(get_active_user)):
+    """Returns token usage summary per business and per model tier. Admin only."""
+    db = SessionLocal()
+    try:
+        admin_user = db.query(User).filter(User.id == current_user["id"]).first()
+        if not admin_user or admin_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Access denied. Admin role required.")
+
+        rows = db.query(
+            TokenUsage.business_id,
+            TokenUsage.model_tier,
+            TokenUsage.model,
+            func.sum(TokenUsage.input_tokens).label("total_input"),
+            func.sum(TokenUsage.output_tokens).label("total_output"),
+            func.sum(TokenUsage.total_tokens).label("total_tokens"),
+            func.sum(TokenUsage.cached_tokens).label("total_cached"),
+            func.count(TokenUsage.id).label("call_count"),
+        ).group_by(
+            TokenUsage.business_id, TokenUsage.model_tier, TokenUsage.model
+        ).all()
+
+        result = []
+        for r in rows:
+            user = db.query(User).filter(User.id == r.business_id).first()
+            result.append({
+                "business_id":    r.business_id,
+                "business_name":  user.business_name if user else "Unknown",
+                "model_tier":     r.model_tier,
+                "model":          r.model,
+                "call_count":     r.call_count,
+                "input_tokens":   r.total_input,
+                "output_tokens":  r.total_output,
+                "total_tokens":   r.total_tokens,
+                "cached_tokens":  r.total_cached,
+            })
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching token usage: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         db.close()
 

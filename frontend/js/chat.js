@@ -312,18 +312,26 @@ async function sendMessage() {
             setAssistantHeader(data.session_title);
         }
 
-        const text = data.response || "";
-        const source = data.source || "unknown";
-        const isCached = !!data.cached;
-        
-        let pathMsg = "Groq AI Tool-Calling (LLM Tokens Used)";
+        const text       = data.response   || "";
+        const source     = data.source     || "unknown";
+        const isCached   = !!data.cached;
+        const modelTier  = data.model_tier || null;
+        const modelUsed  = data.model_used || null;
+
+        let pathMsg = "";
         if (source === "db") {
-            pathMsg = "0 tokens used (Direct DB/Local SQL)";
+            pathMsg = "⚡ DIRECT — 0 tokens (DB query)";
         } else if (isCached) {
-            pathMsg = "0 tokens used (Cached AI Response)";
+            pathMsg = "🔁 CACHE — 0 tokens (cached response)";
+        } else if (modelTier === "AI_COMPLEX") {
+            pathMsg = `🧠 AI_COMPLEX — ${modelUsed}`;
+        } else if (modelTier === "AI_SIMPLE") {
+            pathMsg = `🤖 AI_SIMPLE — ${modelUsed}`;
+        } else {
+            pathMsg = `🤖 AI — ${modelUsed || "unknown model"}`;
         }
-        
-        console.log(`%c[BizAssist Route Decision] Path Chosen: ${isCached ? "CACHE" : source.toUpperCase()} | ${pathMsg}`, "color: #c9532a; font-weight: bold;");
+
+        console.log(`%c[BizAssist] ${pathMsg}`, "color: #c9532a; font-weight: bold;");
         console.log(`Response length: ${text.length} chars. Beginning streaming render.`);
         console.groupEnd();
 

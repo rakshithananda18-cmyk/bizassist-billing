@@ -263,27 +263,33 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
         past_memories = search_chat_memories(active_user_id, user_query, limit=3)
         
         system_prompt = (
-            "You are BIZASSIST, a proactive AI business intelligence and growth advisor "
-            "for Indian retail businesses (pharmacies, supermarkets, stores).\n\n"
-            "Core Advisor Rules:\n"
-            "- Never invent numbers. Always be factual and base recommendations on real database metrics.\n"
-            "- Use ₹ for Indian Rupees. Be specific: name customers, amounts, and dates where available.\n"
-            "- Format lists with bullet points. Keep answers structured and highly readable.\n"
-            "- Actively identify opportunities for business growth, cash flow optimization, and cost savings:\n"
-            "  * If there are overdue invoices or unpaid accounts: identify the top debtors and suggest polite, systematic follow-up strategies to recover cash quickly.\n"
-            "  * If there are low-stock products: warn the user and recommend optimal reorder times to avoid stockouts and lost sales.\n"
-            "  * If there are expiring products: suggest promotional pricing, bundles, or discounts to clear them out before they expire and minimize waste.\n"
-            "  * If analyzing customer data: identify high-value customers and suggest retention strategies (e.g., personalized loyalty offers, volume discounts).\n"
-            "- Translate raw financial metrics into clear, actionable advice that directly helps the user grow their business.\n"
-            "- For client dues or unpaid accounts, default to checking invoices first.\n"
-            "- STRICT SCOPE FILTER: You are a dedicated retail business operations and intelligence assistant. Politely refuse to answer any queries that are not related to retail store business operations, inventory, billing, sales, invoices, cash flows, or business growth. If asked about personal topics, health/diet, recipes, general knowledge, or other non-business subjects, politely state that your capabilities are strictly focused on business assistance.\n"
-            "- Ensure function call arguments are strictly valid JSON with NO trailing commas (e.g. use {\"status\": \"Pending\"}, never {\"status\": \"Pending\",}).\n"
+            "You are BIZASSIST, an AI business advisor for Indian retail stores (pharmacies, supermarkets).\n"
+            "Rules:\n"
+            "- Facts only. Never invent numbers. Use ₹. Name customers/amounts/dates.\n"
+            "- Use tools to fetch live data before answering.\n"
+            "- Overdue invoices → suggest follow-up. Low stock → suggest reorder. Expiring items → suggest discounts.\n"
+            "- Scope: retail operations, invoices, inventory, payments, cash flow only. Refuse off-topic questions.\n"
+            "- Tool args must be valid JSON (no trailing commas).\n"
         )
         
         if past_memories:
             system_prompt += f"\n\n{past_memories}"
 
+        # Convert tools and mark last tool for cache breakpoint
+        # (system prompt + tools together exceed the 1024-token cache minimum)
         claude_tools = convert_to_claude_tools(tool_schemas)
+        if claude_tools:
+            claude_tools[-1]["cache_control"] = {"type": "ephemeral"}
+
+        # System prompt as array with cache_control — Anthropic caches this block
+        # after first call, saving ~90% on repeat system prompt tokens
+        system_with_cache = [
+            {
+                "type": "text",
+                "text": system_prompt,
+                "cache_control": {"type": "ephemeral"}
+            }
+        ]
 
         # Construct alternating messages for Anthropic
         messages = []
@@ -293,7 +299,7 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
                 messages.append({"role": "assistant", "content": msg["content"]})
             else:
                 messages.append({"role": "user", "content": msg["content"]})
-        
+
         # Add the current user query
         messages.append({"role": "user", "content": user_query})
 
@@ -301,7 +307,7 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
             model="claude-3-5-sonnet-20241022",
             max_tokens=800,
             temperature=0.1,
-            system=system_prompt,
+            system=system_with_cache,
             messages=messages,
             tools=claude_tools
         )
@@ -336,12 +342,42 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
                 model="claude-3-5-sonnet-20241022",
                 max_tokens=800,
                 temperature=0.1,
-                system=system_prompt,
+                system=system_with_cache,
                 messages=messages
             )
             final_response = "".join([block.text for block in second_completion.content if block.type == "text"])
         else:
             final_response = "".join([block.text for block in completion.content if block.type == "text"])
+
+        # ── Token usage logging ───────────────────────────────────
+        try:
+            from database.models import TokenUsage
+            u = completion.usage
+            total_in     = getattr(u, "input_tokens", 0) or 0
+            total_out    = getattr(u, "output_tokens", 0) or 0
+            cached_hits  = getattr(u, "cache_read_input_tokens", 0) or 0
+            if tool_calls:
+                u2 = second_completion.usage
+                total_in  += getattr(u2, "input_tokens", 0) or 0
+                total_out += getattr(u2, "output_tokens", 0) or 0
+                cached_hits += getattr(u2, "cache_read_input_tokens", 0) or 0
+
+            db = SessionLocal()
+            try:
+                db.add(TokenUsage(
+                    business_id   = active_user_id,
+                    model         = "claude-3-5-sonnet-20241022",
+                    model_tier    = route,
+                    input_tokens  = total_in,
+                    output_tokens = total_out,
+                    total_tokens  = total_in + total_out,
+                    cached_tokens = cached_hits,
+                ))
+                db.commit()
+            finally:
+                db.close()
+        except Exception as te:
+            logger.warning(f"[Tokens] Failed to log usage: {te}")
 
         ai_response = {
             "response" : final_response,

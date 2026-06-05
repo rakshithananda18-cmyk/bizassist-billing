@@ -1,7 +1,7 @@
 import logging
 from sqlalchemy import text
 from database.db import engine, SessionLocal
-from database.models import Base, User, ChatMessage, DocumentEmbedding, AlertConfig
+from database.models import Base, User, ChatMessage, DocumentEmbedding, AlertConfig, TokenUsage
 from services.auth import hash_password
 
 logger = logging.getLogger("bizassist.migration")

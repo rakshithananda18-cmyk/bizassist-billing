@@ -24,6 +24,7 @@ from services.auth import get_active_user
 from services.tools import execute_tool, schemas as tool_schemas
 from database.migration import run_migrations_and_seed
 from services.scheduler import start_scheduler, stop_scheduler
+from services.embeddings import preload_model_async
 from services.embeddings import search_chat_memories, save_chat_memory
 
 from sqlalchemy import text
@@ -45,6 +46,9 @@ run_migrations_and_seed()
 
 # Start proactive alert scheduler
 start_scheduler()
+
+# Pre-load embedding model in background so first request is instant
+preload_model_async()
 
 
 @app.on_event("shutdown")
@@ -74,6 +78,12 @@ app.include_router(chat_router)
 app.include_router(alerts_router)
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+# ── Model tiers ───────────────────────────────────────────────────────
+# AI_SIMPLE  → fast cheap model, handles narrow factual queries
+# AI_COMPLEX → larger model, reserved for analysis / planning / strategy
+MODEL_SIMPLE  = os.getenv("GROQ_MODEL_SIMPLE",  "llama-3.1-8b-instant")
+MODEL_COMPLEX = os.getenv("GROQ_MODEL_COMPLEX", "llama-3.3-70b-versatile")
 
 
 class Prompt(BaseModel):
@@ -237,40 +247,37 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
             return cached_copy
 
         # ── Layer 3: Groq with Tool Calling ──────────────────────
-        logger.info(f"[BizAssist Router Decision] -> AI/Tool Calling Path | Query: '{user_query}'")
+        selected_model = MODEL_COMPLEX if route == "AI_COMPLEX" else MODEL_SIMPLE
+        logger.info(f"[BizAssist Router Decision] -> {route} | Model: {selected_model} | Query: '{user_query}'")
         
-        # Retrieve past memories across sessions
-        past_memories = search_chat_memories(active_user_id, user_query, limit=3)
-        
-        system_prompt = (
-            "You are BIZASSIST, a proactive AI business intelligence and growth advisor "
-            "for Indian retail businesses (pharmacies, supermarkets, stores).\n\n"
-            "Core Advisor Rules:\n"
-            "- Never invent numbers. Always be factual and base recommendations on real database metrics.\n"
-            "- Use ₹ for Indian Rupees. Be specific: name customers, amounts, and dates where available.\n"
-            "- Format lists with bullet points. Keep answers structured and highly readable.\n"
-            "- Actively identify opportunities for business growth, cash flow optimization, and cost savings:\n"
-            "  * If there are overdue invoices or unpaid accounts: identify the top debtors and suggest polite, systematic follow-up strategies to recover cash quickly.\n"
-            "  * If there are low-stock products: warn the user and recommend optimal reorder times to avoid stockouts and lost sales.\n"
-            "  * If there are expiring products: suggest promotional pricing, bundles, or discounts to clear them out before they expire and minimize waste.\n"
-            "  * If analyzing customer data: identify high-value customers and suggest retention strategies (e.g., personalized loyalty offers, volume discounts).\n"
-            "- Translate raw financial metrics into clear, actionable advice that directly helps the user grow their business.\n"
-            "- For client dues or unpaid accounts, default to checking invoices first.\n"
-            "- STRICT SCOPE FILTER: You are a dedicated retail business operations and intelligence assistant. Politely refuse to answer any queries that are not related to retail store business operations, inventory, billing, sales, invoices, cash flows, or business growth. If asked about personal topics, health/diet, recipes, general knowledge, or other non-business subjects, politely state that your capabilities are strictly focused on business assistance.\n"
-            "- Ensure function call arguments are strictly valid JSON with NO trailing commas (e.g. use {\"status\": \"Pending\"}, never {\"status\": \"Pending\",}).\n"
+        # ── Static system prompt (never modified — keeps Groq KV cache hot) ──
+        # Groq auto-caches the prompt prefix when it's identical across requests.
+        # Dynamic content (memories, context) goes into messages[], NOT here.
+        SYSTEM_PROMPT = (
+            "You are BIZASSIST, an AI business advisor for Indian retail stores (pharmacies, supermarkets).\n"
+            "Rules:\n"
+            "- Facts only. Never invent numbers. Use ₹. Name customers/amounts/dates.\n"
+            "- Use tools to fetch live data before answering.\n"
+            "- Overdue invoices → suggest follow-up. Low stock → suggest reorder. Expiring items → suggest discounts.\n"
+            "- Scope: retail operations, invoices, inventory, payments, cash flow only. Refuse off-topic questions.\n"
+            "- Tool args must be valid JSON (no trailing commas).\n"
         )
-        
-        if past_memories:
-            system_prompt += f"\n\n{past_memories}"
 
-        messages = [{"role": "system", "content": system_prompt}]
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+        # Inject past memories as a system-role context block INSIDE messages[]
+        # so the static system prompt above is never mutated
+        past_memories = search_chat_memories(active_user_id, user_query, limit=3)
+        if past_memories:
+            messages.append({"role": "system", "content": f"[Relevant past context]\n{past_memories}"})
+
         for msg in history:
             messages.append({"role": msg["role"], "content": msg["content"]})
         messages.append({"role": "user", "content": user_query})
 
         completion = client.chat.completions.create(
             messages=messages,
-            model="llama-3.1-8b-instant",
+            model=selected_model,
             temperature=0.1,
             max_tokens=800,
             tools=tool_schemas,
@@ -298,7 +305,7 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
 
             second_completion = client.chat.completions.create(
                 messages=messages,
-                model="llama-3.1-8b-instant",
+                model=selected_model,
                 temperature=0.1,
                 max_tokens=800
             )
@@ -306,10 +313,41 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
         else:
             final_response = response_message.content
 
+        # ── Token usage logging ───────────────────────────────────
+        try:
+            from database.models import TokenUsage
+            usage = completion.usage
+            # If tool calls happened, add second_completion usage too
+            if tool_calls:
+                sec_usage = second_completion.usage
+                total_in  = (usage.prompt_tokens or 0) + (sec_usage.prompt_tokens or 0)
+                total_out = (usage.completion_tokens or 0) + (sec_usage.completion_tokens or 0)
+            else:
+                total_in  = usage.prompt_tokens or 0
+                total_out = usage.completion_tokens or 0
+
+            db = SessionLocal()
+            try:
+                db.add(TokenUsage(
+                    business_id   = active_user_id,
+                    model         = selected_model,
+                    model_tier    = route,
+                    input_tokens  = total_in,
+                    output_tokens = total_out,
+                    total_tokens  = total_in + total_out,
+                ))
+                db.commit()
+            finally:
+                db.close()
+        except Exception as te:
+            logger.warning(f"[Tokens] Failed to log usage: {te}")
+
         ai_response = {
-            "response" : final_response,
-            "source"   : "ai",
-            "session_id": session_id,
+            "response"    : final_response,
+            "source"      : "ai",
+            "model_tier"  : route,
+            "model_used"  : selected_model,
+            "session_id"  : session_id,
             "session_title": session_title
         }
 
