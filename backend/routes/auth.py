@@ -1,9 +1,10 @@
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from database.db import SessionLocal
 from database.models import User
 from services.auth import hash_password, verify_password, create_access_token
+from services.rate_limiter import check_ip_rate_limit
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.auth")
@@ -21,14 +22,20 @@ class SignupRequest(BaseModel):
 
 
 @router.post("/login")
-def login(req: LoginRequest):
+def login(req: LoginRequest, request: Request):
     db = SessionLocal()
     logger.info(f"Login attempt for username '{req.username}'...")
     try:
+        # Check IP-based rate limiting
+        ip = request.client.host if request.client else "unknown"
+        rl = check_ip_rate_limit(ip)
+        if not rl["allowed"]:
+            raise HTTPException(status_code=429, detail=rl["reason"])
+
         user = db.query(User).filter(User.username == req.username).first()
         if not user or not verify_password(req.password, user.password):
             logger.warning(f"Failed login attempt for username '{req.username}': Invalid credentials")
-            raise HTTPException(status_code=401, detail="Invalid username or password")
+            raise HTTPException(status_code=401, detail="Invalid credentials")
         
         token = create_access_token({
             "id": user.id,
@@ -59,6 +66,17 @@ def signup(req: SignupRequest):
     db = SessionLocal()
     logger.info(f"Signup attempt for username '{req.username}'...")
     try:
+        # Enforce password strength policy
+        password = req.password
+        if len(password) < 8:
+            raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
+        if not any(c.isupper() for c in password):
+            raise HTTPException(status_code=400, detail="Password must contain at least one uppercase letter.")
+        if not any(c.islower() for c in password):
+            raise HTTPException(status_code=400, detail="Password must contain at least one lowercase letter.")
+        if not any(c.isdigit() for c in password):
+            raise HTTPException(status_code=400, detail="Password must contain at least one number.")
+
         existing = db.query(User).filter(User.username == req.username).first()
         if existing:
             logger.warning(f"Failed signup attempt: username '{req.username}' already exists.")

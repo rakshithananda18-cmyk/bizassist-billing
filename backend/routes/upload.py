@@ -28,6 +28,7 @@ from services.parser import (
     save_payments
 )
 from services.auth import get_active_user
+from services.rate_limiter import check_upload_rate_limit
 from services.embeddings import index_new_file_records
 from services.pdf_parser import (
     parse_pdf_text,
@@ -50,15 +51,44 @@ async def upload_file(
     active_user_id = current_user["id"]
     filename = file.filename
 
+    # 1. Rate Limiting Check
+    rl = check_upload_rate_limit(active_user_id)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail=rl["reason"])
+
     logger.info(f"User {active_user_id} starting upload of file '{filename}'...")
 
-    # READ FILE
+    # 2. Chunked Reading and File Size Limitation
+    MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024  # 5MB
+    MAX_ROW_COUNT = 1000
+
+    content_length = file.headers.get("content-length")
+    if content_length and int(content_length) > MAX_UPLOAD_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail="File size exceeds maximum limit of 5MB.")
+
+    size = 0
+    chunks = []
+    try:
+        while True:
+            chunk = await file.read(65536)  # 64KB chunks
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_UPLOAD_SIZE_BYTES:
+                raise HTTPException(status_code=413, detail="File size exceeds maximum limit of 5MB.")
+            chunks.append(chunk)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error reading chunks for file '{filename}': {str(e)}", exc_info=True)
+        raise HTTPException(status_code=400, detail="Failed to read upload file: invalid format or corrupted file.")
+
+    file_bytes = b"".join(chunks)
+
+    # 3. Process according to format
     try:
         if filename.endswith(".pdf"):
             # Process PDF through structured parser
-            file_bytes = await file.read()
-
-            # ── Duplicate detection via SHA256 hash ───────────────
             file_hash = hashlib.sha256(file_bytes).hexdigest()
             db = SessionLocal()
             try:
@@ -80,6 +110,12 @@ async def upload_file(
                 raise HTTPException(status_code=400, detail="Could not extract readable text from PDF. Ensure it is not a scanned image.")
 
             structured_data = extract_structured_invoice(raw_text)
+
+            # Enforce limit of 200 items in structured PDF invoice
+            items = structured_data.get("items", [])
+            if len(items) > 200:
+                raise HTTPException(status_code=400, detail="Too many invoice items in PDF. Maximum is 200.")
+
             save_result = save_pdf_invoice_to_db(structured_data, active_user_id, filename, file_hash=file_hash)
             
             invalidate_cache()
@@ -93,8 +129,7 @@ async def upload_file(
                 "columns": ["invoice_id", "supplier", "customer", "invoice_date", "due_date", "total_amount", "items"]
             }
         elif filename.endswith(".csv") or filename.endswith(".xlsx"):
-            raw_bytes = await file.read()
-            file_hash = hashlib.sha256(raw_bytes).hexdigest()
+            file_hash = hashlib.sha256(file_bytes).hexdigest()
 
             # Duplicate check
             dup_db = SessionLocal()
@@ -114,15 +149,21 @@ async def upload_file(
 
             import io
             if filename.endswith(".csv"):
-                df = pd.read_csv(io.BytesIO(raw_bytes))
+                df = pd.read_csv(io.BytesIO(file_bytes))
             else:
-                df = pd.read_excel(io.BytesIO(raw_bytes))
+                df = pd.read_excel(io.BytesIO(file_bytes))
+
+            # Enforce max row count
+            if len(df) > MAX_ROW_COUNT:
+                raise HTTPException(status_code=400, detail=f"Row count exceeds maximum limit of {MAX_ROW_COUNT} rows.")
         else:
             logger.warning(f"Failed upload attempt by user {active_user_id}: Unsupported file extension on '{filename}'")
             raise HTTPException(status_code=400, detail="Unsupported file format")
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to read upload file '{filename}': {str(e)}", exc_info=True)
-        raise HTTPException(status_code=400, detail=f"Failed to parse file: {str(e)}")
+        logger.error(f"Failed to parse upload file '{filename}': {str(e)}", exc_info=True)
+        raise HTTPException(status_code=400, detail="Failed to parse file: invalid format or corrupted file.")
 
     # COLUMN DETECTION
     columns = [col.lower() for col in df.columns]
@@ -201,10 +242,100 @@ async def upload_file(
             "updated": stats["updated"],
             "columns": columns
         }
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Error parsing file upload '{filename}' for user_id={active_user_id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail="Failed to process file upload. Please verify the file structure.")
+    finally:
+        db.close()
+
+
+# -----------------------------------
+# GET UPLOAD DATA (rows for a specific upload)
+# -----------------------------------
+
+@router.get("/upload/{file_id}/data")
+async def get_upload_data(
+    file_id: int,
+    current_user: dict = Depends(get_active_user)
+):
+    active_user_id = current_user["id"]
+    db = SessionLocal()
+    try:
+        uploaded = db.query(UploadedFile).filter(
+            UploadedFile.id == file_id,
+            UploadedFile.business_id == active_user_id
+        ).first()
+        if not uploaded:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        file_type = uploaded.file_type
+        rows = []
+        columns = []
+
+        if file_type == "invoice":
+            records = db.query(Invoice).filter(
+                Invoice.file_id == file_id,
+                Invoice.business_id == active_user_id
+            ).all()
+            columns = ["invoice_id", "customer", "product", "amount", "status", "due_date"]
+            rows = [
+                {
+                    "invoice_id": r.invoice_id or "",
+                    "customer": r.customer or "",
+                    "product": r.product or "",
+                    "amount": r.amount or 0,
+                    "status": r.status or "",
+                    "due_date": r.due_date or ""
+                }
+                for r in records
+            ]
+        elif file_type == "inventory":
+            records = db.query(Inventory).filter(
+                Inventory.file_id == file_id,
+                Inventory.business_id == active_user_id
+            ).all()
+            columns = ["product_name", "stock", "expiry_date", "supplier"]
+            rows = [
+                {
+                    "product_name": r.product_name or "",
+                    "stock": r.stock or 0,
+                    "expiry_date": r.expiry_date or "",
+                    "supplier": r.supplier or ""
+                }
+                for r in records
+            ]
+        elif file_type == "payment":
+            records = db.query(Payment).filter(
+                Payment.file_id == file_id,
+                Payment.business_id == active_user_id
+            ).all()
+            columns = ["customer", "amount", "due_date", "paid"]
+            rows = [
+                {
+                    "customer": r.customer or "",
+                    "amount": r.amount or 0,
+                    "due_date": r.due_date or "",
+                    "paid": r.paid or ""
+                }
+                for r in records
+            ]
+
+        return {
+            "filename": uploaded.filename,
+            "file_type": file_type,
+            "total_rows": len(rows),
+            "columns": columns,
+            "rows": rows
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching upload data for file_id={file_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch upload data.")
     finally:
         db.close()
 
@@ -238,25 +369,27 @@ async def delete_upload(
         file_type = uploaded.file_type
         logger.info(f"Deleting upload record for file '{uploaded.filename}' of type '{file_type}'...")
 
-        # Delete all database records parsed from this specific file (file_id matches)
-        if file_type == "invoice":
-            deleted = db.query(Invoice).filter(
-                Invoice.file_id == file_id,
-                Invoice.business_id == active_user_id
-            ).delete()
-            logger.info(f"Deleted {deleted} associated Invoice records.")
-        elif file_type == "inventory":
-            deleted = db.query(Inventory).filter(
-                Inventory.file_id == file_id,
-                Inventory.business_id == active_user_id
-            ).delete()
-            logger.info(f"Deleted {deleted} associated Inventory records.")
-        elif file_type == "payment":
-            deleted = db.query(Payment).filter(
-                Payment.file_id == file_id,
-                Payment.business_id == active_user_id
-            ).delete()
-            logger.info(f"Deleted {deleted} associated Payment records.")
+        # Delete ALL database records parsed from this specific file (by file_id).
+        # A single upload can populate multiple tables — e.g. a PDF invoice
+        # writes Invoice + Inventory + Payment rows under one file_id — so we
+        # purge from every table by file_id rather than only the table matching
+        # the recorded file_type. Otherwise inventory/payment rows are orphaned.
+        del_invoices = db.query(Invoice).filter(
+            Invoice.file_id == file_id,
+            Invoice.business_id == active_user_id
+        ).delete()
+        del_inventory = db.query(Inventory).filter(
+            Inventory.file_id == file_id,
+            Inventory.business_id == active_user_id
+        ).delete()
+        del_payments = db.query(Payment).filter(
+            Payment.file_id == file_id,
+            Payment.business_id == active_user_id
+        ).delete()
+        logger.info(
+            f"Deleted records for file {file_id} — invoices: {del_invoices}, "
+            f"inventory: {del_inventory}, payments: {del_payments}."
+        )
 
         # delete the uploaded file record
         db.delete(uploaded)
@@ -297,9 +430,12 @@ async def delete_upload(
             "file_id": file_id,
             "cascade": cascade
         }
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Error during deletion of file ID {file_id} for user {active_user_id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Database deletion failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Database deletion failed.")
     finally:
         db.close()

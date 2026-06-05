@@ -24,6 +24,12 @@ logger = logging.getLogger("bizassist.rate_limiter")
 # { business_id: deque of timestamps }
 _minute_window: dict = defaultdict(deque)
 
+# ── In-memory sliding window for IP-based tracking (login brute-force)
+_ip_window: dict = defaultdict(deque)
+
+# ── In-memory sliding window for upload tracking (upload abuse) ──────
+_upload_window: dict = defaultdict(deque)
+
 # Default limits applied when no config exists for a user
 DEFAULTS = {
     "requests_per_minute": 10,
@@ -162,3 +168,52 @@ def get_usage_summary(business_id: int) -> dict:
         "complex_limit":       cfg["complex_per_day"],
         "requests_per_minute": cfg["requests_per_minute"],
     }
+
+
+def check_ip_rate_limit(ip_address: str, limit: int = 10) -> dict:
+    """
+    In-memory sliding window rate limiter by IP (for /login).
+    Default limit: 10 requests per minute.
+    """
+    now = datetime.utcnow().timestamp()
+    window = _ip_window[ip_address]
+    cutoff = now - 60
+    while window and window[0] < cutoff:
+        window.popleft()
+
+    if len(window) >= limit:
+        logger.warning(f"[RateLimit] IP {ip_address} hit rate limit ({limit}/min)")
+        return {
+            "allowed": False,
+            "reason": f"Rate limit exceeded: max {limit} login requests per minute.",
+            "limit": limit,
+            "used": len(window),
+            "retry_after": "60 seconds"
+        }
+    window.append(now)
+    return {"allowed": True}
+
+
+def check_upload_rate_limit(business_id: int, limit: int = 5) -> dict:
+    """
+    In-memory sliding window rate limiter by business_id (for /upload).
+    Default limit: 5 file uploads per minute.
+    """
+    now = datetime.utcnow().timestamp()
+    window = _upload_window[business_id]
+    cutoff = now - 60
+    while window and window[0] < cutoff:
+        window.popleft()
+
+    if len(window) >= limit:
+        logger.warning(f"[RateLimit] User {business_id} hit upload rate limit ({limit}/min)")
+        return {
+            "allowed": False,
+            "reason": f"Rate limit exceeded: max {limit} file uploads per minute.",
+            "limit": limit,
+            "used": len(window),
+            "retry_after": "60 seconds"
+        }
+    window.append(now)
+    return {"allowed": True}
+

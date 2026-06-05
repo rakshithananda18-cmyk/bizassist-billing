@@ -123,3 +123,42 @@ def delete_chat_history(session_id: str = None, current_user: dict = Depends(get
         raise HTTPException(status_code=500, detail="Failed to clear chat history")
     finally:
         db.close()
+
+
+# -------------------------------------------------
+# RENAME CHAT SESSION TITLE
+# -------------------------------------------------
+from pydantic import BaseModel
+
+
+class RenameSessionRequest(BaseModel):
+    session_id: str
+    title: str
+
+
+@router.patch("/chat/session/title")
+def rename_chat_session(req: RenameSessionRequest, current_user: dict = Depends(get_active_user)):
+    active_user_id = current_user["id"]
+    new_title = (req.title or "").strip()[:80]
+    logger.info(f"User {active_user_id} renaming session {req.session_id} -> '{new_title}'")
+    if not new_title:
+        raise HTTPException(status_code=400, detail="Title cannot be empty")
+    db = SessionLocal()
+    try:
+        updated = db.query(ChatMessage).filter(
+            ChatMessage.business_id == active_user_id,
+            ChatMessage.session_id == req.session_id
+        ).update({ChatMessage.session_title: new_title})
+        db.commit()
+        if updated == 0:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return {"message": "renamed", "session_id": req.session_id, "session_title": new_title}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error renaming chat session for user {active_user_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to rename chat session")
+    finally:
+        db.close()

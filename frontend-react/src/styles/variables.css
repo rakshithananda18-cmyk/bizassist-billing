@@ -1,0 +1,122 @@
+/* ==========================================================================
+   BIZASSIST — CSS STYLE SHEET
+   ==========================================================================
+   Table of Contents:
+   1. FONTS & THEME VARIABLES (Light / Dark Mode palette definitions)
+   2. RESET & BASE HTML ELEMENT STYLING
+   3. APP SHELL LAYOUT (Flex containers and transitions)
+   4. SIDEBAR NAVIGATION (Logo, business selectors, nav links, active states)
+   5. DASHBOARD LAYOUT & VIEW PANELS
+   6. WIDGETS & CARDS (Stat counters, charts, tables, pagination)
+   7. CHAT ASSISTANT INTERFACE (Input textareas, chat bubbles, markdown)
+   8. NOTIFICATION ALERTS & CUSTOM MODAL OVERLAYS
+   9. GLASSMORPHISM & DYNAMIC ANIMATIONS (Micro-interactions, keyframe spins)
+   ========================================================================== */
+
+/* =========================================
+   BIZASSIST — Claude-Inspired Theme
+   Palette: Claude's warm cream, soft coral
+   accent, deep charcoal, refined neutrals
+========================================= */
+
+/* ---- FONTS ---- */
+@import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Geist+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=Lora:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+
+/* ---- LIGHT MODE — Exact Claude brand colors ---- */
+/*
+   Pampas  #F4F3EE  — background (Claude's page bg)
+   White   #FFFFFF  — cards/panels
+   Crail   #C15F3C  — accent (Claude's terracotta orange)
+   Cloudy  #B1ADA1  — secondary text (Claude's muted gray)
+*/
+:root {
+    --bg-color:        #fdfdfc;      /* Near-white warm page background */
+    --sidebar-color:   #ffffff;      /* Pure white — left sidebar */
+    --card-color:      #ffffff;      /* Pure white — cards & panels */
+    --text-color:      #000000;      /* Pure Black body text & headings */
+    --secondary-text:  #a2a2a1;      /* Grey subtext & subheadings (#A2A2A1) */
+    --accent-color:    #c15f3c;      /* Crail — Claude's exact terracotta */
+    --accent-hover:    #a84e2e;      /* Crail-dark */
+    --accent-soft:     rgba(193,95,60,0.10);
+    --accent-softer:   rgba(193,95,60,0.05);
+    --input-bg:        #ffffff;      /* Pure white — input box background */
+    --hover-bg:        #f4f4f1;      /* Light soft grey hover */
+    --cards-title-color: #000000;    /* Pure Black cards title text */
+    --bot-bg:          transparent;
+    --border-color:    #e6e4de;      /* Warm light border */
+    --border-focus:    #c5c3bc;      /* Warm medium-grey border for focus */
+    --border-subtle:   rgba(193,95,60,0.12);
+    --shadow-sm:       0 1px 4px rgba(26,23,20,0.08), 0 0 1px rgba(26,23,20,0.04);
+    --shadow-md:       0 4px 16px rgba(26,23,20,0.10), 0 1px 4px rgba(26,23,20,0.06);
+    --shadow-lg:       0 8px 32px rgba(26,23,20,0.14), 0 2px 8px rgba(26,23,20,0.08);
+    --highlight-bg:    rgba(193,95,60,0.07);
+    --code-bg:         #eceae4;
+    --tag-bg:          rgba(193,95,60,0.09);
+    --scrollbar-thumb: rgba(0, 0, 0, 0.18);
+    --scrollbar-thumb-hover: rgba(0, 0, 0, 0.32);
+}
+
+/* ---- DARK MODE — Claude's warm charcoal ---- */
+.dark-mode {
+    --bg-color:        #1F1F1E;      /* Custom dark page background */
+    --sidebar-color:   #262626;      /* Custom dark panel sidebar */
+    --card-color:      #262626;      /* Custom dark panel background */
+    --text-color:      #ede8e0;      /* Warm off-white */
+    --secondary-text:  #857f74;      /* Cloudy dark */
+    --accent-color:    #d4714a;      /* Crail lightened for dark bg */
+    --accent-hover:    #e07f58;
+    --accent-soft:     #171716;      /* Custom selected button background */
+    --accent-softer:   rgba(212,113,74,0.07);
+    --input-bg:        #2C2C2A;      /* Custom input area background */
+    --hover-bg:        #5A5A5A;      /* Custom hover background */
+    --bot-bg:          transparent;
+    --border-color:    #302c26;
+    --border-focus:    #504b45;
+    --border-subtle:   rgba(212,113,74,0.18);
+    --shadow-sm:       0 1px 4px rgba(0,0,0,0.28);
+    --shadow-md:       0 4px 16px rgba(0,0,0,0.38);
+    --shadow-lg:       0 8px 32px rgba(0,0,0,0.48);
+    --highlight-bg:    rgba(212,113,74,0.10);
+    --code-bg:         #1e1b17;
+    --tag-bg:          rgba(212,113,74,0.12);
+    --scrollbar-thumb: rgba(255, 255, 255, 0.22);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.38);
+}
+
+/* ---- RESET ---- */
+*, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    color-scheme: light dark;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/* ---- BASE ---- */
+body {
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg-color);
+    color: var(--text-color);
+    height: 100vh;
+    overflow: hidden;
+    transition: background-color 280ms ease, color 280ms ease;
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ---- APP SHELL ---- */
+.app {
+    display: flex;
+    height: 100vh;
+    transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.theme-animating .app {
+    opacity: 0.97;
+    transform: scale(0.994);
+}
+

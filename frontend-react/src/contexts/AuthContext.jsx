@@ -39,6 +39,7 @@ export function AuthProvider({ children }) {
   function logout() {
     localStorage.removeItem('user')
     localStorage.removeItem('active_session_id')
+    localStorage.removeItem('biz_name')
     setUser(null)
   }
 
@@ -62,19 +63,28 @@ export function AuthProvider({ children }) {
 
   function adminLogout() {
     localStorage.removeItem('admin_user')
+    localStorage.removeItem('biz_name')
     setAdminUser(null)
   }
 
-  // ── Authenticated fetch (auto-attaches Bearer token) ─────────
-  function authFetch(url, options = {}) {
+  // ── Authenticated fetch (auto-attaches Bearer token & intercepts 401s) ─────────
+  async function authFetch(url, options = {}) {
     const token = user?.token || adminUser?.token
-    return fetch(url, {
+    const res = await fetch(url, {
       ...options,
       headers: {
         ...(options.headers || {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       }
     })
+    if (res.status === 401) {
+      if (adminUser) {
+        adminLogout()
+      } else {
+        logout()
+      }
+    }
+    return res
   }
 
   return (

@@ -58,7 +58,7 @@ def shutdown_event():
     stop_scheduler()
 
 import os as _os
-_default_origins = "null,http://localhost:5500,http://127.0.0.1:5500,http://localhost:3000"
+_default_origins = "null,http://localhost:5500,http://127.0.0.1:5500,http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173"
 _allowed_origins = [
     o.strip() for o in _os.getenv("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()
 ]
@@ -68,7 +68,7 @@ app.add_middleware(
     # Auth is via the Authorization Bearer header (not cookies), so credentialed
     # CORS isn't needed — and disabling it lets the "null" file:// origin work.
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -415,11 +415,10 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
         if "429" in error_str or "rate_limit" in error_str.lower() or "quota" in error_str.lower():
             return {
                 "error": "API quota exceeded. Rate limit hit. Please wait a moment and try again.",
-                "status_code": 429,
-                "details": error_str
+                "status_code": 429
             }
         
         return {
-            "error": str(e),
+            "error": "An internal error occurred while processing your request.",
             "status_code": 500
         }

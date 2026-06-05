@@ -469,7 +469,8 @@ def set_rate_limits(user_id: int, body: RateLimitRequest, current_user: dict = D
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error setting rate limits for user {user_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error setting rate limits.")
     finally:
         db.close()
 

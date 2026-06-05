@@ -119,8 +119,8 @@ def save_alert_config(
 
     except Exception as e:
         db.rollback()
-        logger.error(f"[Alerts] Failed to save config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[Alerts] Failed to save config: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to save alert configuration.")
     finally:
         db.close()
 
@@ -159,8 +159,8 @@ def trigger_alert_manually(
         dispatch[alert_type]()
         return {"success": True, "message": f"Alert '{alert_type}' triggered manually."}
     except Exception as e:
-        logger.error(f"[Alerts] Manual trigger failed for '{alert_type}': {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[Alerts] Manual trigger failed for '{alert_type}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to trigger alert manually.")
 
 
 # ── GET scheduler status ──────────────────────────────────────

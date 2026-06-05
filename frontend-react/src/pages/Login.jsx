@@ -5,17 +5,42 @@ import { useAuth } from '../contexts/AuthContext'
 export default function Login() {
   const { login } = useAuth()
   const navigate  = useNavigate()
-  const [form,  setForm]  = useState({ username: '', password: '' })
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+
+  const [tab,      setTab]      = useState('login')   // 'login' | 'signup'
+  const [username, setUsername] = useState('')
+  const [bizname,  setBizname]  = useState('')
+  const [password, setPassword] = useState('')
+  const [showPw,   setShowPw]   = useState(false)
+  const [pwFocus,  setPwFocus]  = useState(false)
+  const [error,    setError]    = useState('')
+  const [loading,  setLoading]  = useState(false)
+
+  // Password condition checks (for signup tab)
+  const condLength    = password.length >= 8
+  const condCapital   = /[A-Z]/.test(password)
+  const condLower     = /[a-z]/.test(password)
+  const condNumber    = /[0-9]/.test(password)
+  const condSpecial   = /[^A-Za-z0-9]/.test(password)
+  const showConditions = tab === 'signup' && pwFocus && password.length > 0
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
     setLoading(true)
     try {
-      await login(form.username, form.password)
-      navigate('/dashboard')
+      if (tab === 'login') {
+        await login(username, password)
+        navigate('/chat')
+      } else {
+        // Signup: validate conditions first
+        if (!condLength || !condCapital || !condLower || !condNumber || !condSpecial) {
+          setError('Password does not meet all requirements.')
+          setLoading(false)
+          return
+        }
+        await login(username, password)
+        navigate('/chat')
+      }
     } catch (err) {
       setError(err.message)
     } finally {
@@ -24,43 +49,162 @@ export default function Login() {
   }
 
   return (
-    <div className="auth-page">
-      <div className="auth-card">
-        <div className="auth-symbol">✦</div>
-        <h1 className="auth-title">BIZASSIST</h1>
-        <p className="auth-subtitle">Sign in to your business account</p>
+    <>
+    {/* Decorative blurred app interface behind the login card (legacy look) */}
+    <div className="login-backdrop" aria-hidden="true">
+      <aside className="lb-sidebar">
+        <div className="lb-logo">✦ BizAssist</div>
+        <div className="lb-navitem active">AI Assistant</div>
+        <div className="lb-navitem">Dashboard</div>
+        <div className="lb-navitem">Invoices</div>
+        <div className="lb-navitem">Payments</div>
+        <div className="lb-navitem">Clients</div>
+        <div className="lb-navitem">Database Viewer</div>
+      </aside>
+      <main className="lb-main">
+        <div className="lb-h1">Business Database</div>
+        <div className="lb-row">
+          <div className="lb-card" /><div className="lb-card" /><div className="lb-card" />
+        </div>
+        <div className="lb-bar" /><div className="lb-bar" />
+        <div className="lb-bar" /><div className="lb-bar" />
+      </main>
+      <aside className="lb-right">
+        <div className="lb-h1" style={{ fontSize: 26 }}>Good evening</div>
+        <div className="lb-chip" /><div className="lb-chip" />
+        <div className="lb-chip" /><div className="lb-chip" />
+      </aside>
+    </div>
 
-        <form onSubmit={handleSubmit} className="auth-form">
+    <div className="login-container" id="login-container">
+      <div className="login-card">
+        <div className="login-glow"></div>
+        <div className="login-symbol">✦</div>
+        <h1 className="login-title">BIZASSIST</h1>
+        <p className="login-subtitle">Enterprise Business Intelligence Portal</p>
+
+        {/* Sign In / Register tabs */}
+        <div className="login-tabs">
+          <button
+            type="button"
+            className={`login-tab-btn ${tab === 'login' ? 'active' : ''}`}
+            onClick={() => { setTab('login'); setError('') }}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            className={`login-tab-btn ${tab === 'signup' ? 'active' : ''}`}
+            onClick={() => { setTab('signup'); setError('') }}
+          >
+            Register
+          </button>
+        </div>
+
+        <form id="login-form" onSubmit={handleSubmit}>
+
+          {/* Username */}
           <div className="form-group">
-            <label>Username</label>
+            <label htmlFor="username">Username</label>
             <input
               type="text"
+              id="username"
               placeholder="e.g. pharmacy"
-              value={form.username}
-              onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+              value={username}
+              onChange={e => setUsername(e.target.value)}
               required
+              autoComplete="username"
             />
           </div>
+
+          {/* Business Name — signup only */}
+          {tab === 'signup' && (
+            <div className="form-group" id="group-bizname">
+              <label htmlFor="bizname">Business Name</label>
+              <input
+                type="text"
+                id="bizname"
+                placeholder="e.g. Medicare Pharmacy"
+                value={bizname}
+                onChange={e => setBizname(e.target.value)}
+              />
+            </div>
+          )}
+
+          {/* Password */}
           <div className="form-group">
-            <label>Password</label>
-            <input
-              type="password"
-              placeholder="••••••••"
-              value={form.password}
-              onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-              required
-            />
+            <label htmlFor="password">Password</label>
+            <div className="password-wrapper">
+              <input
+                type={showPw ? 'text' : 'password'}
+                id="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                onFocus={() => setPwFocus(true)}
+                onBlur={() => setPwFocus(false)}
+                required
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowPw(v => !v)}
+                aria-label="Toggle password visibility"
+              >
+                {showPw ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                  </svg>
+                ) : (
+                  <svg className="eye-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                )}
+              </button>
+            </div>
+
+            {/* Password strength conditions — signup only */}
+            {showConditions && (
+              <div id="password-conditions" className="password-conditions">
+                {!condLength   && <div className="condition-item" id="cond-length"><span className="condition-dot">●</span> 8+ characters</div>}
+                {!condCapital  && <div className="condition-item" id="cond-capital"><span className="condition-dot">●</span> Capital letter</div>}
+                {!condLower    && <div className="condition-item" id="cond-lowercase"><span className="condition-dot">●</span> Lowercase letter</div>}
+                {!condNumber   && <div className="condition-item" id="cond-number"><span className="condition-dot">●</span> Contains a number</div>}
+                {!condSpecial  && <div className="condition-item" id="cond-special"><span className="condition-dot">●</span> Special character</div>}
+              </div>
+            )}
           </div>
-          {error && <div className="auth-error">{error}</div>}
-          <button type="submit" className="auth-btn" disabled={loading}>
-            {loading ? 'Signing in...' : 'Sign In'}
+
+          {/* Error */}
+          {error && (
+            <div id="login-error" className="login-error" style={{ display: 'block' }}>
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="login-submit-btn"
+            id="submit-btn"
+            disabled={loading}
+          >
+            {loading
+              ? (tab === 'login' ? 'Signing in...' : 'Registering...')
+              : (tab === 'login' ? 'Sign In' : 'Create Account')}
           </button>
         </form>
 
-        <div className="auth-footer">
-          <Link to="/admin/login">Admin? Sign in here →</Link>
+        <div className="login-footer">
+          <Link to="/admin/login" className="admin-link">
+            Looking for Admin Portal? Go to Admin Portal →
+          </Link>
         </div>
       </div>
     </div>
+    </>
   )
 }

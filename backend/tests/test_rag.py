@@ -36,6 +36,14 @@ def setup_db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     
+    # Clear existing data to avoid conflicts with previous tests sharing the DB instance
+    db.query(Invoice).delete()
+    db.query(Inventory).delete()
+    db.query(Payment).delete()
+    db.query(DocumentEmbedding).delete()
+    db.query(User).delete()
+    db.commit()
+
     # Create test user/business
     user = User(id=10, username="rag_user", password="hashed_password", business_name="RAG Store", role="enterprise")
     db.add(user)

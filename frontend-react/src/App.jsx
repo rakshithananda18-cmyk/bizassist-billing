@@ -7,9 +7,11 @@ import AdminLayout from './layouts/AdminLayout'
 
 import Login          from './pages/Login'
 import Dashboard      from './pages/Dashboard'
-import Chat           from './pages/Chat'
-import Upload         from './pages/Upload'
+import Invoices       from './pages/Invoices'
+import Payments       from './pages/Payments'
+import Clients        from './pages/Clients'
 import Database       from './pages/Database'
+import Upload         from './pages/Upload'
 import NotFound       from './pages/NotFound'
 
 import AdminLogin      from './pages/admin/AdminLogin'
@@ -30,9 +32,12 @@ export default function App() {
 
           {/* Enterprise app */}
           <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-            <Route index                element={<Navigate to="/dashboard" replace />} />
+            <Route index                element={<Navigate to="/chat" replace />} />
             <Route path="/dashboard"    element={<Dashboard />} />
-            <Route path="/chat"         element={<Chat />} />
+            <Route path="/invoices"     element={<Invoices />} />
+            <Route path="/payments"     element={<Payments />} />
+            <Route path="/clients"      element={<Clients />} />
+            <Route path="/chat"         element={<div />} /> {/* Rendered inside AppLayout */}
             <Route path="/upload"       element={<Upload />} />
             <Route path="/database"     element={<Database />} />
           </Route>

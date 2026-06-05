@@ -37,6 +37,13 @@ def cleanup_test_db():
             except Exception:
                 pass
 
+
+@pytest.fixture(autouse=True)
+def clear_rate_limit_windows():
+    from services.rate_limiter import _ip_window, _upload_window
+    _ip_window.clear()
+    _upload_window.clear()
+
 def test_query_classification():
     # Direct database queries
     assert classify("how many invoices")[0] == "DIRECT"
@@ -94,7 +101,7 @@ def test_auth_flow():
     # Signup flow
     response = client.post("/signup", json={
         "username": "newuser",
-        "password": "newpassword123",
+        "password": "Newpassword123",
         "business_name": "New Retail Shop"
     })
     assert response.status_code == 200
@@ -106,7 +113,7 @@ def test_auth_flow():
     # Duplicate username signup
     response = client.post("/signup", json={
         "username": "newuser",
-        "password": "anotherpassword",
+        "password": "Anotherpassword123",
         "business_name": "Another Shop"
     })
     assert response.status_code == 400
@@ -173,7 +180,7 @@ def test_ask_ai_flow(mock_chat_create):
     assert response.json()["source"] == "db"
 
     # AI path ask
-    response = client.post("/ask", json={"message": "which strategy should I use?"}, headers=headers)
+    response = client.post("/ask", json={"message": "who is my most reliable supplier?"}, headers=headers)
     assert response.status_code == 200
     data = response.json()
     assert data["source"] == "ai"
@@ -212,7 +219,7 @@ def test_ask_ai_tool_calling_flow(mock_chat_create):
     token = login_response.json()["token"]
     headers = {"Authorization": f"Bearer {token}"}
 
-    response = client.post("/ask", json={"message": "can you give me general advice about increasing sales?"}, headers=headers)
+    response = client.post("/ask", json={"message": "who is my most reliable supplier?"}, headers=headers)
     assert response.status_code == 200
     data = response.json()
     assert data["source"] == "ai"
@@ -500,7 +507,7 @@ def test_pdf_upload_flow():
     # Sign up a new user
     signup_resp = client.post("/signup", json={
         "username": "pdf_merchant",
-        "password": "pdf_password123",
+        "password": "Pdf_password123",
         "business_name": "PDF Business"
     })
     assert signup_resp.status_code == 200
@@ -508,7 +515,7 @@ def test_pdf_upload_flow():
     # Login as the new user
     response = client.post("/login", json={
         "username": "pdf_merchant",
-        "password": "pdf_password123"
+        "password": "Pdf_password123"
     })
     assert response.status_code == 200
     token = response.json()["token"]
@@ -569,4 +576,158 @@ def test_pdf_upload_flow():
     
     assert len(db_data["uploads"]) == 1
     assert db_data["uploads"][0]["filename"] == "invoice_test.pdf"
+
+
+def test_password_policy_signup():
+    # Short password
+    response = client.post("/signup", json={
+        "username": "user_short",
+        "password": "pwd",
+        "business_name": "Short Business"
+    })
+    assert response.status_code == 400
+    assert "at least 8 characters" in response.json()["detail"]
+
+    # No uppercase
+    response = client.post("/signup", json={
+        "username": "user_no_upper",
+        "password": "password123",
+        "business_name": "No Upper Business"
+    })
+    assert response.status_code == 400
+    assert "uppercase" in response.json()["detail"]
+
+    # No lowercase
+    response = client.post("/signup", json={
+        "username": "user_no_lower",
+        "password": "PASSWORD123",
+        "business_name": "No Lower Business"
+    })
+    assert response.status_code == 400
+    assert "lowercase" in response.json()["detail"]
+
+    # No number
+    response = client.post("/signup", json={
+        "username": "user_no_number",
+        "password": "Password",
+        "business_name": "No Number Business"
+    })
+    assert response.status_code == 400
+    assert "number" in response.json()["detail"]
+
+
+def test_login_rate_limiting():
+    # Call /login 11 times. The 11th call should trigger rate limiting.
+    from services.rate_limiter import _ip_window
+    _ip_window.clear()
+
+    for i in range(10):
+        response = client.post("/login", json={
+            "username": "pharmacy",
+            "password": "wrongpassword"
+        })
+        # Rate limit is 10, so these should be 401 (Invalid credentials)
+        assert response.status_code == 401
+        assert response.json()["detail"] == "Invalid credentials"
+
+    # 11th request should be rate limited (429)
+    response = client.post("/login", json={
+        "username": "pharmacy",
+        "password": "wrongpassword"
+    })
+    assert response.status_code == 429
+    assert "Rate limit exceeded" in response.json()["detail"]
+
+
+def test_upload_limits():
+    # Sign up a new user to ensure clean isolated state
+    signup_resp = client.post("/signup", json={
+        "username": "upload_merchant",
+        "password": "Upload_password123",
+        "business_name": "Upload Business"
+    })
+    assert signup_resp.status_code == 200
+    token = signup_resp.json()["token"]
+    user_headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Large file upload (exceeding 5MB limit)
+    large_content = b"a" * (5 * 1024 * 1024 + 1)
+    files = {"file": ("large_file.csv", large_content, "text/csv")}
+    response = client.post("/upload", files=files, headers=user_headers)
+    assert response.status_code == 413
+    assert "File size exceeds maximum limit" in response.json()["detail"]
+
+    # 2. CSV file with too many rows (> 1000 rows)
+    # Header row + 1001 rows of data
+    rows = ["invoice_id,customer,product,amount,status,due_date"]
+    for i in range(1001):
+        rows.append(f"INV-{i},Customer-{i},Product-{i},100.0,Pending,2026-06-01")
+    csv_content = "\n".join(rows).encode("utf-8")
+    files = {"file": ("too_many_rows.csv", csv_content, "text/csv")}
+    response = client.post("/upload", files=files, headers=user_headers)
+    assert response.status_code == 400
+    assert "Row count exceeds maximum limit" in response.json()["detail"]
+
+
+def test_upload_rate_limiting():
+    # Sign up a new user to ensure clean isolated state
+    signup_resp = client.post("/signup", json={
+        "username": "upload_rate_merchant",
+        "password": "Upload_password123",
+        "business_name": "Upload Rate Business"
+    })
+    assert signup_resp.status_code == 200
+    token = signup_resp.json()["token"]
+    user_headers = {"Authorization": f"Bearer {token}"}
+
+    # Clear rate limit state
+    from services.rate_limiter import _upload_window
+    _upload_window.clear()
+
+    # Small valid CSV content
+    csv_content = "invoice_id,customer,product,amount,status,due_date\nINV-001,Cust,Prod,50.0,Pending,2026-06-01".encode("utf-8")
+
+    # Call /upload 5 times. Vary content slightly to avoid 409.
+    for i in range(5):
+        csv_var = f"invoice_id,customer,product,amount,status,due_date\nINV-{i},Cust,Prod,50.0,Pending,2026-06-01".encode("utf-8")
+        files = {"file": (f"test_{i}.csv", csv_var, "text/csv")}
+        response = client.post("/upload", files=files, headers=user_headers)
+        assert response.status_code in [200, 409]
+
+    # 6th call should trigger 429
+    files = {"file": ("test_6.csv", csv_content, "text/csv")}
+    response = client.post("/upload", files=files, headers=user_headers)
+    assert response.status_code == 429
+    assert "Rate limit exceeded" in response.json()["detail"]
+
+
+def test_sanitized_errors():
+    # Verify that admin/rate-limits/{user_id} hides the database exception
+    admin_login = client.post("/login", json={
+        "username": "admin",
+        "password": "admin123"
+    })
+    admin_token = admin_login.json()["token"]
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # Set rate limits endpoint mock-triggering an error
+    with patch("routes.admin.SessionLocal") as mock_session:
+        mock_db = MagicMock()
+        mock_db.query.side_effect = Exception("Internal DB Connection Corrupted Stack Trace Info")
+        mock_session.return_value = mock_db
+
+        # Try to call set_rate_limits
+        response = client.post("/admin/rate-limits/1", json={
+            "requests_per_minute": 10,
+            "requests_per_day": 500,
+            "max_tokens_per_day": 50000,
+            "complex_per_day": 20,
+            "active": True
+        }, headers=admin_headers)
+
+        assert response.status_code == 500
+        # Should NOT leak the database exception detail
+        assert "Internal DB Connection Corrupted" not in response.json()["detail"]
+        assert response.json()["detail"] == "Internal server error setting rate limits."
+
 
