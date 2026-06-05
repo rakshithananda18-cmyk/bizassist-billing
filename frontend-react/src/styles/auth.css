@@ -384,19 +384,17 @@ html[data-logged="true"] .login-symbol {
 }
 
 .upload-btn-highlight {
-    animation: pulse-highlight 2s infinite ease-in-out !important;
-    border-color: var(--accent-color) !important;
-    background: var(--accent-soft) !important;
-    color: var(--accent-color) !important;
+    border: 1px solid var(--border-color) !important;
+    background: var(--card-color) !important;
+    color: var(--text-color) !important;
     font-weight: 600 !important;
     position: relative;
     z-index: 1;
 }
 
 .upload-btn-highlight:hover {
-    background: #E6E6E6 !important;
+    background: var(--hover-bg) !important;
     color: var(--text-color) !important;
-    animation: none !important;
 }
 
 /* ─── CUSTOM ALERT / CONFIRM MODALS ─── */

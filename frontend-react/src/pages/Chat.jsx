@@ -137,6 +137,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   const [rlTimer, setRlTimer] = useState(0)
   const [showHistoryPopup, setShowHistoryPopup] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadedQuery, setUploadedQuery] = useState(null)
   const [chipsExpanded, setChipsExpanded] = useState(false)  // chips bar expanded (click to toggle)
   const [menuOpenId, setMenuOpenId] = useState(null)   // session id whose kebab menu is open
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })  // fixed-position coords for the menu
@@ -289,6 +290,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
 
     setInput('')
     if (inputRef.current) inputRef.current.style.height = 'auto'
+    setUploadedQuery(null)
 
     setMessages(prev => [...prev, { role: 'user', content: msg }])
     setLoading(true)
@@ -494,7 +496,11 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
       alert(`File type: ${resp.file_type}\nRows processed: ${resp.rows}`)
       // Dispatch refresh events
       window.dispatchEvent(new CustomEvent('data-updated'))
-      sendMessage(`Analyze the uploaded invoice data and give me a summary`)
+      
+      const fileType = (resp.file_type || '').toUpperCase()
+      const queryType = fileType === 'PDF' ? 'document' : fileType === 'CSV' || fileType === 'XLSX' ? 'dataset' : 'file'
+      setUploadedQuery(`Analyze the uploaded ${queryType}?`)
+      setChipsExpanded(true)
     } catch (err) {
       alert('Upload failed: ' + err.message)
     } finally {
@@ -588,22 +594,53 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
         <div className="input-area-wrapper">
           {/* Quick-action chips bar — tucks above the input during an active
               conversation, slides down out of sight on the empty/new-chat state */}
-          <div className={`chat-chips-bar ${messages.length > 0 && chipsExpanded && !showHistoryPopup ? 'show' : ''}`}>
-            {CHIPS.map(c => (
-              <button
-                key={c.label}
-                className="chip chip-sm"
-                title={c.label}
-                onClick={() => { sendMessage(c.query); setChipsExpanded(false) }}
-              >
-                <span className="chip-icon">{c.icon}</span>
-                <span className="chip-label">{c.label}</span>
-              </button>
-            ))}
+          <div className={`chat-chips-bar ${(messages.length > 0 || uploadedQuery) && chipsExpanded && !showHistoryPopup ? 'show' : ''}`}>
+            {uploadedQuery ? (
+              <div style={{ display: 'flex', width: '100%', justifyContent: 'center', padding: '6px 0' }}>
+                <button
+                  className="chip chip-sm"
+                  onClick={() => {
+                    sendMessage(uploadedQuery.replace(/\?$/, ''))
+                    setUploadedQuery(null)
+                    setChipsExpanded(false)
+                  }}
+                  style={{
+                    color: 'var(--accent-color)',
+                    fontWeight: 600,
+                    border: '1.5px solid var(--accent-color)',
+                    background: 'var(--accent-soft)',
+                    borderRadius: '999px',
+                    padding: '6px 14px',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: 'var(--shadow-sm)'
+                  }}
+                >
+                  <span className="chip-icon" style={{ fontSize: '13px', lineHeight: 1 }}>✦</span>
+                  <span className="chip-label" style={{ opacity: 1, maxWidth: 'none', marginLeft: '6px', display: 'inline-block', fontWeight: 600 }}>
+                    {uploadedQuery}
+                  </span>
+                </button>
+              </div>
+            ) : (
+              CHIPS.map(c => (
+                <button
+                  key={c.label}
+                  className="chip chip-sm"
+                  title={c.label}
+                  onClick={() => { sendMessage(c.query); setChipsExpanded(false) }}
+                >
+                  <span className="chip-icon">{c.icon}</span>
+                  <span className="chip-label">{c.label}</span>
+                </button>
+              ))
+            )}
           </div>
           <div className={`input-area ${input.trim() ? 'has-content' : ''}`}>
             {/* Chevron toggle — expands the quick-action chips bar above the input */}
-            {messages.length > 0 && (
+            {(messages.length > 0 || uploadedQuery) && (
               <button
                 type="button"
                 className={`chips-toggle-btn ${chipsExpanded ? 'open' : ''}`}

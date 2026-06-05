@@ -198,8 +198,15 @@ export default function Database() {
         <div className="vempty-title">Database is empty</div>
         <div className="vempty-sub">{error || 'Upload CSV/XLSX billing files to populate the database.'}</div>
         <button
-          className="chip upload-btn-highlight"
-          style={{ marginTop: 14 }}
+          className="chip"
+          style={{
+            marginTop: 14,
+            border: '1px solid var(--border-color)',
+            background: 'var(--card-color)',
+            color: 'var(--text-color)',
+            fontWeight: 600,
+            cursor: 'pointer'
+          }}
           onClick={() => document.getElementById('file-upload-db').click()}
         >
           {uploading ? 'Uploading...' : '+ Upload data'}
@@ -257,11 +264,13 @@ export default function Database() {
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button
-              className="upload-btn-highlight"
               onClick={() => document.getElementById('file-upload-db').click()}
               style={{
                 padding: '8px 12px',
+                border: '1px solid var(--border-color)',
                 borderRadius: '8px',
+                background: 'var(--card-color)',
+                color: 'var(--text-color)',
                 cursor: 'pointer',
                 fontSize: '12px',
                 fontWeight: 600,
@@ -315,18 +324,21 @@ export default function Database() {
           </div>
         </div>
 
-        <div className="cards db-cards">
-          <div className="card">
-            <h3>Invoices</h3>
-            <p>{data.invoice_count}</p>
+        <div className="admin-summary-strip">
+          <div className="vsummary-card" style={{ borderLeftColor: 'var(--accent-color)', cursor: 'default' }}>
+            <div className="vsummary-label">Invoices</div>
+            <div className="vsummary-value">{data.invoice_count}</div>
+            <div className="vsummary-sub">records tracked</div>
           </div>
-          <div className="card">
-            <h3>Inventory</h3>
-            <p>{data.inventory_count}</p>
+          <div className="vsummary-card" style={{ borderLeftColor: '#3a9a5c', cursor: 'default' }}>
+            <div className="vsummary-label">Inventory</div>
+            <div className="vsummary-value">{data.inventory_count}</div>
+            <div className="vsummary-sub">items in stock</div>
           </div>
-          <div className="card">
-            <h3>Uploads</h3>
-            <p>{data.upload_count}</p>
+          <div className="vsummary-card" style={{ borderLeftColor: '#c97c22', cursor: 'default' }}>
+            <div className="vsummary-label">Uploads</div>
+            <div className="vsummary-value">{data.upload_count}</div>
+            <div className="vsummary-sub">datasets uploaded</div>
           </div>
         </div>
       </div>
