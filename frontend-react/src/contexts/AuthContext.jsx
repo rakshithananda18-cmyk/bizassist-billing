@@ -87,7 +87,13 @@ export function AuthProvider({ children }) {
 
   // ── Authenticated fetch (auto-attaches Bearer token & intercepts 401s) ─────────
   async function authFetch(url, options = {}) {
-    const token = user?.token || adminUser?.token
+    // If fetching an admin endpoint (contains /admin/), prioritize the adminUser token.
+    // Otherwise, prioritize the enterprise user token.
+    const isAdminRequest = url.includes('/admin/')
+    const token = isAdminRequest 
+      ? (adminUser?.token || user?.token) 
+      : (user?.token || adminUser?.token)
+
     const res = await fetch(url, {
       ...options,
       headers: {
@@ -96,7 +102,7 @@ export function AuthProvider({ children }) {
       }
     })
     if (res.status === 401) {
-      if (adminUser) {
+      if (isAdminRequest) {
         adminLogout()
       } else {
         logout()
