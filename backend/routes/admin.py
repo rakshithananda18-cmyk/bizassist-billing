@@ -1,10 +1,14 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import func
+from typing import Optional
+from datetime import datetime, date
 from database.db import SessionLocal
-from database.models import User, Invoice, Inventory, UploadedFile, Payment, ChatMessage, DocumentEmbedding, TokenUsage
+from database.models import User, Invoice, Inventory, UploadedFile, Payment, ChatMessage, DocumentEmbedding, TokenUsage, RateLimitConfig
 from services.auth import get_active_user, hash_password
 from services.context_cache import invalidate, invalidate_user_cache, get_cache_stats
+from services.rate_limiter import get_usage_summary
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.admin")
@@ -385,8 +389,111 @@ def get_business_details(user_id: int, current_user: dict = Depends(get_active_u
 
 
 # ── USER MANAGEMENT SCHEMAS & ROUTES ─────────────────────────────────
-from pydantic import BaseModel
-from typing import Optional
+
+# ── Rate Limit Config Schema ──────────────────────────────────────────
+
+class RateLimitRequest(BaseModel):
+    requests_per_minute: int = 10
+    requests_per_day:    int = 500
+    max_tokens_per_day:  int = 50000
+    complex_per_day:     int = 20
+    active:              bool = True
+
+
+@router.get("/admin/rate-limits/{user_id}")
+def get_rate_limits(user_id: int, current_user: dict = Depends(get_active_user)):
+    """Get rate limit config for a specific business."""
+    db = SessionLocal()
+    try:
+        admin_user = db.query(User).filter(User.id == current_user["id"]).first()
+        if not admin_user or admin_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Access denied.")
+
+        cfg = db.query(RateLimitConfig).filter(RateLimitConfig.business_id == user_id).first()
+        if not cfg:
+            return {"configured": False, "defaults": {
+                "requests_per_minute": 10,
+                "requests_per_day":    500,
+                "max_tokens_per_day":  50000,
+                "complex_per_day":     20,
+                "active":              True
+            }}
+        return {
+            "configured":          True,
+            "requests_per_minute": cfg.requests_per_minute,
+            "requests_per_day":    cfg.requests_per_day,
+            "max_tokens_per_day":  cfg.max_tokens_per_day,
+            "complex_per_day":     cfg.complex_per_day,
+            "active":              cfg.active,
+        }
+    finally:
+        db.close()
+
+
+@router.post("/admin/rate-limits/{user_id}")
+def set_rate_limits(user_id: int, body: RateLimitRequest, current_user: dict = Depends(get_active_user)):
+    """Create or update rate limit config for a specific business."""
+    db = SessionLocal()
+    try:
+        admin_user = db.query(User).filter(User.id == current_user["id"]).first()
+        if not admin_user or admin_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Access denied.")
+
+        target = db.query(User).filter(User.id == user_id).first()
+        if not target:
+            raise HTTPException(status_code=404, detail="User not found.")
+
+        cfg = db.query(RateLimitConfig).filter(RateLimitConfig.business_id == user_id).first()
+        if cfg:
+            cfg.requests_per_minute = body.requests_per_minute
+            cfg.requests_per_day    = body.requests_per_day
+            cfg.max_tokens_per_day  = body.max_tokens_per_day
+            cfg.complex_per_day     = body.complex_per_day
+            cfg.active              = body.active
+            cfg.updated_at          = datetime.utcnow()
+        else:
+            cfg = RateLimitConfig(
+                business_id         = user_id,
+                requests_per_minute = body.requests_per_minute,
+                requests_per_day    = body.requests_per_day,
+                max_tokens_per_day  = body.max_tokens_per_day,
+                complex_per_day     = body.complex_per_day,
+                active              = body.active,
+            )
+            db.add(cfg)
+
+        db.commit()
+        logger.info(f"[Admin] Rate limits updated for user {user_id} by admin {current_user['id']}")
+        return {"success": True, "message": f"Rate limits saved for {target.business_name}."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+
+@router.get("/admin/usage-stats")
+def get_all_usage_stats(current_user: dict = Depends(get_active_user)):
+    """Returns today's usage stats for all businesses."""
+    db = SessionLocal()
+    try:
+        admin_user = db.query(User).filter(User.id == current_user["id"]).first()
+        if not admin_user or admin_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Access denied.")
+
+        businesses = db.query(User).filter(User.role == "enterprise").all()
+        result = []
+        for b in businesses:
+            summary = get_usage_summary(b.id)
+            summary["business_name"] = b.business_name
+            summary["username"]      = b.username
+            result.append(summary)
+        return result
+    finally:
+        db.close()
+
 
 class AdminCreateUserRequest(BaseModel):
     username: str

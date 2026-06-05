@@ -170,6 +170,19 @@
             background: #d32f2f;
             color: #ffffff;
         }
+        /* Usage bar */
+        .usage-bar-wrap { margin-top: 6px; }
+        .usage-bar-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--secondary-text); margin-bottom: 3px; }
+        .usage-bar-bg { height: 5px; background: var(--accent-softer); border-radius: 3px; overflow: hidden; }
+        .usage-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+        .usage-bar-fill.green  { background: #3a9a5c; }
+        .usage-bar-fill.yellow { background: #c97c22; }
+        .usage-bar-fill.red    { background: #d32f2f; }
+        .usage-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+        .usage-stat-card { background: var(--accent-softer); border-radius: 8px; padding: 12px; }
+        .usage-stat-label { font-size: 11px; color: var(--secondary-text); margin-bottom: 4px; }
+        .usage-stat-value { font-size: 16px; font-weight: 700; color: var(--text-color); }
+        .usage-stat-sub { font-size: 10px; color: var(--secondary-text); margin-top: 2px; }
         /* Flush dropdown */
         .flush-dropdown {
             position: relative;
@@ -448,6 +461,17 @@
                 </div>
             </div>
 
+            <!-- USAGE DASHBOARD -->
+            <div class="admin-table-widget">
+                <div class="admin-table-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <span>Today's Usage Dashboard</span>
+                    <button onclick="loadUsageStats()" class="btn-flush" style="padding: 4px 10px; font-size: 11px;">Refresh ⟳</button>
+                </div>
+                <div id="usage-stats-container" style="display: flex; flex-direction: column; gap: 16px;">
+                    <div style="color: var(--secondary-text); font-size: 13px; padding: 10px;">Loading usage stats...</div>
+                </div>
+            </div>
+
             <!-- REGISTERED ENTERPRISES TABLE -->
             <div class="admin-table-widget">
                 <div class="admin-table-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
@@ -591,6 +615,7 @@
                         <td style="display: flex; gap: 8px; align-items: center;">
                             <button class="btn-flush" onclick="inspectBusiness(${b.id})">Inspect</button>
                             <button class="btn-flush" onclick="editBusiness(${b.id}, '${b.business_name.replace(/'/g, "\\'")}', '${b.username.replace(/'/g, "\\'")}')">Edit</button>
+                            <button class="btn-flush" onclick="openRateLimitsModal(${b.id}, '${b.business_name.replace(/'/g, "\\'")}')">⚙ Limits</button>
                             <button class="btn-flush" onclick="flushCache(${b.id}, '${b.business_name.replace(/'/g, "\\'")}')">Flush Cache</button>
                             <button class="btn-wipe-row" onclick="wipeUserData(${b.id}, '${b.business_name.replace(/'/g, "\\'")}')">Wipe Data</button>
                         </td>
@@ -598,8 +623,9 @@
                     body.appendChild(tr);
                 });
 
-                // Reload cache stats too
+                // Reload cache stats and usage stats
                 loadCacheStats();
+                loadUsageStats();
             } catch (err) {
                 console.error("Admin load error:", err);
             }
@@ -1067,6 +1093,125 @@
             }
         }
 
+        // ── Usage Stats ───────────────────────────────────────────
+        async function loadUsageStats() {
+            const container = document.getElementById("usage-stats-container");
+            try {
+                const res = await fetch(`${API_BASE}/admin/usage-stats`);
+                if (!res.ok) throw new Error("Failed to load usage stats");
+                const stats = await res.json();
+
+                if (!stats.length) {
+                    container.innerHTML = `<div style="color:var(--secondary-text);font-size:13px;padding:10px;">No usage data yet today.</div>`;
+                    return;
+                }
+
+                container.innerHTML = stats.map(s => {
+                    const qPct  = Math.min((s.queries_today  / s.queries_limit)  * 100, 100);
+                    const tPct  = Math.min((s.tokens_today   / s.tokens_limit)   * 100, 100);
+                    const cPct  = Math.min((s.complex_today  / s.complex_limit)  * 100, 100);
+                    const color = p => p >= 90 ? 'red' : p >= 70 ? 'yellow' : 'green';
+
+                    return `
+                    <div style="border:1px solid var(--border-color);border-radius:10px;padding:16px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                            <span style="font-weight:700;color:var(--accent-color);">${s.business_name}</span>
+                            <span style="font-size:11px;color:var(--secondary-text);">@${s.username} · ${s.requests_per_minute}/min max</span>
+                        </div>
+                        <div class="usage-stat-grid">
+                            <div class="usage-stat-card">
+                                <div class="usage-stat-label">Queries Today</div>
+                                <div class="usage-stat-value">${s.queries_today} <span style="font-size:12px;font-weight:400;color:var(--secondary-text);">/ ${s.queries_limit}</span></div>
+                                <div class="usage-bar-wrap"><div class="usage-bar-row"><span>${qPct.toFixed(0)}% used</span></div>
+                                <div class="usage-bar-bg"><div class="usage-bar-fill ${color(qPct)}" style="width:${qPct}%"></div></div></div>
+                            </div>
+                            <div class="usage-stat-card">
+                                <div class="usage-stat-label">Tokens Today</div>
+                                <div class="usage-stat-value">${s.tokens_today.toLocaleString()} <span style="font-size:12px;font-weight:400;color:var(--secondary-text);">/ ${s.tokens_limit.toLocaleString()}</span></div>
+                                <div class="usage-bar-wrap"><div class="usage-bar-row"><span>${tPct.toFixed(0)}% used</span></div>
+                                <div class="usage-bar-bg"><div class="usage-bar-fill ${color(tPct)}" style="width:${tPct}%"></div></div></div>
+                            </div>
+                            <div class="usage-stat-card">
+                                <div class="usage-stat-label">AI_COMPLEX Runs Today</div>
+                                <div class="usage-stat-value">${s.complex_today} <span style="font-size:12px;font-weight:400;color:var(--secondary-text);">/ ${s.complex_limit}</span></div>
+                                <div class="usage-bar-wrap"><div class="usage-bar-row"><span>${cPct.toFixed(0)}% used</span></div>
+                                <div class="usage-bar-bg"><div class="usage-bar-fill ${color(cPct)}" style="width:${cPct}%"></div></div></div>
+                            </div>
+                            <div class="usage-stat-card">
+                                <div class="usage-stat-label">Rate Limit</div>
+                                <div class="usage-stat-value">${s.requests_per_minute}<span style="font-size:12px;font-weight:400;color:var(--secondary-text);"> req/min</span></div>
+                                <div class="usage-stat-sub">Burst protection</div>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (err) {
+                container.innerHTML = `<div style="color:var(--secondary-text);font-size:13px;padding:10px;">Could not load usage stats.</div>`;
+            }
+        }
+
+        // ── Rate Limits Modal ──────────────────────────────────────
+        async function openRateLimitsModal(userId, businessName) {
+            document.getElementById("rl-user-id").value = userId;
+            document.getElementById("rl-biz-name").textContent = businessName;
+
+            try {
+                const res = await fetch(`${API_BASE}/admin/rate-limits/${userId}`);
+                const data = await res.json();
+                const cfg = data.configured ? data : data.defaults;
+
+                document.getElementById("rl-rpm").value     = cfg.requests_per_minute;
+                document.getElementById("rl-rpd").value     = cfg.requests_per_day;
+                document.getElementById("rl-tokens").value  = cfg.max_tokens_per_day;
+                document.getElementById("rl-complex").value = cfg.complex_per_day;
+                document.getElementById("rl-active").checked = cfg.active !== false;
+            } catch(e) {
+                // Use defaults
+                document.getElementById("rl-rpm").value     = 10;
+                document.getElementById("rl-rpd").value     = 500;
+                document.getElementById("rl-tokens").value  = 50000;
+                document.getElementById("rl-complex").value = 20;
+                document.getElementById("rl-active").checked = true;
+            }
+
+            document.getElementById("rl-error").style.display = "none";
+            document.getElementById("rate-limits-modal").style.display = "flex";
+        }
+
+        function closeRateLimitsModal() {
+            document.getElementById("rate-limits-modal").style.display = "none";
+        }
+
+        async function submitRateLimits(e) {
+            e.preventDefault();
+            const userId = document.getElementById("rl-user-id").value;
+            const errEl  = document.getElementById("rl-error");
+            errEl.style.display = "none";
+
+            const body = {
+                requests_per_minute: parseInt(document.getElementById("rl-rpm").value),
+                requests_per_day:    parseInt(document.getElementById("rl-rpd").value),
+                max_tokens_per_day:  parseInt(document.getElementById("rl-tokens").value),
+                complex_per_day:     parseInt(document.getElementById("rl-complex").value),
+                active:              document.getElementById("rl-active").checked
+            };
+
+            try {
+                const res = await fetch(`${API_BASE}/admin/rate-limits/${userId}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || "Failed to save");
+                closeRateLimitsModal();
+                loadUsageStats();
+            } catch (err) {
+                errEl.textContent = err.message;
+                errEl.style.display = "block";
+            }
+        }
+
         // ── Flush dropdown toggle ──────────────────────────────────
         function toggleFlushDropdown() {
             document.getElementById("flush-dropdown").classList.toggle("open");
@@ -1160,6 +1305,53 @@
                 <div id="create-merchant-error" class="login-error" style="display: none; color: #d32f2f; font-size: 12.5px; margin-bottom: 12px;"></div>
                 
                 <button type="submit" class="login-submit-btn" style="width: 100%; padding: 12px; border-radius: 8px; background: var(--accent-color); color: #ffffff; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s;">Create Merchant</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- RATE LIMITS MODAL -->
+    <div id="rate-limits-modal" class="modal-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:1000;justify-content:center;align-items:center;backdrop-filter:blur(4px);">
+        <div style="width:90%;max-width:440px;background:var(--card-color);border:1px solid var(--border-color);border-radius:16px;padding:28px;box-shadow:var(--shadow-lg);animation:modalFadeIn 0.25s ease;position:relative;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <h2 style="font-family:'Crimson Pro',Georgia,serif;font-size:22px;color:var(--text-color);margin:0;">⚙ Rate Limits</h2>
+                <button onclick="closeRateLimitsModal()" style="background:transparent;border:none;color:var(--secondary-text);font-size:24px;cursor:pointer;font-weight:bold;padding:0;">&times;</button>
+            </div>
+            <p id="rl-biz-name" style="font-size:13px;color:var(--accent-color);margin:0 0 20px 0;font-weight:600;"></p>
+
+            <form onsubmit="submitRateLimits(event)">
+                <input type="hidden" id="rl-user-id">
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:var(--secondary-text);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.05em;">Requests / Minute</label>
+                        <input type="number" id="rl-rpm" min="1" max="60" required style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-color);font-size:14px;">
+                        <div style="font-size:10px;color:var(--secondary-text);margin-top:3px;">Burst protection</div>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:var(--secondary-text);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.05em;">Requests / Day</label>
+                        <input type="number" id="rl-rpd" min="1" required style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-color);font-size:14px;">
+                        <div style="font-size:10px;color:var(--secondary-text);margin-top:3px;">Daily query cap</div>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:var(--secondary-text);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.05em;">Max Tokens / Day</label>
+                        <input type="number" id="rl-tokens" min="1000" required style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-color);font-size:14px;">
+                        <div style="font-size:10px;color:var(--secondary-text);margin-top:3px;">Cost control</div>
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:var(--secondary-text);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.05em;">AI_COMPLEX / Day</label>
+                        <input type="number" id="rl-complex" min="0" required style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-color);font-size:14px;">
+                        <div style="font-size:10px;color:var(--secondary-text);margin-top:3px;">Agent graph runs</div>
+                    </div>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;">
+                    <input type="checkbox" id="rl-active" style="width:16px;height:16px;accent-color:var(--accent-color);">
+                    <label for="rl-active" style="font-size:13px;color:var(--text-color);cursor:pointer;">Rate limiting active</label>
+                </div>
+
+                <div id="rl-error" style="display:none;color:#d32f2f;font-size:12px;margin-bottom:12px;"></div>
+
+                <button type="submit" style="width:100%;padding:12px;border-radius:8px;background:var(--accent-color);color:#fff;border:none;font-size:14px;font-weight:600;cursor:pointer;transition:background 0.15s;">Save Limits</button>
             </form>
         </div>
     </div>

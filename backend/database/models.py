@@ -191,6 +191,24 @@ class TokenUsage(Base):
 
 
 # -------------------------
+# RATE LIMIT CONFIG TABLE
+# -------------------------
+
+class RateLimitConfig(Base):
+
+    __tablename__ = "rate_limit_configs"
+
+    id                  = Column(Integer, primary_key=True, index=True)
+    business_id         = Column(Integer, unique=True, index=True)
+    requests_per_minute = Column(Integer, default=10)    # burst protection
+    requests_per_day    = Column(Integer, default=500)   # daily query cap
+    max_tokens_per_day  = Column(Integer, default=50000) # daily token budget
+    complex_per_day     = Column(Integer, default=20)    # AI_COMPLEX (agent graph) cap
+    active              = Column(Boolean, default=True)
+    updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# -------------------------
 # ALERT CONFIG TABLE
 # -------------------------
 

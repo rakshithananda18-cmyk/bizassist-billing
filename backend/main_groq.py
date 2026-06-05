@@ -27,6 +27,7 @@ from services.scheduler import start_scheduler, stop_scheduler
 from services.embeddings import preload_model_async
 from services.embeddings import search_chat_memories, save_chat_memory
 from services.agent_graph import run_agent_graph
+from services.rate_limiter import check_rate_limit
 
 from sqlalchemy import text
 from database.db import SessionLocal
@@ -169,6 +170,18 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
 
         # ── Layer 1: classify ────────────────────────────────────
         route, handler_key = classify(user_query, has_history=len(history) > 0)
+
+        # ── Rate limit check ─────────────────────────────────────
+        rl = check_rate_limit(active_user_id, route)
+        if not rl["allowed"]:
+            logger.warning(f"[RateLimit] Blocked user {active_user_id}: {rl['reason']}")
+            return {
+                "error":       rl["reason"],
+                "limit":       rl.get("limit"),
+                "used":        rl.get("used"),
+                "retry_after": rl.get("retry_after"),
+                "status_code": 429
+            }
 
         # Cache salt strategy:
         # AI_COMPLEX → query + business only (data-driven answer, history irrelevant)
