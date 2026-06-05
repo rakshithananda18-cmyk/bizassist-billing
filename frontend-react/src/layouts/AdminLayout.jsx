@@ -41,13 +41,7 @@ export default function AdminLayout() {
   }, [menuOpen])
 
   return (
-    <div style={{
-      height: '100vh',
-      overflow: 'hidden',
-      background: 'var(--bg-color)',
-      display: 'flex',
-      flexDirection: 'column',
-    }}>
+    <div className="admin-layout">
 
       {/* ── TOP NAV BAR ── */}
       <header style={{
@@ -61,8 +55,7 @@ export default function AdminLayout() {
         boxShadow: 'var(--shadow-sm)',
         flexShrink: 0,
         zIndex: 50,
-        position: 'sticky',
-        top: 0,
+        position: 'relative',
       }}>
         {/* Left Side: Hamburger & Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

@@ -366,7 +366,12 @@ div.main {
 ========================================= */
 
 @media (max-width: 1024px) {
-    body { overflow: hidden !important; }
+    html, body { 
+        overflow: hidden !important; 
+        height: 100% !important;
+        position: fixed !important;
+        width: 100% !important;
+    }
 
     .app { 
         flex-direction: column !important; 
