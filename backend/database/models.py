@@ -38,8 +38,10 @@ class UploadedFile(Base):
     rows_count = Column(Integer)
 
     upload_time = Column(String)
-    
+
     business_id = Column(Integer, nullable=True, index=True)
+
+    file_hash = Column(String, nullable=True, index=True)  # SHA256 of file content — prevents duplicate uploads
 
 
 # -------------------------

@@ -117,8 +117,19 @@ def run_migrations_and_seed():
                     logger.error(f"Failed migrating null values in {table}: {e}")
             conn.commit()
 
+        # Add file_hash column to uploaded_files if missing
+        with engine.connect() as conn:
+            try:
+                conn.execute(text("SELECT file_hash FROM uploaded_files LIMIT 1"))
+            except Exception:
+                try:
+                    conn.execute(text("ALTER TABLE uploaded_files ADD COLUMN file_hash TEXT"))
+                    logger.info("Added file_hash column to uploaded_files")
+                except Exception as e:
+                    logger.error(f"Failed to add file_hash column: {e}")
+            conn.commit()
+
         # Ensure alert_configs table exists (created by Base.metadata.create_all above)
-        # No extra columns to migrate for now — table is new
         logger.info("alert_configs table ensured.")
 
         logger.info("Database schema migration and seeding completed successfully.")

@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from services.context_cache import invalidate as invalidate_cache
 from fastapi import (
@@ -56,12 +57,30 @@ async def upload_file(
         if filename.endswith(".pdf"):
             # Process PDF through structured parser
             file_bytes = await file.read()
+
+            # ── Duplicate detection via SHA256 hash ───────────────
+            file_hash = hashlib.sha256(file_bytes).hexdigest()
+            db = SessionLocal()
+            try:
+                existing_upload = db.query(UploadedFile).filter(
+                    UploadedFile.file_hash == file_hash,
+                    UploadedFile.business_id == active_user_id
+                ).first()
+                if existing_upload:
+                    logger.warning(f"[Upload] Duplicate file detected for user {active_user_id}: '{filename}' (hash match with upload ID {existing_upload.id})")
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"This file has already been uploaded (matched upload '{existing_upload.filename}' on {existing_upload.upload_time}). Upload a different file or wipe existing data first."
+                    )
+            finally:
+                db.close()
+
             raw_text = parse_pdf_text(file_bytes)
             if not raw_text.strip():
                 raise HTTPException(status_code=400, detail="Could not extract readable text from PDF. Ensure it is not a scanned image.")
-            
+
             structured_data = extract_structured_invoice(raw_text)
-            save_result = save_pdf_invoice_to_db(structured_data, active_user_id, filename)
+            save_result = save_pdf_invoice_to_db(structured_data, active_user_id, filename, file_hash=file_hash)
             
             invalidate_cache()
             
@@ -73,10 +92,31 @@ async def upload_file(
                 "updated": 0,
                 "columns": ["invoice_id", "supplier", "customer", "invoice_date", "due_date", "total_amount", "items"]
             }
-        elif filename.endswith(".csv"):
-            df = pd.read_csv(file.file)
-        elif filename.endswith(".xlsx"):
-            df = pd.read_excel(file.file)
+        elif filename.endswith(".csv") or filename.endswith(".xlsx"):
+            raw_bytes = await file.read()
+            file_hash = hashlib.sha256(raw_bytes).hexdigest()
+
+            # Duplicate check
+            dup_db = SessionLocal()
+            try:
+                existing_upload = dup_db.query(UploadedFile).filter(
+                    UploadedFile.file_hash == file_hash,
+                    UploadedFile.business_id == active_user_id
+                ).first()
+                if existing_upload:
+                    logger.warning(f"[Upload] Duplicate file detected for user {active_user_id}: '{filename}'")
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"This file has already been uploaded (matched '{existing_upload.filename}' on {existing_upload.upload_time}). Upload a different file or wipe existing data first."
+                    )
+            finally:
+                dup_db.close()
+
+            import io
+            if filename.endswith(".csv"):
+                df = pd.read_csv(io.BytesIO(raw_bytes))
+            else:
+                df = pd.read_excel(io.BytesIO(raw_bytes))
         else:
             logger.warning(f"Failed upload attempt by user {active_user_id}: Unsupported file extension on '{filename}'")
             raise HTTPException(status_code=400, detail="Unsupported file format")
@@ -111,7 +151,8 @@ async def upload_file(
             file_type=file_type,
             rows_count=len(df),
             upload_time=str(datetime.now()),
-            business_id=active_user_id
+            business_id=active_user_id,
+            file_hash=file_hash if 'file_hash' in dir() else None
         )
 
         db.add(uploaded_file)

@@ -212,6 +212,71 @@ def get_token_usage(current_user: dict = Depends(get_active_user)):
         db.close()
 
 
+@router.post("/admin/flush-all-cache")
+def flush_all_cache(current_user: dict = Depends(get_active_user)):
+    """Flushes the entire in-memory query response cache for all users."""
+    db = SessionLocal()
+    try:
+        admin_user = db.query(User).filter(User.id == current_user["id"]).first()
+        if not admin_user or admin_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Access denied. Admin role required.")
+        invalidate()
+        logger.info(f"Admin {current_user['id']} flushed global in-memory cache.")
+        return {"status": "success", "message": "Global query response cache flushed for all users."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error flushing global cache: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error flushing cache")
+    finally:
+        db.close()
+
+
+@router.post("/admin/reset-chroma-documents")
+def reset_chroma_documents(current_user: dict = Depends(get_active_user)):
+    """
+    Deletes and recreates the Chroma document embedding collections.
+    Use this to fix dimension mismatch errors after switching embedding models.
+    Chat memory collections are NOT affected.
+    """
+    db = SessionLocal()
+    try:
+        admin_user = db.query(User).filter(User.id == current_user["id"]).first()
+        if not admin_user or admin_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Access denied. Admin role required.")
+
+        from services.embeddings import get_chroma_client
+        client = get_chroma_client()
+
+        deleted = []
+        # Delete all document embedding collections (old + v2)
+        for name in ["document_embeddings", "document_embeddings_v2"]:
+            try:
+                client.delete_collection(name=name)
+                deleted.append(name)
+                logger.info(f"[Chroma] Deleted collection: {name}")
+            except Exception:
+                pass  # Collection didn't exist — fine
+
+        # Recreate v2 fresh (384-dim, correct dimension)
+        client.get_or_create_collection(name="document_embeddings_v2")
+        logger.info("[Chroma] Recreated document_embeddings_v2 (384-dim, clean).")
+
+        logger.info(f"Admin {current_user['id']} reset Chroma document collections.")
+        return {
+            "status": "success",
+            "deleted_collections": deleted,
+            "message": "Chroma document collections reset. Re-upload your files to rebuild the index."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error resetting Chroma documents: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error resetting Chroma")
+    finally:
+        db.close()
+
+
 @router.get("/admin/cache-stats")
 def get_admin_cache_stats(current_user: dict = Depends(get_active_user)):
     logger.info(f"User {current_user['id']} requesting admin cache stats...")

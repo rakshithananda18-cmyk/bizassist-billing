@@ -26,6 +26,7 @@ from database.migration import run_migrations_and_seed
 from services.scheduler import start_scheduler, stop_scheduler
 from services.embeddings import preload_model_async
 from services.embeddings import search_chat_memories, save_chat_memory
+from services.agent_graph import run_agent_graph
 
 from sqlalchemy import text
 from database.db import SessionLocal
@@ -163,13 +164,20 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
         finally:
             db.close()
 
-        # Generate a cache salt based on the session ID and current session's recent chat history
         import hashlib
         history_str = json.dumps(history)
-        history_salt = hashlib.md5(f"{session_id}:{history_str}".encode("utf-8")).hexdigest()
 
         # ── Layer 1: classify ────────────────────────────────────
-        route, handler_key = classify(user_query)
+        route, handler_key = classify(user_query, has_history=len(history) > 0)
+
+        # Cache salt strategy:
+        # AI_COMPLEX → query + business only (data-driven answer, history irrelevant)
+        #              Same query = same DB data = same answer regardless of chat context
+        # AI_SIMPLE  → query + session history (conversational, context matters)
+        if route == "AI_COMPLEX":
+            history_salt = hashlib.md5(f"{active_user_id}:{user_query}".encode("utf-8")).hexdigest()
+        else:
+            history_salt = hashlib.md5(f"{session_id}:{history_str}".encode("utf-8")).hexdigest()
 
         # ── Layer 2: direct DB answer ────────────────────────────
         if route == "DIRECT":
@@ -246,101 +254,100 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
             cached_copy["session_title"] = session_title
             return cached_copy
 
-        # ── Layer 3: Groq with Tool Calling ──────────────────────
-        selected_model = MODEL_COMPLEX if route == "AI_COMPLEX" else MODEL_SIMPLE
-        logger.info(f"[BizAssist Router Decision] -> {route} | Model: {selected_model} | Query: '{user_query}'")
-        
-        # ── Static system prompt (never modified — keeps Groq KV cache hot) ──
-        # Groq auto-caches the prompt prefix when it's identical across requests.
-        # Dynamic content (memories, context) goes into messages[], NOT here.
-        SYSTEM_PROMPT = (
-            "You are BIZASSIST, an AI business advisor for Indian retail stores (pharmacies, supermarkets).\n"
-            "Rules:\n"
-            "- Facts only. Never invent numbers. Use ₹. Name customers/amounts/dates.\n"
-            "- Use tools to fetch live data before answering.\n"
-            "- Overdue invoices → suggest follow-up. Low stock → suggest reorder. Expiring items → suggest discounts.\n"
-            "- Scope: retail operations, invoices, inventory, payments, cash flow only. Refuse off-topic questions.\n"
-            "- Tool args must be valid JSON (no trailing commas).\n"
-        )
+        # ── Layer 3a: AI_COMPLEX → LangGraph multi-agent pipeline ───
+        if route == "AI_COMPLEX":
+            logger.info(f"[BizAssist Router Decision] -> AI_COMPLEX | LangGraph agents | Query: '{user_query}'")
+            final_response = run_agent_graph(
+                user_query=user_query,
+                business_id=active_user_id,
+                history=history
+            )
+            selected_model = MODEL_COMPLEX
 
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        # ── Layer 3b: AI_SIMPLE → single agent + tool calling ────────
+        else:
+            selected_model = MODEL_SIMPLE
+            logger.info(f"[BizAssist Router Decision] -> AI_SIMPLE | Model: {selected_model} | Query: '{user_query}'")
 
-        # Inject past memories as a system-role context block INSIDE messages[]
-        # so the static system prompt above is never mutated
-        past_memories = search_chat_memories(active_user_id, user_query, limit=3)
-        if past_memories:
-            messages.append({"role": "system", "content": f"[Relevant past context]\n{past_memories}"})
+            SYSTEM_PROMPT = (
+                "You are BIZASSIST, an AI business advisor for Indian retail stores (pharmacies, supermarkets).\n"
+                "Rules:\n"
+                "- Facts only. Never invent numbers. Use ₹. Name customers/amounts/dates.\n"
+                "- Use tools to fetch live data before answering.\n"
+                "- Overdue invoices → suggest follow-up. Low stock → suggest reorder. Expiring items → suggest discounts.\n"
+                "- Scope: retail operations, invoices, inventory, payments, cash flow only. Refuse off-topic questions.\n"
+                "- Tool args must be valid JSON (no trailing commas).\n"
+            )
 
-        for msg in history:
-            messages.append({"role": msg["role"], "content": msg["content"]})
-        messages.append({"role": "user", "content": user_query})
+            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-        completion = client.chat.completions.create(
-            messages=messages,
-            model=selected_model,
-            temperature=0.1,
-            max_tokens=800,
-            tools=tool_schemas,
-            tool_choice="auto"
-        )
+            past_memories = search_chat_memories(active_user_id, user_query, limit=3)
+            if past_memories:
+                messages.append({"role": "system", "content": f"[Relevant past context]\n{past_memories}"})
 
-        response_message = completion.choices[0].message
-        tool_calls = response_message.tool_calls
+            for msg in history:
+                messages.append({"role": msg["role"], "content": msg["content"]})
+            messages.append({"role": "user", "content": user_query})
 
-        if tool_calls:
-            messages.append(response_message)
-
-            for tool_call in tool_calls:
-                function_name = tool_call.function.name
-                function_args = json.loads(tool_call.function.arguments or "{}")
-                
-                tool_response = execute_tool(function_name, function_args, active_user_id)
-                
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "name": function_name,
-                    "content": tool_response
-                })
-
-            second_completion = client.chat.completions.create(
+            completion = client.chat.completions.create(
                 messages=messages,
                 model=selected_model,
                 temperature=0.1,
-                max_tokens=800
+                max_tokens=800,
+                tools=tool_schemas,
+                tool_choice="auto"
             )
-            final_response = second_completion.choices[0].message.content
-        else:
-            final_response = response_message.content
 
-        # ── Token usage logging ───────────────────────────────────
-        try:
-            from database.models import TokenUsage
-            usage = completion.usage
-            # If tool calls happened, add second_completion usage too
+            response_message = completion.choices[0].message
+            tool_calls       = response_message.tool_calls
+
             if tool_calls:
-                sec_usage = second_completion.usage
-                total_in  = (usage.prompt_tokens or 0) + (sec_usage.prompt_tokens or 0)
-                total_out = (usage.completion_tokens or 0) + (sec_usage.completion_tokens or 0)
+                messages.append(response_message)
+                for tool_call in tool_calls:
+                    function_name = tool_call.function.name
+                    function_args = json.loads(tool_call.function.arguments or "{}")
+                    tool_response = execute_tool(function_name, function_args, active_user_id)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": function_name,
+                        "content": tool_response
+                    })
+                second_completion = client.chat.completions.create(
+                    messages=messages,
+                    model=selected_model,
+                    temperature=0.1,
+                    max_tokens=800
+                )
+                final_response = second_completion.choices[0].message.content
             else:
-                total_in  = usage.prompt_tokens or 0
-                total_out = usage.completion_tokens or 0
+                final_response = response_message.content
 
-            db = SessionLocal()
+            # Token usage logging for AI_SIMPLE
             try:
-                db.add(TokenUsage(
-                    business_id   = active_user_id,
-                    model         = selected_model,
-                    model_tier    = route,
-                    input_tokens  = total_in,
-                    output_tokens = total_out,
-                    total_tokens  = total_in + total_out,
-                ))
-                db.commit()
-            finally:
-                db.close()
-        except Exception as te:
-            logger.warning(f"[Tokens] Failed to log usage: {te}")
+                from database.models import TokenUsage
+                usage    = completion.usage
+                total_in = (usage.prompt_tokens or 0)
+                total_out = (usage.completion_tokens or 0)
+                if tool_calls:
+                    sec = second_completion.usage
+                    total_in  += (sec.prompt_tokens or 0)
+                    total_out += (sec.completion_tokens or 0)
+                db = SessionLocal()
+                try:
+                    db.add(TokenUsage(
+                        business_id   = active_user_id,
+                        model         = selected_model,
+                        model_tier    = route,
+                        input_tokens  = total_in,
+                        output_tokens = total_out,
+                        total_tokens  = total_in + total_out,
+                    ))
+                    db.commit()
+                finally:
+                    db.close()
+            except Exception as te:
+                logger.warning(f"[Tokens] Failed to log usage: {te}")
 
         ai_response = {
             "response"    : final_response,

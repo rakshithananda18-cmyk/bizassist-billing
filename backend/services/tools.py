@@ -251,7 +251,7 @@ def execute_tool(name: str, args: dict, user_id: int) -> str:
         return json.dumps({"error": f"Error running tool '{name}': {str(e)}"})
 
 def query_semantic_index(user_id: int, query: str, limit: int = 5) -> str:
-    """Searches the business records (invoices, inventory, payments) semantically using OpenAI embeddings and cosine similarity."""
+    """Searches the business records (invoices, inventory, payments) semantically using local embeddings (all-MiniLM-L6-v2) and cosine similarity."""
     try:
         limit_val = safe_int(limit, 5)
         results = semantic_search_records(user_id, query, limit_val)
@@ -406,7 +406,7 @@ schemas = [
         "type": "function",
         "function": {
             "name": "query_semantic_index",
-            "description": "Searches the business database semantically using OpenAI embeddings and cosine similarity. Ideal for conceptual queries, natural language, and questions that do not have exact keywords matching the records.",
+            "description": "Searches the business database semantically using local embeddings (all-MiniLM-L6-v2) and cosine similarity. Ideal for conceptual queries, natural language, and questions that do not have exact keywords matching the records.",
             "parameters": {
                 "type": "object",
                 "properties": {

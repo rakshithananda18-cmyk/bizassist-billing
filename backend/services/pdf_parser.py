@@ -4,7 +4,6 @@ import logging
 import pypdf
 import io
 from typing import Optional, Dict, Any
-from openai import OpenAI
 from groq import Groq
 import anthropic
 from database.db import SessionLocal
@@ -61,34 +60,13 @@ def extract_structured_invoice(raw_text: str) -> dict:
 
     user_content = f"Raw Invoice Text:\n{raw_text}\n\nStrict JSON Output:"
 
-    # 1. Try OpenAI if key is present (highly reliable for structured JSON)
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if openai_key:
-        try:
-            logger.info("Extracting invoice structure using OpenAI (gpt-4o-mini)...")
-            client = OpenAI(api_key=openai_key)
-            completion = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content}
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.0
-            )
-            return json.loads(completion.choices[0].message.content)
-        except Exception as e:
-            logger.warning(f"OpenAI extraction failed: {str(e)}. Attempting fallback to Groq...")
-
-    # 2. Try Groq (using llama-3.3-70b-specdec or llama-3.1-70b-versatile or llama3-70b-8192 with JSON Mode)
+    # 1. Try Groq (primary — free, fast, reliable JSON mode)
     groq_key = os.getenv("GROQ_API_KEY")
     if groq_key:
         try:
-            logger.info("Extracting invoice structure using Groq (llama-3.3-70b-specdec)...")
+            logger.info("Extracting invoice structure using Groq (llama-3.3-70b-versatile)...")
             client = Groq(api_key=groq_key)
-            
-            # Select model
-            model = "llama-3.3-70b-specdec"
+            model = "llama-3.3-70b-versatile"
             
             completion = client.chat.completions.create(
                 model=model,
@@ -101,9 +79,9 @@ def extract_structured_invoice(raw_text: str) -> dict:
             )
             return json.loads(completion.choices[0].message.content)
         except Exception as e:
-            logger.warning(f"Groq extraction failed: {str(e)}. Attempting fallback to Anthropic/Claude...")
+            logger.warning(f"Groq extraction failed: {str(e)}. Attempting fallback to Claude...")
 
-    # 3. Try Anthropic/Claude (using claude-3-5-sonnet-20241022)
+    # 2. Fallback: Anthropic/Claude
     claude_key = os.getenv("CLAUDE_API_KEY")
     if claude_key:
         try:
@@ -134,9 +112,9 @@ def extract_structured_invoice(raw_text: str) -> dict:
             logger.error(f"Anthropic extraction failed: {str(e)}")
             raise e
 
-    raise ValueError("No configured LLM API keys (OpenAI, Groq, or Claude) found for PDF extraction.")
+    raise ValueError("No configured LLM API keys (GROQ_API_KEY or CLAUDE_API_KEY) found for PDF extraction.")
 
-def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str) -> dict:
+def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str, file_hash: str = None) -> dict:
     """Saves parsed JSON invoice structured details into the standard BIZASSIST tables."""
     db = SessionLocal()
     try:
@@ -148,10 +126,11 @@ def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str) -> dict:
         # 1. Save upload history file log
         upload_log = UploadedFile(
             filename=filename,
-            file_type="invoice", # Treat dynamic PDF invoice primarily as an invoice file type
+            file_type="invoice",
             rows_count=len(items),
             upload_time=str(datetime.now()),
-            business_id=business_id
+            business_id=business_id,
+            file_hash=file_hash
         )
         db.add(upload_log)
         db.flush()
@@ -178,19 +157,34 @@ def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str) -> dict:
             # Line item amount is price_per_unit * quantity
             line_amount = unit_price * stock_qty
 
-            # Add invoice record
-            invoice_record = Invoice(
-                business_id=business_id,
-                file_id=file_id,
-                invoice_id=data.get("invoice_id"),
-                customer=data.get("customer"),
-                product=product_name,
-                amount=line_amount,
-                status=data.get("status", "Pending"),
-                invoice_date=data.get("invoice_date"),
-                due_date=data.get("due_date")
-            )
-            db.add(invoice_record)
+            # Upsert invoice line — check invoice_id + product + business_id to prevent duplicates
+            invoice_id_val = data.get("invoice_id")
+            existing_inv = db.query(Invoice).filter(
+                Invoice.invoice_id   == invoice_id_val,
+                Invoice.product      == product_name,
+                Invoice.business_id  == business_id
+            ).first()
+
+            if existing_inv:
+                existing_inv.amount       = line_amount
+                existing_inv.status       = data.get("status", existing_inv.status)
+                existing_inv.invoice_date = data.get("invoice_date", existing_inv.invoice_date)
+                existing_inv.due_date     = data.get("due_date", existing_inv.due_date)
+                existing_inv.file_id      = file_id
+                logger.info(f"[PDF Parser] Updated existing invoice line: {invoice_id_val} / {product_name}")
+            else:
+                invoice_record = Invoice(
+                    business_id=business_id,
+                    file_id=file_id,
+                    invoice_id=invoice_id_val,
+                    customer=data.get("customer"),
+                    product=product_name,
+                    amount=line_amount,
+                    status=data.get("status", "Pending"),
+                    invoice_date=data.get("invoice_date"),
+                    due_date=data.get("due_date")
+                )
+                db.add(invoice_record)
 
             # Smart upsert for Inventory
             existing_inventory = db.query(Inventory).filter(

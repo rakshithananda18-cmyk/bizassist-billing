@@ -134,6 +134,7 @@
             font-weight: 500;
             cursor: pointer;
             transition: background 0.15s, border-color 0.15s;
+            display: none; /* moved into dropdown */
         }
         .btn-wipe:hover {
             background: #b71c1c;
@@ -168,6 +169,54 @@
         .btn-wipe-row:hover {
             background: #d32f2f;
             color: #ffffff;
+        }
+        /* Flush dropdown */
+        .flush-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        .flush-dropdown-menu {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: calc(100% + 6px);
+            background: var(--card-color);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            box-shadow: var(--shadow-lg);
+            min-width: 220px;
+            z-index: 999;
+            overflow: hidden;
+        }
+        .flush-dropdown.open .flush-dropdown-menu {
+            display: block;
+        }
+        .flush-dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 11px 16px;
+            font-size: 13px;
+            color: var(--text-color);
+            cursor: pointer;
+            transition: background 0.12s;
+            border: none;
+            background: transparent;
+            width: 100%;
+            text-align: left;
+        }
+        .flush-dropdown-item:hover {
+            background: var(--accent-softer);
+            color: var(--accent-color);
+        }
+        .flush-dropdown-item.danger:hover {
+            background: rgba(211,47,47,0.08);
+            color: #d32f2f;
+        }
+        .flush-dropdown-divider {
+            height: 1px;
+            background: var(--border-color);
+            margin: 4px 0;
         }
         .cache-entry-card {
             background: rgba(201,100,66,0.03);
@@ -332,9 +381,26 @@
                     <p>Aggregated tracking & telemetry for all enterprise business accounts</p>
                 </div>
                 <div style="display: flex; gap: 12px; align-items: center;">
-                    <button class="btn-wipe" onclick="wipeAllData()">
-                        Wipe All Business Data ⚠
-                    </button>
+                    <!-- Flush Cache Dropdown -->
+                    <div class="flush-dropdown" id="flush-dropdown">
+                        <button class="btn-flush" style="padding: 10px 16px; font-size: 13px;" onclick="toggleFlushDropdown()">
+                            🗑 System Cache ▾
+                        </button>
+                        <div class="flush-dropdown-menu">
+                            <button class="flush-dropdown-item" onclick="flushAllCache()">
+                                🔄 Flush All Query Cache
+                                <span style="font-size:11px;color:var(--secondary-text);margin-left:auto;">All users</span>
+                            </button>
+                            <button class="flush-dropdown-item" onclick="resetChromaDocuments()">
+                                🧠 Reset Chroma Documents
+                                <span style="font-size:11px;color:var(--secondary-text);margin-left:auto;">Fix dim errors</span>
+                            </button>
+                            <div class="flush-dropdown-divider"></div>
+                            <button class="flush-dropdown-item danger" onclick="closeFlushDropdown(); wipeAllData();">
+                                ⚠ Wipe All Business Data
+                            </button>
+                        </div>
+                    </div>
                     <button class="logout-btn" onclick="adminLogout()" style="padding: 10px 16px !important; font-size: 13px !important;">
                         Sign Out ➔
                     </button>
@@ -998,6 +1064,48 @@
                     errEl.textContent = err.message;
                     errEl.style.display = "block";
                 }
+            }
+        }
+
+        // ── Flush dropdown toggle ──────────────────────────────────
+        function toggleFlushDropdown() {
+            document.getElementById("flush-dropdown").classList.toggle("open");
+        }
+        function closeFlushDropdown() {
+            document.getElementById("flush-dropdown").classList.remove("open");
+        }
+        // Close dropdown when clicking outside
+        document.addEventListener("click", function(e) {
+            const dd = document.getElementById("flush-dropdown");
+            if (dd && !dd.contains(e.target)) closeFlushDropdown();
+        });
+
+        // ── Flush all query cache ──────────────────────────────────
+        async function flushAllCache() {
+            closeFlushDropdown();
+            if (!confirm("Flush the entire in-memory query response cache for ALL users?")) return;
+            try {
+                const res = await fetch(`${API_BASE}/admin/flush-all-cache`, { method: "POST" });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || "Failed");
+                alert("✅ " + data.message);
+                loadCacheStats();
+            } catch (err) {
+                alert("Error: " + err.message);
+            }
+        }
+
+        // ── Reset Chroma document collections ─────────────────────
+        async function resetChromaDocuments() {
+            closeFlushDropdown();
+            if (!confirm("Reset Chroma document embedding collections?\n\nThis fixes dimension mismatch errors. You will need to re-upload files to rebuild the index.")) return;
+            try {
+                const res = await fetch(`${API_BASE}/admin/reset-chroma-documents`, { method: "POST" });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || "Failed");
+                alert("✅ " + data.message + "\n\nDeleted: " + (data.deleted_collections || []).join(", "));
+            } catch (err) {
+                alert("Error: " + err.message);
             }
         }
 

@@ -91,6 +91,11 @@ COMPLEX_PATTERNS = [
     r"\bwhat should i\b", r"\bhow (can|do|should) (i|we)\b",
     r"\baction plan\b", r"\broad ?map\b",
     r"\binsight\b", r"\binsights\b",
+    # Data expansion — needs fresh DB fetch, not history
+    r"\bexpand\b", r"\belaborate\b",
+    r"\bmore detail\b", r"\bin detail\b",
+    r"\blist all\b", r"\bshow all\b", r"\bgive me all\b",
+    r"\bbreak(down| it down)\b",
 ]
 
 # ── Keywords that keep it AI_SIMPLE (factual but needs LLM) ─────────
@@ -98,7 +103,34 @@ COMPLEX_PATTERNS = [
 # No explicit list needed — it's the fallback.
 
 
-def classify(user_query: str) -> Tuple[str, Optional[str]]:
+# ── Follow-up indicators ─────────────────────────────────────────────
+# If a query matches these AND the session has prior history,
+# it's a follow-up to a previous answer — route to AI_SIMPLE
+# instead of re-running the expensive agent graph.
+FOLLOWUP_PATTERNS = [
+    # Conversational clarification — safe to use history, no new data needed
+    re.compile(r"\b(clarify|what do you mean|explain that|tell me more about that)\b", re.I),
+    re.compile(r"\b(from that|based on that|about that|regarding that|from the above|from your (answer|response))\b", re.I),
+    re.compile(r"\b(the above|the previous|that analysis|that report|that plan|that growth plan|that recommendation)\b", re.I),
+    re.compile(r"^(what|which|how|why)\s+(do you mean|does that mean|should i do with that)", re.I),
+    re.compile(r"^(and|but|so)\s+", re.I),
+
+    # NOTE: "expand", "elaborate", "more detail", "list all" are intentionally excluded.
+    # These require fresh DB data — let them route to AI_COMPLEX to avoid hallucination.
+]
+
+
+def is_followup(query: str, has_history: bool) -> bool:
+    """Returns True if the query looks like a follow-up to a previous response."""
+    if not has_history:
+        return False
+    for pattern in FOLLOWUP_PATTERNS:
+        if pattern.search(query.strip()):
+            return True
+    return False
+
+
+def classify(user_query: str, has_history: bool = False) -> Tuple[str, Optional[str]]:
     """
     Returns one of:
         ("DIRECT",     handler_key)  — DB only, 0 tokens
@@ -106,6 +138,13 @@ def classify(user_query: str) -> Tuple[str, Optional[str]]:
         ("AI_COMPLEX", None)         — large model, use sparingly
     """
     q = user_query.strip()
+
+    # ── Step 0: Follow-up detection — runs before everything else ────
+    # If the query is a follow-up to a previous response, downgrade to
+    # AI_SIMPLE so it uses chat history instead of re-running agents.
+    if is_followup(q, has_history):
+        logger.info(f"[Router] AI_SIMPLE (follow-up detected): '{q}'")
+        return ("AI_SIMPLE", None)
 
     # ── Step 1: Check for COMPLEX keywords first ─────────────────────
     for pattern in COMPLEX_PATTERNS:
