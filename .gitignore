@@ -30,3 +30,9 @@ frontend/js/config.js
 
 # Vector database persistence
 backend/chroma_db/
+
+# Node
+node_modules/
+dist/
+.eslintcache
+
