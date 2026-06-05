@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { ProtectedRoute, AdminProtectedRoute } from './components/ProtectedRoute'
 
@@ -21,10 +22,19 @@ import AdminBusinesses from './pages/admin/AdminBusinesses'
 import AdminUsage      from './pages/admin/AdminUsage'
 import AdminCache      from './pages/admin/AdminCache'
 
+function ScrollToTop() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [pathname])
+  return null
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <ScrollToTop />
         <Routes>
 
           {/* Public */}

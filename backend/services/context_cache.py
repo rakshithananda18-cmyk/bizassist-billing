@@ -189,7 +189,7 @@ def _build_context(user_id: int) -> str:
         top = (
             db.query(
                 Invoice.customer,
-                func.sum(Invoice.amount).label("t")
+                func.sum(Invoice.amount).label("total_amount")
             )
             .filter(Invoice.business_id == user_id)
             .group_by(Invoice.customer)
@@ -199,7 +199,7 @@ def _build_context(user_id: int) -> str:
         if top:
             lines.append("\nTOP CUSTOMERS:")
             for i, c in enumerate(top, 1):
-                lines.append(f"  {i}. {c.customer} ₹{c.t:,.0f}")
+                lines.append(f"  {i}. {c.customer} ₹{c.total_amount:,.0f}")
 
         # --- Inventory summary ---
         inv_count = db.query(Inventory).filter(Inventory.business_id == user_id).count()

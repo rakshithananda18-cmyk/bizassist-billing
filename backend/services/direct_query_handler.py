@@ -250,7 +250,7 @@ def _business_summary(user_id: int) -> str:
         inv_items  = db.query(Inventory).filter(Inventory.business_id == user_id).count()
 
         top = (
-            db.query(Invoice.customer, func.sum(Invoice.amount).label("t"))
+            db.query(Invoice.customer, func.sum(Invoice.amount).label("total_amount"))
             .filter(Invoice.business_id == user_id)
             .group_by(Invoice.customer)
             .order_by(func.sum(Invoice.amount).desc())
@@ -271,7 +271,7 @@ def _business_summary(user_id: int) -> str:
             f"**Inventory**\n"
             f"- Products tracked : {inv_items}\n\n"
             f"**Top Customer**\n"
-            f"- {top.customer} — ₹{top.t:,.0f}" if top else ""
+            f"- {top.customer} — ₹{top.total_amount:,.0f}" if top else ""
         )
     finally:
         db.close()

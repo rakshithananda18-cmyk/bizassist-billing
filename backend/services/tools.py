@@ -175,7 +175,7 @@ def get_business_overview(user_id: int) -> str:
         pending_ct = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Pending").count()
         inv_items = db.query(Inventory).filter(Inventory.business_id == user_id).count()
         
-        top = db.query(Invoice.customer, func.sum(Invoice.amount).label("t"))\
+        top = db.query(Invoice.customer, func.sum(Invoice.amount).label("total_amount"))\
                 .filter(Invoice.business_id == user_id)\
                 .group_by(Invoice.customer)\
                 .order_by(func.sum(Invoice.amount).desc()).first()
@@ -188,7 +188,7 @@ def get_business_overview(user_id: int) -> str:
             "pending_invoice_count": pending_ct,
             "inventory_products_tracked": inv_items,
             "top_customer": top.customer if top else None,
-            "top_customer_revenue": float(top.t or 0) if top else 0
+            "top_customer_revenue": float(top.total_amount or 0) if top else 0
         })
     except Exception as e:
         return json.dumps({"error": f"Failed to fetch business overview: {str(e)}"})

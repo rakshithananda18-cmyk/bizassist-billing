@@ -345,9 +345,8 @@ export default function AppLayout() {
       <div className="mobile-navbar">
         <button className="mobile-nav-btn mobile-sidebar-toggle" onClick={(e) => { e.stopPropagation(); setMobileSidebarOpen(true); }} title="Toggle Sidebar">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="9" y1="3" x2="9" y2="21"></line>
           </svg>
         </button>
         <div className="mobile-navbar-title">{bizName.toUpperCase()}</div>
@@ -395,7 +394,13 @@ export default function AppLayout() {
       <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileSidebarOpen ? 'mobile-open' : ''} ${isMounting ? 'no-transition' : ''}`} id="sidebar-nav">
         <div className="sidebar-header">
           <div className="sidebar-brand-text">BizAssist</div>
-          <button className="sidebar-toggle-btn matte-glass" onClick={toggleSidebar} title="Toggle Sidebar">
+          <button className="sidebar-toggle-btn matte-glass" onClick={() => {
+            if (window.matchMedia('(max-width: 1024px)').matches) {
+              setMobileSidebarOpen(false);
+            } else {
+              toggleSidebar();
+            }
+          }} title="Toggle Sidebar">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
               <line x1="9" y1="3" x2="9" y2="21"></line>

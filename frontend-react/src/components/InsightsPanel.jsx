@@ -190,15 +190,22 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
             {sessions.length} chat{sessions.length !== 1 ? 's' : ''}
           </span>
           {onCollapse && (
-            <button className="sidebar-toggle-btn rp-collapse-btn matte-glass" onClick={onCollapse} title="Collapse panel">
+            <button
+              className="sidebar-toggle-btn rp-collapse-btn matte-glass"
+              onClick={() => {
+                if (window.matchMedia('(max-width: 1024px)').matches) {
+                  onCloseMobile?.();
+                } else {
+                  onCollapse();
+                }
+              }}
+              title="Toggle Insights"
+            >
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                 <line x1="15" y1="3" x2="15" y2="21"></line>
               </svg>
             </button>
-          )}
-          {onCloseMobile && (
-            <button className="rp-close-btn" onClick={onCloseMobile} title="Close panel">×</button>
           )}
         </div>
       </div>

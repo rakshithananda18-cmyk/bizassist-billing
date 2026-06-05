@@ -1174,9 +1174,10 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
 
 /* ── Mobile ── */
 @media (max-width: 1024px) {
-    #insights-panel {
+    div#insights-panel {
         position: fixed !important;
         top: 0 !important;
+        left: auto !important;
         right: 0 !important;
         bottom: 0 !important;
         width: 75vw !important;
@@ -1187,7 +1188,7 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
         border-radius: 0 !important;
         border: none !important;
         border-left: 1px solid var(--border-color) !important;
-        transform: translateX(100%);
+        transform: translateX(100%) !important;
         transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.3s step-end !important;
         z-index: 1010 !important;
         display: flex !important;
@@ -1195,29 +1196,57 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
         background: var(--sidebar-color) !important;
         box-shadow: var(--shadow-lg) !important;
         overflow-y: auto !important;
-        padding: 0 !important;
-        visibility: hidden;
+        padding: 10px 8px !important;
+        visibility: hidden !important;
     }
     
-    #insights-panel.mobile-open {
-        transform: translateX(0) !important;
-        display: flex !important;
-        visibility: visible !important;
-        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s step-start !important;
-    }
-
-    #insights-panel.collapsed {
+    div#insights-panel.collapsed {
+        left: auto !important;
+        right: 0 !important;
         transform: translateX(100%) !important;
         width: 75vw !important;
         max-width: 340px !important;
         min-width: 0 !important;
-        padding: 0 !important;
+        padding: 10px 8px !important;
         background: var(--sidebar-color) !important;
     }
 
-    /* Hide desktop expand/collapse buttons on mobile since we toggle drawer from mobile top navbar */
-    #insights-panel .rp-collapse-btn {
-        display: none !important;
+    div#insights-panel.mobile-open {
+        left: auto !important;
+        right: 0 !important;
+        transform: translateX(0) !important;
+        display: flex !important;
+        visibility: visible !important;
+        width: 75vw !important;
+        max-width: 340px !important;
+        min-width: 0 !important;
+        padding: 10px 8px !important;
+        background: var(--sidebar-color) !important;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s step-start !important;
+        border-top-left-radius: 16px !important;
+        border-bottom-left-radius: 16px !important;
+    }
+
+    /* On mobile, keep panel content visible so it slides out smoothly as a full drawer without disappearing instantly */
+    div#insights-panel .rp-brand-text,
+    div#insights-panel .rp-nav-label,
+    div#insights-panel .rp-sep,
+    div#insights-panel .rp-content {
+        display: flex !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+    }
+    div#insights-panel .rp-brand-text {
+        display: inline-block !important;
+    }
+    div#insights-panel .rp-sep {
+        display: block !important;
+    }
+
+    /* Show right panel collapse button inside header on mobile */
+    div#insights-panel .rp-collapse-btn {
+        display: flex !important;
     }
 
     #assistant-header {
@@ -1225,25 +1254,7 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
     }
 
     .rp-close-btn {
-        display: flex !important;
-        align-items: center;
-        justify-content: center;
-        background: transparent;
-        border: none;
-        color: var(--text-color);
-        font-size: 22px;
-        cursor: pointer;
-        width: 32px;
-        height: 32px;
-        border-radius: 6px;
-        transition: background 0.15s, color 0.15s;
-        margin-left: 8px;
-        flex-shrink: 0;
-    }
-    
-    .rp-close-btn:hover {
-        background: var(--hover-bg);
-        color: var(--accent-color);
+        display: none !important;
     }
 
     /* AI Assistant slide-up drawer when not in main AI view */
