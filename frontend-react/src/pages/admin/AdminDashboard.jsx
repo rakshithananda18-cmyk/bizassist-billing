@@ -114,21 +114,21 @@ export default function AdminDashboard() {
       ) : (
         <>
           {/* STATS STRIP */}
-          <div className="admin-stat-grid" style={{ marginTop: 24 }}>
-            <div className="vstat-card" style={{ borderLeftColor: 'var(--accent-color)', cursor: 'default' }}>
-              <div className="vstat-label">Registered Businesses</div>
-              <div className="vstat-value">{stats.businesses}</div>
-              <div className="vstat-sub">active sandboxes</div>
+          <div className="admin-summary-strip" style={{ marginTop: 24 }}>
+            <div className="vsummary-card" style={{ borderLeftColor: 'var(--accent-color)', cursor: 'default' }}>
+              <div className="vsummary-label">Registered Businesses</div>
+              <div className="vsummary-value">{stats.businesses}</div>
+              <div className="vsummary-sub">active sandboxes</div>
             </div>
-            <div className="vstat-card" style={{ borderLeftColor: '#3a9a5c', cursor: 'default' }}>
-              <div className="vstat-label">Combined Revenue</div>
-              <div className="vstat-value">₹{stats.revenue.toLocaleString('en-IN')}</div>
-              <div className="vstat-sub">across all accounts</div>
+            <div className="vsummary-card" style={{ borderLeftColor: '#3a9a5c', cursor: 'default' }}>
+              <div className="vsummary-label">Combined Revenue</div>
+              <div className="vsummary-value">₹{stats.revenue.toLocaleString('en-IN')}</div>
+              <div className="vsummary-sub">across all accounts</div>
             </div>
-            <div className="vstat-card" style={{ borderLeftColor: '#c97c22', cursor: 'default' }}>
-              <div className="vstat-label">Total Files Logged</div>
-              <div className="vstat-value">{stats.files}</div>
-              <div className="vstat-sub">datasets uploaded</div>
+            <div className="vsummary-card" style={{ borderLeftColor: '#c97c22', cursor: 'default' }}>
+              <div className="vsummary-label">Total Files Logged</div>
+              <div className="vsummary-value">{stats.files}</div>
+              <div className="vsummary-sub">datasets uploaded</div>
             </div>
           </div>
 

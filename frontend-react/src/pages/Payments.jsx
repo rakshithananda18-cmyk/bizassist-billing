@@ -95,16 +95,16 @@ export default function Payments() {
       </div>
 
       {/* SUMMARY CARDS */}
-      <div className="vstat-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-        <div className="vstat-card" style={{ borderLeftColor: '#c02a2a' }} onClick={() => sendChip('Show all overdue invoices with amounts')}>
-          <div className="vstat-label">Overdue Amount</div>
-          <div className="vstat-value" style={{ color: '#c02a2a' }}>{fmtAmount(paymentsData.total_overdue)}</div>
-          <div className="vstat-sub">{paymentsData.overdue_count} invoice{paymentsData.overdue_count !== 1 ? 's' : ''}</div>
+      <div className="vsummary-strip" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: 1, marginBottom: 12 }}>
+        <div className="vsummary-card" style={{ borderLeftColor: '#c02a2a' }} onClick={() => sendChip('Show all overdue invoices with amounts')}>
+          <div className="vsummary-label">Overdue Amount</div>
+          <div className="vsummary-value" style={{ color: '#c02a2a' }}>{fmtAmount(paymentsData.total_overdue)}</div>
+          <div className="vsummary-sub">{paymentsData.overdue_count} invoice{paymentsData.overdue_count !== 1 ? 's' : ''}</div>
         </div>
-        <div className="vstat-card" style={{ borderLeftColor: '#c97c22' }} onClick={() => sendChip('List all pending payments')}>
-          <div className="vstat-label">Pending Amount</div>
-          <div className="vstat-value" style={{ color: '#c97c22' }}>{fmtAmount(paymentsData.total_pending)}</div>
-          <div className="vstat-sub">{paymentsData.pending_count} invoice{paymentsData.pending_count !== 1 ? 's' : ''}</div>
+        <div className="vsummary-card" style={{ borderLeftColor: '#c97c22' }} onClick={() => sendChip('List all pending payments')}>
+          <div className="vsummary-label">Pending Amount</div>
+          <div className="vsummary-value" style={{ color: '#c97c22' }}>{fmtAmount(paymentsData.total_pending)}</div>
+          <div className="vsummary-sub">{paymentsData.pending_count} invoice{paymentsData.pending_count !== 1 ? 's' : ''}</div>
         </div>
       </div>
 
