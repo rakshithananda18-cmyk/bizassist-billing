@@ -1800,6 +1800,19 @@ html[data-active="ai"] .dashboard-grid {
     .db-cards {
         grid-template-columns: 1fr !important;
     }
+    .vsummary-strip {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 1px !important;
+    }
+    .vtabs {
+        overflow-x: auto !important;
+        white-space: nowrap !important;
+        padding-bottom: 6px !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+    .vtab {
+        flex-shrink: 0 !important;
+    }
 }
 
 /* =========================================

@@ -313,26 +313,26 @@ export default function Dashboard() {
       </div>
 
       {/* STAT STRIP */}
-      <div className="vstat-grid" style={{ marginBottom: 12 }}>
-        <div className="vstat-card" style={{ borderLeftColor: 'var(--accent-color)' }} onClick={() => sendChip('What is my total revenue?')}>
-          <div className="vstat-label">Total Revenue</div>
-          <div className="vstat-value">{fmtAmount(summary.total_revenue)}</div>
-          <div className="vstat-sub">{summary.invoice_count} invoices</div>
+      <div className="vsummary-strip" style={{ marginBottom: 12 }}>
+        <div className="vsummary-card" style={{ borderLeftColor: 'var(--accent-color)' }} onClick={() => sendChip('What is my total revenue?')}>
+          <div className="vsummary-label">Total Revenue</div>
+          <div className="vsummary-value">{fmtAmount(summary.total_revenue)}</div>
+          <div className="vsummary-sub">{summary.invoice_count} invoices</div>
         </div>
-        <div className="vstat-card" style={{ borderLeftColor: '#c97c22' }} onClick={() => sendChip('List all pending invoices')}>
-          <div className="vstat-label">Pending</div>
-          <div className="vstat-value">{summary.pending_invoices}</div>
-          <div className="vstat-sub">invoices awaiting</div>
+        <div className="vsummary-card" style={{ borderLeftColor: '#c97c22' }} onClick={() => sendChip('List all pending invoices')}>
+          <div className="vsummary-label">Pending</div>
+          <div className="vsummary-value">{summary.pending_invoices}</div>
+          <div className="vsummary-sub">invoices awaiting</div>
         </div>
-        <div className="vstat-card" style={{ borderLeftColor: '#c02a2a' }} onClick={() => sendChip('Show me all overdue invoices with amounts')}>
-          <div className="vstat-label">Overdue</div>
-          <div className="vstat-value" style={{ color: '#c02a2a' }}>{fmtAmount(summary.overdue_amount)}</div>
-          <div className="vstat-sub">needs recovery</div>
+        <div className="vsummary-card" style={{ borderLeftColor: '#c02a2a' }} onClick={() => sendChip('Show me all overdue invoices with amounts')}>
+          <div className="vsummary-label">Overdue</div>
+          <div className="vsummary-value" style={{ color: '#c02a2a' }}>{fmtAmount(summary.overdue_amount)}</div>
+          <div className="vsummary-sub">needs recovery</div>
         </div>
-        <div className="vstat-card" style={{ borderLeftColor: '#3a9a5c' }} onClick={() => sendChip('How many products are in inventory?')}>
-          <div className="vstat-label">Inventory</div>
-          <div className="vstat-value">{summary.inventory_count}</div>
-          <div className="vstat-sub">products tracked</div>
+        <div className="vsummary-card" style={{ borderLeftColor: '#3a9a5c' }} onClick={() => sendChip('How many products are in inventory?')}>
+          <div className="vsummary-label">Inventory</div>
+          <div className="vsummary-value">{summary.inventory_count}</div>
+          <div className="vsummary-sub">products tracked</div>
         </div>
       </div>
 
