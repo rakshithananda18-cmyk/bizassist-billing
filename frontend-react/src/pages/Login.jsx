@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -14,6 +14,7 @@ export default function Login() {
   const [pwFocus,  setPwFocus]  = useState(false)
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(false)
+  const [showConditions, setShowConditions] = useState(false)
 
   // Password condition checks (for signup tab)
   const condLength    = password.length >= 8
@@ -21,7 +22,24 @@ export default function Login() {
   const condLower     = /[a-z]/.test(password)
   const condNumber    = /[0-9]/.test(password)
   const condSpecial   = /[^A-Za-z0-9]/.test(password)
-  const showConditions = tab === 'signup' && pwFocus && password.length > 0
+  const hasUnmetConditions = !condLength || !condCapital || !condLower || !condNumber || !condSpecial
+
+  useEffect(() => {
+    if (tab !== 'signup' || !pwFocus || password.length === 0) {
+      setShowConditions(false)
+      return
+    }
+
+    // Reset visibility immediately when typing/focus changes
+    setShowConditions(false)
+
+    // Wait for 1 second of idle typing to show the requirements dropdown
+    const timer = setTimeout(() => {
+      setShowConditions(true)
+    }, 1000)
+
+    return () => clearTimeout(timer)
+  }, [password, pwFocus, tab])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -172,8 +190,14 @@ export default function Login() {
               </button>
             </div>
 
+            {tab === 'login' && (
+              <div className="forgot-password-tip" style={{ marginTop: 6, fontSize: 11.5, color: 'var(--secondary-text)', textAlign: 'left', lineHeight: '1.4' }}>
+                Forgot password? Contact your system administrator to reset it.
+              </div>
+            )}
+
             {/* Password strength conditions — signup only */}
-            {showConditions && (
+            {showConditions && hasUnmetConditions && (
               <div id="password-conditions" className="password-conditions">
                 {!condLength   && <div className="condition-item" id="cond-length"><span className="condition-dot">●</span> 8+ characters</div>}
                 {!condCapital  && <div className="condition-item" id="cond-capital"><span className="condition-dot">●</span> Capital letter</div>}
