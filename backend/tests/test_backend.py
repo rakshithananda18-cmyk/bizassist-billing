@@ -47,9 +47,9 @@ def test_query_classification():
     assert classify("dashboard overview")[0] == "DIRECT"
 
     # AI reasoning queries
-    assert classify("what business strategy should I adopt?")[0] == "AI"
-    assert classify("how can I increase my sales?")[0] == "AI"
-    assert classify("who is my most reliable supplier?")[0] == "AI"
+    assert classify("what business strategy should I adopt?")[0] == "AI_COMPLEX"
+    assert classify("how can I increase my sales?")[0] == "AI_COMPLEX"
+    assert classify("who is my most reliable supplier?")[0] == "AI_SIMPLE"
 
 def test_password_hashing():
     pwd = "mysecretpassword"
@@ -225,9 +225,9 @@ def test_dynamic_numeric_queries_bypass_direct():
     assert route == "DIRECT"
     assert key == "expiring_soon"
 
-    # "expiring in 15 days" has digits -> AI
+    # "expiring in 15 days" has digits -> AI_SIMPLE
     route, key = classify("expiring in 15 days")
-    assert route == "AI"
+    assert route == "AI_SIMPLE"
     assert key is None
 
     # "top customers" has no digits -> DIRECT
@@ -235,9 +235,9 @@ def test_dynamic_numeric_queries_bypass_direct():
     assert route == "DIRECT"
     assert key == "top_customers"
 
-    # "top 3 customers" has digits -> AI
+    # "top 3 customers" has digits -> AI_SIMPLE
     route, key = classify("top 3 customers")
-    assert route == "AI"
+    assert route == "AI_SIMPLE"
     assert key is None
 
     # Standard dashboard aging bar click -> DIRECT (overdue_range_detail)
@@ -267,11 +267,11 @@ def test_dynamic_numeric_queries_bypass_direct():
 
     # Test reasoning/strategy keyword bypass to AI path
     route, key = classify("Develop a promotional strategy to clear expiring products and minimize waste.")
-    assert route == "AI"
+    assert route == "AI_COMPLEX"
     assert key is None
 
     route, key = classify("Implement a stock management system to track low-stock products and optimize reorder times.")
-    assert route == "AI"
+    assert route == "AI_COMPLEX"
     assert key is None
 
 
