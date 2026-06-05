@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
+import { Icon } from './icons'
 
 // Donut Arc Helper
 function DonutChart({ paid, pending, overdue, healthPct }) {

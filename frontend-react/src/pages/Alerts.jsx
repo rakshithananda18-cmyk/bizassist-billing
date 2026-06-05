@@ -201,24 +201,24 @@ export default function Alerts() {
       {tab === 'live' && (
         <>
           <div className="vsummary-strip" style={{ marginBottom: 16 }}>
-            <div className="vsummary-card" style={{ borderLeftColor: '#c02a2a' }}>
+            <div className="vsummary-card" style={{ borderLeftColor: '#c02a2a' }} onClick={() => sendChip('List all overdue invoices with amounts and due dates')}>
               <div className="vsummary-label">Overdue</div>
               <div className="vsummary-value" style={{ color: '#c02a2a' }}>{overdueInvoices.length}</div>
               <div className="vsummary-sub">{fmtAmount(summary.overdue_amount)} at risk</div>
             </div>
-            <div className="vsummary-card" style={{ borderLeftColor: '#c97c22' }}>
+            <div className="vsummary-card" style={{ borderLeftColor: '#c97c22' }} onClick={() => sendChip('List all pending invoices awaiting payment')}>
               <div className="vsummary-label">Pending</div>
               <div className="vsummary-value">{pendingInvoices.length}</div>
               <div className="vsummary-sub">invoices awaiting</div>
             </div>
-            <div className="vsummary-card" style={{ borderLeftColor: '#9b6ec9' }}>
+            <div className="vsummary-card" style={{ borderLeftColor: '#9b6ec9' }} onClick={() => sendChip(`Which products are expiring within ${thresh} days?`)}>
               <div className="vsummary-label">Expiring Soon</div>
               <div className="vsummary-value" style={{ color: expiringItems.length > 0 ? '#9b6ec9' : undefined }}>
                 {expiringItems.length}
               </div>
               <div className="vsummary-sub">within {thresh} days</div>
             </div>
-            <div className="vsummary-card" style={{ borderLeftColor: '#4a90c9' }}>
+            <div className="vsummary-card" style={{ borderLeftColor: '#4a90c9' }} onClick={() => sendChip(`Which products have low stock (${stockThresh} units or fewer) and need reordering?`)}>
               <div className="vsummary-label">Low Stock</div>
               <div className="vsummary-value" style={{ color: lowStockItems.length > 0 ? '#4a90c9' : undefined }}>
                 {lowStockItems.length}

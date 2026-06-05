@@ -74,7 +74,7 @@
     border-radius: 8px;
 }
 
-/* BizzAssist brand text logo */
+/* BizAssist brand text logo */
 .sidebar-brand-text {
     font-family: 'Crimson Pro', Georgia, serif;
     font-size: 19px;
@@ -884,7 +884,6 @@ div.main {
     box-sizing: border-box;
     cursor: pointer;
     border-radius: 8px;
-    background: #E6E6E6;
     transition: background 0.18s;
     position: relative;
 }

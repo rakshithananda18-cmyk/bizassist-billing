@@ -99,7 +99,6 @@ function MessageBubble({ msg, innerRef }) {
   return (
     <div className="message-row bot-row">
       <div className="bot-message-wrap">
-        <div className="bot-name-label">BizAssist</div>
         <div
           ref={innerRef}
           className="message bot"
@@ -113,13 +112,18 @@ function MessageBubble({ msg, innerRef }) {
   )
 }
 
+// Outline (monochrome) line icons — inherit currentColor so they adapt to the theme
+const svgIcon = (children) => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
+)
+
 const CHIPS = [
-  { icon: '💰', label: 'Who owes most?',      query: 'Who owes me the most?' },
-  { icon: '⏰', label: 'Expiring soon',        query: 'Which medicines are expiring soon?' },
-  { icon: '📊', label: 'Revenue summary',      query: 'Show me the total revenue and pending payments summary' },
-  { icon: '📦', label: 'Low stock',            query: 'Which products are low on stock?' },
-  { icon: '🔴', label: 'Overdue invoices',     query: 'List all overdue invoices with amounts' },
-  { icon: '🏆', label: 'Top customers',        query: 'Who are my top 5 customers by revenue?' },
+  { icon: svgIcon(<><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></>), label: 'Who owes most?', query: 'Who owes me the most?' },
+  { icon: svgIcon(<><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></>), label: 'Expiring soon', query: 'Which medicines are expiring soon?' },
+  { icon: svgIcon(<><line x1="6" y1="20" x2="6" y2="14" /><line x1="12" y1="20" x2="12" y2="10" /><line x1="18" y1="20" x2="18" y2="4" /></>), label: 'Revenue summary', query: 'Show me the total revenue and pending payments summary' },
+  { icon: svgIcon(<><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></>), label: 'Low stock', query: 'Which products are low on stock?' },
+  { icon: svgIcon(<><circle cx="12" cy="12" r="9" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></>), label: 'Overdue invoices', query: 'List all overdue invoices with amounts' },
+  { icon: svgIcon(<><path d="M8 21h8" /><path d="M12 17v4" /><path d="M7 4h10v5a5 5 0 0 1-10 0V4Z" /><path d="M17 5h3v2a3 3 0 0 1-3 3" /><path d="M7 5H4v2a3 3 0 0 0 3 3" /></>), label: 'Top customers', query: 'Who are my top 5 customers by revenue?' },
 ]
 
 export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMobile = () => {} }) {
@@ -133,6 +137,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   const [rlTimer, setRlTimer] = useState(0)
   const [showHistoryPopup, setShowHistoryPopup] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [chipsExpanded, setChipsExpanded] = useState(false)  // chips bar expanded (click to toggle)
   const [menuOpenId, setMenuOpenId] = useState(null)   // session id whose kebab menu is open
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })  // fixed-position coords for the menu
   const [renamingId, setRenamingId] = useState(null)   // session id being renamed inline
@@ -416,6 +421,9 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
       if (menuOpenId && !e.target.closest('.rp-chat-kebab-wrap')) {
         setMenuOpenId(null)
       }
+      if (!e.target.closest('.chat-chips-bar') && !e.target.closest('.chips-toggle-btn')) {
+        setChipsExpanded(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => {
@@ -578,7 +586,35 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
 
         {/* INPUT */}
         <div className="input-area-wrapper">
+          {/* Quick-action chips bar — tucks above the input during an active
+              conversation, slides down out of sight on the empty/new-chat state */}
+          <div className={`chat-chips-bar ${messages.length > 0 && chipsExpanded && !showHistoryPopup ? 'show' : ''}`}>
+            {CHIPS.map(c => (
+              <button
+                key={c.label}
+                className="chip chip-sm"
+                title={c.label}
+                onClick={() => { sendMessage(c.query); setChipsExpanded(false) }}
+              >
+                <span className="chip-icon">{c.icon}</span>
+                <span className="chip-label">{c.label}</span>
+              </button>
+            ))}
+          </div>
           <div className={`input-area ${input.trim() ? 'has-content' : ''}`}>
+            {/* Chevron toggle — expands the quick-action chips bar above the input */}
+            {messages.length > 0 && (
+              <button
+                type="button"
+                className={`chips-toggle-btn ${chipsExpanded ? 'open' : ''}`}
+                title={chipsExpanded ? 'Hide quick actions' : 'Show quick actions'}
+                onClick={() => setChipsExpanded(v => !v)}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="18 15 12 9 6 15"></polyline>
+                </svg>
+              </button>
+            )}
             {/* CHAT HISTORY POPUP — anchored above input */}
             {showHistoryPopup && (
               <div id="chat-history-popup" className="chat-history-popup">

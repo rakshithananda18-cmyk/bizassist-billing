@@ -171,6 +171,9 @@ export default function AppLayout() {
     else if (path.startsWith('/clients')) name = 'clients';
     else if (path.startsWith('/database')) name = 'database';
     else if (path.startsWith('/upload')) name = 'uploads';
+    else if (path.startsWith('/alerts')) name = 'alerts';
+    else if (path.startsWith('/chat')) name = 'ai';
+    else name = '';
 
     document.documentElement.setAttribute('data-active', name);
     closeAllMobilePanels();
@@ -391,7 +394,7 @@ export default function AppLayout() {
       {/* SIDEBAR */}
       <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileSidebarOpen ? 'mobile-open' : ''} ${isMounting ? 'no-transition' : ''}`} id="sidebar-nav">
         <div className="sidebar-header">
-          <div className="sidebar-brand-text">BizzAssist</div>
+          <div className="sidebar-brand-text">BizAssist</div>
           <button className="sidebar-toggle-btn matte-glass" onClick={toggleSidebar} title="Toggle Sidebar">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>

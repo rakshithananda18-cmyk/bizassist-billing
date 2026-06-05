@@ -37,14 +37,14 @@
 }
 
 .ah-biz-name {
-    font-family: 'DM Sans', sans-serif;
-    font-size: 30px;             /* larger than Good morning (24px) */
-    font-weight: 500;            /* matches weight in the second pic reference */
+    font-family: 'DM Sans', sans-serif;   /* same family as "Good morning" */
+    font-size: 24px;                       /* same size as "Good morning" */
+    font-weight: 500;
     color: var(--text-color);
-    letter-spacing: 0.03em;
+    letter-spacing: -0.01em;
     cursor: pointer;
     line-height: 1.2;
-    text-transform: uppercase;   /* always capital */
+    text-transform: uppercase;             /* business name stays capitalised */
     transition: color 0.15s;
 }
 .ah-biz-name:hover { color: var(--accent-color); }
@@ -1576,3 +1576,140 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
 }
 
 
+
+/* ===== Conversations popup: theme-aware surfaces ===== */
+.chat-history-popup { background: var(--card-color); }
+.rp-chat-menu { background: var(--card-color); }
+.rp-chat-rename-input { background: var(--card-color); }
+/* Replace harsh black (--hover-bg is #000 in dark) with a soft accent tint */
+.chat-history-popup .new-chat-btn:hover { background: var(--accent-softer); }
+
+/* Dark-mode hover/selection (light mode keeps the #E6E6E6 / #F4F4F1 greys) */
+.dark-mode .rp-chat-item:hover,
+.dark-mode .session-item:hover,
+.dark-mode .rp-chat-menu-item:hover,
+.dark-mode .rp-chat-kebab:hover { background: var(--hover-bg); }
+.dark-mode .rp-chat-item.active,
+.dark-mode .session-item.active { background: var(--accent-soft); }
+
+/* ===== Remove the decorative ellipse/glow on the popup "New Chat" button ===== */
+.chat-history-popup .new-chat-btn {
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background-image: none !important;
+}
+.chat-history-popup .new-chat-btn::before,
+.chat-history-popup .new-chat-btn::after {
+    content: none !important;
+    display: none !important;
+    background: none !important;
+    box-shadow: none !important;
+}
+.chat-history-popup .new-chat-btn:hover {
+    background: var(--accent-softer) !important;
+    background-image: none !important;
+    box-shadow: none !important;
+}
+
+/* ===== Quick-action chips bar above the input ===== */
+.chat-chips-bar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 7px;
+    padding: 0 16px;
+    max-width: 720px;
+    margin: 0 auto;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+    position: relative;
+    z-index: 0;
+    background: var(--bg-color);              /* darker panel behind the input */
+    border: 1px solid var(--border-color);
+    border-bottom: none;
+    border-radius: 16px 16px 0 0;
+    box-sizing: border-box;
+    transition: max-height 0.28s ease, opacity 0.22s ease,
+                padding 0.28s ease, margin 0.28s ease;
+}
+.chat-chips-bar.show {
+    max-height: 200px;
+    opacity: 1;
+    pointer-events: auto;
+    padding: 4px 12px 18px;                   /* slim — small top/side padding */
+    margin: 0 auto -14px;                     /* pull the input up to overlap */
+}
+/* Dark bar in dark mode */
+.dark-mode .chat-chips-bar { background: #121212; }
+/* Input sits on top, covering the bar's tucked bottom edge */
+.input-area { z-index: 1; }
+/* Monochrome chips (neutral buttons, no accent colour) */
+.chat-chips-bar .chip {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: var(--secondary-text);
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    padding: 6px;
+}
+.chat-chips-bar .chip:hover {
+    background: transparent !important;
+    color: var(--text-color);
+    transform: none !important;
+}
+/* Outline icons — monochrome via currentColor, adapts to theme */
+.chat-chips-bar .chip-icon {
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+}
+/* Labels hidden by default — reveal when the whole bar is hovered */
+.chat-chips-bar .chip-label {
+    display: inline-block;
+    max-width: 0;
+    margin-left: 0;
+    opacity: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    transition: max-width 0.25s ease, opacity 0.2s ease, margin-left 0.25s ease;
+}
+.chat-chips-bar.show .chip-label {
+    max-width: 180px;
+    margin-left: 6px;
+    opacity: 1;
+}
+
+/* Chevron toggle inside the input's top-right corner */
+.chips-toggle-btn {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--secondary-text);
+    border-radius: 6px;
+    cursor: pointer;
+    z-index: 4;
+    transition: transform 0.22s ease, color 0.15s ease, background 0.15s ease;
+}
+.chips-toggle-btn:hover {
+    color: var(--text-color);
+    background: var(--hover-bg);
+}
+.chips-toggle-btn.open {
+    transform: rotate(180deg);
+    color: var(--text-color);
+}
+.chip-sm {
+    font-size: 12px;
+    padding: 5px 11px;
+}

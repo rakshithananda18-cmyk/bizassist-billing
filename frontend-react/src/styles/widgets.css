@@ -1294,6 +1294,34 @@ html[data-active="ai"] .dashboard-grid {
     border-radius: 12px;
     overflow: hidden;
 }
+.vsummary-card {
+    background: var(--card-color);
+    padding: 14px 18px;
+    border-left: 3px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    cursor: pointer;
+    transition: background 0.13s;
+}
+.vsummary-card:hover { background: var(--hover-bg); }
+.vsummary-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--secondary-text);
+}
+.vsummary-value {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.05;
+    color: var(--text-color);
+}
+.vsummary-sub {
+    font-size: 12px;
+    color: var(--secondary-text);
+}
 
 .vsummary-item {
     background: var(--card-color);
@@ -2606,3 +2634,63 @@ details[open] > .tree-summary::after {
 .bar-row:nth-child(3) .bar-fill { transition-delay: 0.15s; }
 .bar-row:nth-child(4) .bar-fill { transition-delay: 0.20s; }
 .bar-row:nth-child(5) .bar-fill { transition-delay: 0.25s; }
+
+/* ===== Alerts summary strip cards ===== */
+.vsummary-card {
+    background: var(--card-color);
+    padding: 14px 18px;
+    border-left: 3px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    cursor: pointer;
+    transition: background 0.13s;
+}
+.vsummary-card:hover { background: var(--hover-bg); }
+.vsummary-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--secondary-text);
+}
+.vsummary-value {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.05;
+    color: var(--text-color);
+}
+.vsummary-sub {
+    font-size: 12px;
+    color: var(--secondary-text);
+}
+
+/* ===== Alerts summary strip cards ===== */
+.vsummary-card {
+    background: var(--card-color);
+    padding: 14px 18px;
+    border-left: 3px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    cursor: pointer;
+    transition: background 0.13s;
+}
+.vsummary-card:hover { background: var(--hover-bg); }
+.vsummary-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--secondary-text);
+}
+.vsummary-value {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.05;
+    color: var(--text-color);
+}
+.vsummary-sub {
+    font-size: 12px;
+    color: var(--secondary-text);
+}
