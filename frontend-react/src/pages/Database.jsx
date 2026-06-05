@@ -324,7 +324,7 @@ export default function Database() {
           </div>
         </div>
 
-        <div className="admin-summary-strip">
+        <div className="vsummary-strip-three">
           <div className="vsummary-card" style={{ borderLeftColor: 'var(--accent-color)', cursor: 'default' }}>
             <div className="vsummary-label">Invoices</div>
             <div className="vsummary-value">{data.invoice_count}</div>

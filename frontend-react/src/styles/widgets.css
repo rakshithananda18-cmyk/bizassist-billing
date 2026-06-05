@@ -1294,6 +1294,15 @@ html[data-active="ai"] .dashboard-grid {
     border-radius: 12px;
     overflow: hidden;
 }
+.vsummary-strip-three {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border-color);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+}
 .vsummary-card {
     background: var(--card-color);
     padding: 14px 18px;
@@ -1804,6 +1813,10 @@ html[data-active="ai"] .dashboard-grid {
         grid-template-columns: repeat(2, 1fr) !important;
         gap: 1px !important;
     }
+    .vsummary-strip-three {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 1px !important;
+    }
     .vtabs {
         overflow-x: auto !important;
         white-space: nowrap !important;
@@ -1812,6 +1825,13 @@ html[data-active="ai"] .dashboard-grid {
     }
     .vtab {
         flex-shrink: 0 !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .vsummary-strip-three {
+        grid-template-columns: 1fr !important;
+        gap: 1px !important;
     }
 }
 

@@ -114,7 +114,7 @@ export default function AdminDashboard() {
       ) : (
         <>
           {/* STATS STRIP */}
-          <div className="admin-summary-strip" style={{ marginTop: 24 }}>
+          <div className="vsummary-strip-three" style={{ marginTop: 24 }}>
             <div className="vsummary-card" style={{ borderLeftColor: 'var(--accent-color)', cursor: 'default' }}>
               <div className="vsummary-label">Registered Businesses</div>
               <div className="vsummary-value">{stats.businesses}</div>
