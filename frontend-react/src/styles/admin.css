@@ -332,3 +332,72 @@
         .chat-tree-bubble.assistant {
             border-left: 3px solid #3a9a5c;
         }
+
+        .admin-cache-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+        .admin-header-actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .admin-form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .admin-inspect-modal {
+            max-height: 85vh;
+            padding: 32px;
+        }
+        .admin-modal-card {
+            max-width: 450px;
+            padding: 32px;
+        }
+
+        @media (max-width: 1024px) {
+            .admin-stat-grid {
+                grid-template-columns: 1fr !important;
+                gap: 12px !important;
+            }
+            .admin-header-row {
+                flex-direction: column !important;
+                align-items: flex-start !important;
+                gap: 12px !important;
+            }
+            .admin-cache-grid {
+                grid-template-columns: 1fr !important;
+                gap: 16px !important;
+            }
+            .admin-header-actions {
+                width: 100% !important;
+                gap: 8px !important;
+            }
+            .usage-stat-grid {
+                grid-template-columns: 1fr !important;
+                gap: 8px !important;
+            }
+            .flush-dropdown-menu {
+                left: 0 !important;
+                right: auto !important;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .admin-form-grid {
+                grid-template-columns: 1fr !important;
+                gap: 12px !important;
+            }
+            .admin-inspect-modal {
+                max-height: 90dvh !important;
+                padding: 20px !important;
+                width: 95% !important;
+            }
+            .admin-modal-card {
+                padding: 20px !important;
+                width: 95% !important;
+            }
+        }

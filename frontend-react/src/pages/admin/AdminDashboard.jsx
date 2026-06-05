@@ -85,7 +85,7 @@ export default function AdminDashboard() {
           <h1>✦ BIZASSIST ADMIN WORKSPACE</h1>
           <p>Aggregated tracking & telemetry for all enterprise business accounts</p>
         </div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <div className="admin-header-actions">
           {/* Flush Cache Dropdown */}
           <div className={`flush-dropdown ${dropdownOpen ? 'open' : ''}`} onClick={e => e.stopPropagation()}>
             <button className="btn-flush" style={{ padding: '10px 16px', fontSize: 13 }} onClick={() => setDropdownOpen(!dropdownOpen)}>

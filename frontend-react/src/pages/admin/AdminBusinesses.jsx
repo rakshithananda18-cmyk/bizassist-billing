@@ -275,7 +275,7 @@ export default function AdminBusinesses() {
       {/* CREATE MERCHANT MODAL */}
       {showCreateModal && (
         <div className="custom-modal-overlay">
-          <div className="custom-modal-card" style={{ maxWidth: 450, padding: 32 }}>
+          <div className="custom-modal-card admin-modal-card" style={{ maxWidth: 450 }}>
             <div className="custom-modal-title">Register New Merchant Sandbox</div>
             <form onSubmit={handleCreateSubmit} className="auth-form" style={{ marginTop: 16 }}>
               <div className="form-group">
@@ -325,7 +325,7 @@ export default function AdminBusinesses() {
       {/* EDIT MERCHANT MODAL */}
       {showEditModal && (
         <div className="custom-modal-overlay">
-          <div className="custom-modal-card" style={{ maxWidth: 450, padding: 32 }}>
+          <div className="custom-modal-card admin-modal-card" style={{ maxWidth: 450 }}>
             <div className="custom-modal-title">Edit Merchant Credentials</div>
             <form onSubmit={handleEditSubmit} className="auth-form" style={{ marginTop: 16 }}>
               <div className="form-group">
@@ -372,10 +372,10 @@ export default function AdminBusinesses() {
       {/* RATE LIMITS CONFIG MODAL */}
       {showLimitsModal && (
         <div className="custom-modal-overlay">
-          <div className="custom-modal-card" style={{ maxWidth: 480, padding: 32 }}>
+          <div className="custom-modal-card admin-modal-card" style={{ maxWidth: 480 }}>
             <div className="custom-modal-title">Rate Limits: {limitsForm.businessName}</div>
             <form onSubmit={handleLimitsSubmit} className="auth-form" style={{ marginTop: 16 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div className="admin-form-grid">
                 <div className="form-group">
                   <label>Requests Per Minute (RPM)</label>
                   <input
@@ -395,7 +395,7 @@ export default function AdminBusinesses() {
                   />
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 8 }}>
+              <div className="admin-form-grid" style={{ marginTop: 8 }}>
                 <div className="form-group">
                   <label>Max Tokens Per Day</label>
                   <input
@@ -444,7 +444,7 @@ export default function AdminBusinesses() {
       {/* INSPECTOR DETAILS MODAL */}
       {showInspectModal && (
         <div className="custom-modal-overlay">
-          <div className="custom-modal-card" style={{ maxWidth: 800, width: '90%', maxHeight: '85vh', overflowY: 'auto', padding: 32 }}>
+          <div className="custom-modal-card admin-inspect-modal" style={{ maxWidth: 800, width: '90%', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
                 <div className="custom-modal-title" style={{ fontSize: 22 }}>

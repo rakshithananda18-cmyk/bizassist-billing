@@ -57,7 +57,7 @@ export default function AdminCache() {
           <h1>✦ CACHE & TELEMETRY MONITOR</h1>
           <p>Inspect in-memory context caches and saved model prompt answer collections</p>
         </div>
-        <div style={{ display: 'flex', gap: 12 }}>
+        <div className="admin-header-actions">
           <button className="btn-flush" onClick={handleFlushAll}>
             🔄 Flush All Caches
           </button>
@@ -77,7 +77,7 @@ export default function AdminCache() {
         {loading ? (
           <div className="vskel"></div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+          <div className="admin-cache-grid">
             {/* Context Caches */}
             <div>
               <h3 style={{ fontSize: 13, color: 'var(--secondary-text)', marginBottom: 12, fontWeight: 600 }}>
