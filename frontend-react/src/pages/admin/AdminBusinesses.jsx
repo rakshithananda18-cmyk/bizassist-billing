@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useDialog } from '../../contexts/DialogContext'
 import { API_BASE } from '../../config'
+import { Section } from '../../components/ui'
+import { Icon } from '../../components/icons'
 
 export default function AdminBusinesses() {
   const { authFetch, adminUser } = useAuth()
@@ -218,10 +220,15 @@ export default function AdminBusinesses() {
       </div>
 
       {/* Directory Table */}
-      <div className="admin-table-widget" style={{ marginTop: 24 }}>
-        <div className="admin-table-title">Enterprise Business Directory</div>
+      <Section
+        title="Enterprise Business Directory"
+        icon={<Icon name="database" size={16} />}
+        collapsible
+        noPad
+        style={{ marginTop: 24 }}
+      >
         {loading ? (
-          <div className="vskel"></div>
+          <div className="vskel" style={{ padding: 20 }}></div>
         ) : (
           <div className="admin-table-wrap" style={{ overflowX: 'auto', width: '100%' }}>
             <table className="admin-table" style={{ width: '100%', marginTop: 12 }}>
@@ -272,7 +279,7 @@ export default function AdminBusinesses() {
             </table>
           </div>
         )}
-      </div>
+      </Section>
 
       {/* CREATE MERCHANT MODAL */}
       {showCreateModal && (

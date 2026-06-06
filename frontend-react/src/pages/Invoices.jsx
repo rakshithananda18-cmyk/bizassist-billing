@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
+import { PageHeader, Section, Table } from '../components/ui'
+import { Icon } from '../components/icons'
 
 const INVOICES_PER_PAGE = 10
 
@@ -66,12 +68,7 @@ export default function Invoices() {
   if (loading) {
     return (
       <>
-        <div className="vheader" style={{ marginBottom: 16 }}>
-          <div>
-            <div className="vheader-title">Invoices</div>
-            <div className="vheader-sub">All billing records</div>
-          </div>
-        </div>
+        <PageHeader title="Invoices" subtitle="All billing records" />
         <div className="widget">
           <div className="vskel"></div>
           <div className="vskel"></div>
@@ -84,7 +81,7 @@ export default function Invoices() {
   if (error) {
     return (
       <div className="vempty">
-        <div className="vempty-icon">📋</div>
+        <div className="vempty-icon"><Icon name="file" size={36} /></div>
         <div className="vempty-title">No invoices found</div>
         <div className="vempty-sub">{error}</div>
       </div>
@@ -116,14 +113,11 @@ export default function Invoices() {
 
   return (
     <>
-      <div className="vheader">
-        <div>
-          <div className="vheader-title">
-            Invoices <span className="vbadge">{all.length}</span>
-          </div>
-          <div className="vheader-sub">{all.length} total · {fmtAmount(totalAmount)} revenue</div>
-        </div>
-      </div>
+      <PageHeader
+        title={<>Invoices <span className="vbadge">{all.length}</span></>}
+        subtitle={`${all.length} total · ${fmtAmount(totalAmount)} revenue`}
+        style={{ marginBottom: 0 }}
+      />
 
       {/* SUMMARY STRIP */}
       <div className="vsummary-strip" style={{ marginBottom: 16 }}>
@@ -149,20 +143,16 @@ export default function Invoices() {
       <div className="vtabs">{tabs}</div>
 
       {/* TABLE */}
-      <div className="widget" style={{ padding: 0, overflow: 'hidden', marginTop: 12 }}>
-        <div className="vtable-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Invoice ID</th>
-                <th>Customer</th>
-                <th>Amount</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {slicedInvoices.length === 0 ? (
+      <Section
+        title="Invoice Records"
+        count={filtered.length}
+        icon={<Icon name="card" size={16} />}
+        collapsible
+        noPad
+        style={{ marginTop: 12 }}
+      >
+        <Table head={['Invoice ID', 'Customer', 'Amount', 'Status', '']}>
+          {slicedInvoices.length === 0 ? (
                 <tr>
                   <td colSpan="5" className="vtable-empty">
                     No {filter} invoices found.
@@ -196,10 +186,8 @@ export default function Invoices() {
                   </tr>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        </Table>
+      </Section>
 
       {/* PAGINATION CONTROLS */}
       {totalPages > 1 && (

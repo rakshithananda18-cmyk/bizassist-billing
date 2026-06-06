@@ -334,22 +334,22 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
           </div>
           <div className="rp-section-body" id="rp-alerts-body">
             <div className="ip-alert-row ip-alert-warn" onClick={() => sendChip('Which medicines and products are expiring in the next 30 days?')}>
-              <div className="ip-alert-icon">⏰</div>
+              <div className="ip-alert-icon"><Icon name="clock" /></div>
               <div className="ip-alert-text"><strong>Expiry check</strong><span>See items expiring soon</span></div>
               <div className="ip-alert-arrow">›</div>
             </div>
             <div className="ip-alert-row ip-alert-info" onClick={() => sendChip('Which products have low stock and need reordering?')}>
-              <div className="ip-alert-icon">📦</div>
+              <div className="ip-alert-icon"><Icon name="package" /></div>
               <div className="ip-alert-text"><strong>Low stock</strong><span>Items needing reorder</span></div>
               <div className="ip-alert-arrow">›</div>
             </div>
             <div className="ip-alert-row ip-alert-red" onClick={() => sendChip('List all overdue invoices with amounts and due dates')}>
-              <div className="ip-alert-icon">🔴</div>
+              <div className="ip-alert-icon"><Icon name="alert" /></div>
               <div className="ip-alert-text"><strong>Overdue invoices</strong><span>₹{Number(overdueAmt).toLocaleString('en-IN')} pending</span></div>
               <div className="ip-alert-arrow">›</div>
             </div>
             <div className="ip-alert-row ip-alert-green" onClick={() => sendChip('Who are my top 5 customers by revenue this period?')}>
-              <div className="ip-alert-icon">🏆</div>
+              <div className="ip-alert-icon"><Icon name="trophy" /></div>
               <div className="ip-alert-text">
                 <strong>Top customers</strong>
                 <span>{customers[0] ? `${customers[0].customer} leads` : 'See rankings'}</span>

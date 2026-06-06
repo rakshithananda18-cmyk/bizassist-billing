@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
+import { PageHeader, Table, Section } from '../components/ui'
+import { Icon } from '../components/icons'
 
 const PAYMENTS_PER_PAGE = 5
 
@@ -50,12 +52,7 @@ export default function Payments() {
   if (loading) {
     return (
       <>
-        <div className="vheader" style={{ marginBottom: 16 }}>
-          <div>
-            <div className="vheader-title">Payments</div>
-            <div className="vheader-sub">Dues and recovery</div>
-          </div>
-        </div>
+        <PageHeader title="Payments" subtitle="Dues and recovery" />
         <div className="widget">
           <div className="vskel"></div>
           <div className="vskel"></div>
@@ -67,7 +64,7 @@ export default function Payments() {
   if (error || !paymentsData) {
     return (
       <div className="vempty">
-        <div className="vempty-icon">💳</div>
+        <div className="vempty-icon"><Icon name="card" size={36} /></div>
         <div className="vempty-title">No payment data</div>
         <div className="vempty-sub">{error || 'Could not load payments.'}</div>
       </div>
@@ -87,12 +84,7 @@ export default function Payments() {
 
   return (
     <>
-      <div className="vheader">
-        <div>
-          <div className="vheader-title">Payments</div>
-          <div className="vheader-sub">Track dues and collections</div>
-        </div>
-      </div>
+      <PageHeader title="Payments" subtitle="Track dues and collections" style={{ marginBottom: 0 }} />
 
       {/* SUMMARY CARDS */}
       <div className="vsummary-strip" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: 1, marginBottom: 12 }}>
@@ -110,25 +102,15 @@ export default function Payments() {
 
       {/* OVERDUE TABLE */}
       {paymentsData.overdue_count > 0 && (
-        <div className="widget" style={{ padding: 0, overflow: 'hidden', marginBottom: 12 }}>
-          <div style={{ padding: '16px 20px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div className="widget-title" style={{ margin: 0 }}>Overdue</div>
-            <span className="vpill" style={{ color: '#c02a2a', background: 'rgba(192,42,42,0.10)' }}>
-              {paymentsData.overdue_count}
-            </span>
-          </div>
-          <div className="vtable-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Customer</th>
-                  <th>Invoice</th>
-                  <th>Amount</th>
-                  <th>Due Date</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
+        <Section
+          title="Overdue"
+          count={paymentsData.overdue_count}
+          icon={<Icon name="alert" size={16} />}
+          collapsible
+          noPad
+          style={{ marginBottom: 12 }}
+        >
+          <Table head={['Customer', 'Invoice', 'Amount', 'Due Date', '']}>
                 {overdueSlice.map((p, idx) => (
                   <tr key={idx}>
                     <td style={{ fontWeight: 500 }}>{p.customer || '—'}</td>
@@ -144,9 +126,7 @@ export default function Payments() {
                     </td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
-          </div>
+          </Table>
 
           {/* Overdue Pagination */}
           {overdueTotalPages > 1 && (
@@ -172,30 +152,20 @@ export default function Payments() {
               </button>
             </div>
           )}
-        </div>
+        </Section>
       )}
 
       {/* PENDING TABLE */}
       {paymentsData.pending_count > 0 && (
-        <div className="widget" style={{ padding: 0, overflow: 'hidden', marginBottom: 12 }}>
-          <div style={{ padding: '16px 20px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div className="widget-title" style={{ margin: 0 }}>Pending</div>
-            <span className="vpill" style={{ color: '#b06510', background: 'rgba(176,101,16,0.10)' }}>
-              {paymentsData.pending_count}
-            </span>
-          </div>
-          <div className="vtable-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Customer</th>
-                  <th>Invoice</th>
-                  <th>Amount</th>
-                  <th>Due Date</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
+        <Section
+          title="Pending"
+          count={paymentsData.pending_count}
+          icon={<Icon name="clock" size={16} />}
+          collapsible
+          noPad
+          style={{ marginBottom: 12 }}
+        >
+          <Table head={['Customer', 'Invoice', 'Amount', 'Due Date', '']}>
                 {pendingSlice.map((p, idx) => (
                   <tr key={idx}>
                     <td style={{ fontWeight: 500 }}>{p.customer || '—'}</td>
@@ -211,9 +181,7 @@ export default function Payments() {
                     </td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
-          </div>
+          </Table>
 
           {/* Pending Pagination */}
           {pendingTotalPages > 1 && (
@@ -239,7 +207,7 @@ export default function Payments() {
               </button>
             </div>
           )}
-        </div>
+        </Section>
       )}
 
       {/* EMPTY STATE */}

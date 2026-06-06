@@ -231,9 +231,9 @@ tr:last-child {
    STATUS BADGES
 ========================================= */
 
-.paid    { color: #3a9a5c; font-weight: 500; }
-.pending { color: #c97c22; font-weight: 500; }
-.overdue { color: #c94242; font-weight: 500; }
+.paid    { color: #1f6b3a; font-weight: 500; }
+.pending { color: #8a4e00; font-weight: 500; }
+.overdue { color: #9b1c1c; font-weight: 500; }
 
 /* =========================================
    QUICK ACTIONS
@@ -365,7 +365,7 @@ tr:last-child {
 
 .upload-error {
     text-align: center;
-    color: #c94242;
+    color: #9b1c1c;
     font-size: 13px;
     padding: 16px 0;
 }
@@ -380,7 +380,7 @@ tr:last-child {
     border-radius: 7px;
     padding: 6px 12px;
     cursor: pointer;
-    color: #c94242;
+    color: #9b1c1c;
     font-size: 13px;
     font-family: 'DM Sans', sans-serif;
     transition: background 0.18s ease, border-color 0.18s ease;
@@ -398,7 +398,7 @@ tr:last-child {
     border-radius: 6px;
     padding: 5px 10px;
     cursor: pointer;
-    color: #c94242;
+    color: #9b1c1c;
     font-size: 12px;
     font-family: 'DM Sans', sans-serif;
     transition: background 0.18s ease, border-color 0.18s ease;
@@ -426,19 +426,19 @@ tr:last-child {
     --card-color:        #ffffff;   /* Pure white cards */
     --card-bg-solid:     #ffffff;
     --text-color:        #1a1714;   /* Warm near-black */
-    --secondary-text:    #a09b91;   /* Cloudy-light */
+    --secondary-text:    #676560;   /* Dark grey subtext & subheadings (#676560) */
     --accent-color:      #c15f3c;   /* Crail */
     --accent-hover:      #a84e2e;
     --accent-soft:       rgba(193,95,60,0.10);
     --accent-softer:     rgba(193,95,60,0.05);
     --input-bg:          #fdfdfc;
     --bot-bg:            transparent;
-    --border-color:      #e6e4de;
+    --border-color:      #c8c5be;   /* Darker warm border */
     --border-subtle:     rgba(193,95,60,0.12);
 
     --glass-bg:          rgba(255,255,255,0.85);
     --glass-bg-hover:    rgba(255,255,255,0.95);
-    --glass-border:      #e6e4de;
+    --glass-border:      #c8c5be;   /* Darker — matches border-color */
     --glass-highlight:   none;
     --glass-shadow:      none;
     --glass-blur:        none;
@@ -651,7 +651,7 @@ body {
 }
 
 .clear-chat-btn:hover {
-    color: #c02a2a;
+    color: #8c1a1a;
     background: rgba(192, 42, 42, 0.09);
     border-color: rgba(192, 42, 42, 0.2);
 }
@@ -782,9 +782,9 @@ tr:hover td { background: var(--hover-bg) !important; }
 tr:last-child { border-bottom: none; }
 
 /* Status badges */
-.paid    { color: #27864a; font-weight: 600; }
-.pending { color: #b06510; font-weight: 600; }
-.overdue { color: #c02a2a; font-weight: 600; }
+.paid    { color: #1a5c32; font-weight: 600; }
+.pending { color: #7a4200; font-weight: 600; }
+.overdue { color: #8c1a1a; font-weight: 600; }
 
 /* ---- SCROLLBAR ---- */
 *::-webkit-scrollbar { width: 5px; height: 5px; }
@@ -962,7 +962,7 @@ tr:last-child { border-bottom: none; }
     background: transparent;
     border: 1.5px solid rgba(192,42,42,0.22);
     border-radius: 8px;
-    color: #c02a2a;
+    color: #8c1a1a;
     cursor: pointer;
     font-size: 12px;
     padding: 5px 11px;
@@ -1259,13 +1259,17 @@ html[data-active="ai"] .dashboard-grid {
 
 /* ── Status pill ── */
 .vpill {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 72px;
     padding: 3px 10px;
     border-radius: 999px;
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.03em;
     white-space: nowrap;
+    text-align: center;
 }
 
 /* ── AI link button ── */
@@ -1319,7 +1323,7 @@ html[data-active="ai"] .dashboard-grid {
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--secondary-text);
+    color: var(--text-color);
 }
 .vsummary-value {
     font-size: 26px;
@@ -1329,7 +1333,7 @@ html[data-active="ai"] .dashboard-grid {
 }
 .vsummary-sub {
     font-size: 12px;
-    color: var(--secondary-text);
+    color: var(--text-color);
 }
 
 .vsummary-item {
@@ -1678,13 +1682,13 @@ html[data-active="ai"] .dashboard-grid {
 .ip-alert-warn:hover  { border-color: #c97c22; background: rgba(201,124,34,0.08); }
 
 .ip-alert-info  { border-color: rgba(74,144,201,0.25); background: rgba(74,144,201,0.04); }
-.ip-alert-info:hover  { border-color: #4a90c9; background: rgba(74,144,201,0.08); }
+.ip-alert-info:hover  { border-color: #2a6a9e; background: rgba(74,144,201,0.08); }
 
 .ip-alert-red   { border-color: rgba(201,66,66,0.25);  background: rgba(201,66,66,0.04); }
-.ip-alert-red:hover   { border-color: #c94242; background: rgba(201,66,66,0.08); }
+.ip-alert-red:hover   { border-color: #9b1c1c; background: rgba(201,66,66,0.08); }
 
 .ip-alert-green { border-color: rgba(58,154,92,0.25);  background: rgba(58,154,92,0.04); }
-.ip-alert-green:hover { border-color: #3a9a5c; background: rgba(58,154,92,0.08); }
+.ip-alert-green:hover { border-color: #1f6b3a; background: rgba(58,154,92,0.08); }
 
 .ip-alert-icon { font-size: 15px; flex-shrink: 0; }
 .ip-alert-text {
@@ -2055,7 +2059,7 @@ html[data-active="ai"] .dashboard-grid {
     opacity: 1;
 }
 .chat-history-popup .rp-chat-delete:hover {
-    color: #c94242;
+    color: #9b1c1c;
 }
 
 /* Collapsible Inspector/Tree Styles */
@@ -2089,12 +2093,17 @@ html[data-active="ai"] .dashboard-grid {
     display: none;
 }
 .tree-summary::after {
-    content: '📁';
-    font-size: 14px;
-    transition: transform 0.2s;
+    content: '›';
+    font-size: 18px;
+    font-weight: 300;
+    color: var(--secondary-text);
+    transition: transform 0.22s ease;
+    display: inline-block;
+    line-height: 1;
+    transform: rotate(0deg);
 }
 details[open] > .tree-summary::after {
-    content: '📂';
+    transform: rotate(90deg);
 }
 .tree-content {
     padding: 0 18px 18px 18px;
@@ -2529,13 +2538,13 @@ details[open] > .tree-summary::after {
 .upload-result.success {
     background: rgba(39,134,74,0.08);
     border: 1px solid rgba(39,134,74,0.22);
-    color: #27864a;
+    color: #1a5c32;
 }
 
 .upload-result.error {
     background: rgba(192,42,42,0.08);
     border: 1px solid rgba(192,42,42,0.22);
-    color: #c02a2a;
+    color: #8c1a1a;
 }
 
 .upload-top {
@@ -2576,10 +2585,10 @@ details[open] > .tree-summary::after {
     font-family: 'DM Mono', 'Geist Mono', monospace;
 }
 
-.tier-direct  { background: rgba(58,154,92,0.10);  color: #3a9a5c;  border: 1px solid rgba(58,154,92,0.2);  }
-.tier-cache   { background: rgba(74,144,201,0.10); color: #4a90c9;  border: 1px solid rgba(74,144,201,0.2); }
+.tier-direct  { background: rgba(58,154,92,0.10);  color: #1f6b3a;  border: 1px solid rgba(58,154,92,0.2);  }
+.tier-cache   { background: rgba(74,144,201,0.10); color: #2a6a9e;  border: 1px solid rgba(74,144,201,0.2); }
 .tier-complex { background: rgba(201,100,66,0.10); color: var(--accent-color); border: 1px solid rgba(201,100,66,0.2); }
-.tier-simple  { background: rgba(201,124,34,0.10); color: #c97c22;  border: 1px solid rgba(201,124,34,0.2);  }
+.tier-simple  { background: rgba(201,124,34,0.10); color: #8a4e00;  border: 1px solid rgba(201,124,34,0.2);  }
 
 /* =========================================
    CHAT SESSION HISTORY — kebab rename menu
@@ -2639,7 +2648,7 @@ details[open] > .tree-summary::after {
 
 .rp-chat-menu-item.danger:hover {
     background: rgba(192,42,42,0.08);
-    color: #c02a2a;
+    color: #8c1a1a;
 }
 
 .rp-chat-rename-input {
@@ -2686,7 +2695,7 @@ details[open] > .tree-summary::after {
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--secondary-text);
+    color: var(--text-color);
 }
 .vsummary-value {
     font-size: 26px;
@@ -2696,7 +2705,7 @@ details[open] > .tree-summary::after {
 }
 .vsummary-sub {
     font-size: 12px;
-    color: var(--secondary-text);
+    color: var(--text-color);
 }
 
 /* ===== Alerts summary strip cards ===== */
@@ -2716,7 +2725,7 @@ details[open] > .tree-summary::after {
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--secondary-text);
+    color: var(--text-color);
 }
 .vsummary-value {
     font-size: 26px;
@@ -2726,5 +2735,5 @@ details[open] > .tree-summary::after {
 }
 .vsummary-sub {
     font-size: 12px;
-    color: var(--secondary-text);
+    color: var(--text-color);
 }

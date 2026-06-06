@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
+import { PageHeader, Section } from '../components/ui'
+import { Icon } from '../components/icons'
 
 function fmtAmount(n) {
   if (!n && n !== 0) return '—'
@@ -154,12 +156,7 @@ export default function Alerts() {
   if (loading) {
     return (
       <>
-        <div className="vheader" style={{ marginBottom: 16 }}>
-          <div>
-            <div className="vheader-title">Alerts</div>
-            <div className="vheader-sub">Loading...</div>
-          </div>
-        </div>
+        <PageHeader title="Alerts" subtitle="Loading..." />
         <div className="widget">
           <div className="vskel" /><div className="vskel" /><div className="vskel" />
         </div>
@@ -172,30 +169,28 @@ export default function Alerts() {
   return (
     <>
       {/* HEADER */}
-      <div className="vheader" style={{ marginBottom: 16 }}>
-        <div>
-          <div className="vheader-title">
-            Alerts{totalAlerts > 0 && <span className="vbadge" style={{ background: 'rgba(192,42,42,0.15)', color: '#c02a2a' }}>{totalAlerts}</span>}
-          </div>
-          <div className="vheader-sub">Business health monitoring</div>
-        </div>
-        <div className="vheader-actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button
-            className="chip"
-            style={{ opacity: tab === 'live' ? 1 : 0.55, fontWeight: tab === 'live' ? 700 : 400 }}
-            onClick={() => setTab('live')}
-          >
-            Live Alerts
-          </button>
-          <button
-            className="chip"
-            style={{ opacity: tab === 'config' ? 1 : 0.55, fontWeight: tab === 'config' ? 700 : 400 }}
-            onClick={() => setTab('config')}
-          >
-            ⚙ Configure
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title={<>Alerts{totalAlerts > 0 && <span className="vbadge" style={{ background: 'rgba(192,42,42,0.15)', color: '#c02a2a' }}>{totalAlerts}</span>}</>}
+        subtitle="Business health monitoring"
+        actions={
+          <>
+            <button
+              className="chip"
+              style={{ opacity: tab === 'live' ? 1 : 0.55, fontWeight: tab === 'live' ? 700 : 400 }}
+              onClick={() => setTab('live')}
+            >
+              Live Alerts
+            </button>
+            <button
+              className="chip"
+              style={{ opacity: tab === 'config' ? 1 : 0.55, fontWeight: tab === 'config' ? 700 : 400 }}
+              onClick={() => setTab('config')}
+            >
+              ⚙ Configure
+            </button>
+          </>
+        }
+      />
 
       {/* SUMMARY STRIP */}
       {tab === 'live' && (
@@ -229,12 +224,14 @@ export default function Alerts() {
 
           {/* OVERDUE INVOICES */}
           {overdueInvoices.length > 0 && (
-            <div className="widget" style={{ padding: 0, overflow: 'hidden', marginBottom: 12 }}>
-              <div style={{ padding: '16px 20px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 18 }}>🔴</span>
-                <div className="widget-title" style={{ margin: 0 }}>Overdue Invoices</div>
-                <span className="vpill" style={{ color: '#c02a2a', background: 'rgba(192,42,42,0.10)' }}>{overdueInvoices.length}</span>
-              </div>
+            <Section
+              title="Overdue Invoices"
+              count={overdueInvoices.length}
+              icon={<Icon name="alert" size={16} />}
+              collapsible
+              noPad
+              style={{ marginBottom: 12 }}
+            >
               <div className="vtable-wrap">
                 <table>
                   <thead>
@@ -269,26 +266,32 @@ export default function Alerts() {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </Section>
           )}
 
           {/* EXPIRING ITEMS */}
           {(expiringItems.length > 0 || expiredItems.length > 0) && (
-            <div className="widget" style={{ padding: 0, overflow: 'hidden', marginBottom: 12 }}>
-              <div style={{ padding: '16px 20px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 18 }}>⏰</span>
-                <div className="widget-title" style={{ margin: 0 }}>Expiry Alerts</div>
-                {expiredItems.length > 0 && (
-                  <span className="vpill" style={{ color: '#c02a2a', background: 'rgba(192,42,42,0.10)' }}>
-                    {expiredItems.length} expired
-                  </span>
-                )}
-                {expiringItems.length > 0 && (
-                  <span className="vpill" style={{ color: '#9b6ec9', background: 'rgba(155,110,201,0.10)' }}>
-                    {expiringItems.length} expiring soon
-                  </span>
-                )}
-              </div>
+            <Section
+              title="Expiry Alerts"
+              icon={<Icon name="clock" size={16} />}
+              collapsible
+              noPad
+              style={{ marginBottom: 12 }}
+              actions={
+                <>
+                  {expiredItems.length > 0 && (
+                    <span className="vpill" style={{ color: '#c02a2a', background: 'rgba(192,42,42,0.10)' }}>
+                      {expiredItems.length} expired
+                    </span>
+                  )}
+                  {expiringItems.length > 0 && (
+                    <span className="vpill" style={{ color: '#9b6ec9', background: 'rgba(155,110,201,0.10)' }}>
+                      {expiringItems.length} expiring soon
+                    </span>
+                  )}
+                </>
+              }
+            >
               <div className="vtable-wrap">
                 <table>
                   <thead>
@@ -336,19 +339,19 @@ export default function Alerts() {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </Section>
           )}
 
           {/* LOW STOCK ITEMS */}
           {lowStockItems.length > 0 && (
-            <div className="widget" style={{ padding: 0, overflow: 'hidden', marginBottom: 12 }}>
-              <div style={{ padding: '16px 20px 0', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 18 }}>📦</span>
-                <div className="widget-title" style={{ margin: 0 }}>Low Stock</div>
-                <span className="vpill" style={{ color: '#4a90c9', background: 'rgba(74,144,201,0.10)' }}>
-                  {lowStockItems.length} items
-                </span>
-              </div>
+            <Section
+              title="Low Stock"
+              count={lowStockItems.length}
+              icon={<Icon name="package" size={16} />}
+              collapsible
+              noPad
+              style={{ marginBottom: 12 }}
+            >
               <div className="vtable-wrap">
                 <table>
                   <thead>
@@ -386,7 +389,7 @@ export default function Alerts() {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </Section>
           )}
 
           {/* ALL CLEAR */}
@@ -400,7 +403,7 @@ export default function Alerts() {
 
           {isEmpty && (
             <div className="vempty">
-              <div className="vempty-icon">🔔</div>
+              <div className="vempty-icon"><Icon name="bell" size={36} /></div>
               <div className="vempty-title">No data yet</div>
               <div className="vempty-sub">Upload invoices or inventory to monitor business alerts.</div>
               <button

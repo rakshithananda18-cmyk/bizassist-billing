@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
 import { useDialog } from '../contexts/DialogContext'
-import { Spinner } from '../components/ui'
+import { Spinner, PageHeader } from '../components/ui'
+import { Icon } from '../components/icons'
 
 
 function fmtAmount(n) {
@@ -266,12 +267,7 @@ export default function Dashboard() {
   if (loading) {
     return (
       <>
-        <div className="vheader" style={{ marginBottom: 16 }}>
-          <div>
-            <div className="vheader-title">Dashboard</div>
-            <div className="vheader-sub">Your business at a glance</div>
-          </div>
-        </div>
+        <PageHeader title="Dashboard" subtitle="Your business at a glance" />
         <div className="widget">
           <div className="vskel"></div>
           <div className="vskel"></div>
@@ -283,7 +279,7 @@ export default function Dashboard() {
   if (error || !summary || !charts) {
     return (
       <div className="vempty">
-        <div className="vempty-icon">📊</div>
+        <div className="vempty-icon"><Icon name="chart" size={36} /></div>
         <div className="vempty-title">No data yet</div>
         <div className="vempty-sub">{error || 'Upload invoices or inventory to see your dashboard.'}</div>
         <button
@@ -314,12 +310,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <div className="vheader">
-        <div>
-          <div className="vheader-title">Dashboard</div>
-          <div className="vheader-sub">Your business at a glance</div>
-        </div>
-      </div>
+      <PageHeader title="Dashboard" subtitle="Your business at a glance" style={{ marginBottom: 0 }} />
 
       {/* STAT STRIP */}
       <div className="vsummary-strip" style={{ marginBottom: 12 }}>

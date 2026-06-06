@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
+import { PageHeader } from '../components/ui'
+import { Icon } from '../components/icons'
 
 const CLIENTS_PER_PAGE = 10
 
@@ -46,12 +48,7 @@ export default function Clients() {
   if (loading) {
     return (
       <>
-        <div className="vheader" style={{ marginBottom: 16 }}>
-          <div>
-            <div className="vheader-title">Clients</div>
-            <div className="vheader-sub">Customer overview</div>
-          </div>
-        </div>
+        <PageHeader title="Clients" subtitle="Customer overview" />
         <div className="widget">
           <div className="vskel"></div>
           <div className="vskel"></div>
@@ -64,7 +61,7 @@ export default function Clients() {
   if (error || clients.length === 0) {
     return (
       <div className="vempty">
-        <div className="vempty-icon">👥</div>
+        <div className="vempty-icon"><Icon name="users" size={36} /></div>
         <div className="vempty-title">No clients yet</div>
         <div className="vempty-sub">{error || 'Upload invoices to see your client list.'}</div>
         <button
@@ -86,14 +83,11 @@ export default function Clients() {
 
   return (
     <>
-      <div className="vheader">
-        <div>
-          <div className="vheader-title">
-            Clients <span className="vbadge">{clients.length}</span>
-          </div>
-          <div className="vheader-sub">{clients.length} customers tracked</div>
-        </div>
-      </div>
+      <PageHeader
+        title={<>Clients <span className="vbadge">{clients.length}</span></>}
+        subtitle={`${clients.length} customers tracked`}
+        style={{ marginBottom: 0 }}
+      />
 
       {/* CLIENTS GRID */}
       <div className="vclient-grid" style={{ marginTop: 16 }}>
