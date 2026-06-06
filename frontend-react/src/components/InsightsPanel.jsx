@@ -165,9 +165,10 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
     setActiveSessionId(null)
   }
 
-  function sendChip(query) {
+  // intent set -> deterministic /intent (0 AI tokens); else natural-language AI query
+  function sendChip(query, intent) {
     sessionStorage.setItem('prefill_query', query)
-    window.dispatchEvent(new CustomEvent('ai-shortcut', { detail: { query } }))
+    window.dispatchEvent(new CustomEvent('ai-shortcut', { detail: { query, intent, label: query } }))
   }
 
   const total = summary?.invoice_count || 0
@@ -246,7 +247,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
                     }}
                   >
                     <div className="rp-chat-title-wrapper">
-                      <svg className="rp-chat-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <svg className="rp-chat-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                       </svg>
                       {renamingId === s.session_id ? (
@@ -333,22 +334,22 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
             </svg>
           </div>
           <div className="rp-section-body" id="rp-alerts-body">
-            <div className="ip-alert-row ip-alert-warn" onClick={() => sendChip('Which medicines and products are expiring in the next 30 days?')}>
+            <div className="ip-alert-row ip-alert-warn" onClick={() => sendChip('Which medicines and products are expiring in the next 30 days?', 'expiring_soon')}>
               <div className="ip-alert-icon"><Icon name="clock" /></div>
               <div className="ip-alert-text"><strong>Expiry check</strong><span>See items expiring soon</span></div>
               <div className="ip-alert-arrow">›</div>
             </div>
-            <div className="ip-alert-row ip-alert-info" onClick={() => sendChip('Which products have low stock and need reordering?')}>
+            <div className="ip-alert-row ip-alert-info" onClick={() => sendChip('Which products have low stock and need reordering?', 'low_stock')}>
               <div className="ip-alert-icon"><Icon name="package" /></div>
               <div className="ip-alert-text"><strong>Low stock</strong><span>Items needing reorder</span></div>
               <div className="ip-alert-arrow">›</div>
             </div>
-            <div className="ip-alert-row ip-alert-red" onClick={() => sendChip('List all overdue invoices with amounts and due dates')}>
+            <div className="ip-alert-row ip-alert-red" onClick={() => sendChip('List all overdue invoices with amounts and due dates', 'overdue_list')}>
               <div className="ip-alert-icon"><Icon name="alert" /></div>
               <div className="ip-alert-text"><strong>Overdue invoices</strong><span>₹{Number(overdueAmt).toLocaleString('en-IN')} pending</span></div>
               <div className="ip-alert-arrow">›</div>
             </div>
-            <div className="ip-alert-row ip-alert-green" onClick={() => sendChip('Who are my top 5 customers by revenue this period?')}>
+            <div className="ip-alert-row ip-alert-green" onClick={() => sendChip('Who are my top 5 customers by revenue this period?', 'top_customers')}>
               <div className="ip-alert-icon"><Icon name="trophy" /></div>
               <div className="ip-alert-text">
                 <strong>Top customers</strong>
@@ -375,7 +376,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
             {/* Revenue card */}
             <div id="insights-metrics">
               {summary && (
-                <div className="ip-card ip-card-accent" onClick={() => sendChip('Give me a complete revenue breakdown — paid, pending and overdue')}>
+                <div className="ip-card ip-card-accent" onClick={() => sendChip('Give me a complete revenue breakdown — paid, pending and overdue', 'revenue_summary')}>
                   <div className="ip-card-top">
                     <div>
                       <div className="ip-card-label">Total Revenue</div>
@@ -401,7 +402,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
             {/* Overdue card */}
             <div id="insights-customers">
               {summary && (
-                <div className="ip-card ip-card-danger" onClick={() => sendChip('List all overdue invoices with amounts and due dates')}>
+                <div className="ip-card ip-card-danger" onClick={() => sendChip('List all overdue invoices with amounts and due dates', 'overdue_list')}>
                   <div className="ip-card-label">Overdue Amount</div>
                   <div className="ip-card-value" style={{ color: '#c94242' }}>
                     ₹{Number(overdueAmt).toLocaleString('en-IN')}
@@ -417,7 +418,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
 
             {/* Top customers & warnings */}
             <div id="insights-alerts">
-              <div className="ip-section" onClick={() => sendChip('Who are my top customers by revenue? Give full details')}>
+              <div className="ip-section" onClick={() => sendChip('Who are my top customers by revenue? Give full details', 'top_customers')}>
                 <div className="ip-section-header">
                   <span className="ip-section-title">Top Customers</span>
                   <span className="ip-section-cta">View all →</span>

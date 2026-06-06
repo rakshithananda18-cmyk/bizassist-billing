@@ -226,9 +226,11 @@ export default function Dashboard() {
     }
   }
 
-  function sendChip(query) {
+  // query  : natural-language text shown in the chat bubble / used for AI fallback
+  // intent : if set, routes to the deterministic /intent endpoint (0 AI tokens)
+  function sendChip(query, intent) {
     sessionStorage.setItem('prefill_query', query)
-    window.dispatchEvent(new CustomEvent('ai-shortcut', { detail: { query } }))
+    window.dispatchEvent(new CustomEvent('ai-shortcut', { detail: { query, intent, label: query } }))
   }
 
   function handleQuickNav(tabName) {
@@ -314,22 +316,22 @@ export default function Dashboard() {
 
       {/* STAT STRIP */}
       <div className="vsummary-strip" style={{ marginBottom: 12 }}>
-        <div className="vsummary-card" style={{ borderLeftColor: 'var(--accent-color)' }} onClick={() => sendChip('What is my total revenue?')}>
+        <div className="vsummary-card" style={{ borderLeftColor: 'var(--accent-color)' }} onClick={() => sendChip('What is my total revenue?', 'total_revenue')}>
           <div className="vsummary-label">Total Revenue</div>
           <div className="vsummary-value">{fmtAmount(summary.total_revenue)}</div>
           <div className="vsummary-sub">{summary.invoice_count} invoices</div>
         </div>
-        <div className="vsummary-card" style={{ borderLeftColor: '#c97c22' }} onClick={() => sendChip('List all pending invoices')}>
+        <div className="vsummary-card" style={{ borderLeftColor: '#c97c22' }} onClick={() => sendChip('List all pending invoices', 'pending_list')}>
           <div className="vsummary-label">Pending</div>
           <div className="vsummary-value">{summary.pending_invoices}</div>
           <div className="vsummary-sub">invoices awaiting</div>
         </div>
-        <div className="vsummary-card" style={{ borderLeftColor: '#c02a2a' }} onClick={() => sendChip('Show me all overdue invoices with amounts')}>
+        <div className="vsummary-card" style={{ borderLeftColor: '#c02a2a' }} onClick={() => sendChip('Show me all overdue invoices with amounts', 'overdue_list')}>
           <div className="vsummary-label">Overdue</div>
           <div className="vsummary-value" style={{ color: '#c02a2a' }}>{fmtAmount(summary.overdue_amount)}</div>
           <div className="vsummary-sub">needs recovery</div>
         </div>
-        <div className="vsummary-card" style={{ borderLeftColor: '#3a9a5c' }} onClick={() => sendChip('How many products are in inventory?')}>
+        <div className="vsummary-card" style={{ borderLeftColor: '#3a9a5c' }} onClick={() => sendChip('How many products are in inventory?', 'inventory_count')}>
           <div className="vsummary-label">Inventory</div>
           <div className="vsummary-value">{summary.inventory_count}</div>
           <div className="vsummary-sub">products tracked</div>
@@ -369,17 +371,17 @@ export default function Dashboard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 20, justifyContent: 'center', flex: 1 }}>
             <DonutChart paid={paidVal} pending={pendingVal} overdue={overdueVal} healthPct={healthPct} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => sendChip('List all paid invoices')}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => sendChip('Show my paid invoices summary', 'invoice_count')}>
                 <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#3a9a5c' }}></span>
                 <span style={{ color: 'var(--secondary-text)' }}>Paid:</span>
                 <strong style={{ color: '#3a9a5c' }}>{paidVal} invoices</strong>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => sendChip('List all pending invoices')}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => sendChip('List all pending invoices', 'pending_list')}>
                 <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#c97c22' }}></span>
                 <span style={{ color: 'var(--secondary-text)' }}>Pending:</span>
                 <strong style={{ color: '#c97c22' }}>{pendingVal} invoices</strong>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => sendChip('List all overdue invoices')}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => sendChip('List all overdue invoices', 'overdue_list')}>
                 <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#c94242' }}></span>
                 <span style={{ color: 'var(--secondary-text)' }}>Overdue:</span>
                 <strong style={{ color: '#c94242' }}>{overdueVal} invoices</strong>

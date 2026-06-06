@@ -40,9 +40,10 @@ export default function Clients() {
     }
   }
 
-  function sendChip(query) {
+  // intent set -> deterministic /intent (0 AI tokens); else natural-language AI query
+  function sendChip(query, intent) {
     sessionStorage.setItem('prefill_query', query)
-    window.dispatchEvent(new CustomEvent('ai-shortcut', { detail: { query } }))
+    window.dispatchEvent(new CustomEvent('ai-shortcut', { detail: { query, intent, label: query } }))
   }
 
   if (loading) {

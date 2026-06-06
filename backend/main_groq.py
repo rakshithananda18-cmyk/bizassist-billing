@@ -14,11 +14,13 @@ from routes.auth import router as auth_router
 from routes.admin import router as admin_router
 from routes.chat import router as chat_router
 from routes.alerts import router as alerts_router
+from routes.intents import router as intents_router
 from database.db import engine
 from database.models import Base, ChatMessage
 
 from services.query_router import classify
 from services.direct_query_handler import handle as direct_handle
+from services.recommendations import recommend
 from services.context_cache import get_focused_context
 from services.auth import get_active_user
 from services.tools import execute_tool, schemas as tool_schemas
@@ -89,6 +91,7 @@ app.include_router(upload_router)
 app.include_router(insights_router)
 app.include_router(chat_router)
 app.include_router(alerts_router)
+app.include_router(intents_router)
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
@@ -238,7 +241,8 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
                     "response" : answer,
                     "source"   : "db",      # tells frontend: no AI token used
                     "session_id": session_id,
-                    "session_title": session_title
+                    "session_title": session_title,
+                    "suggestions": recommend(handler_key, active_user_id),
                 }
             # If handler returned None (DB error), fall through to AI
 

@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useDialog } from '../contexts/DialogContext'
 import { API_BASE } from '../config'
 import { Spinner } from '../components/ui'
+import { Icon } from '../components/icons'
 
 // Markdown renderer helper
 function renderMarkdown(text) {
@@ -120,12 +121,12 @@ const svgIcon = (children) => (
 )
 
 const CHIPS = [
-  { icon: svgIcon(<><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></>), label: 'Who owes most?', query: 'Who owes me the most?' },
-  { icon: svgIcon(<><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></>), label: 'Expiring soon', query: 'Which medicines are expiring soon?' },
-  { icon: svgIcon(<><line x1="6" y1="20" x2="6" y2="14" /><line x1="12" y1="20" x2="12" y2="10" /><line x1="18" y1="20" x2="18" y2="4" /></>), label: 'Revenue summary', query: 'Show me the total revenue and pending payments summary' },
-  { icon: svgIcon(<><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></>), label: 'Low stock', query: 'Which products are low on stock?' },
-  { icon: svgIcon(<><circle cx="12" cy="12" r="9" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></>), label: 'Overdue invoices', query: 'List all overdue invoices with amounts' },
-  { icon: svgIcon(<><path d="M8 21h8" /><path d="M12 17v4" /><path d="M7 4h10v5a5 5 0 0 1-10 0V4Z" /><path d="M17 5h3v2a3 3 0 0 1-3 3" /><path d="M7 5H4v2a3 3 0 0 0 3 3" /></>), label: 'Top customers', query: 'Who are my top 5 customers by revenue?' },
+  { icon: svgIcon(<><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></>), label: 'Who owes most?', query: 'Who owes me the most?', intent: 'top_debtors' },
+  { icon: svgIcon(<><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></>), label: 'Expiring soon', query: 'Which medicines are expiring soon?', intent: 'expiring_soon' },
+  { icon: svgIcon(<><line x1="6" y1="20" x2="6" y2="14" /><line x1="12" y1="20" x2="12" y2="10" /><line x1="18" y1="20" x2="18" y2="4" /></>), label: 'Revenue summary', query: 'Show me the total revenue and pending payments summary', intent: 'revenue_summary' },
+  { icon: svgIcon(<><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></>), label: 'Low stock', query: 'Which products are low on stock?', intent: 'low_stock' },
+  { icon: svgIcon(<><circle cx="12" cy="12" r="9" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></>), label: 'Overdue invoices', query: 'List all overdue invoices with amounts', intent: 'overdue_list' },
+  { icon: svgIcon(<><path d="M8 21h8" /><path d="M12 17v4" /><path d="M7 4h10v5a5 5 0 0 1-10 0V4Z" /><path d="M17 5h3v2a3 3 0 0 1-3 3" /><path d="M7 5H4v2a3 3 0 0 0 3 3" /></>), label: 'Top customers', query: 'Who are my top 5 customers by revenue?', intent: 'top_customers' },
 ]
 
 export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMobile = () => {} }) {
@@ -145,6 +146,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })  // fixed-position coords for the menu
   const [renamingId, setRenamingId] = useState(null)   // session id being renamed inline
   const [renameValue, setRenameValue] = useState('')
+  const [suggestions, setSuggestions] = useState([])   // Tier-1 next-step chips from last answer
 
   // Business renaming & banner config
   const [bizName, setBizName] = useState(() => localStorage.getItem('biz_name') || user?.business_name || 'My Business')
@@ -326,6 +328,11 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
         window.dispatchEvent(new CustomEvent('ai-active-changed', { detail: { session_id: data.session_id } }))
       }
 
+      // Tier-1 suggestions (returned by the DIRECT path); clears stale ones on AI answers
+      const sugg = Array.isArray(data.suggestions) ? data.suggestions : []
+      setSuggestions(sugg)
+      if (sugg.length > 0) setChipsExpanded(true)
+
       const fullText = data.response || ''
       const botMsg = {
         role: 'assistant',
@@ -372,6 +379,51 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
     }
   }, [input, activeId, loading, rateLimited, authFetch, loadSessions])
 
+  // Tier 0: deterministic intent — answered from the DB, 0 AI tokens.
+  // Falls back to the AI path if the intent isn't recognised.
+  const runIntent = useCallback(async (chip) => {
+    if (!chip || !chip.intent) { sendMessage(chip?.query || chip?.prompt || chip?.label || ''); return }
+    setLoading(true)
+    setChipsExpanded(false)
+    try {
+      const res = await authFetch(`${API_BASE}/intent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intent: chip.intent, session_id: activeId, question: chip.label }),
+      })
+      if (!res.ok) throw new Error('intent unavailable')
+      const data = await res.json()
+      // The turn is persisted server-side; adopt the session so it shows in history.
+      if (data.session_id && data.session_id !== activeId) {
+        setActiveId(data.session_id)
+        localStorage.setItem('active_session_id', data.session_id)
+        loadSessions()
+        window.dispatchEvent(new CustomEvent('ai-sessions-updated'))
+        window.dispatchEvent(new CustomEvent('ai-active-changed', { detail: { session_id: data.session_id } }))
+      }
+      setMessages(prev => [
+        ...prev,
+        { role: 'user', content: chip.label },
+        { role: 'assistant', content: data.answer?.markdown || '', source: data.source || 'db' },
+      ])
+      const sugg = Array.isArray(data.suggestions) ? data.suggestions : []
+      setSuggestions(sugg)
+      setChipsExpanded(sugg.length > 0)   // surface recommended next steps
+    } catch {
+      sendMessage(chip.query || chip.label)   // graceful AI fallback
+    } finally {
+      setLoading(false)
+    }
+  }, [authFetch, sendMessage, activeId, loadSessions])
+
+  // Route a Tier-1 suggestion chip by its type
+  const handleSuggestion = useCallback((s) => {
+    if (!s) return
+    if (s.type === 'deterministic' && s.intent) runIntent({ label: s.label, intent: s.intent })
+    else if (s.type === 'action') showAlert('This action is coming soon.')   // wired in Phase 3
+    else sendMessage(s.prompt || s.query || s.label)                          // ai / default
+  }, [runIntent, sendMessage, showAlert])
+
   // Listen to session select/update events globally
   useEffect(() => {
     function handleSelectSession(e) {
@@ -400,13 +452,33 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   // Listen to shortcuts globally
   useEffect(() => {
     function handleShortcut(e) {
-      if (e.detail && e.detail.query) {
-        sendMessage(e.detail.query)
+      const d = e.detail || {}
+      if (d.intent) {
+        // Deterministic button -> /intent (0 AI tokens), with recommendations
+        runIntent({ intent: d.intent, label: d.label || d.query, query: d.query })
+      } else if (d.query) {
+        sendMessage(d.query)
       }
     }
     window.addEventListener('ai-shortcut', handleShortcut)
     return () => window.removeEventListener('ai-shortcut', handleShortcut)
-  }, [sendMessage])
+  }, [sendMessage, runIntent])
+
+  // Proactive onboarding: if no chat has been started, offer an AI business
+  // summary as a recommendation ~10s after login (never auto-spends tokens).
+  useEffect(() => {
+    if (messages.length > 0) return
+    const t = setTimeout(() => {
+      setSuggestions(prev => (prev && prev.length) ? prev : [
+        { id: 'biz_summary', label: 'Business summary', type: 'ai', icon: 'chart',
+          prompt: 'Give me a concise business summary: revenue, what is paid vs pending vs overdue, and anything that needs my attention today.' },
+        { id: 'priorities', label: "Today's priorities", type: 'ai', icon: 'clock',
+          prompt: 'What are the top 3 things I should act on today, with reasons?' },
+      ])
+      setChipsExpanded(true)
+    }, 10000)
+    return () => clearTimeout(t)
+  }, [messages.length])
 
   // Keep this list in sync when sessions change elsewhere (right-panel history)
   useEffect(() => {
@@ -571,7 +643,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
               </div>
               <div className="ces-chips" id="prompt-chips">
                 {CHIPS.map(c => (
-                  <button key={c.label} className="chip" onClick={() => sendMessage(c.query)}>
+                  <button key={c.label} className="chip" onClick={() => runIntent(c)}>
                     {c.icon} {c.label}
                   </button>
                 ))}
@@ -630,15 +702,17 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
                 </button>
               </div>
             ) : (
-              CHIPS.map(c => (
+              (suggestions.length > 0 ? suggestions : CHIPS).map(item => (
                 <button
-                  key={c.label}
+                  key={item.id || item.label}
                   className="chip chip-sm"
-                  title={c.label}
-                  onClick={() => { sendMessage(c.query); setChipsExpanded(false) }}
+                  title={item.label}
+                  onClick={() => { item.type ? handleSuggestion(item) : runIntent(item); setChipsExpanded(false) }}
                 >
-                  <span className="chip-icon">{c.icon}</span>
-                  <span className="chip-label">{c.label}</span>
+                  <span className="chip-icon">
+                    {typeof item.icon === 'string' ? <Icon name={item.icon} /> : item.icon}
+                  </span>
+                  <span className="chip-label">{item.label}</span>
                 </button>
               ))
             )}
