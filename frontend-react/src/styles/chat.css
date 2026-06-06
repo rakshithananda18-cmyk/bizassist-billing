@@ -127,7 +127,7 @@ html.chat-active .chat-box {
 }
 
 .message {
-    font-family: 'Crimson Pro', Georgia, serif;
+    font-family: var(--font-serif);
     font-size: 15.5px;
     line-height: 1.65;
     word-wrap: break-word;
@@ -139,7 +139,7 @@ html.chat-active .chat-box {
     color: var(--secondary-text);
     font-size: 13.5px;
     font-style: italic;
-    font-family: 'Crimson Pro', Georgia, serif;
+    font-family: var(--font-serif);
     align-self: center;
     width: auto;
     max-width: 90%;
@@ -189,7 +189,12 @@ html.chat-active .chat-box {
     color: var(--text-color);
     text-align: left;
     padding: 0;
+    font-family: var(--font-serif);
     max-width: 100%;
+}
+
+.dark-mode .bot {
+    color: #f3f1eb !important;
 }
 
 /* Code blocks inside bot messages */
@@ -479,7 +484,7 @@ input::placeholder {
 .bot .md-h1,
 .bot .md-h2,
 .bot .md-h3 {
-    font-family: 'Crimson Pro', Georgia, serif;
+    font-family: var(--font-serif);
     color: var(--text-color);
     margin: 12px 0 6px;
     font-weight: 600;
@@ -658,7 +663,7 @@ input::placeholder {
 }
 
 .insight-metric-value {
-    font-family: 'Crimson Pro', Georgia, serif;
+    font-family: var(--font-serif);
     font-size: 17px;
     font-weight: 600;
     color: var(--accent-color);
@@ -919,7 +924,7 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
     gap: 6px;
 }
 .rp-brand-text {
-    font-family: 'Crimson Pro', Georgia, serif;
+    font-family: var(--font-serif);
     font-size: 19px;
     font-weight: 700;
     color: var(--text-color);
@@ -1455,7 +1460,7 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
     margin-bottom: 4px;
 }
 .rp-insight-value {
-    font-family: 'Crimson Pro', Georgia, serif;
+    font-family: var(--font-serif);
     font-size: 22px;
     font-weight: 600;
     color: var(--text-color);
