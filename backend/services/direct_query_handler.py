@@ -8,7 +8,7 @@ logger = logging.getLogger("bizassist.direct_query")
 
 # ── Public entry point ──────────────────────────────────────────────
 
-def handle(handler_key: str, user_query: str, user_id: int) -> str:
+def handle(handler_key: str, user_query: str, user_id: int, params: dict = None) -> str:
     """
     Routes to the right DB handler and returns a formatted answer.
     All handlers open/close their own DB session.
@@ -26,6 +26,7 @@ def handle(handler_key: str, user_query: str, user_id: int) -> str:
         "business_summary"     : _business_summary,
         "overdue_range_detail" : _overdue_range_detail,
         "revenue_month_detail" : _revenue_month_detail,
+        "client_summary"       : _client_summary,
     }
 
     fn = handlers.get(handler_key)
@@ -36,6 +37,8 @@ def handle(handler_key: str, user_query: str, user_id: int) -> str:
     try:
         if handler_key in ("overdue_range_detail", "revenue_month_detail"):
             return fn(user_id, user_query)
+        if handler_key == "client_summary":
+            return fn(user_id, params)
         return fn(user_id)
     except Exception as e:
         logger.error(f"DB Error in direct handler '{handler_key}': {str(e)}", exc_info=True)
@@ -275,6 +278,53 @@ def _business_summary(user_id: int) -> str:
         )
     finally:
         db.close()
+
+def _client_summary(user_id: int, params: dict = None) -> str:
+    """Per-customer financial snapshot — all figures straight from the DB."""
+    customer = (params or {}).get("customer")
+    if not customer:
+        return None   # no customer -> let the AI layer handle it
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(Invoice)
+            .filter(Invoice.business_id == user_id,
+                    func.lower(Invoice.customer) == customer.strip().lower())
+            .all()
+        )
+        if not rows:
+            return f"No invoices found for **{customer}**."
+
+        name = rows[0].customer  # canonical casing as stored
+        total = sum(r.amount or 0 for r in rows)
+        amt = lambda st: sum(r.amount or 0 for r in rows if r.status == st)
+        cnt = lambda st: sum(1 for r in rows if r.status == st)
+        paid_amt, pend_amt, over_amt = amt("Paid"), amt("Pending"), amt("Overdue")
+        coll = round((paid_amt / total) * 100) if total else 0
+
+        lines = [
+            f"**{name} — Client Summary**\n",
+            f"- Total billed : **₹{total:,.0f}**  ({len(rows)} invoice{'s' if len(rows) != 1 else ''})",
+            f"- Collected    : **₹{paid_amt:,.0f}**  ({coll}%)",
+            f"- Pending      : **₹{pend_amt:,.0f}**  ({cnt('Pending')})",
+            f"- Overdue      : **₹{over_amt:,.0f}**  ({cnt('Overdue')})",
+        ]
+
+        overdue_rows = sorted(
+            [r for r in rows if r.status == "Overdue"],
+            key=lambda x: x.amount or 0, reverse=True,
+        )
+        if overdue_rows:
+            lines.append("\n**Overdue invoices**")
+            for r in overdue_rows:
+                lines.append(
+                    f"- ₹{r.amount:,.0f}"
+                    f"{f'  |  Due: {r.due_date}' if r.due_date else ''}"
+                )
+        return "\n".join(lines)
+    finally:
+        db.close()
+
 
 def _overdue_range_detail(user_id: int, query: str) -> str:
     db = SessionLocal()

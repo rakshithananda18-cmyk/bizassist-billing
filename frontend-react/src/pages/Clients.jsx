@@ -41,9 +41,10 @@ export default function Clients() {
   }
 
   // intent set -> deterministic /intent (0 AI tokens); else natural-language AI query
-  function sendChip(query, intent) {
+  // params -> passed to the intent handler (e.g. { customer })
+  function sendChip(query, intent, params) {
     sessionStorage.setItem('prefill_query', query)
-    window.dispatchEvent(new CustomEvent('ai-shortcut', { detail: { query, intent, label: query } }))
+    window.dispatchEvent(new CustomEvent('ai-shortcut', { detail: { query, intent, params, label: query } }))
   }
 
   if (loading) {
@@ -101,7 +102,7 @@ export default function Clients() {
             <div
               key={c.customer}
               className="vclient-card"
-              onClick={() => sendChip(`Give me a full summary for customer ${c.customer}`)}
+              onClick={() => sendChip(`Summary for ${c.customer}`, 'client_summary', { customer: c.customer })}
               style={{ cursor: 'pointer' }}
             >
               <div className="vclient-top">

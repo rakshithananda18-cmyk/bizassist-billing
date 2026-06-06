@@ -101,21 +101,36 @@ RECS = {
     ],
 }
 
+# Client-specific recommendations (need the customer name from params)
+def _client_recs(params: dict) -> list:
+    cust = (params or {}).get("customer", "this customer")
+    return [
+        ai("client_followup", "Follow-up message",
+           f"Draft a polite, professional follow-up to {cust} about their outstanding invoices."),
+        ai("client_terms", "Payment terms",
+           f"Suggest payment terms or incentives to improve {cust}'s payment behaviour."),
+        det("top_customers", "Top customers", "top_customers", "trophy"),
+    ]
+
+
 # Global signal-driven suggestions appended when relevant (and not redundant)
 def _global(intent_key: str, s: dict) -> list:
     extra = []
-    if s["overdue"] > 0 and intent_key not in ("overdue_list", "overdue_amount"):
+    if s["overdue"] > 0 and intent_key not in ("overdue_list", "overdue_amount", "client_summary"):
         extra.append(det("overdue", "Overdue invoices", "overdue_list", "alert"))
-    if s["low_stock"] > 0 and intent_key not in ("low_stock", "inventory_count"):
+    if s["low_stock"] > 0 and intent_key not in ("low_stock", "inventory_count", "client_summary"):
         extra.append(det("low_stock_g", "Low stock", "low_stock", "package"))
     return extra
 
 
-def recommend(intent_key: str, user_id: int) -> list:
+def recommend(intent_key: str, user_id: int, params: dict = None) -> list:
     """Return up to 4 next-step suggestions for the given intent."""
     s = signals(user_id)
-    fn = RECS.get(intent_key)
-    base = fn(s) if fn else []
+    if intent_key == "client_summary":
+        base = _client_recs(params)
+    else:
+        fn = RECS.get(intent_key)
+        base = fn(s) if fn else []
     combined = base + _global(intent_key, s)
     # de-dup by intent/label and cap at 4
     seen, out = set(), []

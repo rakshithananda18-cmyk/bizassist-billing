@@ -75,6 +75,7 @@
 .chat-box {
     flex: 1 1 0;
     overflow-y: auto;
+    overflow-x: hidden;   /* prevent L/R drift while scrolling vertically */
     display: flex;
     flex-direction: column;
     gap: 0;

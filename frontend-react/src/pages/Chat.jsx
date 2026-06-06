@@ -389,7 +389,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
       const res = await authFetch(`${API_BASE}/intent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intent: chip.intent, session_id: activeId, question: chip.label }),
+        body: JSON.stringify({ intent: chip.intent, session_id: activeId, question: chip.label, params: chip.params }),
       })
       if (!res.ok) throw new Error('intent unavailable')
       const data = await res.json()
@@ -455,7 +455,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
       const d = e.detail || {}
       if (d.intent) {
         // Deterministic button -> /intent (0 AI tokens), with recommendations
-        runIntent({ intent: d.intent, label: d.label || d.query, query: d.query })
+        runIntent({ intent: d.intent, label: d.label || d.query, query: d.query, params: d.params })
       } else if (d.query) {
         sendMessage(d.query)
       }

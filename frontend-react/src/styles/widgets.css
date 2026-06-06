@@ -132,6 +132,7 @@ html:not([data-active="ai"]) #assistant-panel { grid-column: 2 / 3; }
 
 .dashboard-left {
     overflow-y: auto;
+    overflow-x: hidden;   /* prevent L/R drift while scrolling vertically */
     display: flex;
     flex-direction: column;
     gap: 12px;

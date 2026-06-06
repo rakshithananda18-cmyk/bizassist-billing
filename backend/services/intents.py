@@ -32,6 +32,7 @@ INTENT_MAP = {
     "low_stock":        "low_stock",
     "expiring_soon":    "expiring_soon",
     "business_summary": "business_summary",
+    "client_summary":   "client_summary",
 }
 
 TITLES = {
@@ -47,6 +48,7 @@ TITLES = {
     "low_stock":        "Low Stock",
     "expiring_soon":    "Expiring Soon",
     "business_summary": "Business Snapshot",
+    "client_summary":   "Client Summary",
 }
 
 
@@ -61,7 +63,7 @@ def resolve_intent(intent_key: str, user_id: int, params: dict = None) -> dict |
 
     query = (params or {}).get("query", "")
     try:
-        markdown = _direct(handler_key, query, user_id)
+        markdown = _direct(handler_key, query, user_id, params)
     except Exception as e:
         logger.error(f"resolve_intent('{intent_key}') failed: {e}", exc_info=True)
         return None
@@ -69,13 +71,19 @@ def resolve_intent(intent_key: str, user_id: int, params: dict = None) -> dict |
     if markdown is None:
         return None
 
+    # Title: client summaries use the customer's name; everything else is fixed.
+    if intent_key == "client_summary" and (params or {}).get("customer"):
+        title = params["customer"]
+    else:
+        title = TITLES.get(intent_key, intent_key.replace("_", " ").title())
+
     return {
         "answer": {
             "type": "text",
-            "title": TITLES.get(intent_key, intent_key.replace("_", " ").title()),
+            "title": title,
             "markdown": markdown,
         },
         "source": "db",
-        "suggestions": recommend(intent_key, user_id),
+        "suggestions": recommend(intent_key, user_id, params),
         "meta": {"tokens": 0},
     }
