@@ -15,6 +15,7 @@ from routes.admin import router as admin_router
 from routes.chat import router as chat_router
 from routes.alerts import router as alerts_router
 from routes.intents import router as intents_router
+from routes.actions import router as actions_router
 from database.db import engine
 from database.models import Base, ChatMessage
 
@@ -92,6 +93,7 @@ app.include_router(insights_router)
 app.include_router(chat_router)
 app.include_router(alerts_router)
 app.include_router(intents_router)
+app.include_router(actions_router)
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 

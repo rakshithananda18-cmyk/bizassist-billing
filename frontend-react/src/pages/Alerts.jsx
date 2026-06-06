@@ -54,6 +54,11 @@ export default function Alerts() {
     window.dispatchEvent(new CustomEvent('ai-shortcut', { detail: { query, intent, label: query } }))
   }
 
+  // Tier-3 gated action -> opens the preview/confirm modal in the assistant
+  function sendAction(action, label, params) {
+    window.dispatchEvent(new CustomEvent('ai-shortcut', { detail: { action, label, params } }))
+  }
+
   useEffect(() => {
     loadAll()
   }, [])
@@ -232,6 +237,16 @@ export default function Alerts() {
               collapsible
               noPad
               style={{ marginBottom: 12 }}
+              actions={
+                <button
+                  className="chip"
+                  style={{ fontSize: 11, padding: '3px 10px', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                  onClick={() => sendAction('send_payment_reminders', 'Send payment reminders')}
+                  title="Preview and log reminder drafts for overdue customers"
+                >
+                  <Icon name="bell" size={12} /> Send reminders
+                </button>
+              }
             >
               <div className="vtable-wrap">
                 <table>

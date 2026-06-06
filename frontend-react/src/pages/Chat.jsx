@@ -4,6 +4,7 @@ import { useDialog } from '../contexts/DialogContext'
 import { API_BASE } from '../config'
 import { Spinner } from '../components/ui'
 import { Icon } from '../components/icons'
+import ActionConfirm from '../components/ActionConfirm'
 
 // Markdown renderer helper
 function renderMarkdown(text) {
@@ -147,6 +148,8 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   const [renamingId, setRenamingId] = useState(null)   // session id being renamed inline
   const [renameValue, setRenameValue] = useState('')
   const [suggestions, setSuggestions] = useState([])   // Tier-1 next-step chips from last answer
+  const [actionPreview, setActionPreview] = useState(null)  // Tier-3 action preview (confirm modal)
+  const [actionBusy, setActionBusy] = useState(false)       // action preview/execute in flight
 
   // Business renaming & banner config
   const [bizName, setBizName] = useState(() => localStorage.getItem('biz_name') || user?.business_name || 'My Business')
@@ -416,13 +419,70 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
     }
   }, [authFetch, sendMessage, activeId, loadSessions])
 
+  // Tier 3: load an action's preview, then open the confirm modal. Nothing
+  // happens until the user confirms.
+  const runAction = useCallback(async (actionKey, label, params) => {
+    if (!actionKey) return
+    setActionBusy(true)
+    try {
+      const res = await authFetch(`${API_BASE}/action/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: actionKey, params }),
+      })
+      if (!res.ok) throw new Error('preview unavailable')
+      const preview = await res.json()
+      setActionPreview({ ...preview, _action: actionKey, _label: label, _params: params })
+    } catch {
+      showAlert('Could not prepare that action. Please try again.')
+    } finally {
+      setActionBusy(false)
+    }
+  }, [authFetch, showAlert])
+
+  // Execute the previewed action after explicit confirmation.
+  const confirmAction = useCallback(async () => {
+    const p = actionPreview
+    if (!p) return
+    setActionBusy(true)
+    try {
+      const res = await authFetch(`${API_BASE}/action/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: p._action, params: p._params,
+          session_id: activeId, question: p._label || p.title,
+        }),
+      })
+      if (!res.ok) throw new Error('execute failed')
+      const data = await res.json()
+      if (data.session_id && data.session_id !== activeId) {
+        setActiveId(data.session_id)
+        localStorage.setItem('active_session_id', data.session_id)
+        loadSessions()
+        window.dispatchEvent(new CustomEvent('ai-sessions-updated'))
+        window.dispatchEvent(new CustomEvent('ai-active-changed', { detail: { session_id: data.session_id } }))
+      }
+      setMessages(prev => [
+        ...prev,
+        { role: 'user', content: p._label || p.title },
+        { role: 'assistant', content: data.markdown || 'Done.', source: 'action' },
+      ])
+      setActionPreview(null)
+    } catch {
+      showAlert('The action could not be completed. Please try again.')
+    } finally {
+      setActionBusy(false)
+    }
+  }, [actionPreview, authFetch, activeId, loadSessions, showAlert])
+
   // Route a Tier-1 suggestion chip by its type
   const handleSuggestion = useCallback((s) => {
     if (!s) return
     if (s.type === 'deterministic' && s.intent) runIntent({ label: s.label, intent: s.intent })
-    else if (s.type === 'action') showAlert('This action is coming soon.')   // wired in Phase 3
+    else if (s.type === 'action' && s.action) runAction(s.action, s.label, s.params)   // Tier 3
     else sendMessage(s.prompt || s.query || s.label)                          // ai / default
-  }, [runIntent, sendMessage, showAlert])
+  }, [runIntent, runAction, sendMessage])
 
   // Listen to session select/update events globally
   useEffect(() => {
@@ -453,7 +513,10 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   useEffect(() => {
     function handleShortcut(e) {
       const d = e.detail || {}
-      if (d.intent) {
+      if (d.action) {
+        // Tier-3 gated action -> preview + confirm modal
+        runAction(d.action, d.label || d.query, d.params)
+      } else if (d.intent) {
         // Deterministic button -> /intent (0 AI tokens), with recommendations
         runIntent({ intent: d.intent, label: d.label || d.query, query: d.query, params: d.params })
       } else if (d.query) {
@@ -462,7 +525,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
     }
     window.addEventListener('ai-shortcut', handleShortcut)
     return () => window.removeEventListener('ai-shortcut', handleShortcut)
-  }, [sendMessage, runIntent])
+  }, [sendMessage, runIntent, runAction])
 
   // Proactive onboarding: if no chat has been started, offer an AI business
   // summary as a recommendation ~10s after login (never auto-spends tokens).
@@ -591,6 +654,16 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
 
   return (
     <div id="assistant-panel" className={`assistant-panel ${mobileOpen ? 'mobile-open' : ''}`}>
+      {/* Tier-3 action confirm gate */}
+      {actionPreview && (
+        <ActionConfirm
+          preview={actionPreview}
+          busy={actionBusy}
+          onConfirm={confirmAction}
+          onClose={() => setActionPreview(null)}
+        />
+      )}
+
       {/* Mobile-only header when opened as drawer/modal */}
       <div className="assistant-mobile-header">
         <span className="amh-title">AI Assistant</span>

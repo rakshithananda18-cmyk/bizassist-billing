@@ -53,11 +53,13 @@ def signals(user_id: int) -> dict:
 # Each value: fn(signals) -> list[suggestion]
 RECS = {
     "overdue_list": lambda s: [
-        det("top_debtors", "Top debtors", "top_customers", "trophy"),
+        action("send_reminders", "Send reminders", "send_payment_reminders", "bell"),
         ai("recovery", "Recovery plan", "Draft a polite, prioritized plan to recover my overdue invoices."),
+        det("top_debtors", "Top debtors", "top_customers", "trophy"),
     ],
     "overdue_amount": lambda s: [
         det("overdue_list", "See overdue list", "overdue_list", "alert"),
+        action("send_reminders", "Send reminders", "send_payment_reminders", "bell"),
         ai("recovery", "Recovery plan", "Draft a polite, prioritized plan to recover my overdue invoices."),
     ],
     "pending_list": lambda s: [
@@ -74,6 +76,7 @@ RECS = {
         ai("growth", "Growth ideas", "Give me 3 concrete ways to grow revenue based on my data."),
     ],
     "top_debtors": lambda s: [
+        action("send_reminders", "Send reminders", "send_payment_reminders", "bell"),
         det("overdue", "Overdue list", "overdue_list", "alert"),
         ai("recovery", "Recovery plan", "Draft a polite, prioritized plan to recover my overdue invoices."),
     ],

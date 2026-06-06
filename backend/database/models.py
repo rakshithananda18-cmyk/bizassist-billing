@@ -4,7 +4,8 @@ from sqlalchemy import (
     String,
     Float,
     DateTime,
-    Boolean
+    Boolean,
+    Text
 )
 
 from database.db import Base
@@ -237,3 +238,22 @@ class AlertConfig(Base):
     active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# -------------------------
+# ACTION LOG (Tier 3 — audit trail for agentic actions)
+# -------------------------
+
+class ActionLog(Base):
+    """Every gated action (preview -> confirm -> execute) is recorded here."""
+
+    __tablename__ = "action_log"
+
+    id = Column(Integer, primary_key=True, index=True)
+    business_id = Column(Integer, index=True)
+    action = Column(String)                 # e.g. "send_payment_reminders"
+    target = Column(String, nullable=True)  # e.g. customer name
+    amount = Column(Float, nullable=True)   # optional monetary context
+    detail = Column(Text, nullable=True)    # the generated message / payload
+    status = Column(String, default="logged")  # logged | sent | failed
+    created_at = Column(DateTime, default=datetime.utcnow)
