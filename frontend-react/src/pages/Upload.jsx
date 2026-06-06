@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
 import { useDialog } from '../contexts/DialogContext'
+import { Spinner } from '../components/ui'
 
 const ACCEPTED = '.csv,.xlsx,.pdf'
 
@@ -122,10 +123,7 @@ export default function Upload() {
         />
         {uploading ? (
           <>
-            <svg className="control-btn-spinner" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" stroke="rgba(128, 128, 128, 0.25)" strokeWidth="2.5" fill="none" />
-              <path d="M12 2a10 10 0 0 1 10 10" />
-            </svg>
+            <Spinner />
             <div className="drop-label">{progress}</div>
           </>
         ) : (
