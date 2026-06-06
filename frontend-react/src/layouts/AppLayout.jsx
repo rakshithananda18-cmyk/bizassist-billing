@@ -5,6 +5,7 @@ import { API_BASE } from '../config'
 import Chat from '../pages/Chat'
 import InsightsPanel from '../components/InsightsPanel'
 import { Icon } from '../components/icons'
+import Modal from '../components/Modal'
 
 const NAV = [
   { to: '/chat',      id: 'ai-btn',       label: 'AI Assistant', icon: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg> },
@@ -532,13 +533,24 @@ export default function AppLayout() {
 
       {/* ALERTS PREFERENCES MODAL */}
       {showAlertsModal && (
-        <div id="alerts-modal" className="alerts-modal-overlay" onClick={() => setShowAlertsModal(false)}>
-          <div className="alerts-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="alerts-modal-header">
-              <span className="alerts-modal-title">🔔 Proactive Alert Settings</span>
-              <button className="alerts-modal-close" onClick={() => setShowAlertsModal(false)} title="Close">×</button>
-            </div>
-            
+        <Modal
+          title="🔔 Proactive Alert Settings"
+          onClose={() => setShowAlertsModal(false)}
+          maxWidth={520}
+          footer={
+            <>
+              <div className="alerts-save-status" style={{
+                marginRight: 'auto',
+                color: alertsStatus.includes('success') ? '#27864a' : alertsStatus.includes('failed') || alertsStatus.includes('required') || alertsStatus.includes('valid') ? '#c02a2a' : 'var(--secondary-text)'
+              }}>{alertsStatus}</div>
+              {alertsForm.active && (
+                <button className="custom-modal-btn cancel-btn" onClick={sendTestAlertEmail}>Send Test</button>
+              )}
+              <button className="custom-modal-btn cancel-btn" onClick={() => setShowAlertsModal(false)}>Cancel</button>
+              <button className="custom-modal-btn confirm-btn" style={{ background: 'var(--accent-color)' }} onClick={saveAlertPreferences}>Save Preferences</button>
+            </>
+          }
+        >
             <div className="alerts-modal-body">
               <div className="alerts-toggle-row">
                 <label className="alerts-switch-label" htmlFor="alerts-active-toggle">Enable Email Alerts</label>
@@ -660,18 +672,7 @@ export default function AppLayout() {
               )}
             </div>
             
-            <div className="alerts-modal-footer">
-              <div id="alerts-save-status" className="alerts-save-status" style={{
-                color: alertsStatus.includes('success') ? '#27864a' : alertsStatus.includes('failed') || alertsStatus.includes('required') || alertsStatus.includes('valid') ? '#c02a2a' : 'var(--secondary-text)'
-              }}>{alertsStatus}</div>
-              {alertsForm.active && (
-                <button id="alerts-test-btn" className="alerts-btn-secondary" style={{ marginRight: 6 }} onClick={sendTestAlertEmail}>Send Test</button>
-              )}
-              <button className="alerts-btn-secondary" onClick={() => setShowAlertsModal(false)}>Cancel</button>
-              <button className="alerts-btn-primary" onClick={saveAlertPreferences}>Save Preferences</button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {/* MOBILE OVERLAY BACKDROP */}
