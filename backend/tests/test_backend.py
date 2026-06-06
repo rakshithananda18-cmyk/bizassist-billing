@@ -281,6 +281,15 @@ def test_dynamic_numeric_queries_bypass_direct():
     assert route == "AI_COMPLEX"
     assert key is None
 
+    # Test "Analyze/analyse" spelling variations for uploaded files
+    route, key = classify("Analyze the uploaded file")
+    assert route == "AI_COMPLEX"
+    assert key is None
+
+    route, key = classify("analyse the uploaded dataset")
+    assert route == "AI_COMPLEX"
+    assert key is None
+
 
 def test_chat_history_endpoints():
     # Login to get valid token

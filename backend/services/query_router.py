@@ -74,7 +74,7 @@ DIRECT_PATTERNS = [
 
 # ── Keywords that force AI_COMPLEX (strategic / multi-step) ─────────
 COMPLEX_PATTERNS = [
-    r"\banalys[ei]s?\b",                   # analyze, analysis
+    r"\banaly[sz][a-zA-Z]*\b",             # analyze, analysis, analyse, analyzing, etc.
     r"\bforecast\b", r"\bpredict\b",
     r"\bq[1-4]\b", r"\bquarter\b",         # Q1, Q2, quarterly
     r"\byear(ly)?\b", r"\bannual\b",
