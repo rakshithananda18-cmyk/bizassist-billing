@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
 import { useDialog } from '../contexts/DialogContext'
-import { Spinner } from '../components/ui'
+import { Spinner, PageHeader } from '../components/ui'
 
 const ACCEPTED = '.csv,.xlsx,.pdf'
 
@@ -98,12 +98,7 @@ export default function Upload() {
   return (
     <>
       {/* PAGE HEADER */}
-      <div className="vheader">
-        <div>
-          <div className="vheader-title">Upload Data</div>
-          <div className="vheader-sub">CSV, Excel, or PDF invoice files</div>
-        </div>
-      </div>
+      <PageHeader title="Upload Data" subtitle="CSV, Excel, or PDF invoice files" />
 
       {/* DROP ZONE */}
       <div
