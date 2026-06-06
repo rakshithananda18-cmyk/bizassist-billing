@@ -65,9 +65,32 @@ def planner_node(state: AgentState) -> AgentState:
     """
     logger.info(f"[Planner] Analyzing: '{state['user_query']}'")
 
+    from database.db import SessionLocal
+    from database.models import Invoice, Inventory, Payment
+
+    inv_count = 0
+    stock_count = 0
+    pay_count = 0
+
+    db = SessionLocal()
+    try:
+        inv_count = db.query(Invoice).filter(Invoice.business_id == state["business_id"]).count()
+        stock_count = db.query(Inventory).filter(Inventory.business_id == state["business_id"]).count()
+        pay_count = db.query(Payment).filter(Payment.business_id == state["business_id"]).count()
+    except Exception as e:
+        logger.warning(f"[Planner] Failed to fetch database counts: {e}")
+    finally:
+        db.close()
+
     prompt = (
         f'User query: "{state["user_query"]}"\n\n'
+        f"Active Business Database Context:\n"
+        f"- Invoice records: {inv_count}\n"
+        f"- Inventory/product records: {stock_count}\n"
+        f"- Payment/cashflow records: {pay_count}\n\n"
         "Decide which business data areas are relevant. "
+        "For general requests (e.g. 'analyze the uploaded file' or 'give an overview'), look at the database context "
+        "to determine which data is populated and relevant to analyze. If a table has data, we should plan to analyze it.\n"
         "Respond with ONLY valid JSON — no markdown, no explanation:\n"
         "{\n"
         '  "needs_invoice": true or false,\n'
