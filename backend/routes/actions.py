@@ -51,7 +51,7 @@ def execute_action(req: ActionRequest, current_user: dict = Depends(get_active_u
     # Record the action result as a chat turn so it shows in history.
     session_id = req.session_id or str(uuid.uuid4())
     question = (req.question or "Send payment reminders").strip()
-    title = _persist_turn(user_id, session_id, question, result.get("markdown", ""))
+    title = _persist_turn(user_id, session_id, question, result.get("markdown", ""), source="db")
     result["session_id"] = session_id
     result["session_title"] = title
     return result

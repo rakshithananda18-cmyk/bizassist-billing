@@ -35,7 +35,8 @@ class SuggestRequest(BaseModel):
     params: Optional[Dict[str, Any]] = None
 
 
-def _persist_turn(user_id: int, session_id: str, question: str, answer_md: str) -> str:
+def _persist_turn(user_id: int, session_id: str, question: str, answer_md: str,
+                  source: str = None, model_tier: str = None, cached: bool = False) -> str:
     """Save the user question + deterministic answer to chat history. Returns the session title."""
     db = SessionLocal()
     try:
@@ -55,7 +56,8 @@ def _persist_turn(user_id: int, session_id: str, question: str, answer_md: str) 
         db.add(ChatMessage(business_id=user_id, role="user", content=question,
                            session_id=session_id, session_title=title))
         db.add(ChatMessage(business_id=user_id, role="assistant", content=answer_md,
-                           session_id=session_id, session_title=title))
+                           session_id=session_id, session_title=title,
+                           source=source, model_tier=model_tier, cached=cached))
         db.commit()
         return title
     except Exception as e:
@@ -75,7 +77,8 @@ def run_intent(req: IntentRequest, current_user: dict = Depends(get_active_user)
 
     session_id = req.session_id or str(uuid.uuid4())
     question = (req.question or env["answer"]["title"]).strip()
-    title = _persist_turn(user_id, session_id, question, env["answer"]["markdown"])
+    title = _persist_turn(user_id, session_id, question, env["answer"]["markdown"],
+                          source=env.get("source"), model_tier=env.get("model_tier"), cached=env.get("cached", False))
 
     env["session_id"] = session_id
     env["session_title"] = title

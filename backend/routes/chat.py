@@ -74,7 +74,10 @@ def get_chat_history(session_id: str = None, current_user: dict = Depends(get_ac
                 "content": m.content,
                 "timestamp": m.timestamp.isoformat() if m.timestamp else None,
                 "session_id": m.session_id,
-                "session_title": m.session_title
+                "session_title": m.session_title,
+                "source": m.source,
+                "model_tier": m.model_tier,
+                "cached": bool(m.cached)
             })
         logger.info(f"Retrieved {len(result)} historical chat messages for user {active_user_id}.")
         return result

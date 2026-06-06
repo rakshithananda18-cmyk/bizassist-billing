@@ -119,10 +119,10 @@ export default function Payments() {
   }, [authFetch])
 
   useEffect(() => {
-    if (tab === 'activity' && !actLoaded) {
+    if (tab === 'activity') {
       loadActivity()
     }
-  }, [tab, actLoaded, loadActivity])
+  }, [tab, loadActivity])
 
   // ── Chip / Action helpers ─────────────────────────────────────────────────
   function sendChip(query, intent) {

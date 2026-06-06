@@ -147,6 +147,9 @@ class ChatMessage(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     session_id = Column(String, index=True, nullable=True)
     session_title = Column(String, nullable=True)
+    source = Column(String, nullable=True)      # "db" | "ai"
+    model_tier = Column(String, nullable=True)  # "AI_SIMPLE" | "AI_COMPLEX"
+    cached = Column(Boolean, default=False)
 
 
 # -------------------------

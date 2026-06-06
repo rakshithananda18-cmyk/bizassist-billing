@@ -230,7 +230,8 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
                         role="assistant",
                         content=answer,
                         session_id=session_id,
-                        session_title=session_title
+                        session_title=session_title,
+                        source="db"
                     ))
                     db.commit()
                 except Exception as e:
@@ -269,7 +270,10 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
                     role="assistant",
                     content=cached_response["response"],
                     session_id=session_id,
-                    session_title=session_title
+                    session_title=session_title,
+                    source=cached_response.get("source", "ai"),
+                    model_tier=cached_response.get("model_tier"),
+                    cached=True
                 ))
                 db.commit()
             except Exception as e:
@@ -403,7 +407,10 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(get_active_user)):
                 role="assistant",
                 content=final_response,
                 session_id=session_id,
-                session_title=session_title
+                session_title=session_title,
+                source="ai",
+                model_tier=route,
+                cached=False
             ))
             db.commit()
 

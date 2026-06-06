@@ -57,6 +57,34 @@ def run_migrations_and_seed():
                     logger.error(f"Failed to add session columns to chat_messages: {e}")
             conn.commit()
 
+        # Check if source, model_tier, and cached columns exist in chat_messages
+        with engine.connect() as conn:
+            try:
+                conn.execute(text("SELECT source FROM chat_messages LIMIT 1"))
+            except Exception:
+                try:
+                    conn.execute(text("ALTER TABLE chat_messages ADD COLUMN source TEXT"))
+                    logger.info("Added source column to chat_messages")
+                except Exception as e:
+                    logger.error(f"Failed to add source column: {e}")
+            try:
+                conn.execute(text("SELECT model_tier FROM chat_messages LIMIT 1"))
+            except Exception:
+                try:
+                    conn.execute(text("ALTER TABLE chat_messages ADD COLUMN model_tier TEXT"))
+                    logger.info("Added model_tier column to chat_messages")
+                except Exception as e:
+                    logger.error(f"Failed to add model_tier column: {e}")
+            try:
+                conn.execute(text("SELECT cached FROM chat_messages LIMIT 1"))
+            except Exception:
+                try:
+                    conn.execute(text("ALTER TABLE chat_messages ADD COLUMN cached INTEGER DEFAULT 0"))
+                    logger.info("Added cached column to chat_messages")
+                except Exception as e:
+                    logger.error(f"Failed to add cached column: {e}")
+            conn.commit()
+
         # Seed users if they don't exist
         import os
         is_test = "test" in os.environ.get("DATABASE_URL", "")

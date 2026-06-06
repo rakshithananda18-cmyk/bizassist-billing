@@ -97,13 +97,13 @@ def _overdue_list(user_id: int) -> str:
             return "✅ No overdue invoices. All payments are on track."
 
         total = sum(r.amount or 0 for r in rows)
-        lines = [f"**Overdue Invoices** ({len(rows)} total — ₹{total:,.0f})\n"]
-
+        lines = [
+            f"There are **{len(rows)}** overdue invoices totaling **₹{total:,.0f}**:\n",
+            "| Customer | Invoice ID | Amount | Due Date |",
+            "|:---|:---|:---|:---|"
+        ]
         for r in rows:
-            lines.append(
-                f"- **{r.customer}** — ₹{r.amount:,.0f}"
-                f"{f'  |  Due: {r.due_date}' if r.due_date else ''}"
-            )
+            lines.append(f"| **{r.customer}** | {r.invoice_id or '—'} | ₹{r.amount:,.0f} | {r.due_date or '—'} |")
         return "\n".join(lines)
     finally:
         db.close()
@@ -136,11 +136,13 @@ def _pending_list(user_id: int) -> str:
             return "✅ No pending invoices found."
 
         total = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id, Invoice.status == "Pending").scalar() or 0
-        lines = [f"**Pending Invoices** (top {len(rows)} — ₹{total:,.0f} total)\n"]
-
+        lines = [
+            f"There are **{len(rows)}** pending invoices totaling **₹{total:,.0f}**:\n",
+            "| Customer | Invoice ID | Amount | Due Date |",
+            "|:---|:---|:---|:---|"
+        ]
         for r in rows:
-            lines.append(f"- **{r.customer}** — ₹{r.amount:,.0f}")
-
+            lines.append(f"| **{r.customer}** | {r.invoice_id or '—'} | ₹{r.amount:,.0f} | {r.due_date or '—'} |")
         return "\n".join(lines)
     finally:
         db.close()
@@ -164,10 +166,13 @@ def _top_customers(user_id: int) -> str:
         if not rows:
             return "No customer data found yet. Upload an invoice file to get started."
 
-        lines = ["**Top 5 Customers by Revenue**\n"]
+        lines = [
+            "Here are your **Top 5 Customers** by revenue:\n",
+            "| Rank | Customer | Revenue | Invoices |",
+            "|:---|:---|:---|:---|"
+        ]
         for i, r in enumerate(rows, 1):
-            lines.append(f"{i}. **{r.customer}** — ₹{r.total:,.0f} ({r.invoices} invoices)")
-
+            lines.append(f"| {i} | **{r.customer}** | ₹{r.total:,.0f} | {r.invoices} |")
         return "\n".join(lines)
     finally:
         db.close()
@@ -192,13 +197,13 @@ def _low_stock(user_id: int) -> str:
             return "✅ All products have sufficient stock (above 10 units)."
 
         low.sort(key=lambda x: int(x.stock))
-        lines = [f"**Low Stock Items** ({len(low)} products at ≤ 10 units)\n"]
-
+        lines = [
+            f"There are **{len(low)}** products with low stock (≤ 10 units):\n",
+            "| Product Name | Stock | Supplier |",
+            "|:---|:---|:---|"
+        ]
         for item in low:
-            lines.append(
-                f"- **{item.product_name}** — {item.stock} units left"
-                f"{f'  |  Supplier: {item.supplier}' if item.supplier else ''}"
-            )
+            lines.append(f"| **{item.product_name}** | `{item.stock}` units | {item.supplier or '—'} |")
         return "\n".join(lines)
     finally:
         db.close()
@@ -228,15 +233,14 @@ def _expiring_soon(user_id: int) -> str:
             return "✅ No products expiring within the next 30 days."
 
         expiring.sort(key=lambda x: x[1])
-        lines = [f"**Expiring Within 30 Days** ({len(expiring)} products)\n"]
-
+        lines = [
+            f"There are **{len(expiring)}** products expiring within the next 30 days:\n",
+            "| Product Name | Expiry Date | Days Left | Stock |",
+            "|:---|:---|:---|:---|"
+        ]
         for item, exp in expiring:
             days_left = (exp - today).days
-            lines.append(
-                f"- **{item.product_name}** — expires {item.expiry_date}"
-                f"  ({days_left} day{'s' if days_left != 1 else ''} left)"
-                f"{f'  |  Stock: {item.stock}' if item.stock is not None else ''}"
-            )
+            lines.append(f"| **{item.product_name}** | {item.expiry_date} | {days_left} days left | `{item.stock}` units |")
         return "\n".join(lines)
     finally:
         db.close()
@@ -363,9 +367,13 @@ def _overdue_range_detail(user_id: int, query: str) -> str:
             return f"✅ No overdue invoices found in the {range_label} range."
 
         total = sum(r.amount or 0 for r in matched)
-        lines = [f"**Overdue Invoices ({range_label})** — {len(matched)} invoices, total ₹{total:,.0f}:\n"]
+        lines = [
+            f"There are **{len(matched)}** overdue invoices in the {range_label} range totaling **₹{total:,.0f}**:\n",
+            "| Customer | Invoice ID | Amount | Due Date |",
+            "|:---|:---|:---|:---|"
+        ]
         for r in matched:
-            lines.append(f"- **{r.customer}** — ₹{r.amount:,.0f} (due {r.due_date})")
+            lines.append(f"| **{r.customer}** | {r.invoice_id or '—'} | ₹{r.amount:,.0f} | {r.due_date or '—'} |")
         return "\n".join(lines)
     finally:
         db.close()

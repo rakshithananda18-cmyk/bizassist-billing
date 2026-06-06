@@ -89,9 +89,9 @@
 
 /* Bottom scroll fade when chat is active (flowing into the input box) */
 html.chat-active .chat-box {
-    -webkit-mask-image: linear-gradient(to bottom, black 0%, black calc(100% - 40px), transparent 100%);
-    mask-image: linear-gradient(to bottom, black 0%, black calc(100% - 40px), transparent 100%);
-    padding-bottom: 50px;
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, black calc(100% - 16px), transparent 100%);
+    mask-image: linear-gradient(to bottom, black 0%, black calc(100% - 16px), transparent 100%);
+    padding-bottom: 16px;
 }
 
 /* ---- MESSAGES — Claude-style ---- */
@@ -468,7 +468,7 @@ input::placeholder {
 
 /* Paragraphs */
 .bot .md-p {
-    margin: 0 0 8px;
+    margin: 0 0 6px;
     line-height: 1.65;
 }
 
@@ -549,6 +549,49 @@ input::placeholder {
 .bot .md-rupee {
     font-weight: 600;
     color: var(--accent-color);
+}
+
+/* Markdown Tables inside bot messages */
+.bot .md-table-wrapper {
+    overflow-x: auto;
+    margin: 8px 0 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--card-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.bot .md-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    text-align: left;
+}
+
+.bot .md-table th {
+    background: var(--accent-softer);
+    color: var(--text-color);
+    font-weight: 600;
+    padding: 8px 12px;
+    border-bottom: 1.5px solid var(--border-color);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.bot .md-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-color);
+    font-size: 12.5px;
+}
+
+.bot .md-table tr:last-child td {
+    border-bottom: none;
+}
+
+.bot .md-table tr:hover td {
+    background: var(--hover-bg) !important;
 }
 
 /* Strong and em inside bot messages */

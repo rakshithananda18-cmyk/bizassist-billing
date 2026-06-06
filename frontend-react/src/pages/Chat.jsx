@@ -18,16 +18,17 @@ function renderMarkdown(text) {
       .replace(/\*(.+?)\*/g,         '<em>$1</em>')
       .replace(/_(.+?)_/g,           '<em>$1</em>')
       .replace(/`(.+?)`/g,           '<code class="md-inline-code">$1</code>')
-      .replace(/(₹[\d,]+)/g,         '<span class="md-rupee">$1</span>')
+      .replace(/(₹[\d,]+(?:\.\d+)?)/g, '<span class="md-rupee">$1</span>')
   }
 
   const lines = text.split('\n')
   const output = []
-  let inCode = false, inList = false, inOList = false
+  let inCode = false, inList = false, inOList = false, inTable = false
 
   const closeList = () => {
     if (inList)  { output.push('</ul>'); inList  = false }
     if (inOList) { output.push('</ol>'); inOList = false }
+    if (inTable) { output.push('</tbody></table></div>'); inTable = false }
   }
 
   for (const line of lines) {
@@ -38,7 +39,45 @@ function renderMarkdown(text) {
       continue
     }
     if (inCode) { output.push(escape(line) + '\n'); continue }
-    if (!line.trim()) { closeList(); output.push('<br>'); continue }
+    if (!line.trim()) { closeList(); continue }
+
+    // Check if it's a table row
+    const isTableRow = line.trim().startsWith('|') && line.trim().includes('|')
+    if (isTableRow) {
+      if (inList)  { output.push('</ul>'); inList  = false }
+      if (inOList) { output.push('</ol>'); inOList = false }
+
+      // Check if separator like |---|---|
+      const isSeparator = /^[|\s-:]+$/.test(line.trim())
+      if (isSeparator) {
+        continue
+      }
+
+      const cells = line.split('|').map(c => c.trim())
+      if (cells[0] === '') cells.shift()
+      if (cells[cells.length - 1] === '') cells.pop()
+
+      if (!inTable) {
+        output.push('<div class="md-table-wrapper"><table class="md-table"><thead><tr>')
+        cells.forEach(c => {
+          output.push(`<th>${inlineFmt(c)}</th>`)
+        })
+        output.push('</tr></thead><tbody>')
+        inTable = true
+      } else {
+        output.push('<tr>')
+        cells.forEach(c => {
+          output.push(`<td>${inlineFmt(c)}</td>`)
+        })
+        output.push('</tr>')
+      }
+      continue
+    } else {
+      if (inTable) {
+        output.push('</tbody></table></div>')
+        inTable = false
+      }
+    }
 
     const h3 = line.match(/^### (.+)/)
     const h2 = line.match(/^## (.+)/)
@@ -73,11 +112,116 @@ function renderMarkdown(text) {
   return output.join('')
 }
 
-function TierBadge({ source, modelTier, cached }) {
-  if (source === 'db')   return <span className="tier-badge tier-direct">⚡ DIRECT</span>
-  if (cached)            return <span className="tier-badge tier-cache">🔁 CACHED</span>
-  if (modelTier === 'AI_COMPLEX') return <span className="tier-badge tier-complex">🧠 AI_COMPLEX</span>
-  return <span className="tier-badge tier-simple">🤖 AI_SIMPLE</span>
+const tierSvg = (name) => {
+  let paths = null
+  if (name === 'direct') {
+    paths = <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+  } else if (name === 'cache') {
+    paths = (
+      <>
+        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+        <path d="M16 3h5v5" />
+        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+        <path d="M8 21H3v-5" />
+      </>
+    )
+  } else if (name === 'complex') {
+    paths = (
+      <>
+        <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.44 2.5 2.5 0 0 1 0-3.12 3 3 0 0 1 0-4.88 2.5 2.5 0 0 1 0-3.12A2.5 2.5 0 0 1 9.5 2z" />
+        <path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.44 2.5 2.5 0 0 0 0-3.12 3 3 0 0 0 0-4.88 2.5 2.5 0 0 0 0-3.12A2.5 2.5 0 0 0 14.5 2z" />
+      </>
+    )
+  } else if (name === 'simple') {
+    paths = (
+      <>
+        <rect x="3" y="11" width="18" height="10" rx="2" />
+        <circle cx="12" cy="5" r="2" />
+        <path d="M12 7v4" />
+        <line x1="8" y1="16" x2="8" y2="16" />
+        <line x1="16" y1="16" x2="16" y2="16" />
+      </>
+    )
+  }
+
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ display: 'inline-block' }}
+    >
+      {paths}
+    </svg>
+  )
+}
+
+function TierBadge({ source, modelTier, cached, content }) {
+  if (source === 'error') return null
+
+  let effectiveSource = source
+  let effectiveModelTier = modelTier
+
+  if (!effectiveSource) {
+    const isDirect = content && (
+      content.startsWith('✅') ||
+      content.startsWith('**Invoice Summary**') ||
+      content.startsWith('**Total Revenue**') ||
+      content.startsWith('**Overdue Invoices**') ||
+      content.startsWith('**Pending Invoices**') ||
+      content.startsWith('**Low Stock Alert**') ||
+      content.startsWith('**Inventory Summary**') ||
+      content.startsWith('**Business Summary**') ||
+      content.startsWith('**Revenue by Month**') ||
+      content.startsWith('**Customer Revenue**') ||
+      content.startsWith('**Business Snapshot**') ||
+      content.startsWith('**Revenue in') ||
+      content.includes('Client Summary**') ||
+      content.startsWith('There are **') ||
+      content.startsWith('No invoices found') ||
+      content.startsWith('Invalid monthly') ||
+      content.startsWith('Invalid range') ||
+      content.startsWith('Invalid month')
+    )
+    if (isDirect) {
+      effectiveSource = 'db'
+    } else {
+      effectiveSource = 'ai'
+      effectiveModelTier = modelTier || 'AI_SIMPLE'
+    }
+  }
+
+  if (effectiveSource === 'db') {
+    return (
+      <span className="tier-badge tier-direct">
+        {tierSvg('direct')} DIRECT
+      </span>
+    )
+  }
+  if (cached) {
+    return (
+      <span className="tier-badge tier-cache">
+        {tierSvg('cache')} CACHED
+      </span>
+    )
+  }
+  if (effectiveModelTier === 'AI_COMPLEX') {
+    return (
+      <span className="tier-badge tier-complex">
+        {tierSvg('complex')} AI_COMPLEX
+      </span>
+    )
+  }
+  return (
+    <span className="tier-badge tier-simple">
+      {tierSvg('simple')} AI_SIMPLE
+    </span>
+  )
 }
 
 function TypingIndicator() {
@@ -108,8 +252,8 @@ function MessageBubble({ msg, innerRef }) {
           className="message bot"
           dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
         />
-        {msg.source && (
-          <TierBadge source={msg.source} modelTier={msg.model_tier} cached={msg.cached} />
+        {msg.role === 'assistant' && (
+          <TierBadge source={msg.source} modelTier={msg.model_tier} cached={msg.cached} content={msg.content} />
         )}
       </div>
     </div>
@@ -173,6 +317,15 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   const rlInterval = useRef(null)
   const activeBotMessageRef = useRef(null)
   const typingTimeoutRef = useRef(null)
+
+  const scrollToBottom = useCallback((behavior = 'smooth') => {
+    if (chatRef.current) {
+      chatRef.current.scrollTo({
+        top: chatRef.current.scrollHeight,
+        behavior
+      })
+    }
+  }, [])
 
   // Sync biz_name dynamically when updated elsewhere
   useEffect(() => {
@@ -584,8 +737,14 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
 
   // Scroll messages
   useEffect(() => {
-    chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, loading])
+    scrollToBottom('smooth')
+    // When chips/suggestions expand, the layout transitions over 280ms.
+    // Trigger scrolling at intervals during the transition.
+    const timers = [50, 100, 150, 200, 250, 300].map(delay =>
+      setTimeout(() => scrollToBottom('smooth'), delay)
+    )
+    return () => timers.forEach(clearTimeout)
+  }, [messages, loading, chipsExpanded, suggestions, scrollToBottom])
 
   // Chat-active state effect
   useEffect(() => {
