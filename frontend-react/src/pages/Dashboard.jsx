@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
+import { useDialog } from '../contexts/DialogContext'
+
 
 function fmtAmount(n) {
   if (!n && n !== 0) return '—'
@@ -176,6 +178,7 @@ function CustomersBarChart({ customers, sendChip }) {
 
 export default function Dashboard() {
   const { authFetch } = useAuth()
+  const { showAlert, showConfirm, showError } = useDialog()
   const navigate = useNavigate()
   const [summary, setSummary] = useState(null)
   const [customers, setCustomers] = useState([])
@@ -247,12 +250,12 @@ export default function Dashboard() {
       if (!res.ok || resp.error) {
         throw new Error(resp.error || 'Upload failed')
       }
-      alert(`File type: ${resp.file_type}\nRows processed: ${resp.rows}`)
+      showAlert(`File type: ${resp.file_type}\nRows processed: ${resp.rows}`)
       loadDashboard()
       // Dispatch event to reload global stat cards in layout
       window.dispatchEvent(new CustomEvent('data-updated'))
     } catch (err) {
-      alert('Upload failed: ' + err.message)
+      showError(err, 'Upload failed')
     } finally {
       setUploading(false)
       e.target.value = ''
@@ -285,9 +288,17 @@ export default function Dashboard() {
         <button
           className="chip upload-btn-highlight"
           style={{ marginTop: 14 }}
-          onClick={() => document.getElementById('file-upload-dash').click()}
+          disabled={uploading}
+          onClick={() => !uploading && document.getElementById('file-upload-dash').click()}
         >
-          {uploading ? 'Uploading...' : '+ Upload data'}
+          {uploading ? (
+            <svg className="control-btn-spinner" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" stroke="rgba(128, 128, 128, 0.25)" strokeWidth="2.5" fill="none" />
+              <path d="M12 2a10 10 0 0 1 10 10" />
+            </svg>
+          ) : (
+            '+ Upload data'
+          )}
         </button>
         <input type="file" id="file-upload-dash" accept=".csv,.xlsx,.pdf" onChange={handleFileUpload} hidden />
       </div>
@@ -340,8 +351,19 @@ export default function Dashboard() {
       <div className="widget" style={{ marginBottom: 12 }}>
         <div className="widget-title">Quick Actions</div>
         <div className="vactions" style={{ marginTop: 12, display: 'flex', gap: 10 }}>
-          <button className={`vaction-btn ${isDbEmpty ? 'upload-btn-highlight' : ''}`} onClick={() => document.getElementById('file-upload-dash').click()}>
-            <span className="vaction-icon">↑</span> {uploading ? 'Uploading...' : 'Upload Data'}
+          <button
+            className={`vaction-btn ${isDbEmpty ? 'upload-btn-highlight' : ''}`}
+            disabled={uploading}
+            onClick={() => !uploading && document.getElementById('file-upload-dash').click()}
+          >
+            {uploading ? (
+              <svg className="control-btn-spinner" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" stroke="rgba(128, 128, 128, 0.25)" strokeWidth="2.5" fill="none" />
+                <path d="M12 2a10 10 0 0 1 10 10" />
+              </svg>
+            ) : (
+              <><span className="vaction-icon">↑</span> Upload Data</>
+            )}
           </button>
           <input type="file" id="file-upload-dash" accept=".csv,.xlsx,.pdf" onChange={handleFileUpload} hidden />
           <button className="vaction-btn" onClick={() => sendChip('Generate a business summary')}>

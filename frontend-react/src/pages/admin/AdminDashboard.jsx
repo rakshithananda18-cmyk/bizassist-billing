@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useDialog } from '../../contexts/DialogContext'
 import { API_BASE } from '../../config'
 
 export default function AdminDashboard() {
   const { authFetch, adminLogout } = useAuth()
+  const { showAlert, showConfirm, showError } = useDialog()
   const [stats, setStats] = useState({ businesses: 0, revenue: 0, files: 0 })
   const [loading, setLoading] = useState(true)
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -36,36 +38,36 @@ export default function AdminDashboard() {
   }
 
   async function handleFlushAll() {
-    if (!window.confirm('Flush context and query response caches for all users?')) return
+    if (!(await showConfirm('Flush context and query response caches for all users?'))) return
     try {
       const res = await authFetch(`${API_BASE}/admin/flush-all-cache`, { method: 'POST' })
       const data = await res.json()
-      alert(data.message || 'All caches flushed successfully.')
+      await showAlert(data.message || 'All caches flushed successfully.')
     } catch (err) {
-      alert(err.message)
+      await showError(err)
     }
   }
 
   async function handleResetChroma() {
-    if (!window.confirm('Reset Chroma documents collection? This fixes dimensionality mismatch errors.')) return
+    if (!(await showConfirm('Reset Chroma documents collection? This fixes dimensionality mismatch errors.'))) return
     try {
       const res = await authFetch(`${API_BASE}/admin/reset-chroma-documents`, { method: 'POST' })
       const data = await res.json()
-      alert(data.message || 'Chroma documents reset successfully.')
+      await showAlert(data.message || 'Chroma documents reset successfully.')
     } catch (err) {
-      alert(err.message)
+      await showError(err)
     }
   }
 
   async function handleWipeAllData() {
-    if (!window.confirm('WARNING: This will permanently delete all dynamic business data (invoices, inventory, payments, uploads, document embeddings, and chat messages) across all user accounts. Proceed?')) return
+    if (!(await showConfirm('WARNING: This will permanently delete all dynamic business data (invoices, inventory, payments, uploads, document embeddings, and chat messages) across all user accounts. Proceed?'))) return
     try {
       const res = await authFetch(`${API_BASE}/admin/wipe-all-data`, { method: 'DELETE' })
       const data = await res.json()
-      alert(data.message || 'All dynamic business data wiped successfully.')
+      await showAlert(data.message || 'All dynamic business data wiped successfully.')
       loadDashboardStats()
     } catch (err) {
-      alert(err.message)
+      await showError(err)
     }
   }
 

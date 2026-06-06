@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
+import { useDialog } from '../contexts/DialogContext'
 
 const ACCEPTED = '.csv,.xlsx,.pdf'
 
 export default function Upload() {
   const { authFetch } = useAuth()
+  const { showAlert, showConfirm, showError } = useDialog()
   const [uploads,   setUploads]   = useState([])
   const [dragging,  setDragging]  = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -66,13 +68,14 @@ export default function Upload() {
   }
 
   async function deleteUpload(id, filename) {
-    if (!window.confirm(`Delete "${filename}"? This cannot be undone.`)) return
+    const confirmed = await showConfirm(`Delete "${filename}"? This cannot be undone.`)
+    if (!confirmed) return
     try {
       await authFetch(`${API_BASE}/upload/${id}`, { method: 'DELETE' })
       loadUploads()
       window.dispatchEvent(new CustomEvent('data-updated'))
     } catch (err) {
-      alert('Delete failed: ' + err.message)
+      await showError(err, 'Delete failed')
     }
   }
 
@@ -119,7 +122,10 @@ export default function Upload() {
         />
         {uploading ? (
           <>
-            <div className="drop-spinner" />
+            <svg className="control-btn-spinner" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" stroke="rgba(128, 128, 128, 0.25)" strokeWidth="2.5" fill="none" />
+              <path d="M12 2a10 10 0 0 1 10 10" />
+            </svg>
             <div className="drop-label">{progress}</div>
           </>
         ) : (

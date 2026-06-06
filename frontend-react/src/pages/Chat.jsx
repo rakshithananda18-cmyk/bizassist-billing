@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useDialog } from '../contexts/DialogContext'
 import { API_BASE } from '../config'
 
 // Markdown renderer helper
@@ -199,6 +200,8 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   }, [authFetch])
 
   // Select session
+  const { showAlert, showConfirm, showError } = useDialog()
+
   const selectSession = useCallback(async (id) => {
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
     setActiveId(id)
@@ -231,7 +234,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   // Delete session
   const deleteSession = useCallback(async (e, id) => {
     if (e) e.stopPropagation()
-    if (!window.confirm('Delete this conversation?')) return
+    if (!(await showConfirm('Delete this conversation?'))) return
     try {
       const res = await authFetch(`${API_BASE}/chat/history?session_id=${id}`, { method: 'DELETE' })
       if (res.ok) {
@@ -244,7 +247,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
         window.dispatchEvent(new CustomEvent('ai-sessions-updated'))
       }
     } catch {}
-  }, [authFetch, activeId, startNewChat, loadSessions])
+  }, [authFetch, activeId, startNewChat, loadSessions, showConfirm])
 
   // Rename session (persists via backend, then syncs both lists)
   const renameSession = useCallback(async (id, title) => {
@@ -491,9 +494,10 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
       })
       const resp = await res.json()
       if (!res.ok || resp.error) {
-        throw new Error(resp.error || 'Upload failed')
+        const reason = resp.error || resp.detail || resp.message || res.statusText || `Upload failed (${res.status})`
+        throw new Error(reason)
       }
-      alert(`File type: ${resp.file_type}\nRows processed: ${resp.rows}`)
+      await showAlert(`File type: ${resp.file_type}\nRows processed: ${resp.rows}`)
       // Dispatch refresh events
       window.dispatchEvent(new CustomEvent('data-updated'))
       
@@ -502,7 +506,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
       setUploadedQuery(`Analyze the uploaded ${queryType}?`)
       setChipsExpanded(true)
     } catch (err) {
-      alert('Upload failed: ' + err.message)
+      await showError(err, 'Upload failed')
     } finally {
       setUploading(false)
       e.target.value = ''
@@ -764,7 +768,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
                 value={input}
                 onChange={handleInput}
                 onKeyDown={handleKeyDown}
-                placeholder={rateLimited ? `⏳ Rate limited — retry in ${rlTimer}s` : "Message BizAssist..."}
+                placeholder={rateLimited ? `⏳ Rate limited — retry in ${rlTimer}s` : "Write a message . . . "}
                 disabled={rateLimited}
                 style={{ resize: 'none' }}
               />
@@ -809,7 +813,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
                 <button
                   className="control-btn mic-btn"
                   title="Voice Input (Future feature)"
-                  onClick={() => alert("Voice input feature coming soon!")}
+                  onClick={() => showAlert('Voice input feature coming soon!')}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>

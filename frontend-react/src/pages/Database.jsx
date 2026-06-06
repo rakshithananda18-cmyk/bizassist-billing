@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
+import { useDialog } from '../contexts/DialogContext'
 
 const LIMIT = 7
 
@@ -41,6 +42,7 @@ function Pagination({ total, page, limit, onPage }) {
 
 export default function Database() {
   const { authFetch } = useAuth()
+  const { showAlert, showConfirm, showError } = useDialog()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -104,12 +106,13 @@ export default function Database() {
       })
       const resp = await res.json()
       if (!res.ok || resp.error) {
-        throw new Error(resp.error || 'Upload failed')
+        const reason = resp.error || resp.detail || resp.message || res.statusText || `Upload failed (${res.status})`
+        throw new Error(reason)
       }
-      alert(`File type: ${resp.file_type}\nRows processed: ${resp.rows}`)
+      await showAlert(`File type: ${resp.file_type}\nRows processed: ${resp.rows}`)
       loadDatabase()
     } catch (err) {
-      alert('Upload failed: ' + err.message)
+      await showError(err, 'Upload failed')
     } finally {
       setUploading(false)
       e.target.value = ''
@@ -139,7 +142,8 @@ export default function Database() {
   }
 
   async function handleDeleteUpload(id) {
-    if (!window.confirm('Are you sure you want to delete this file? This action cannot be undone.')) return
+    const confirmed = await showConfirm('Are you sure you want to delete this file? This action cannot be undone.')
+    if (!confirmed) return
 
     try {
       const res = await authFetch(`${API_BASE}/upload/${id}`, { method: 'DELETE' })
@@ -147,10 +151,10 @@ export default function Database() {
       if (!res.ok || resp.error) {
         throw new Error(resp.error || 'Delete failed')
       }
-      alert('File deleted successfully')
+      await showAlert('File deleted successfully')
       loadDatabase()
     } catch (err) {
-      alert('Failed to delete file: ' + err.message)
+      await showError(err, 'Failed to delete file')
     }
   }
 
@@ -164,7 +168,7 @@ export default function Database() {
         throw new Error('Wipe operation failed')
       }
     } catch (err) {
-      alert(err.message)
+      await showError(err)
       setShowDeleteModal(false)
     }
   }
@@ -207,9 +211,17 @@ export default function Database() {
             fontWeight: 600,
             cursor: 'pointer'
           }}
-          onClick={() => document.getElementById('file-upload-db').click()}
+          disabled={uploading}
+          onClick={() => !uploading && document.getElementById('file-upload-db').click()}
         >
-          {uploading ? 'Uploading...' : '+ Upload data'}
+          {uploading ? (
+            <svg className="control-btn-spinner" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" stroke="rgba(128, 128, 128, 0.25)" strokeWidth="2.5" fill="none" />
+              <path d="M12 2a10 10 0 0 1 10 10" />
+            </svg>
+          ) : (
+            '+ Upload data'
+          )}
         </button>
         <input type="file" id="file-upload-db" accept=".csv,.xlsx,.pdf" onChange={handleFileUpload} hidden />
       </div>
@@ -264,7 +276,7 @@ export default function Database() {
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button
-              onClick={() => document.getElementById('file-upload-db').click()}
+              onClick={() => !uploading && document.getElementById('file-upload-db').click()}
               style={{
                 padding: '8px 12px',
                 border: '1px solid var(--border-color)',
@@ -280,8 +292,14 @@ export default function Database() {
               }}
               disabled={uploading}
             >
-              <span style={{ fontSize: '13px', fontWeight: 'bold' }}>↑</span>
-              {uploading ? 'Uploading...' : 'Upload Data'}
+              {uploading ? (
+                <svg className="control-btn-spinner" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" stroke="rgba(128, 128, 128, 0.25)" strokeWidth="2.5" fill="none" />
+                  <path d="M12 2a10 10 0 0 1 10 10" />
+                </svg>
+              ) : (
+                <><span style={{ fontSize: '13px', fontWeight: 'bold' }}>↑</span> Upload Data</>
+              )}
             </button>
             <input type="file" id="file-upload-db" accept=".csv,.xlsx,.pdf" onChange={handleFileUpload} hidden />
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
 import { Icon } from './icons'
+import { useDialog } from '../contexts/DialogContext'
 
 // Donut Arc Helper
 function DonutChart({ paid, pending, overdue, healthPct }) {
@@ -34,6 +35,7 @@ function DonutChart({ paid, pending, overdue, healthPct }) {
 // InsightsPanel — renders its own header (with collapse/close from props) + content
 export default function InsightsPanel({ onCollapse, onCloseMobile }) {
   const { authFetch } = useAuth()
+  const { showConfirm } = useDialog()
   const [sessions, setSessions] = useState([])
   const [summary, setSummary] = useState(null)
   const [customers, setCustomers] = useState([])
@@ -113,7 +115,8 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
 
   async function handleDeleteSession(e, id) {
     if (e) e.stopPropagation()
-    if (!window.confirm('Delete this conversation?')) return
+    const confirmed = await showConfirm('Delete this conversation?')
+    if (!confirmed) return
     try {
       const res = await authFetch(`${API_BASE}/chat/history?session_id=${id}`, {
         method: 'DELETE'

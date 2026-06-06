@@ -307,9 +307,10 @@ textarea {
     box-shadow: none !important;
 }
 
-textarea::placeholder {
+textarea::placeholder,
+input::placeholder {
     color: var(--secondary-text);
-    font-style: italic;
+    font-style: normal;
 }
 
 /* Status indicator dot removed */

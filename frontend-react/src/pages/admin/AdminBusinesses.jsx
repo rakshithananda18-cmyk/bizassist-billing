@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useDialog } from '../../contexts/DialogContext'
 import { API_BASE } from '../../config'
 
 export default function AdminBusinesses() {
   const { authFetch, adminUser } = useAuth()
+  const { showAlert, showConfirm, showError } = useDialog()
   const [businesses, setBusinesses] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -49,26 +51,26 @@ export default function AdminBusinesses() {
 
   // --- WIPE USER DATA ---
   async function handleWipeUser(id, name) {
-    if (!window.confirm(`WARNING: This will permanently delete the user account and all dynamic business data (invoices, inventory, payments, uploads, document embeddings, and chat messages) specifically for ${name}. Proceed?`)) return
+    if (!(await showConfirm(`WARNING: This will permanently delete the user account and all dynamic business data (invoices, inventory, payments, uploads, document embeddings, and chat messages) specifically for ${name}. Proceed?`))) return
     try {
       const res = await authFetch(`${API_BASE}/admin/wipe-user-data/${id}`, { method: 'DELETE' })
       const data = await res.json()
-      alert(data.message || `Wiped all data for ${name} successfully.`)
+      await showAlert(data.message || `Wiped all data for ${name} successfully.`)
       loadBusinesses()
     } catch (err) {
-      alert(err.message)
+      await showError(err)
     }
   }
 
   // --- FLUSH MERCH CACHE ---
   async function handleFlushCache(id, name) {
-    if (!window.confirm(`Flush cached context and response lookups for ${name}?`)) return
+    if (!(await showConfirm(`Flush cached context and response lookups for ${name}?`))) return
     try {
       const res = await authFetch(`${API_BASE}/admin/flush-cache/${id}`, { method: 'POST' })
       const data = await res.json()
-      alert(data.message || `Flushed cache for ${name} successfully.`)
+      await showAlert(data.message || `Flushed cache for ${name} successfully.`)
     } catch (err) {
-      alert(err.message)
+      await showError(err)
     }
   }
 
@@ -195,7 +197,7 @@ export default function AdminBusinesses() {
       const data = await res.json()
       setInspectDetails(data)
     } catch (err) {
-      alert(err.message)
+      await showError(err)
       setShowInspectModal(false)
     } finally {
       setInspectLoading(false)

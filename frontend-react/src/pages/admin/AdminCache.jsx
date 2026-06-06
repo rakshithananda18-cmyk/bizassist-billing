@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useDialog } from '../../contexts/DialogContext'
 import { API_BASE } from '../../config'
 
 export default function AdminCache() {
   const { authFetch } = useAuth()
+  const { showAlert, showConfirm, showError } = useDialog()
   const [cacheStats, setCacheStats] = useState({ context_cache: [], query_cache: [] })
   const [loading, setLoading] = useState(true)
 
@@ -26,26 +28,26 @@ export default function AdminCache() {
   }
 
   async function handleFlushAll() {
-    if (!window.confirm('Flush context and query response caches for all users?')) return
+    if (!(await showConfirm('Flush context and query response caches for all users?'))) return
     try {
       const res = await authFetch(`${API_BASE}/admin/flush-all-cache`, { method: 'POST' })
       const data = await res.json()
-      alert(data.message || 'All caches flushed successfully.')
+      await showAlert(data.message || 'All caches flushed successfully.')
       loadCache()
     } catch (err) {
-      alert(err.message)
+      await showError(err)
     }
   }
 
   async function handleResetChroma() {
-    if (!window.confirm('Reset Chroma documents collection? This fixes dimensionality mismatch errors.')) return
+    if (!(await showConfirm('Reset Chroma documents collection? This fixes dimensionality mismatch errors.'))) return
     try {
       const res = await authFetch(`${API_BASE}/admin/reset-chroma-documents`, { method: 'POST' })
       const data = await res.json()
-      alert(data.message || 'Chroma documents reset successfully.')
+      await showAlert(data.message || 'Chroma documents reset successfully.')
       loadCache()
     } catch (err) {
-      alert(err.message)
+      await showError(err)
     }
   }
 

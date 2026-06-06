@@ -22,6 +22,8 @@ import AdminBusinesses from './pages/admin/AdminBusinesses'
 import AdminUsage      from './pages/admin/AdminUsage'
 import AdminCache      from './pages/admin/AdminCache'
 
+import { DialogProvider } from './contexts/DialogContext'
+
 function ScrollToTop() {
   const { pathname } = useLocation()
   useEffect(() => {
@@ -33,7 +35,8 @@ function ScrollToTop() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <DialogProvider>
+        <BrowserRouter>
         <ScrollToTop />
         <Routes>
 
@@ -67,6 +70,7 @@ export default function App() {
 
         </Routes>
       </BrowserRouter>
+      </DialogProvider>
     </AuthProvider>
   )
 }
