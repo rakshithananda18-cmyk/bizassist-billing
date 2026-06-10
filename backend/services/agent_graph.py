@@ -228,6 +228,49 @@ def payment_agent_node(state: AgentState) -> AgentState:
     return {**state, "payment_result": result}
 
 
+# ── Synthesizer prompt + message builder (shared by both run paths) ──
+# One source of truth so the non-stream node and the streaming path can't drift.
+
+_SYNTH_SYSTEM = (
+    "You are BIZASSIST — a sharp, direct business advisor for Indian distributors and wholesalers. "
+    "Specialist agents have fetched the real business data below. Synthesize it into a tight, useful response.\n\n"
+    "STRICT RULES:\n"
+    "1. Never repeat a section header. Each heading appears exactly once.\n"
+    "2. Never include a section then dismiss it as 'not relevant' — skip it entirely if it adds nothing.\n"
+    "3. Do not restate the symptom as the root cause. Dig one level deeper: "
+    "   Is it aged debt (>90 days, likely bad debt)? A few large accounts dominating the risk? "
+    "   Seasonal slump? Recent invoices that are just late?\n"
+    "4. When prioritising overdue recovery, triage by RECOVERABILITY first, amount second:\n"
+    "   - 0–60 days overdue → call this week, high chance of payment\n"
+    "   - 61–180 days → negotiate payment plan, partial recovery\n"
+    "   - 180+ days → legal notice or write-off consideration\n"
+    "5. Be specific: name the customer, invoice ID, amount, days overdue. No generic advice.\n"
+    "6. End with exactly ONE '## This Week: Top 3 Actions' section — concrete steps, not platitudes.\n"
+    "7. Never invent numbers. Only use data the agents provided.\n"
+    "8. Set realistic expectations — do not promise 100% collection in a week."
+)
+
+
+def _synth_messages(user_query, history, plan, invoice_result, inventory_result, payment_result):
+    """Assemble the full message list (system + last 2 turns + user) for the synthesizer."""
+    data_blocks = [r for r in [invoice_result, inventory_result, payment_result] if r]
+    combined_data = "\n\n".join(data_blocks) or "No specific data retrieved."
+    overall_goal  = (plan or {}).get("overall_goal", user_query)
+
+    # last 2 turns only (4 messages) — prevents token bloat as the session grows
+    messages = [{"role": m["role"], "content": m["content"]} for m in (history or [])[-4:]]
+    messages.append({
+        "role": "user",
+        "content": (
+            f"Goal: {overall_goal}\n\n"
+            f"--- Agent-fetched data ---\n{combined_data}\n"
+            f"-------------------------\n\n"
+            f"Original query: {user_query}"
+        ),
+    })
+    return [{"role": "system", "content": _SYNTH_SYSTEM}] + messages
+
+
 # ── Node 5: Synthesizer (Growth Advisor) ─────────────────────────────
 
 def synthesizer_node(state: AgentState) -> AgentState:
@@ -238,55 +281,15 @@ def synthesizer_node(state: AgentState) -> AgentState:
     """
     logger.info("[SYNTH] Building final growth plan...")
 
-    data_blocks = [
-        r for r in [
-            state.get("invoice_result"),
-            state.get("inventory_result"),
-            state.get("payment_result"),
-        ] if r
-    ]
-    combined_data = "\n\n".join(data_blocks) or "No specific data retrieved."
-    overall_goal  = state["plan"].get("overall_goal", state["user_query"])
-
-    SYSTEM = (
-        "You are BIZASSIST — a sharp, direct business advisor for Indian distributors and wholesalers. "
-        "Specialist agents have fetched the real business data below. Synthesize it into a tight, useful response.\n\n"
-        "STRICT RULES:\n"
-        "1. Never repeat a section header. Each heading appears exactly once.\n"
-        "2. Never include a section then dismiss it as 'not relevant' — skip it entirely if it adds nothing.\n"
-        "3. Do not restate the symptom as the root cause. Dig one level deeper: "
-        "   Is it aged debt (>90 days, likely bad debt)? A few large accounts dominating the risk? "
-        "   Seasonal slump? Recent invoices that are just late?\n"
-        "4. When prioritising overdue recovery, triage by RECOVERABILITY first, amount second:\n"
-        "   - 0–60 days overdue → call this week, high chance of payment\n"
-        "   - 61–180 days → negotiate payment plan, partial recovery\n"
-        "   - 180+ days → legal notice or write-off consideration\n"
-        "5. Be specific: name the customer, invoice ID, amount, days overdue. No generic advice.\n"
-        "6. End with exactly ONE '## This Week: Top 3 Actions' section — concrete steps, not platitudes.\n"
-        "7. Never invent numbers. Only use data the agents provided.\n"
-        "8. Set realistic expectations — do not promise 100% collection in a week."
+    messages = _synth_messages(
+        state["user_query"], state.get("history", []), state["plan"],
+        state.get("invoice_result"), state.get("inventory_result"), state.get("payment_result"),
     )
-
-    # Include last 2 turns only (4 messages max) — prevents token bloat as session grows
-    recent_history = state.get("history", [])[-4:]
-    messages = []
-    for msg in recent_history:
-        messages.append({"role": msg["role"], "content": msg["content"]})
-
-    messages.append({
-        "role": "user",
-        "content": (
-            f"Goal: {overall_goal}\n\n"
-            f"--- Agent-fetched data ---\n{combined_data}\n"
-            f"-------------------------\n\n"
-            f"Original query: {state['user_query']}"
-        )
-    })
 
     s_in = s_out = 0
     try:
         resp = client.chat.completions.create(
-            messages=[{"role": "system", "content": SYSTEM}] + messages,
+            messages=messages,
             model=MODEL_SYNTH,   # big model — needs reasoning + synthesis
             temperature=0.2,
             max_tokens=1800,
@@ -396,7 +399,11 @@ def run_agent_graph(user_query: str, business_id: int, history: list) -> str:
     except Exception as te:
         logger.warning(f"[TOKENS] Import/DB error: {te}")
 
-    return result["final_response"]
+    return {
+        "text":       result["final_response"],
+        "tokens_in":  total_in,
+        "tokens_out": total_out,
+    }
 
 
 # ── Streaming entry point ─────────────────────────────────────────────
@@ -446,43 +453,15 @@ def run_agent_graph_stream(user_query: str, business_id: int, history: list):
 
     yield _sse("status", content="Building your action plan\u2026")
 
-    data_blocks = [r for r in [
-        state.get("invoice_result"),
-        state.get("inventory_result"),
-        state.get("payment_result"),
-    ] if r]
-    combined_data = "\n\n".join(data_blocks) or "No specific data retrieved."
-    overall_goal  = state["plan"].get("overall_goal", user_query)
-
-    SYSTEM = (
-        "You are BIZASSIST \u2014 a sharp, direct business advisor for Indian distributors and wholesalers. "
-        "Specialist agents have fetched the real business data below. Synthesize it into a tight, useful response.\n\n"
-        "STRICT RULES:\n"
-        "1. Never repeat a section header. Each heading appears exactly once.\n"
-        "2. Never include a section then dismiss it as not relevant \u2014 skip it entirely if it adds nothing.\n"
-        "3. Do not restate the symptom as the root cause. Dig one level deeper.\n"
-        "4. Triage overdue by recoverability: 0\u201360d call this week; 61\u2013180d payment plan; 180+d legal/write-off.\n"
-        "5. Be specific: name customer, invoice ID, amount, days overdue. No generic advice.\n"
-        "6. End with exactly ONE ## This Week: Top 3 Actions section.\n"
-        "7. Never invent numbers. Set realistic expectations."
+    messages = _synth_messages(
+        user_query, history, state["plan"],
+        state.get("invoice_result"), state.get("inventory_result"), state.get("payment_result"),
     )
-
-    recent_history = history[-4:]
-    messages = [{"role": h["role"], "content": h["content"]} for h in recent_history]
-    messages.append({
-        "role": "user",
-        "content": (
-            f"Goal: {overall_goal}\n\n"
-            f"--- Agent-fetched data ---\n{combined_data}\n"
-            f"-------------------------\n\n"
-            f"Original query: {user_query}"
-        )
-    })
 
     full_text = ""
     try:
         stream = client.chat.completions.create(
-            messages=[{"role": "system", "content": SYSTEM}] + messages,
+            messages=messages,
             model=MODEL_SYNTH,
             temperature=0.2,
             max_tokens=1800,

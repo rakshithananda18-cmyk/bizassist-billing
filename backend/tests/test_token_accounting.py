@@ -135,6 +135,20 @@ def _parse_sse_done(body: str) -> dict:
     return done or {}
 
 
+@patch("services.ai_router.run_agent_graph")
+def test_ai_complex_surfaces_real_tokens(mock_graph, auth):
+    """AI_COMPLEX now reports the agent run's token total in meta.tokens (not 0)."""
+    invalidate()
+    mock_graph.return_value = {"text": "Recovery plan.", "tokens_in": 800, "tokens_out": 400}
+    resp = client.post("/ask",
+                       json={"message": "analyze my business and give me a recovery plan"},
+                       headers=auth["headers"])
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["source"] == "ai"
+    assert data["meta"]["tokens"] == 1200, f"expected 800+400, got {data['meta']['tokens']}"
+
+
 @patch("routes.ask._client.chat.completions.create")
 def test_ask_and_stream_agree_on_direct_source(mock_create, auth):
     """The single pipeline => /ask and /ask/stream resolve DIRECT identically."""

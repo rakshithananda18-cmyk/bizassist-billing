@@ -31,6 +31,7 @@ import logging
 import os
 import hashlib
 import uuid
+from datetime import date
 from typing import Optional
 
 from groq import Groq
@@ -314,6 +315,24 @@ def _safe_int(v) -> int:
     return int(v) if isinstance(v, (int, float)) else 0
 
 
+def _cache_salt(user_id: int, route: str, user_query: str, topic: str, day: str = None) -> str:
+    """
+    Build the query-cache key (C6). The current DATE is folded in so day-sensitive
+    answers ("days overdue", "expiring soon", "today's priorities") can't be served
+    stale across a day boundary — a new day yields a new salt automatically, which
+    also makes a longer cache TTL safe.
+
+      AI_COMPLEX → keyed on exact query (data-driven).
+      else       → keyed on topic, so "show overdue" and "who owes me" share a hit.
+    """
+    day = day or date.today().isoformat()
+    if route == "AI_COMPLEX":
+        key = f"{user_id}:{day}:{user_query}"
+    else:
+        key = f"{user_id}:{day}:{topic}"
+    return hashlib.md5(key.encode("utf-8")).hexdigest()
+
+
 def _log_token_usage(business_id, model, tier, usage, acc) -> None:
     """
     Record one Groq call's token usage to TokenUsage AND add it to the running
@@ -549,11 +568,8 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
 
     # Cache salt: AI_COMPLEX keys on exact query (data-driven); everything else
     # keys on topic so "show overdue" and "who owes me" share one entry.
-    _pre_topic = _detect_topic(user_query)
-    if route == "AI_COMPLEX":
-        history_salt = hashlib.md5(f"{active_user_id}:{user_query}".encode("utf-8")).hexdigest()
-    else:
-        history_salt = hashlib.md5(f"{active_user_id}:{_pre_topic}".encode("utf-8")).hexdigest()
+    _pre_topic   = _detect_topic(user_query)
+    history_salt = _cache_salt(active_user_id, route, user_query, _pre_topic)
 
     # ── Layer 1.5: CONVERSATIONAL short-circuit ─────────────────────
     if route == "CONVERSATIONAL":
@@ -693,14 +709,25 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
                     evt = json.loads(event_str[6:])  # strip "data: "
                     if evt.get("type") == "ag_done":
                         full_text = evt.get("full_text", "")
+                        _toks = evt.get("tokens") or {}
+                        acc["in"]  += _safe_int(_toks.get("input"))
+                        acc["out"] += _safe_int(_toks.get("output"))
                         continue  # don't forward ag_done to the client
                 except Exception:
                     pass
                 yield {"type": "raw_sse", "data": event_str}
         else:
-            full_text = run_agent_graph(
+            _ag = run_agent_graph(
                 user_query=user_query, business_id=active_user_id, history=history,
             )
+            # run_agent_graph returns {text, tokens_in, tokens_out}; tolerate a bare
+            # string too (older callers / test mocks).
+            if isinstance(_ag, dict):
+                full_text  = _ag.get("text", "")
+                acc["in"]  += _safe_int(_ag.get("tokens_in"))
+                acc["out"] += _safe_int(_ag.get("tokens_out"))
+            else:
+                full_text = _ag or ""
         selected_model = MODEL_COMPLEX
 
     # ── Layer 3b: AI_SIMPLE → tool-calling agent ────────────────────

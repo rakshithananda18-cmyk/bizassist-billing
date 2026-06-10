@@ -24,14 +24,14 @@ A module-level dict is reset and mutated per request. Two concurrent AI_COMPLEX 
 
 **C2. ✅ `handle()` and `handle_stream()` in `ai_router.py` are ~90% duplicated (1,100 lines).**
 Session resolution, history fetch, classification, rate limit, cache, DIRECT, intent-first, AI paths — all written twice. They have *already drifted*: the non-stream path reports `"meta": {"tokens": 0}` for AI responses (line 692) while the stream path counts real tokens. Every future fix must be made twice or the paths diverge further. Same disease in `agent_graph.py` (`run_agent_graph` vs `run_agent_graph_stream` duplicate the synthesizer prompt with slightly different wording).
-> **✅ Resolved (ai_router):** collapsed into one `process_query()` generator; `handle()`/`handle_stream()` are now thin adapters. The `tokens: 0` drift is fixed. ~1,116 lines → ~770. All 100 tests green + new parity test (`test_token_accounting.py`). ⬜ The `agent_graph` synthesizer duplication is still open (belongs with Phase 2).
+> **✅ Resolved:** `ai_router` collapsed into one `process_query()` generator (`handle()`/`handle_stream()` are thin adapters; `tokens:0` drift fixed; ~1,116→~770 lines). The `agent_graph` synthesizer duplication is also gone — one shared `_SYNTH_SYSTEM` + `_synth_messages()` for both run paths. All tests green.
 
-**C3. 🟡 Token accounting is incomplete → budgets are fiction.**
+**C3. ✅ Token accounting is incomplete → budgets are fiction.**
 - `_polish()` makes a Groq call (~250 tokens) on every first DIRECT/intent answer — never logged to `TokenUsage`.
 - CONVERSATIONAL replies call Groq — never logged.
 - Non-stream AI_SIMPLE/AI_COMPLEX responses report `tokens: 0` to the client.
 The daily token budget in `rate_limiter.py` enforces against numbers that undercount real spend.
-> **🟡 Partial:** every Groq call in `ai_router` now flows through one `_log_token_usage()` helper — `_polish` and CONVERSATIONAL are logged, and `meta.tokens` carries real totals (covered by `test_token_accounting.py`). ⬜ Still open: AI_COMPLEX/`agent_graph` token attribution (tied to C1) and the rate-limiter SQL aggregate (H4).
+> **✅ Resolved:** every Groq call in `ai_router` flows through one `_log_token_usage()` helper (`_polish`, CONVERSATIONAL, tool rounds); `agent_graph` tokens are logged to `TokenUsage` and now surfaced to the client; the rate-limiter daily total is a SQL aggregate (H4). Budgets and the admin page reflect real spend. Covered by `test_token_accounting.py` + `test_rate_limiter.py`.
 
 **C4. ✅ Global cache invalidation on every upload.**
 `upload.py` calls `invalidate()` which clears **all users'** context and query caches. One tenant uploading a CSV evicts every other tenant's warm cache. `invalidate_user_cache(user_id)` already exists — use it.
@@ -97,15 +97,15 @@ The daily token budget in `rate_limiter.py` enforces against numbers that underc
 Sequenced so each phase ships independently and de-risks the next. Estimated efforts assume current velocity.
 
 ### Phase 0 — Stabilize the core (3–4 days) ← do this first
-1. **✅ Extract one pipeline.** Refactor `ai_router.py` into a single `process_query()` engine that returns/yields events; `/ask` collects them into one JSON, `/ask/stream` forwards them as SSE. One code path, zero drift. Do the same for `agent_graph` (one synthesizer, streaming flag). — *Done for `ai_router` (1,116→~770 lines, 100 tests green). ⬜ `agent_graph` synthesizer unification still pending.*
-2. **🟡 Fix token truth.** Log every Groq call (`_polish`, CONVERSATIONAL, planner, synthesizer, tool rounds) to `TokenUsage` with an `endpoint`/`purpose` tag; return real totals in `meta.tokens`. Budgets become enforceable and the admin usage page becomes honest. — *Done for `ai_router` (`_polish`, CONVERSATIONAL, tool rounds via `_log_token_usage`; real `meta.tokens`; `test_token_accounting.py`). ⬜ planner/synthesizer (agent_graph) still pending.*
+1. **✅ Extract one pipeline.** Refactor `ai_router.py` into a single `process_query()` engine that returns/yields events; `/ask` collects them into one JSON, `/ask/stream` forwards them as SSE. One code path, zero drift. Do the same for `agent_graph` (one synthesizer, streaming flag). — *Done: `ai_router` unified (1,116→~770 lines); `agent_graph` synthesizer now one shared `_SYNTH_SYSTEM`/`_synth_messages()` across both run paths. All green.*
+2. **✅ Fix token truth.** Log every Groq call (`_polish`, CONVERSATIONAL, planner, synthesizer, tool rounds) to `TokenUsage`; return real totals in `meta.tokens`. — *Done: `ai_router` calls via `_log_token_usage`; `agent_graph` tokens carried in state and now surfaced to the client (`run_agent_graph` returns `{text,tokens_in,tokens_out}`; stream reads `ag_done` tokens). Covered by `test_token_accounting.py` incl. `test_ai_complex_surfaces_real_tokens`.*
 3. **✅ Kill the races.** Move `_run_tokens` into graph state. Replace per-user upload invalidation (`invalidate()` → `invalidate_user_cache(user_id)`). Add max-size (LRU) bounds to both in-memory caches. — *Done: C1 (token race) + C4 (upload scoping) + LRU bounds, all test-covered (`test_agent_graph_tokens.py`, `test_cache_scoping.py`). Cross-worker shared state (rest of C5) deferred to Phase 5.*
 4. **✅ Proper HTTP errors.** One error envelope, correct status codes, raised via `HTTPException`. — *Done (H1): `AskError`/`ask_error` + `main_groq` handler; `test_error_contract.py`.*
 5. **🟡 SQL aggregates in rate limiter**; `Depends(get_db)` session injection; Alembic init. — *SQL aggregate ✅ (H4, `test_rate_limiter.py`). Alembic ✅ (H5 — baseline `c0017902b685` generated & applied; naming convention added). `get_db()` added but the ~30-site sweep is still pending (H6 🟡).*
 6. **🟡 Normalize at ingest:** real `Date` columns + status enum, single date-parser utility; delete the 3 copy-pasted format loops. — *Parse half ✅: `services/dates.py` + all ~13 loops deduped (`test_dates.py`). ⬜ Date columns + status enum at ingest still pending (needs Alembic baseline + backfill).*
    - *DoD: all tests green (now 138) + new tests for token logging, cache scoping, errors, rate limiter, dates; `wc -l ai_router.py` roughly halves. — ✅ ai_router halved & tests added; schema-migration items (H3 columns, H5 baseline, H6 sweep) still open.*
 
-> **Idea (not yet in scope): C6 — date-key the query cache.** Fold the current date into the cache salt (`md5(user_id:topic:YYYY-MM-DD)`) so day-sensitive answers ("days overdue", "expiring", "today's priorities") can't be served stale across a day boundary, and a longer TTL becomes safe. Currently mitigated only by the 10-min TTL. Small (~2 lines + test); pairs with H3.
+> **✅ C6 — date-key the query cache.** Done: `_cache_salt()` folds the current date into the salt (`md5(user_id:YYYY-MM-DD:topic)`), so day-sensitive answers ("days overdue", "expiring", "today's priorities") refresh each day and a longer TTL is now safe; same-day variants still share a hit. Covered by `test_cache_salt.py`.
 
 > **Cross-cutting (not a numbered phase item): ✅ Logging.** Central `backend/logging_config.py` (`configure_logging()` + `get_logger()`, env `LOG_LEVEL`, noisy libs muted) wired into `main_groq.py`; message tags standardized app-wide into one greppable scheme (`[ROUTER]`/`[CACHE]`/`[DIRECT]`/`[TOKENS]`/…). Unit-tested in `test_logging_config.py`. Supports the Phase 5 observability goal.
 
@@ -156,7 +156,7 @@ Rebuild `agent_graph` as an actual agent, not a pipeline:
 
 | Phase | Theme | Effort | Status | Risk it removes |
 |---|---|---|---|---|
-| 0 | Correctness & dedup | 3–4 d | 🟡 nearly done (items 1✅ 2🟡 3✅ 4✅ logging✅; item 5🟡 item 6🟡 — only schema-migration work left) | billing drift, races, cache bleed |
+| 0 | Correctness & dedup | 3–4 d | 🟡 nearly done (items 1✅ 2✅ 3✅ 4✅ logging✅ C6✅; item 5🟡 H6 sweep, item 6🟡 H3 schema — only DB-migration/mechanical work left) | billing drift, races, cache bleed |
 | 1 | Semantic router | 2 d | ⬜ not started | wrong-tier cost leak, regex maintenance |
 | 2 | Real agent loop | 4–5 d | ⬜ not started | fake agency, blanket fan-out cost |
 | 3 | Real actions | 3–4 d | ⬜ not started | "agent that doesn't act" |
@@ -165,10 +165,9 @@ Rebuild `agent_graph` as an actual agent, not a pipeline:
 
 Start with Phase 0, item 1 (the `ai_router` unification) — it touches the most-edited file in the repo and every later phase gets cheaper once it lands.
 
-**Phase 0 remaining:**
-- **H3 schema half** — String→`Date` columns + `status` enum, normalized at ingest, with a data backfill. Now unblocked: build it as an Alembic revision on top of baseline `c0017902b685`.
+**Phase 0 remaining (only two items):**
+- **H3 schema half** — String→`Date` columns + `status` enum, normalized at ingest, with a data backfill. Build as an Alembic revision on top of baseline `c0017902b685`. (The parse-half dedup is already done.)
 - **H6 sweep** — migrate the ~30 `SessionLocal()` blocks onto `Depends(get_db)` (mechanical; batch with test runs).
-- **agent_graph token attribution** (rest of item 2) + **agent_graph synthesizer dedup** (rest of item 1).
-- Optional: **C6** date-keyed cache salt; replace startup `create_all()` with auto `alembic upgrade head`.
+- Optional later: replace startup `create_all()` with auto `alembic upgrade head`.
 
-Per **Part 4**, finish Phase 0 before touching Phase 1/2.
+Everything else in Phase 0 is ✅. Per **Part 4**, finish these before touching Phase 1/2.

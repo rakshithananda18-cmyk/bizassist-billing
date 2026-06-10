@@ -13,7 +13,7 @@ cd "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\backend"
 pytest tests/ -q
 ```
 
-Expected: **138 passed**. That one command verifies every change below.
+Expected: **144 passed**. That one command verifies every change below.
 
 To run the actual server and click around:
 
@@ -100,6 +100,25 @@ $env:LOG_LEVEL="DEBUG"; uvicorn main_groq:app --reload
 
 You'll see lines like:
 `12:34:56 INFO  services.ai_router      [DIRECT] handler=invoice_count`
+
+### 11. Cached answers refresh each day (no stale "days overdue")
+The cache key now includes today's date. So a "what's overdue / expiring / due
+today" answer cached yesterday is automatically refreshed today, instead of
+showing yesterday's numbers. Same-day repeats still hit the cache (fast/cheap).
+
+**How to test:** automated — `test_cache_salt.py` proves the key changes across
+days but stays the same within a day. (Live: ask "show overdue" today and again
+tomorrow — tomorrow recomputes.)
+
+### 12. Tidied the multi-agent "complex analysis" path
+The detailed-analysis path had its instructions written twice (and they'd
+drifted — the streaming version was a shortened copy). Merged into one shared
+version. Also, complex answers now report their real token cost to the app
+(before it showed 0, even though the database recorded it).
+
+**How to test:** automated — `test_token_accounting.py::test_ai_complex_surfaces_real_tokens`.
+(Live: ask a "analyze my business and give a recovery plan" type question and
+check the reported tokens are non-zero.)
 
 ### 10. Migration tooling set up (Alembic)
 Added the scaffolding for proper database migrations. **One step is still left**
