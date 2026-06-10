@@ -4,14 +4,22 @@ import jwt
 from datetime import datetime, timedelta
 from fastapi import Header, HTTPException
 
-JWT_SECRET = os.environ.get("JWT_SECRET")
-if not JWT_SECRET:
-    # Fail fast: never fall back to a hardcoded/guessable signing key.
+import secrets as _secrets
+
+_raw_secret = os.environ.get("JWT_SECRET", "")
+if not _raw_secret:
     raise RuntimeError(
-        "JWT_SECRET environment variable is not set. Generate a strong random "
-        "value (e.g. python -c \"import secrets; print(secrets.token_urlsafe(48))\") "
-        "and set it in your environment / .env before starting the server."
+        "JWT_SECRET environment variable is not set. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(48))\""
     )
+# HS256 requires >= 32 bytes. Pad short secrets rather than crash — but log a warning.
+if len(_raw_secret.encode()) < 32:
+    import logging as _log
+    _log.getLogger("bizassist.auth").warning(
+        "JWT_SECRET is shorter than 32 bytes — pad it or use a longer key in production."
+    )
+    _raw_secret = _raw_secret + _secrets.token_hex(16)   # pad to safe length
+JWT_SECRET = _raw_secret
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 hours
 

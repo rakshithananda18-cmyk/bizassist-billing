@@ -13,6 +13,7 @@ Returns the unified response envelope:
 or None if the intent is unknown (caller may fall back to the AI path).
 """
 import logging
+from typing import Optional
 from services.direct_query_handler import handle as _direct
 from services.recommendations import recommend
 
@@ -27,7 +28,7 @@ INTENT_MAP = {
     "overdue_amount":   "overdue_amount",
     "pending_list":     "pending_list",
     "top_customers":    "top_customers",
-    "top_debtors":      "overdue_list",
+    "top_debtors":      "top_debtors",
     "inventory_count":  "inventory_count",
     "low_stock":        "low_stock",
     "expiring_soon":    "expiring_soon",
@@ -43,7 +44,7 @@ TITLES = {
     "overdue_amount":   "Overdue Amount",
     "pending_list":     "Pending Invoices",
     "top_customers":    "Top Customers",
-    "top_debtors":      "Top Debtors",
+    "top_debtors":      "Top Debtors by Outstanding Amount",
     "inventory_count":  "Inventory",
     "low_stock":        "Low Stock",
     "expiring_soon":    "Expiring Soon",
@@ -56,7 +57,7 @@ def is_intent(intent_key: str) -> bool:
     return intent_key in INTENT_MAP
 
 
-def resolve_intent(intent_key: str, user_id: int, params: dict = None) -> dict | None:
+def resolve_intent(intent_key: str, user_id: int, params: dict = None) -> Optional[dict]:
     handler_key = INTENT_MAP.get(intent_key)
     if not handler_key:
         return None
@@ -65,7 +66,7 @@ def resolve_intent(intent_key: str, user_id: int, params: dict = None) -> dict |
     try:
         markdown = _direct(handler_key, query, user_id, params)
     except Exception as e:
-        logger.error(f"resolve_intent('{intent_key}') failed: {e}", exc_info=True)
+        logger.error(f"[INTENT] resolve_intent('{intent_key}') failed: {e}", exc_info=True)
         return None
 
     if markdown is None:

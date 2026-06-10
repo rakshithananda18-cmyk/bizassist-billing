@@ -3,7 +3,6 @@ import json
 import logging
 import pypdf
 import io
-from typing import Optional, Dict, Any
 from groq import Groq
 import anthropic
 from database.db import SessionLocal
@@ -13,22 +12,92 @@ from datetime import datetime
 
 logger = logging.getLogger("bizassist.pdf_parser")
 
+# Minimum character count from pypdf before we treat a PDF as scanned
+_SCANNED_TEXT_THRESHOLD = 50
+
+
 def parse_pdf_text(file_bytes: bytes) -> str:
-    """Extracts raw text from PDF file bytes using pypdf."""
+    """
+    Extracts raw text from PDF file bytes.
+    For digital PDFs: uses pypdf (fast, free).
+    For scanned PDFs: falls back to pdf2image + pytesseract OCR automatically.
+    """
+    raw_text = _extract_digital_text(file_bytes)
+
+    if len(raw_text.strip()) < _SCANNED_TEXT_THRESHOLD:
+        logger.info(
+            f"Digital extraction yielded only {len(raw_text.strip())} chars — "
+            "treating as scanned PDF, running OCR fallback."
+        )
+        raw_text = _extract_ocr_text(file_bytes)
+
+    return raw_text
+
+
+def _extract_digital_text(file_bytes: bytes) -> str:
+    """Fast path: extract embedded text from a digital PDF with pypdf."""
     raw_text = ""
     try:
-        pdf_file = io.BytesIO(file_bytes)
-        reader = pypdf.PdfReader(pdf_file)
-        logger.info(f"Extracting text from PDF (pages count: {len(reader.pages)})")
-        for idx, page in enumerate(reader.pages):
+        reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+        logger.info(f"[PDF] Digital extraction — {len(reader.pages)} page(s).")
+        for page in reader.pages:
             text = page.extract_text()
             if text:
                 raw_text += text + "\n"
-        logger.info(f"Extracted {len(raw_text)} characters of text from PDF.")
-        return raw_text
+        logger.info(f"[PDF] Digital extraction yielded {len(raw_text)} chars.")
     except Exception as e:
-        logger.error(f"Error extracting text from PDF: {str(e)}", exc_info=True)
-        raise ValueError(f"Failed to read PDF file: {str(e)}")
+        logger.warning(f"[PDF] pypdf extraction failed: {e}")
+    return raw_text
+
+
+def _extract_ocr_text(file_bytes: bytes) -> str:
+    """
+    OCR fallback for scanned PDFs.
+    Converts each page to an image (pdf2image / poppler) then runs
+    pytesseract with English + Hindi language packs if available.
+    """
+    try:
+        from pdf2image import convert_from_bytes
+        import pytesseract
+        from PIL import Image
+    except ImportError as e:
+        raise ValueError(
+            f"OCR dependencies not installed ({e}). "
+            "Run: pip install pdf2image pytesseract pillow"
+        )
+
+    try:
+        logger.info("[PDF] Converting pages to images (300 dpi)…")
+        pages = convert_from_bytes(file_bytes, dpi=300)
+        logger.info(f"[PDF] {len(pages)} page(s) to OCR.")
+    except Exception as e:
+        raise ValueError(f"pdf2image conversion failed: {e}")
+
+    # Use eng+hin if Hindi pack is available, otherwise English only
+    try:
+        available_langs = pytesseract.get_languages()
+        lang = "eng+hin" if "hin" in available_langs else "eng"
+    except Exception:
+        lang = "eng"
+
+    ocr_text = ""
+    for i, page_img in enumerate(pages):
+        try:
+            text = pytesseract.image_to_string(page_img, lang=lang)
+            ocr_text += text + "\n"
+            logger.info(f"[PDF] Page {i+1}: {len(text)} chars extracted.")
+        except Exception as e:
+            logger.warning(f"[PDF] Page {i+1} OCR failed: {e}")
+
+    logger.info(f"[PDF] Total OCR text: {len(ocr_text)} chars.")
+
+    if len(ocr_text.strip()) < _SCANNED_TEXT_THRESHOLD:
+        raise ValueError(
+            "OCR could not extract readable text from this PDF. "
+            "Check that the scan quality is sufficient (300 dpi or higher)."
+        )
+
+    return ocr_text
 
 def extract_structured_invoice(raw_text: str) -> dict:
     """
@@ -171,7 +240,7 @@ def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str, file_has
                 existing_inv.invoice_date = data.get("invoice_date", existing_inv.invoice_date)
                 existing_inv.due_date     = data.get("due_date", existing_inv.due_date)
                 existing_inv.file_id      = file_id
-                logger.info(f"[PDF Parser] Updated existing invoice line: {invoice_id_val} / {product_name}")
+                logger.info(f"[PDF] Updated existing invoice line: {invoice_id_val} / {product_name}")
             else:
                 invoice_record = Invoice(
                     business_id=business_id,

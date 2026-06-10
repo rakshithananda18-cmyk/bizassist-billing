@@ -1,262 +1,459 @@
-from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    Float,
-    DateTime,
-    Boolean,
-    Text
-)
+"""
+database/models.py
+==================
+SQLAlchemy ORM models for BizAssist.
 
-from database.db import Base
+SOLID design:
+  S - each model owns one entity
+  O - extend via Mixins; never modify existing columns
+  L - all models honour BusinessOwnedMixin contract
+  I - Mixins are small and composable
+  D - code above depends on models, not raw SQL
+
+Backward compatibility: all original columns kept, new columns nullable.
+"""
+
 from datetime import datetime
+from sqlalchemy import (
+    Column, Integer, String, Float, DateTime,
+    Boolean, Text, ForeignKey, Index
+)
+from sqlalchemy.orm import relationship
+from database.db import Base
 
 
-class User(Base):
+# ---------------------------------------------------------------------------
+# MIXINS
+# ---------------------------------------------------------------------------
+
+class TimestampMixin:
+    """Adds created_at / updated_at. Does NOT add id or business_id."""
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
+
+
+class BusinessOwnedMixin(TimestampMixin):
+    """Every tenant-scoped table inherits this: id, business_id, timestamps."""
+    id          = Column(Integer, primary_key=True, index=True)
+    business_id = Column(Integer, index=True, nullable=True)
+
+
+class GSTFieldsMixin:
+    """
+    Composable GST fields for financial documents (Invoice, PurchaseOrder).
+    Holds document-level tax totals only; per-line rates live on LineItem models.
+    """
+    gstin_buyer     = Column(String, nullable=True)
+    place_of_supply = Column(String, nullable=True)
+    invoice_type    = Column(String, nullable=True)       # B2B|B2C|Export|SEZ
+    subtotal        = Column(Float,  nullable=True, default=0.0)
+    cgst_total      = Column(Float,  nullable=True, default=0.0)
+    sgst_total      = Column(Float,  nullable=True, default=0.0)
+    igst_total      = Column(Float,  nullable=True, default=0.0)
+    cess_total      = Column(Float,  nullable=True, default=0.0)
+    total_amount    = Column(Float,  nullable=True, default=0.0)
+    irn             = Column(String, nullable=True)       # e-invoice IRN (Phase 3)
+    ack_no          = Column(String, nullable=True)
+    ack_date        = Column(String, nullable=True)
+    qr_code         = Column(Text,   nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# USER / TENANT
+# ---------------------------------------------------------------------------
+
+class User(Base, TimestampMixin):
+    """Business owner account. One User = one business tenant."""
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
-    password = Column(String)
+    id            = Column(Integer, primary_key=True, index=True)
+    username      = Column(String, unique=True, index=True)
+    password      = Column(String)
     business_name = Column(String)
-    role = Column(String, default="enterprise") # "enterprise" or "admin"
+    role          = Column(String, default="enterprise")  # enterprise|admin
+    # Business GST identity (Phase 3)
+    gstin         = Column(String, nullable=True)
+    phone         = Column(String, nullable=True)
+    email         = Column(String, nullable=True)
+    address       = Column(Text,   nullable=True)
+    state_code    = Column(String, nullable=True)
+    pan           = Column(String, nullable=True)
 
 
-class UploadedFile(Base):
-
+class UploadedFile(Base, TimestampMixin):
     __tablename__ = "uploaded_files"
 
-    id = Column(
-        Integer,
-        primary_key=True,
-        index=True
+    id          = Column(Integer, primary_key=True, index=True)
+    filename    = Column(String)
+    file_type   = Column(String)
+    rows_count  = Column(Integer)
+    upload_time = Column(String)
+    business_id = Column(Integer, nullable=True, index=True)
+    file_hash   = Column(String,  nullable=True, index=True)
+
+
+# ---------------------------------------------------------------------------
+# CUSTOMER  (buyer entity)
+# ---------------------------------------------------------------------------
+
+class Customer(Base, BusinessOwnedMixin):
+    """
+    Buyer / client entity.
+    Invoice.customer (string) preserved for CSV compat.
+    customer_id FK on Invoice is nullable.
+    """
+    __tablename__ = "customers"
+
+    name         = Column(String, index=True)
+    gstin        = Column(String, nullable=True, index=True)
+    phone        = Column(String, nullable=True)
+    email        = Column(String, nullable=True)
+    address      = Column(Text,   nullable=True)
+    state_code   = Column(String, nullable=True)
+    pan          = Column(String, nullable=True)
+    credit_limit = Column(Float,   nullable=True, default=0.0)
+    credit_days  = Column(Integer, nullable=True, default=30)
+    is_active    = Column(Boolean, default=True)
+
+    invoices = relationship(
+        "Invoice", back_populates="customer_ref", lazy="dynamic",
+        foreign_keys="Invoice.customer_id"
     )
 
-    filename = Column(String)
 
-    file_type = Column(String)
+# ---------------------------------------------------------------------------
+# VENDOR  (supplier entity)
+# ---------------------------------------------------------------------------
 
-    rows_count = Column(Integer)
+class Vendor(Base, BusinessOwnedMixin):
+    """Supplier from whom the business purchases goods."""
+    __tablename__ = "vendors"
 
-    upload_time = Column(String)
+    name               = Column(String, index=True)
+    gstin              = Column(String, nullable=True, index=True)
+    phone              = Column(String, nullable=True)
+    email              = Column(String, nullable=True)
+    address            = Column(Text,   nullable=True)
+    state_code         = Column(String, nullable=True)
+    pan                = Column(String, nullable=True)
+    payment_terms_days = Column(Integer, nullable=True, default=30)
+    last_gstr1_filed   = Column(String, nullable=True)   # YYYY-MM
+    filing_reliability = Column(Float,  nullable=True)   # 0.0-1.0
+    is_active          = Column(Boolean, default=True)
 
-    business_id = Column(Integer, nullable=True, index=True)
+    inventory_items = relationship(
+        "Inventory", back_populates="vendor_ref", lazy="dynamic",
+        foreign_keys="Inventory.vendor_id"
+    )
+    purchase_orders = relationship("PurchaseOrder", back_populates="vendor", lazy="dynamic")
 
-    file_hash = Column(String, nullable=True, index=True)  # SHA256 of file content — prevents duplicate uploads
+
+# ---------------------------------------------------------------------------
+# PRODUCT  (catalogue)
+# ---------------------------------------------------------------------------
+
+class Product(Base, BusinessOwnedMixin):
+    """Product/service catalogue. HSN and default tax rates auto-populate line items."""
+    __tablename__ = "products"
+
+    name          = Column(String, index=True)
+    description   = Column(Text,   nullable=True)
+    hsn_sac       = Column(String, nullable=True, index=True)
+    unit          = Column(String, nullable=True, default="Nos")
+    barcode       = Column(String, nullable=True, index=True)
+    selling_price = Column(Float,  nullable=True, default=0.0)
+    cost_price    = Column(Float,  nullable=True, default=0.0)
+    mrp           = Column(Float,  nullable=True)
+    cgst_rate     = Column(Float,  nullable=True, default=0.0)
+    sgst_rate     = Column(Float,  nullable=True, default=0.0)
+    igst_rate     = Column(Float,  nullable=True, default=0.0)
+    is_service    = Column(Boolean, default=False)
+    is_active     = Column(Boolean, default=True)
+
+    invoice_line_items = relationship(
+        "InvoiceLineItem", back_populates="product_ref", lazy="dynamic",
+        foreign_keys="InvoiceLineItem.product_id"
+    )
 
 
-# -------------------------
-# INVOICE TABLE
-# -------------------------
+# ---------------------------------------------------------------------------
+# INVOICE  (existing table, backward-compatible extension)
+# ---------------------------------------------------------------------------
 
-class Invoice(Base):
-
+class Invoice(Base, BusinessOwnedMixin, GSTFieldsMixin):
+    """
+    Sales invoice.
+    Original columns kept as-is. New columns are all nullable.
+    CSV-imported rows use customer/product/amount.
+    App-created invoices use customer_id and line_items.
+    """
     __tablename__ = "invoices"
 
-    id = Column(
-        Integer,
-        primary_key=True,
-        index=True
+    # Original columns (handlers depend on these)
+    invoice_id   = Column(String, index=True,  nullable=True)
+    customer     = Column(String, index=True,  nullable=True)
+    product      = Column(String, nullable=True)
+    amount       = Column(Float,  nullable=True)
+    status       = Column(String, index=True,  nullable=True)
+    invoice_date = Column(String, nullable=True)
+    due_date     = Column(String, nullable=True)
+    file_id      = Column(Integer, nullable=True, index=True)
+
+    # New FK
+    customer_id  = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+
+    # Payment tracking
+    paid_amount  = Column(Float,  nullable=True, default=0.0)
+    payment_date = Column(String, nullable=True)
+    payment_mode = Column(String, nullable=True)
+    notes        = Column(Text,   nullable=True)
+
+    customer_ref = relationship("Customer", back_populates="invoices", foreign_keys=[customer_id])
+    line_items   = relationship(
+        "InvoiceLineItem", back_populates="invoice",
+        cascade="all, delete-orphan", lazy="selectin"
     )
 
-    invoice_id = Column(String)
+    __table_args__ = (
+        Index("ix_invoice_business_status", "business_id", "status"),
+        Index("ix_invoice_business_date",   "business_id", "invoice_date"),
+    )
 
-    customer = Column(String)
 
-    product = Column(String)
+# ---------------------------------------------------------------------------
+# INVOICE LINE ITEM
+# ---------------------------------------------------------------------------
 
-    amount = Column(Float)
+class InvoiceLineItem(Base, TimestampMixin):
+    """
+    One product row on an invoice.
+    product_name is denormalised (snapshot) so historical invoices stay accurate.
+    Tax stored per-line for GSTR-1 HSN-summary generation.
+    """
+    __tablename__ = "invoice_line_items"
 
-    status = Column(String)
+    id            = Column(Integer, primary_key=True, index=True)
+    invoice_id    = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
+    product_id    = Column(Integer, ForeignKey("products.id"), nullable=True,  index=True)
 
-    invoice_date = Column(String)
+    product_name  = Column(String, nullable=False)
+    hsn_sac       = Column(String, nullable=True)
+    unit          = Column(String, nullable=True, default="Nos")
+    quantity      = Column(Float,  nullable=False, default=1.0)
+    unit_price    = Column(Float,  nullable=False, default=0.0)
+    discount      = Column(Float,  nullable=True,  default=0.0)
+    discount_pct  = Column(Float,  nullable=True,  default=0.0)
 
-    due_date = Column(String)
-    
-    business_id = Column(Integer, nullable=True, index=True)
-    file_id = Column(Integer, nullable=True, index=True)
+    cgst_rate     = Column(Float,  nullable=True, default=0.0)
+    sgst_rate     = Column(Float,  nullable=True, default=0.0)
+    igst_rate     = Column(Float,  nullable=True, default=0.0)
+    cess_rate     = Column(Float,  nullable=True, default=0.0)
 
-# -------------------------
-# INVENTORY TABLE
-# -------------------------
+    taxable_value = Column(Float,  nullable=True, default=0.0)
+    cgst_amount   = Column(Float,  nullable=True, default=0.0)
+    sgst_amount   = Column(Float,  nullable=True, default=0.0)
+    igst_amount   = Column(Float,  nullable=True, default=0.0)
+    cess_amount   = Column(Float,  nullable=True, default=0.0)
+    line_total    = Column(Float,  nullable=True, default=0.0)
 
-class Inventory(Base):
+    invoice     = relationship("Invoice", back_populates="line_items")
+    product_ref = relationship("Product", back_populates="invoice_line_items",
+                               foreign_keys=[product_id])
 
+
+# ---------------------------------------------------------------------------
+# INVENTORY  (existing table, backward-compatible extension)
+# ---------------------------------------------------------------------------
+
+class Inventory(Base, BusinessOwnedMixin):
+    """Stock position. Original columns kept. New columns nullable."""
     __tablename__ = "inventory"
 
-    id = Column(
-        Integer,
-        primary_key=True,
-        index=True
+    product_name  = Column(String,  index=True, nullable=True)
+    stock         = Column(Integer, nullable=True)
+    expiry_date   = Column(String,  nullable=True)
+    supplier      = Column(String,  nullable=True)
+    file_id       = Column(Integer, nullable=True, index=True)
+
+    vendor_id     = Column(Integer, ForeignKey("vendors.id"),  nullable=True, index=True)
+    product_id    = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
+
+    unit          = Column(String,  nullable=True, default="Nos")
+    hsn_sac       = Column(String,  nullable=True)
+    barcode       = Column(String,  nullable=True, index=True)
+    batch_no      = Column(String,  nullable=True)
+    mrp           = Column(Float,   nullable=True)
+    cost_price    = Column(Float,   nullable=True, default=0.0)
+    selling_price = Column(Float,   nullable=True, default=0.0)
+    reorder_point = Column(Integer, nullable=True, default=10)
+    category      = Column(String,  nullable=True)
+
+    vendor_ref = relationship("Vendor", back_populates="inventory_items",
+                              foreign_keys=[vendor_id])
+
+    __table_args__ = (
+        Index("ix_inventory_business_stock", "business_id", "stock"),
     )
 
-    product_name = Column(String)
 
-    stock = Column(Integer)
+# ---------------------------------------------------------------------------
+# PAYMENT  (existing table, kept for backward compat)
+# ---------------------------------------------------------------------------
 
-    expiry_date = Column(String)
-
-    supplier = Column(String)
-    
-    business_id = Column(Integer, nullable=True, index=True)
-    file_id = Column(Integer, nullable=True, index=True)
-
-# -------------------------
-# PAYMENTS TABLE
-# -------------------------
-
-class Payment(Base):
-
+class Payment(Base, BusinessOwnedMixin):
+    """Legacy payment records from CSV imports."""
     __tablename__ = "payments"
 
-    id = Column(
-        Integer,
-        primary_key=True,
-        index=True
+    customer     = Column(String,  nullable=True)
+    amount       = Column(Float,   nullable=True)
+    due_date     = Column(String,  nullable=True)
+    paid         = Column(String,  nullable=True)
+    file_id      = Column(Integer, nullable=True, index=True)
+    invoice_id   = Column(Integer, ForeignKey("invoices.id"), nullable=True, index=True)
+    payment_mode = Column(String,  nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# PURCHASE ORDER
+# ---------------------------------------------------------------------------
+
+class PurchaseOrder(Base, BusinessOwnedMixin, GSTFieldsMixin):
+    """Purchase order sent to a vendor."""
+    __tablename__ = "purchase_orders"
+
+    po_number     = Column(String, index=True, nullable=True)
+    vendor_id     = Column(Integer, ForeignKey("vendors.id"), nullable=True, index=True)
+    vendor_name   = Column(String, nullable=True)
+    po_date       = Column(String, nullable=True)
+    expected_date = Column(String, nullable=True)
+    received_date = Column(String, nullable=True)
+    status        = Column(String, nullable=True, default="Draft")
+    notes         = Column(Text,   nullable=True)
+
+    vendor     = relationship("Vendor", back_populates="purchase_orders")
+    line_items = relationship(
+        "PurchaseOrderLineItem", back_populates="purchase_order",
+        cascade="all, delete-orphan", lazy="selectin"
     )
 
-    customer = Column(String)
 
-    amount = Column(Float)
+class PurchaseOrderLineItem(Base, TimestampMixin):
+    """One product line on a purchase order."""
+    __tablename__ = "purchase_order_line_items"
 
-    due_date = Column(String)
+    id                = Column(Integer, primary_key=True, index=True)
+    purchase_order_id = Column(Integer, ForeignKey("purchase_orders.id"), nullable=False, index=True)
+    product_id        = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
 
-    paid = Column(String)
-    
-    business_id = Column(Integer, nullable=True, index=True)
-    file_id = Column(Integer, nullable=True, index=True)
+    product_name  = Column(String, nullable=False)
+    hsn_sac       = Column(String, nullable=True)
+    unit          = Column(String, nullable=True, default="Nos")
+    quantity      = Column(Float,  nullable=False, default=1.0)
+    unit_price    = Column(Float,  nullable=False, default=0.0)
+    cgst_rate     = Column(Float,  nullable=True,  default=0.0)
+    sgst_rate     = Column(Float,  nullable=True,  default=0.0)
+    igst_rate     = Column(Float,  nullable=True,  default=0.0)
+    taxable_value = Column(Float,  nullable=True,  default=0.0)
+    cgst_amount   = Column(Float,  nullable=True,  default=0.0)
+    sgst_amount   = Column(Float,  nullable=True,  default=0.0)
+    igst_amount   = Column(Float,  nullable=True,  default=0.0)
+    line_total    = Column(Float,  nullable=True,  default=0.0)
+    received_qty  = Column(Float,  nullable=True,  default=0.0)
+
+    purchase_order = relationship("PurchaseOrder", back_populates="line_items")
 
 
-# -------------------------
-# CHAT MESSAGES TABLE
-# -------------------------
+# ---------------------------------------------------------------------------
+# CHAT / AI  (unchanged)
+# ---------------------------------------------------------------------------
 
-class ChatMessage(Base):
-
+class ChatMessage(Base, TimestampMixin):
     __tablename__ = "chat_messages"
 
-    id = Column(
-        Integer,
-        primary_key=True,
-        index=True
-    )
-
-    business_id = Column(Integer, index=True)
-    role = Column(String)  # "user" or "assistant"
-    content = Column(String)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    session_id = Column(String, index=True, nullable=True)
-    session_title = Column(String, nullable=True)
-    source = Column(String, nullable=True)      # "db" | "ai"
-    model_tier = Column(String, nullable=True)  # "AI_SIMPLE" | "AI_COMPLEX"
-    cached = Column(Boolean, default=False)
+    id            = Column(Integer, primary_key=True, index=True)
+    business_id   = Column(Integer, index=True)
+    role          = Column(String)
+    content       = Column(String)
+    timestamp     = Column(DateTime, default=datetime.utcnow)
+    session_id    = Column(String,  index=True, nullable=True)
+    session_title = Column(String,  nullable=True)
+    source        = Column(String,  nullable=True)
+    model_tier    = Column(String,  nullable=True)
+    cached        = Column(Boolean, default=False)
 
 
-# -------------------------
-# DOCUMENT EMBEDDINGS TABLE
-# -------------------------
-
-class DocumentEmbedding(Base):
-
+class DocumentEmbedding(Base, TimestampMixin):
     __tablename__ = "document_embeddings"
 
-    id = Column(
-        Integer,
-        primary_key=True,
-        index=True
-    )
-
-    business_id = Column(Integer, index=True)
-    file_id = Column(Integer, nullable=True, index=True)
-    document_type = Column(String)  # "invoice", "inventory", "payment"
-    record_id = Column(Integer, nullable=True)  # References the ID of the matched row
-    text_content = Column(String)  # The text representation that was embedded
-    embedding_json = Column(String)  # JSON-serialized list of floats (embedding vector)
+    id             = Column(Integer, primary_key=True, index=True)
+    business_id    = Column(Integer, index=True)
+    file_id        = Column(Integer, nullable=True, index=True)
+    document_type  = Column(String)
+    record_id      = Column(Integer, nullable=True)
+    text_content   = Column(String)
+    embedding_json = Column(String)
 
 
-# -------------------------
-# TOKEN USAGE TABLE
-# -------------------------
+# ---------------------------------------------------------------------------
+# OPERATIONAL / CONFIG  (unchanged)
+# ---------------------------------------------------------------------------
 
-class TokenUsage(Base):
-
+class TokenUsage(Base, TimestampMixin):
     __tablename__ = "token_usage"
 
     id            = Column(Integer, primary_key=True, index=True)
     business_id   = Column(Integer, index=True)
-    model         = Column(String)              # e.g. "llama-3.1-8b-instant"
-    model_tier    = Column(String)              # "AI_SIMPLE" or "AI_COMPLEX"
+    model         = Column(String)
+    model_tier    = Column(String)
     input_tokens  = Column(Integer, default=0)
     output_tokens = Column(Integer, default=0)
     total_tokens  = Column(Integer, default=0)
-    cached_tokens = Column(Integer, default=0)  # prompt cache hits (Claude)
-    endpoint      = Column(String, default="/ask")
+    cached_tokens = Column(Integer, default=0)
+    endpoint      = Column(String,  default="/ask")
     timestamp     = Column(DateTime, default=datetime.utcnow)
 
 
-# -------------------------
-# RATE LIMIT CONFIG TABLE
-# -------------------------
-
-class RateLimitConfig(Base):
-
+class RateLimitConfig(Base, TimestampMixin):
     __tablename__ = "rate_limit_configs"
 
     id                  = Column(Integer, primary_key=True, index=True)
     business_id         = Column(Integer, unique=True, index=True)
-    requests_per_minute = Column(Integer, default=10)    # burst protection
-    requests_per_day    = Column(Integer, default=500)   # daily query cap
-    max_tokens_per_day  = Column(Integer, default=50000) # daily token budget
-    complex_per_day     = Column(Integer, default=20)    # AI_COMPLEX (agent graph) cap
+    requests_per_minute = Column(Integer, default=10)
+    requests_per_day    = Column(Integer, default=500)
+    max_tokens_per_day  = Column(Integer, default=50000)
+    complex_per_day     = Column(Integer, default=20)
     active              = Column(Boolean, default=True)
     updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
-# -------------------------
-# ALERT CONFIG TABLE
-# -------------------------
-
-class AlertConfig(Base):
-
+class AlertConfig(Base, TimestampMixin):
     __tablename__ = "alert_configs"
 
-    id = Column(Integer, primary_key=True, index=True)
-    business_id = Column(Integer, unique=True, index=True)
-    business_name = Column(String, nullable=True)
-
-    # Notification channels
-    email = Column(String, nullable=True)
-    whatsapp_number = Column(String, nullable=True)  # e.g. "+919876543210"
-
-    # Alert toggles
-    alert_overdue = Column(Boolean, default=True)
-    alert_low_stock = Column(Boolean, default=True)
-    alert_expiry = Column(Boolean, default=True)
-    alert_daily_summary = Column(Boolean, default=True)
-
-    # Thresholds
-    low_stock_threshold = Column(Integer, default=10)
+    id                    = Column(Integer, primary_key=True, index=True)
+    business_id           = Column(Integer, unique=True, index=True)
+    business_name         = Column(String,  nullable=True)
+    email                 = Column(String,  nullable=True)
+    whatsapp_number       = Column(String,  nullable=True)
+    alert_overdue         = Column(Boolean, default=True)
+    alert_low_stock       = Column(Boolean, default=True)
+    alert_expiry          = Column(Boolean, default=True)
+    alert_daily_summary   = Column(Boolean, default=True)
+    low_stock_threshold   = Column(Integer, default=10)
     expiry_days_threshold = Column(Integer, default=30)
+    active                = Column(Boolean, default=True)
+    created_at            = Column(DateTime, default=datetime.utcnow)
+    updated_at            = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-
-# -------------------------
-# ACTION LOG (Tier 3 — audit trail for agentic actions)
-# -------------------------
-
-class ActionLog(Base):
-    """Every gated action (preview -> confirm -> execute) is recorded here."""
-
+class ActionLog(Base, TimestampMixin):
+    """Audit trail for every gated agentic action."""
     __tablename__ = "action_log"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id          = Column(Integer, primary_key=True, index=True)
     business_id = Column(Integer, index=True)
-    action = Column(String)                 # e.g. "send_payment_reminders"
-    target = Column(String, nullable=True)  # e.g. customer name
-    amount = Column(Float, nullable=True)   # optional monetary context
-    detail = Column(Text, nullable=True)    # the generated message / payload
-    status = Column(String, default="logged")  # logged | sent | failed
-    created_at = Column(DateTime, default=datetime.utcnow)
+    action      = Column(String)
+    target      = Column(String, nullable=True)
+    amount      = Column(Float,  nullable=True)
+    detail      = Column(Text,   nullable=True)
+    status      = Column(String, default="logged")
+    created_at  = Column(DateTime, default=datetime.utcnow)

@@ -115,9 +115,9 @@ def delete_chat_history(session_id: str = None, current_user: dict = Depends(get
         except Exception as chroma_err:
             logger.error(f"Error purging Chroma memories: {chroma_err}", exc_info=True)
 
-        # Also invalidate query response cache because conversation history changed
-        from services.context_cache import invalidate
-        invalidate()
+        # Also invalidate this user's query response cache (conversation history changed)
+        from services.context_cache import invalidate_user_cache
+        invalidate_user_cache(active_user_id)
         
         return {"message": "Chat history cleared", "deleted_count": deleted}
     except Exception as e:

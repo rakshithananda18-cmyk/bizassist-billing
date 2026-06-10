@@ -1,0 +1,67 @@
+Honest Rating: 7.5 / 10
+What's genuinely good (above average)
+The 4-tier architecture (DIRECT → CACHE → AI_SIMPLE → AI_COMPLEX) is a smart, non-obvious design that most developers would not think of. The rate limiter, auth, JWT, RAG embeddings, LangGraph multi-agent, action preview/confirm system — these are production-grade decisions, not tutorial code. The test suite is real and meaningful. Domain handler separation we just did is clean.
+
+What's honestly bad
+1. main_groq.py — 575 lines doing everything
+The /ask endpoint alone handles routing, history fetch, session management, caching, AI calls, tool execution, DB logging, and RAG memory saves. It's a monolith inside a monolith. One bug here can break everything. It should be 50 lines that delegates.
+2. routes/insights.py — 646 lines, routes/admin.py — 597 lines
+These are doing far too much. Routes should be thin HTTP adapters, not business logic containers.
+3. Chat.jsx — 1274 lines in one file
+Unmanageable. Finding a bug in the chip bar means scrolling through session management, markdown rendering, file upload, and action confirmation code. Everything mixed.
+4. Two CSS files totalling 4,647 lines (chat.css + widgets.css)
+No scoping, no separation by component. Changing a button style risks breaking something unrelated.
+5. context_cache.py (301 lines) AND context_engine.py (298 lines) both exist
+Both build business context, both cache it. They partially overlap and both are imported in different places. This is confusion waiting to become a bug.
+6. tools.py — 429 lines with implementations + schemas mixed
+The AI tool functions and their JSON schemas are in one file. The handlers refactor we did should have been extended here too.
+7. Response envelope is inconsistent
+The DIRECT/intent path returns {answer: {markdown, title}, source, suggestions, meta}. The AI path returns {response, source, model_tier, model_used}. The frontend has to handle two completely different shapes. This is the #1 technical debt item.
+8. .env.example.example — file is literally named with two .example suffixes.
+9. JWT key warning in every test run — "HMAC key is 28 bytes long, below recommended 32 bytes." It's a security warning being ignored.
+10. frontend-js.txt — a ghost of the old plain JS frontend sitting in the repo root.
+
+The Plan — in priority order
+Phase 1: Code health (no new features, highest ROI)
+1. Unify the response envelope
+Pick one shape for ALL responses — DIRECT, AI, action, conversational. The frontend then has one renderer, not three conditional branches. Proposed unified shape:
+json{
+  "answer":      { "markdown": "...", "title": "..." },
+  "source":      "db | cache | ai | action | conversational",
+  "suggestions": [...],
+  "meta":        { "tokens": 0, "model": null, "latency_ms": 5 }
+}
+2. Split main_groq.py
+Extract the /ask routing logic into services/ai_router.py (handles classify → route → respond). main_groq.py becomes a thin FastAPI app file (~100 lines) that wires routes and calls ai_router.handle().
+3. Merge context_cache.py + context_engine.py
+One file, services/context.py. Delete the other. The caching logic stays, the engine logic stays, but in one place with one clear API.
+4. Fix .env.example.example filename and JWT key length
+
+Phase 2: Frontend componentization
+5. Split Chat.jsx (1274 lines) into:
+
+components/chat/ChatMessages.jsx — message bubbles, typing indicator, InlineChart
+components/chat/ChatInput.jsx — textarea, send button, upload, controls
+components/chat/ChipBar.jsx — SelectChip, suggestion chips, toggle
+components/chat/ChatSidebar.jsx — session list, rename, delete
+Chat.jsx — just state management and orchestration (~200 lines)
+
+6. Move InlineChart and SelectChip to components/
+They're currently defined inside Chat.jsx. Anything reusable should be a named component file.
+7. Split CSS by component
+chat.css → components/chat/*.css matching the component split. widgets.css → broken into forms.css, tables.css, badges.css, cards.css.
+
+Phase 3: Tools refactor (mirrors handlers/)
+8. Split tools.py into services/tools/ package
+Same pattern as handlers/. Domain files: tools/invoices.py, tools/inventory.py, tools/payments.py, tools/clients.py. A tools/__init__.py that exports schemas and execute_tool(). The AI tools and domain handlers would then mirror each other 1:1.
+
+Phase 4: Route thinning
+9. Thin out routes/insights.py and routes/admin.py
+Business logic moves into services/. Routes become pure HTTP: validate request → call service → return response. Target: no route file over 150 lines.
+
+What NOT to do
+Don't touch the 4-tier architecture — it's the right design. Don't break the test suite. Don't change public API endpoints — the frontend is already wired. Don't refactor and add features at the same time.
+
+Summary table:
+ItemEffortImpactUnify response envelopeMediumVery HighSplit main_groq.pyMediumHighMerge context filesLowMediumSplit Chat.jsxMediumHighMove components outLowMediumTools → tools/ packageLowMediumThin routesHighMedium
+Start with Phase 1 items — they're the foundation everything else depends on. Proceed?

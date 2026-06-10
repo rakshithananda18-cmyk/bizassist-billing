@@ -17,6 +17,7 @@ Current actions:
 """
 import json
 import logging
+from typing import Optional
 from sqlalchemy import func
 from database.db import SessionLocal
 from database.models import Invoice, User, ActionLog
@@ -30,7 +31,7 @@ def _business_name(db, user_id: int) -> str:
     return (u.business_name if u and u.business_name else "our team")
 
 
-def _reminder_message(customer: str, amount: float, business: str, due: str | None) -> str:
+def _reminder_message(customer: str, amount: float, business: str, due: Optional[str]) -> str:
     due_part = f" (due {due})" if due else ""
     return (
         f"Hi {customer},\n\n"
@@ -108,7 +109,7 @@ def _reminders_execute(user_id: int, params: dict) -> dict:
         db.commit()
     except Exception as e:
         db.rollback()
-        logger.error(f"Failed to log reminders: {e}", exc_info=True)
+        logger.error(f"[ACTION] Failed to log reminders: {e}", exc_info=True)
         return {"ok": False, "executed": 0,
                 "markdown": "❌ Could not record the reminders. Please try again."}
     finally:
@@ -134,23 +135,23 @@ def is_action(action_key: str) -> bool:
     return action_key in ACTIONS
 
 
-def preview(action_key: str, user_id: int, params: dict = None) -> dict | None:
+def preview(action_key: str, user_id: int, params: dict = None) -> Optional[dict]:
     spec = ACTIONS.get(action_key)
     if not spec:
         return None
     try:
         return spec["preview"](user_id, params or {})
     except Exception as e:
-        logger.error(f"action preview '{action_key}' failed: {e}", exc_info=True)
+        logger.error(f"[ACTION] preview '{action_key}' failed: {e}", exc_info=True)
         return None
 
 
-def execute(action_key: str, user_id: int, params: dict = None) -> dict | None:
+def execute(action_key: str, user_id: int, params: dict = None) -> Optional[dict]:
     spec = ACTIONS.get(action_key)
     if not spec:
         return None
     try:
         return spec["execute"](user_id, params or {})
     except Exception as e:
-        logger.error(f"action execute '{action_key}' failed: {e}", exc_info=True)
+        logger.error(f"[ACTION] execute '{action_key}' failed: {e}", exc_info=True)
         return None

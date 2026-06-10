@@ -1783,3 +1783,171 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
     font-size: 12px;
     padding: 5px 11px;
 }
+
+/* =========================================
+   INLINE CHART (Chart.js inside bot message)
+========================================= */
+
+.inline-chart-wrap {
+  width: 100%;
+  max-width: 480px;
+  height: 220px;
+  margin: 12px 0 4px;
+  padding: 12px;
+  background: var(--surface-raised, var(--card-color));
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  position: relative;
+}
+
+.inline-chart-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* =========================================
+   SELECT CHIP — expandable checkbox panel
+========================================= */
+
+.chip-select {
+  position: relative;
+}
+
+.chip-expand-arrow {
+  font-size: 10px;
+  margin-left: 4px;
+  opacity: 0.6;
+}
+
+.select-chip-panel {
+  position: fixed;           /* escapes all overflow:hidden ancestors */
+  transform: translateY(-100%); /* sit above the top edge set by JS */
+  z-index: 9999;
+  background: var(--card-color);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 10px 12px;
+  min-width: 240px;
+  max-width: 320px;
+  box-shadow: var(--shadow-md, 0 4px 16px rgba(0,0,0,0.12));
+  animation: fadeInUp 0.18s ease;
+}
+
+.select-chip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-bottom: 8px;
+}
+
+.select-chip-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--secondary-text);
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.select-chip-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+.select-chip-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-color);
+  cursor: pointer;
+  padding: 3px 4px;
+  border-radius: 6px;
+  transition: background 0.1s ease;
+}
+
+.select-chip-option:hover {
+  background: var(--accent-soft, rgba(99,102,241,0.07));
+}
+
+.select-chip-option input[type="checkbox"] {
+  accent-color: var(--accent-color);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.select-chip-confirm {
+  width: 100%;
+  padding: 7px 12px;
+  background: var(--accent-color);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.select-chip-confirm:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.select-chip-confirm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Anomaly Alert Chips ─────────────────────────────────────────────────── */
+.alert-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.alert-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: default;
+  border: 1.5px solid transparent;
+}
+
+.alert-chip--critical {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.alert-chip--warning {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+[data-theme="dark"] .alert-chip--critical {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+[data-theme="dark"] .alert-chip--warning {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.4);
+}

@@ -1,6 +1,8 @@
 import hashlib
+import io
 import logging
-from services.context_cache import invalidate as invalidate_cache
+from services.context_cache import invalidate_user_cache
+from services.column_mapper import normalize_dataframe
 from fastapi import (
     APIRouter,
     UploadFile,
@@ -105,9 +107,9 @@ async def upload_file(
             finally:
                 db.close()
 
-            raw_text = parse_pdf_text(file_bytes)
+            raw_text = parse_pdf_text(file_bytes)   # OCR-aware: handles scanned PDFs automatically
             if not raw_text.strip():
-                raise HTTPException(status_code=400, detail="Could not extract readable text from PDF. Ensure it is not a scanned image.")
+                raise HTTPException(status_code=400, detail="Could not extract readable text from this PDF even after OCR. Check scan quality (min 300 dpi).")
 
             structured_data = extract_structured_invoice(raw_text)
 
@@ -117,9 +119,9 @@ async def upload_file(
                 raise HTTPException(status_code=400, detail="Too many invoice items in PDF. Maximum is 200.")
 
             save_result = save_pdf_invoice_to_db(structured_data, active_user_id, filename, file_hash=file_hash)
-            
-            invalidate_cache()
-            
+
+            invalidate_user_cache(active_user_id)   # bust only this tenant's cache
+
             return {
                 "message": "Upload successful",
                 "file_type": "invoice",
@@ -156,35 +158,50 @@ async def upload_file(
             # Enforce max row count
             if len(df) > MAX_ROW_COUNT:
                 raise HTTPException(status_code=400, detail=f"Row count exceeds maximum limit of {MAX_ROW_COUNT} rows.")
+        elif filename.endswith(".zip"):
+            return await _process_zip_upload(file_bytes, active_user_id, filename)
         else:
             logger.warning(f"Failed upload attempt by user {active_user_id}: Unsupported file extension on '{filename}'")
-            raise HTTPException(status_code=400, detail="Unsupported file format")
+            raise HTTPException(status_code=400, detail="Unsupported file format. Accepted: .csv, .xlsx, .pdf, .zip")
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to parse upload file '{filename}': {str(e)}", exc_info=True)
         raise HTTPException(status_code=400, detail="Failed to parse file: invalid format or corrupted file.")
 
-    # COLUMN DETECTION
-    columns = [col.lower() for col in df.columns]
+    # ── ADAPTIVE COLUMN MAPPING ──────────────────────────────────────────────
+    # Normalises ANY column naming convention to canonical field names.
+    # Works for Tally exports, shop Excel, pharmacy sheets, etc.
+    mapping_result = normalize_dataframe(df, filename=filename)
+
+    if mapping_result.detected_type == "unknown" or mapping_result.confidence < 0.3:
+        logger.warning(
+            f"Unrecognized schema in '{filename}' by user {active_user_id}. "
+            f"Columns: {df.columns.tolist()} | "
+            f"Mapped: {mapping_result.mapping} | Confidence: {mapping_result.confidence:.2f}"
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Could not recognise this file's columns. "
+                f"Detected columns: {df.columns.tolist()}. "
+                f"Expected: invoice columns (invoice_id/customer/amount), "
+                f"inventory columns (product_name/stock), or payment columns."
+            )
+        )
+
+    # Use the renamed DataFrame from here on — canonical column names guaranteed
+    df        = mapping_result.renamed_df
+    file_type = mapping_result.detected_type
+    columns   = list(mapping_result.mapping.values())
+
+    logger.info(
+        f"[Upload] file='{filename}' type={file_type} confidence={mapping_result.confidence:.2f} "
+        f"mapping={mapping_result.mapping} warnings={mapping_result.warnings}"
+    )
+
     db = SessionLocal()
-    file_type = "unknown"
     stats = {"added": 0, "updated": 0}
-
-    # Detect file type
-    if "invoice_id" in columns:
-        file_type = "invoice"
-    elif "expiry_date" in columns:
-        file_type = "inventory"
-    elif "due_date" in columns:
-        file_type = "payment"
-
-    if file_type == "unknown":
-        db.close()
-        logger.warning(f"Unrecognized file schema in upload '{filename}' by user {active_user_id}. Columns: {columns}")
-        raise HTTPException(status_code=400, detail="Could not detect schema/file type (unsupported columns)")
-
-    logger.info(f"Detected file schema: {file_type} for file '{filename}' ({len(df)} rows) from user {active_user_id}.")
     try:
         # SAVE FILE HISTORY FIRST TO GENERATE FILE_ID WITHOUT COMMITTING
         uploaded_file = UploadedFile(
@@ -231,16 +248,18 @@ async def upload_file(
         except Exception as embed_err:
             logger.error(f"Failed indexing file {file_id} embeddings: {embed_err}", exc_info=True)
 
-        invalidate_cache()  # bust context cache — new data uploaded
+        invalidate_user_cache(active_user_id)  # bust only this tenant's cache — new data uploaded
 
-        logger.info(f"Successfully processed {file_type} file upload '{filename}' for user {active_user_id}. Added: {stats['added']}, Updated: {stats['updated']}.")
+        logger.info(f"Successfully processed {file_type} upload '{filename}' for user {active_user_id}. Added: {stats['added']}, Updated: {stats['updated']}.")
         return {
             "message": "Upload successful",
             "file_type": file_type,
             "rows": len(df),
             "added": stats["added"],
             "updated": stats["updated"],
-            "columns": columns
+            "columns": columns,
+            "column_mapping": mapping_result.mapping,
+            "warnings": mapping_result.warnings,
         }
     except HTTPException:
         db.rollback()
@@ -422,7 +441,7 @@ async def delete_upload(
                 logger.info(f"Cascaded delete of all payments: {deleted_all} records removed.")
 
         db.commit()
-        invalidate_cache()   # bust context cache — data deleted
+        invalidate_user_cache(active_user_id)   # bust only this tenant's cache -- data deleted
         logger.info(f"Successfully deleted file ID {file_id} and committed database changes.")
 
         return {
@@ -439,3 +458,110 @@ async def delete_upload(
         raise HTTPException(status_code=500, detail="Database deletion failed.")
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# ZIP UPLOAD HELPER  (called inline from upload_file)
+# ---------------------------------------------------------------------------
+
+async def _process_zip_upload(zip_bytes: bytes, business_id: int, zip_filename: str) -> dict:
+    """
+    Extract every .pdf from a ZIP archive and process each through the
+    full OCR-aware PDF pipeline.  Returns an aggregated result summary.
+
+    Rules:
+      - Max 20 PDFs per ZIP (to cap processing time)
+      - Max 10 MB ZIP (generous for a batch of invoices)
+      - Each PDF follows the same duplicate-hash check as single-file upload
+      - Partial success: failures are recorded per-file, not bubbled as 500
+    """
+    import zipfile
+
+    MAX_ZIP_SIZE  = 10 * 1024 * 1024   # 10 MB
+    MAX_PDF_COUNT = 20
+
+    if len(zip_bytes) > MAX_ZIP_SIZE:
+        raise HTTPException(status_code=413, detail="ZIP file exceeds 10 MB limit.")
+
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Invalid or corrupted ZIP file.")
+
+    pdf_names = [
+        name for name in zf.namelist()
+        if name.lower().endswith(".pdf") and not name.startswith("__MACOSX")
+    ]
+
+    if not pdf_names:
+        raise HTTPException(status_code=400, detail="ZIP contains no PDF files.")
+
+    if len(pdf_names) > MAX_PDF_COUNT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"ZIP contains {len(pdf_names)} PDFs — maximum is {MAX_PDF_COUNT} per batch."
+        )
+
+    logger.info(f"[ZIP] Processing {len(pdf_names)} PDF(s) from '{zip_filename}' for user {business_id}.")
+
+    results    = []
+    total_rows = 0
+    db         = SessionLocal()
+
+    for pdf_name in pdf_names:
+        short_name = pdf_name.split("/")[-1]   # strip folder prefix
+        try:
+            pdf_bytes = zf.read(pdf_name)
+
+            # Duplicate check per PDF
+            file_hash = hashlib.sha256(pdf_bytes).hexdigest()
+            existing = db.query(UploadedFile).filter(
+                UploadedFile.file_hash == file_hash,
+                UploadedFile.business_id == business_id
+            ).first()
+            if existing:
+                results.append({
+                    "file":   short_name,
+                    "status": "skipped",
+                    "reason": f"duplicate of '{existing.filename}' (uploaded {existing.upload_time})"
+                })
+                continue
+
+            # OCR-aware extraction → structured data → DB
+            raw_text    = parse_pdf_text(pdf_bytes)
+            structured  = extract_structured_invoice(raw_text)
+            save_result = save_pdf_invoice_to_db(structured, business_id, short_name, file_hash=file_hash)
+
+            total_rows += save_result["items_count"]
+            results.append({
+                "file":       short_name,
+                "status":     "ok",
+                "invoice_id": save_result["invoice_id"],
+                "items":      save_result["items_count"],
+                "amount":     save_result["total_amount"]
+            })
+            logger.info(f"[ZIP] '{short_name}' → {save_result['items_count']} items saved.")
+
+        except Exception as e:
+            logger.warning(f"[ZIP] '{short_name}' failed: {e}")
+            results.append({"file": short_name, "status": "error", "reason": str(e)})
+
+    db.close()
+    zf.close()
+    invalidate_user_cache(business_id)   # bust only this tenant's cache
+
+    ok_count      = sum(1 for r in results if r["status"] == "ok")
+    skipped_count = sum(1 for r in results if r["status"] == "skipped")
+    error_count   = sum(1 for r in results if r["status"] == "error")
+
+    logger.info(
+        f"[ZIP] '{zip_filename}': {ok_count} ok, {skipped_count} skipped, "
+        f"{error_count} errors — {total_rows} total items saved."
+    )
+
+    return {
+        "message":   f"ZIP processed: {ok_count} imported, {skipped_count} skipped, {error_count} failed",
+        "file_type": "zip",
+        "rows":      total_rows,
+        "files":     results
+    }

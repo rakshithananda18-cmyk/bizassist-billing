@@ -29,7 +29,7 @@ def start_scheduler():
     global _scheduler
 
     if _scheduler and _scheduler.running:
-        logger.info("[Scheduler] Already running — skipping re-init.")
+        logger.info("[SCHED] Already running — skipping re-init.")
         return
 
     from services.alert_jobs import (
@@ -79,7 +79,7 @@ def start_scheduler():
 
     _scheduler.start()
     logger.info(
-        "[Scheduler] Started. Jobs: daily summary @ 8:00 IST, "
+        "[SCHED] Started. Jobs: daily summary @ 8:00 IST, "
         "overdue/low-stock/expiry @ 9:00–9:10 IST."
     )
 
@@ -88,7 +88,7 @@ def stop_scheduler():
     global _scheduler
     if _scheduler and _scheduler.running:
         _scheduler.shutdown(wait=False)
-        logger.info("[Scheduler] Stopped.")
+        logger.info("[SCHED] Stopped.")
 
 
 def get_scheduler() -> BackgroundScheduler:

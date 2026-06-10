@@ -1,20 +1,34 @@
+# HuggingFace Spaces build — SQLite only (no psycopg2).
+
+# ── Web framework ──────────────────────────────────────────────
 fastapi>=0.95.0
 uvicorn>=0.22.0
+python-multipart>=0.0.6        # file uploads (UploadFile)
 python-dotenv>=1.0.0
+
+# ── Database ───────────────────────────────────────────────────
 sqlalchemy>=2.0.0
-greenlet>=2.0.2
-python-multipart>=0.0.6
-pandas>=2.0.0
-openpyxl>=3.1.0
-groq>=0.4.0
+alembic>=1.13.0                # schema migrations
+# psycopg2-binary NOT included — HF free tier uses SQLite. Add if you move to PostgreSQL.
+
+# ── Auth ───────────────────────────────────────────────────────
 bcrypt>=4.0.0
 pyjwt>=2.6.0
-anthropic>=0.105.2
+
+# ── Data / file parsing ────────────────────────────────────────
+pandas>=2.0.0
+numpy>=1.24.0                  # used directly in services/embeddings.py
+openpyxl>=3.1.0                # .xlsx support for pandas
 pypdf>=4.0.0
-apscheduler>=3.10.0
-sentence-transformers>=3.0.0
-langgraph>=0.2.0
-langchain-core>=0.3.0
+
+# ── LLM / AI ───────────────────────────────────────────────────
+groq>=0.4.0
+anthropic>=0.105.2             # Claude PDF parsing (services/pdf_parser.py)
+langgraph>=0.2.0               # pulls langchain-core in automatically
+
+# ── Embeddings / vector store ──────────────────────────────────
+sentence-transformers>=3.0.0   # local MiniLM (free, no API cost); pulls torch (~240 MB)
 chromadb>=0.4.0
-# Note: psycopg2-binary is NOT included — HF Spaces free tier uses SQLite
-#       Add it back if you upgrade to PostgreSQL
+
+# ── Scheduler ──────────────────────────────────────────────────
+apscheduler>=3.10.0

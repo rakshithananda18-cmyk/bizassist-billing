@@ -15,6 +15,7 @@ Returns a dict: {"allowed": True} or {"allowed": False, "reason": "...", "limit"
 import logging
 from collections import defaultdict, deque
 from datetime import datetime, date
+from sqlalchemy import func, case
 from database.db import SessionLocal
 from database.models import RateLimitConfig, TokenUsage
 
@@ -60,23 +61,33 @@ def _get_config(business_id: int) -> dict:
 
 
 def _get_today_usage(business_id: int) -> dict:
-    """Returns today's query count, token total, and complex count from DB."""
+    """
+    Returns today's query count, token total, and complex count.
+
+    Uses a single SQL aggregate (COUNT/SUM) instead of loading every row of the
+    day into Python and summing — O(1) work in the DB on every AI request (H4).
+    """
     db = SessionLocal()
     try:
         today_start = datetime.combine(date.today(), datetime.min.time())
-        rows = db.query(TokenUsage).filter(
-            TokenUsage.business_id == business_id,
-            TokenUsage.timestamp >= today_start
-        ).all()
-
-        total_queries  = len(rows)
-        total_tokens   = sum(r.total_tokens or 0 for r in rows)
-        complex_queries = sum(1 for r in rows if r.model_tier == "AI_COMPLEX")
-
+        total_queries, total_tokens, complex_queries = (
+            db.query(
+                func.count(TokenUsage.id),
+                func.coalesce(func.sum(TokenUsage.total_tokens), 0),
+                func.coalesce(
+                    func.sum(case((TokenUsage.model_tier == "AI_COMPLEX", 1), else_=0)), 0
+                ),
+            )
+            .filter(
+                TokenUsage.business_id == business_id,
+                TokenUsage.timestamp >= today_start,
+            )
+            .one()
+        )
         return {
-            "queries_today":  total_queries,
-            "tokens_today":   total_tokens,
-            "complex_today":  complex_queries,
+            "queries_today":  int(total_queries or 0),
+            "tokens_today":   int(total_tokens or 0),
+            "complex_today":  int(complex_queries or 0),
         }
     finally:
         db.close()
@@ -108,7 +119,7 @@ def check_rate_limit(business_id: int, route: str = "AI_SIMPLE") -> dict:
         window.popleft()
 
     if len(window) >= cfg["requests_per_minute"]:
-        logger.warning(f"[RateLimit] User {business_id} hit per-minute limit ({cfg['requests_per_minute']}/min)")
+        logger.warning(f"[RATELIMIT] User {business_id} hit per-minute limit ({cfg['requests_per_minute']}/min)")
         return {
             "allowed": False,
             "reason":  f"Rate limit: max {cfg['requests_per_minute']} requests per minute.",
@@ -122,7 +133,7 @@ def check_rate_limit(business_id: int, route: str = "AI_SIMPLE") -> dict:
     usage = _get_today_usage(business_id)
 
     if usage["queries_today"] >= cfg["requests_per_day"]:
-        logger.warning(f"[RateLimit] User {business_id} hit daily query limit ({cfg['requests_per_day']}/day)")
+        logger.warning(f"[RATELIMIT] User {business_id} hit daily query limit ({cfg['requests_per_day']}/day)")
         return {
             "allowed": False,
             "reason":  f"Daily limit reached: max {cfg['requests_per_day']} queries per day.",
@@ -132,7 +143,7 @@ def check_rate_limit(business_id: int, route: str = "AI_SIMPLE") -> dict:
         }
 
     if usage["tokens_today"] >= cfg["max_tokens_per_day"]:
-        logger.warning(f"[RateLimit] User {business_id} hit daily token limit ({cfg['max_tokens_per_day']} tokens)")
+        logger.warning(f"[RATELIMIT] User {business_id} hit daily token limit ({cfg['max_tokens_per_day']} tokens)")
         return {
             "allowed": False,
             "reason":  f"Daily token budget exhausted: max {cfg['max_tokens_per_day']:,} tokens per day.",
@@ -142,7 +153,7 @@ def check_rate_limit(business_id: int, route: str = "AI_SIMPLE") -> dict:
         }
 
     if route == "AI_COMPLEX" and usage["complex_today"] >= cfg["complex_per_day"]:
-        logger.warning(f"[RateLimit] User {business_id} hit daily complex limit ({cfg['complex_per_day']}/day)")
+        logger.warning(f"[RATELIMIT] User {business_id} hit daily complex limit ({cfg['complex_per_day']}/day)")
         return {
             "allowed": False,
             "reason":  f"Daily limit for advanced analysis reached: max {cfg['complex_per_day']} per day.",
@@ -182,7 +193,7 @@ def check_ip_rate_limit(ip_address: str, limit: int = 10) -> dict:
         window.popleft()
 
     if len(window) >= limit:
-        logger.warning(f"[RateLimit] IP {ip_address} hit rate limit ({limit}/min)")
+        logger.warning(f"[RATELIMIT] IP {ip_address} hit rate limit ({limit}/min)")
         return {
             "allowed": False,
             "reason": f"Rate limit exceeded: max {limit} login requests per minute.",
@@ -206,7 +217,7 @@ def check_upload_rate_limit(business_id: int, limit: int = 5) -> dict:
         window.popleft()
 
     if len(window) >= limit:
-        logger.warning(f"[RateLimit] User {business_id} hit upload rate limit ({limit}/min)")
+        logger.warning(f"[RATELIMIT] User {business_id} hit upload rate limit ({limit}/min)")
         return {
             "allowed": False,
             "reason": f"Rate limit exceeded: max {limit} file uploads per minute.",

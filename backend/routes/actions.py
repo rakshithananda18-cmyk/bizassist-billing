@@ -52,9 +52,18 @@ def execute_action(req: ActionRequest, current_user: dict = Depends(get_active_u
     session_id = req.session_id or str(uuid.uuid4())
     question = (req.question or "Send payment reminders").strip()
     title = _persist_turn(user_id, session_id, question, result.get("markdown", ""), source="db")
-    result["session_id"] = session_id
-    result["session_title"] = title
-    return result
+    # Wrap in unified response envelope
+    markdown = result.get("markdown", "")
+    return {
+        "answer":       {"markdown": markdown, "title": question},
+        "response":     markdown,       # backward-compat
+        "source":       "action",
+        "suggestions":  [],
+        "session_id":   session_id,
+        "session_title": title,
+        "meta":         {"tokens": 0, "model": None, "cached": False},
+        **{k: v for k, v in result.items() if k not in ("markdown",)},
+    }
 
 
 @router.get("/action/history")

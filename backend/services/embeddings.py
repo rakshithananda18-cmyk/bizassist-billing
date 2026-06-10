@@ -32,7 +32,7 @@ def get_embedding_model():
         # Warm up: run one dummy encode so first real request is instant
         _embedding_model.encode("warmup", convert_to_numpy=True)
         _model_ready = True
-        logger.info("[Embeddings] Loaded local model: all-MiniLM-L6-v2 (free, no API cost)")
+        logger.info("[EMBED] Loaded local model: all-MiniLM-L6-v2 (free, no API cost)")
     return _embedding_model
 
 
@@ -44,11 +44,11 @@ def preload_model_async():
     import threading
     def _load():
         try:
-            logger.info("[Embeddings] Pre-loading embedding model in background...")
+            logger.info("[EMBED] Pre-loading embedding model in background...")
             get_embedding_model()
-            logger.info("[Embeddings] Model ready ✓")
+            logger.info("[EMBED] Model ready ✓")
         except Exception as e:
-            logger.error(f"[Embeddings] Background model preload failed: {e}", exc_info=True)
+            logger.error(f"[EMBED] Background model preload failed: {e}", exc_info=True)
     threading.Thread(target=_load, daemon=True).start()
 
 
@@ -76,9 +76,9 @@ def get_chroma_client():
         try:
             os.makedirs(CHROMA_DB_DIR, exist_ok=True)
             _chroma_client = chromadb.PersistentClient(path=CHROMA_DB_DIR)
-            logger.info(f"[Chroma] Initialized persistent client at {CHROMA_DB_DIR}")
+            logger.info(f"[CHROMA] Initialized persistent client at {CHROMA_DB_DIR}")
         except Exception as e:
-            logger.error(f"[Chroma] Failed to initialize persistent client: {e}", exc_info=True)
+            logger.error(f"[CHROMA] Failed to initialize persistent client: {e}", exc_info=True)
             raise e
     return _chroma_client
 
@@ -151,9 +151,9 @@ def save_chat_memory(business_id: int, session_id: str, session_title: str, user
             }],
             documents=[user_query]
         )
-        logger.info(f"[Chroma Memory] Saved chat turn for user {business_id}, session {session_id}")
+        logger.info(f"[CHROMA] Saved chat turn for user {business_id}, session {session_id}")
     except Exception as e:
-        logger.error(f"[Chroma Memory] Failed to save chat memory: {e}", exc_info=True)
+        logger.error(f"[CHROMA] Failed to save chat memory: {e}", exc_info=True)
 
 def search_chat_memories(business_id: int, query: str, limit: int = 3) -> str:
     """
@@ -162,7 +162,7 @@ def search_chat_memories(business_id: int, query: str, limit: int = 3) -> str:
     Skips gracefully if model is still loading (returns empty string).
     """
     if not is_model_ready():
-        logger.debug("[Chroma Memory] Model not ready yet — skipping memory search.")
+        logger.debug("[CHROMA] Model not ready yet — skipping memory search.")
         return ""
     try:
         collection = get_chat_memory_collection()
@@ -198,7 +198,7 @@ def search_chat_memories(business_id: int, query: str, limit: int = 3) -> str:
             
         return ""
     except Exception as e:
-        logger.error(f"[Chroma Memory] Failed to query chat memories: {e}", exc_info=True)
+        logger.error(f"[CHROMA] Failed to query chat memories: {e}", exc_info=True)
         return ""
 
 def delete_user_chroma_memories(business_id: int):
@@ -207,14 +207,14 @@ def delete_user_chroma_memories(business_id: int):
         # Delete chat memory
         chat_collection = get_chat_memory_collection()
         chat_collection.delete(where={"business_id": int(business_id)})
-        logger.info(f"[Chroma Memory] Purged all chat memories for user {business_id}")
+        logger.info(f"[CHROMA] Purged all chat memories for user {business_id}")
         
         # Delete document embeddings
         doc_collection = get_document_embeddings_collection()
         doc_collection.delete(where={"business_id": int(business_id)})
-        logger.info(f"[Chroma Document] Purged all document embeddings for user {business_id}")
+        logger.info(f"[CHROMA] Purged all document embeddings for user {business_id}")
     except Exception as e:
-        logger.error(f"[Chroma] Failed to purge user memories/embeddings: {e}", exc_info=True)
+        logger.error(f"[CHROMA] Failed to purge user memories/embeddings: {e}", exc_info=True)
 
 def delete_session_chroma_memories(session_id: str, business_id: int):
     """Purges all chat memories for a specific session_id."""
@@ -229,9 +229,9 @@ def delete_session_chroma_memories(session_id: str, business_id: int):
                 ]
             }
         )
-        logger.info(f"[Chroma Memory] Purged chat memories for session {session_id}, user {business_id}")
+        logger.info(f"[CHROMA] Purged chat memories for session {session_id}, user {business_id}")
     except Exception as e:
-        logger.error(f"[Chroma Memory] Failed to delete session memories: {e}", exc_info=True)
+        logger.error(f"[CHROMA] Failed to delete session memories: {e}", exc_info=True)
 
 def delete_file_chroma_embeddings(file_id: int, business_id: int):
     """Purges document embeddings associated with a parsed file using file_user_key."""
@@ -239,9 +239,9 @@ def delete_file_chroma_embeddings(file_id: int, business_id: int):
         collection = get_document_embeddings_collection()
         file_user_key = f"{file_id}_{business_id}"
         collection.delete(where={"file_user_key": file_user_key})
-        logger.info(f"[Chroma Document] Purged embeddings for file {file_id}, user {business_id}")
+        logger.info(f"[CHROMA] Purged embeddings for file {file_id}, user {business_id}")
     except Exception as e:
-        logger.error(f"[Chroma Document] Failed to delete file embeddings: {e}", exc_info=True)
+        logger.error(f"[CHROMA] Failed to delete file embeddings: {e}", exc_info=True)
 
 # ==========================================
 # INDEX SYNCHRONIZATION HELPERS
@@ -318,9 +318,9 @@ def index_new_file_records(db, file_type: str, file_id: int, business_id: int):
                     metadatas=chroma_metadatas,
                     documents=batch_texts
                 )
-                logger.info(f"[Chroma Document] Indexed {len(batch_texts)} items in Chroma for file ID {file_id}")
+                logger.info(f"[CHROMA] Indexed {len(batch_texts)} items in Chroma for file ID {file_id}")
             except Exception as chroma_err:
-                logger.error(f"[Chroma Document] Failed parallel indexing to Chroma: {chroma_err}", exc_info=True)
+                logger.error(f"[CHROMA] Failed parallel indexing to Chroma: {chroma_err}", exc_info=True)
         
         db.commit()
         logger.info(f"Successfully generated and committed {len(texts)} embeddings for file ID {file_id}.")
@@ -348,7 +348,7 @@ def semantic_search_records(user_id: int, query: str, limit: int = 5) -> list:
         )
         
         if results and results.get("ids") and results["ids"][0]:
-            logger.info(f"[Chroma Document] Query successful. Found {len(results['ids'][0])} records.")
+            logger.info(f"[CHROMA] Query successful. Found {len(results['ids'][0])} records.")
             output = []
             ids = results["ids"][0]
             metadatas = results["metadatas"][0]
@@ -366,9 +366,9 @@ def semantic_search_records(user_id: int, query: str, limit: int = 5) -> list:
                 logger.info(f"Match (Chroma): Score={similarity:.4f} | Type={meta['document_type']} | Content={meta['text_content']}")
             return output
             
-        logger.info(f"[Chroma Document] No matches in Chroma for user {user_id}. Falling back to SQLite.")
+        logger.info(f"[CHROMA] No matches in Chroma for user {user_id}. Falling back to SQLite.")
     except Exception as chroma_err:
-        logger.error(f"[Chroma Document] Search failed, falling back to SQLite: {chroma_err}")
+        logger.error(f"[CHROMA] Search failed, falling back to SQLite: {chroma_err}")
 
     # ── Fallback: SQLite brute-force ──────────────────────────────
     db = SessionLocal()

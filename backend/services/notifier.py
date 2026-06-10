@@ -31,7 +31,7 @@ EMAIL_FROM = os.getenv("EMAIL_FROM", "") or EMAIL_USER
 
 def send_email(to: str, subject: str, body: str) -> bool:
     if not EMAIL_USER or not EMAIL_PASS:
-        logger.warning("[Email] EMAIL_USER / EMAIL_PASS not set in .env — skipping.")
+        logger.warning("[EMAIL] EMAIL_USER / EMAIL_PASS not set in .env — skipping.")
         return False
     try:
         msg = MIMEMultipart("alternative")
@@ -46,10 +46,10 @@ def send_email(to: str, subject: str, body: str) -> bool:
             server.login(EMAIL_USER, EMAIL_PASS)
             server.sendmail(EMAIL_FROM, to, msg.as_string())
 
-        logger.info(f"[Email] Sent to {to}: {subject}")
+        logger.info(f"[EMAIL] Sent to {to}: {subject}")
         return True
     except Exception as e:
-        logger.error(f"[Email] Failed to send to {to}: {e}")
+        logger.error(f"[EMAIL] Failed to send to {to}: {e}")
         return False
 
 
@@ -61,4 +61,4 @@ def notify(email: Optional[str], whatsapp: Optional[str], subject: str, body: st
     if email:
         send_email(email, subject, body)
     else:
-        logger.warning(f"[Notify] No email configured — alert not delivered: '{subject}'")
+        logger.warning(f"[NOTIFY] No email configured — alert not delivered: '{subject}'")

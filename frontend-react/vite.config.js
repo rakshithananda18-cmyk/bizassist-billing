@@ -6,12 +6,17 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Proxy API calls to the FastAPI backend during development
       '/api': {
         target: 'http://localhost:8001',
         changeOrigin: true,
         rewrite: path => path.replace(/^\/api/, '')
       }
     }
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/__tests__/setup.js',
+    css: false,
   }
 })

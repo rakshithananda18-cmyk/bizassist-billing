@@ -21,6 +21,7 @@ from sqlalchemy import func
 from database.db import SessionLocal
 from database.models import Invoice, Inventory, AlertConfig, User
 from services.notifier import notify
+from services.dates import parse_date
 
 logger = logging.getLogger("bizassist.alerts")
 
@@ -54,10 +55,10 @@ def _load_active_configs() -> list:
 # ── Job 1: Overdue Invoices ───────────────────────────────────
 
 def run_overdue_alerts():
-    logger.info("[Scheduler] Running overdue invoice alerts...")
+    logger.info("[SCHED] Running overdue invoice alerts...")
     configs = [c for c in _load_active_configs() if c["alert_overdue"]]
     if not configs:
-        logger.info("[Scheduler] No businesses opted into overdue alerts.")
+        logger.info("[SCHED] No businesses opted into overdue alerts.")
         return
 
     db = SessionLocal()
@@ -74,7 +75,7 @@ def run_overdue_alerts():
             )
 
             if not overdue:
-                logger.info(f"[Alerts] No overdue invoices for business_id={bid}. Skipping.")
+                logger.info(f"[ALERT] No overdue invoices for business_id={bid}. Skipping.")
                 continue
 
             total = sum(inv.amount or 0 for inv in overdue)
@@ -100,7 +101,7 @@ def run_overdue_alerts():
             body = "\n".join(lines)
             subject = f"⚠️ {len(overdue)} Overdue Invoice(s) — ₹{total:,.0f} Pending"
             notify(cfg["email"], cfg["whatsapp_number"], subject, body)
-            logger.info(f"[Alerts] Overdue alert dispatched for business_id={bid}")
+            logger.info(f"[ALERT] Overdue alert dispatched for business_id={bid}")
     finally:
         db.close()
 
@@ -108,10 +109,10 @@ def run_overdue_alerts():
 # ── Job 2: Low Stock ─────────────────────────────────────────
 
 def run_low_stock_alerts():
-    logger.info("[Scheduler] Running low stock alerts...")
+    logger.info("[SCHED] Running low stock alerts...")
     configs = [c for c in _load_active_configs() if c["alert_low_stock"]]
     if not configs:
-        logger.info("[Scheduler] No businesses opted into low stock alerts.")
+        logger.info("[SCHED] No businesses opted into low stock alerts.")
         return
 
     db = SessionLocal()
@@ -129,7 +130,7 @@ def run_low_stock_alerts():
             )
 
             if not low:
-                logger.info(f"[Alerts] No low stock items for business_id={bid}. Skipping.")
+                logger.info(f"[ALERT] No low stock items for business_id={bid}. Skipping.")
                 continue
 
             lines = [
@@ -150,7 +151,7 @@ def run_low_stock_alerts():
             body    = "\n".join(lines)
             subject = f"📦 {len(low)} Product(s) Low on Stock — Action Needed"
             notify(cfg["email"], cfg["whatsapp_number"], subject, body)
-            logger.info(f"[Alerts] Low stock alert dispatched for business_id={bid}")
+            logger.info(f"[ALERT] Low stock alert dispatched for business_id={bid}")
     finally:
         db.close()
 
@@ -158,10 +159,10 @@ def run_low_stock_alerts():
 # ── Job 3: Expiry Warnings ────────────────────────────────────
 
 def run_expiry_alerts():
-    logger.info("[Scheduler] Running expiry alerts...")
+    logger.info("[SCHED] Running expiry alerts...")
     configs = [c for c in _load_active_configs() if c["alert_expiry"]]
     if not configs:
-        logger.info("[Scheduler] No businesses opted into expiry alerts.")
+        logger.info("[SCHED] No businesses opted into expiry alerts.")
         return
 
     db = SessionLocal()
@@ -180,20 +181,15 @@ def run_expiry_alerts():
 
             expiring = []
             for item in all_items:
-                if not item.expiry_date:
+                exp = parse_date(item.expiry_date)
+                if exp is None:
                     continue
-                for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
-                    try:
-                        exp       = datetime.strptime(str(item.expiry_date).strip(), fmt)
-                        days_left = (exp - today).days
-                        if 0 <= days_left <= days:
-                            expiring.append((item, days_left))
-                        break
-                    except ValueError:
-                        continue
+                days_left = (exp - today).days
+                if 0 <= days_left <= days:
+                    expiring.append((item, days_left))
 
             if not expiring:
-                logger.info(f"[Alerts] No expiring items for business_id={bid}. Skipping.")
+                logger.info(f"[ALERT] No expiring items for business_id={bid}. Skipping.")
                 continue
 
             expiring.sort(key=lambda x: x[1])
@@ -220,7 +216,7 @@ def run_expiry_alerts():
             body    = "\n".join(lines)
             subject = f"🗓️ {len(expiring)} Product(s) Expiring Within {days} Days"
             notify(cfg["email"], cfg["whatsapp_number"], subject, body)
-            logger.info(f"[Alerts] Expiry alert dispatched for business_id={bid}")
+            logger.info(f"[ALERT] Expiry alert dispatched for business_id={bid}")
     finally:
         db.close()
 
@@ -228,10 +224,10 @@ def run_expiry_alerts():
 # ── Job 4: Daily Business Summary ────────────────────────────
 
 def run_daily_summary():
-    logger.info("[Scheduler] Running daily business summaries...")
+    logger.info("[SCHED] Running daily business summaries...")
     configs = [c for c in _load_active_configs() if c["alert_daily_summary"]]
     if not configs:
-        logger.info("[Scheduler] No businesses opted into daily summary.")
+        logger.info("[SCHED] No businesses opted into daily summary.")
         return
 
     db    = SessionLocal()
@@ -259,17 +255,12 @@ def run_daily_summary():
             all_items = db.query(Inventory).filter(Inventory.business_id == bid).all()
             expiring_cnt = 0
             for item in all_items:
-                if not item.expiry_date:
+                exp = parse_date(item.expiry_date)
+                if exp is None:
                     continue
-                for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
-                    try:
-                        exp       = datetime.strptime(str(item.expiry_date).strip(), fmt)
-                        days_left = (exp - today).days
-                        if 0 <= days_left <= exp_days:
-                            expiring_cnt += 1
-                        break
-                    except ValueError:
-                        continue
+                days_left = (exp - today).days
+                if 0 <= days_left <= exp_days:
+                    expiring_cnt += 1
 
             lines = [
                 f"☀️ Good morning! BizAssist Daily Summary",
@@ -304,6 +295,6 @@ def run_daily_summary():
             body    = "\n".join(lines)
             subject = f"☀️ Daily Summary — {today.strftime('%d %b %Y')} | {cfg['business_name']}"
             notify(cfg["email"], cfg["whatsapp_number"], subject, body)
-            logger.info(f"[Alerts] Daily summary dispatched for business_id={bid}")
+            logger.info(f"[ALERT] Daily summary dispatched for business_id={bid}")
     finally:
         db.close()

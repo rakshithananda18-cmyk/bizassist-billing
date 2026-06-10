@@ -135,7 +135,7 @@ def test_indexing_and_search(mock_batch_embeddings):
         assert results[0]["score"] > 0.8
 
 def test_tool_execution():
-    with patch("services.tools.semantic_search_records") as mock_search_records:
+    with patch("services.tools.search.semantic_search_records") as mock_search_records:
         mock_search_records.return_value = [
             {"score": 0.95, "document_type": "invoice", "record_id": 1, "text_content": "Matched Invoice Text"}
         ]

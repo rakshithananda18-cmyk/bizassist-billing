@@ -50,8 +50,24 @@ def test_query_classification():
     assert classify("total revenue")[0] == "DIRECT"
     assert classify("who is overdue")[0] == "DIRECT"
     assert classify("low stock")[0] == "DIRECT"
-    assert classify("medicines expiring")[0] == "DIRECT"
+    assert classify("medicines expiring")[0] == "DIRECT"   # expiry pattern still catches it
     assert classify("dashboard overview")[0] == "DIRECT"
+
+    # Conversational short-circuit — must NOT hit DB or AI
+    assert classify("okay")[0] == "CONVERSATIONAL"
+    assert classify("thanks")[0] == "CONVERSATIONAL"
+    assert classify("yes")[0] == "CONVERSATIONAL"
+    assert classify("hi")[0] == "CONVERSATIONAL"
+    assert classify("cool")[0] == "CONVERSATIONAL"
+
+    # Top debtors — distinct from top customers
+    route, key = classify("top debtors")
+    assert route == "DIRECT"
+    assert key == "top_debtors"
+
+    route, key = classify("who owes me the most")
+    assert route == "DIRECT"
+    assert key == "top_debtors"
 
     # AI reasoning queries
     assert classify("what business strategy should I adopt?")[0] == "AI_COMPLEX"
@@ -157,7 +173,7 @@ def test_authorized_endpoints():
     clients_data = response.json()
     assert "clients" in clients_data
 
-@patch("main_groq.client.chat.completions.create")
+@patch("routes.ask._client.chat.completions.create")
 def test_ask_ai_flow(mock_chat_create):
     # Mock LLM API response
     mock_response = MagicMock()
@@ -186,8 +202,13 @@ def test_ask_ai_flow(mock_chat_create):
     assert data["source"] == "ai"
     assert "Mocked LLM answer" in data["response"]
 
-@patch("main_groq.client.chat.completions.create")
+@patch("routes.ask._client.chat.completions.create")
 def test_ask_ai_tool_calling_flow(mock_chat_create):
+    # Flush query cache so the previous test's cached response for the same
+    # query + user doesn't short-circuit Layer 2 before the mocks fire.
+    from services.context_cache import invalidate
+    invalidate()
+
     # We mock two completions:
     # First completion returns a tool call to 'get_top_customers'.
     # Second completion returns the final response summarizing the tool output.
@@ -738,5 +759,3 @@ def test_sanitized_errors():
         # Should NOT leak the database exception detail
         assert "Internal DB Connection Corrupted" not in response.json()["detail"]
         assert response.json()["detail"] == "Internal server error setting rate limits."
-
-

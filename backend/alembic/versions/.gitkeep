@@ -1,0 +1,2 @@
+# Alembic revision scripts live here.
+# Generate the baseline once:  alembic revision --autogenerate -m "baseline schema"

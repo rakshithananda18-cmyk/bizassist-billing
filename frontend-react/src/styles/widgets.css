@@ -2586,10 +2586,13 @@ details[open] > .tree-summary::after {
     font-family: 'DM Mono', 'Geist Mono', monospace;
 }
 
-.tier-direct  { background: rgba(58,154,92,0.10);  color: #1f6b3a;  border: 1px solid rgba(58,154,92,0.2);  }
-.tier-cache   { background: rgba(74,144,201,0.10); color: #2a6a9e;  border: 1px solid rgba(74,144,201,0.2); }
-.tier-complex { background: rgba(201,100,66,0.10); color: var(--accent-color); border: 1px solid rgba(201,100,66,0.2); }
-.tier-simple  { background: rgba(201,124,34,0.10); color: #8a4e00;  border: 1px solid rgba(201,124,34,0.2);  }
+/* Green: DIRECT, INTENT, CACHE, CONVERSATIONAL — zero-token / cached paths */
+.tier-direct  { background: rgba(34,139,34,0.10);  color: #1a6b1a;  border: 1px solid rgba(34,139,34,0.25); }
+.tier-intent  { background: rgba(34,139,34,0.10);  color: #1a6b1a;  border: 1px solid rgba(34,139,34,0.25); }
+.tier-cache   { background: rgba(34,139,34,0.10);  color: #1a6b1a;  border: 1px solid rgba(34,139,34,0.25); }
+/* Yellow: AI_SIMPLE, AI_COMPLEX — LLM token spend */
+.tier-complex { background: rgba(202,170,30,0.12); color: #7a6000;  border: 1px solid rgba(202,170,30,0.35); }
+.tier-simple  { background: rgba(202,170,30,0.12); color: #7a6000;  border: 1px solid rgba(202,170,30,0.35); }
 
 /* =========================================
    CHAT SESSION HISTORY — kebab rename menu
