@@ -111,6 +111,59 @@ def _match_customer_name(query: str, names, threshold: float = _CUSTOMER_FUZZY_T
     return best if best_score >= threshold else None
 
 
+# Lookup-phrase filler stripped before guessing the entity for "did you mean".
+_LOOKUP_STOPWORDS = {
+    "do", "you", "yo", "know", "tell", "me", "about", "is", "the", "a", "an",
+    "of", "on", "for", "info", "information", "details", "detail", "who",
+    "what", "give", "show", "more", "please", "any", "there", "i", "my",
+}
+
+
+def _entity_guess(query: str) -> str:
+    """The likely customer-name portion of a lookup query (filler removed)."""
+    toks = re.findall(r"[a-z0-9]+", (query or "").lower())
+    kept = [t for t in toks if t not in _LOOKUP_STOPWORDS]
+    return " ".join(kept)
+
+
+def _match_customer_candidates(query: str, names, low: float = 0.45, max_n: int = 3):
+    """
+    Ranked NEAR-MISS customer names for a 'did you mean' prompt — used only when
+    `_match_customer_name` found no confident (>=0.82) match. Pure (no DB).
+    Returns up to `max_n` names whose whole-string similarity to the entity guess
+    is >= `low`, best first. Empty when nothing is close enough.
+    """
+    guess = _entity_guess(query)
+    clean = [n for n in names if n]
+    if not guess or not clean:
+        return []
+    scored = []
+    for n in clean:
+        r = difflib.SequenceMatcher(None, guess, n.lower()).ratio()
+        if r >= low:
+            scored.append((r, n))
+    scored.sort(key=lambda s: (-s[0], s[1]))
+    return [n for _, n in scored[:max_n]]
+
+
+def _customer_candidates(query: str, user_id: int):
+    """DB-backed near-miss candidates for this user (for 'did you mean' chips)."""
+    try:
+        from database.db import SessionLocal
+        from database.models import Invoice
+        db = SessionLocal()
+        try:
+            names = [r[0] for r in db.query(Invoice.customer)
+                     .filter(Invoice.business_id == user_id)
+                     .distinct().all()]
+        finally:
+            db.close()
+        return _match_customer_candidates(query, names)
+    except Exception as e:
+        logger.debug(f"[HANDLER] customer_candidates: {e}")
+        return []
+
+
 def _extract_customer_name(query: str, user_id: int):
     """Fetch this user's distinct customer names and resolve one from the query."""
     try:

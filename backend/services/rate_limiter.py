@@ -14,7 +14,7 @@ Returns a dict: {"allowed": True} or {"allowed": False, "reason": "...", "limit"
 
 import logging
 from collections import defaultdict, deque
-from datetime import datetime, date
+from datetime import datetime
 from sqlalchemy import func, case
 from database.db import SessionLocal
 from database.models import RateLimitConfig, TokenUsage
@@ -69,7 +69,11 @@ def _get_today_usage(business_id: int) -> dict:
     """
     db = SessionLocal()
     try:
-        today_start = datetime.combine(date.today(), datetime.min.time())
+        # UTC boundary — TokenUsage.timestamp is stored with datetime.utcnow(), so
+        # "today" must also be UTC. Using local date.today() here mis-counted the
+        # daily total near midnight (e.g. first hours of an IST day, when utcnow()
+        # is still the previous UTC date), under-enforcing the cap.
+        today_start = datetime.combine(datetime.utcnow().date(), datetime.min.time())
         total_queries, total_tokens, complex_queries = (
             db.query(
                 func.count(TokenUsage.id),

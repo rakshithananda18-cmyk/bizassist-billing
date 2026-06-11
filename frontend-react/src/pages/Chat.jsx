@@ -61,6 +61,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   const rlInterval         = useRef(null)
   const activeBotMessageRef = useRef(null)
   const typingTimeoutRef   = useRef(null)
+  const justCreatedRef     = useRef(null)   // session_id we created locally; skip its history re-fetch
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const scrollToBottom = useCallback((behavior = 'smooth') => {
@@ -82,7 +83,9 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   // ── Session management ────────────────────────────────────────────────────
   const loadSessions = useCallback(async () => {
     try {
-      const data = await fetchSessions(authFetch)   // shared/de-duped request
+      // force=true: Chat owns session mutations, so it must never be handed a
+      // stale pre-mutation list (the New Chat / delete sidebar bug).
+      const data = await fetchSessions(authFetch, true)
       if (data) setSessions(data)
     } catch {}
   }, [authFetch])
@@ -232,6 +235,10 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
 
             case 'done': {
               if (evt.session_id && evt.session_id !== activeId) {
+                // We already hold this turn's messages locally (just streamed) —
+                // mark the session so the activeId effect doesn't re-fetch history
+                // and overwrite them (which would drop chart/alerts and flicker).
+                justCreatedRef.current = evt.session_id
                 setActiveId(evt.session_id)
                 localStorage.setItem('active_session_id', evt.session_id)
                 loadSessions()
@@ -468,8 +475,16 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   }, [showHistoryPopup, menuOpenId])
 
   useEffect(() => {
-    if (activeId) selectSession(activeId)
-    else setMessages([])
+    if (activeId) {
+      if (justCreatedRef.current === activeId) {
+        // Session we just created via send — messages are already in state.
+        justCreatedRef.current = null
+      } else {
+        selectSession(activeId)
+      }
+    } else {
+      setMessages([])
+    }
     loadSessions()
   }, [activeId, loadSessions, selectSession])
 

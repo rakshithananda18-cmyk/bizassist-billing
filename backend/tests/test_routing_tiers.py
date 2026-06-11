@@ -328,34 +328,33 @@ class TestTier4Cache:
     """
 
     @patch("routes.ask._client.chat.completions.create")
-    def test_cache_hit_same_topic_different_wording(self, mock_create, auth_headers):
+    def test_catchall_topic_repeats_cache_but_distinct_dont_collide(self, mock_create, auth_headers):
         """
-        Ask 3 queries that all map to 'business_summary' topic.
-        First call: AI_SIMPLE, costs tokens.
-        Second & third calls: cache hit, 0 tokens.
+        'business_summary' is _detect_topic's safe DEFAULT, so unrelated AI_SIMPLE
+        fallbacks land on it. They must NOT share a cache entry (that collision is
+        what served 'do yo know Rahul traders' a stale generic summary). An EXACT
+        repeat of the same query still caches.
         """
         invalidate()
         mock_create.return_value = _mock_groq_simple("Focus on overdue collection today.")
 
-        # Call 1 — cache miss (AI_SIMPLE, topic=business_summary)
+        # Call 1 — cache miss (AI_SIMPLE, catch-all topic, keyed on the query)
         resp1 = client.post("/ask", json={"message": "is my business performing well this month"}, headers=auth_headers)
         assert resp1.status_code == 200
-        d1 = resp1.json()
-        assert d1["source"] in ("ai", "intent", "db")
+        assert resp1.json()["source"] in ("ai", "intent", "db")
 
-        # Call 2 — same topic, different wording → should hit cache
-        resp2 = client.post("/ask", json={"message": "what needs my attention now"}, headers=auth_headers)
+        # Call 2 — EXACT same query → cache hit (same q: key)
+        resp2 = client.post("/ask", json={"message": "is my business performing well this month"}, headers=auth_headers)
         assert resp2.status_code == 200
-        d2 = resp2.json()
-        assert d2.get("meta", {}).get("cached") is True, \
-            f"Expected cache hit on call 2, got meta={d2.get('meta')}"
+        assert resp2.json().get("meta", {}).get("cached") is True, \
+            f"Expected cache hit on exact repeat, got meta={resp2.json().get('meta')}"
 
-        # Call 3 — yet another variant → cache hit again
-        resp3 = client.post("/ask", json={"message": "what are my priorities"}, headers=auth_headers)
+        # Call 3 — DIFFERENT vague query on the same catch-all topic → must NOT
+        # be served call 1's answer (no cross-contamination).
+        resp3 = client.post("/ask", json={"message": "what needs my attention now"}, headers=auth_headers)
         assert resp3.status_code == 200
-        d3 = resp3.json()
-        assert d3.get("meta", {}).get("cached") is True, \
-            f"Expected cache hit on call 3, got meta={d3.get('meta')}"
+        assert resp3.json().get("meta", {}).get("cached") is False, \
+            f"Distinct catch-all query must not collide, got meta={resp3.json().get('meta')}"
 
     @patch("routes.ask._client.chat.completions.create")
     def test_cache_hit_overdue_topic(self, mock_create, auth_headers):

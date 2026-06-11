@@ -38,13 +38,30 @@ def _our_handlers():
     ]
 
 
-def test_configure_logging_is_idempotent():
+def test_configure_logging_is_idempotent(monkeypatch):
+    # Hermetic: without LOG_FILE there is exactly one (stream) handler. (With
+    # LOG_FILE set a second file handler is added — covered separately below.)
+    monkeypatch.delenv("LOG_FILE", raising=False)
     configure_logging()
     first = len(_our_handlers())
     configure_logging()
     second = len(_our_handlers())
     assert first == 1, f"expected exactly one configured handler, got {first}"
     assert second == 1, "re-running configure_logging must not stack handlers"
+
+
+def test_log_file_adds_one_extra_handler(monkeypatch, tmp_path):
+    # When LOG_FILE is set, configure_logging adds a file handler in addition to
+    # the stream one — and stays idempotent (no stacking on repeat calls).
+    monkeypatch.setenv("LOG_FILE", str(tmp_path / "biz.log"))
+    configure_logging()
+    first = len(_our_handlers())
+    configure_logging()
+    second = len(_our_handlers())
+    assert first == 2, f"expected stream + file handler, got {first}"
+    assert second == 2, "re-running configure_logging must not stack handlers"
+    monkeypatch.delenv("LOG_FILE", raising=False)
+    configure_logging()  # restore single-handler state for other tests
 
 
 def test_component_filter_strips_prefix():

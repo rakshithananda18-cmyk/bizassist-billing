@@ -15,7 +15,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-from database.db import SessionLocal
+from sqlalchemy.orm import Session
+
+from database.db import get_db
 from database.models import AlertConfig, User
 from services.auth import get_active_user
 from services.scheduler import get_scheduler
@@ -42,31 +44,30 @@ class AlertConfigRequest(BaseModel):
 # ── GET config ────────────────────────────────────────────────
 
 @router.get("/config")
-def get_alert_config(current_user: dict = Depends(get_active_user)):
+def get_alert_config(
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
+):
     """Returns the current alert configuration for the authenticated business."""
-    db = SessionLocal()
-    try:
-        config = db.query(AlertConfig).filter(
-            AlertConfig.business_id == current_user["id"]
-        ).first()
+    config = db.query(AlertConfig).filter(
+        AlertConfig.business_id == current_user["id"]
+    ).first()
 
-        if not config:
-            return {"configured": False}
+    if not config:
+        return {"configured": False}
 
-        return {
-            "configured":            True,
-            "email":                 config.email,
-            "whatsapp_number":       config.whatsapp_number,
-            "alert_overdue":         config.alert_overdue,
-            "alert_low_stock":       config.alert_low_stock,
-            "alert_expiry":          config.alert_expiry,
-            "alert_daily_summary":   config.alert_daily_summary,
-            "low_stock_threshold":   config.low_stock_threshold,
-            "expiry_days_threshold": config.expiry_days_threshold,
-            "active":                config.active,
-        }
-    finally:
-        db.close()
+    return {
+        "configured":            True,
+        "email":                 config.email,
+        "whatsapp_number":       config.whatsapp_number,
+        "alert_overdue":         config.alert_overdue,
+        "alert_low_stock":       config.alert_low_stock,
+        "alert_expiry":          config.alert_expiry,
+        "alert_daily_summary":   config.alert_daily_summary,
+        "low_stock_threshold":   config.low_stock_threshold,
+        "expiry_days_threshold": config.expiry_days_threshold,
+        "active":                config.active,
+    }
 
 
 # ── POST config ───────────────────────────────────────────────
@@ -74,10 +75,10 @@ def get_alert_config(current_user: dict = Depends(get_active_user)):
 @router.post("/config")
 def save_alert_config(
     body: AlertConfigRequest,
-    current_user: dict = Depends(get_active_user)
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
 ):
     """Create or update the alert configuration for the authenticated business."""
-    db = SessionLocal()
     try:
         user = db.query(User).filter(User.id == current_user["id"]).first()
         business_name = user.business_name if user else f"Business {current_user['id']}"
@@ -121,8 +122,6 @@ def save_alert_config(
         db.rollback()
         logger.error(f"[Alerts] Failed to save config: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to save alert configuration.")
-    finally:
-        db.close()
 
 
 # ── POST test trigger ─────────────────────────────────────────

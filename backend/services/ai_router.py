@@ -29,6 +29,7 @@ two paths.
 import json
 import logging
 import os
+import re
 import hashlib
 import uuid
 from datetime import date
@@ -38,7 +39,9 @@ from groq import Groq
 from sqlalchemy import func
 
 from services.query_router import classify, _WRITING_ACTIONS
-from services.direct_query_handler import handle as direct_handle, _extract_customer_name, CUSTOMER_NOT_FOUND
+from services.direct_query_handler import (
+    handle as direct_handle, _extract_customer_name, _customer_candidates, CUSTOMER_NOT_FOUND,
+)
 from services.recommendations import recommend, get_business_snapshot, detect_anomalies
 from services.context_cache import get_focused_context, get_cached_query_response, set_cached_query_response
 from services.tools import execute_tool, schemas as tool_schemas
@@ -356,25 +359,48 @@ def _cache_disc(route: str, user_query: str, topic: str, handler_key, is_writing
         if handler_key == "client_summary":
             return f"q:{(user_query or '').strip().lower()}"
         return handler_key
+    # AI_SIMPLE on the catch-all topic: `business_summary` is also `_detect_topic`'s
+    # safe default, so unrelated fallback queries ("do yo know Rahul traders", "what
+    # about my pricing") would all collide on it and serve each other's cached
+    # answer. Too coarse to share — key on the query.
+    if route == "AI_SIMPLE" and topic == "business_summary":
+        return f"q:{(user_query or '').strip().lower()}"
     return topic
 
 
-# A query of at most this many words may be a bare customer-name lookup.
-_ENTITY_MAX_WORDS = 4
+# A lookup query ("do you know X Y", "tell me about X Y") is short. Anything
+# longer is more likely an analytical question that merely mentions a name.
+_ENTITY_MAX_WORDS = 6
+
+# If the query carries a real analytical intent, that wins over a name mention —
+# "show overdue for Star Bazaar" is an overdue query, not a client summary. These
+# keywords block the entity-first reroute.
+_ENTITY_BLOCK = re.compile(
+    r"\b(overdue|owe|owes|paid|pending|unpaid|outstanding|due|"
+    r"revenue|sales|income|turnover|profit|collection|cash|"
+    r"stock|inventory|expir|low|reorder|"
+    r"invoice|bill|payment|"
+    r"top|most|biggest|highest|worst|total|count|how\s+many|list|compare|"
+    r"trend|growth|plan|analy[sz]|summary|overview)\w*",
+    re.I,
+)
 
 
 def _maybe_entity_first(route: str, handler_key, user_query: str, user_id: int):
     """
-    Entity-first routing: a SHORT query that names a known customer is a client
+    Entity-first routing: a short query that names a known customer is a client
     lookup, even when a keyword trips another topic (e.g. "namdhari fresh" → the
-    word 'fresh' would route to expiring_soon). Only applied to the ambiguous
-    AI_SIMPLE bucket and short queries, so the extra DB lookup is bounded. The
-    fuzzy matcher's 0.82 threshold keeps non-name queries from matching.
+    word 'fresh' would route to expiring_soon; "do yo know Rahul traders" → a
+    cached generic summary). Only applied to the ambiguous AI_SIMPLE bucket, to
+    short queries, and only when no analytical keyword is present — so the extra
+    DB lookup is bounded and a customer name inside an analytical question doesn't
+    hijack its intent. The fuzzy matcher's 0.82 threshold rejects non-name text.
     Returns (route, handler_key).
     """
-    if route != "AI_SIMPLE" or len((user_query or "").split()) > _ENTITY_MAX_WORDS:
+    q = user_query or ""
+    if route != "AI_SIMPLE" or len(q.split()) > _ENTITY_MAX_WORDS or _ENTITY_BLOCK.search(q):
         return route, handler_key
-    named = _extract_customer_name(user_query, user_id)
+    named = _extract_customer_name(q, user_id)
     if named:
         logger.info(f"[ROUTER] entity-first → client_summary (customer='{named}') q='{user_query}'")
         return "DIRECT", "client_summary"
@@ -439,25 +465,65 @@ def _log_token_usage(business_id, model, tier, usage, acc) -> None:
         db.close()
 
 
+_SESSION_PLACEHOLDER = "New chat"
+
+# A leading greeting/filler shouldn't become the conversation title — otherwise
+# every chat a user opens with "hi" is titled "hi" and they're indistinguishable.
+_GREETING_RE = re.compile(
+    r"^(hi+|hey+|hello+|hiya|yo|hola|sup|namaste|"
+    r"thanks?|thank\s*you|thankyou|thx|ty|"
+    r"ok(ay)?|cool|nice|great|good\s+(morning|afternoon|evening|day)|greetings)"
+    r"[\s!.,?]*$",
+    re.I,
+)
+
+
+def _is_titleable(text: str) -> bool:
+    """True if this message is substantive enough to title a conversation."""
+    t = (text or "").strip()
+    return bool(t) and _GREETING_RE.match(t) is None
+
+
+def _title_from(text: str) -> str:
+    t = (text or "").strip()
+    return t[:40] + ("..." if len(t) > 40 else "")
+
+
 def _resolve_session(active_user_id: int, session_id: str, user_query: str) -> str:
-    """Resolve (or initialise) the session title for this session_id."""
+    """
+    Resolve the session title for this session_id. The title is the first
+    SUBSTANTIVE user message — greetings ("hi", "thanks") are skipped so a chat
+    opened with "hi" isn't permanently titled "hi". When the first real question
+    arrives in a session that only had greetings, earlier rows are retro-fitted
+    to the new title so the sidebar updates.
+    """
     db = SessionLocal()
-    session_title = "Untitled Conversation"
+    session_title = _SESSION_PLACEHOLDER
     try:
-        existing = db.query(ChatMessage).filter(
+        first = db.query(ChatMessage).filter(
             ChatMessage.business_id == active_user_id,
             ChatMessage.session_id  == session_id,
-        ).count()
-        if existing == 0:
-            session_title = user_query[:40] + ("..." if len(user_query) > 40 else "")
+        ).order_by(ChatMessage.id.asc()).first()
+
+        existing_title = first.session_title if first else None
+        # Keep an existing real title (incl. one the user manually renamed to).
+        if existing_title and existing_title not in (_SESSION_PLACEHOLDER, "Untitled Conversation") \
+                and _is_titleable(existing_title):
+            return existing_title
+
+        if _is_titleable(user_query):
+            session_title = _title_from(user_query)
+            # Upgrade any earlier greeting-only rows in this session.
+            if first is not None:
+                db.query(ChatMessage).filter(
+                    ChatMessage.business_id == active_user_id,
+                    ChatMessage.session_id  == session_id,
+                ).update({ChatMessage.session_title: session_title})
+                db.commit()
         else:
-            first = db.query(ChatMessage).filter(
-                ChatMessage.business_id == active_user_id,
-                ChatMessage.session_id  == session_id,
-            ).order_by(ChatMessage.id.asc()).first()
-            if first and first.session_title:
-                session_title = first.session_title
+            session_title = existing_title or _SESSION_PLACEHOLDER
     except Exception as e:
+        db.rollback()
         logger.error(f"Error resolving session title: {e}", exc_info=True)
     finally:
         db.close()
@@ -749,13 +815,27 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
         if answer:
             logger.info(f"[DIRECT] handler={handler_key} | '{user_query}'")
             # Honest "customer not found" — return verbatim. Don't polish (the LLM
-            # would re-invent a client card) and don't attach client-y suggestions.
+            # would re-invent a client card). Offer near-miss customers as "did you
+            # mean" chips so the user can pick the one they meant.
             if answer == CUSTOMER_NOT_FOUND:
+                cands = _customer_candidates(user_query, active_user_id)
+                if cands:
+                    chips = [{
+                        "id":     f"didyoumean_{c}",
+                        "label":  c,
+                        "type":   "ai",
+                        "prompt": f"tell me about {c}",
+                        "icon":   "users",
+                    } for c in cands]
+                    answer = "I couldn't find an exact match. Did you mean one of these?"
+                    logger.info(f"[DIRECT] client_summary not found → {len(cands)} suggestion(s) q='{user_query}'")
+                else:
+                    chips = []
                 envelope = {
                     "answer":        {"markdown": answer, "title": ""},
                     "response":      answer,
                     "source":        "db",
-                    "suggestions":   [],
+                    "suggestions":   chips,
                     "alerts":        [],
                     "chart":         None,
                     "session_id":    session_id,
@@ -763,7 +843,8 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
                     "meta": {"tokens": 0, "model": MODEL_SIMPLE,
                              "model_tier": "DIRECT", "cached": False},
                 }
-                _log_chat(active_user_id, user_query, answer, session_id, session_title, source="db")
+                _log_chat(active_user_id, user_query, answer, session_id, session_title,
+                          source="db", remember=False)
                 yield {"type": "replace", "content": answer}
                 yield {"type": "final", "envelope": envelope}
                 return

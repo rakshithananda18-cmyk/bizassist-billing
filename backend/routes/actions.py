@@ -19,7 +19,8 @@ from pydantic import BaseModel
 from services.auth import get_active_user
 from services.actions import preview as action_preview, execute as action_execute
 from routes.intents import _persist_turn
-from database.db import SessionLocal
+from sqlalchemy.orm import Session
+from database.db import get_db
 from database.models import ActionLog
 
 router = APIRouter()
@@ -67,25 +68,25 @@ def execute_action(req: ActionRequest, current_user: dict = Depends(get_active_u
 
 
 @router.get("/action/history")
-def action_history(limit: int = 100, current_user: dict = Depends(get_active_user)):
+def action_history(
+    limit: int = 100,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
+):
     """Audit trail of executed actions, newest first."""
-    db = SessionLocal()
-    try:
-        rows = (
-            db.query(ActionLog)
-            .filter(ActionLog.business_id == current_user["id"])
-            .order_by(ActionLog.created_at.desc())
-            .limit(min(limit, 500))
-            .all()
-        )
-        return {"items": [{
-            "id": r.id,
-            "action": r.action,
-            "target": r.target,
-            "amount": r.amount,
-            "detail": r.detail,
-            "status": r.status,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-        } for r in rows]}
-    finally:
-        db.close()
+    rows = (
+        db.query(ActionLog)
+        .filter(ActionLog.business_id == current_user["id"])
+        .order_by(ActionLog.created_at.desc())
+        .limit(min(limit, 500))
+        .all()
+    )
+    return {"items": [{
+        "id": r.id,
+        "action": r.action,
+        "target": r.target,
+        "amount": r.amount,
+        "detail": r.detail,
+        "status": r.status,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    } for r in rows]}

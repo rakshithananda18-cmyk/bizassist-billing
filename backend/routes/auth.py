@@ -1,7 +1,8 @@
 import logging
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
-from database.db import SessionLocal
+from sqlalchemy.orm import Session
+from database.db import get_db
 from database.models import User
 from services.auth import hash_password, verify_password, create_access_token
 from services.rate_limiter import check_ip_rate_limit
@@ -22,8 +23,7 @@ class SignupRequest(BaseModel):
 
 
 @router.post("/login")
-def login(req: LoginRequest, request: Request):
-    db = SessionLocal()
+def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     logger.info(f"[AUTH] Login attempt for username '{req.username}'...")
     try:
         # Check IP-based rate limiting
@@ -57,13 +57,10 @@ def login(req: LoginRequest, request: Request):
     except Exception as e:
         logger.error(f"[AUTH] Error during login for username '{req.username}': {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server login error")
-    finally:
-        db.close()
 
 
 @router.post("/signup")
-def signup(req: SignupRequest):
-    db = SessionLocal()
+def signup(req: SignupRequest, db: Session = Depends(get_db)):
     logger.info(f"[AUTH] Signup attempt for username '{req.username}'...")
     try:
         # Enforce password strength policy
@@ -113,5 +110,3 @@ def signup(req: SignupRequest):
         db.rollback()
         logger.error(f"[AUTH] Error during signup for username '{req.username}': {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server signup error")
-    finally:
-        db.close()

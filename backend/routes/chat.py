@@ -1,6 +1,7 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException
-from database.db import SessionLocal
+from sqlalchemy.orm import Session
+from database.db import get_db
 from database.models import ChatMessage
 from services.auth import get_active_user
 from sqlalchemy import func
@@ -10,10 +11,9 @@ logger = logging.getLogger("bizassist.chat")
 
 
 @router.get("/chat/sessions")
-def get_chat_sessions(current_user: dict = Depends(get_active_user)):
+def get_chat_sessions(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
     active_user_id = current_user["id"]
     logger.info(f"User {active_user_id} fetching list of chat sessions...")
-    db = SessionLocal()
     try:
         # Query distinct sessions ordered by last active timestamp descending
         sessions = db.query(
@@ -42,15 +42,12 @@ def get_chat_sessions(current_user: dict = Depends(get_active_user)):
     except Exception as e:
         logger.error(f"Error fetching chat sessions for user {active_user_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch chat sessions")
-    finally:
-        db.close()
 
 
 @router.get("/chat/history")
-def get_chat_history(session_id: str = None, current_user: dict = Depends(get_active_user)):
+def get_chat_history(session_id: str = None, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
     active_user_id = current_user["id"]
     logger.info(f"User {active_user_id} fetching session chat history for session_id={session_id}...")
-    db = SessionLocal()
     try:
         query = db.query(ChatMessage).filter(ChatMessage.business_id == active_user_id)
         if session_id:
@@ -84,15 +81,12 @@ def get_chat_history(session_id: str = None, current_user: dict = Depends(get_ac
     except Exception as e:
         logger.error(f"Error fetching chat history for user {active_user_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch chat history")
-    finally:
-        db.close()
 
 
 @router.delete("/chat/history")
-def delete_chat_history(session_id: str = None, current_user: dict = Depends(get_active_user)):
+def delete_chat_history(session_id: str = None, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
     active_user_id = current_user["id"]
     logger.warning(f"User {active_user_id} requested deletion of chat history for session_id={session_id}.")
-    db = SessionLocal()
     try:
         query = db.query(ChatMessage).filter(ChatMessage.business_id == active_user_id)
         if session_id:
@@ -124,8 +118,6 @@ def delete_chat_history(session_id: str = None, current_user: dict = Depends(get
         db.rollback()
         logger.error(f"Error deleting chat history for user {active_user_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to clear chat history")
-    finally:
-        db.close()
 
 
 # -------------------------------------------------
@@ -140,13 +132,12 @@ class RenameSessionRequest(BaseModel):
 
 
 @router.patch("/chat/session/title")
-def rename_chat_session(req: RenameSessionRequest, current_user: dict = Depends(get_active_user)):
+def rename_chat_session(req: RenameSessionRequest, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
     active_user_id = current_user["id"]
     new_title = (req.title or "").strip()[:80]
     logger.info(f"User {active_user_id} renaming session {req.session_id} -> '{new_title}'")
     if not new_title:
         raise HTTPException(status_code=400, detail="Title cannot be empty")
-    db = SessionLocal()
     try:
         updated = db.query(ChatMessage).filter(
             ChatMessage.business_id == active_user_id,
@@ -163,5 +154,3 @@ def rename_chat_session(req: RenameSessionRequest, current_user: dict = Depends(
         db.rollback()
         logger.error(f"Error renaming chat session for user {active_user_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to rename chat session")
-    finally:
-        db.close()

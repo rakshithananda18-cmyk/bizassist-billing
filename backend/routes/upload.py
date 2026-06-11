@@ -14,7 +14,8 @@ from fastapi import (
 
 import pandas as pd
 from datetime import datetime
-from database.db import SessionLocal
+from sqlalchemy.orm import Session
+from database.db import SessionLocal, get_db
 
 from database.models import (
     UploadedFile,
@@ -48,7 +49,8 @@ logger = logging.getLogger("bizassist.upload")
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_active_user)
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
 ):
     active_user_id = current_user["id"]
     filename = file.filename
@@ -92,20 +94,16 @@ async def upload_file(
         if filename.endswith(".pdf"):
             # Process PDF through structured parser
             file_hash = hashlib.sha256(file_bytes).hexdigest()
-            db = SessionLocal()
-            try:
-                existing_upload = db.query(UploadedFile).filter(
-                    UploadedFile.file_hash == file_hash,
-                    UploadedFile.business_id == active_user_id
-                ).first()
-                if existing_upload:
-                    logger.warning(f"[Upload] Duplicate file detected for user {active_user_id}: '{filename}' (hash match with upload ID {existing_upload.id})")
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"This file has already been uploaded (matched upload '{existing_upload.filename}' on {existing_upload.upload_time}). Upload a different file or wipe existing data first."
-                    )
-            finally:
-                db.close()
+            existing_upload = db.query(UploadedFile).filter(
+                UploadedFile.file_hash == file_hash,
+                UploadedFile.business_id == active_user_id
+            ).first()
+            if existing_upload:
+                logger.warning(f"[Upload] Duplicate file detected for user {active_user_id}: '{filename}' (hash match with upload ID {existing_upload.id})")
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"This file has already been uploaded (matched upload '{existing_upload.filename}' on {existing_upload.upload_time}). Upload a different file or wipe existing data first."
+                )
 
             raw_text = parse_pdf_text(file_bytes)   # OCR-aware: handles scanned PDFs automatically
             if not raw_text.strip():
@@ -134,20 +132,16 @@ async def upload_file(
             file_hash = hashlib.sha256(file_bytes).hexdigest()
 
             # Duplicate check
-            dup_db = SessionLocal()
-            try:
-                existing_upload = dup_db.query(UploadedFile).filter(
-                    UploadedFile.file_hash == file_hash,
-                    UploadedFile.business_id == active_user_id
-                ).first()
-                if existing_upload:
-                    logger.warning(f"[Upload] Duplicate file detected for user {active_user_id}: '{filename}'")
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"This file has already been uploaded (matched '{existing_upload.filename}' on {existing_upload.upload_time}). Upload a different file or wipe existing data first."
-                    )
-            finally:
-                dup_db.close()
+            existing_upload = db.query(UploadedFile).filter(
+                UploadedFile.file_hash == file_hash,
+                UploadedFile.business_id == active_user_id
+            ).first()
+            if existing_upload:
+                logger.warning(f"[Upload] Duplicate file detected for user {active_user_id}: '{filename}'")
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"This file has already been uploaded (matched '{existing_upload.filename}' on {existing_upload.upload_time}). Upload a different file or wipe existing data first."
+                )
 
             import io
             if filename.endswith(".csv"):
@@ -200,7 +194,6 @@ async def upload_file(
         f"mapping={mapping_result.mapping} warnings={mapping_result.warnings}"
     )
 
-    db = SessionLocal()
     stats = {"added": 0, "updated": 0}
     try:
         # SAVE FILE HISTORY FIRST TO GENERATE FILE_ID WITHOUT COMMITTING
@@ -268,8 +261,6 @@ async def upload_file(
         db.rollback()
         logger.error(f"Error parsing file upload '{filename}' for user_id={active_user_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=400, detail="Failed to process file upload. Please verify the file structure.")
-    finally:
-        db.close()
 
 
 # -----------------------------------
@@ -279,10 +270,10 @@ async def upload_file(
 @router.get("/upload/{file_id}/data")
 async def get_upload_data(
     file_id: int,
-    current_user: dict = Depends(get_active_user)
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
 ):
     active_user_id = current_user["id"]
-    db = SessionLocal()
     try:
         uploaded = db.query(UploadedFile).filter(
             UploadedFile.id == file_id,
@@ -355,8 +346,6 @@ async def get_upload_data(
     except Exception as e:
         logger.error(f"Error fetching upload data for file_id={file_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch upload data.")
-    finally:
-        db.close()
 
 
 # -----------------------------------
@@ -366,14 +355,14 @@ async def get_upload_data(
 
 @router.delete("/upload/{file_id}")
 async def delete_upload(
-    file_id: int, 
+    file_id: int,
     cascade: bool = False,
-    current_user: dict = Depends(get_active_user)
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
 ):
     active_user_id = current_user["id"]
     logger.info(f"User {active_user_id} requesting deletion of upload file ID {file_id} (cascade={cascade})...")
 
-    db = SessionLocal()
     try:
         uploaded = db.query(UploadedFile).filter(
             UploadedFile.id == file_id,
@@ -382,7 +371,6 @@ async def delete_upload(
 
         if not uploaded:
             logger.warning(f"Deletion failed: Upload file ID {file_id} not found or doesn't belong to user {active_user_id}")
-            db.close()
             raise HTTPException(status_code=404, detail="File not found")
 
         file_type = uploaded.file_type
@@ -456,8 +444,6 @@ async def delete_upload(
         db.rollback()
         logger.error(f"Error during deletion of file ID {file_id} for user {active_user_id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Database deletion failed.")
-    finally:
-        db.close()
 
 
 # ---------------------------------------------------------------------------

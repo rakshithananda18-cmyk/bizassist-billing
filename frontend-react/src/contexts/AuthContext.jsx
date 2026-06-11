@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { API_BASE } from '../config'
 
 const AuthContext = createContext(null)
@@ -20,7 +20,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   // ── Enterprise login ──────────────────────────────────────────
-  async function login(username, password) {
+  const login = useCallback(async (username, password) => {
     const res = await fetch(`${API_BASE}/login`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -34,10 +34,10 @@ export function AuthProvider({ children }) {
     localStorage.setItem('user', JSON.stringify(data))
     setUser(data)
     return data
-  }
+  }, [])
 
   // ── Enterprise signup ─────────────────────────────────────────
-  async function signup(username, password, businessName) {
+  const signup = useCallback(async (username, password, businessName) => {
     const res = await fetch(`${API_BASE}/signup`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -52,17 +52,17 @@ export function AuthProvider({ children }) {
     if (data.business_name) localStorage.setItem('biz_name', data.business_name)
     setUser(data)
     return data
-  }
+  }, [])
 
-  function logout() {
+  const logout = useCallback(() => {
     localStorage.removeItem('user')
     localStorage.removeItem('active_session_id')
     localStorage.removeItem('biz_name')
     setUser(null)
-  }
+  }, [])
 
   // ── Admin login ───────────────────────────────────────────────
-  async function adminLogin(username, password) {
+  const adminLogin = useCallback(async (username, password) => {
     const res = await fetch(`${API_BASE}/login`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -77,21 +77,24 @@ export function AuthProvider({ children }) {
     localStorage.setItem('admin_user', JSON.stringify(data))
     setAdminUser(data)
     return data
-  }
+  }, [])
 
-  function adminLogout() {
+  const adminLogout = useCallback(() => {
     localStorage.removeItem('admin_user')
     localStorage.removeItem('biz_name')
     setAdminUser(null)
-  }
+  }, [])
 
   // ── Authenticated fetch (auto-attaches Bearer token & intercepts 401s) ─────────
-  async function authFetch(url, options = {}) {
+  // Memoized so it's stable across renders — otherwise every consumer's
+  // useCallbacks (loadSessions, selectSession, …) change identity each render,
+  // re-firing effects that re-fetch chat history and clobber the live messages.
+  const authFetch = useCallback(async (url, options = {}) => {
     // If fetching an admin endpoint (contains /admin/), prioritize the adminUser token.
     // Otherwise, prioritize the enterprise user token.
     const isAdminRequest = url.includes('/admin/')
-    const token = isAdminRequest 
-      ? (adminUser?.token || user?.token) 
+    const token = isAdminRequest
+      ? (adminUser?.token || user?.token)
       : (user?.token || adminUser?.token)
 
     const res = await fetch(url, {
@@ -109,15 +112,17 @@ export function AuthProvider({ children }) {
       }
     }
     return res
-  }
+  }, [user, adminUser, logout, adminLogout])
+
+  const value = useMemo(() => ({
+    user, adminUser, loading,
+    login, signup, logout,
+    adminLogin, adminLogout,
+    authFetch
+  }), [user, adminUser, loading, login, signup, logout, adminLogin, adminLogout, authFetch])
 
   return (
-    <AuthContext.Provider value={{
-      user, adminUser, loading,
-      login, signup, logout,
-      adminLogin, adminLogout,
-      authFetch
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   )

@@ -110,6 +110,14 @@ _SEED: Dict[str, List[str]] = {
         "tell me about this customer", "do you know this client",
         "details about a customer", "customer profile", "what's the status of a client",
         "info on a buyer",
+        # Name-bearing lookups. Real queries carry a proper noun ("do you know
+        # srinivas kirana") whose embedding sits far from the name-less phrasings
+        # above — so these anchor the "look up a NAMED account" shape and lift
+        # real customer lookups above the confidence threshold.
+        "do you know Rajesh Traders", "tell me about Sharma Stores",
+        "info on Patel Kirana", "what's the status of Krishna Enterprises",
+        "details of Anand Provisions", "how is Gupta Trading doing",
+        "do you know about Reddy Wholesale", "give me a summary for Mehta Mart",
     ],
     "conversational": [
         "hi", "hello", "hey there", "thanks", "thank you", "okay got it",

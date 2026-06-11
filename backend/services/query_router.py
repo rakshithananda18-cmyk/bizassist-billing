@@ -90,8 +90,10 @@ _DIRECT_OVERRIDE = re.compile(
 # Queries that contain action/writing verbs should NOT go DIRECT even if
 # they mention overdue/pending keywords (e.g. "draft a reminder for overdue customers").
 _WRITING_ACTIONS = re.compile(
-    r"\b(draft|write|compose|prepare|create|generate|make|send|format)\b"
-    r".{0,60}\b(message|email|reminder|letter|template|note|text)\b",
+    r"\b(draft|write|compose|prepare|create|generate|make|send|format|reply|respond)\b"
+    r".{0,60}\b(message|email|e-?mail|mail|reminder|letter|template|note|text|"
+    r"follow[\s-]?up|reply|response|whatsapp|sms|msg|communication|apology|"
+    r"request|statement)\b",
     re.I,
 )
 

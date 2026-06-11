@@ -61,8 +61,8 @@ The daily token budget in `rate_limiter.py` enforces against numbers that underc
 **H5. ✅ No real migration story.** Custom `migration.py` + `create_all`. Schema changes on a live DB (Postgres later) need Alembic.
 > **✅ Resolved:** Alembic wired (`alembic.ini` + `alembic/env.py` reading `DATABASE_URL` / `Base.metadata`), `alembic` in requirements, and a constraint **naming convention** added to `db.py` (required for SQLite batch ALTERs). Baseline revision `c0017902b685` generated (clean `create_table`) against an empty DB and applied; existing dev DB `stamp`ed to it. Future schema changes: `alembic revision --autogenerate` + `upgrade head`. ⬜ Optional follow-up: replace startup `create_all()` with auto `upgrade head` so clones/deploys need no manual step.
 
-**H6. 🟡 ~30 hand-rolled `SessionLocal()` try/finally blocks.** Use FastAPI's `Depends(get_db)` generator; smaller code, no leaked sessions on early returns.
-> **🟡 Infra done, sweep deferred (by decision).** `get_db()` added to `database/db.py`. The 27 call-site sweep is **deferred** — on inspection it's *not* uniformly mechanical: many `SessionLocal()` blocks live in helper functions (where `Depends` doesn't apply), and `upload.py`/`insights.py` use several short sessions per request on purpose (collapsing them changes transaction boundaries). Zero functional gain for real risk, so: adopt `get_db()` in new/touched code going forward, revisit as a focused cleanup later.
+**H6. ✅ ~30 hand-rolled `SessionLocal()` try/finally blocks.** Use FastAPI's `Depends(get_db)` generator; smaller code, no leaked sessions on early returns.
+> **✅ Resolved.** Swept all **37 route-handler** session sites across the 6 route modules to `db: Session = Depends(get_db)`: `alerts.py` (2), `auth.py` (2), `actions.py` (1), `admin.py` (13 — the `_db()` helper removed), `chat.py` (4), `upload.py` (5 — three short sessions in `upload_file` collapsed into one injected session), `insights.py` (10). Session lifecycle (close on early return / exception) now guaranteed by the dependency rather than per-handler `finally` blocks. Non-route helpers that aren't request-scoped — `intents.py::_persist_turn`, `upload.py::_process_zip_upload` — correctly keep `SessionLocal()` (already leak-safe). `test_sanitized_errors` updated to inject failure via `app.dependency_overrides[get_db]`. All tests green (196 backend + frontend).
 
 **H7. Session metadata denormalized into `ChatMessage`.** `session_title` copied onto every row; resolving a title costs 2 queries per message. Add a `chat_sessions` table (id, business_id, title, created_at) — also unlocks rename/delete/list cheaply.
 
@@ -109,9 +109,9 @@ Sequenced so each phase ships independently and de-risks the next. Estimated eff
 2. **✅ Fix token truth.** Log every Groq call (`_polish`, CONVERSATIONAL, planner, synthesizer, tool rounds) to `TokenUsage`; return real totals in `meta.tokens`. — *Done: `ai_router` calls via `_log_token_usage`; `agent_graph` tokens carried in state and now surfaced to the client (`run_agent_graph` returns `{text,tokens_in,tokens_out}`; stream reads `ag_done` tokens). Covered by `test_token_accounting.py` incl. `test_ai_complex_surfaces_real_tokens`.*
 3. **✅ Kill the races.** Move `_run_tokens` into graph state. Replace per-user upload invalidation (`invalidate()` → `invalidate_user_cache(user_id)`). Add max-size (LRU) bounds to both in-memory caches. — *Done: C1 (token race) + C4 (upload scoping) + LRU bounds, all test-covered (`test_agent_graph_tokens.py`, `test_cache_scoping.py`). Cross-worker shared state (rest of C5) deferred to Phase 5.*
 4. **✅ Proper HTTP errors.** One error envelope, correct status codes, raised via `HTTPException`. — *Done (H1): `AskError`/`ask_error` + `main_groq` handler; `test_error_contract.py`.*
-5. **🟡 SQL aggregates in rate limiter**; `Depends(get_db)` session injection; Alembic init. — *SQL aggregate ✅ (H4, `test_rate_limiter.py`). Alembic ✅ (H5 — baseline `c0017902b685` generated & applied; naming convention added). `get_db()` added but the ~30-site sweep is still pending (H6 🟡).*
+5. **✅ SQL aggregates in rate limiter**; `Depends(get_db)` session injection; Alembic init. — *SQL aggregate ✅ (H4, `test_rate_limiter.py`). Alembic ✅ (H5 — baseline `c0017902b685` generated & applied; naming convention added). `get_db()` sweep ✅ (H6 — all 37 route-handler sessions migrated; non-route helpers keep `SessionLocal()`).*
 6. **🟡 Normalize at ingest:** real `Date` columns + status enum, single date-parser utility; delete the 3 copy-pasted format loops. — *Done: single parser + all loops deduped (`test_dates.py`); ingest normalization in both paths (`services/normalize.py`, `test_normalize.py`); backfill migration `a7c4e9f02b13` for old rows. ⬜ Only the optional String→`Date`/`Enum` column-type flip remains (deferred — SQLite-moot, matters for Postgres).*
-   - *DoD: all tests green (now 138) + new tests for token logging, cache scoping, errors, rate limiter, dates; `wc -l ai_router.py` roughly halves. — ✅ ai_router halved & tests added; schema-migration items (H3 columns, H5 baseline, H6 sweep) still open.*
+   - *DoD: all tests green (now 196) + new tests for token logging, cache scoping, errors, rate limiter, dates; `wc -l ai_router.py` roughly halves. — ✅ ai_router halved & tests added; H5 baseline ✅ + H6 sweep ✅; only the optional H3 String→`Date`/`Enum` column flip stays deferred.*
 
 > **✅ C6 — date-key the query cache.** Done: `_cache_salt()` folds the current date into the salt (`md5(user_id:YYYY-MM-DD:topic)`), so day-sensitive answers ("days overdue", "expiring", "today's priorities") refresh each day and a longer TTL is now safe; same-day variants still share a hit. Covered by `test_cache_salt.py`.
 
@@ -175,7 +175,7 @@ Rebuild `agent_graph` as an actual agent, not a pipeline:
 
 | Phase | Theme | Effort | Status | Risk it removes |
 |---|---|---|---|---|
-| 0 | Correctness & dedup | 3–4 d | 🟡 nearly done (items 1✅ 2✅ 3✅ 4✅ 6 functionally✅ logging✅ C6✅; only the H6 `get_db` sweep + optional column-type flip remain) | billing drift, races, cache bleed |
+| 0 | Correctness & dedup | 3–4 d | ✅ done (items 1–6 ✅, H4/H5/H6 ✅, logging ✅, C6 ✅; only the optional String→`Date`/`Enum` column flip deferred — SQLite-moot) | billing drift, races, cache bleed |
 | 1 | Semantic router | 2 d | 🟡 Steps 1 & 2 done (router built + eval + shadow mode); H8 ✅ + routing-correctness fixes landed; only Step 3 cutover remains (needs live shadow data) | wrong-tier cost leak, regex maintenance |
 | 2 | Real agent loop | 4–5 d | ⬜ not started | fake agency, blanket fan-out cost |
 | 3 | Real actions | 3–4 d | ⬜ not started | "agent that doesn't act" |
@@ -185,7 +185,7 @@ Rebuild `agent_graph` as an actual agent, not a pipeline:
 Start with Phase 0, item 1 (the `ai_router` unification) — it touches the most-edited file in the repo and every later phase gets cheaper once it lands.
 
 **Phase 0 remaining:**
-- **H6 sweep** — migrate the ~30 `SessionLocal()` blocks onto `Depends(get_db)` (mechanical; batch with test runs). The only non-optional item left.
+- ✅ **H6 sweep done** — all 37 route-handler `SessionLocal()` blocks migrated onto `Depends(get_db)`. Phase 0 is complete; only the optional String→`Date`/`Enum` column-type flip stays deferred (SQLite-moot, matters only for a future Postgres move).
 - Optional/deferred: the H3 String→`Date`/`Enum` column-type flip (SQLite-moot; for the Postgres move); replace startup `create_all()` with auto `alembic upgrade head`.
 
 Everything else in Phase 0 is ✅ (H3 is now functionally complete: parse + ingest-normalize + backfill migration). Per **Part 4**, finish H6 before touching Phase 1/2.

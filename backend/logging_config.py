@@ -152,6 +152,22 @@ def configure_logging(level: str = None, *, color: bool = None) -> None:
     handler.setFormatter(_Formatter(use_color=color))
 
     root.addHandler(handler)
+
+    # Optional persistent file log (Phase 5 observability + shadow-route analysis).
+    # Opt-in via LOG_FILE=path; plain text (no colour), size-bounded. Default off,
+    # so console-only behaviour and existing tests are unchanged.
+    log_file = os.getenv("LOG_FILE")
+    if log_file:
+        try:
+            from logging.handlers import RotatingFileHandler
+            os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
+            fh = RotatingFileHandler(log_file, maxBytes=5_000_000, backupCount=3, encoding="utf-8")
+            fh.addFilter(_ComponentFilter())
+            fh.setFormatter(_Formatter(use_color=False))
+            root.addHandler(fh)
+        except Exception as e:
+            logging.getLogger("bizassist.logging").warning(f"{TAG.ADMIN} file log disabled: {e}")
+
     root.setLevel(level_value)
 
     # App logger inherits the root handler; make sure it isn't accidentally raised.

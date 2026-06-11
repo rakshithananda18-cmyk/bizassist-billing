@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>BizAssist</title>
 
-    <!-- PWA -->
-    <link rel="manifest" href="/public/manifest.json" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -51,14 +49,30 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
     <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/public/sw.js')
-            .catch((err) => console.warn('SW registration failed:', err));
-        });
-      }
+      // Kill any previously-registered service worker. An old SW was caching API
+      // responses (/chat/history, /chat/sessions) in 'bizassist-v1' and replaying
+      // STALE data — so new messages vanished, deletes didn't reflect, and the app
+      // looked disconnected from the backend. A registered SW persists until it is
+      // explicitly unregistered, so removing its registration alone wasn't enough.
+      (function () {
+        if (!('serviceWorker' in navigator)) return;
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          var hadSW = regs.length > 0;
+          regs.forEach(function (r) { r.unregister(); });
+          if (window.caches && caches.keys) {
+            caches.keys().then(function (keys) {
+              return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+            }).then(function () {
+              // One reload after the SW is gone gives a clean, network-served page.
+              if (hadSW) window.location.reload();
+            });
+          } else if (hadSW) {
+            window.location.reload();
+          }
+        }).catch(function () {});
+      })();
     </script>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

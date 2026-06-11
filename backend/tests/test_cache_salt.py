@@ -94,6 +94,22 @@ def test_client_summary_keyed_on_query_per_customer():
     assert a != b and a != c and b != c
 
 
+def test_ai_simple_catchall_topic_does_not_collide():
+    # 'business_summary' is also _detect_topic's safe default, so two unrelated
+    # AI_SIMPLE fallbacks must NOT share a cache entry (the 'do yo know Rahul
+    # traders' -> cached generic summary bug).
+    a = _cache_salt(1, "AI_SIMPLE", "do yo know rahul traders", "business_summary", day="2026-01-15")
+    b = _cache_salt(1, "AI_SIMPLE", "what about my pricing strategy", "business_summary", day="2026-01-15")
+    assert a != b
+
+
+def test_ai_simple_real_topic_still_shares():
+    # regression: on a *real* (non-catchall) topic, semantic variants still share.
+    a = _cache_salt(1, "AI_SIMPLE", "show overdue", "overdue_list", day="2026-01-15")
+    b = _cache_salt(1, "AI_SIMPLE", "who owes me money", "overdue_list", day="2026-01-15")
+    assert a == b
+
+
 def test_writing_task_keyed_on_query_not_topic():
     # 'draft a reminder for overdue customers' must NOT share the overdue data cache.
     writing = _cache_salt(1, "AI_SIMPLE", "draft a reminder for overdue customers",

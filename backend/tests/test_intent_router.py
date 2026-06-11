@@ -105,6 +105,9 @@ _EVAL_CASES = [
     ("which customer has the largest unpaid balance", "DIRECT", "top_debtors"),
     # business summary
     ("give me a quick health check of the business", "DIRECT", "business_summary"),
+    # client lookup (held-out names, not in the seeds)
+    ("do you know srinivas kirana",                  "DIRECT", "client_summary"),
+    ("tell me about nilgiris fresh",                 "DIRECT", "client_summary"),
     # conversational
     ("thanks a lot",                                "CONVERSATIONAL", None),
     ("hey",                                         "CONVERSATIONAL", None),

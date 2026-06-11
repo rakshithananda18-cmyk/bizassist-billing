@@ -18,6 +18,7 @@ import pytest
 from unittest.mock import patch
 from services.direct_query_handler import (
     _match_customer_name, _is_general_about_query, handle, CUSTOMER_NOT_FOUND,
+    _entity_guess, _match_customer_candidates,
 )
 from services.ai_router import _maybe_entity_first
 
@@ -89,6 +90,22 @@ def test_long_query_skips_entity_check(mock_extract):
 
 
 @patch("services.ai_router._extract_customer_name")
+def test_lookup_phrase_with_typo_still_reroutes(mock_extract):
+    # 'do yo know Rahul traders' is 5 words (over the old 4 cap) with a typo — it
+    # used to fall through to AI_SIMPLE and serve a cached generic business summary.
+    mock_extract.return_value = "Rahul Traders"
+    assert _maybe_entity_first("AI_SIMPLE", None, "do yo know Rahul traders", 1) == ("DIRECT", "client_summary")
+
+
+@patch("services.ai_router._extract_customer_name")
+def test_analytical_keyword_blocks_entity_first(mock_extract):
+    # a name inside an analytical question must NOT be hijacked to client_summary
+    out = _maybe_entity_first("AI_SIMPLE", None, "show overdue for star bazaar", 1)
+    assert out == ("AI_SIMPLE", None)
+    mock_extract.assert_not_called()
+
+
+@patch("services.ai_router._extract_customer_name")
 def test_non_ai_simple_routes_untouched(mock_extract):
     out = _maybe_entity_first("DIRECT", "overdue_list", "show overdue", 1)
     assert out == ("DIRECT", "overdue_list")
@@ -121,3 +138,31 @@ def test_general_about_query_falls_through_to_ai(_mock):
     # AI tier answers with an overview.
     out = handle("client_summary", "tell me about my business performance", 1)
     assert out is None
+
+
+# ── "did you mean" near-match candidates ──────────────────────────────────
+
+_CAND_NAMES = ["Namdhari Fresh", "Nilgiris Fresh", "Star Bazaar", "Rahul Traders"]
+
+
+def test_entity_guess_strips_lookup_filler():
+    assert _entity_guess("do you know rahul traders") == "rahul traders"
+    assert _entity_guess("tell me about Star Bazaar") == "star bazaar"
+
+
+def test_near_miss_returns_candidate():
+    # a typo'd name below the confident threshold should still surface as a
+    # "did you mean" suggestion.
+    cands = _match_customer_candidates("do you know namdari fresh", _CAND_NAMES)
+    assert "Namdhari Fresh" in cands
+    assert len(cands) <= 3
+
+
+def test_no_close_name_returns_no_candidates():
+    assert _match_customer_candidates("do you know zxqwerty", _CAND_NAMES) == []
+
+
+def test_candidates_are_ranked_best_first():
+    # 'star' is closest to 'Star Bazaar'
+    cands = _match_customer_candidates("do you know star", _CAND_NAMES)
+    assert cands and cands[0] == "Star Bazaar"

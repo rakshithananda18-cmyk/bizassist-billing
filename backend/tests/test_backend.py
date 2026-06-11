@@ -740,12 +740,17 @@ def test_sanitized_errors():
     admin_token = admin_login.json()["token"]
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
-    # Set rate limits endpoint mock-triggering an error
-    with patch("routes.admin.SessionLocal") as mock_session:
+    # Inject a broken DB session via the get_db dependency override (H6: routes
+    # now receive their session through Depends(get_db) rather than SessionLocal).
+    from database.db import get_db
+
+    def _broken_db():
         mock_db = MagicMock()
         mock_db.query.side_effect = Exception("Internal DB Connection Corrupted Stack Trace Info")
-        mock_session.return_value = mock_db
+        yield mock_db
 
+    app.dependency_overrides[get_db] = _broken_db
+    try:
         # Try to call set_rate_limits
         response = client.post("/admin/rate-limits/1", json={
             "requests_per_minute": 10,
@@ -759,3 +764,5 @@ def test_sanitized_errors():
         # Should NOT leak the database exception detail
         assert "Internal DB Connection Corrupted" not in response.json()["detail"]
         assert response.json()["detail"] == "Internal server error setting rate limits."
+    finally:
+        app.dependency_overrides.pop(get_db, None)
