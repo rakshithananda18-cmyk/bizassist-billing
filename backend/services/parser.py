@@ -5,6 +5,7 @@ from database.models import (
     Inventory,
     Payment
 )
+from services.normalize import to_iso, normalize_status
 
 logger = logging.getLogger("bizassist.parser")
 
@@ -37,14 +38,19 @@ def save_invoices(df, db, business_id, file_id=None):
                 Invoice.business_id == business_id
             ).first()
             
+            # Normalize at ingest (H3): dates → ISO, status → canonical case.
+            status_val = normalize_status(row.get("status", existing.status if existing else None))
+            inv_date_val = to_iso(row.get("invoice_date", existing.invoice_date if existing else None))
+            due_date_val = to_iso(row.get("due_date", existing.due_date if existing else None))
+
             if existing:
                 # UPDATE existing record
                 existing.customer = row.get("customer", existing.customer)
                 existing.product = row.get("product", existing.product)
                 existing.amount = amount_val if amount_val is not None else existing.amount
-                existing.status = row.get("status", existing.status)
-                existing.invoice_date = row.get("invoice_date", existing.invoice_date)
-                existing.due_date = row.get("due_date", existing.due_date)
+                existing.status = status_val
+                existing.invoice_date = inv_date_val
+                existing.due_date = due_date_val
                 existing.file_id = file_id
             else:
                 # INSERT new record
@@ -53,9 +59,9 @@ def save_invoices(df, db, business_id, file_id=None):
                     customer=row.get("customer"),
                     product=row.get("product"),
                     amount=amount_val,
-                    status=row.get("status"),
-                    invoice_date=row.get("invoice_date"),
-                    due_date=row.get("due_date"),
+                    status=status_val,
+                    invoice_date=inv_date_val,
+                    due_date=due_date_val,
                     business_id=business_id,
                     file_id=file_id
                 )
@@ -97,10 +103,13 @@ def save_inventory(df, db, business_id, file_id=None):
                 Inventory.business_id == business_id
             ).first()
             
+            # Normalize at ingest (H3): expiry date → ISO.
+            expiry_val = to_iso(row.get("expiry_date", existing.expiry_date if existing else None))
+
             if existing:
                 # UPDATE existing record
                 existing.stock = stock_val if stock_val is not None else existing.stock
-                existing.expiry_date = row.get("expiry_date", existing.expiry_date)
+                existing.expiry_date = expiry_val
                 existing.supplier = row.get("supplier", existing.supplier)
                 existing.file_id = file_id
             else:
@@ -108,7 +117,7 @@ def save_inventory(df, db, business_id, file_id=None):
                 inventory = Inventory(
                     product_name=product_name,
                     stock=stock_val,
-                    expiry_date=row.get("expiry_date"),
+                    expiry_date=expiry_val,
                     supplier=row.get("supplier"),
                     business_id=business_id,
                     file_id=file_id
@@ -132,8 +141,8 @@ def save_payments(df, db, business_id, file_id=None):
     try:
         for _, row in df.iterrows():
             customer = row.get("customer")
-            due_date = row.get("due_date")
-            
+            due_date = to_iso(row.get("due_date"))   # normalize at ingest (H3)
+
             if not customer or not due_date:
                 continue  # Skip incomplete records
             

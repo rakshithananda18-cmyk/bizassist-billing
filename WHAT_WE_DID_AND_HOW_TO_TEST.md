@@ -13,7 +13,7 @@ cd "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\backend"
 pytest tests/ -q
 ```
 
-Expected: **144 passed**. That one command verifies every change below.
+Expected: **156 passed**. That one command verifies every change below.
 
 To run the actual server and click around:
 
@@ -120,6 +120,21 @@ version. Also, complex answers now report their real token cost to the app
 (Live: ask a "analyze my business and give a recovery plan" type question and
 check the reported tokens are non-zero.)
 
+### 13. Cleaner data on the way in (dates + status)
+Now, when a file is uploaded (CSV, Excel, or PDF), dates are saved in one
+consistent format (`YYYY-MM-DD`) and the common statuses get consistent
+capitalisation (`paid`/`PAID` → `Paid`). This makes filters and "overdue/expiring"
+math reliable, regardless of how the source file wrote them. Unrecognised values
+are left untouched (nothing is lost).
+
+**How to test:** automated — `test_normalize.py`. (Live: upload a file with dates
+like `15/01/2026` and lowercase `overdue`; after upload they're stored as
+`2026-01-15` and `Overdue`.)
+
+> Note: this fixes data going FORWARD. Old rows already in your database keep
+> their original format until a one-time backfill is run (a separate migration
+> step, still to do).
+
 ### 10. Migration tooling set up (Alembic)
 Added the scaffolding for proper database migrations. **One step is still left**
 for you to run (see below).
@@ -181,6 +196,34 @@ Expected: `Running stamp_revision  -> <hash>`.
 
 **For anyone who clones the repo later:** they just run `python -m alembic
 upgrade head` once (on an empty DB) — no autogenerate, no manual SQL.
+
+### Backfill old rows to the new clean format (one time, optional)
+
+The ingest normalization (item 13) only fixes NEW uploads. To also convert rows
+already in your database, there's a data migration `a7c4e9f02b13`. It rewrites
+existing date strings to `YYYY-MM-DD` and statuses to canonical case. **Back up
+and dry-run on a copy first:**
+
+```powershell
+# back up
+Copy-Item bizassist.db bizassist.db.bak
+
+# dry-run on a copy + inspect
+Copy-Item bizassist.db _migration_test.db
+$env:DATABASE_URL="sqlite:///./_migration_test.db"
+python -m alembic upgrade head
+python -c "import sqlite3; c=sqlite3.connect('_migration_test.db'); print(c.execute('select invoice_date,due_date,status from invoices limit 8').fetchall())"
+Remove-Item _migration_test.db
+
+# apply for real
+$env:DATABASE_URL="sqlite:///./bizassist.db"
+python -m alembic upgrade head
+```
+
+Expected: `Running upgrade c0017902b685 -> a7c4e9f02b13, backfill...`, and the
+inspect query shows ISO dates + canonical statuses. Only changed rows are
+written; unparseable values are left alone. `downgrade` is a no-op, which is why
+you back up first.
 
 > Note: the app still calls `create_all()` at startup, so a fresh clone already
 > builds its tables on first run. Alembic becomes the source of truth for future

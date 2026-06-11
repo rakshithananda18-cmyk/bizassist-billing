@@ -47,6 +47,7 @@ from services.agent_graph import run_agent_graph, run_agent_graph_stream
 from services.rate_limiter import check_rate_limit
 from services.errors import AskError, ask_error
 from services.dates import parse_date
+from services.intent_router import classify as _semantic_classify
 from database.db import SessionLocal
 from database.models import Invoice, ChatMessage
 
@@ -333,6 +334,32 @@ def _cache_salt(user_id: int, route: str, user_query: str, topic: str, day: str 
     return hashlib.md5(key.encode("utf-8")).hexdigest()
 
 
+def _maybe_shadow_route(user_query: str, route: str, handler_key, topic: str) -> None:
+    """
+    Phase 1 Step 2 — shadow routing. When INTENT_ROUTER=shadow (or on), run the
+    semantic router alongside the live regex router and log AGREE/DISAGREE. This
+    changes nothing about routing; it just gathers real-traffic accuracy data so
+    we can trust the semantic router before cutover.
+    """
+    mode = os.getenv("INTENT_ROUTER", "off").lower()
+    if mode not in ("shadow", "on"):
+        return
+    try:
+        s_tier, s_intent, s_conf = _semantic_classify(user_query)
+    except Exception as e:
+        logger.warning(f"[ROUTER][shadow] semantic classify failed: {e}")
+        return
+    # The regex system's effective "intent" is the detected topic (used for cache
+    # + intent-first). Compare on intent when the semantic router named one, else
+    # on tier.
+    match = (s_intent == topic) if s_intent is not None else (s_tier == route)
+    verdict = "AGREE" if match else "DISAGREE"
+    logger.info(
+        f"[ROUTER][shadow] {verdict} | regex=({route}, handler={handler_key}, topic={topic}) "
+        f"semantic=({s_tier}, {s_intent}, {s_conf:.2f}) | q='{user_query}'"
+    )
+
+
 def _log_token_usage(business_id, model, tier, usage, acc) -> None:
     """
     Record one Groq call's token usage to TokenUsage AND add it to the running
@@ -570,6 +597,10 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
     # keys on topic so "show overdue" and "who owes me" share one entry.
     _pre_topic   = _detect_topic(user_query)
     history_salt = _cache_salt(active_user_id, route, user_query, _pre_topic)
+
+    # Phase 1 shadow routing (no-op unless INTENT_ROUTER=shadow|on) — gathers
+    # semantic-vs-regex agreement data on real traffic without changing routing.
+    _maybe_shadow_route(user_query, route, handler_key, _pre_topic)
 
     # ── Layer 1.5: CONVERSATIONAL short-circuit ─────────────────────
     if route == "CONVERSATIONAL":

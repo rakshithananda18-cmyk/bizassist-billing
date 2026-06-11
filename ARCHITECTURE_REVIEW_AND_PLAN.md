@@ -49,7 +49,11 @@ The daily token budget in `rate_limiter.py` enforces against numbers that underc
 **H2. Two independent keyword classifiers that can disagree.** `query_router.classify()` (regex tiers) and `ai_router._detect_topic()` (keyword → topic) encode overlapping vocabularies separately. "show my pending invoices report" → `COMPLEX_PATTERNS` catches "report" → a 5-call, 70B multi-agent run for a list query. `COMPLEX_PATTERNS` over-triggers badly: `plan`, `improve`, `report`, `compare`, `list all` are everyday words. This is the #1 cost and quality leak — and the previous session already converged on the fix (semantic routing, see Phase 2).
 
 **H3. 🟡 Dates and statuses are stringly-typed.** `invoice_date`, `due_date`, `expiry_date` are `String` columns; 4-format `strptime` loops are copy-pasted in at least 3 places (`ai_router._build_chart_data`, `context_cache._build_context`, handlers). `status` is free text ("Paid"/"Pending"/"Overdue"). Normalize **once at ingest** (parser/column_mapper) into real `Date` columns and a constrained enum; delete every scattered parse loop.
-> **🟡 Partial:** the parse half is done — `services/dates.py` (`parse_date`/`parse_date_only`) is the single parser, and **all ~13** copy-pasted `strptime` loops now delegate to it (`handlers/invoices`,`handlers/inventory`,`recommendations`×2,`alert_jobs`×2,`tools/inventory`,`tools/invoices`,`context_cache`,`repository`,`ai_router` chart, `insights_service`). Covered by `test_dates.py` + the existing handler/recommendation suites. ⬜ The schema half — String→`Date` columns + `status` enum, normalized at ingest — is **not** done (needs the Alembic baseline + a data backfill; a live-run task).
+> **🟡 Mostly done:**
+> - *Parse:* `services/dates.py` is the single parser; **all ~13** `strptime` loops delegate to it. (`test_dates.py`)
+> - *Normalize at ingest:* `services/normalize.py` (`to_iso`, `normalize_status`) wired into **both** ingest paths (`parser.py` CSV/Excel + `pdf_parser.py`) — new uploads store ISO dates + canonical status. (`test_normalize.py`)
+> - *Backfill existing rows:* Alembic data migration `a7c4e9f02b13` written (rewrites old rows to ISO/canonical via the same helpers). User runs it on a DB copy then for real.
+> - ⬜ *Remaining (optional):* flip the String columns to real `Date`/`Enum` types. Low value on SQLite (typeless) and risky; meaningful mainly for the future Postgres move — deferred.
 
 **H4. ✅ `rate_limiter._get_today_usage` loads every `TokenUsage` row into Python and sums.** O(rows/day) on **every AI request**. Replace with one `func.count`/`func.sum` SQL aggregate.
 > **✅ Resolved:** now one `COUNT`/`SUM`/conditional-`SUM` aggregate query (O(1) work in the DB). Covered by `test_rate_limiter.py` (counts today-only, this-business-only, sums correctly).
@@ -58,7 +62,7 @@ The daily token budget in `rate_limiter.py` enforces against numbers that underc
 > **✅ Resolved:** Alembic wired (`alembic.ini` + `alembic/env.py` reading `DATABASE_URL` / `Base.metadata`), `alembic` in requirements, and a constraint **naming convention** added to `db.py` (required for SQLite batch ALTERs). Baseline revision `c0017902b685` generated (clean `create_table`) against an empty DB and applied; existing dev DB `stamp`ed to it. Future schema changes: `alembic revision --autogenerate` + `upgrade head`. ⬜ Optional follow-up: replace startup `create_all()` with auto `upgrade head` so clones/deploys need no manual step.
 
 **H6. 🟡 ~30 hand-rolled `SessionLocal()` try/finally blocks.** Use FastAPI's `Depends(get_db)` generator; smaller code, no leaked sessions on early returns.
-> **🟡 Partial:** `get_db()` generator added to `database/db.py` (always closes, even on early return/raise). ⬜ The ~30 call-site sweep onto it is deferred (mechanical; better done with a live test run between batches than churned blind).
+> **🟡 Infra done, sweep deferred (by decision).** `get_db()` added to `database/db.py`. The 27 call-site sweep is **deferred** — on inspection it's *not* uniformly mechanical: many `SessionLocal()` blocks live in helper functions (where `Depends` doesn't apply), and `upload.py`/`insights.py` use several short sessions per request on purpose (collapsing them changes transaction boundaries). Zero functional gain for real risk, so: adopt `get_db()` in new/touched code going forward, revisit as a focused cleanup later.
 
 **H7. Session metadata denormalized into `ChatMessage`.** `session_title` copied onto every row; resolving a title costs 2 queries per message. Add a `chat_sessions` table (id, business_id, title, created_at) — also unlocks rename/delete/list cheaply.
 
@@ -102,20 +106,24 @@ Sequenced so each phase ships independently and de-risks the next. Estimated eff
 3. **✅ Kill the races.** Move `_run_tokens` into graph state. Replace per-user upload invalidation (`invalidate()` → `invalidate_user_cache(user_id)`). Add max-size (LRU) bounds to both in-memory caches. — *Done: C1 (token race) + C4 (upload scoping) + LRU bounds, all test-covered (`test_agent_graph_tokens.py`, `test_cache_scoping.py`). Cross-worker shared state (rest of C5) deferred to Phase 5.*
 4. **✅ Proper HTTP errors.** One error envelope, correct status codes, raised via `HTTPException`. — *Done (H1): `AskError`/`ask_error` + `main_groq` handler; `test_error_contract.py`.*
 5. **🟡 SQL aggregates in rate limiter**; `Depends(get_db)` session injection; Alembic init. — *SQL aggregate ✅ (H4, `test_rate_limiter.py`). Alembic ✅ (H5 — baseline `c0017902b685` generated & applied; naming convention added). `get_db()` added but the ~30-site sweep is still pending (H6 🟡).*
-6. **🟡 Normalize at ingest:** real `Date` columns + status enum, single date-parser utility; delete the 3 copy-pasted format loops. — *Parse half ✅: `services/dates.py` + all ~13 loops deduped (`test_dates.py`). ⬜ Date columns + status enum at ingest still pending (needs Alembic baseline + backfill).*
+6. **🟡 Normalize at ingest:** real `Date` columns + status enum, single date-parser utility; delete the 3 copy-pasted format loops. — *Done: single parser + all loops deduped (`test_dates.py`); ingest normalization in both paths (`services/normalize.py`, `test_normalize.py`); backfill migration `a7c4e9f02b13` for old rows. ⬜ Only the optional String→`Date`/`Enum` column-type flip remains (deferred — SQLite-moot, matters for Postgres).*
    - *DoD: all tests green (now 138) + new tests for token logging, cache scoping, errors, rate limiter, dates; `wc -l ai_router.py` roughly halves. — ✅ ai_router halved & tests added; schema-migration items (H3 columns, H5 baseline, H6 sweep) still open.*
 
 > **✅ C6 — date-key the query cache.** Done: `_cache_salt()` folds the current date into the salt (`md5(user_id:YYYY-MM-DD:topic)`), so day-sensitive answers ("days overdue", "expiring", "today's priorities") refresh each day and a longer TTL is now safe; same-day variants still share a hit. Covered by `test_cache_salt.py`.
 
 > **Cross-cutting (not a numbered phase item): ✅ Logging.** Central `backend/logging_config.py` (`configure_logging()` + `get_logger()`, env `LOG_LEVEL`, noisy libs muted) wired into `main_groq.py`; message tags standardized app-wide into one greppable scheme (`[ROUTER]`/`[CACHE]`/`[DIRECT]`/`[TOKENS]`/…). Unit-tested in `test_logging_config.py`. Supports the Phase 5 observability goal.
 
-### Phase 1 — Semantic intent router (2 days — design already done in your previous session)
-Replace `query_router.py` regexes + `_detect_topic` keywords with **one** embedding router:
-- Chroma collection `intent_examples`, 10–15 seed phrases per intent (13 intents + `ai_simple`/`ai_complex`/`conversational` buckets), embedded with the already-loaded MiniLM.
-- `intent_router.classify(query) → (tier, intent_key, confidence)`; below threshold → AI_SIMPLE. Customer names are resolved separately by the DB (LLM/embeddings never invent entities) — but note this resolution is currently **substring-only and broken on typos/casing (see H8)**; upgrade `_extract_customer_name` to `difflib`/token-set fuzzy matching with confidence + tests as part of this phase, not as an afterthought.
-- Keep the current regex router as a fallback behind a feature flag for one release; log disagreements.
-- **Eval harness:** turn `test_routing_tiers.py` cases into a scored accuracy suite (target ≥95% on the 100-case set). New intent = add example phrases, rerun eval. No code, no regex, no broken tests.
-   - *DoD: one classifier, measured accuracy, `COMPLEX` no longer triggers on "report/plan/improve" unless the query genuinely needs multi-source analysis.*
+### Phase 1 — Semantic intent router (🟡 in progress — Steps 1 & 2 done)
+Replace `query_router.py` regexes + `_detect_topic` keywords with **one** embedding router.
+
+- **✅ Step 1 — build the router.** `services/intent_router.py`: ~8–12 seed phrases per label (12 DB intents + `conversational`/`ai_simple`/`ai_complex`), embedded with the already-loaded MiniLM; `classify(query) → (tier, intent_key, confidence)`, nearest-seed by cosine (vectorized with numpy), below-threshold → AI_SIMPLE. Injectable encoder/seed for testing. Covered by `test_intent_router.py` (mechanics + a scored eval harness that prints accuracy; currently 100% on a 20-case held-out set after seed tuning).
+- **✅ Step 2 — shadow mode.** `INTENT_ROUTER` flag (`off`|`shadow`|`on`, default off). In shadow, `process_query` runs the semantic router alongside the regex router and logs `[ROUTER][shadow] AGREE|DISAGREE …` per request, changing nothing. Proven not to alter routing by `test_shadow_routing.py`. → Flip `INTENT_ROUTER=shadow` on a live server, then `grep "DISAGREE"` to measure real-traffic accuracy.
+- **⬜ Step 3 — cutover.** Expand the eval into the full ≥95% held-out suite (turn `test_routing_tiers` cases into scored cases — a set the seeds were NOT tuned on); when it clears the bar, make the semantic router primary with the regex router as fallback for one release. Also resolve **H8** (upgrade `_extract_customer_name` to `difflib`/token-set fuzzy matching) since the router only classifies intent *type* — the DB still owns entity resolution.
+   - *DoD: one classifier, measured ≥95% accuracy, `COMPLEX` no longer triggers on "report/plan/improve" unless the query genuinely needs multi-source analysis.*
+
+**Phase 1 follow-ups (deferred, take up later):**
+- **Pre-warm the router at startup.** First request in shadow/on mode builds the seed matrix (~140 encodes, <1s) and warms the model. `preload_model_async` already warms the embedding model; also pre-build the router's seed matrix there for zero first-request latency.
+- **Fast/full test split.** Tag the model-dependent tests (`test_semantic_router_eval_accuracy`, `test_rag` model tests) with `@pytest.mark.slow` + a small `pytest.ini`, so day-to-day runs `pytest -m "not slow"` (a few seconds, no model load) and CI/pre-commit runs the full suite.
 
 ### Phase 2 — A real agent loop (4–5 days)
 Rebuild `agent_graph` as an actual agent, not a pipeline:
@@ -156,8 +164,8 @@ Rebuild `agent_graph` as an actual agent, not a pipeline:
 
 | Phase | Theme | Effort | Status | Risk it removes |
 |---|---|---|---|---|
-| 0 | Correctness & dedup | 3–4 d | 🟡 nearly done (items 1✅ 2✅ 3✅ 4✅ logging✅ C6✅; item 5🟡 H6 sweep, item 6🟡 H3 schema — only DB-migration/mechanical work left) | billing drift, races, cache bleed |
-| 1 | Semantic router | 2 d | ⬜ not started | wrong-tier cost leak, regex maintenance |
+| 0 | Correctness & dedup | 3–4 d | 🟡 nearly done (items 1✅ 2✅ 3✅ 4✅ 6 functionally✅ logging✅ C6✅; only the H6 `get_db` sweep + optional column-type flip remain) | billing drift, races, cache bleed |
+| 1 | Semantic router | 2 d | 🟡 Steps 1 & 2 done (router built + eval + shadow mode); Step 3 cutover + H8 remain | wrong-tier cost leak, regex maintenance |
 | 2 | Real agent loop | 4–5 d | ⬜ not started | fake agency, blanket fan-out cost |
 | 3 | Real actions | 3–4 d | ⬜ not started | "agent that doesn't act" |
 | 4 | Proactive digest | 3 d | ⬜ not started | zero-engagement users |
@@ -165,9 +173,8 @@ Rebuild `agent_graph` as an actual agent, not a pipeline:
 
 Start with Phase 0, item 1 (the `ai_router` unification) — it touches the most-edited file in the repo and every later phase gets cheaper once it lands.
 
-**Phase 0 remaining (only two items):**
-- **H3 schema half** — String→`Date` columns + `status` enum, normalized at ingest, with a data backfill. Build as an Alembic revision on top of baseline `c0017902b685`. (The parse-half dedup is already done.)
-- **H6 sweep** — migrate the ~30 `SessionLocal()` blocks onto `Depends(get_db)` (mechanical; batch with test runs).
-- Optional later: replace startup `create_all()` with auto `alembic upgrade head`.
+**Phase 0 remaining:**
+- **H6 sweep** — migrate the ~30 `SessionLocal()` blocks onto `Depends(get_db)` (mechanical; batch with test runs). The only non-optional item left.
+- Optional/deferred: the H3 String→`Date`/`Enum` column-type flip (SQLite-moot; for the Postgres move); replace startup `create_all()` with auto `alembic upgrade head`.
 
-Everything else in Phase 0 is ✅. Per **Part 4**, finish these before touching Phase 1/2.
+Everything else in Phase 0 is ✅ (H3 is now functionally complete: parse + ingest-normalize + backfill migration). Per **Part 4**, finish H6 before touching Phase 1/2.

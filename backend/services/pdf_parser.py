@@ -8,6 +8,7 @@ import anthropic
 from database.db import SessionLocal
 from database.models import UploadedFile, Invoice, Inventory, Payment
 from services.embeddings import index_new_file_records
+from services.normalize import to_iso, normalize_status
 from datetime import datetime
 
 logger = logging.getLogger("bizassist.pdf_parser")
@@ -236,9 +237,9 @@ def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str, file_has
 
             if existing_inv:
                 existing_inv.amount       = line_amount
-                existing_inv.status       = data.get("status", existing_inv.status)
-                existing_inv.invoice_date = data.get("invoice_date", existing_inv.invoice_date)
-                existing_inv.due_date     = data.get("due_date", existing_inv.due_date)
+                existing_inv.status       = normalize_status(data.get("status", existing_inv.status))
+                existing_inv.invoice_date = to_iso(data.get("invoice_date", existing_inv.invoice_date))
+                existing_inv.due_date     = to_iso(data.get("due_date", existing_inv.due_date))
                 existing_inv.file_id      = file_id
                 logger.info(f"[PDF] Updated existing invoice line: {invoice_id_val} / {product_name}")
             else:
@@ -249,9 +250,9 @@ def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str, file_has
                     customer=data.get("customer"),
                     product=product_name,
                     amount=line_amount,
-                    status=data.get("status", "Pending"),
-                    invoice_date=data.get("invoice_date"),
-                    due_date=data.get("due_date")
+                    status=normalize_status(data.get("status", "Pending")),
+                    invoice_date=to_iso(data.get("invoice_date")),
+                    due_date=to_iso(data.get("due_date"))
                 )
                 db.add(invoice_record)
 
@@ -264,7 +265,7 @@ def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str, file_has
             if existing_inventory:
                 # Update existing inventory (override or accumulate)
                 existing_inventory.stock = stock_qty
-                existing_inventory.expiry_date = item.get("expiry_date", existing_inventory.expiry_date)
+                existing_inventory.expiry_date = to_iso(item.get("expiry_date", existing_inventory.expiry_date))
                 existing_inventory.supplier = data.get("supplier", existing_inventory.supplier)
                 existing_inventory.file_id = file_id
             else:
@@ -274,7 +275,7 @@ def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str, file_has
                     file_id=file_id,
                     product_name=product_name,
                     stock=stock_qty,
-                    expiry_date=item.get("expiry_date"),
+                    expiry_date=to_iso(item.get("expiry_date")),
                     supplier=data.get("supplier")
                 )
                 db.add(new_inventory)
@@ -286,12 +287,13 @@ def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str, file_has
         except (ValueError, TypeError):
             total_invoice_amount = 0.0
 
-        payment_status = "Yes" if data.get("status") == "Paid" else "No"
+        payment_status = "Yes" if normalize_status(data.get("status")) == "Paid" else "No"
+        _pay_due = to_iso(data.get("due_date"))   # normalize at ingest (H3)
 
         # Check if a payment for this customer + due_date already exists to avoid duplication
         existing_payment = db.query(Payment).filter(
             Payment.customer == data.get("customer"),
-            Payment.due_date == data.get("due_date"),
+            Payment.due_date == _pay_due,
             Payment.business_id == business_id
         ).first()
 
@@ -305,7 +307,7 @@ def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str, file_has
                 file_id=file_id,
                 customer=data.get("customer"),
                 amount=total_invoice_amount,
-                due_date=data.get("due_date"),
+                due_date=_pay_due,
                 paid=payment_status
             )
             db.add(new_payment)
