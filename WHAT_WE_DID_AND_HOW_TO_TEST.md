@@ -13,7 +13,7 @@ cd "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\backend"
 pytest tests/ -q
 ```
 
-Expected: **156 passed**. That one command verifies every change below.
+Expected: **176 passed**. That one command verifies every change below.
 
 To run the actual server and click around:
 
@@ -134,6 +134,28 @@ like `15/01/2026` and lowercase `overdue`; after upload they're stored as
 > Note: this fixes data going FORWARD. Old rows already in your database keep
 > their original format until a one-time backfill is run (a separate migration
 > step, still to do).
+
+### 14. Smarter customer-name matching (handles typos)
+When you ask about a specific customer ("do you know nilgris fresh?"), the system
+now finds the right customer even with typos, different capitalisation, dropped
+letters, or words in a different order — while still refusing to match unrelated
+text. The customer list always comes from your real data; this just picks the
+right one from it.
+
+**How to test:** automated — `test_entity_match.py`. (Live: ask about a customer
+and deliberately misspell their name; it should still find them.)
+
+### 15. Smarter question routing (new, optional, behind a switch)
+A new "semantic" understanding of what a question means (using the local AI model
+you already load), so phrasing variations route correctly without hand-written
+rules. It's currently OFF by default and only runs in "shadow" mode for testing —
+it watches and logs how it would route, without changing anything. Turn it on with
+the `INTENT_ROUTER` setting when you're ready to evaluate it on real questions.
+
+**How to test:** automated — `test_intent_router.py` (includes an accuracy report)
+and `test_shadow_routing.py`. (Live: set `INTENT_ROUTER=shadow`, use the app, then
+search your logs for `[ROUTER][shadow]` to see where it agrees/disagrees with today's
+routing.)
 
 ### 10. Migration tooling set up (Alembic)
 Added the scaffolding for proper database migrations. **One step is still left**

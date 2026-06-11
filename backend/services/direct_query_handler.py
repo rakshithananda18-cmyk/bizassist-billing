@@ -4,6 +4,7 @@ direct_query_handler.py
 Tier-0 router -- maps handler_key strings to domain handler functions.
 """
 import re
+import difflib
 import logging
 from services.handlers.payments  import _overdue_list, _overdue_amount, _pending_list, _top_debtors
 from services.handlers.invoices  import _invoice_count, _total_revenue, _overdue_range_detail, _revenue_month_detail
@@ -35,12 +36,57 @@ HANDLERS = {
 _ALL_WORDS = {"all", "every", "complete", "full", "entire"}
 
 
+# Min average token similarity (0..1) to accept a fuzzy customer match. High
+# enough to reject unrelated words, low enough to absorb typos/dropped letters.
+_CUSTOMER_FUZZY_THRESHOLD = 0.82
+
+
+def _match_customer_name(query: str, names, threshold: float = _CUSTOMER_FUZZY_THRESHOLD):
+    """
+    Resolve a customer name from free text against the known names (H8). Pure
+    (no DB) so it's unit-testable.
+
+      1. Exact case-insensitive substring — fast and precise for clean queries.
+      2. Token-set fuzzy match — tolerant of typos ("nilgris"), casing, dropped
+         letters ("nilgiri"), and word order ("fresh nilgiris").
+
+    The DB always owns the candidate names; this only chooses among them — it
+    never invents a customer. Returns the matched name, or None.
+    """
+    q_lower = (query or "").lower()
+    clean = [n for n in names if n]
+    if not clean or not q_lower.strip():
+        return None
+
+    # 1. exact substring (longest wins)
+    subs = [n for n in clean if n.lower() in q_lower]
+    if subs:
+        return max(subs, key=len)
+
+    # 2. token-set fuzzy
+    q_tokens = re.findall(r"[a-z0-9]+", q_lower)
+    if not q_tokens:
+        return None
+    best, best_score = None, 0.0
+    for n in clean:
+        n_tokens = re.findall(r"[a-z0-9]+", n.lower())
+        if not n_tokens:
+            continue
+        # average, over the name's tokens, of each token's best fuzzy ratio
+        # against any query token — so every word of the name must be present
+        # (in some form) for a high score, which keeps false positives down.
+        per_token = [
+            max((difflib.SequenceMatcher(None, nt, qt).ratio() for qt in q_tokens), default=0.0)
+            for nt in n_tokens
+        ]
+        score = sum(per_token) / len(per_token)
+        if score > best_score:
+            best_score, best = score, n
+    return best if best_score >= threshold else None
+
+
 def _extract_customer_name(query: str, user_id: int):
-    """
-    Best-effort extraction of a customer name from a free-form query.
-    Fetches distinct customer names from the DB and does case-insensitive
-    substring matching against the query.  Returns None if no match.
-    """
+    """Fetch this user's distinct customer names and resolve one from the query."""
     try:
         from database.db import SessionLocal
         from database.models import Invoice
@@ -51,13 +97,10 @@ def _extract_customer_name(query: str, user_id: int):
                      .distinct().all()]
         finally:
             db.close()
-        q_lower = query.lower()
-        matches = [n for n in names if n and n.lower() in q_lower]
-        if matches:
-            return max(matches, key=len)   # longest match wins
+        return _match_customer_name(query, names)
     except Exception as e:
         logger.debug(f"[HANDLER] extract_customer: {e}")
-    return None
+        return None
 
 
 def _extract_limit(query: str, default: int = 50) -> int:
