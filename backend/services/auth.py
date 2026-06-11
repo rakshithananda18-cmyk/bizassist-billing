@@ -1,10 +1,13 @@
 import os
 import bcrypt
 import jwt
+import logging
 from datetime import datetime, timedelta
 from fastapi import Header, HTTPException
 
 import secrets as _secrets
+
+logger = logging.getLogger("bizassist.auth")
 
 _raw_secret = os.environ.get("JWT_SECRET", "")
 if not _raw_secret:
@@ -14,9 +17,8 @@ if not _raw_secret:
     )
 # HS256 requires >= 32 bytes. Pad short secrets rather than crash — but log a warning.
 if len(_raw_secret.encode()) < 32:
-    import logging as _log
-    _log.getLogger("bizassist.auth").warning(
-        "JWT_SECRET is shorter than 32 bytes — pad it or use a longer key in production."
+    logger.warning(
+        "[AUTH] JWT_SECRET is shorter than 32 bytes — pad it or use a longer key in production."
     )
     _raw_secret = _raw_secret + _secrets.token_hex(16)   # pad to safe length
 JWT_SECRET = _raw_secret
@@ -49,12 +51,15 @@ def decode_access_token(token: str) -> dict:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         return payload
     except jwt.ExpiredSignatureError:
+        logger.warning("[AUTH] Token rejected — signature expired")
         raise HTTPException(status_code=401, detail="Signature has expired")
     except jwt.InvalidTokenError:
+        logger.warning("[AUTH] Token rejected — invalid token")
         raise HTTPException(status_code=401, detail="Invalid token")
 
 def get_active_user(authorization: str = Header(None)) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
+        logger.info("[AUTH] Request rejected — missing or malformed Authorization header")
         raise HTTPException(status_code=401, detail="Bearer authorization token missing or malformed")
     token = authorization.split(" ")[1]
     return decode_access_token(token)

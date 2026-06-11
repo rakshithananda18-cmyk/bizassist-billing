@@ -24,7 +24,7 @@ class SignupRequest(BaseModel):
 @router.post("/login")
 def login(req: LoginRequest, request: Request):
     db = SessionLocal()
-    logger.info(f"Login attempt for username '{req.username}'...")
+    logger.info(f"[AUTH] Login attempt for username '{req.username}'...")
     try:
         # Check IP-based rate limiting
         ip = request.client.host if request.client else "unknown"
@@ -34,7 +34,7 @@ def login(req: LoginRequest, request: Request):
 
         user = db.query(User).filter(User.username == req.username).first()
         if not user or not verify_password(req.password, user.password):
-            logger.warning(f"Failed login attempt for username '{req.username}': Invalid credentials")
+            logger.warning(f"[AUTH] Failed login for username '{req.username}': invalid credentials")
             raise HTTPException(status_code=401, detail="Invalid credentials")
         
         token = create_access_token({
@@ -44,7 +44,7 @@ def login(req: LoginRequest, request: Request):
             "role": user.role
         })
         
-        logger.info(f"User '{req.username}' successfully authenticated (role={user.role}).")
+        logger.info(f"[AUTH] User '{req.username}' authenticated (role={user.role}).")
         return {
             "token": token,
             "id": user.id,
@@ -55,7 +55,7 @@ def login(req: LoginRequest, request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error during login flow for username '{req.username}': {str(e)}", exc_info=True)
+        logger.error(f"[AUTH] Error during login for username '{req.username}': {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server login error")
     finally:
         db.close()
@@ -64,7 +64,7 @@ def login(req: LoginRequest, request: Request):
 @router.post("/signup")
 def signup(req: SignupRequest):
     db = SessionLocal()
-    logger.info(f"Signup attempt for username '{req.username}'...")
+    logger.info(f"[AUTH] Signup attempt for username '{req.username}'...")
     try:
         # Enforce password strength policy
         password = req.password
@@ -79,7 +79,7 @@ def signup(req: SignupRequest):
 
         existing = db.query(User).filter(User.username == req.username).first()
         if existing:
-            logger.warning(f"Failed signup attempt: username '{req.username}' already exists.")
+            logger.warning(f"[AUTH] Failed signup: username '{req.username}' already exists.")
             raise HTTPException(status_code=400, detail="Username already exists")
         
         user = User(
@@ -99,7 +99,7 @@ def signup(req: SignupRequest):
             "role": user.role
         })
         
-        logger.info(f"User '{req.username}' successfully registered and authenticated.")
+        logger.info(f"[AUTH] User '{req.username}' registered and authenticated.")
         return {
             "token": token,
             "id": user.id,
@@ -111,7 +111,7 @@ def signup(req: SignupRequest):
         raise
     except Exception as e:
         db.rollback()
-        logger.error(f"Error during signup flow for username '{req.username}': {str(e)}", exc_info=True)
+        logger.error(f"[AUTH] Error during signup for username '{req.username}': {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server signup error")
     finally:
         db.close()

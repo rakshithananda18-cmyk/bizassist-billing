@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
+import { fetchSessions } from '../utils/sessionsCache'
 import { Icon } from './icons'
 import { useDialog } from '../contexts/DialogContext'
 
@@ -88,12 +89,12 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
 
   async function loadInsightsData() {
     try {
-      const [sessionsRes, summaryRes, customersRes] = await Promise.all([
-        authFetch(`${API_BASE}/chat/sessions`),
+      const [sessionsData, summaryRes, customersRes] = await Promise.all([
+        fetchSessions(authFetch),   // shared/de-duped request
         authFetch(`${API_BASE}/dashboard-summary`),
         authFetch(`${API_BASE}/top-customers`)
       ])
-      if (sessionsRes.ok) setSessions(await sessionsRes.json())
+      if (sessionsData) setSessions(sessionsData)
       if (summaryRes.ok) setSummary(await summaryRes.json())
       if (customersRes.ok) setCustomers(await customersRes.json())
     } catch (err) {

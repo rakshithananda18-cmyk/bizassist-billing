@@ -49,3 +49,55 @@ def test_defaults_to_today_when_day_omitted():
     a = _cache_salt(1, "AI_SIMPLE", "show overdue", "overdue_list")
     b = _cache_salt(1, "AI_SIMPLE", "who owes me", "overdue_list")
     assert a == b
+
+
+# ── DIRECT handler precision (the "total revenue → invoice count" bug) ──
+
+def test_direct_handlers_with_same_topic_do_not_collide():
+    # _detect_topic maps BOTH to 'total_revenue', but they're different intents
+    # and must NOT share a cache entry.
+    invoices = _cache_salt(1, "DIRECT", "how many invoices", "total_revenue",
+                           handler_key="invoice_count", day="2026-01-15")
+    revenue  = _cache_salt(1, "DIRECT", "total revenue", "total_revenue",
+                           handler_key="total_revenue", day="2026-01-15")
+    assert invoices != revenue
+
+
+def test_top_debtors_does_not_collide_with_overdue_list():
+    # 'who owes me the most' (top_debtors) vs 'show overdue' (overdue_list) —
+    # _detect_topic lumps both as 'overdue_list'.
+    debtors = _cache_salt(1, "DIRECT", "who owes me the most", "overdue_list",
+                          handler_key="top_debtors", day="2026-01-15")
+    overdue = _cache_salt(1, "DIRECT", "show overdue invoices", "overdue_list",
+                          handler_key="overdue_list", day="2026-01-15")
+    assert debtors != overdue
+
+
+def test_direct_and_promoted_variant_share_when_same_intent():
+    # DIRECT overdue and a semantic variant promoted to the same intent SHOULD share.
+    direct   = _cache_salt(1, "DIRECT", "show overdue", "overdue_list",
+                           handler_key="overdue_list", day="2026-01-15")
+    promoted = _cache_salt(1, "AI_SIMPLE", "who owes me money", "overdue_list",
+                           handler_key=None, day="2026-01-15")
+    assert direct == promoted
+
+
+def test_client_summary_keyed_on_query_per_customer():
+    # different customers (and a non-existent one) must NOT share a cache entry,
+    # otherwise the first looked-up customer is returned for everyone.
+    a = _cache_salt(1, "DIRECT", "do you know namdhari fresh", "business_summary",
+                    handler_key="client_summary", day="2026-01-15")
+    b = _cache_salt(1, "DIRECT", "tell me about star bazaar", "business_summary",
+                    handler_key="client_summary", day="2026-01-15")
+    c = _cache_salt(1, "DIRECT", "tell me about zxqwerty fictional", "business_summary",
+                    handler_key="client_summary", day="2026-01-15")
+    assert a != b and a != c and b != c
+
+
+def test_writing_task_keyed_on_query_not_topic():
+    # 'draft a reminder for overdue customers' must NOT share the overdue data cache.
+    writing = _cache_salt(1, "AI_SIMPLE", "draft a reminder for overdue customers",
+                          "overdue_list", handler_key=None, is_writing=True, day="2026-01-15")
+    data    = _cache_salt(1, "DIRECT", "show overdue", "overdue_list",
+                          handler_key="overdue_list", day="2026-01-15")
+    assert writing != data

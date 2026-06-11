@@ -35,6 +35,32 @@ HANDLERS = {
 
 _ALL_WORDS = {"all", "every", "complete", "full", "entire"}
 
+# Returned verbatim (no LLM polish) when a named customer can't be resolved.
+CUSTOMER_NOT_FOUND = (
+    "I couldn't find a customer matching that name in your records. "
+    "Please check the spelling, or ask \"who are my customers?\" to see "
+    "the list of names I have."
+)
+
+# When a "tell me about ..." query resolves to NO customer, it's either a real
+# customer that doesn't exist (-> honest "not found") or a general business ask
+# that merely shares the trigger phrase ("tell me about my business") and should
+# fall through to the AI. These words mark the latter.
+_GENERAL_ABOUT = {
+    "business", "company", "firm", "shop", "store", "myself",
+    "revenue", "sales", "income", "turnover", "profit", "cash", "flow",
+    "overdue", "pending", "unpaid", "outstanding", "invoices", "invoice",
+    "payments", "payment", "inventory", "stock", "products", "customers",
+    "performance", "overview", "summary", "health", "snapshot", "situation",
+    "numbers", "data", "everything", "status", "dashboard", "metrics",
+}
+
+
+def _is_general_about_query(query: str) -> bool:
+    """True when a customer-lookup phrasing is actually a general business ask."""
+    toks = set(re.findall(r"[a-z0-9]+", (query or "").lower()))
+    return bool(toks & _GENERAL_ABOUT)
+
 
 # Min average token similarity (0..1) to accept a fuzzy customer match. High
 # enough to reject unrelated words, low enough to absorb typos/dropped letters.
@@ -136,7 +162,14 @@ def handle(handler_key: str, user_query: str, user_id: int, params: dict = None)
         if handler_key == "client_summary":
             customer = (params or {}).get("customer") or _extract_customer_name(user_query, user_id)
             if not customer:
-                return None
+                # No customer resolved. If it's a general business ask that merely
+                # used "tell me about ...", let the AI answer. Otherwise the user
+                # named a customer we don't have — say so honestly instead of
+                # falling through to the LLM, which fabricates an empty client card.
+                if _is_general_about_query(user_query):
+                    return None
+                logger.info(f"[HANDLER] client_summary: no customer match for '{user_query}'")
+                return CUSTOMER_NOT_FOUND
             return fn(user_id, {"customer": customer})
 
         if handler_key in ("overdue_list", "pending_list"):

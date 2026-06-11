@@ -24,6 +24,7 @@ def require_admin(user_id: int, db: Session) -> User:
     """Raises 403 if the current user is not an admin. Returns the admin User row."""
     u = db.query(User).filter(User.id == user_id).first()
     if not u or u.role != "admin":
+        logger.warning(f"[AUTH] Admin access denied for user_id={user_id} (role={getattr(u, 'role', None)})")
         raise HTTPException(status_code=403, detail="Access denied. Admin role required.")
     return u
 

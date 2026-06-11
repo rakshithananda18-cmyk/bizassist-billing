@@ -37,8 +37,8 @@ from typing import Optional
 from groq import Groq
 from sqlalchemy import func
 
-from services.query_router import classify
-from services.direct_query_handler import handle as direct_handle
+from services.query_router import classify, _WRITING_ACTIONS
+from services.direct_query_handler import handle as direct_handle, _extract_customer_name, CUSTOMER_NOT_FOUND
 from services.recommendations import recommend, get_business_snapshot, detect_anomalies
 from services.context_cache import get_focused_context, get_cached_query_response, set_cached_query_response
 from services.tools import execute_tool, schemas as tool_schemas
@@ -55,6 +55,12 @@ logger = logging.getLogger("bizassist.ai_router")
 
 MODEL_SIMPLE  = os.getenv("GROQ_MODEL_SIMPLE",  "llama-3.1-8b-instant")
 MODEL_COMPLEX = os.getenv("GROQ_MODEL_COMPLEX", "llama-3.3-70b-versatile")
+
+# Max characters of a single tool result fed back to the model. A "draft a
+# reminder" tool can return the entire overdue table (hundreds of rows); without
+# a cap the follow-up call blows past the model's per-minute token limit (Groq
+# free tier = 6000 TPM). ~4000 chars ≈ ~1000 tokens — plenty for a useful answer.
+_MAX_TOOL_CHARS = int(os.getenv("MAX_TOOL_CHARS", "4000"))
 
 # Topics that have a deterministic DB-backed intent handler. An AI_SIMPLE query
 # whose detected topic is in this set is "promoted" to a 0-token DB answer.
@@ -316,22 +322,63 @@ def _safe_int(v) -> int:
     return int(v) if isinstance(v, (int, float)) else 0
 
 
-def _cache_salt(user_id: int, route: str, user_query: str, topic: str, day: str = None) -> str:
+def _cache_salt(user_id: int, route: str, user_query: str, topic: str,
+                handler_key: str = None, *, is_writing: bool = False, day: str = None) -> str:
     """
-    Build the query-cache key (C6). The current DATE is folded in so day-sensitive
-    answers ("days overdue", "expiring soon", "today's priorities") can't be served
-    stale across a day boundary — a new day yields a new salt automatically, which
-    also makes a longer cache TTL safe.
+    Build the query-cache key. The DISCRIMINATOR must match the *resolved intent*
+    so two different intents never share a cache entry — otherwise a coarse
+    `_detect_topic` collapses distinct questions onto one key (e.g. "how many
+    invoices" and "total revenue" both detect topic 'total_revenue', which made
+    "total revenue" return the cached invoice answer).
 
-      AI_COMPLEX → keyed on exact query (data-driven).
-      else       → keyed on topic, so "show overdue" and "who owes me" share a hit.
+      - AI_COMPLEX / writing task → exact query (each is unique; a "draft a
+        reminder" must not be served a cached data list)
+      - DIRECT                    → the precise `handler_key`
+      - else (AI_SIMPLE / intent) → the detected topic, so semantic variants of
+        the same intent ("show overdue" == "who owes me") still share a hit
+
+    The current DATE is folded in (C6) so day-sensitive answers refresh daily.
     """
     day = day or date.today().isoformat()
-    if route == "AI_COMPLEX":
-        key = f"{user_id}:{day}:{user_query}"
-    else:
-        key = f"{user_id}:{day}:{topic}"
-    return hashlib.md5(key.encode("utf-8")).hexdigest()
+    disc = _cache_disc(route, user_query, topic, handler_key, is_writing)
+    return hashlib.md5(f"{user_id}:{day}:{disc}".encode("utf-8")).hexdigest()
+
+
+def _cache_disc(route: str, user_query: str, topic: str, handler_key, is_writing: bool) -> str:
+    """The cache discriminator (the part that decides which answers share an entry)."""
+    if route == "AI_COMPLEX" or is_writing:
+        return f"q:{(user_query or '').strip().lower()}"
+    if route == "DIRECT" and handler_key:
+        # `client_summary` is parameterised by the customer named in the query, so
+        # keying on the handler alone makes every customer lookup (incl. a typo'd
+        # or non-existent one) share one entry. Key it on the query instead so the
+        # handler — and its fuzzy customer match — actually runs per distinct query.
+        if handler_key == "client_summary":
+            return f"q:{(user_query or '').strip().lower()}"
+        return handler_key
+    return topic
+
+
+# A query of at most this many words may be a bare customer-name lookup.
+_ENTITY_MAX_WORDS = 4
+
+
+def _maybe_entity_first(route: str, handler_key, user_query: str, user_id: int):
+    """
+    Entity-first routing: a SHORT query that names a known customer is a client
+    lookup, even when a keyword trips another topic (e.g. "namdhari fresh" → the
+    word 'fresh' would route to expiring_soon). Only applied to the ambiguous
+    AI_SIMPLE bucket and short queries, so the extra DB lookup is bounded. The
+    fuzzy matcher's 0.82 threshold keeps non-name queries from matching.
+    Returns (route, handler_key).
+    """
+    if route != "AI_SIMPLE" or len((user_query or "").split()) > _ENTITY_MAX_WORDS:
+        return route, handler_key
+    named = _extract_customer_name(user_query, user_id)
+    if named:
+        logger.info(f"[ROUTER] entity-first → client_summary (customer='{named}') q='{user_query}'")
+        return "DIRECT", "client_summary"
+    return route, handler_key
 
 
 def _maybe_shadow_route(user_query: str, route: str, handler_key, topic: str) -> None:
@@ -489,17 +536,26 @@ def _polish(raw_markdown: str, topic: str, client: Groq,
                 {
                     "role": "system",
                     "content": (
-                        "You are a business analyst. Given raw business data, write exactly 2 sentences:\n"
-                        "1. The single biggest risk or insight — include the specific number that drives it.\n"
-                        "2. One concrete action the owner should take today — name the specific customer or item.\n"
-                        "Rules: exact numbers only (no rounding), no bullet points, no headers, no generic advice."
+                        "You are a business analyst. Read the BUSINESS DATA below and write at most 2 short sentences:\n"
+                        "1. The single biggest risk or insight, citing the exact number from the data.\n"
+                        "2. One concrete next step.\n"
+                        "\n"
+                        "HARD RULES — follow exactly:\n"
+                        "- Use ONLY facts that appear in the data. NEVER invent or guess customer names, "
+                        "customer IDs, invoice numbers, product names/IDs, or amounts.\n"
+                        "- If the data names a specific customer or item, refer to it by that exact name. "
+                        "If the data has only totals and names NO specific customer/item, give a GENERAL "
+                        "next step — do NOT make up a name, an ID, or a figure.\n"
+                        "- If the data says everything is fine (e.g. sufficient stock), say so plainly; do not invent a problem.\n"
+                        "- Use the same currency symbol as the data (₹). Never use $.\n"
+                        "- Exact numbers only (no rounding). No headers, no bullet points, no filler."
                     )
                 },
-                {"role": "user", "content": raw_markdown[:500]}
+                {"role": "user", "content": "BUSINESS DATA:\n" + raw_markdown[:900]}
             ],
             model=MODEL_SIMPLE,
-            temperature=0.15,
-            max_tokens=100,
+            temperature=0.0,
+            max_tokens=110,
         )
         if business_id is not None and acc is not None:
             _log_token_usage(business_id, MODEL_SIMPLE, "POLISH", getattr(resp, "usage", None), acc)
@@ -581,6 +637,9 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
 
     # ── Layer 1: classify ───────────────────────────────────────────
     route, handler_key = classify(user_query, has_history=len(history) > 0)
+    # Entity-first: a short query that names a known customer → client lookup,
+    # before a stray keyword ("fresh") can misroute it.
+    route, handler_key = _maybe_entity_first(route, handler_key, user_query, active_user_id)
 
     # ── Rate limit ──────────────────────────────────────────────────
     rl = check_rate_limit(active_user_id, route)
@@ -596,7 +655,20 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
     # Cache salt: AI_COMPLEX keys on exact query (data-driven); everything else
     # keys on topic so "show overdue" and "who owes me" share one entry.
     _pre_topic   = _detect_topic(user_query)
-    history_salt = _cache_salt(active_user_id, route, user_query, _pre_topic)
+    _is_writing  = bool(_WRITING_ACTIONS.search(user_query))   # "draft/write a reminder…"
+    history_salt = _cache_salt(active_user_id, route, user_query, _pre_topic,
+                               handler_key, is_writing=_is_writing)
+
+    # Full routing+cache context for root-cause debugging (LOG_LEVEL=DEBUG). This
+    # is the line that makes cache-collision bugs obvious: if `handler` and
+    # `cache_disc` disagree for a DIRECT query, two intents are sharing a key.
+    rid = uuid.uuid4().hex[:8]
+    logger.debug(
+        f"[REQ {rid}] user={active_user_id} route={route} handler={handler_key} "
+        f"topic={_pre_topic} writing={_is_writing} "
+        f"cache_disc='{_cache_disc(route, user_query, _pre_topic, handler_key, _is_writing)}' "
+        f"q='{user_query[:100]}'"
+    )
 
     # Phase 1 shadow routing (no-op unless INTENT_ROUTER=shadow|on) — gathers
     # semantic-vs-regex agreement data on real traffic without changing routing.
@@ -645,7 +717,8 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
     # ── Layer 2: universal cache check ──────────────────────────────
     cached = get_cached_query_response(active_user_id, user_query, history_salt)
     if cached:
-        logger.info(f"[CACHE] HIT source={cached.get('source','?')} topic={_pre_topic} query='{user_query}'")
+        logger.info(f"[CACHE] HIT [REQ {rid}] source={cached.get('source','?')} "
+                    f"disc='{_cache_disc(route, user_query, _pre_topic, handler_key, _is_writing)}' query='{user_query[:80]}'")
         markdown = cached.get("answer", {}).get("markdown") or cached.get("response", "")
         _log_chat(active_user_id, user_query, markdown, session_id, session_title,
                   source=cached.get("source", "ai"), model_tier=cached.get("model_tier"),
@@ -675,6 +748,25 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
         answer = direct_handle(handler_key, user_query, active_user_id)
         if answer:
             logger.info(f"[DIRECT] handler={handler_key} | '{user_query}'")
+            # Honest "customer not found" — return verbatim. Don't polish (the LLM
+            # would re-invent a client card) and don't attach client-y suggestions.
+            if answer == CUSTOMER_NOT_FOUND:
+                envelope = {
+                    "answer":        {"markdown": answer, "title": ""},
+                    "response":      answer,
+                    "source":        "db",
+                    "suggestions":   [],
+                    "alerts":        [],
+                    "chart":         None,
+                    "session_id":    session_id,
+                    "session_title": session_title,
+                    "meta": {"tokens": 0, "model": MODEL_SIMPLE,
+                             "model_tier": "DIRECT", "cached": False},
+                }
+                _log_chat(active_user_id, user_query, answer, session_id, session_title, source="db")
+                yield {"type": "replace", "content": answer}
+                yield {"type": "final", "envelope": envelope}
+                return
             polished   = _polish(answer, handler_key, client, active_user_id, acc)
             recs       = recommend(handler_key, active_user_id)
             anomalies  = detect_anomalies(active_user_id)
@@ -698,7 +790,7 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
         # handler returned None (DB error) → fall through to AI
 
     # ── Layer 2.7: intent-first promotion (AI_SIMPLE + known topic) ─
-    if route == "AI_SIMPLE" and _pre_topic in _INTENT_DIRECT:
+    if route == "AI_SIMPLE" and not _is_writing and _pre_topic in _INTENT_DIRECT:
         try:
             from services.intents import resolve_intent
             _ir = resolve_intent(_pre_topic, active_user_id)
@@ -785,6 +877,10 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
                 fn_name = tc.function.name
                 fn_args = json.loads(tc.function.arguments or "{}")
                 tr      = execute_tool(fn_name, fn_args, active_user_id)
+                if isinstance(tr, str) and len(tr) > _MAX_TOOL_CHARS:
+                    logger.info(f"[AI_SIMPLE] tool '{fn_name}' result {len(tr)} chars → "
+                                f"truncated to {_MAX_TOOL_CHARS} (token budget)")
+                    tr = tr[:_MAX_TOOL_CHARS] + "\n…[truncated to fit the model's token budget]"
                 messages.append({"role": "tool", "tool_call_id": tc.id,
                                  "name": fn_name, "content": tr})
             if stream:
@@ -939,5 +1035,14 @@ def handle_stream(prompt_message: str, session_id_in, current_user: dict, client
                 )
 
     except Exception as e:
-        logger.error(f"[STREAM] Unhandled error: {e}", exc_info=True)
-        yield _sse("error", message="An error occurred. Please try again.")
+        msg = str(e)
+        logger.error(f"[STREAM] Unhandled error: {msg}", exc_info=True)
+        low = msg.lower()
+        if "tokens per minute" in low or "request too large" in low or "rate_limit" in low or "429" in low or "413" in low:
+            user_msg = ("That request was too large or too frequent for the AI model's "
+                        "current limit. Try a more specific question, or wait a minute and retry.")
+        elif "invalid api key" in low or "401" in low:
+            user_msg = "The AI service rejected the API key. Check GROQ_API_KEY on the server."
+        else:
+            user_msg = "An error occurred. Please try again."
+        yield _sse("error", message=user_msg)

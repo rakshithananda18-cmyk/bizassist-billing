@@ -5,6 +5,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    strictPort: true,   // fail loudly if 5173 is taken instead of silently moving
+                        // to a port the backend CORS allowlist doesn't include
     proxy: {
       '/api': {
         target: 'http://localhost:8001',

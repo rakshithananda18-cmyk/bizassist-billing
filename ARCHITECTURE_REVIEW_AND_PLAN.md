@@ -125,6 +125,13 @@ Replace `query_router.py` regexes + `_detect_topic` keywords with **one** embedd
 - **🟡 Step 3 — cutover.** ✅ **H8 done** — `_extract_customer_name` now does token-set fuzzy matching (`test_entity_match.py`), so the entity half is solid. ⬜ Remaining: expand the eval into the full ≥95% held-out suite (turn `test_routing_tiers` cases into scored cases — a set the seeds were NOT tuned on); when it clears the bar, make the semantic router primary with the regex router as fallback for one release. This step wants real shadow-mode disagreement data first.
    - *DoD: one classifier, measured ≥95% accuracy, `COMPLEX` no longer triggers on "report/plan/improve" unless the query genuinely needs multi-source analysis.*
 
+**✅ Routing-correctness fixes (landed & tested this session — found via manual testing):**
+These harden the *current* (regex + cache) path so it's correct while shadow data accrues for the cutover.
+- **✅ Cache-discriminator collisions.** `_detect_topic` is coarse and was the cache key, so distinct intents that map to the same topic shared a cache entry ("total revenue" → invoice count; "who owes me most" → overdue list; "draft reminder" → overdue data). `_cache_disc` now keys DIRECT on `handler_key`, AI_COMPLEX/writing on the exact query, AI_SIMPLE on topic. Covered by `test_cache_salt.py`.
+- **✅ `client_summary` keyed per customer.** Was keyed on topic, so "tell me about <customer A>" and a fake name returned the first cached customer. Now keyed on the query. Covered by `test_cache_salt.py::test_client_summary_keyed_on_query_per_customer`.
+- **✅ Entity-first routing (the bare-name case).** A short (≤4-word) `AI_SIMPLE` query that names a known customer (e.g. `namdhari fresh`) now reroutes to `DIRECT/client_summary` *before* keyword topic detection — so "fresh" no longer mis-routes to `expiring_soon`. `_maybe_entity_first` in `ai_router`, covered by `test_entity_match.py`.
+- **✅ Unknown-customer no longer hallucinates.** When `client_summary` can't resolve a named customer, the handler returns an honest `CUSTOMER_NOT_FOUND` message verbatim (no `_polish`, no business-wide insights) instead of falling through to the LLM, which used to fabricate a ₹0 client card. A `_is_general_about_query` guard keeps "tell me about my business" flowing to the AI overview. Covered by `test_entity_match.py`.
+
 **Phase 1 follow-ups (deferred, take up later):**
 - **Pre-warm the router at startup.** First request in shadow/on mode builds the seed matrix (~140 encodes, <1s) and warms the model. `preload_model_async` already warms the embedding model; also pre-build the router's seed matrix there for zero first-request latency.
 - **Fast/full test split.** Tag the model-dependent tests (`test_semantic_router_eval_accuracy`, `test_rag` model tests) with `@pytest.mark.slow` + a small `pytest.ini`, so day-to-day runs `pytest -m "not slow"` (a few seconds, no model load) and CI/pre-commit runs the full suite.
@@ -169,7 +176,7 @@ Rebuild `agent_graph` as an actual agent, not a pipeline:
 | Phase | Theme | Effort | Status | Risk it removes |
 |---|---|---|---|---|
 | 0 | Correctness & dedup | 3–4 d | 🟡 nearly done (items 1✅ 2✅ 3✅ 4✅ 6 functionally✅ logging✅ C6✅; only the H6 `get_db` sweep + optional column-type flip remain) | billing drift, races, cache bleed |
-| 1 | Semantic router | 2 d | 🟡 Steps 1 & 2 done (router built + eval + shadow mode); Step 3 cutover + H8 remain | wrong-tier cost leak, regex maintenance |
+| 1 | Semantic router | 2 d | 🟡 Steps 1 & 2 done (router built + eval + shadow mode); H8 ✅ + routing-correctness fixes landed; only Step 3 cutover remains (needs live shadow data) | wrong-tier cost leak, regex maintenance |
 | 2 | Real agent loop | 4–5 d | ⬜ not started | fake agency, blanket fan-out cost |
 | 3 | Real actions | 3–4 d | ⬜ not started | "agent that doesn't act" |
 | 4 | Proactive digest | 3 d | ⬜ not started | zero-engagement users |

@@ -7,6 +7,7 @@ import MessageBubble from '../components/chat/MessageBubble'
 import TypingIndicator from '../components/chat/TypingIndicator'
 import ChatInput from '../components/chat/ChatInput'
 import { renderMarkdown } from '../utils/markdown'
+import { fetchSessions } from '../utils/sessionsCache'
 import { Icon } from '../components/icons'
 
 // ── Inline SVG helper for CHIPS ──────────────────────────────────────────────
@@ -81,8 +82,8 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   // ── Session management ────────────────────────────────────────────────────
   const loadSessions = useCallback(async () => {
     try {
-      const res = await authFetch(`${API_BASE}/chat/sessions`)
-      if (res.ok) setSessions(await res.json())
+      const data = await fetchSessions(authFetch)   // shared/de-duped request
+      if (data) setSessions(data)
     } catch {}
   }, [authFetch])
 

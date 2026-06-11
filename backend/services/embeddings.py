@@ -28,7 +28,22 @@ def get_embedding_model():
     global _embedding_model, _model_ready
     if _embedding_model is None:
         from sentence_transformers import SentenceTransformer
-        _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+        # Try the local cache first (skips the slow huggingface.co update check
+        # that times out on flaky networks). Fall back to a one-time download if
+        # the model isn't cached yet (fresh machine).
+        prev_offline = os.environ.get("HF_HUB_OFFLINE")
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        try:
+            _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+        except Exception as e:
+            logger.info(f"[EMBED] Model not in local cache ({e}); downloading once...")
+            os.environ.pop("HF_HUB_OFFLINE", None)
+            _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+        finally:
+            if prev_offline is None:
+                os.environ.pop("HF_HUB_OFFLINE", None)
+            else:
+                os.environ["HF_HUB_OFFLINE"] = prev_offline
         # Warm up: run one dummy encode so first real request is instant
         _embedding_model.encode("warmup", convert_to_numpy=True)
         _model_ready = True
