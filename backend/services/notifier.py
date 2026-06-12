@@ -29,6 +29,11 @@ EMAIL_PASS = os.getenv("EMAIL_PASS", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "") or EMAIL_USER
 
 
+def is_configured() -> bool:
+    """True when SMTP credentials are present, so callers can preview honestly."""
+    return bool(EMAIL_USER and EMAIL_PASS)
+
+
 def send_email(to: str, subject: str, body: str) -> bool:
     if not EMAIL_USER or not EMAIL_PASS:
         logger.warning("[EMAIL] EMAIL_USER / EMAIL_PASS not set in .env — skipping.")

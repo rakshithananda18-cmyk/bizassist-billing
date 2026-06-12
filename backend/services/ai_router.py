@@ -908,6 +908,12 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
             # (cash-flow / expiry) still come from detect_anomalies below.
             polished   = answer
             recs       = recommend(handler_key, active_user_id)
+            # On a single-invoice view, offer the "Mark as paid" action (gated:
+            # preview → confirm → execute; it no-ops if already Paid).
+            if handler_key == "invoice_detail":
+                recs = [{"id": "mark_paid", "label": "Mark as paid", "type": "action",
+                         "action": "mark_invoice_paid", "confirm": True,
+                         "params": {"query": user_query}, "icon": "check"}] + (recs or [])
             anomalies  = detect_anomalies(active_user_id)
             envelope = {
                 "answer":        {"markdown": polished, "title": ""},

@@ -186,11 +186,11 @@ Rebuild `agent_graph` as an actual agent, not a pipeline:
 - Cheapest failure mode: planner failure falls back to *invoice-only* (most common domain), not all-agents.
    - *DoD: "why is my collection rate dropping?" produces a run trace showing the agent choosing tools adaptively; cost per complex query drops (no blanket fan-out).*
 
-### Phase 3 — Actions that act (3–4 days)
-- Wire `notifier.py` into `send_payment_reminders` — real email (and WhatsApp where numbers exist), still preview→confirm→audit, plus **idempotency keys** so a double-click can't double-send.
-- Add the next 3 registry actions: `draft_reorder_po` (low stock → PurchaseOrder draft), `mark_invoice_paid`, `escalate_overdue` (90+ day accounts → firmer letter). Each invalidates the user's cache on execute.
-- Per-action rate limits + daily action caps in `RateLimitConfig`.
-   - *DoD: an owner can go from "who owes me?" → confirm → reminders actually delivered, fully audited.*
+### Phase 3 — Actions that act (🟡 v1 landed)
+- **✅ `send_payment_reminders` actually sends.** Wired `notifier.py` (SMTP email) into execute: resolves each overdue customer's email (`Customer` table), and the preview is **honest about delivery** per customer — `email` (will send), `email_unconfigured` (SMTP off), or `no_contact` (no email → copy-only). **Idempotent** — a customer already emailed today is skipped (no double-send); every outcome audited (`sent`/`logged`/`failed`). **Honors the picker selection** (`{customers:[…]}`) — "Send to 1 selected" now scopes to that 1.
+- **✅ `mark_invoice_paid`** — deterministic, gated state change: preview by invoice ID → confirm → status→Paid + audit + cache invalidate; no-op if already Paid. Surfaced via a "Mark as paid" chip on single-invoice answers. Covered by `test_actions.py`.
+- ⬜ Remaining: real delivery needs `EMAIL_USER`/`EMAIL_PASS` in `.env` (wiring done, just needs creds); customer emails are usually absent after CSV import (a future "email the owner a consolidated digest" action would cover that). Still to add: `draft_reorder_po`, `escalate_overdue`; WhatsApp (Twilio); per-action daily caps in `RateLimitConfig`.
+   - *DoD: an owner can go from "who owes me?" → confirm → reminders actually delivered, fully audited. (Reached for email once SMTP creds are set; flow + audit + idempotency proven.)*
 
 ### Phase 4 — Proactive agent (3 days)
 - Scheduled **daily digest agent**: runs the (now cheap) agent loop per business each morning, produces "3 things that need you today" + suggested actions (each a one-tap confirm). Delivered via existing alerts channel and shown in-app.
@@ -222,7 +222,7 @@ Rebuild `agent_graph` as an actual agent, not a pipeline:
 | 1.5 | Answer-quality feedback loop | 1 d | 🟡 Step 1 ✅ (feedback + instant override built + tested); safe auto-learning designed, deferred | wrong answers lost, no correction path |
 | 1.6 | Smart Insights advisor | 1 d | ✅ built (bulb removed; grounded 70B advisor + deterministic panel split); query-contextual insights deferred | hallucinated insights, scattered weak bulbs |
 | 2 | Real agent loop | 4–5 d | ⬜ not started | fake agency, blanket fan-out cost |
-| 3 | Real actions | 3–4 d | ⬜ not started | "agent that doesn't act" |
+| 3 | Real actions | 3–4 d | 🟡 v1 ✅ (reminders send — gated, selective, idempotent, honest delivery; mark_invoice_paid). Remaining: more actions, WhatsApp, action caps | "agent that doesn't act" |
 | 4 | Proactive digest | 3 d | ⬜ not started | zero-engagement users |
 | 5 | Hardening | ongoing | ⬜ not started (logging foundation laid) | scale/security cliffs |
 
