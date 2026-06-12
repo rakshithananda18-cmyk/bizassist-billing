@@ -55,6 +55,44 @@ DIRECT_PATTERNS = [
     (re.compile(r"top\s*(?:\d+\s+)?(?:customers?|clients?)|highest (paying|revenue) customer", re.I),
      "top_customers"),
 
+    # Customer profitability — must beat the product-level profit_summary below.
+    (re.compile(
+        r"customer profitability|profitab\w*\s+customers?|margin by customer"
+        r"|customers?\s+by\s+(?:profit|margin)|which customers?\s+(?:make|are).{0,20}(?:profit|money|margin)",
+        re.I),
+     "customer_margins"),
+
+    (re.compile(
+        r"\byoy\b|year[\s-]?over[\s-]?year|sales growth|revenue growth|growth rate"
+        r"|\bgrowing\b|\bgrown\b|month[\s-]?over[\s-]?month",
+        re.I),
+     "sales_growth"),
+
+    (re.compile(
+        r"\bdso\b|days sales outstanding|collection period"
+        r"|how (?:long|fast|quickly).{0,20}(?:paid|collect)",
+        re.I),
+     "dso_summary"),
+
+    (re.compile(
+        r"\b(?:dormant|lapsed|inactive)\b|win[\s-]?back"
+        r"|customers?\s+(?:who\s+)?(?:haven'?t|have not|stopped)\s+(?:bought|ordered|purchased|buying)",
+        re.I),
+     "dormant_customers"),
+
+    (re.compile(
+        r"\b(profit margins?|margins?|profitab(?:le|ility)|gross profit"
+        r"|most profitable|least profitable|below cost)\b",
+        re.I),
+     "profit_summary"),
+
+    (re.compile(
+        r"(best|worst|top|bottom)[\s-]*(selling|seller[s]?|performing)"
+        r"|product performance|fast[\s-]*moving|slow[\s-]*moving|dead stock"
+        r"|which products?\s+(sell|are selling|move)|what(?:'?s| is)\s+selling",
+        re.I),
+     "product_performance"),
+
     (re.compile(r"how many (products?|items?|units?)|inventory count|stock count", re.I),
      "inventory_count"),
 

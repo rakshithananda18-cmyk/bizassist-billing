@@ -18,7 +18,7 @@ sys.path.insert(0, backend_path)
 import pytest
 import services.rate_limiter as rl
 from database.db import SessionLocal
-from database.models import Base, TokenUsage
+from database.models import Base, TokenUsage, RateLimitConfig
 
 BID = 987654   # an id unlikely to collide with seeded/test users
 
@@ -41,6 +41,17 @@ def _clear():
     db = SessionLocal()
     try:
         db.query(TokenUsage).filter(TokenUsage.business_id == BID).delete()
+        db.query(RateLimitConfig).filter(RateLimitConfig.business_id == BID).delete()
+        db.commit()
+    finally:
+        db.close()
+
+
+def _set_config(**kw):
+    db = SessionLocal()
+    try:
+        db.query(RateLimitConfig).filter(RateLimitConfig.business_id == BID).delete()
+        db.add(RateLimitConfig(business_id=BID, **kw))
         db.commit()
     finally:
         db.close()
@@ -110,3 +121,38 @@ def test_today_usage_is_scoped_to_business():
             db.commit()
         finally:
             db.close()
+
+
+# ── config is the single source of truth; `active` gates enforcement ──────────
+
+def test_usage_summary_reflects_saved_limit_even_when_inactive():
+    # The admin modal showed 100k but the live stats read 50k: _get_config used
+    # to filter active==True and silently fall back to DEFAULTS. The saved number
+    # must show through regardless of the active flag.
+    _set_config(requests_per_minute=10, requests_per_day=500,
+                max_tokens_per_day=100000, complex_per_day=30, active=False)
+    summary = rl.get_usage_summary(BID)
+    assert summary["tokens_limit"] == 100000
+    assert summary["complex_limit"] == 30
+
+
+def test_inactive_config_disables_enforcement():
+    # Unchecking "Enable Rate Limiting" must mean OFF (allow all), not revert to
+    # the stricter defaults.
+    _set_config(requests_per_minute=1, requests_per_day=1,
+                max_tokens_per_day=1, complex_per_day=1, active=False)
+    _add([TokenUsage(business_id=BID, model="m", model_tier="AI_SIMPLE",
+                     input_tokens=9999, output_tokens=9999, total_tokens=99999,
+                     timestamp=datetime.utcnow())])
+    assert rl.check_rate_limit(BID, "AI_COMPLEX")["allowed"] is True
+
+
+def test_active_config_enforces_saved_token_limit():
+    _set_config(requests_per_minute=10, requests_per_day=500,
+                max_tokens_per_day=100, complex_per_day=30, active=True)
+    _add([TokenUsage(business_id=BID, model="m", model_tier="AI_SIMPLE",
+                     input_tokens=80, output_tokens=80, total_tokens=160,
+                     timestamp=datetime.utcnow())])
+    res = rl.check_rate_limit(BID, "AI_SIMPLE")
+    assert res["allowed"] is False
+    assert res["limit"] == 100

@@ -37,16 +37,24 @@ DEFAULTS = {
     "requests_per_day":    500,
     "max_tokens_per_day":  50000,
     "complex_per_day":     20,
+    "active":              True,
 }
 
 
 def _get_config(business_id: int) -> dict:
-    """Fetch rate limit config for a user, falling back to defaults."""
+    """
+    Fetch a user's rate-limit config, falling back to defaults.
+
+    The saved row is the single source of truth for the *numbers* — we do NOT
+    filter on `active` here, so the admin modal and the live usage stats always
+    show the same limits. `active` is returned separately and gates enforcement
+    in check_rate_limit(): active=False means rate limiting is OFF for this
+    merchant (allow everything), NOT "revert to the stricter defaults".
+    """
     db = SessionLocal()
     try:
         cfg = db.query(RateLimitConfig).filter(
-            RateLimitConfig.business_id == business_id,
-            RateLimitConfig.active == True
+            RateLimitConfig.business_id == business_id
         ).first()
         if cfg:
             return {
@@ -54,6 +62,7 @@ def _get_config(business_id: int) -> dict:
                 "requests_per_day":    cfg.requests_per_day,
                 "max_tokens_per_day":  cfg.max_tokens_per_day,
                 "complex_per_day":     cfg.complex_per_day,
+                "active":              cfg.active,
             }
         return DEFAULTS.copy()
     finally:
@@ -114,6 +123,11 @@ def check_rate_limit(business_id: int, route: str = "AI_SIMPLE") -> dict:
         return {"allowed": True}
 
     cfg   = _get_config(business_id)
+
+    # Rate limiting explicitly disabled for this merchant -> allow everything.
+    if not cfg.get("active", True):
+        return {"allowed": True}
+
     now   = datetime.utcnow()
 
     # ── 1. Per-minute check (in-memory sliding window) ────────────────

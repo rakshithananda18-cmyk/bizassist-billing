@@ -915,6 +915,15 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
                          "action": "mark_invoice_paid", "confirm": True,
                          "params": {"query": user_query}, "icon": "check"}] + (recs or [])
             anomalies  = detect_anomalies(active_user_id)
+            # ONE grounded, query-scoped insight (deterministic snapshot math,
+            # no LLM) — the trustworthy successor to the removed bulb. None when
+            # there's nothing relevant to add.
+            ctx_insight = None
+            try:
+                from services.smart_insights import contextual_insight
+                ctx_insight = contextual_insight(active_user_id, handler_key)
+            except Exception as _ci_e:
+                logger.debug(f"[DIRECT] contextual_insight skipped: {_ci_e}")
             envelope = {
                 "answer":        {"markdown": polished, "title": ""},
                 "response":      polished,
@@ -922,6 +931,7 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
                 "suggestions":   recs,
                 "alerts":        anomalies,
                 "chart":         None,
+                "insight":       ctx_insight,
                 "session_id":    session_id,
                 "session_title": session_title,
                 "meta": {"tokens": acc["in"] + acc["out"], "model": MODEL_SIMPLE,

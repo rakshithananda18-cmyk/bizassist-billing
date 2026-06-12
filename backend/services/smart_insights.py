@@ -211,6 +211,144 @@ def build_panel_insights(user_id: int) -> dict:
     return {"has_data": True, "positives": pos, "improvements": imp}
 
 
+# ── Query-contextual insight (deterministic, scoped to one answer) ──────────
+
+def _inr(n) -> str:
+    return f"₹{int(round(_sf(n))):,}"
+
+
+def contextual_insight(user_id: int, handler_key: str, snap: dict = None) -> dict:
+    """
+    ONE small, GROUNDED insight scoped to the topic the user just asked about —
+    the trustworthy successor to the old per-answer bulb. Pure snapshot math (no
+    LLM, can't hallucinate). Returns {"text": str, "dimension": str} or None.
+
+    Returns None when there's nothing useful/relevant to add, or for
+    customer-specific answers (client_summary / customer_invoices /
+    invoice_detail) — the business-wide snapshot would mismatch a single
+    customer's view, so we stay silent rather than risk a confusing aside.
+    """
+    if handler_key in ("client_summary", "customer_invoices", "invoice_detail",
+                        "business_summary"):
+        return None
+
+    snap = snap or build_snapshot(user_id)
+    if not snap.get("has_data"):
+        return None
+
+    c     = snap.get("collections", {})
+    cust  = snap.get("customers", {})
+    prods = snap.get("products", {})
+    risk  = snap.get("risk", {})
+    debtors = snap.get("top_debtors", [])
+    aging   = snap.get("overdue_aging", {})
+
+    def _ins(text, dim):
+        return {"text": text, "dimension": dim}
+
+    # ── Collections / receivables ────────────────────────────────────────
+    if handler_key in ("overdue_list", "overdue_amount", "top_debtors"):
+        if debtors:
+            top = debtors[0]
+            bad = aging.get("180_plus", 0)
+            tail = f" {_inr(bad)} of it is 180+ days overdue — escalate that first." if bad > 0 else ""
+            return _ins(
+                f"{top['customer']} is your biggest debtor at {_inr(top['overdue'])} "
+                f"of {_inr(c.get('overdue_amount', 0))} total overdue.{tail}",
+                "collections")
+        return None
+
+    if handler_key == "pending_list":
+        if c.get("pending_amount", 0) > 0:
+            return _ins(
+                f"{_inr(c['pending_amount'])} is pending across {c.get('pending_count', 0)} "
+                f"invoice(s) — send these before they tip into overdue.",
+                "collections")
+        return None
+
+    if handler_key in ("total_revenue", "invoice_count"):
+        if c.get("overdue_amount", 0) > 0:
+            return _ins(
+                f"You've collected {c.get('collection_rate', 0)}% of {_inr(c.get('total_revenue', 0))} billed; "
+                f"{_inr(c['overdue_amount'])} is still overdue to chase.",
+                "collections")
+        return None
+
+    if handler_key == "dso_summary":
+        if c.get("overdue_amount", 0) > 0 and debtors:
+            return _ins(
+                f"Most of the drag is {debtors[0]['customer']} ({_inr(debtors[0]['overdue'])} overdue) — "
+                f"collecting from the top debtors moves this number fastest.",
+                "collections")
+        return None
+
+    # ── Customers ────────────────────────────────────────────────────────
+    if handler_key in ("top_customers", "customer_margins"):
+        if cust.get("top"):
+            conc = cust.get("top_concentration_pct", 0)
+            risk_tail = " — that's heavy concentration; grow other accounts to de-risk." if conc >= 40 else "."
+            return _ins(
+                f"{cust['top'][0]['customer']} alone is {conc}% of revenue{risk_tail}",
+                "customers")
+        return None
+
+    if handler_key == "dormant_customers":
+        if cust.get("top"):
+            return _ins(
+                f"Win-backs are worth it: your top account {cust['top'][0]['customer']} "
+                f"is {_inr(cust['top'][0]['revenue'])} of lifetime value — a lapsed one of that size hurts.",
+                "customers")
+        return None
+
+    # ── Products / inventory ─────────────────────────────────────────────
+    if handler_key in ("product_performance", "profit_summary"):
+        dead = prods.get("dead_stock", [])
+        if dead:
+            return _ins(
+                f"{len(dead)} product(s) sit in stock but have never sold (e.g. {dead[0]['product']}) — "
+                f"discount or bundle to free up cash.",
+                "products")
+        if prods.get("fast_movers"):
+            f = prods["fast_movers"][0]
+            return _ins(f"{f['product']} is your top line at {_inr(f['billed'])} billed — keep it stocked.",
+                        "products")
+        return None
+
+    if handler_key == "low_stock":
+        if prods.get("fast_movers"):
+            return _ins(
+                f"Prioritise reordering fast movers like {prods['fast_movers'][0]['product']} "
+                f"({_inr(prods['fast_movers'][0]['billed'])} billed) over slow stock.",
+                "products")
+        return None
+
+    if handler_key == "expiring_soon":
+        exp = risk.get("expiring_30d", [])
+        if exp:
+            return _ins(
+                f"{exp[0]['product']} expires in {exp[0]['days']}d — promote or discount it now to avoid a write-off.",
+                "products")
+        return None
+
+    if handler_key == "inventory_count":
+        dead = prods.get("dead_stock", [])
+        if dead:
+            return _ins(
+                f"{len(dead)} of these have never sold (e.g. {dead[0]['product']}) — that's cash tied up in dead stock.",
+                "products")
+        return None
+
+    if handler_key == "sales_growth":
+        if cust.get("top"):
+            return _ins(
+                f"Your top account {cust['top'][0]['customer']} ({_inr(cust['top'][0]['revenue'])}) drives much of this — "
+                f"a second account that size would meaningfully lift growth.",
+                "customers")
+        return None
+
+    return None
+
+
 # ── Layer 2: grounded advisor (70B) ─────────────────────────────────────────
 
 _ADVISOR_SYSTEM = (

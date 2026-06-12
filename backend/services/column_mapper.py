@@ -55,6 +55,7 @@ INVOICE_FIELDS = {
 }
 INVENTORY_FIELDS = {
     "product_name", "stock", "expiry_date", "supplier",
+    "cost_price", "selling_price", "reorder_point",
 }
 PAYMENT_FIELDS = {
     "customer", "amount", "due_date", "paid",
@@ -136,6 +137,20 @@ _SYNONYMS: dict[str, list[str]] = {
         "supplier", "supplier name", "vendor", "vendor name",
         "manufacturer", "brand", "company", "distributor",
         "wholesaler", "source", "procured from",
+    ],
+
+    # ── Inventory pricing fields ──────────────────────────────────────────────
+    "cost_price": [
+        "cost price", "cost", "purchase price", "buy price", "buying price",
+        "unit cost", "cost per unit", "landed cost", "purchase rate", "cp",
+    ],
+    "selling_price": [
+        "selling price", "sell price", "sale price", "retail price",
+        "unit price", "mrp", "list price", "sp",
+    ],
+    "reorder_point": [
+        "reorder point", "reorder level", "minimum stock", "min stock",
+        "safety stock", "par level", "reorder qty", "min qty",
     ],
 
     # ── Payment fields ───────────────────────────────────────────────────────

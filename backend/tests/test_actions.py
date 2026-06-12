@@ -188,6 +188,16 @@ def test_reorder_selects_only_low_stock():
     assert pv["executable"] is True
 
 
+def test_top_debtors_tool_ranks_by_customer_total():
+    # rank_top_debtors must aggregate OVERDUE per customer (Acme 5000+900=5900),
+    # not return individual invoices — the fix for the loop's invoice/customer mix-up.
+    import json as _json
+    from services.tools import execute_tool
+    out = _json.loads(execute_tool("rank_top_debtors", {}, BID))
+    assert [r["customer"] for r in out] == ["Acme", "NoMail"]
+    assert out[0]["overdue_total"] == 5900
+
+
 def test_reorder_execute_logs_draft():
     res = actions.execute("draft_reorder_po", BID)
     assert res["ok"] and res["executed"] == 1   # only Widget

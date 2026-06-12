@@ -256,6 +256,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
                 cached:     !!(evt.meta?.cached),
                 chart:      evt.chart || null,
                 alerts:     Array.isArray(evt.alerts) ? evt.alerts : [],
+                insight:    evt.insight || null,
                 _streamStatus: null,
               }))
               setTimeout(() => scrollToBottom('smooth'), 50)

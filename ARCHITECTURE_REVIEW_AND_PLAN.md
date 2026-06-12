@@ -175,21 +175,25 @@ Replaced the per-answer 💡 insight bulb (which confabulated on factual answers
 - **✅ Frontend.** "Smart Insights" chip → full advisor in chat; right-pane "Business Insights" now shows **✓ What's working / ⚠ Could be better** (deterministic, free, always-on), replacing the donut/overdue cards that duplicated the Dashboard. Covered by `test_smart_insights.py`.
 - **Trust model:** the always-visible panel is deterministic (free, instant, can't hallucinate); the heavy 70B reasoning is pull-only and always cites the number behind each point.
 
-**⬜ Future — query-contextual deterministic insights (to build later).**
-After a relevant answer, surface ONE small **grounded** insight scoped to that query's topic — e.g. "show overdue invoices" → *"Nilgiris Fresh is your biggest debtor (₹2,65,623); ₹1.99L is 180+ days overdue."* Pulled from the snapshot (SQL only, **no LLM**), so it brings back the per-query usefulness of the old bulb WITHOUT the fabrication risk that got the bulb removed. Map each DIRECT topic → a deterministic insight selector over `build_snapshot`; attach it to the answer envelope; render under the answer. Reuses the existing snapshot, so it's a contained addition.
+**✅ Query-contextual deterministic insights (landed this session).**
+After a relevant DIRECT answer, one small **grounded** insight scoped to that query's topic — e.g. "show overdue invoices" → *"Nilgiris Fresh is your biggest debtor (₹2,65,623); ₹1.99L of it is 180+ days overdue — escalate that first."* `smart_insights.contextual_insight(user_id, handler_key)` selects it from `build_snapshot` (SQL only, **no LLM**, can't hallucinate), so it brings back the per-query usefulness of the old bulb WITHOUT the fabrication risk that got the bulb removed. Covers collections/receivables (overdue, pending, revenue, DSO, top debtors), customers (top/dormant/margins, concentration risk), and products/inventory (performance, low-stock, expiring, dead stock). Returns `None` — stays silent — when nothing relevant applies, and **deliberately for customer-specific handlers** (`client_summary`/`customer_invoices`/`invoice_detail`/`business_summary`) where the business-wide snapshot would mismatch a single-customer view. Attached to the DIRECT envelope as `insight: {text, dimension}` (rides the cache too); rendered as a subtle indigo note under the answer (`MessageBubble` `InsightNote` + `.ctx-insight` CSS). Covered by `test_smart_insights.py` (8 new cases).
 
-### Phase 2 — A real agent loop (4–5 days)
-Rebuild `agent_graph` as an actual agent, not a pipeline:
-- **Tool-loop architecture:** planner (JSON mode, structured output) → conditional edges → agent node may call any registered tool, inspect results, and decide to call more (bounded: max 6 tool calls / token budget guard mid-run) → reflection node checks "does the data actually answer the goal?" → synthesizer.
-- **Structured outputs everywhere** — `response_format={"type":"json_object"}` for planner/reflection; delete the \`\`\`-splitting.
-- Stream `status` events from real graph progress (you already have the SSE plumbing).
-- Cheapest failure mode: planner failure falls back to *invoice-only* (most common domain), not all-agents.
-   - *DoD: "why is my collection rate dropping?" produces a run trace showing the agent choosing tools adaptively; cost per complex query drops (no blanket fan-out).*
+### Phase 2 — A real agent loop (🟡 v1 landed, flag-gated)
+Replace the fixed fan-out pipeline with an agent that adaptively chooses tools.
+
+- **✅ v1 — adaptive tool-calling loop.** `services/agent_loop.py`: the 70B model gets every registered tool (`tool_choice=auto`), calls what the question needs, inspects results, and stops when it has enough — then writes the answer (ending in "## This Week: Top 3 Actions"). **Bounded** by `AGENT_MAX_TOOL_ROUNDS` (5) + per-tool char cap + token accounting; **grounded** (numbers only from tools); stream + non-stream. No more blanket invoice+inventory+payment fan-out — a narrow question only fetches what it needs.
+- **✅ Safe rollout.** Gated by `AGENT_MODE` (default `pipeline`). `run_agent_graph[_stream]` delegates to the loop when `loop`, and **falls back to the proven pipeline** on import error; the streaming loop handles its own mid-stream errors. Flip the flag to evaluate; revert instantly. Covered by `test_agent_loop.py`.
+- ⬜ Remaining refinements: an explicit **planner** (JSON `response_format`) + **reflection** node ("does the data answer the goal?") on top of the loop; planner-failure → invoice-only fallback; make `loop` the default once it's proven on real traffic.
+   - *DoD: "why is my collection rate dropping?" shows a run trace of adaptive tool choice; cost per complex query drops (no blanket fan-out). — loop achieves the adaptive trace; promote to default after live evaluation.*
 
 ### Phase 3 — Actions that act (🟡 v1 landed)
 - **✅ `send_payment_reminders` actually sends.** Wired `notifier.py` (SMTP email) into execute: resolves each overdue customer's email (`Customer` table), and the preview is **honest about delivery** per customer — `email` (will send), `email_unconfigured` (SMTP off), or `no_contact` (no email → copy-only). **Idempotent** — a customer already emailed today is skipped (no double-send); every outcome audited (`sent`/`logged`/`failed`). **Honors the picker selection** (`{customers:[…]}`) — "Send to 1 selected" now scopes to that 1.
-- **✅ `mark_invoice_paid`** — deterministic, gated state change: preview by invoice ID → confirm → status→Paid + audit + cache invalidate; no-op if already Paid. Surfaced via a "Mark as paid" chip on single-invoice answers. Covered by `test_actions.py`.
-- ⬜ Remaining: real delivery needs `EMAIL_USER`/`EMAIL_PASS` in `.env` (wiring done, just needs creds); customer emails are usually absent after CSV import (a future "email the owner a consolidated digest" action would cover that). Still to add: `draft_reorder_po`, `escalate_overdue`; WhatsApp (Twilio); per-action daily caps in `RateLimitConfig`.
+- **✅ `mark_invoice_paid`** — deterministic, gated state change: preview by invoice ID → confirm → status→Paid + audit + cache invalidate; no-op if already Paid. Surfaced via a "Mark as paid" chip on single-invoice answers.
+- **✅ `email_reminder_digest`** — emails the OWNER one consolidated overdue digest (works when customers have no email on file); owner-email resolution, honest preview, idempotent once/day. Chip on overdue answers.
+- **✅ `escalate_overdue`** — firmer reminder for 90+-day accounts (age-filtered, sterner tone, same send/copy-only + idempotency). Chip on overdue / top-debtor answers.
+- **✅ `draft_reorder_po`** — low-stock (≤ reorder point) → reorder draft with suggested quantities by supplier, logged. Chip on low-stock answers.
+- All gated (preview→confirm→execute), audited, surfaced as recommendation chips. Covered by `test_actions.py`.
+- ⬜ Remaining (small follow-ups): real email delivery needs `EMAIL_USER`/`EMAIL_PASS` in `.env` (wiring done); WhatsApp (Twilio); per-action daily caps in `RateLimitConfig`.
    - *DoD: an owner can go from "who owes me?" → confirm → reminders actually delivered, fully audited. (Reached for email once SMTP creds are set; flow + audit + idempotency proven.)*
 
 ### Phase 4 — Proactive agent (3 days)
@@ -221,8 +225,8 @@ Rebuild `agent_graph` as an actual agent, not a pipeline:
 | 1 | Semantic router | 2 d | 🟡 Steps 1 & 2 ✅ (router + eval + shadow now LIVE in `.env` + `analyze_shadow.py`); H8 ✅, routing-correctness + chat/infra fixes landed, client seeds 🟡 (1 of 2 held-out lookups cleared); Step 3 cutover gated on real shadow data (not ready — still diverges on client/compound lookups) | wrong-tier cost leak, regex maintenance |
 | 1.5 | Answer-quality feedback loop | 1 d | 🟡 Step 1 ✅ (feedback + instant override built + tested); safe auto-learning designed, deferred | wrong answers lost, no correction path |
 | 1.6 | Smart Insights advisor | 1 d | ✅ built (bulb removed; grounded 70B advisor + deterministic panel split); query-contextual insights deferred | hallucinated insights, scattered weak bulbs |
-| 2 | Real agent loop | 4–5 d | ⬜ not started | fake agency, blanket fan-out cost |
-| 3 | Real actions | 3–4 d | 🟡 v1 ✅ (reminders send — gated, selective, idempotent, honest delivery; mark_invoice_paid). Remaining: more actions, WhatsApp, action caps | "agent that doesn't act" |
+| 2 | Real agent loop | 4–5 d | 🟡 v1 ✅ (adaptive tool-calling loop, flag-gated `AGENT_MODE=loop`, pipeline fallback, tested). Remaining: planner+reflection nodes, make default after live eval | fake agency, blanket fan-out cost |
+| 3 | Real actions | 3–4 d | ✅ mostly done (5 gated actions: reminders, owner-digest, escalate 90+, mark-paid, reorder-draft — all audited + chip-surfaced). Remaining: SMTP creds, WhatsApp, per-action caps | "agent that doesn't act" |
 | 4 | Proactive digest | 3 d | ⬜ not started | zero-engagement users |
 | 5 | Hardening | ongoing | ⬜ not started (logging foundation laid) | scale/security cliffs |
 

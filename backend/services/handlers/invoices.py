@@ -56,6 +56,149 @@ def _invoice_detail(user_id: int, query: str) -> str:
     finally:
         db.close()
 
+def _product_performance(user_id: int) -> str:
+    """Markdown product-performance answer — top sellers + dead stock, from the DB."""
+    import json as _j
+    from services.tools.invoices import get_product_performance
+    try:
+        data = _j.loads(get_product_performance(user_id, 10))
+    except Exception as e:
+        logger.error("product_performance handler: %s", e)
+        return None
+    if not isinstance(data, dict) or data.get("error"):
+        return None
+    top = data.get("top_products", [])
+    dead = data.get("dead_stock", [])
+    if not top:
+        return "No sales data yet to rank products."
+    lines = [
+        "**Product Performance — top sellers**\n",
+        "| Product | Billed | Invoices | Overdue | Stock |",
+        "|:---|---:|---:|---:|---:|",
+    ]
+    for p in top:
+        st = p["stock"] if p.get("stock") is not None else "—"
+        lines.append(f"| {p['product']} | ₹{p['billed']:,.0f} | {p['invoices']} | ₹{p['overdue']:,.0f} | {st} |")
+    if dead:
+        lines.append("\n**Dead stock** (in inventory, never sold):")
+        for d in dead:
+            lines.append(f"- {d['product']} — {d['stock']} units")
+    return "\n".join(lines)
+
+
+def _profit_summary(user_id: int) -> str:
+    """Markdown margin/profit answer — blended margin, top products by est. profit,
+    and below-cost / thin-margin flags, from the DB."""
+    import json as _j
+    from services.tools.invoices import get_product_margins
+    try:
+        d = _j.loads(get_product_margins(user_id, 10))
+    except Exception as e:
+        logger.error("profit_summary handler: %s", e)
+        return None
+    if not isinstance(d, dict):
+        return None
+    if d.get("error"):
+        return d["error"]   # honest "no prices on file" message
+    lines = [
+        "**Profitability (estimated)**\n",
+        f"- Blended margin : **{d.get('blended_margin_pct')}%**",
+        f"- Billed revenue : ₹{d.get('total_billed', 0):,.0f}",
+        f"- Est. gross profit : **₹{d.get('est_gross_profit', 0):,.0f}**",
+        "\n| Product | Cost | Selling | Margin % | Est. profit |",
+        "|:---|---:|---:|---:|---:|",
+    ]
+    for p in d.get("top_by_profit", []):
+        mp = f"{p['margin_pct']}%" if p.get("margin_pct") is not None else "—"
+        lines.append(f"| {p['product']} | ₹{p['cost']:,.0f} | ₹{p['selling']:,.0f} | {mp} | ₹{p['est_gross_profit']:,.0f} |")
+    if d.get("below_cost"):
+        lines.append(f"\n⚠ **Sold at/below cost:** {', '.join(d['below_cost'])}")
+    if d.get("thin_margin_under_10pct"):
+        lines.append(f"🔸 **Thin margin (<10%):** {', '.join(d['thin_margin_under_10pct'])}")
+    lines.append(f"\n_{d.get('note', '')}_")
+    return "\n".join(lines)
+
+
+def _sales_growth(user_id: int) -> str:
+    import json as _j
+    from services.tools.invoices import get_sales_growth
+    try:
+        d = _j.loads(get_sales_growth(user_id))
+    except Exception:
+        return None
+    if d.get("error"):
+        return d["error"]
+    yoy = f"{d['yoy_growth_pct']}%" if d.get("yoy_growth_pct") is not None else "n/a (no prior-year data)"
+    mom = f"{d['mom_growth_pct']}%" if d.get("mom_growth_pct") is not None else "n/a"
+    lines = [
+        "**Sales Growth**\n",
+        f"- This year billed : ₹{d['this_year_billed']:,.0f}",
+        f"- Last year billed : ₹{d['last_year_billed']:,.0f}",
+        f"- **YoY growth : {yoy}**",
+        f"- Latest month ({d.get('latest_month')}) : ₹{d['latest_month_billed']:,.0f}  (MoM {mom})",
+        "\nRecent months:",
+    ]
+    for m in d.get("recent_months", []):
+        lines.append(f"- {m['month']}: ₹{m['billed']:,.0f}")
+    return "\n".join(lines)
+
+
+def _dso_summary(user_id: int) -> str:
+    import json as _j
+    from services.tools.invoices import get_dso
+    try:
+        d = _j.loads(get_dso(user_id))
+    except Exception:
+        return None
+    if d.get("error"):
+        return d["error"]
+    return ("**Collection Speed**\n\n"
+            f"- Days Sales Outstanding (approx) : **{d['dso_days']} days**\n"
+            f"- Avg days overdue (on {d['overdue_invoices']} overdue invoices) : {d['avg_days_overdue']} days\n"
+            f"- Outstanding : ₹{d['outstanding']:,.0f} of ₹{d['total_billed']:,.0f} billed\n\n"
+            f"_{d['note']}_")
+
+
+def _dormant_customers(user_id: int) -> str:
+    import json as _j
+    from services.tools.invoices import get_dormant_customers
+    try:
+        d = _j.loads(get_dormant_customers(user_id))
+    except Exception:
+        return None
+    if d.get("error"):
+        return d["error"]
+    cs = d.get("customers", [])
+    if not cs:
+        return f"No dormant customers — everyone has bought within {d['threshold_days']} days."
+    lines = [f"**Dormant customers** (no purchase in {d['threshold_days']}+ days) — {d['count']} total\n",
+             "| Customer | Last purchase | Days quiet | Lifetime ₹ |", "|:---|:---|---:|---:|"]
+    for c in cs:
+        lines.append(f"| {c['customer']} | {c['last_purchase']} | {c['days_since']} | ₹{c['lifetime_revenue']:,.0f} |")
+    return "\n".join(lines)
+
+
+def _customer_margins(user_id: int) -> str:
+    import json as _j
+    from services.tools.invoices import get_customer_margins
+    try:
+        d = _j.loads(get_customer_margins(user_id))
+    except Exception:
+        return None
+    if d.get("error"):
+        return d["error"]
+    rows = d.get("top_by_profit", [])
+    if not rows:
+        return "Not enough data to estimate customer margins."
+    lines = ["**Customer profitability (estimated)**\n",
+             "| Customer | Billed | Margin % | Est. profit |", "|:---|---:|---:|---:|"]
+    for r in rows:
+        mp = f"{r['margin_pct']}%" if r.get("margin_pct") is not None else "—"
+        lines.append(f"| {r['customer']} | ₹{r['billed']:,.0f} | {mp} | ₹{r['est_gross_profit']:,.0f} |")
+    lines.append(f"\n_{d['note']}_")
+    return "\n".join(lines)
+
+
 def _invoice_count(user_id: int) -> str:
     db = SessionLocal()
     try:

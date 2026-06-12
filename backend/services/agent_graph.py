@@ -354,6 +354,15 @@ def run_agent_graph(user_query: str, business_id: int, history: list) -> str:
     Returns the final synthesized response string.
     Also logs token usage to the token_usage table.
     """
+    # Phase 2: opt into the adaptive tool-calling agent. Falls back to the proven
+    # pipeline below on ANY error, so the flag is safe to flip.
+    if os.getenv("AGENT_MODE", "pipeline").lower() == "loop":
+        try:
+            from services.agent_loop import run_agent_loop
+            return run_agent_loop(user_query, business_id, history)
+        except Exception as e:
+            logger.error(f"[AGENT] loop failed, falling back to pipeline: {e}", exc_info=True)
+
     graph = get_agent_graph()
 
     initial: AgentState = {
@@ -422,6 +431,17 @@ def run_agent_graph_stream(user_query: str, business_id: int, history: list):
 
     def _sse(event_type, **kwargs):
         return "data: " + _json.dumps({"type": event_type, **kwargs}, ensure_ascii=False) + "\n\n"
+
+    # Phase 2: adaptive agent loop (opt-in). The loop handles its own mid-stream
+    # errors internally; we only fall back to the pipeline if it can't even import.
+    if os.getenv("AGENT_MODE", "pipeline").lower() == "loop":
+        try:
+            from services.agent_loop import run_agent_loop_stream
+        except Exception as e:
+            logger.error(f"[AGENT] loop import failed, using pipeline: {e}", exc_info=True)
+        else:
+            yield from run_agent_loop_stream(user_query, business_id, history)
+            return
 
     state = {
         "user_query":       user_query,

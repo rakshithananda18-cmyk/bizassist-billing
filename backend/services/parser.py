@@ -91,18 +91,31 @@ def save_inventory(df, db, business_id, file_id=None):
             stock_val = row.get("stock")
             if stock_val is not None and str(stock_val).strip() != "" and not pd.isna(stock_val):
                 try:
-                    stock_val = int(stock_val)
+                    stock_val = int(float(stock_val))
                 except ValueError:
                     raise ValueError(f"Invalid stock value: '{stock_val}'. Must be a valid integer.")
             else:
                 stock_val = None
+
+            def _num(key, cast):
+                v = row.get(key)
+                if v is None or str(v).strip() == "" or pd.isna(v):
+                    return None
+                try:
+                    return cast(float(v))
+                except (ValueError, TypeError):
+                    return None
+
+            cost_val    = _num("cost_price", float)
+            sell_val    = _num("selling_price", float)
+            reorder_val = _num("reorder_point", int)
 
             # Check if product already exists for this business
             existing = db.query(Inventory).filter(
                 Inventory.product_name == product_name,
                 Inventory.business_id == business_id
             ).first()
-            
+
             # Normalize at ingest (H3): expiry date → ISO.
             expiry_val = to_iso(row.get("expiry_date", existing.expiry_date if existing else None))
 
@@ -111,6 +124,9 @@ def save_inventory(df, db, business_id, file_id=None):
                 existing.stock = stock_val if stock_val is not None else existing.stock
                 existing.expiry_date = expiry_val
                 existing.supplier = row.get("supplier", existing.supplier)
+                if cost_val    is not None: existing.cost_price    = cost_val
+                if sell_val    is not None: existing.selling_price = sell_val
+                if reorder_val is not None: existing.reorder_point = reorder_val
                 existing.file_id = file_id
             else:
                 # INSERT new record
@@ -119,6 +135,9 @@ def save_inventory(df, db, business_id, file_id=None):
                     stock=stock_val,
                     expiry_date=expiry_val,
                     supplier=row.get("supplier"),
+                    cost_price=cost_val,
+                    selling_price=sell_val,
+                    reorder_point=reorder_val if reorder_val is not None else 10,
                     business_id=business_id,
                     file_id=file_id
                 )

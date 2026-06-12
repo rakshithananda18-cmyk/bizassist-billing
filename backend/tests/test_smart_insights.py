@@ -19,6 +19,7 @@ from database.db import SessionLocal
 from database.models import Base, Invoice, Inventory
 from services.smart_insights import (
     build_snapshot, generate_insights, _deterministic_headline, build_panel_insights,
+    contextual_insight,
 )
 
 BID = 553311
@@ -129,6 +130,53 @@ def test_panel_empty_business():
     panel = build_panel_insights(BID)
     assert panel["has_data"] is False
     assert panel["positives"] == [] and panel["improvements"] == []
+
+
+# ── Query-contextual insight (deterministic, scoped to the answer) ───────────
+
+def test_ctx_overdue_names_top_debtor_and_amount():
+    ins = contextual_insight(BID, "overdue_list")
+    assert ins is not None and ins["dimension"] == "collections"
+    assert "Acme" in ins["text"] and "₹4,000" in ins["text"]
+    assert "180+ days" in ins["text"]          # Acme's bill is 180+ days overdue
+
+
+def test_ctx_top_debtors_same_as_overdue():
+    ins = contextual_insight(BID, "top_debtors")
+    assert ins and "Acme" in ins["text"]
+
+
+def test_ctx_pending_cites_pending_total():
+    ins = contextual_insight(BID, "pending_list")
+    assert ins and "₹500" in ins["text"]
+
+
+def test_ctx_total_revenue_cites_rate_and_overdue():
+    ins = contextual_insight(BID, "total_revenue")
+    assert ins and "₹6,000" in ins["text"]
+    assert f"{round(1000/7500*100)}%" in ins["text"]
+
+
+def test_ctx_product_performance_flags_dead_stock():
+    ins = contextual_insight(BID, "product_performance")
+    assert ins and "Sugar" in ins["text"] and ins["dimension"] == "products"
+
+
+def test_ctx_top_customers_flags_concentration():
+    ins = contextual_insight(BID, "top_customers")
+    assert ins and f"{round(5000/7500*100)}%" in ins["text"]
+
+
+def test_ctx_customer_specific_handlers_return_none():
+    # business-wide snapshot would mismatch one customer's view → stay silent
+    assert contextual_insight(BID, "client_summary") is None
+    assert contextual_insight(BID, "invoice_detail") is None
+    assert contextual_insight(BID, "business_summary") is None
+
+
+def test_ctx_empty_business_returns_none():
+    _clear()
+    assert contextual_insight(BID, "overdue_list") is None
 
 
 def test_generate_insights_falls_back_without_model(monkeypatch):

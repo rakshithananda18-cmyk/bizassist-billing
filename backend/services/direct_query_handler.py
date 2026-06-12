@@ -7,7 +7,11 @@ import re
 import difflib
 import logging
 from services.handlers.payments  import _overdue_list, _overdue_amount, _pending_list, _top_debtors
-from services.handlers.invoices  import _invoice_count, _total_revenue, _overdue_range_detail, _revenue_month_detail, _invoice_detail
+from services.handlers.invoices  import (
+    _invoice_count, _total_revenue, _overdue_range_detail, _revenue_month_detail,
+    _invoice_detail, _product_performance, _profit_summary,
+    _sales_growth, _dso_summary, _dormant_customers, _customer_margins,
+)
 from services.handlers.inventory import _inventory_count, _low_stock, _expiring_soon
 from services.handlers.clients   import _top_customers, _client_summary, _customer_invoices
 from services.handlers.dashboard import _business_summary
@@ -31,6 +35,12 @@ HANDLERS = {
     "client_summary":       _client_summary,
     "customer_invoices":    _customer_invoices,
     "invoice_detail":       _invoice_detail,
+    "product_performance":  _product_performance,
+    "profit_summary":       _profit_summary,
+    "sales_growth":         _sales_growth,
+    "dso_summary":          _dso_summary,
+    "dormant_customers":    _dormant_customers,
+    "customer_margins":     _customer_margins,
     "business_summary":     _business_summary,
 }
 

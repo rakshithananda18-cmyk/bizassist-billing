@@ -1951,3 +1951,29 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
   background: rgba(245, 158, 11, 0.15);
   border-color: rgba(245, 158, 11, 0.4);
 }
+
+/* Query-contextual grounded insight (one per DIRECT answer) */
+.ctx-insight {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.07);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-left: 3px solid #6366f1;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary, #475569);
+}
+
+.ctx-insight__icon { flex: 0 0 auto; font-size: 13px; line-height: 1.4; }
+.ctx-insight__text { flex: 1 1 auto; }
+
+[data-theme="dark"] .ctx-insight {
+  background: rgba(129, 140, 248, 0.1);
+  border-color: rgba(129, 140, 248, 0.28);
+  border-left-color: #818cf8;
+  color: var(--text-secondary, #cbd5e1);
+}

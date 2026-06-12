@@ -21,6 +21,24 @@ const SEVERITY_CLASS = {
   warning:  'alert-chip alert-chip--warning',
 }
 
+const INSIGHT_ICONS = {
+  collections: '💰',
+  customers:   '👥',
+  products:    '📦',
+  profit:      '📈',
+  risk:        '⚠',
+}
+
+function InsightNote({ insight }) {
+  if (!insight || !insight.text) return null
+  return (
+    <div className="ctx-insight" title="Grounded in your data">
+      <span className="ctx-insight__icon">{INSIGHT_ICONS[insight.dimension] || '💡'}</span>
+      <span className="ctx-insight__text">{insight.text}</span>
+    </div>
+  )
+}
+
 function AlertChips({ alerts }) {
   if (!alerts || alerts.length === 0) return null
   return (
@@ -55,6 +73,7 @@ export default function MessageBubble({ msg, innerRef, query, sessionId }) {
           dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
         />
         {msg.chart && <InlineChart chartData={msg.chart} />}
+        {msg.insight && <InsightNote insight={msg.insight} />}
         {msg.alerts && msg.alerts.length > 0 && (
           <AlertChips alerts={msg.alerts} />
         )}
