@@ -18195,3 +18195,1123 @@ RuntimeError: no model
 17:59:47 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=total_revenue, topic=total_revenue) semantic=(DIRECT, total_revenue, 0.88) | q='total revenue'
 17:59:47 INFO  ai_router              [DIRECT] handler=total_revenue | 'total revenue'
 17:59:48 INFO  embeddings             [CHROMA] Saved chat turn for user 80, session 8acc093c-5d8b-44e6-836d-b1f0e3a02778
+18:07:08 INFO  scheduler              [SCHED] Stopped.
+18:07:17 INFO  logging                [ADMIN] Logging configured — level=DEBUG, color=on
+18:07:17 INFO  migration              [Migration] Starting...
+18:07:17 INFO  migration              [Migration] create_all done.
+18:07:17 INFO  migration              [Migration] Done.
+18:07:17 DEBUG tzlocal                Looking up time zone info from registry
+18:07:17 INFO  scheduler              [SCHED] Started. Jobs: daily summary @ 8:00 IST, overdue/low-stock/expiry @ 9:00–9:10 IST.
+18:07:17 INFO  embeddings             [EMBED] Pre-loading embedding model in background...
+18:07:39 INFO  embeddings             [EMBED] Loaded local model: all-MiniLM-L6-v2 (free, no API cost)
+18:07:39 INFO  embeddings             [EMBED] Model ready ✓
+18:09:35 INFO  scheduler              [SCHED] Stopped.
+18:09:42 INFO  logging                [ADMIN] Logging configured — level=DEBUG, color=on
+18:09:42 INFO  migration              [Migration] Starting...
+18:09:42 INFO  migration              [Migration] create_all done.
+18:09:42 INFO  migration              [Migration] Done.
+18:09:42 DEBUG tzlocal                Looking up time zone info from registry
+18:09:42 INFO  scheduler              [SCHED] Started. Jobs: daily summary @ 8:00 IST, overdue/low-stock/expiry @ 9:00–9:10 IST.
+18:09:42 INFO  embeddings             [EMBED] Pre-loading embedding model in background...
+18:10:01 INFO  scheduler              [SCHED] Stopped.
+18:10:07 INFO  logging                [ADMIN] Logging configured — level=DEBUG, color=on
+18:10:07 INFO  migration              [Migration] Starting...
+18:10:07 INFO  migration              [Migration] create_all done.
+18:10:07 INFO  migration              [Migration] Done.
+18:10:07 DEBUG tzlocal                Looking up time zone info from registry
+18:10:07 INFO  scheduler              [SCHED] Started. Jobs: daily summary @ 8:00 IST, overdue/low-stock/expiry @ 9:00–9:10 IST.
+18:10:07 INFO  embeddings             [EMBED] Pre-loading embedding model in background...
+18:10:28 INFO  embeddings             [EMBED] Loaded local model: all-MiniLM-L6-v2 (free, no API cost)
+18:10:28 INFO  embeddings             [EMBED] Model ready ✓
+18:11:19 INFO  scheduler              [SCHED] Stopped.
+18:11:25 INFO  logging                [ADMIN] Logging configured — level=DEBUG, color=on
+18:11:25 INFO  migration              [Migration] Starting...
+18:11:25 INFO  migration              [Migration] create_all done.
+18:11:25 INFO  migration              [Migration] Done.
+18:11:26 DEBUG tzlocal                Looking up time zone info from registry
+18:11:26 INFO  scheduler              [SCHED] Started. Jobs: daily summary @ 8:00 IST, overdue/low-stock/expiry @ 9:00–9:10 IST.
+18:11:26 INFO  embeddings             [EMBED] Pre-loading embedding model in background...
+18:11:47 INFO  embeddings             [EMBED] Loaded local model: all-MiniLM-L6-v2 (free, no API cost)
+18:11:47 INFO  embeddings             [EMBED] Model ready ✓
+18:12:04 INFO  scheduler              [SCHED] Stopped.
+18:12:10 INFO  logging                [ADMIN] Logging configured — level=DEBUG, color=on
+18:12:10 INFO  migration              [Migration] Starting...
+18:12:10 INFO  migration              [Migration] create_all done.
+18:12:11 INFO  migration              [Migration] Done.
+18:12:11 DEBUG tzlocal                Looking up time zone info from registry
+18:12:11 INFO  scheduler              [SCHED] Started. Jobs: daily summary @ 8:00 IST, overdue/low-stock/expiry @ 9:00–9:10 IST.
+18:12:11 INFO  embeddings             [EMBED] Pre-loading embedding model in background...
+18:12:33 INFO  embeddings             [EMBED] Loaded local model: all-MiniLM-L6-v2 (free, no API cost)
+18:12:33 INFO  embeddings             [EMBED] Model ready ✓
+18:13:01 INFO  scheduler              [SCHED] Stopped.
+18:13:07 INFO  logging                [ADMIN] Logging configured — level=DEBUG, color=on
+18:13:07 INFO  migration              [Migration] Starting...
+18:13:07 INFO  migration              [Migration] create_all done.
+18:13:07 INFO  migration              [Migration] Done.
+18:13:07 DEBUG tzlocal                Looking up time zone info from registry
+18:13:07 INFO  scheduler              [SCHED] Started. Jobs: daily summary @ 8:00 IST, overdue/low-stock/expiry @ 9:00–9:10 IST.
+18:13:07 INFO  embeddings             [EMBED] Pre-loading embedding model in background...
+18:13:28 INFO  embeddings             [EMBED] Loaded local model: all-MiniLM-L6-v2 (free, no API cost)
+18:13:28 INFO  embeddings             [EMBED] Model ready ✓
+18:14:01 INFO  scheduler              [SCHED] Stopped.
+18:14:09 INFO  logging                [ADMIN] Logging configured — level=DEBUG, color=on
+18:14:09 INFO  migration              [Migration] Starting...
+18:14:09 INFO  migration              [Migration] create_all done.
+18:14:09 INFO  migration              [Migration] Done.
+18:14:09 DEBUG tzlocal                Looking up time zone info from registry
+18:14:09 INFO  scheduler              [SCHED] Started. Jobs: daily summary @ 8:00 IST, overdue/low-stock/expiry @ 9:00–9:10 IST.
+18:14:09 INFO  embeddings             [EMBED] Pre-loading embedding model in background...
+18:14:31 INFO  embeddings             [EMBED] Loaded local model: all-MiniLM-L6-v2 (free, no API cost)
+18:14:31 INFO  embeddings             [EMBED] Model ready ✓
+18:14:34 INFO  scheduler              [SCHED] Stopped.
+18:14:40 INFO  logging                [ADMIN] Logging configured — level=DEBUG, color=on
+18:14:40 INFO  migration              [Migration] Starting...
+18:14:40 INFO  migration              [Migration] create_all done.
+18:14:40 INFO  migration              [Migration] Done.
+18:14:40 DEBUG tzlocal                Looking up time zone info from registry
+18:14:40 INFO  scheduler              [SCHED] Started. Jobs: daily summary @ 8:00 IST, overdue/low-stock/expiry @ 9:00–9:10 IST.
+18:14:40 INFO  embeddings             [EMBED] Pre-loading embedding model in background...
+18:14:59 INFO  embeddings             [EMBED] Loaded local model: all-MiniLM-L6-v2 (free, no API cost)
+18:14:59 INFO  embeddings             [EMBED] Model ready ✓
+18:15:36 INFO  scheduler              [SCHED] Stopped.
+18:15:44 INFO  logging                [ADMIN] Logging configured — level=DEBUG, color=on
+18:15:44 INFO  migration              [Migration] Starting...
+18:15:44 INFO  migration              [Migration] create_all done.
+18:15:44 INFO  migration              [Migration] Done.
+18:15:44 DEBUG tzlocal                Looking up time zone info from registry
+18:15:44 INFO  scheduler              [SCHED] Started. Jobs: daily summary @ 8:00 IST, overdue/low-stock/expiry @ 9:00–9:10 IST.
+18:15:44 INFO  embeddings             [EMBED] Pre-loading embedding model in background...
+18:16:05 INFO  embeddings             [EMBED] Loaded local model: all-MiniLM-L6-v2 (free, no API cost)
+18:16:05 INFO  embeddings             [EMBED] Model ready ✓
+18:17:43 INFO  logging                [ADMIN] Logging configured — level=DEBUG, color=off
+18:17:43 INFO  migration              [Migration] Starting...
+18:17:43 INFO  migration              [Migration] create_all done.
+18:17:44 INFO  migration              [Migration] Done.
+18:17:45 INFO  context_cache          [CACHE] Cache invalidated for user 660011.
+18:17:45 INFO  context_cache          [CACHE] Cache invalidated for user 660011.
+18:17:45 INFO  agent_graph            [PLANNER] Analyzing: 'analyze my business'
+18:17:45 INFO  agent_graph            [PLANNER] Tokens — input: 100, output: 20
+18:17:45 INFO  agent_graph            [PLANNER] Plan decided: {'needs_invoice': False, 'needs_inventory': False, 'needs_payment': False, 'overall_goal': 'x'}
+18:17:45 INFO  agent_graph            [PLANNER] Analyzing: 'analyze my business'
+18:17:45 INFO  agent_graph            [PLANNER] Tokens — input: 100, output: 20
+18:17:45 INFO  agent_graph            [PLANNER] Plan decided: {'needs_invoice': False, 'needs_inventory': False, 'needs_payment': False, 'overall_goal': 'x'}
+18:17:45 INFO  agent_graph            [SYNTH] Building final growth plan...
+18:17:45 INFO  agent_graph            [SYNTH] Tokens — input: 50, output: 30
+18:17:45 INFO  agent_graph            [SYNTH] Done (18 chars).
+18:17:45 WARN  auth                   [AUTH] Token rejected — invalid token
+18:17:45 INFO  auth                   [AUTH] Request rejected — missing or malformed Authorization header
+18:17:45 WARN  auth                   [AUTH] Token rejected — signature expired
+18:17:45 INFO  query_router           [ROUTER] DIRECT (invoice_count): 'how many invoices'
+18:17:45 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'total revenue'
+18:17:45 INFO  query_router           [ROUTER] DIRECT (overdue_list): 'who is overdue'
+18:17:45 INFO  query_router           [ROUTER] DIRECT (low_stock): 'low stock'
+18:17:45 INFO  query_router           [ROUTER] DIRECT (expiring_soon): 'medicines expiring'
+18:17:45 INFO  query_router           [ROUTER] DIRECT (business_summary): 'dashboard overview'
+18:17:45 INFO  query_router           [ROUTER] CONVERSATIONAL: 'okay'
+18:17:45 INFO  query_router           [ROUTER] CONVERSATIONAL: 'thanks'
+18:17:45 INFO  query_router           [ROUTER] CONVERSATIONAL: 'yes'
+18:17:45 INFO  query_router           [ROUTER] CONVERSATIONAL: 'hi'
+18:17:45 INFO  query_router           [ROUTER] CONVERSATIONAL: 'cool'
+18:17:45 INFO  query_router           [ROUTER] DIRECT (top_debtors): 'top debtors'
+18:17:45 INFO  query_router           [ROUTER] DIRECT (top_debtors): 'who owes me the most'
+18:17:45 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\bstrateg(y|ies)\b': 'what business strategy should I adopt?'
+18:17:45 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\bhow (can|do|should) (i|we)\b': 'how can I increase my sales?'
+18:17:45 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'who is my most reliable supplier?'
+18:17:46 INFO  auth                   [AUTH] Request rejected — missing or malformed Authorization header
+18:17:46 INFO  auth                   [AUTH] Request rejected — missing or malformed Authorization header
+18:17:46 INFO  auth                   [AUTH] Request rejected — missing or malformed Authorization header
+18:17:46 INFO  auth                   [AUTH] Request rejected — missing or malformed Authorization header
+18:17:46 INFO  auth                   [AUTH] Request rejected — missing or malformed Authorization header
+18:17:46 INFO  auth                   [AUTH] Request rejected — missing or malformed Authorization header
+18:17:46 INFO  auth                   [AUTH] Request rejected — missing or malformed Authorization header
+18:17:46 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:17:46 INFO  auth                   [AUTH] User 'pharmacy' authenticated (role=enterprise).
+18:17:46 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:17:46 WARN  auth                   [AUTH] Failed login for username 'pharmacy': invalid credentials
+18:17:46 INFO  auth                   [AUTH] Signup attempt for username 'newuser'...
+18:17:47 INFO  auth                   [AUTH] User 'newuser' registered and authenticated.
+18:17:47 INFO  auth                   [AUTH] Signup attempt for username 'newuser'...
+18:17:47 WARN  auth                   [AUTH] Failed signup: username 'newuser' already exists.
+18:17:47 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:17:47 INFO  auth                   [AUTH] User 'pharmacy' authenticated (role=enterprise).
+18:17:47 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:17:47 INFO  auth                   [AUTH] User 'pharmacy' authenticated (role=enterprise).
+18:17:47 INFO  query_router           [ROUTER] DIRECT (invoice_count): 'how many invoices'
+18:17:47 DEBUG ai_router              [REQ 86fb8ed3] user=2 route=DIRECT handler=invoice_count topic=total_revenue writing=False cache_disc='invoice_count' q='how many invoices'
+18:18:08 INFO  embeddings             [EMBED] Loaded local model: all-MiniLM-L6-v2 (free, no API cost)
+18:18:09 INFO  intent_router          [ROUTER] Semantic router warm — 122 seed examples
+18:18:09 INFO  intent_router          [ROUTER] DIRECT (invoice_count, 0.95): 'how many invoices'
+18:18:09 INFO  ai_router              [ROUTER][shadow] DISAGREE | regex=(DIRECT, handler=invoice_count, topic=total_revenue) semantic=(DIRECT, invoice_count, 0.95) | q='how many invoices'
+18:18:09 INFO  ai_router              [DIRECT] handler=invoice_count | 'how many invoices'
+18:18:10 INFO  embeddings             [CHROMA] Initialized persistent client at D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\backend\chroma_db
+18:18:10 INFO  embeddings             [CHROMA] Saved chat turn for user 2, session 0195ee1e-7a60-427f-81b4-2287bdec19bb
+18:18:10 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'who is my most reliable supplier?'
+18:18:10 DEBUG ai_router              [REQ 7c12fafa] user=2 route=AI_SIMPLE handler=None topic=business_summary writing=False cache_disc='q:who is my most reliable supplier?' q='who is my most reliable supplier?'
+18:18:10 INFO  intent_router          [ROUTER] DIRECT (top_customers, 0.54): 'who is my most reliable supplier?'
+18:18:10 INFO  ai_router              [ROUTER][shadow] DISAGREE | regex=(AI_SIMPLE, handler=None, topic=business_summary) semantic=(DIRECT, top_customers, 0.54) | q='who is my most reliable supplier?'
+18:18:10 INFO  ai_router              [AI_SIMPLE] model=llama-3.1-8b-instant | 'who is my most reliable supplier?'
+18:18:10 INFO  embeddings             [CHROMA] Saved chat turn for user 2, session 18704e22-9242-4fc9-8f9a-2534534f04f7
+18:18:10 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:10 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:18:10 INFO  auth                   [AUTH] User 'pharmacy' authenticated (role=enterprise).
+18:18:10 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'who is my most reliable supplier?'
+18:18:11 DEBUG ai_router              [REQ 74426a9c] user=2 route=AI_SIMPLE handler=None topic=business_summary writing=False cache_disc='q:who is my most reliable supplier?' q='who is my most reliable supplier?'
+18:18:11 INFO  intent_router          [ROUTER] DIRECT (top_customers, 0.54): 'who is my most reliable supplier?'
+18:18:11 INFO  ai_router              [ROUTER][shadow] DISAGREE | regex=(AI_SIMPLE, handler=None, topic=business_summary) semantic=(DIRECT, top_customers, 0.54) | q='who is my most reliable supplier?'
+18:18:11 INFO  ai_router              [AI_SIMPLE] model=llama-3.1-8b-instant | 'who is my most reliable supplier?'
+18:18:11 INFO  embeddings             [CHROMA] Saved chat turn for user 2, session 0853dc4c-5aed-4d2f-8ad0-5c60b121bf8a
+18:18:11 INFO  query_router           [ROUTER] DIRECT (expiring_soon): 'expiring soon'
+18:18:11 INFO  query_router           [ROUTER] AI_SIMPLE (digit query): 'expiring in 15 days'
+18:18:11 INFO  query_router           [ROUTER] DIRECT (top_customers): 'top customers'
+18:18:11 INFO  query_router           [ROUTER] AI_SIMPLE (digit query): 'top 3 customers'
+18:18:11 INFO  query_router           [ROUTER] DIRECT (overdue_range_detail) template match
+18:18:11 INFO  query_router           [ROUTER] DIRECT (revenue_month_detail) template match
+18:18:11 INFO  query_router           [ROUTER] DIRECT (revenue_month_detail) template match
+18:18:11 INFO  query_router           [ROUTER] DIRECT (expiring_soon): 'Which products are expiring in the next 30 days?'
+18:18:11 INFO  query_router           [ROUTER] DIRECT (top_customers): 'Who are my top 5 customers by revenue?'
+18:18:11 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\bstrateg(y|ies)\b': 'Develop a promotional strategy to clear expiring products and minimize waste.'
+18:18:11 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\boptimiz(e|ation)\b': 'Implement a stock management system to track low-stock products and optimize reorder times.'
+18:18:11 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\banaly[sz][a-zA-Z]*\b': 'Analyze the uploaded file'
+18:18:11 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\banaly[sz][a-zA-Z]*\b': 'analyse the uploaded dataset'
+18:18:11 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:18:11 INFO  auth                   [AUTH] User 'pharmacy' authenticated (role=enterprise).
+18:18:11 WARN  chat                   User 2 requested deletion of chat history for session_id=None.
+18:18:11 INFO  chat                   Successfully deleted 6 chat messages for user 2.
+18:18:11 INFO  embeddings             [CHROMA] Purged all chat memories for user 2
+18:18:11 INFO  embeddings             [CHROMA] Purged all document embeddings for user 2
+18:18:11 INFO  context_cache          [CACHE] Cache invalidated for user 2.
+18:18:11 INFO  chat                   User 2 fetching list of chat sessions...
+18:18:11 INFO  chat                   Retrieved 0 sessions for user 2.
+18:18:11 INFO  query_router           [ROUTER] DIRECT (invoice_count): 'how many invoices'
+18:18:11 DEBUG ai_router              [REQ 250c36fe] user=2 route=DIRECT handler=invoice_count topic=total_revenue writing=False cache_disc='invoice_count' q='how many invoices'
+18:18:11 INFO  intent_router          [ROUTER] DIRECT (invoice_count, 0.95): 'how many invoices'
+18:18:11 INFO  ai_router              [ROUTER][shadow] DISAGREE | regex=(DIRECT, handler=invoice_count, topic=total_revenue) semantic=(DIRECT, invoice_count, 0.95) | q='how many invoices'
+18:18:11 INFO  ai_router              [DIRECT] handler=invoice_count | 'how many invoices'
+18:18:11 INFO  embeddings             [CHROMA] Saved chat turn for user 2, session ecd37657-8117-43f3-981c-a757f3582a74
+18:18:11 INFO  chat                   User 2 fetching list of chat sessions...
+18:18:11 INFO  chat                   Retrieved 1 sessions for user 2.
+18:18:11 INFO  chat                   User 2 fetching session chat history for session_id=ecd37657-8117-43f3-981c-a757f3582a74...
+18:18:11 INFO  chat                   Retrieved 2 historical chat messages for user 2.
+18:18:11 INFO  query_router           [ROUTER] DIRECT (low_stock): 'low stock'
+18:18:11 DEBUG ai_router              [REQ 3ab3c6a9] user=2 route=DIRECT handler=low_stock topic=low_stock writing=False cache_disc='low_stock' q='low stock'
+18:18:11 INFO  intent_router          [ROUTER] DIRECT (low_stock, 0.86): 'low stock'
+18:18:11 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=low_stock, topic=low_stock) semantic=(DIRECT, low_stock, 0.86) | q='low stock'
+18:18:11 INFO  ai_router              [DIRECT] handler=low_stock | 'low stock'
+18:18:11 INFO  embeddings             [CHROMA] Saved chat turn for user 2, session test-session-abc
+18:18:11 INFO  chat                   User 2 fetching list of chat sessions...
+18:18:11 INFO  chat                   Retrieved 2 sessions for user 2.
+18:18:11 WARN  chat                   User 2 requested deletion of chat history for session_id=test-session-abc.
+18:18:11 INFO  chat                   Successfully deleted 2 chat messages for user 2.
+18:18:11 INFO  embeddings             [CHROMA] Purged chat memories for session test-session-abc, user 2
+18:18:11 INFO  context_cache          [CACHE] Cache invalidated for user 2.
+18:18:11 INFO  chat                   User 2 fetching list of chat sessions...
+18:18:11 INFO  chat                   Retrieved 1 sessions for user 2.
+18:18:11 WARN  chat                   User 2 requested deletion of chat history for session_id=None.
+18:18:11 INFO  chat                   Successfully deleted 2 chat messages for user 2.
+18:18:11 INFO  embeddings             [CHROMA] Purged all chat memories for user 2
+18:18:11 INFO  embeddings             [CHROMA] Purged all document embeddings for user 2
+18:18:11 INFO  context_cache          [CACHE] Cache invalidated for user 2.
+18:18:11 INFO  chat                   User 2 fetching list of chat sessions...
+18:18:11 INFO  chat                   Retrieved 0 sessions for user 2.
+18:18:11 INFO  auth                   [AUTH] Login attempt for username 'admin'...
+18:18:12 INFO  auth                   [AUTH] User 'admin' authenticated (role=admin).
+18:18:12 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:18:12 INFO  auth                   [AUTH] User 'pharmacy' authenticated (role=enterprise).
+18:18:12 WARN  admin_service          [AUTH] Admin access denied for user_id=2 (role=enterprise)
+18:18:12 WARN  admin_service          [AUTH] Admin access denied for user_id=2 (role=enterprise)
+18:18:12 INFO  auth                   [AUTH] Login attempt for username 'new_biz'...
+18:18:13 INFO  auth                   [AUTH] User 'new_biz' authenticated (role=enterprise).
+18:18:13 INFO  context_cache          [CACHE] Cache invalidated for user 6.
+18:18:13 INFO  auth                   [AUTH] Login attempt for username 'new_biz'...
+18:18:13 WARN  auth                   [AUTH] Failed login for username 'new_biz': invalid credentials
+18:18:13 INFO  auth                   [AUTH] Login attempt for username 'updated_biz'...
+18:18:13 INFO  auth                   [AUTH] User 'updated_biz' authenticated (role=enterprise).
+18:18:13 WARN  admin_service          [AUTH] Admin access denied for user_id=2 (role=enterprise)
+18:18:13 WARN  admin_service          [AUTH] Admin access denied for user_id=2 (role=enterprise)
+18:18:13 WARN  admin_service          [AUTH] Admin access denied for user_id=2 (role=enterprise)
+18:18:13 WARN  admin_service          [AUTH] Admin access denied for user_id=2 (role=enterprise)
+18:18:13 WARN  admin_service          [AUTH] Admin access denied for user_id=2 (role=enterprise)
+18:18:13 INFO  context_cache          [CACHE] Cache invalidated for user 2.
+18:18:13 INFO  embeddings             [CHROMA] Purged all chat memories for user 2
+18:18:13 INFO  embeddings             [CHROMA] Purged all document embeddings for user 2
+18:18:13 INFO  context_cache          [CACHE] Cache invalidated for user 2.
+18:18:13 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:13 INFO  auth                   [AUTH] Signup attempt for username 'pdf_merchant'...
+18:18:14 INFO  auth                   [AUTH] User 'pdf_merchant' registered and authenticated.
+18:18:14 INFO  auth                   [AUTH] Login attempt for username 'pdf_merchant'...
+18:18:14 INFO  auth                   [AUTH] User 'pdf_merchant' authenticated (role=enterprise).
+18:18:14 DEBUG python_multipart.multipart Calling on_part_begin with no data
+18:18:14 DEBUG python_multipart.multipart Calling on_header_field with data[36:55]
+18:18:14 DEBUG python_multipart.multipart Calling on_header_value with data[57:108]
+18:18:14 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:14 DEBUG python_multipart.multipart Calling on_header_field with data[110:122]
+18:18:14 DEBUG python_multipart.multipart Calling on_header_value with data[124:139]
+18:18:14 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:14 DEBUG python_multipart.multipart Calling on_headers_finished with no data
+18:18:14 DEBUG python_multipart.multipart Calling on_part_data with data[143:164]
+18:18:14 DEBUG python_multipart.multipart Calling on_part_end with no data
+18:18:14 DEBUG python_multipart.multipart Calling on_end with no data
+18:18:14 INFO  upload                 User 7 starting upload of file 'invoice_test.pdf'...
+18:18:14 INFO  pdf_parser             Successfully saved and indexed parsed PDF invoice 'invoice_test.pdf' for business ID 7.
+18:18:14 INFO  context_cache          [CACHE] Cache invalidated for user 7.
+18:18:14 INFO  auth                   [AUTH] Signup attempt for username 'user_short'...
+18:18:14 INFO  auth                   [AUTH] Signup attempt for username 'user_no_upper'...
+18:18:14 INFO  auth                   [AUTH] Signup attempt for username 'user_no_lower'...
+18:18:14 INFO  auth                   [AUTH] Signup attempt for username 'user_no_number'...
+18:18:14 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:18:14 WARN  auth                   [AUTH] Failed login for username 'pharmacy': invalid credentials
+18:18:14 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:18:14 WARN  auth                   [AUTH] Failed login for username 'pharmacy': invalid credentials
+18:18:14 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:18:14 WARN  auth                   [AUTH] Failed login for username 'pharmacy': invalid credentials
+18:18:14 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:18:14 WARN  auth                   [AUTH] Failed login for username 'pharmacy': invalid credentials
+18:18:14 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:18:14 WARN  auth                   [AUTH] Failed login for username 'pharmacy': invalid credentials
+18:18:14 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:18:14 WARN  auth                   [AUTH] Failed login for username 'pharmacy': invalid credentials
+18:18:14 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:18:14 WARN  auth                   [AUTH] Failed login for username 'pharmacy': invalid credentials
+18:18:14 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:18:14 WARN  auth                   [AUTH] Failed login for username 'pharmacy': invalid credentials
+18:18:14 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:18:14 WARN  auth                   [AUTH] Failed login for username 'pharmacy': invalid credentials
+18:18:14 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:18:14 WARN  auth                   [AUTH] Failed login for username 'pharmacy': invalid credentials
+18:18:14 INFO  auth                   [AUTH] Login attempt for username 'pharmacy'...
+18:18:14 WARN  rate_limiter           [RATELIMIT] IP testclient hit rate limit (10/min)
+18:18:14 INFO  auth                   [AUTH] Signup attempt for username 'upload_merchant'...
+18:18:14 INFO  auth                   [AUTH] User 'upload_merchant' registered and authenticated.
+18:18:14 DEBUG python_multipart.multipart Calling on_part_begin with no data
+18:18:14 DEBUG python_multipart.multipart Calling on_header_field with data[36:55]
+18:18:14 DEBUG python_multipart.multipart Calling on_header_value with data[57:106]
+18:18:14 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:14 DEBUG python_multipart.multipart Calling on_header_field with data[108:120]
+18:18:14 DEBUG python_multipart.multipart Calling on_header_value with data[122:130]
+18:18:14 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:14 DEBUG python_multipart.multipart Calling on_headers_finished with no data
+18:18:14 DEBUG python_multipart.multipart Calling on_part_data with data[134:5243015]
+18:18:14 DEBUG python_multipart.multipart Calling on_part_end with no data
+18:18:14 DEBUG python_multipart.multipart Calling on_end with no data
+18:18:14 INFO  upload                 User 8 starting upload of file 'large_file.csv'...
+18:18:15 DEBUG python_multipart.multipart Calling on_part_begin with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_header_field with data[36:55]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_value with data[57:109]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_header_field with data[111:123]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_value with data[125:133]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_headers_finished with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_part_data with data[137:57918]
+18:18:15 DEBUG python_multipart.multipart Calling on_part_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_end with no data
+18:18:15 INFO  upload                 User 8 starting upload of file 'too_many_rows.csv'...
+18:18:15 INFO  auth                   [AUTH] Signup attempt for username 'upload_rate_merchant'...
+18:18:15 INFO  auth                   [AUTH] User 'upload_rate_merchant' registered and authenticated.
+18:18:15 DEBUG python_multipart.multipart Calling on_part_begin with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_header_field with data[36:55]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_value with data[57:102]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_header_field with data[104:116]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_value with data[118:126]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_headers_finished with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_part_data with data[130:220]
+18:18:15 DEBUG python_multipart.multipart Calling on_part_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_end with no data
+18:18:15 INFO  upload                 User 9 starting upload of file 'test_0.csv'...
+18:18:15 INFO  column_mapper          [MAPPER] file='test_0.csv' type=invoice confidence=1.00 mapped=6 unmapped=[]
+18:18:15 INFO  upload                 [Upload] file='test_0.csv' type=invoice confidence=1.00 mapping={'invoice_id': 'invoice_id', 'customer': 'customer', 'product': 'product', 'amount': 'amount', 'status': 'status', 'due_date': 'due_date'} warnings=[]
+18:18:15 INFO  embeddings             Indexing embeddings for file ID 2 (Type: invoice) for user 9...
+18:18:15 INFO  embeddings             Generating embeddings batch 1 (1 items)...
+18:18:15 INFO  embeddings             [CHROMA] Indexed 1 items in Chroma for file ID 2
+18:18:15 INFO  embeddings             Successfully generated and committed 1 embeddings for file ID 2.
+18:18:15 INFO  context_cache          [CACHE] Cache invalidated for user 9.
+18:18:15 INFO  upload                 Successfully processed invoice upload 'test_0.csv' for user 9. Added: 1, Updated: 0.
+18:18:15 DEBUG python_multipart.multipart Calling on_part_begin with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_header_field with data[36:55]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_value with data[57:102]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_header_field with data[104:116]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_value with data[118:126]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_headers_finished with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_part_data with data[130:220]
+18:18:15 DEBUG python_multipart.multipart Calling on_part_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_end with no data
+18:18:15 INFO  upload                 User 9 starting upload of file 'test_1.csv'...
+18:18:15 INFO  column_mapper          [MAPPER] file='test_1.csv' type=invoice confidence=1.00 mapped=6 unmapped=[]
+18:18:15 INFO  upload                 [Upload] file='test_1.csv' type=invoice confidence=1.00 mapping={'invoice_id': 'invoice_id', 'customer': 'customer', 'product': 'product', 'amount': 'amount', 'status': 'status', 'due_date': 'due_date'} warnings=[]
+18:18:15 INFO  embeddings             Indexing embeddings for file ID 3 (Type: invoice) for user 9...
+18:18:15 INFO  embeddings             Generating embeddings batch 1 (1 items)...
+18:18:15 INFO  embeddings             [CHROMA] Indexed 1 items in Chroma for file ID 3
+18:18:15 INFO  embeddings             Successfully generated and committed 1 embeddings for file ID 3.
+18:18:15 INFO  context_cache          [CACHE] Cache invalidated for user 9.
+18:18:15 INFO  upload                 Successfully processed invoice upload 'test_1.csv' for user 9. Added: 1, Updated: 0.
+18:18:15 DEBUG python_multipart.multipart Calling on_part_begin with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_header_field with data[36:55]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_value with data[57:102]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_header_field with data[104:116]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_value with data[118:126]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_headers_finished with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_part_data with data[130:220]
+18:18:15 DEBUG python_multipart.multipart Calling on_part_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_end with no data
+18:18:15 INFO  upload                 User 9 starting upload of file 'test_2.csv'...
+18:18:15 INFO  column_mapper          [MAPPER] file='test_2.csv' type=invoice confidence=1.00 mapped=6 unmapped=[]
+18:18:15 INFO  upload                 [Upload] file='test_2.csv' type=invoice confidence=1.00 mapping={'invoice_id': 'invoice_id', 'customer': 'customer', 'product': 'product', 'amount': 'amount', 'status': 'status', 'due_date': 'due_date'} warnings=[]
+18:18:15 INFO  embeddings             Indexing embeddings for file ID 4 (Type: invoice) for user 9...
+18:18:15 INFO  embeddings             Generating embeddings batch 1 (1 items)...
+18:18:15 INFO  embeddings             [CHROMA] Indexed 1 items in Chroma for file ID 4
+18:18:15 INFO  embeddings             Successfully generated and committed 1 embeddings for file ID 4.
+18:18:15 INFO  context_cache          [CACHE] Cache invalidated for user 9.
+18:18:15 INFO  upload                 Successfully processed invoice upload 'test_2.csv' for user 9. Added: 1, Updated: 0.
+18:18:15 DEBUG python_multipart.multipart Calling on_part_begin with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_header_field with data[36:55]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_value with data[57:102]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_header_field with data[104:116]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_value with data[118:126]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_headers_finished with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_part_data with data[130:220]
+18:18:15 DEBUG python_multipart.multipart Calling on_part_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_end with no data
+18:18:15 INFO  upload                 User 9 starting upload of file 'test_3.csv'...
+18:18:15 INFO  column_mapper          [MAPPER] file='test_3.csv' type=invoice confidence=1.00 mapped=6 unmapped=[]
+18:18:15 INFO  upload                 [Upload] file='test_3.csv' type=invoice confidence=1.00 mapping={'invoice_id': 'invoice_id', 'customer': 'customer', 'product': 'product', 'amount': 'amount', 'status': 'status', 'due_date': 'due_date'} warnings=[]
+18:18:15 INFO  embeddings             Indexing embeddings for file ID 5 (Type: invoice) for user 9...
+18:18:15 INFO  embeddings             Generating embeddings batch 1 (1 items)...
+18:18:15 INFO  embeddings             [CHROMA] Indexed 1 items in Chroma for file ID 5
+18:18:15 INFO  embeddings             Successfully generated and committed 1 embeddings for file ID 5.
+18:18:15 INFO  context_cache          [CACHE] Cache invalidated for user 9.
+18:18:15 INFO  upload                 Successfully processed invoice upload 'test_3.csv' for user 9. Added: 1, Updated: 0.
+18:18:15 DEBUG python_multipart.multipart Calling on_part_begin with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_header_field with data[36:55]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_value with data[57:102]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_header_field with data[104:116]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_value with data[118:126]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_headers_finished with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_part_data with data[130:220]
+18:18:15 DEBUG python_multipart.multipart Calling on_part_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_end with no data
+18:18:15 INFO  upload                 User 9 starting upload of file 'test_4.csv'...
+18:18:15 INFO  column_mapper          [MAPPER] file='test_4.csv' type=invoice confidence=1.00 mapped=6 unmapped=[]
+18:18:15 INFO  upload                 [Upload] file='test_4.csv' type=invoice confidence=1.00 mapping={'invoice_id': 'invoice_id', 'customer': 'customer', 'product': 'product', 'amount': 'amount', 'status': 'status', 'due_date': 'due_date'} warnings=[]
+18:18:15 INFO  embeddings             Indexing embeddings for file ID 6 (Type: invoice) for user 9...
+18:18:15 INFO  embeddings             Generating embeddings batch 1 (1 items)...
+18:18:15 INFO  embeddings             [CHROMA] Indexed 1 items in Chroma for file ID 6
+18:18:15 INFO  embeddings             Successfully generated and committed 1 embeddings for file ID 6.
+18:18:15 INFO  context_cache          [CACHE] Cache invalidated for user 9.
+18:18:15 INFO  upload                 Successfully processed invoice upload 'test_4.csv' for user 9. Added: 1, Updated: 0.
+18:18:15 DEBUG python_multipart.multipart Calling on_part_begin with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_header_field with data[36:55]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_value with data[57:102]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_header_field with data[104:116]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_value with data[118:126]
+18:18:15 DEBUG python_multipart.multipart Calling on_header_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_headers_finished with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_part_data with data[130:222]
+18:18:15 DEBUG python_multipart.multipart Calling on_part_end with no data
+18:18:15 DEBUG python_multipart.multipart Calling on_end with no data
+18:18:15 WARN  rate_limiter           [RATELIMIT] User 9 hit upload rate limit (5/min)
+18:18:15 INFO  auth                   [AUTH] Login attempt for username 'admin'...
+18:18:16 INFO  auth                   [AUTH] User 'admin' authenticated (role=admin).
+18:18:16 ERROR routes.admin           admin/rate-limits/1: Internal DB Connection Corrupted Stack Trace Info
+Traceback (most recent call last):
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\backend\routes\admin.py", line 148, in set_rate_limits
+    svc.require_admin(current_user["id"], db)
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\backend\services\admin_service.py", line 25, in require_admin
+    u = db.query(User).filter(User.id == user_id).first()
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.9_3.9.3568.0_x64__qbz5n2kfra8p0\lib\unittest\mock.py", line 1092, in __call__
+    return self._mock_call(*args, **kwargs)
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.9_3.9.3568.0_x64__qbz5n2kfra8p0\lib\unittest\mock.py", line 1096, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.9_3.9.3568.0_x64__qbz5n2kfra8p0\lib\unittest\mock.py", line 1151, in _execute_mock_call
+    raise effect
+Exception: Internal DB Connection Corrupted Stack Trace Info
+18:18:16 INFO  auth                   [AUTH] Signup attempt for username 'test_cachereg_5fac244a'...
+18:18:16 INFO  auth                   [AUTH] User 'test_cachereg_5fac244a' registered and authenticated.
+18:18:16 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:16 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:16 INFO  query_router           [ROUTER] DIRECT (invoice_count): 'how many invoices do I have'
+18:18:16 DEBUG ai_router              [REQ a6cdb25b] user=10 route=DIRECT handler=invoice_count topic=total_revenue writing=False cache_disc='invoice_count' q='how many invoices do I have'
+18:18:16 INFO  intent_router          [ROUTER] DIRECT (invoice_count, 1.00): 'how many invoices do I have'
+18:18:16 INFO  ai_router              [ROUTER][shadow] DISAGREE | regex=(DIRECT, handler=invoice_count, topic=total_revenue) semantic=(DIRECT, invoice_count, 1.00) | q='how many invoices do I have'
+18:18:16 INFO  ai_router              [DIRECT] handler=invoice_count | 'how many invoices do I have'
+18:18:16 INFO  embeddings             [CHROMA] Saved chat turn for user 10, session 4f264169-69b7-4637-bd24-70250697ca04
+18:18:16 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'total revenue'
+18:18:16 DEBUG ai_router              [REQ 9da27ca8] user=10 route=DIRECT handler=total_revenue topic=total_revenue writing=False cache_disc='total_revenue' q='total revenue'
+18:18:16 INFO  intent_router          [ROUTER] DIRECT (total_revenue, 0.88): 'total revenue'
+18:18:16 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=total_revenue, topic=total_revenue) semantic=(DIRECT, total_revenue, 0.88) | q='total revenue'
+18:18:16 INFO  ai_router              [DIRECT] handler=total_revenue | 'total revenue'
+18:18:16 INFO  embeddings             [CHROMA] Saved chat turn for user 10, session d6ad45ae-8806-4fea-916f-37033cc5e3d5
+18:18:16 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:16 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:16 INFO  query_router           [ROUTER] DIRECT (overdue_list): 'show overdue invoices'
+18:18:16 DEBUG ai_router              [REQ 801ea0a1] user=10 route=DIRECT handler=overdue_list topic=overdue_list writing=False cache_disc='overdue_list' q='show overdue invoices'
+18:18:16 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 1.00): 'show overdue invoices'
+18:18:16 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=overdue_list, topic=overdue_list) semantic=(DIRECT, overdue_list, 1.00) | q='show overdue invoices'
+18:18:16 INFO  ai_router              [DIRECT] handler=overdue_list | 'show overdue invoices'
+18:18:16 INFO  embeddings             [CHROMA] Saved chat turn for user 10, session 47764b35-569a-4a95-8a50-18470e58b0eb
+18:18:16 INFO  query_router           [ROUTER] DIRECT (top_debtors): 'who owes me the most'
+18:18:16 DEBUG ai_router              [REQ 95607c1e] user=10 route=DIRECT handler=top_debtors topic=overdue_list writing=False cache_disc='top_debtors' q='who owes me the most'
+18:18:16 INFO  intent_router          [ROUTER] DIRECT (top_debtors, 1.00): 'who owes me the most'
+18:18:16 INFO  ai_router              [ROUTER][shadow] DISAGREE | regex=(DIRECT, handler=top_debtors, topic=overdue_list) semantic=(DIRECT, top_debtors, 1.00) | q='who owes me the most'
+18:18:16 INFO  ai_router              [DIRECT] handler=top_debtors | 'who owes me the most'
+18:18:17 INFO  embeddings             [CHROMA] Saved chat turn for user 10, session 19829cbf-aa34-4958-b177-400ab93264ff
+18:18:17 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:17 INFO  query_router           [ROUTER] DIRECT (invoice_count): 'how many invoices do I have'
+18:18:17 DEBUG ai_router              [REQ 6714714a] user=10 route=DIRECT handler=invoice_count topic=total_revenue writing=False cache_disc='invoice_count' q='how many invoices do I have'
+18:18:17 INFO  intent_router          [ROUTER] DIRECT (invoice_count, 1.00): 'how many invoices do I have'
+18:18:17 INFO  ai_router              [ROUTER][shadow] DISAGREE | regex=(DIRECT, handler=invoice_count, topic=total_revenue) semantic=(DIRECT, invoice_count, 1.00) | q='how many invoices do I have'
+18:18:17 INFO  ai_router              [DIRECT] handler=invoice_count | 'how many invoices do I have'
+18:18:17 INFO  embeddings             [CHROMA] Saved chat turn for user 10, session bacd8524-8ffb-4d98-bc38-9b9401f47c07
+18:18:17 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:17 INFO  context_cache          [CACHE] Cache invalidated for user 1.
+18:18:17 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:17 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:17 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:17 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:17 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:17 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:17 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:17 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:17 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:17 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:17 INFO  ai_router              [ROUTER] entity-first → client_summary (customer='Namdhari Fresh') q='namdhari fresh'
+18:18:17 INFO  ai_router              [ROUTER] entity-first → client_summary (customer='Rahul Traders') q='do yo know Rahul traders'
+18:18:17 INFO  ai_router              [ROUTER] entity-first → client_summary (customer='Nilgiris Fresh') q='how much does Nilgiris Fresh owe me'
+18:18:17 INFO  ai_router              [ROUTER] entity → invoice_detail q='give details about invoice SUP-INV-0138'
+18:18:17 INFO  ai_router              [ROUTER] entity → customer_invoices (customer='Annapurna Provisions') q='give annapurna provisions invoices in table format'
+18:18:17 INFO  ai_router              [ROUTER] entity → customer_invoices (customer='Nilgiris Fresh') q='nilgiris fresh invoices'
+18:18:17 INFO  direct_query           [HANDLER] client_summary: no customer match for 'tell me about Zxqwerty Fictional'
+18:18:17 INFO  auth                   [AUTH] Signup attempt for username 'test_err_1d049a5b'...
+18:18:17 INFO  auth                   [AUTH] User 'test_err_1d049a5b' registered and authenticated.
+18:18:17 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:17 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'total revenue'
+18:18:17 WARN  ai_router              [RATELIMIT] Blocked user 11: Rate limit: max 30 requests per minute.
+18:18:17 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:17 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'total revenue'
+18:18:17 DEBUG ai_router              [REQ 27516fdb] user=11 route=DIRECT handler=total_revenue topic=total_revenue writing=False cache_disc='total_revenue' q='total revenue'
+18:18:17 INFO  intent_router          [ROUTER] DIRECT (total_revenue, 0.88): 'total revenue'
+18:18:17 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=total_revenue, topic=total_revenue) semantic=(DIRECT, total_revenue, 0.88) | q='total revenue'
+18:18:17 INFO  ai_router              [DIRECT] handler=total_revenue | 'total revenue'
+18:18:17 INFO  embeddings             [CHROMA] Saved chat turn for user 11, session ed921125-c66a-4c23-812c-80acffb8b711
+18:18:17 INFO  context_cache          [CACHE] Cache invalidated for user 778899.
+18:18:17 INFO  feedback               [FEEDBACK] override set user=778899 → client_summary q='show me lakshmi'
+18:18:17 INFO  context_cache          [CACHE] Cache invalidated for user 778899.
+18:18:17 INFO  feedback               [FEEDBACK] override set user=778899 → client_summary q='q'
+18:18:17 INFO  context_cache          [CACHE] Cache invalidated for user 778899.
+18:18:17 INFO  feedback               [FEEDBACK] override set user=778899 → total_revenue q='q'
+18:18:17 INFO  context_cache          [CACHE] Cache invalidated for user 778899.
+18:18:17 INFO  feedback               [FEEDBACK] override set user=778899 → ai_complex q='deep one'
+18:18:18 DEBUG direct_query           [HANDLER] No handler registered for key: 'nonexistent_handler'
+18:18:18 INFO  intent_router          [ROUTER] Semantic router warm — 3 seed examples
+18:18:18 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 0.99): 'who owes me'
+18:18:18 INFO  intent_router          [ROUTER] Semantic router warm — 3 seed examples
+18:18:18 INFO  intent_router          [ROUTER] CONVERSATIONAL (conversational, 0.99): 'hello friend'
+18:18:18 INFO  intent_router          [ROUTER] Semantic router warm — 3 seed examples
+18:18:18 INFO  intent_router          [ROUTER] AI_COMPLEX (ai_complex, 0.99): 'growth strategy'
+18:18:18 INFO  intent_router          [ROUTER] Semantic router warm — 3 seed examples
+18:18:18 INFO  intent_router          [ROUTER] low-confidence (0.58) → AI_SIMPLE: 'totally unrelated'
+18:18:20 INFO  intent_router          [ROUTER] Semantic router warm — 122 seed examples
+18:18:20 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 0.60): 'show me everyone who is behind on payments'
+18:18:20 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 0.51): 'which clients still haven't cleared their dues'
+18:18:20 INFO  intent_router          [ROUTER] DIRECT (overdue_amount, 0.76): 'what's the total value of unpaid overdue bills'
+18:18:20 INFO  intent_router          [ROUTER] DIRECT (pending_list, 0.78): 'list the invoices still awaiting payment'
+18:18:20 INFO  intent_router          [ROUTER] DIRECT (total_revenue, 0.52): 'how much money did we make'
+18:18:20 INFO  intent_router          [ROUTER] DIRECT (total_revenue, 0.80): 'what were my total sales this period'
+18:18:20 INFO  intent_router          [ROUTER] DIRECT (invoice_count, 0.97): 'how many bills are there'
+18:18:20 INFO  intent_router          [ROUTER] DIRECT (inventory_count, 0.74): 'how many distinct products do I stock'
+18:18:20 INFO  intent_router          [ROUTER] DIRECT (low_stock, 0.85): 'what items do I need to restock'
+18:18:20 INFO  intent_router          [ROUTER] DIRECT (low_stock, 0.84): 'which products have almost run out'
+18:18:20 INFO  intent_router          [ROUTER] DIRECT (expiring_soon, 0.78): 'which goods will expire shortly'
+18:18:20 INFO  intent_router          [ROUTER] DIRECT (top_customers, 0.82): 'who buys the most from me'
+18:18:20 INFO  intent_router          [ROUTER] DIRECT (top_debtors, 0.68): 'which customer has the largest unpaid balance'
+18:18:20 INFO  intent_router          [ROUTER] DIRECT (business_summary, 0.81): 'give me a quick health check of the business'
+18:18:20 INFO  intent_router          [ROUTER] DIRECT (client_summary, 0.70): 'do you know srinivas kirana'
+18:18:20 INFO  intent_router          [ROUTER] low-confidence (0.33) → AI_SIMPLE: 'tell me about nilgiris fresh'
+18:18:20 INFO  intent_router          [ROUTER] CONVERSATIONAL (conversational, 0.60): 'thanks a lot'
+18:18:20 INFO  intent_router          [ROUTER] CONVERSATIONAL (conversational, 0.80): 'hey'
+18:18:20 INFO  intent_router          [ROUTER] AI_COMPLEX (ai_complex, 0.88): 'diagnose why my cash flow is tight and suggest fixes'
+18:18:20 INFO  intent_router          [ROUTER] AI_COMPLEX (ai_complex, 0.68): 'build me a plan to recover overdue money over the next month'
+18:18:20 INFO  intent_router          [ROUTER] AI_SIMPLE (ai_simple, 0.64): 'write a polite reminder to a late payer'
+18:18:20 INFO  intent_router          [ROUTER] AI_SIMPLE (ai_simple, 0.61): 'help me phrase a follow up to a client'
+18:18:21 INFO  direct_query           [HANDLER] client_summary: no customer match for ''
+18:18:21 INFO  logging                [ADMIN] Logging configured — level=DEBUG, color=off
+18:18:21 INFO  logging                [ADMIN] Logging configured — level=DEBUG, color=off
+18:18:21 INFO  logging                [ADMIN] Logging configured — level=INFO, color=off
+18:18:21 INFO  embeddings             Indexing embeddings for file ID 5 (Type: invoice) for user 10...
+18:18:21 INFO  embeddings             Generating embeddings batch 1 (1 items)...
+18:18:21 ERROR embeddings             [CHROMA] Failed parallel indexing to Chroma: Collection expecting embedding with dimension of 384, got 3
+Traceback (most recent call last):
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\backend\services\embeddings.py", line 330, in index_new_file_records
+    doc_collection.add(
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\venv\lib\site-packages\chromadb\api\models\Collection.py", line 118, in add
+    self._client._add(
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\venv\lib\site-packages\chromadb\api\rust.py", line 484, in _add
+    return self.bindings.add(
+chromadb.errors.InvalidArgumentError: Collection expecting embedding with dimension of 384, got 3
+18:18:21 INFO  embeddings             Successfully generated and committed 1 embeddings for file ID 5.
+18:18:21 INFO  embeddings             Indexing embeddings for file ID 5 (Type: inventory) for user 10...
+18:18:21 INFO  embeddings             Generating embeddings batch 1 (1 items)...
+18:18:21 ERROR embeddings             [CHROMA] Failed parallel indexing to Chroma: Collection expecting embedding with dimension of 384, got 3
+Traceback (most recent call last):
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\backend\services\embeddings.py", line 330, in index_new_file_records
+    doc_collection.add(
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\venv\lib\site-packages\chromadb\api\models\Collection.py", line 118, in add
+    self._client._add(
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\venv\lib\site-packages\chromadb\api\rust.py", line 484, in _add
+    return self.bindings.add(
+chromadb.errors.InvalidArgumentError: Collection expecting embedding with dimension of 384, got 3
+18:18:21 INFO  embeddings             Successfully generated and committed 1 embeddings for file ID 5.
+18:18:21 ERROR embeddings             [CHROMA] Search failed, falling back to SQLite: Collection expecting embedding with dimension of 384, got 3
+18:18:21 INFO  embeddings             Computing semantic similarity for query 'Need billing info' across 2 records...
+18:18:21 INFO  embeddings             Match: Score=0.9939 | Type=invoice | Content=Invoice record. Invoice ID: INV-RAG. Customer: RAG Pharmacy. Amount: ₹100.00. Status: Paid. Invoice Date: N/A. Due Date: N/A.
+18:18:21 INFO  embeddings             Match: Score=0.1104 | Type=inventory | Content=Inventory item. Product Name: RAG Medicine. Stock Level: 50 units (In stock). Expiry Date: N/A. Supplier: RAG Supplier.
+18:18:21 ERROR embeddings             [CHROMA] Search failed, falling back to SQLite: Collection expecting embedding with dimension of 384, got 3
+18:18:21 INFO  embeddings             Computing semantic similarity for query 'Show stock' across 2 records...
+18:18:21 INFO  embeddings             Match: Score=0.9939 | Type=inventory | Content=Inventory item. Product Name: RAG Medicine. Stock Level: 50 units (In stock). Expiry Date: N/A. Supplier: RAG Supplier.
+18:18:21 INFO  embeddings             Match: Score=0.1104 | Type=invoice | Content=Invoice record. Invoice ID: INV-RAG. Customer: RAG Pharmacy. Amount: ₹100.00. Status: Paid. Invoice Date: N/A. Due Date: N/A.
+18:18:22 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'thanks'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'okay got it'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'hi there'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'sounds good'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'okay'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'yes'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'no'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'cool'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'great'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'bye'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'perfect'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'noted'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'makes sense'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'yep'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'got it thanks'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'hi'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'hello'
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'hey'
+18:18:22 INFO  auth                   [AUTH] Signup attempt for username 'test_routing_421bfd3f'...
+18:18:22 INFO  auth                   [AUTH] User 'test_routing_421bfd3f' registered and authenticated.
+18:18:22 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'hi there'
+18:18:22 INFO  intent_router          [ROUTER] CONVERSATIONAL (conversational, 0.80): 'hi there'
+18:18:22 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(CONVERSATIONAL, handler=None, topic=business_summary) semantic=(CONVERSATIONAL, None, 0.80) | q='hi there'
+18:18:22 INFO  ai_router              [CONVERSATIONAL] 'hi there'
+18:18:22 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'thanks'
+18:18:22 INFO  intent_router          [ROUTER] CONVERSATIONAL (conversational, 1.00): 'thanks'
+18:18:22 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(CONVERSATIONAL, handler=None, topic=business_summary) semantic=(CONVERSATIONAL, None, 1.00) | q='thanks'
+18:18:22 INFO  ai_router              [CONVERSATIONAL] 'thanks'
+18:18:22 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:22 INFO  query_router           [ROUTER] CONVERSATIONAL: 'sounds good'
+18:18:22 INFO  intent_router          [ROUTER] CONVERSATIONAL (conversational, 1.00): 'sounds good'
+18:18:22 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(CONVERSATIONAL, handler=None, topic=business_summary) semantic=(CONVERSATIONAL, None, 1.00) | q='sounds good'
+18:18:22 INFO  ai_router              [CONVERSATIONAL] 'sounds good'
+18:18:22 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:22 INFO  query_router           [ROUTER] DIRECT (invoice_count): 'how many invoices do I have'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (invoice_count): 'invoice count'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (invoice_count): 'total invoices'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'what is my total revenue'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'total revenue'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'how much revenue'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (overdue_list): 'show overdue invoices'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (overdue_list): 'list overdue'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (overdue_list): 'overdue list'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (overdue_amount): 'how much is overdue'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (overdue_amount): 'total overdue amount'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (pending_list): 'pending invoices'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (pending_list): 'show me pending'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (low_stock): 'list low stock items'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (low_stock): 'low stock'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (low_stock): 'out of stock'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (expiring_soon): 'which products are expiring soon'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (expiring_soon): 'expiring items'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (top_customers): 'top 5 customers by revenue'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (top_customers): 'top customers'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (top_debtors): 'top debtors'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (top_debtors): 'who owes me the most'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (top_debtors): 'biggest debtor'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (inventory_count): 'how many products'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (inventory_count): 'inventory count'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (business_summary): 'business summary'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (business_summary): 'dashboard overview'
+18:18:22 INFO  query_router           [ROUTER] DIRECT (business_summary): 'quick snapshot'
+18:18:22 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:22 INFO  query_router           [ROUTER] DIRECT (invoice_count): 'how many invoices do I have'
+18:18:22 INFO  intent_router          [ROUTER] DIRECT (invoice_count, 1.00): 'how many invoices do I have'
+18:18:22 INFO  ai_router              [ROUTER][shadow] DISAGREE | regex=(DIRECT, handler=invoice_count, topic=total_revenue) semantic=(DIRECT, invoice_count, 1.00) | q='how many invoices do I have'
+18:18:22 INFO  ai_router              [DIRECT] handler=invoice_count | 'how many invoices do I have'
+18:18:22 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 87482570-b175-4647-a8a4-2fcdde149391
+18:18:22 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:22 INFO  query_router           [ROUTER] DIRECT (overdue_list): 'show overdue invoices'
+18:18:22 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 1.00): 'show overdue invoices'
+18:18:22 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=overdue_list, topic=overdue_list) semantic=(DIRECT, overdue_list, 1.00) | q='show overdue invoices'
+18:18:22 INFO  ai_router              [DIRECT] handler=overdue_list | 'show overdue invoices'
+18:18:22 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 8396fc67-94a9-42a4-815f-8a42d9a7151e
+18:18:22 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:22 INFO  query_router           [ROUTER] DIRECT (overdue_list): 'show overdue invoices'
+18:18:22 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 1.00): 'show overdue invoices'
+18:18:22 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=overdue_list, topic=overdue_list) semantic=(DIRECT, overdue_list, 1.00) | q='show overdue invoices'
+18:18:22 INFO  ai_router              [DIRECT] handler=overdue_list | 'show overdue invoices'
+18:18:23 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session bc9788ea-c16d-4a9c-bd80-915b2a55d4d0
+18:18:23 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:23 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'total revenue'
+18:18:23 INFO  intent_router          [ROUTER] DIRECT (total_revenue, 0.88): 'total revenue'
+18:18:23 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=total_revenue, topic=total_revenue) semantic=(DIRECT, total_revenue, 0.88) | q='total revenue'
+18:18:23 INFO  ai_router              [DIRECT] handler=total_revenue | 'total revenue'
+18:18:23 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 1650548b-00c8-41ff-8055-92a658e3235a
+18:18:23 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'who hasn't paid me'
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'who owes me money'
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'what customers still owe me'
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'what's outstanding from clients'
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'show me my debtors'
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'what's running low on stock'
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'which products are almost out'
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'any items about to expire'
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'who are my biggest customers'
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'what's my collection situation'
+18:18:23 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:23 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'who hasn't paid me'
+18:18:23 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 1.00): 'who hasn't paid me'
+18:18:23 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_SIMPLE, handler=None, topic=overdue_list) semantic=(DIRECT, overdue_list, 1.00) | q='who hasn't paid me'
+18:18:23 INFO  ai_router              [INTENT] Promoted AI_SIMPLE → DIRECT via topic=overdue_list
+18:18:23 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session ef84c4b4-fdd5-4fd3-8f82-2564256515c2
+18:18:23 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'who owes me money'
+18:18:23 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 1.00): 'who owes me money'
+18:18:23 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_SIMPLE, handler=None, topic=overdue_list) semantic=(DIRECT, overdue_list, 1.00) | q='who owes me money'
+18:18:23 INFO  ai_router              [INTENT] Promoted AI_SIMPLE → DIRECT via topic=overdue_list
+18:18:23 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session e5a40f0b-b10e-4429-a871-a22c05bec8ad
+18:18:23 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'what customers still owe me'
+18:18:23 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 0.95): 'what customers still owe me'
+18:18:23 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_SIMPLE, handler=None, topic=overdue_list) semantic=(DIRECT, overdue_list, 0.95) | q='what customers still owe me'
+18:18:23 INFO  ai_router              [INTENT] Promoted AI_SIMPLE → DIRECT via topic=overdue_list
+18:18:23 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 76edd7f2-8baa-43a0-b8ec-3e339caaa096
+18:18:23 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'what's outstanding from clients'
+18:18:23 INFO  intent_router          [ROUTER] DIRECT (top_customers, 0.66): 'what's outstanding from clients'
+18:18:23 INFO  ai_router              [ROUTER][shadow] DISAGREE | regex=(AI_SIMPLE, handler=None, topic=overdue_list) semantic=(DIRECT, top_customers, 0.66) | q='what's outstanding from clients'
+18:18:23 INFO  ai_router              [INTENT] Promoted AI_SIMPLE → DIRECT via topic=overdue_list
+18:18:23 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 0f0842fa-88e8-44d1-ab6b-709c0c1daf37
+18:18:23 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'show me my debtors'
+18:18:23 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 1.00): 'show me my debtors'
+18:18:23 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_SIMPLE, handler=None, topic=overdue_list) semantic=(DIRECT, overdue_list, 1.00) | q='show me my debtors'
+18:18:23 INFO  ai_router              [INTENT] Promoted AI_SIMPLE → DIRECT via topic=overdue_list
+18:18:23 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 6c6c338f-826f-498f-9222-677bc9d8ed45
+18:18:23 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:23 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'what's running low on stock'
+18:18:23 INFO  intent_router          [ROUTER] DIRECT (low_stock, 0.76): 'what's running low on stock'
+18:18:23 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_SIMPLE, handler=None, topic=low_stock) semantic=(DIRECT, low_stock, 0.76) | q='what's running low on stock'
+18:18:23 INFO  ai_router              [INTENT] Promoted AI_SIMPLE → DIRECT via topic=low_stock
+18:18:23 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 968890c6-97fb-4ea5-9e90-55a9b9e831c3
+18:18:23 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:23 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'any items about to expire'
+18:18:23 INFO  intent_router          [ROUTER] DIRECT (expiring_soon, 0.93): 'any items about to expire'
+18:18:23 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_SIMPLE, handler=None, topic=expiring_soon) semantic=(DIRECT, expiring_soon, 0.93) | q='any items about to expire'
+18:18:23 INFO  ai_router              [INTENT] Promoted AI_SIMPLE → DIRECT via topic=expiring_soon
+18:18:23 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 3ef000a6-a6fe-4502-b19c-e482beb254e7
+18:18:23 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:23 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:23 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'who owes me money'
+18:18:23 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 1.00): 'who owes me money'
+18:18:23 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_SIMPLE, handler=None, topic=overdue_list) semantic=(DIRECT, overdue_list, 1.00) | q='who owes me money'
+18:18:23 INFO  ai_router              [INTENT] Promoted AI_SIMPLE → DIRECT via topic=overdue_list
+18:18:24 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 8d861f18-71e4-4561-b3a2-52774941c214
+18:18:24 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:24 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:24 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'is my business performing well this month'
+18:18:24 INFO  intent_router          [ROUTER] DIRECT (business_summary, 0.83): 'is my business performing well this month'
+18:18:24 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_SIMPLE, handler=None, topic=business_summary) semantic=(DIRECT, business_summary, 0.83) | q='is my business performing well this month'
+18:18:24 INFO  ai_router              [AI_SIMPLE] model=llama-3.1-8b-instant | 'is my business performing well this month'
+18:18:24 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 506fb1b5-31a5-45c3-bd9e-1e98807bce3c
+18:18:24 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'is my business performing well this month'
+18:18:24 INFO  intent_router          [ROUTER] DIRECT (business_summary, 0.83): 'is my business performing well this month'
+18:18:24 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_SIMPLE, handler=None, topic=business_summary) semantic=(DIRECT, business_summary, 0.83) | q='is my business performing well this month'
+18:18:24 INFO  ai_router              [CACHE] HIT [REQ ad114d95] source=ai disc='q:is my business performing well this month' query='is my business performing well this month'
+18:18:24 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'what needs my attention now'
+18:18:24 INFO  intent_router          [ROUTER] low-confidence (0.34) → AI_SIMPLE: 'what needs my attention now'
+18:18:24 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_SIMPLE, handler=None, topic=business_summary) semantic=(AI_SIMPLE, None, 0.34) | q='what needs my attention now'
+18:18:24 INFO  ai_router              [AI_SIMPLE] model=llama-3.1-8b-instant | 'what needs my attention now'
+18:18:24 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 0daf2f9f-de8d-4ac5-b76b-6db2e6115570
+18:18:24 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:24 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:24 INFO  query_router           [ROUTER] DIRECT (overdue_list): 'show overdue invoices'
+18:18:24 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 1.00): 'show overdue invoices'
+18:18:24 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=overdue_list, topic=overdue_list) semantic=(DIRECT, overdue_list, 1.00) | q='show overdue invoices'
+18:18:24 INFO  ai_router              [DIRECT] handler=overdue_list | 'show overdue invoices'
+18:18:24 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session bc479f1e-5792-4ba7-8f8b-db836ac255aa
+18:18:24 INFO  query_router           [ROUTER] DIRECT (overdue_list): 'show overdue invoices'
+18:18:24 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 1.00): 'show overdue invoices'
+18:18:24 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=overdue_list, topic=overdue_list) semantic=(DIRECT, overdue_list, 1.00) | q='show overdue invoices'
+18:18:24 INFO  ai_router              [CACHE] HIT [REQ c3928ac4] source=db disc='overdue_list' query='show overdue invoices'
+18:18:24 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:24 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:24 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'total revenue'
+18:18:24 INFO  intent_router          [ROUTER] DIRECT (total_revenue, 0.88): 'total revenue'
+18:18:24 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=total_revenue, topic=total_revenue) semantic=(DIRECT, total_revenue, 0.88) | q='total revenue'
+18:18:24 INFO  ai_router              [DIRECT] handler=total_revenue | 'total revenue'
+18:18:24 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session d7f52a19-9907-4d9b-ac92-e3e7ff6a99b1
+18:18:24 INFO  upload                 User 78 starting upload of file 'cache_test.csv'...
+18:18:24 INFO  column_mapper          [MAPPER] file='cache_test.csv' type=invoice confidence=1.00 mapped=6 unmapped=[]
+18:18:24 INFO  upload                 [Upload] file='cache_test.csv' type=invoice confidence=1.00 mapping={'invoice_id': 'invoice_id', 'customer': 'customer', 'product': 'product', 'amount': 'amount', 'status': 'status', 'due_date': 'due_date'} warnings=[]
+18:18:24 INFO  embeddings             Indexing embeddings for file ID 1 (Type: invoice) for user 78...
+18:18:24 INFO  embeddings             Generating embeddings batch 1 (1 items)...
+18:18:24 INFO  embeddings             [CHROMA] Indexed 1 items in Chroma for file ID 1
+18:18:24 INFO  embeddings             Successfully generated and committed 1 embeddings for file ID 1.
+18:18:24 INFO  context_cache          [CACHE] Cache invalidated for user 78.
+18:18:24 INFO  upload                 Successfully processed invoice upload 'cache_test.csv' for user 78. Added: 1, Updated: 0.
+18:18:24 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'total revenue'
+18:18:24 INFO  intent_router          [ROUTER] DIRECT (total_revenue, 0.88): 'total revenue'
+18:18:24 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=total_revenue, topic=total_revenue) semantic=(DIRECT, total_revenue, 0.88) | q='total revenue'
+18:18:24 INFO  ai_router              [DIRECT] handler=total_revenue | 'total revenue'
+18:18:24 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 0016b8a6-e524-447d-846d-604196aa190c
+18:18:24 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:24 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:24 INFO  query_router           [ROUTER] DIRECT (overdue_list): 'show overdue invoices'
+18:18:24 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 1.00): 'show overdue invoices'
+18:18:24 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=overdue_list, topic=overdue_list) semantic=(DIRECT, overdue_list, 1.00) | q='show overdue invoices'
+18:18:24 INFO  ai_router              [DIRECT] handler=overdue_list | 'show overdue invoices'
+18:18:25 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session a256c652-37bd-49c6-9730-f2c60e6f5a3b
+18:18:25 INFO  query_router           [ROUTER] DIRECT (overdue_list): 'show overdue invoices'
+18:18:25 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 1.00): 'show overdue invoices'
+18:18:25 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=overdue_list, topic=overdue_list) semantic=(DIRECT, overdue_list, 1.00) | q='show overdue invoices'
+18:18:25 INFO  ai_router              [CACHE] HIT [REQ cd7746aa] source=db disc='overdue_list' query='show overdue invoices'
+18:18:25 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:25 INFO  query_router           [ROUTER] AI_SIMPLE (writing task): 'draft a payment reminder message for my overdue customers'
+18:18:25 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'which customer should I call first'
+18:18:25 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'explain my cash flow situation'
+18:18:25 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'who is my most reliable customer'
+18:18:25 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'what payment terms should I offer new customers'
+18:18:25 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'is my business performing well this month'
+18:18:25 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:25 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:25 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\bwhat should i\b': 'what should I focus on today'
+18:18:25 INFO  intent_router          [ROUTER] low-confidence (0.29) → AI_SIMPLE: 'what should I focus on today'
+18:18:25 INFO  ai_router              [ROUTER][shadow] DISAGREE | regex=(AI_COMPLEX, handler=None, topic=business_summary) semantic=(AI_SIMPLE, None, 0.29) | q='what should I focus on today'
+18:18:25 INFO  ai_router              [AI_COMPLEX] LangGraph agents | 'what should I focus on today'
+18:18:25 INFO  agent_graph            [AGENT] LangGraph multi-agent graph compiled ✓
+18:18:25 INFO  agent_graph            [AGENT] ── Starting multi-agent run ──
+18:18:25 INFO  agent_graph            [PLANNER] Analyzing: 'what should I focus on today'
+18:18:27 WARN  agent_graph            [PLANNER] Could not parse plan (Error code: 401 - {'error': {'message': 'Invalid API Key', 'type': 'invalid_request_error', 'code': 'invalid_api_key'}}). Defaulting to all agents.
+18:18:27 INFO  agent_graph            [INVOICE] Running — focus: general invoice analysis
+18:18:27 INFO  agent_graph            [INVOICE] Done (719 chars).
+18:18:27 INFO  agent_graph            [INVENTORY] Running — focus: general inventory analysis
+18:18:27 INFO  agent_graph            [INVENTORY] Done (126 chars).
+18:18:27 INFO  agent_graph            [PAYMENT] Running — focus: general payment analysis
+18:18:27 INFO  agent_graph            [PAYMENT] Done (323 chars).
+18:18:27 INFO  agent_graph            [SYNTH] Building final growth plan...
+18:18:27 ERROR agent_graph            [SYNTH] Failed: Error code: 401 - {'error': {'message': 'Invalid API Key', 'type': 'invalid_request_error', 'code': 'invalid_api_key'}}
+Traceback (most recent call last):
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\backend\services\agent_graph.py", line 291, in synthesizer_node
+    resp = client.chat.completions.create(
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\venv\lib\site-packages\groq\resources\chat\completions.py", line 461, in create
+    return self._post(
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\venv\lib\site-packages\groq\_base_client.py", line 1242, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\venv\lib\site-packages\groq\_base_client.py", line 1044, in request
+    raise self._make_status_error_from_response(err.response) from None
+groq.AuthenticationError: Error code: 401 - {'error': {'message': 'Invalid API Key', 'type': 'invalid_request_error', 'code': 'invalid_api_key'}}
+18:18:27 INFO  agent_graph            [SYNTH] Done (59 chars).
+18:18:27 INFO  agent_graph            [AGENT] ── Multi-agent run complete ──
+18:18:27 INFO  agent_graph            [AGENT] Tokens used — input: 0, output: 0, total: 0
+18:18:27 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 40587555-8549-4257-9630-4e6a9fc2d76b
+18:18:27 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:27 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:27 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'how is my overall business health'
+18:18:27 INFO  intent_router          [ROUTER] DIRECT (business_summary, 0.79): 'how is my overall business health'
+18:18:27 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_SIMPLE, handler=None, topic=business_summary) semantic=(DIRECT, business_summary, 0.79) | q='how is my overall business health'
+18:18:27 INFO  ai_router              [AI_SIMPLE] model=llama-3.1-8b-instant | 'how is my overall business health'
+18:18:27 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 0f0cf578-110a-4858-bd6e-b4ef3fac6878
+18:18:27 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:27 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:27 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'which customer should I call first'
+18:18:27 INFO  intent_router          [ROUTER] AI_SIMPLE (ai_simple, 1.00): 'which customer should I call first'
+18:18:27 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_SIMPLE, handler=None, topic=top_customers) semantic=(AI_SIMPLE, None, 1.00) | q='which customer should I call first'
+18:18:27 INFO  ai_router              [INTENT] Promoted AI_SIMPLE → DIRECT via topic=top_customers
+18:18:27 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 3b38f698-d554-4e49-999a-c6115eccf09a
+18:18:27 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:27 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:27 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'explain my cash flow situation'
+18:18:27 INFO  intent_router          [ROUTER] AI_SIMPLE (ai_simple, 1.00): 'explain my cash flow situation'
+18:18:27 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_SIMPLE, handler=None, topic=total_revenue) semantic=(AI_SIMPLE, None, 1.00) | q='explain my cash flow situation'
+18:18:27 INFO  ai_router              [INTENT] Promoted AI_SIMPLE → DIRECT via topic=total_revenue
+18:18:27 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session d79a60ce-2c98-4a60-a02c-6a1f46ceecdd
+18:18:27 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:27 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:27 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\bwhat should i\b': 'what should I focus on today'
+18:18:27 INFO  intent_router          [ROUTER] low-confidence (0.29) → AI_SIMPLE: 'what should I focus on today'
+18:18:27 INFO  ai_router              [ROUTER][shadow] DISAGREE | regex=(AI_COMPLEX, handler=None, topic=business_summary) semantic=(AI_SIMPLE, None, 0.29) | q='what should I focus on today'
+18:18:27 INFO  ai_router              [AI_COMPLEX] LangGraph agents | 'what should I focus on today'
+18:18:27 INFO  agent_graph            [AGENT] ── Starting multi-agent run ──
+18:18:27 INFO  agent_graph            [PLANNER] Analyzing: 'what should I focus on today'
+18:18:27 WARN  agent_graph            [PLANNER] Could not parse plan (Error code: 401 - {'error': {'message': 'Invalid API Key', 'type': 'invalid_request_error', 'code': 'invalid_api_key'}}). Defaulting to all agents.
+18:18:27 INFO  agent_graph            [INVOICE] Running — focus: general invoice analysis
+18:18:27 INFO  agent_graph            [INVOICE] Done (719 chars).
+18:18:27 INFO  agent_graph            [INVENTORY] Running — focus: general inventory analysis
+18:18:27 INFO  agent_graph            [INVENTORY] Done (126 chars).
+18:18:27 INFO  agent_graph            [PAYMENT] Running — focus: general payment analysis
+18:18:27 INFO  agent_graph            [PAYMENT] Done (323 chars).
+18:18:27 INFO  agent_graph            [SYNTH] Building final growth plan...
+18:18:28 ERROR agent_graph            [SYNTH] Failed: Error code: 401 - {'error': {'message': 'Invalid API Key', 'type': 'invalid_request_error', 'code': 'invalid_api_key'}}
+Traceback (most recent call last):
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\backend\services\agent_graph.py", line 291, in synthesizer_node
+    resp = client.chat.completions.create(
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\venv\lib\site-packages\groq\resources\chat\completions.py", line 461, in create
+    return self._post(
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\venv\lib\site-packages\groq\_base_client.py", line 1242, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\venv\lib\site-packages\groq\_base_client.py", line 1044, in request
+    raise self._make_status_error_from_response(err.response) from None
+groq.AuthenticationError: Error code: 401 - {'error': {'message': 'Invalid API Key', 'type': 'invalid_request_error', 'code': 'invalid_api_key'}}
+18:18:28 INFO  agent_graph            [SYNTH] Done (59 chars).
+18:18:28 INFO  agent_graph            [AGENT] ── Multi-agent run complete ──
+18:18:28 INFO  agent_graph            [AGENT] Tokens used — input: 0, output: 0, total: 0
+18:18:28 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session cd6d565e-512b-4a56-921c-99073e7fe8b5
+18:18:28 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\bwhat should i\b': 'what should I focus on today'
+18:18:28 INFO  intent_router          [ROUTER] low-confidence (0.29) → AI_SIMPLE: 'what should I focus on today'
+18:18:28 INFO  ai_router              [ROUTER][shadow] DISAGREE | regex=(AI_COMPLEX, handler=None, topic=business_summary) semantic=(AI_SIMPLE, None, 0.29) | q='what should I focus on today'
+18:18:28 INFO  ai_router              [CACHE] HIT [REQ 3dc372b5] source=ai disc='q:what should i focus on today' query='what should I focus on today'
+18:18:28 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:28 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\banaly[sz][a-zA-Z]*\b': 'analyze my business performance and give me a recovery plan'
+18:18:28 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\bwhy is\b': 'why is my collection rate low and how do I fix it'
+18:18:28 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\banaly[sz][a-zA-Z]*\b': 'analyze the uploaded file'
+18:18:28 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\bquarter\b': 'give me a detailed growth strategy for next quarter'
+18:18:28 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\broot causes?\b': 'what are the root causes of my overdue problem'
+18:18:28 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\bcompare\b': 'compare my revenue trend and give insights'
+18:18:28 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\breport\b': 'give me a full business health report'
+18:18:28 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\bimprove\b': 'what should I do to improve my profitability'
+18:18:28 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\bstrateg(y|ies)\b': 'recommend a pricing strategy based on my data'
+18:18:28 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\bplan\b': 'plan my collections for the next 30 days'
+18:18:28 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:28 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:28 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\banaly[sz][a-zA-Z]*\b': 'analyze my business performance and give me a recovery plan'
+18:18:28 INFO  intent_router          [ROUTER] AI_COMPLEX (ai_complex, 0.66): 'analyze my business performance and give me a recovery plan'
+18:18:28 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_COMPLEX, handler=None, topic=business_summary) semantic=(AI_COMPLEX, None, 0.66) | q='analyze my business performance and give me a recovery plan'
+18:18:28 INFO  ai_router              [AI_COMPLEX] LangGraph agents | 'analyze my business performance and give me a recovery plan'
+18:18:28 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session c954d576-4511-4401-bb62-7566b35a2526
+18:18:28 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:28 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:28 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\broot causes?\b': 'what are the root causes of my overdue problem'
+18:18:28 INFO  intent_router          [ROUTER] AI_COMPLEX (ai_complex, 1.00): 'what are the root causes of my overdue problem'
+18:18:28 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_COMPLEX, handler=None, topic=overdue_list) semantic=(AI_COMPLEX, None, 1.00) | q='what are the root causes of my overdue problem'
+18:18:28 INFO  ai_router              [AI_COMPLEX] LangGraph agents | 'what are the root causes of my overdue problem'
+18:18:28 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 9975d15d-0eff-4c27-84ea-dbbd28671702
+18:18:28 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:28 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:28 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\bquarter\b': 'give me a detailed growth strategy for next quarter'
+18:18:28 INFO  intent_router          [ROUTER] AI_COMPLEX (ai_complex, 0.66): 'give me a detailed growth strategy for next quarter'
+18:18:28 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_COMPLEX, handler=None, topic=business_summary) semantic=(AI_COMPLEX, None, 0.66) | q='give me a detailed growth strategy for next quarter'
+18:18:28 INFO  ai_router              [AI_COMPLEX] LangGraph agents | 'give me a detailed growth strategy for next quarter'
+18:18:28 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 934aa5b7-ec93-4d26-ae49-5d4fc6671dfa
+18:18:28 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\bquarter\b': 'give me a detailed growth strategy for next quarter'
+18:18:28 INFO  intent_router          [ROUTER] AI_COMPLEX (ai_complex, 0.66): 'give me a detailed growth strategy for next quarter'
+18:18:28 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_COMPLEX, handler=None, topic=business_summary) semantic=(AI_COMPLEX, None, 0.66) | q='give me a detailed growth strategy for next quarter'
+18:18:28 INFO  ai_router              [CACHE] HIT [REQ e6ccd760] source=ai disc='q:give me a detailed growth strategy for next quarter' query='give me a detailed growth strategy for next quarter'
+18:18:28 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:28 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'show my revenue'
+18:18:28 INFO  intent_router          [ROUTER] DIRECT (total_revenue, 0.73): 'show my revenue'
+18:18:28 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_SIMPLE, handler=None, topic=total_revenue) semantic=(DIRECT, total_revenue, 0.73) | q='show my revenue'
+18:18:28 INFO  ai_router              [INTENT] Promoted AI_SIMPLE → DIRECT via topic=total_revenue
+18:18:28 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 37d34cb2-92d4-47bc-a247-14614bb91c51
+18:18:28 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:28 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:28 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'explain my cash flow situation'
+18:18:28 INFO  intent_router          [ROUTER] AI_SIMPLE (ai_simple, 1.00): 'explain my cash flow situation'
+18:18:28 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_SIMPLE, handler=None, topic=total_revenue) semantic=(AI_SIMPLE, None, 1.00) | q='explain my cash flow situation'
+18:18:28 INFO  ai_router              [INTENT] Promoted AI_SIMPLE → DIRECT via topic=total_revenue
+18:18:28 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 71be6241-4b29-4faf-bf8c-0722407bb005
+18:18:28 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:28 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'total revenue'
+18:18:28 INFO  intent_router          [ROUTER] DIRECT (total_revenue, 0.88): 'total revenue'
+18:18:28 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=total_revenue, topic=total_revenue) semantic=(DIRECT, total_revenue, 0.88) | q='total revenue'
+18:18:28 INFO  ai_router              [DIRECT] handler=total_revenue | 'total revenue'
+18:18:28 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session dc5dac55-16e3-45d3-a3c2-f89269c3dc78
+18:18:28 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:28 INFO  query_router           [ROUTER] CONVERSATIONAL: 'thanks'
+18:18:28 INFO  intent_router          [ROUTER] CONVERSATIONAL (conversational, 1.00): 'thanks'
+18:18:28 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(CONVERSATIONAL, handler=None, topic=business_summary) semantic=(CONVERSATIONAL, None, 1.00) | q='thanks'
+18:18:28 INFO  ai_router              [CONVERSATIONAL] 'thanks'
+18:18:28 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:28 INFO  query_router           [ROUTER] AI_SIMPLE (follow-up): 'tell me more about that'
+18:18:28 INFO  query_router           [ROUTER] AI_SIMPLE (follow-up): 'clarify the last point'
+18:18:28 INFO  query_router           [ROUTER] AI_SIMPLE (follow-up): 'based on that, what should I do'
+18:18:28 INFO  query_router           [ROUTER] AI_SIMPLE (follow-up): 'and what about the inventory'
+18:18:29 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:29 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'and what about the inventory'
+18:18:29 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:29 INFO  query_router           [ROUTER] AI_SIMPLE (digit query): 'show me invoices from 2023'
+18:18:29 INFO  query_router           [ROUTER] AI_SIMPLE (digit query): 'customers who owe more than 75000'
+18:18:29 INFO  query_router           [ROUTER] AI_SIMPLE (digit query): 'invoices between 500 and 2000'
+18:18:29 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:29 INFO  query_router           [ROUTER] DIRECT (top_customers): 'top 5 customers by revenue'
+18:18:29 INFO  query_router           [ROUTER] DIRECT (expiring_soon): 'items expiring in 30 days'
+18:18:29 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:29 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:29 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'total revenue'
+18:18:29 INFO  intent_router          [ROUTER] DIRECT (total_revenue, 0.88): 'total revenue'
+18:18:29 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=total_revenue, topic=total_revenue) semantic=(DIRECT, total_revenue, 0.88) | q='total revenue'
+18:18:29 INFO  ai_router              [DIRECT] handler=total_revenue | 'total revenue'
+18:18:29 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session 53166ec2-e771-4b40-a1d2-8ade12d875a4
+18:18:29 INFO  query_router           [ROUTER] DIRECT (overdue_list): 'show overdue invoices'
+18:18:29 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 1.00): 'show overdue invoices'
+18:18:29 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=overdue_list, topic=overdue_list) semantic=(DIRECT, overdue_list, 1.00) | q='show overdue invoices'
+18:18:29 INFO  ai_router              [DIRECT] handler=overdue_list | 'show overdue invoices'
+18:18:29 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session dbf3d65a-93e6-4248-a122-95f979910cac
+18:18:29 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:29 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): ''
+18:18:29 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_SIMPLE, handler=None, topic=business_summary) semantic=(AI_SIMPLE, None, 0.00) | q=''
+18:18:29 INFO  ai_router              [AI_SIMPLE] model=llama-3.1-8b-instant | ''
+18:18:29 INFO  embeddings             [CHROMA] Saved chat turn for user 78, session eac75c90-8072-465f-a8db-73e1ebf8a3f0
+18:18:29 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'hi'
+18:18:29 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'total revenue'
+18:18:29 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'who is my most reliable supplier?'
+18:18:29 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\banaly[sz][a-zA-Z]*\b': 'analyze my business and give a growth strategy'
+18:18:29 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'thanks'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'okay got it'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'hi there'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'sounds good'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'yes'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'no'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'cool'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'great'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'bye'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'perfect'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'noted'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'makes sense'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'yep'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'got it thanks'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'hi'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'hello'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'hey'
+18:18:29 INFO  query_router           [ROUTER] CONVERSATIONAL: 'okay'
+18:18:29 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:29 INFO  query_router           [ROUTER] DIRECT (invoice_count): 'how many invoices do I have'
+18:18:29 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'what is my total revenue'
+18:18:29 INFO  query_router           [ROUTER] DIRECT (overdue_list): 'show overdue invoices'
+18:18:29 INFO  query_router           [ROUTER] DIRECT (low_stock): 'list low stock items'
+18:18:29 INFO  query_router           [ROUTER] DIRECT (expiring_soon): 'which products are expiring soon'
+18:18:29 INFO  query_router           [ROUTER] DIRECT (top_customers): 'top 5 customers by revenue'
+18:18:29 INFO  query_router           [ROUTER] DIRECT (pending_list): 'show me pending invoices'
+18:18:29 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:29 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\banaly[sz][a-zA-Z]*\b': 'analyze my business performance and give me a recovery plan'
+18:18:29 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\bwhy is\b': 'why is my collection rate low and how do I fix it'
+18:18:29 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\bquarter\b': 'give me a detailed growth strategy for next quarter'
+18:18:29 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\broot causes?\b': 'what are the root causes of my overdue problem'
+18:18:29 INFO  auth                   [AUTH] Signup attempt for username 'test_shadow_c28cc66c'...
+18:18:29 INFO  auth                   [AUTH] User 'test_shadow_c28cc66c' registered and authenticated.
+18:18:29 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:29 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'total revenue'
+18:18:29 INFO  ai_router              [ROUTER][shadow] DISAGREE | regex=(DIRECT, handler=total_revenue, topic=total_revenue) semantic=(DIRECT, overdue_list, 0.91) | q='total revenue'
+18:18:29 INFO  ai_router              [DIRECT] handler=total_revenue | 'total revenue'
+18:18:29 INFO  embeddings             [CHROMA] Saved chat turn for user 79, session 49c2bc9e-ec8a-46c9-9883-4159bc421e8a
+18:18:29 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:29 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'total revenue'
+18:18:29 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=total_revenue, topic=total_revenue) semantic=(DIRECT, total_revenue, 0.88) | q='total revenue'
+18:18:29 INFO  ai_router              [DIRECT] handler=total_revenue | 'total revenue'
+18:18:29 INFO  embeddings             [CHROMA] Saved chat turn for user 79, session 97a8d3f5-ffd8-4317-ba3a-b5f5673caeb1
+18:18:29 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:29 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'total revenue'
+18:18:29 INFO  ai_router              [DIRECT] handler=total_revenue | 'total revenue'
+18:18:30 INFO  embeddings             [CHROMA] Saved chat turn for user 79, session 335bc53f-b1c4-4be2-b925-5770f5898f6a
+18:18:30 ERROR smart_insights         [ADVISOR] generate_insights failed: no model
+Traceback (most recent call last):
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\backend\services\smart_insights.py", line 292, in generate_insights
+    resp = client.chat.completions.create(
+  File "D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\backend\tests\test_smart_insights.py", line 143, in create
+    raise RuntimeError("no model")
+RuntimeError: no model
+18:18:30 INFO  auth                   [AUTH] Signup attempt for username 'test_tokens_251e226d'...
+18:18:30 INFO  auth                   [AUTH] User 'test_tokens_251e226d' registered and authenticated.
+18:18:30 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:30 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:30 INFO  query_router           [ROUTER] AI_SIMPLE (fallback): 'who is my most reliable supplier?'
+18:18:30 INFO  intent_router          [ROUTER] DIRECT (top_customers, 0.54): 'who is my most reliable supplier?'
+18:18:30 INFO  ai_router              [ROUTER][shadow] DISAGREE | regex=(AI_SIMPLE, handler=None, topic=business_summary) semantic=(DIRECT, top_customers, 0.54) | q='who is my most reliable supplier?'
+18:18:30 INFO  ai_router              [AI_SIMPLE] model=llama-3.1-8b-instant | 'who is my most reliable supplier?'
+18:18:30 INFO  embeddings             [CHROMA] Saved chat turn for user 80, session c606197f-3766-4cef-9b6a-e44629abdcb9
+18:18:30 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:30 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:30 INFO  query_router           [ROUTER] DIRECT (invoice_count): 'how many invoices do I have'
+18:18:30 INFO  intent_router          [ROUTER] DIRECT (invoice_count, 1.00): 'how many invoices do I have'
+18:18:30 INFO  ai_router              [ROUTER][shadow] DISAGREE | regex=(DIRECT, handler=invoice_count, topic=total_revenue) semantic=(DIRECT, invoice_count, 1.00) | q='how many invoices do I have'
+18:18:30 INFO  ai_router              [DIRECT] handler=invoice_count | 'how many invoices do I have'
+18:18:30 INFO  embeddings             [CHROMA] Saved chat turn for user 80, session eec6eefc-1416-49c4-a320-00de0edbfdbd
+18:18:30 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:30 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:30 INFO  query_router           [ROUTER] CONVERSATIONAL: 'hi there'
+18:18:30 INFO  intent_router          [ROUTER] CONVERSATIONAL (conversational, 0.80): 'hi there'
+18:18:30 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(CONVERSATIONAL, handler=None, topic=business_summary) semantic=(CONVERSATIONAL, None, 0.80) | q='hi there'
+18:18:30 INFO  ai_router              [CONVERSATIONAL] 'hi there'
+18:18:30 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:30 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:30 INFO  query_router           [ROUTER] AI_COMPLEX pattern='\banaly[sz][a-zA-Z]*\b': 'analyze my business and give me a recovery plan'
+18:18:30 INFO  intent_router          [ROUTER] AI_COMPLEX (ai_complex, 0.63): 'analyze my business and give me a recovery plan'
+18:18:30 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(AI_COMPLEX, handler=None, topic=business_summary) semantic=(AI_COMPLEX, None, 0.63) | q='analyze my business and give me a recovery plan'
+18:18:30 INFO  ai_router              [AI_COMPLEX] LangGraph agents | 'analyze my business and give me a recovery plan'
+18:18:30 INFO  embeddings             [CHROMA] Saved chat turn for user 80, session cb14c645-ef72-4292-8443-57778b22bf78
+18:18:30 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:30 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:30 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'total revenue'
+18:18:31 INFO  intent_router          [ROUTER] DIRECT (total_revenue, 0.88): 'total revenue'
+18:18:31 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=total_revenue, topic=total_revenue) semantic=(DIRECT, total_revenue, 0.88) | q='total revenue'
+18:18:31 INFO  ai_router              [DIRECT] handler=total_revenue | 'total revenue'
+18:18:31 INFO  embeddings             [CHROMA] Saved chat turn for user 80, session 06b4d0e6-989a-4603-b1bc-183570ba90f8
+18:18:31 INFO  context_cache          [CACHE] Global cache invalidated (all users).
+18:18:31 INFO  query_router           [ROUTER] DIRECT (total_revenue): 'total revenue'
+18:18:31 INFO  intent_router          [ROUTER] DIRECT (total_revenue, 0.88): 'total revenue'
+18:18:31 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=total_revenue, topic=total_revenue) semantic=(DIRECT, total_revenue, 0.88) | q='total revenue'
+18:18:31 INFO  ai_router              [DIRECT] handler=total_revenue | 'total revenue'
+18:18:31 INFO  embeddings             [CHROMA] Saved chat turn for user 80, session 8c0ef35e-cca0-4ff1-9695-72a62922f306
+18:18:57 WARN  auth                   [AUTH] Token rejected — invalid token
+18:18:57 WARN  auth                   [AUTH] Token rejected — invalid token
+18:18:57 WARN  auth                   [AUTH] Token rejected — invalid token
+18:18:57 WARN  auth                   [AUTH] Token rejected — invalid token
+18:18:57 WARN  auth                   [AUTH] Token rejected — invalid token
+18:18:57 WARN  auth                   [AUTH] Token rejected — invalid token
+18:18:57 WARN  auth                   [AUTH] Token rejected — invalid token
+18:18:57 WARN  auth                   [AUTH] Token rejected — invalid token
+18:18:57 WARN  auth                   [AUTH] Token rejected — invalid token
+18:18:57 WARN  auth                   [AUTH] Token rejected — invalid token
+18:18:57 WARN  auth                   [AUTH] Token rejected — invalid token
+18:18:57 WARN  auth                   [AUTH] Token rejected — invalid token
+18:19:06 INFO  auth                   [AUTH] Login attempt for username 'Rakshith'...
+18:19:06 INFO  auth                   [AUTH] User 'Rakshith' authenticated (role=enterprise).
+18:19:06 INFO  chat                   User 2 fetching list of chat sessions...
+18:19:06 INFO  chat                   Retrieved 19 sessions for user 2.
+18:19:07 INFO  chat                   User 2 fetching list of chat sessions...
+18:19:07 INFO  chat                   Retrieved 19 sessions for user 2.
+18:19:21 INFO  query_router           [ROUTER] DIRECT (overdue_list): 'show overdue invoices'
+18:19:21 DEBUG ai_router              [REQ 9b70770d] user=2 route=DIRECT handler=overdue_list topic=overdue_list writing=False cache_disc='overdue_list' q='show overdue invoices'
+18:19:22 INFO  intent_router          [ROUTER] Semantic router warm — 122 seed examples
+18:19:23 INFO  intent_router          [ROUTER] DIRECT (overdue_list, 1.00): 'show overdue invoices'
+18:19:23 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=overdue_list, topic=overdue_list) semantic=(DIRECT, overdue_list, 1.00) | q='show overdue invoices'
+18:19:23 INFO  ai_router              [DIRECT] handler=overdue_list | 'show overdue invoices'
+18:19:23 INFO  embeddings             [CHROMA] Initialized persistent client at D:\Dev Workspace\ai_agent_lab_google(1)\bizassist\backend\chroma_db
+18:19:23 INFO  embeddings             [CHROMA] Saved chat turn for user 2, session 00adb02e-8255-44d0-ac30-f2fb23dfb5cb
+18:19:23 INFO  chat                   User 2 fetching list of chat sessions...
+18:19:23 INFO  chat                   Retrieved 20 sessions for user 2.
+18:19:23 INFO  chat                   User 2 fetching list of chat sessions...
+18:19:23 INFO  chat                   Retrieved 20 sessions for user 2.
+18:19:23 INFO  chat                   User 2 fetching list of chat sessions...
+18:19:23 INFO  chat                   Retrieved 20 sessions for user 2.
+18:19:40 INFO  query_router           [ROUTER] DIRECT (low_stock): 'low stock items'
+18:19:40 DEBUG ai_router              [REQ ad081ad1] user=2 route=DIRECT handler=low_stock topic=low_stock writing=False cache_disc='low_stock' q='low stock items'
+18:19:40 INFO  intent_router          [ROUTER] DIRECT (low_stock, 1.00): 'low stock items'
+18:19:40 INFO  ai_router              [ROUTER][shadow] AGREE | regex=(DIRECT, handler=low_stock, topic=low_stock) semantic=(DIRECT, low_stock, 1.00) | q='low stock items'
+18:19:40 INFO  ai_router              [DIRECT] handler=low_stock | 'low stock items'

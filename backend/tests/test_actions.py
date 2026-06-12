@@ -18,7 +18,7 @@ sys.path.insert(0, backend_path)
 import pytest
 import services.actions as actions
 from database.db import SessionLocal
-from database.models import Base, Invoice, Customer, User, ActionLog
+from database.models import Base, Invoice, Customer, User, ActionLog, Inventory
 
 BID = 660011
 
@@ -34,7 +34,7 @@ def _ensure_schema():
 def _clear():
     db = SessionLocal()
     try:
-        for M in (Invoice, Customer, ActionLog):
+        for M in (Invoice, Customer, ActionLog, Inventory):
             db.query(M).filter(M.business_id == BID).delete()
         db.query(User).filter(User.id == BID).delete()
         db.commit()
@@ -45,13 +45,17 @@ def _clear():
 def _seed():
     db = SessionLocal()
     try:
-        db.add(User(id=BID, username=f"biz{BID}", password="x", business_name="Test Biz"))
+        db.add(User(id=BID, username=f"biz{BID}", password="x", business_name="Test Biz", email="owner@example.com"))
         db.add(Customer(business_id=BID, name="Acme", email="acme@example.com"))
         db.add(Customer(business_id=BID, name="NoMail"))  # no email
         db.add_all([
             Invoice(business_id=BID, invoice_id="A-1", customer="Acme",   amount=5000, status="Overdue", due_date="2024-01-01"),
             Invoice(business_id=BID, invoice_id="N-1", customer="NoMail", amount=3000, status="Overdue", due_date="2024-01-01"),
             Invoice(business_id=BID, invoice_id="TST-INV-1", customer="Acme", amount=900, status="Overdue", due_date="2024-02-01"),
+        ])
+        db.add_all([
+            Inventory(business_id=BID, product_name="Widget", stock=3,  reorder_point=10, supplier="AcmeSupply"),
+            Inventory(business_id=BID, product_name="Gadget", stock=50, reorder_point=10, supplier="AcmeSupply"),
         ])
         db.commit()
     finally:
@@ -135,3 +139,62 @@ def test_mark_paid_is_noop_when_already_paid():
 def test_mark_paid_unknown_invoice():
     pv = actions.preview("mark_invoice_paid", BID, {"query": "mark ZZ-INV-9999 paid"})
     assert pv["executable"] is False
+
+
+# ── email_reminder_digest (owner digest) ────────────────────────────
+
+@patch("services.actions.email_configured", return_value=True)
+def test_digest_previews_to_owner_email(_cfg):
+    pv = actions.preview("email_reminder_digest", BID)
+    assert pv["executable"] is True
+    assert pv["recipient"] == "owner@example.com"
+
+
+@patch("services.actions.email_configured", return_value=False)
+def test_digest_not_executable_without_smtp(_cfg):
+    pv = actions.preview("email_reminder_digest", BID)
+    assert pv["executable"] is False
+
+
+@patch("services.actions.email_configured", return_value=True)
+@patch("services.actions.send_email", return_value=True)
+def test_digest_sends_once_per_day(mock_send, _cfg):
+    r1 = actions.execute("email_reminder_digest", BID)
+    assert r1["ok"] and r1["executed"] == 1
+    assert mock_send.call_count == 1
+    r2 = actions.execute("email_reminder_digest", BID)   # same day → idempotent
+    assert mock_send.call_count == 1
+    assert "already" in r2["markdown"].lower()
+
+
+# ── escalate_overdue (90+ days) ─────────────────────────────────────
+
+@patch("services.actions.email_configured", return_value=True)
+def test_escalate_finds_90plus_accounts(_cfg):
+    # all seed overdue invoices are due in 2024 → well over 90 days
+    pv = actions.preview("escalate_overdue", BID)
+    names = {i["customer"] for i in pv["items"]}
+    assert {"Acme", "NoMail"} <= names
+    assert pv["executable"] is True
+
+
+# ── draft_reorder_po (low stock) ────────────────────────────────────
+
+def test_reorder_selects_only_low_stock():
+    pv = actions.preview("draft_reorder_po", BID)
+    labels = " ".join(i["customer"] for i in pv["items"])
+    assert "Widget" in labels        # stock 3 <= reorder point 10
+    assert "Gadget" not in labels     # stock 50 — above
+    assert pv["executable"] is True
+
+
+def test_reorder_execute_logs_draft():
+    res = actions.execute("draft_reorder_po", BID)
+    assert res["ok"] and res["executed"] == 1   # only Widget
+    db = SessionLocal()
+    try:
+        n = db.query(ActionLog).filter(ActionLog.business_id == BID,
+                                       ActionLog.action == "draft_reorder_po").count()
+        assert n == 1
+    finally:
+        db.close()

@@ -81,12 +81,15 @@ def signals(user_id: int) -> dict:
 RECS = {
     "overdue_list": lambda s: [
         select("send_reminders", "Send reminders", "send_payment_reminders", s.get("overdue_options", []), "bell") if s.get("overdue_options") else action("send_reminders", "Send reminders", "send_payment_reminders", "bell"),
+        action("digest", "Email me the digest", "email_reminder_digest", "bell"),
+        action("escalate", "Escalate 90+ days", "escalate_overdue", "alert"),
         ai("recovery", "Recovery plan", "Draft a polite, prioritized plan to recover my overdue invoices."),
         det("top_debtors", "Top debtors", "top_debtors", "trophy"),
     ],
     "overdue_amount": lambda s: [
         det("overdue_list", "See overdue list", "overdue_list", "alert"),
         action("send_reminders", "Send reminders", "send_payment_reminders", "bell"),
+        action("digest", "Email me the digest", "email_reminder_digest", "bell"),
         ai("recovery", "Recovery plan", "Draft a polite, prioritized plan to recover my overdue invoices."),
     ],
     "pending_list": lambda s: [
@@ -104,6 +107,7 @@ RECS = {
     ],
     "top_debtors": lambda s: [
         select("send_reminders", "Send reminders", "send_payment_reminders", s.get("overdue_options", []), "bell") if s.get("overdue_options") else action("send_reminders", "Send reminders", "send_payment_reminders", "bell"),
+        action("escalate", "Escalate 90+ days", "escalate_overdue", "alert"),
         det("overdue", "Overdue list", "overdue_list", "alert"),
         ai("recovery", "Recovery plan", "Draft a polite, prioritized plan to recover my overdue invoices."),
     ],
@@ -111,6 +115,7 @@ RECS = {
         ai("retain", "Retention ideas", "Suggest loyalty/retention offers for my top customers."),
     ],
     "low_stock": lambda s: [
+        action("reorder_po", "Draft reorder", "draft_reorder_po", "package"),
         det("inventory_count", "Full inventory", "inventory_count", "package"),
         ai("reorder", "Reorder advice", "Recommend reorder quantities and timing for my low-stock products."),
     ],
