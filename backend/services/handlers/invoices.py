@@ -11,6 +11,7 @@ To add a new handler:
   3. Add intent mapping in services/intents.py INTENT_MAP
 """
 import logging
+import re
 from datetime import datetime, timedelta
 from sqlalchemy import func
 from database.db import SessionLocal
@@ -18,6 +19,42 @@ from database.models import Invoice, Inventory, Payment
 from services.dates import parse_date
 
 logger = logging.getLogger("bizassist.handlers.invoices")
+
+# Invoice IDs look like SUP-INV-0138 / ROY-INV-0001 — a 2–6 letter prefix, INV, digits.
+INVOICE_ID_RE = re.compile(r"\b([A-Za-z]{2,6}-INV-\d+)\b", re.I)
+
+
+def _invoice_detail(user_id: int, query: str) -> str:
+    """Details for ONE invoice by its ID — straight from the DB, never generated."""
+    m = INVOICE_ID_RE.search(query or "")
+    if not m:
+        return None   # no ID present → let another layer handle it
+    inv_id = m.group(1)
+    db = SessionLocal()
+    try:
+        r = (
+            db.query(Invoice)
+            .filter(Invoice.business_id == user_id,
+                    func.lower(Invoice.invoice_id) == inv_id.lower())
+            .first()
+        )
+        if not r:
+            return (f"No invoice with ID **{inv_id}** exists in your records. "
+                    f"Check the ID, or ask for a customer's invoices to see valid IDs.")
+        return "\n".join([
+            f"**Invoice {r.invoice_id}**\n",
+            f"- Customer     : {r.customer or '—'}",
+            f"- Amount       : ₹{(r.amount or 0):,.0f}",
+            f"- Status       : {r.status or '—'}",
+            f"- Invoice date : {r.invoice_date or '—'}",
+            f"- Due date     : {r.due_date or '—'}",
+            f"- Product      : {r.product}" if getattr(r, "product", None) else "",
+        ]).rstrip()
+    except Exception as e:
+        logger.error("invoice_detail failed: %s", e, exc_info=True)
+        return None
+    finally:
+        db.close()
 
 def _invoice_count(user_id: int) -> str:
     db = SessionLocal()

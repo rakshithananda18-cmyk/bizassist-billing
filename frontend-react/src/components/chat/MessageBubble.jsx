@@ -7,6 +7,7 @@
 import { renderMarkdown } from '../../utils/markdown'
 import TierBadge from './TierBadge'
 import InlineChart from './InlineChart'
+import MessageFeedback from './MessageFeedback'
 
 const ALERT_ICONS = {
   cashflow:      '⚠',
@@ -37,7 +38,7 @@ function AlertChips({ alerts }) {
   )
 }
 
-export default function MessageBubble({ msg, innerRef }) {
+export default function MessageBubble({ msg, innerRef, query, sessionId }) {
   if (msg.role === 'user') {
     return (
       <div className="message-row user-row">
@@ -63,6 +64,14 @@ export default function MessageBubble({ msg, innerRef }) {
             modelTier={msg.model_tier}
             cached={msg.cached}
             content={msg.content}
+          />
+        )}
+        {msg.role === 'assistant' && msg.source && (
+          <MessageFeedback
+            query={query}
+            source={msg.source}
+            modelTier={msg.model_tier}
+            sessionId={sessionId}
           />
         )}
       </div>

@@ -40,6 +40,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
   const [sessions, setSessions] = useState([])
   const [summary, setSummary] = useState(null)
   const [customers, setCustomers] = useState([])
+  const [panelInsights, setPanelInsights] = useState(null)
   const [collapsedSections, setCollapsedSections] = useState(() => ({
     progress: localStorage.getItem('rp_section_progress') === 'collapsed',
     alerts: localStorage.getItem('rp_section_alerts') === 'collapsed',
@@ -89,14 +90,16 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
 
   async function loadInsightsData() {
     try {
-      const [sessionsData, summaryRes, customersRes] = await Promise.all([
+      const [sessionsData, summaryRes, customersRes, insightsRes] = await Promise.all([
         fetchSessions(authFetch),   // shared/de-duped request
         authFetch(`${API_BASE}/dashboard-summary`),
-        authFetch(`${API_BASE}/top-customers`)
+        authFetch(`${API_BASE}/top-customers`),
+        authFetch(`${API_BASE}/smart-insights/summary`),   // free, deterministic
       ])
       if (sessionsData) setSessions(sessionsData)
       if (summaryRes.ok) setSummary(await summaryRes.json())
       if (customersRes.ok) setCustomers(await customersRes.json())
+      if (insightsRes.ok) setPanelInsights(await insightsRes.json())
     } catch (err) {
       console.error('Failed to load insights data:', err)
     }
@@ -167,7 +170,11 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
   }
 
   // intent set -> deterministic /intent (0 AI tokens); else natural-language AI query
-  function sendChip(query, intent) {
+  function sendChip(query, intent, smartInsights = false) {
+    if (smartInsights) {
+      window.dispatchEvent(new CustomEvent('ai-shortcut', { detail: { smartInsights: true } }))
+      return
+    }
     sessionStorage.setItem('prefill_query', query)
     window.dispatchEvent(new CustomEvent('ai-shortcut', { detail: { query, intent, label: query } }))
   }
@@ -373,75 +380,61 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
             </svg>
           </div>
           <div className="rp-section-body" id="rp-context-body">
-
-            {/* Revenue card */}
-            <div id="insights-metrics">
-              {summary && (
-                <div className="ip-card ip-card-accent" onClick={() => sendChip('Give me a complete revenue breakdown — paid, pending and overdue', 'revenue_summary')}>
-                  <div className="ip-card-top">
-                    <div>
-                      <div className="ip-card-label">Total Revenue</div>
-                      <div className="ip-card-value">₹{(revenue / 100000).toFixed(1)}L</div>
-                      <div className="ip-card-sub">{total} invoices total</div>
-                    </div>
-                    <div className="ip-donut-wrap" style={{ position: 'relative', width: 64, height: 64, flexShrink: 0 }}>
-                      <DonutChart paid={paidCount} pending={pending} overdue={overdueCount} healthPct={healthPct} />
-                      <div className="ip-donut-center" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'var(--text-color)' }}>
-                        {healthPct}%
-                      </div>
-                    </div>
-                  </div>
-                  <div className="ip-legend">
-                    <span className="ip-dot" style={{ background: '#3a9a5c' }}></span><span>Paid</span>
-                    <span className="ip-dot" style={{ background: '#c97c22' }}></span><span>Pend</span>
-                    <span className="ip-dot" style={{ background: '#c94242' }}></span><span>Over</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Overdue card */}
-            <div id="insights-customers">
-              {summary && (
-                <div className="ip-card ip-card-danger" onClick={() => sendChip('List all overdue invoices with amounts and due dates', 'overdue_list')}>
-                  <div className="ip-card-label">Overdue Amount</div>
-                  <div className="ip-card-value" style={{ color: '#c94242' }}>
-                    ₹{Number(overdueAmt).toLocaleString('en-IN')}
-                  </div>
-                  <div className="ip-card-sub">{pending} pending invoices</div>
-                  <div className="ip-alert-bar">
-                    <div className="ip-alert-fill" style={{ width: `${overPctBar}%` }}></div>
-                  </div>
-                  <div className="ip-card-cta">Tap to see full list →</div>
-                </div>
-              )}
-            </div>
-
-            {/* Top customers & warnings */}
-            <div id="insights-alerts">
-              <div className="ip-section" onClick={() => sendChip('Who are my top customers by revenue? Give full details', 'top_customers')}>
-                <div className="ip-section-header">
-                  <span className="ip-section-title">Top Customers</span>
-                  <span className="ip-section-cta">View all →</span>
-                </div>
-                <div className="ip-bars">
-                  {customers.slice(0, 4).map((c, i) => {
-                    const pct = Math.max(4, (c.total / maxCust) * 100)
-                    const label = c.customer.length > 12 ? c.customer.slice(0, 11) + '…' : c.customer
-                    return (
-                      <div key={i} className="bar-row">
-                        <div className="bar-label">{label}</div>
-                        <div className="bar-track">
-                          <div className="bar-fill" style={{ width: `${pct}%`, background: 'var(--accent-color)' }}></div>
-                        </div>
-                        <div className="bar-value">₹{Math.round(c.total / 1000)}k</div>
-                      </div>
-                    )
-                  })}
-                </div>
+            {!panelInsights && (
+              <div style={{ fontSize: 12, opacity: 0.6, padding: '8px 2px' }}>Reading your business…</div>
+            )}
+            {panelInsights && !panelInsights.has_data && (
+              <div style={{ fontSize: 12, opacity: 0.7, padding: '8px 2px' }}>
+                Upload invoices and inventory to see what's working and what to fix.
               </div>
-            </div>
+            )}
+            {panelInsights && panelInsights.has_data && (
+              <>
+                {/* What's working */}
+                <div className="ip-insight-group">
+                  <div className="ip-insight-head" style={{ color: '#3a9a5c' }}>
+                    ✓ What's working
+                  </div>
+                  {(panelInsights.positives || []).length === 0 && (
+                    <div style={{ fontSize: 12, opacity: 0.55, padding: '2px 0 8px' }}>—</div>
+                  )}
+                  {(panelInsights.positives || []).map((it, i) => (
+                    <div key={i} className="ip-card" style={{ borderLeft: '3px solid #3a9a5c', marginBottom: 8 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{it.title}</div>
+                      <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>{it.detail}</div>
+                    </div>
+                  ))}
+                </div>
 
+                {/* Could be better */}
+                <div className="ip-insight-group" style={{ marginTop: 10 }}>
+                  <div className="ip-insight-head" style={{ color: '#c97c22' }}>
+                    ⚠ Could be better
+                  </div>
+                  {(panelInsights.improvements || []).length === 0 && (
+                    <div style={{ fontSize: 12, opacity: 0.55, padding: '2px 0 8px' }}>Nothing urgent — nicely done.</div>
+                  )}
+                  {(panelInsights.improvements || []).map((it, i) => (
+                    <div key={i} className="ip-card" style={{ borderLeft: '3px solid #c97c22', marginBottom: 8 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{it.title}</div>
+                      <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>{it.detail}</div>
+                      {it.action && (
+                        <div style={{ fontSize: 12, marginTop: 4, opacity: 0.95 }}>→ {it.action}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  className="ip-card"
+                  onClick={() => sendChip('Smart Insights — grow my business', null, true)}
+                  style={{ width: '100%', textAlign: 'center', marginTop: 10, cursor: 'pointer',
+                           border: '1px dashed var(--border-color)', background: 'transparent', fontSize: 12, fontWeight: 600 }}
+                >
+                  🚀 Get full AI growth plan
+                </button>
+              </>
+            )}
           </div>
         </div>
 

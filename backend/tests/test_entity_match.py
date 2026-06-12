@@ -82,33 +82,80 @@ def test_short_non_name_query_is_left_alone(mock_extract):
 
 
 @patch("services.ai_router._extract_customer_name")
-def test_long_query_skips_entity_check(mock_extract):
-    # too long to be a bare name → don't even hit the DB
-    out = _maybe_entity_first("AI_SIMPLE", None, "tell me everything about namdhari fresh right now please", 1)
-    assert out == ("AI_SIMPLE", None)
-    mock_extract.assert_not_called()
-
-
-@patch("services.ai_router._extract_customer_name")
 def test_lookup_phrase_with_typo_still_reroutes(mock_extract):
-    # 'do yo know Rahul traders' is 5 words (over the old 4 cap) with a typo — it
-    # used to fall through to AI_SIMPLE and serve a cached generic business summary.
+    # 'do yo know Rahul traders' — typo'd lookup must still scope to the customer.
     mock_extract.return_value = "Rahul Traders"
     assert _maybe_entity_first("AI_SIMPLE", None, "do yo know Rahul traders", 1) == ("DIRECT", "client_summary")
 
 
 @patch("services.ai_router._extract_customer_name")
-def test_analytical_keyword_blocks_entity_first(mock_extract):
-    # a name inside an analytical question must NOT be hijacked to client_summary
-    out = _maybe_entity_first("AI_SIMPLE", None, "show overdue for star bazaar", 1)
+def test_customer_scoped_aggregate_reroutes(mock_extract):
+    # 'how much does Nilgiris Fresh owe me' routed to the GLOBAL overdue list — a
+    # named single customer must scope it to that customer's summary instead.
+    mock_extract.return_value = "Nilgiris Fresh"
+    assert _maybe_entity_first("DIRECT", "overdue_list",
+                               "how much does Nilgiris Fresh owe me", 1) == ("DIRECT", "client_summary")
+
+
+@patch("services.ai_router._extract_customer_name", return_value=None)
+def test_list_all_phrasing_stays_global(mock_extract):
+    # 'list all overdue customers' names no customer → stays the global list.
+    assert _maybe_entity_first("DIRECT", "overdue_list", "list all overdue customers", 1) == ("DIRECT", "overdue_list")
+
+
+@patch("services.ai_router._extract_customer_name", return_value=None)
+def test_ranking_phrasing_stays_global(mock_extract):
+    # 'who owes me the most' (top debtors) names no customer → stays the ranked list.
+    assert _maybe_entity_first("DIRECT", "top_debtors", "who owes me the most", 1) == ("DIRECT", "top_debtors")
+
+
+@patch("services.ai_router._extract_customer_name")
+def test_invoice_id_routes_to_invoice_detail(mock_extract):
+    # a specific invoice ID → its detail row, regardless of how it first classified.
+    out = _maybe_entity_first("AI_SIMPLE", None, "give details about invoice SUP-INV-0138", 1)
+    assert out == ("DIRECT", "invoice_detail")
+    mock_extract.assert_not_called()
+
+
+@patch("services.ai_router._extract_customer_name")
+def test_customer_invoice_list_routes_to_customer_invoices(mock_extract):
+    # 'give Annapurna Provisions invoices in table format' → full ledger handler.
+    mock_extract.return_value = "Annapurna Provisions"
+    assert _maybe_entity_first("AI_SIMPLE", None,
+                               "give annapurna provisions invoices in table format", 1) == ("DIRECT", "customer_invoices")
+
+
+@patch("services.ai_router._extract_customer_name")
+def test_plain_client_summary_not_re_extracted(mock_extract):
+    # 'tell me about nilgiris fresh' is already client_summary and has no invoice
+    # ask → left as-is without a second customer lookup.
+    out = _maybe_entity_first("DIRECT", "client_summary", "tell me about nilgiris fresh", 1)
+    assert out == ("DIRECT", "client_summary")
+    mock_extract.assert_not_called()
+
+
+@patch("services.ai_router._extract_customer_name")
+def test_client_summary_upgrades_to_invoice_table(mock_extract):
+    # 'nilgiris fresh invoices' that classified as client_summary upgrades to the
+    # full invoice table.
+    mock_extract.return_value = "Nilgiris Fresh"
+    assert _maybe_entity_first("DIRECT", "client_summary",
+                               "nilgiris fresh invoices", 1) == ("DIRECT", "customer_invoices")
+
+
+@patch("services.ai_router._extract_customer_name")
+def test_writing_task_not_scoped(mock_extract):
+    # 'draft a reminder for Nilgiris Fresh' must stay a writing task, not a summary.
+    out = _maybe_entity_first("AI_SIMPLE", None, "draft a reminder for Nilgiris Fresh", 1)
     assert out == ("AI_SIMPLE", None)
     mock_extract.assert_not_called()
 
 
 @patch("services.ai_router._extract_customer_name")
-def test_non_ai_simple_routes_untouched(mock_extract):
-    out = _maybe_entity_first("DIRECT", "overdue_list", "show overdue", 1)
-    assert out == ("DIRECT", "overdue_list")
+def test_non_aggregate_direct_untouched(mock_extract):
+    # a non-aggregate DIRECT handler (low_stock) is left alone — no customer scope.
+    out = _maybe_entity_first("DIRECT", "low_stock", "what's running low", 1)
+    assert out == ("DIRECT", "low_stock")
     mock_extract.assert_not_called()
 
 
@@ -166,3 +213,12 @@ def test_candidates_are_ranked_best_first():
     # 'star' is closest to 'Star Bazaar'
     cands = _match_customer_candidates("do you know star", _CAND_NAMES)
     assert cands and cands[0] == "Star Bazaar"
+
+
+# ── invoice-ID extraction ─────────────────────────────────────────────────
+
+def test_invoice_id_regex_extracts():
+    from services.handlers.invoices import INVOICE_ID_RE
+    assert INVOICE_ID_RE.search("give details about invoice SUP-INV-0138").group(0).upper() == "SUP-INV-0138"
+    assert INVOICE_ID_RE.search("ROY-INV-0001 status and amount").group(0).upper() == "ROY-INV-0001"
+    assert INVOICE_ID_RE.search("how much revenue do I have") is None

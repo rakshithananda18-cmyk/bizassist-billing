@@ -25,6 +25,8 @@ from routes.alerts import router as alerts_router
 from routes.intents import router as intents_router
 from routes.actions import router as actions_router
 from routes.ask import router as ask_router
+from routes.feedback import router as feedback_router
+from routes.smart_insights import router as smart_insights_router
 from database.db import engine
 from database.models import Base
 from database.migration import run_migrations_and_seed
@@ -91,3 +93,5 @@ app.include_router(chat_router)
 app.include_router(alerts_router)
 app.include_router(intents_router)
 app.include_router(actions_router)
+app.include_router(feedback_router)
+app.include_router(smart_insights_router)

@@ -16,6 +16,7 @@ const svgIcon = (children) => (
 )
 
 const CHIPS = [
+  { icon: svgIcon(<><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2Z" /><line x1="9" y1="21" x2="15" y2="21" /></>), label: 'Smart Insights', smartInsights: true },
   { icon: svgIcon(<><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></>), label: 'Top debtors', query: 'Show my top debtors by overdue amount', intent: 'top_debtors' },
   { icon: svgIcon(<><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></>), label: 'Expiring soon', query: 'What stock is expiring soon?', intent: 'expiring_soon' },
   { icon: svgIcon(<><line x1="6" y1="20" x2="6" y2="14" /><line x1="12" y1="20" x2="12" y2="10" /><line x1="18" y1="20" x2="18" y2="4" /></>), label: 'Revenue summary', query: 'Show me the total revenue and pending payments summary', intent: 'revenue_summary' },
@@ -278,8 +279,45 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
     }
   }, [input, activeId, loading, rateLimited, authFetch, loadSessions])
 
+  // ── Smart Insights advisor (on-demand) ────────────────────────────────────
+  const runSmartInsights = useCallback(async () => {
+    if (loading) return
+    setChipsExpanded(false)
+    setMessages(prev => [...prev, { role: 'user', content: 'Smart Insights — grow my business' }])
+    setLoading(true)
+    try {
+      const res = await authFetch(`${API_BASE}/smart-insights`)
+      const data = res.ok ? await res.json() : {}
+      const ins = data.insights || []
+      let md
+      if (data.source === 'empty' || ins.length === 0) {
+        md = data.message || 'Not enough data yet for tailored insights — upload invoices and inventory first.'
+      } else {
+        const icon = { collections: '💰', customers: '🤝', products: '📦', profit: '📈', risk: '⚠️' }
+        md = '**🚀 Smart Insights — your top moves**\n\n' + ins.map((it, i) =>
+          `**${i + 1}. ${it.title}** ${icon[it.dimension] || ''}\n\n` +
+          `${it.insight}\n\n` +
+          `➡️ **Do this:** ${it.action}\n\n` +
+          `📊 **Impact:** ${it.impact}`
+        ).join('\n\n---\n\n')
+        if (data.source === 'deterministic') md += '\n\n_(Showing key figures; full AI analysis was unavailable.)_'
+      }
+      setMessages(prev => [...prev, {
+        role: 'assistant', content: md, source: 'advisor',
+        model_tier: 'ADVISOR', cached: false, chart: null, alerts: [],
+      }])
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        role: 'assistant', content: '❌ Could not generate insights right now.', source: 'error',
+      }])
+    } finally {
+      setLoading(false)
+    }
+  }, [authFetch, loading])
+
   // ── Intent / action handlers ──────────────────────────────────────────────
   const runIntent = useCallback(async (chip) => {
+    if (chip?.smartInsights) { runSmartInsights(); return }
     if (!chip || !chip.intent) { sendMessage(chip?.query || chip?.label || ''); return }
     setLoading(true)
     setChipsExpanded(false)
@@ -311,7 +349,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
     } finally {
       setLoading(false)
     }
-  }, [authFetch, sendMessage, activeId, loadSessions])
+  }, [authFetch, sendMessage, activeId, loadSessions, runSmartInsights])
 
   const runAction = useCallback(async (actionKey, label, params) => {
     if (!actionKey) return
@@ -435,13 +473,14 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   useEffect(() => {
     function handleShortcut(e) {
       const d = e.detail || {}
-      if (d.action) runAction(d.action, d.label || d.query, d.params)
+      if (d.smartInsights) runSmartInsights()
+      else if (d.action) runAction(d.action, d.label || d.query, d.params)
       else if (d.intent) runIntent({ intent: d.intent, label: d.label || d.query, query: d.query, params: d.params })
       else if (d.query) sendMessage(d.query)
     }
     window.addEventListener('ai-shortcut', handleShortcut)
     return () => window.removeEventListener('ai-shortcut', handleShortcut)
-  }, [sendMessage, runIntent, runAction])
+  }, [sendMessage, runIntent, runAction, runSmartInsights])
 
   useEffect(() => {
     if (messages.length > 0) return
@@ -572,13 +611,25 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
             </div>
           )}
 
-          {messages.map((msg, i) => (
-            <MessageBubble
-              key={i}
-              msg={msg}
-              innerRef={i === messages.length - 1 && msg.role === 'assistant' ? activeBotMessageRef : null}
-            />
-          ))}
+          {messages.map((msg, i) => {
+            // The query that produced an assistant answer = the nearest preceding
+            // user message (needed so feedback can report what was wrong).
+            let priorQuery = null
+            if (msg.role === 'assistant') {
+              for (let j = i - 1; j >= 0; j--) {
+                if (messages[j].role === 'user') { priorQuery = messages[j].content; break }
+              }
+            }
+            return (
+              <MessageBubble
+                key={i}
+                msg={msg}
+                query={priorQuery}
+                sessionId={activeId}
+                innerRef={i === messages.length - 1 && msg.role === 'assistant' ? activeBotMessageRef : null}
+              />
+            )
+          })}
 
           {loading && <TypingIndicator />}
         </div>

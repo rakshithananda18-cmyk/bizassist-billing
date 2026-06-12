@@ -41,6 +41,11 @@ def get_invoice_list(user_id: int, status: str = None, customer: str = None, lim
             query = query.filter(Invoice.status.ilike(status))
         if customer:
             query = query.filter(Invoice.customer.ilike(f"%{customer}%"))
+            # A single customer's full ledger is small — don't truncate it to the
+            # global default (which would drop rows and tempt the model to fill in
+            # the rest). Show the whole account.
+            if limit == 15:
+                limit = 200
 
         invoices = query.order_by(Invoice.amount.desc()).limit(limit).all()
         result = [

@@ -7,9 +7,9 @@ import re
 import difflib
 import logging
 from services.handlers.payments  import _overdue_list, _overdue_amount, _pending_list, _top_debtors
-from services.handlers.invoices  import _invoice_count, _total_revenue, _overdue_range_detail, _revenue_month_detail
+from services.handlers.invoices  import _invoice_count, _total_revenue, _overdue_range_detail, _revenue_month_detail, _invoice_detail
 from services.handlers.inventory import _inventory_count, _low_stock, _expiring_soon
-from services.handlers.clients   import _top_customers, _client_summary
+from services.handlers.clients   import _top_customers, _client_summary, _customer_invoices
 from services.handlers.dashboard import _business_summary
 
 logger = logging.getLogger("bizassist.direct_query")
@@ -29,6 +29,8 @@ HANDLERS = {
     "expiring_soon":        _expiring_soon,
     "top_customers":        _top_customers,
     "client_summary":       _client_summary,
+    "customer_invoices":    _customer_invoices,
+    "invoice_detail":       _invoice_detail,
     "business_summary":     _business_summary,
 }
 
@@ -209,10 +211,10 @@ def handle(handler_key: str, user_query: str, user_id: int, params: dict = None)
         return None
 
     try:
-        if handler_key in ("overdue_range_detail", "revenue_month_detail"):
+        if handler_key in ("overdue_range_detail", "revenue_month_detail", "invoice_detail"):
             return fn(user_id, user_query)
 
-        if handler_key == "client_summary":
+        if handler_key in ("client_summary", "customer_invoices"):
             customer = (params or {}).get("customer") or _extract_customer_name(user_query, user_id)
             if not customer:
                 # No customer resolved. If it's a general business ask that merely

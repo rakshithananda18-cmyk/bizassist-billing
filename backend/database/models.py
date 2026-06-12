@@ -16,7 +16,7 @@ Backward compatibility: all original columns kept, new columns nullable.
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime,
-    Boolean, Text, ForeignKey, Index
+    Boolean, Text, ForeignKey, Index, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from database.db import Base
@@ -457,3 +457,41 @@ class ActionLog(Base, TimestampMixin):
     detail      = Column(Text,   nullable=True)
     status      = Column(String, default="logged")
     created_at  = Column(DateTime, default=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# FEEDBACK / CORRECTIONS  (answer quality loop)
+# ---------------------------------------------------------------------------
+
+class Feedback(Base, TimestampMixin):
+    """Append-only log of thumbs up/down on answers — every wrong answer becomes
+    a labelled example for offline seed/regex tuning."""
+    __tablename__ = "feedback"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    business_id = Column(Integer, index=True)
+    session_id  = Column(String,  nullable=True)
+    query       = Column(Text)
+    route       = Column(String,  nullable=True)   # route the answer was served from
+    handler_key = Column(String,  nullable=True)   # handler the answer was served from
+    verdict     = Column(String)                    # 'up' | 'down'
+    correction  = Column(String,  nullable=True)    # intent the user says it SHOULD be
+    created_at  = Column(DateTime, default=datetime.utcnow)
+
+
+class QueryOverride(Base, TimestampMixin):
+    """Active per-user correction: an exact (normalized) query routes to a fixed
+    intent. Applied at the top of routing so a corrected query returns the right
+    answer on re-run. One row per (business_id, query_norm) — upserted."""
+    __tablename__ = "query_override"
+    __table_args__ = (
+        UniqueConstraint("business_id", "query_norm", name="uq_query_override_biz_query"),
+    )
+
+    id          = Column(Integer, primary_key=True, index=True)
+    business_id = Column(Integer, index=True)
+    query_norm  = Column(String,  index=True)       # lowercased, whitespace-collapsed
+    route       = Column(String)                     # DIRECT | AI_SIMPLE | AI_COMPLEX | CONVERSATIONAL
+    handler_key = Column(String,  nullable=True)     # for DIRECT
+    created_at  = Column(DateTime, default=datetime.utcnow)
+    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

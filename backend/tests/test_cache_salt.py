@@ -94,6 +94,21 @@ def test_client_summary_keyed_on_query_per_customer():
     assert a != b and a != c and b != c
 
 
+def test_invoice_handlers_keyed_on_query_per_entity():
+    # customer_invoices / invoice_detail are parameterised by the named entity, so
+    # different customers / invoice IDs must NOT share a cache entry.
+    a = _cache_salt(1, "DIRECT", "annapurna provisions invoices", "business_summary",
+                    handler_key="customer_invoices", day="2026-01-15")
+    b = _cache_salt(1, "DIRECT", "royal mart invoices", "business_summary",
+                    handler_key="customer_invoices", day="2026-01-15")
+    assert a != b
+    c = _cache_salt(1, "DIRECT", "invoice SUP-INV-0138", "business_summary",
+                    handler_key="invoice_detail", day="2026-01-15")
+    d = _cache_salt(1, "DIRECT", "invoice ROY-INV-0001", "business_summary",
+                    handler_key="invoice_detail", day="2026-01-15")
+    assert c != d
+
+
 def test_ai_simple_catchall_topic_does_not_collide():
     # 'business_summary' is also _detect_topic's safe default, so two unrelated
     # AI_SIMPLE fallbacks must NOT share a cache entry (the 'do yo know Rahul

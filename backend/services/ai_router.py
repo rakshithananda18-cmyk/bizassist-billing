@@ -43,6 +43,7 @@ from services.direct_query_handler import (
     handle as direct_handle, _extract_customer_name, _customer_candidates, CUSTOMER_NOT_FOUND,
 )
 from services.recommendations import recommend, get_business_snapshot, detect_anomalies
+from services.feedback_service import get_override
 from services.context_cache import get_focused_context, get_cached_query_response, set_cached_query_response
 from services.tools import execute_tool, schemas as tool_schemas
 from services.embeddings import search_chat_memories, save_chat_memory
@@ -352,11 +353,10 @@ def _cache_disc(route: str, user_query: str, topic: str, handler_key, is_writing
     if route == "AI_COMPLEX" or is_writing:
         return f"q:{(user_query or '').strip().lower()}"
     if route == "DIRECT" and handler_key:
-        # `client_summary` is parameterised by the customer named in the query, so
-        # keying on the handler alone makes every customer lookup (incl. a typo'd
-        # or non-existent one) share one entry. Key it on the query instead so the
-        # handler — and its fuzzy customer match — actually runs per distinct query.
-        if handler_key == "client_summary":
+        # These are parameterised by the customer/ID named IN the query, so keying
+        # on the handler alone would make every customer (or invoice) share one
+        # entry. Key on the query so each distinct lookup runs its own handler.
+        if handler_key in ("client_summary", "customer_invoices", "invoice_detail"):
             return f"q:{(user_query or '').strip().lower()}"
         return handler_key
     # AI_SIMPLE on the catch-all topic: `business_summary` is also `_detect_topic`'s
@@ -368,40 +368,62 @@ def _cache_disc(route: str, user_query: str, topic: str, handler_key, is_writing
     return topic
 
 
-# A lookup query ("do you know X Y", "tell me about X Y") is short. Anything
-# longer is more likely an analytical question that merely mentions a name.
-_ENTITY_MAX_WORDS = 6
+# Global-aggregate handlers — if the query NAMES a single known customer, the
+# answer should be scoped to that customer's summary, not the all-customers view
+# ("how much does Nilgiris Fresh owe me" → Nilgiris's overdue, not the global list).
+_AGGREGATE_HANDLERS = {
+    "overdue_list", "overdue_amount", "total_revenue", "top_debtors",
+    "pending_list", "top_customers", "invoice_count",
+}
 
-# If the query carries a real analytical intent, that wins over a name mention —
-# "show overdue for Star Bazaar" is an overdue query, not a client summary. These
-# keywords block the entity-first reroute.
-_ENTITY_BLOCK = re.compile(
-    r"\b(overdue|owe|owes|paid|pending|unpaid|outstanding|due|"
-    r"revenue|sales|income|turnover|profit|collection|cash|"
-    r"stock|inventory|expir|low|reorder|"
-    r"invoice|bill|payment|"
-    r"top|most|biggest|highest|worst|total|count|how\s+many|list|compare|"
-    r"trend|growth|plan|analy[sz]|summary|overview)\w*",
+# Genuinely multi-entity phrasings ("compare X and Y") — don't scope to one
+# customer. (List/ranking words like "all"/"top" are handled by the name lookup
+# simply returning None, so they don't need to be here.)
+_MULTI_SIGNAL = re.compile(
+    r"\b(compare|comparison|versus|vs|each|both|every|everyone|everybody)\b",
     re.I,
+)
+
+# A specific invoice ID (SUP-INV-0138) → its detail row.
+_INVOICE_ID_RE = re.compile(r"\b[A-Za-z]{2,6}-INV-\d+\b", re.I)
+
+# The user wants a customer's full invoice ledger, not just the summary.
+_INVOICE_LIST_SIGNAL = re.compile(
+    r"\b(invoices?|bills?|transactions?|ledger|statement|orders?|table)\b", re.I,
 )
 
 
 def _maybe_entity_first(route: str, handler_key, user_query: str, user_id: int):
     """
-    Entity-first routing: a short query that names a known customer is a client
-    lookup, even when a keyword trips another topic (e.g. "namdhari fresh" → the
-    word 'fresh' would route to expiring_soon; "do yo know Rahul traders" → a
-    cached generic summary). Only applied to the ambiguous AI_SIMPLE bucket, to
-    short queries, and only when no analytical keyword is present — so the extra
-    DB lookup is bounded and a customer name inside an analytical question doesn't
-    hijack its intent. The fuzzy matcher's 0.82 threshold rejects non-name text.
-    Returns (route, handler_key).
+    Entity scoping: route by the specific entity a query names, even if a keyword
+    tripped a global topic.
+      • Specific invoice ID ("SUP-INV-0138 details") → invoice_detail.
+      • A named customer + "invoices/table/list" → customer_invoices (full ledger).
+      • A named customer otherwise ("how much does Nilgiris Fresh owe me",
+        "namdhari fresh") → client_summary.
+    Skipped for writing tasks (must draft) and genuine multi-entity comparisons.
+    The fuzzy matcher's 0.82 threshold rejects non-name text. Returns (route, handler_key).
     """
     q = user_query or ""
-    if route != "AI_SIMPLE" or len(q.split()) > _ENTITY_MAX_WORDS or _ENTITY_BLOCK.search(q):
+    # Writing tasks must stay on the drafting path ("draft a reminder about X").
+    if _WRITING_ACTIONS.search(q):
+        return route, handler_key
+    # A specific invoice ID → its real DB row (never generated).
+    if _INVOICE_ID_RE.search(q):
+        logger.info(f"[ROUTER] entity → invoice_detail q='{user_query}'")
+        return "DIRECT", "invoice_detail"
+    # A plain client_summary with no 'invoices/table' ask is already correct.
+    if handler_key == "client_summary" and not _INVOICE_LIST_SIGNAL.search(q):
+        return route, handler_key
+    eligible = (route == "AI_SIMPLE") or (route == "DIRECT" and handler_key in _AGGREGATE_HANDLERS) \
+        or (handler_key == "client_summary")
+    if not eligible or _MULTI_SIGNAL.search(q):
         return route, handler_key
     named = _extract_customer_name(q, user_id)
     if named:
+        if _INVOICE_LIST_SIGNAL.search(q):
+            logger.info(f"[ROUTER] entity → customer_invoices (customer='{named}') q='{user_query}'")
+            return "DIRECT", "customer_invoices"
         logger.info(f"[ROUTER] entity-first → client_summary (customer='{named}') q='{user_query}'")
         return "DIRECT", "client_summary"
     return route, handler_key
@@ -589,6 +611,11 @@ def _log_chat(business_id, user_query, response, session_id, session_title,
         db.close()
 
 
+# Handlers whose output is a precise factual record — skip the AI insight layer
+# (no analysis to add, and high confabulation risk on single records / tables).
+_NO_POLISH = {"invoice_detail", "customer_invoices"}
+
+
 def _polish(raw_markdown: str, topic: str, client: Groq,
             business_id=None, acc=None) -> str:
     """
@@ -613,6 +640,13 @@ def _polish(raw_markdown: str, topic: str, client: Groq,
                         "If the data has only totals and names NO specific customer/item, give a GENERAL "
                         "next step — do NOT make up a name, an ID, or a figure.\n"
                         "- If the data says everything is fine (e.g. sufficient stock), say so plainly; do not invent a problem.\n"
+                        "- NEVER infer timing: a 'Paid' status does NOT tell you WHEN it was paid. Never say "
+                        "'paid N days early/late' or any payment date — that data is not here.\n"
+                        "- NEVER do arithmetic between unlike things (e.g. an amount vs a date) and never "
+                        "compute a difference or ratio unless BOTH numbers literally appear in the data.\n"
+                        "- If the data says 'top N of M (₹X total)', then ₹X is the total of ALL M — never "
+                        "describe it as the total of just the N shown.\n"
+                        "- Do not contradict the data's own status labels (if it says Paid, it is Paid).\n"
                         "- Use the same currency symbol as the data (₹). Never use $.\n"
                         "- Exact numbers only (no rounding). No headers, no bullet points, no filler."
                     )
@@ -637,12 +671,24 @@ def _polish(raw_markdown: str, topic: str, client: Groq,
 _AI_SIMPLE_SYSTEM_PROMPT = (
     "You are BIZASSIST, a sharp business advisor for Indian distributors and small businesses.\n"
     "\n"
+    "CRITICAL — NEVER FABRICATE DATA:\n"
+    "You may ONLY state an invoice ID, amount, date, status, customer name, or any figure\n"
+    "that appears in a TOOL RESULT from THIS conversation. If you don't have the rows, CALL\n"
+    "THE TOOL to fetch them. If a tool cannot supply them, say plainly 'I don't have those\n"
+    "details' — do NOT invent, estimate, guess, or pattern-fill them (e.g. inventing\n"
+    "INV-0001, INV-0002… with made-up amounts). The conversation summary holds TOTALS, not\n"
+    "line items — never reconstruct individual invoices from it. Fabricating financial data\n"
+    "is the single worst thing you can do.\n"
+    "\n"
     "RULES:\n"
-    "1. Call a tool first. Never answer from memory if a tool can fetch the real data.\n"
-    "2. Write like a trusted advisor, not a template. No rigid column tables. Use short paragraphs or a brief numbered list — whichever fits the question naturally.\n"
-    "3. Always name specifics: customer names, invoice IDs, rupee amounts, dates, days overdue. Vague answers are useless.\n"
+    "1. Call a tool first for any business-data question. The summary in context has totals,\n"
+    "   not the underlying rows — fetch the real rows before listing anything.\n"
+    "2. Write like a trusted advisor. Use a table ONLY when the user asks for one, and fill\n"
+    "   it STRICTLY from tool results; otherwise short paragraphs or a brief list.\n"
+    "3. Always name specifics drawn from the data: customer names, invoice IDs, rupee\n"
+    "   amounts, dates, days overdue. Vague answers are useless.\n"
     "4. End with ONE concrete action the owner can take right now — not a generic tip.\n"
-    "5. Never write code. Never invent numbers. Never pad with filler sentences.\n"
+    "5. Never write code. Never pad with filler sentences.\n"
     "\n"
     "TONE: Direct, clear, human. Think 'smart accountant on the phone', not 'dashboard report'.\n"
     "\n"
@@ -706,6 +752,13 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
     # Entity-first: a short query that names a known customer → client lookup,
     # before a stray keyword ("fresh") can misroute it.
     route, handler_key = _maybe_entity_first(route, handler_key, user_query, active_user_id)
+
+    # User correction override (feedback loop): if this user marked this exact
+    # query wrong and told us the right intent, honour it above all routing.
+    _override = get_override(active_user_id, user_query)
+    if _override:
+        route, handler_key = _override
+        logger.info(f"[ROUTER] override → {route}/{handler_key} q='{user_query[:60]}'")
 
     # ── Rate limit ──────────────────────────────────────────────────
     rl = check_rate_limit(active_user_id, route)
@@ -848,7 +901,12 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
                 yield {"type": "replace", "content": answer}
                 yield {"type": "final", "envelope": envelope}
                 return
-            polished   = _polish(answer, handler_key, client, active_user_id, acc)
+            # No per-answer "insight" bulb — it confabulated on factual data and
+            # added little value. Real advice now lives in the dedicated Smart
+            # Insights advisor (services/smart_insights.py, the chip-bar feature).
+            # DIRECT answers return their clean DB data; deterministic alert chips
+            # (cash-flow / expiry) still come from detect_anomalies below.
+            polished   = answer
             recs       = recommend(handler_key, active_user_id)
             anomalies  = detect_anomalies(active_user_id)
             envelope = {
@@ -878,7 +936,7 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
             if _ir and _ir.get("answer", {}).get("markdown"):
                 logger.info(f"[INTENT] Promoted AI_SIMPLE → DIRECT via topic={_pre_topic}")
                 raw_md    = _ir["answer"]["markdown"]
-                polished  = _polish(raw_md, _pre_topic, client, active_user_id, acc)
+                polished  = raw_md   # no insight bulb — see Smart Insights advisor
                 anomalies = detect_anomalies(active_user_id)
                 chart     = _build_chart_data(user_query, active_user_id)
                 recs      = _ir.get("suggestions", recommend(_pre_topic, active_user_id))

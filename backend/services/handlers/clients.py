@@ -47,6 +47,43 @@ def _top_customers(user_id: int) -> str:
     finally:
         db.close()
 
+def _customer_invoices(user_id: int, params: dict = None) -> str:
+    """Full invoice table for ONE customer — every row straight from the DB."""
+    customer = (params or {}).get("customer")
+    if not customer:
+        return None
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(Invoice)
+            .filter(Invoice.business_id == user_id,
+                    func.lower(Invoice.customer) == customer.strip().lower())
+            .order_by(Invoice.due_date)
+            .all()
+        )
+        if not rows:
+            return f"No invoices found for **{customer}**."
+
+        name  = rows[0].customer
+        total = sum(r.amount or 0 for r in rows)
+        lines = [
+            f"**{name} — All Invoices** ({len(rows)})\n",
+            "| Invoice ID | Amount | Due Date | Status |",
+            "|:---|---:|:---|:---|",
+        ]
+        for r in rows:
+            lines.append(
+                f"| {r.invoice_id or '—'} | ₹{(r.amount or 0):,.0f} | {r.due_date or '—'} | {r.status or '—'} |"
+            )
+        lines.append(f"\n**Total billed: ₹{total:,.0f}** across {len(rows)} invoice{'s' if len(rows) != 1 else ''}.")
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error("customer_invoices failed: %s", e, exc_info=True)
+        return None
+    finally:
+        db.close()
+
+
 def _client_summary(user_id: int, params: dict = None) -> str:
     """Per-customer financial snapshot — all figures straight from the DB."""
     customer = (params or {}).get("customer")

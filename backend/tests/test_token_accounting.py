@@ -92,17 +92,21 @@ def test_ai_simple_reports_real_tokens(mock_create, auth):
 
 
 @patch("routes.ask._client.chat.completions.create")
-def test_polish_tokens_counted_on_direct(mock_create, auth):
-    """DIRECT answers now surface the _polish insight cost in meta.tokens."""
+def test_direct_answer_makes_no_llm_call(mock_create, auth):
+    """
+    DIRECT answers are now pure DB — the per-answer insight bulb (_polish) was
+    removed in favour of the dedicated Smart Insights advisor. So a DIRECT answer
+    must make NO Groq call and cost 0 tokens.
+    """
     invalidate()
-    mock_create.return_value = _mock_groq("Insightful 2-liner.", 120, 80)
+    mock_create.return_value = _mock_groq("should not be called", 120, 80)
     resp = client.post("/ask", json={"message": "how many invoices do I have"},
                        headers=auth["headers"])
     assert resp.status_code == 200
     data = resp.json()
     assert data["source"] == "db"
-    # polish made one Groq call (120+80) — that must be reflected, not hidden as 0
-    assert data["meta"]["tokens"] == 200
+    assert data["meta"]["tokens"] == 0, "DIRECT answers no longer call the LLM"
+    mock_create.assert_not_called()
 
 
 @patch("routes.ask._client.chat.completions.create")
