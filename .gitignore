@@ -15,6 +15,20 @@ backend/.env
 *.sqlite
 *.sqlite3
 
+# Logs — never commit (may contain customer data from request traces)
+*.log
+backend/logs/
+
+# User uploads — runtime data, not for version control
+backend/uploads/
+uploads/
+
+# Test / tooling caches
+.pytest_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
 # VS Code
 .vscode/
 

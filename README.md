@@ -1,55 +1,70 @@
 # BizAssist
 
-BizAssist is a simple, modern enterprise business intelligence portal. It helps businesses track invoices, manage client billing histories, look at sales telemetry, and ask questions about their business data using an interactive, context-aware AI assistant. It also features an isolated Admin Workspace for administrators to monitor sandbox databases and aggregate metrics across all active accounts.
+BizAssist is a business-intelligence assistant for Indian distributors and small businesses. Owners upload their invoices, inventory and payments (CSV/XLSX/PDF) and then ask plain-language questions — "who owes me the most?", "what's expiring this month?", "why is my collection rate low?" — and get grounded, data-backed answers, advice, and one-tap actions (payment reminders, escalations, reorder drafts). An isolated Admin workspace monitors usage, rate limits, and per-merchant data.
+
+Answers are **grounded**: the models reason only over real numbers pulled from the database, never fabricated.
 
 ## Tech Stack
 
-- **Frontend:** Vanilla HTML5, CSS3 (glassmorphic layout with full dark/light theme switching), and clean asynchronous JavaScript.
-- **Backend:** FastAPI, SQLite database, SQLAlchemy ORM, and Groq API for the AI assistant chatbot.
-- **Testing:** Pytest.
+- **Frontend:** React + Vite (`frontend-react/`), with light/dark theming.
+- **Backend:** FastAPI, SQLAlchemy, SQLite (Alembic migrations), Groq API for the LLM tiers, and a local MiniLM embedding model (no API cost) for semantic routing and chat memory.
+- **Testing:** Pytest (backend) + Vitest (frontend).
+
+## Architecture (short version)
+
+Every question flows through a cost-tiered router:
+
+`CONVERSATIONAL → DIRECT (DB only, 0 tokens) → CACHE → AI_SIMPLE (8B) → AI_COMPLEX (adaptive 70B agent loop)`
+
+plus `AI_ADVISE` (data + grounded advice) and gated `ACTION` previews. A newer one-shot **LLM router** can steer this (see `LLM_ROUTER` below); the legacy regex+embedding router is the always-on fallback. Design details live in [`docs/`](docs/).
 
 ---
 
-## Getting Started
+## Getting Started (Windows)
 
-Follow these steps to set up and run the application locally on Windows:
+### 1. Backend dependencies
+Run `dependencies.bat` — creates the `venv`, upgrades pip, installs `requirements.txt`.
 
-### 1. Set Up the Environment
-Double-click or run `dependencies.bat` in your terminal. This will automatically:
-- Create a Python virtual environment (`venv`).
-- Upgrade `pip`.
-- Install all backend dependencies listed in `requirements.txt`.
+### 2. Environment variables
+Copy `.env.example` to `backend/.env` and fill it in (see the table below). At minimum set `GROQ_API_KEY` and `JWT_SECRET`.
 
-### 2. Configure Environment Variables
-1. Copy `backend/.env.example` and rename it to `backend/.env`.
-2. Open `backend/.env` and add your Groq API key:
-   ```env
-   GROQ_API_KEY=your-actual-api-key-here
-   ```
+### 3. Run the backend
+Run `start.bat` (or `start_dev.bat`) — starts FastAPI on `http://localhost:8001`.
 
-### 3. Run the Backend Server
-Run `start.bat` in the root directory. This activates the virtual environment and starts the FastAPI server on `http://localhost:8001` with auto-reload enabled.
-
-### 4. Run the Frontend
-Open VS Code, right-click on `frontend/index.html`, and select **Open with Live Server** (or serve the `frontend` folder using any simple HTTP server of your choice on port `5500`).
-
----
-
-## Running Backend Tests
-
-To run the unit tests, activate the virtual environment and run `pytest`:
-
+### 4. Run the frontend
 ```bash
-venv\Scripts\activate
-python -m pytest
+cd frontend-react
+npm install
+npm run dev
 ```
 
 ---
 
-## Notable Features
+## Environment variables
 
-- **Context-Aware AI Chatbot:** Talk directly to the Groq-powered AI to ask questions about Stock levels, client debts, overdue invoices, and top customers.
-- **Translucent UI Locker:** When logged out, the dashboard is visible in the background but matte-blurred and locked. Signing in fades out the locker and fades in the dashboard.
-- **Inline Password Security:** Includes an inline, vector SVG password visibility toggle and dynamic validation rules (Length, Capital, Lowercase, Number, Special) that pop up only after typing pauses for 1 second.
-- **Pagination & Grid Safety:** Large listings (Invoices, Payments, Clients) are cleanly paginated. Responsive column tracks prevent wide tables from breaking the layout.
-- **Admin Workspace:** Access the admin portal at `/frontend/admin.html` to view register entries, combined total revenues, and sandbox directory logs.
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `GROQ_API_KEY` | **yes** | — | LLM calls (8B/70B tiers + LLM router) |
+| `JWT_SECRET` | **yes** | — | Auth token signing |
+| `DATABASE_URL` | no | local SQLite | DB connection string |
+| `LLM_ROUTER` | no | `off` | Router mode at startup: `off` (legacy) / `shadow` / `on` (new). Can be flipped live in Admin, but that override is in-memory and resets to this value on restart. |
+| `LLM_ROUTER_CONF_FLOOR` | no | `0.6` | Below this confidence the LLM router defers to legacy |
+| `AGENT_MODE` | no | `pipeline` | `loop` = adaptive tool-calling agent for AI_COMPLEX; `pipeline` = fixed fan-out |
+| `INTENT_ROUTER` | no | `off` | Embedding shadow router: `off` / `shadow` / `on` |
+| `EMAIL_USER`, `EMAIL_PASS` | no | — | SMTP for sending real payment reminders; without them reminders are drafted + logged only |
+| `LOG_LEVEL` | no | `INFO` | Logging verbosity |
+
+> **Deploying to Hugging Face Spaces:** set the above as Space *secrets/variables*. The Admin router-mode switch is per-process and non-persistent, so set `LLM_ROUTER` to your desired default. The 70B (AI_COMPLEX) tier is subject to Groq's daily token cap — upgrade the Groq tier for heavy use.
+
+---
+
+## Tests
+
+```bash
+run_tests.bat          # backend (pytest) + frontend (vitest)
+```
+Or directly: `venv\Scripts\activate && python -m pytest`.
+
+## Sample data
+
+`generate_sample_data.py` writes compatible CSVs into `sample_data/` (invoices, inventory with cost/selling prices, payments). Upload them through the app to try every feature. `MANUAL_TEST_QUERIES.md` (in `docs/`) lists test queries with expected results.
