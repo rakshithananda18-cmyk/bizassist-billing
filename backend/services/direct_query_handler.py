@@ -221,7 +221,12 @@ def handle(handler_key: str, user_query: str, user_id: int, params: dict = None)
         return None
 
     try:
-        if handler_key in ("overdue_range_detail", "revenue_month_detail", "invoice_detail"):
+        if handler_key == "invoice_detail":
+            # An LLM-router-extracted invoice_id (conf-checked upstream) is
+            # authoritative; otherwise the handler parses it from the query.
+            return fn(user_id, user_query, invoice_id=(params or {}).get("invoice_id"))
+
+        if handler_key in ("overdue_range_detail", "revenue_month_detail"):
             return fn(user_id, user_query)
 
         if handler_key in ("client_summary", "customer_invoices"):

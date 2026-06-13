@@ -479,15 +479,23 @@ def run_agent_graph_stream(user_query: str, business_id: int, history: list):
     )
 
     full_text = ""
+    synth_usage = None
     try:
-        stream = client.chat.completions.create(
-            messages=messages,
-            model=MODEL_SYNTH,
-            temperature=0.2,
-            max_tokens=1800,
-            stream=True,
-        )
+        _base = dict(messages=messages, model=MODEL_SYNTH,
+                     temperature=0.2, max_tokens=1800, stream=True)
+        try:
+            # Real usage for the streamed synthesizer (R1) — arrives on a final
+            # choices-less chunk when include_usage is requested.
+            stream = client.chat.completions.create(
+                **_base, stream_options={"include_usage": True})
+        except TypeError:    # SDK too old for stream_options
+            stream = client.chat.completions.create(**_base)
         for chunk in stream:
+            u = getattr(chunk, "usage", None)
+            if u is not None:
+                synth_usage = u
+            if not getattr(chunk, "choices", None):
+                continue
             delta = chunk.choices[0].delta.content
             if delta:
                 full_text += delta
@@ -495,6 +503,17 @@ def run_agent_graph_stream(user_query: str, business_id: int, history: list):
     except Exception as e:
         logger.error(f"[SYNTH] {e}", exc_info=True)
         yield _sse("token", content=f"\n\n*Could not complete: {e}*")
+
+    # Count the synthesizer's streamed tokens — it's the biggest call in the
+    # graph. If no usage chunk was exposed, estimate (~4 chars/token) rather
+    # than logging 0.
+    if synth_usage is not None:
+        state["tokens_in"]  = state.get("tokens_in", 0)  + (getattr(synth_usage, "prompt_tokens", 0) or 0)
+        state["tokens_out"] = state.get("tokens_out", 0) + (getattr(synth_usage, "completion_tokens", 0) or 0)
+    elif full_text:
+        _est_in = sum(len(str(m.get("content") or "")) for m in messages) // 4
+        state["tokens_in"]  = state.get("tokens_in", 0)  + _est_in
+        state["tokens_out"] = state.get("tokens_out", 0) + max(1, len(full_text) // 4)
 
     total_in  = state.get("tokens_in", 0)
     total_out = state.get("tokens_out", 0)

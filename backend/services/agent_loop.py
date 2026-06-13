@@ -29,6 +29,19 @@ MODEL          = os.getenv("GROQ_MODEL_COMPLEX", "llama-3.3-70b-versatile")
 MAX_ROUNDS     = int(os.getenv("AGENT_MAX_TOOL_ROUNDS", "5"))
 MAX_TOOL_CHARS = int(os.getenv("MAX_TOOL_CHARS", "4000"))
 
+
+def _friendly_error(e: Exception) -> str:
+    """Turn a raw exception into an honest, non-alarming message for the user.
+    A 429/quota error means the daily AI budget is spent, not that anything broke."""
+    msg = str(e).lower()
+    is_quota = "429" in msg or "rate_limit" in msg or "tokens per day" in msg \
+        or "quota" in msg or getattr(e, "status_code", None) == 429
+    if is_quota:
+        return ("*The daily AI analysis limit has been reached.* Quick answers "
+                "(totals, overdue, invoices, customers) still work — only the deep "
+                "analysis pauses until the limit resets (usually within an hour).")
+    return "*The advisor hit an error — please try again.*"
+
 _SYSTEM = (
     "You are BIZASSIST — a sharp business advisor for an Indian distributor/wholesaler, "
     "answering a complex question that needs real data.\n\n"
@@ -105,16 +118,21 @@ def _gather(messages: list, business_id: int, emit=None):
 def run_agent_loop(user_query: str, business_id: int, history: list) -> dict:
     """Non-stream entry. Returns {text, tokens_in, tokens_out}."""
     logger.info(f"[AGENT-LOOP] start | '{user_query}'")
-    messages = _seed_messages(user_query, history)
-    answer, t_in, t_out = _gather(messages, business_id)
-    if answer is None:
-        messages.append({"role": "user", "content": _FINALIZE})
-        resp = _client.chat.completions.create(
-            model=MODEL, messages=messages, temperature=0.2, max_tokens=1800)
-        u = getattr(resp, "usage", None)
-        t_in += getattr(u, "prompt_tokens", 0) or 0
-        t_out += getattr(u, "completion_tokens", 0) or 0
-        answer = resp.choices[0].message.content or ""
+    t_in = t_out = 0
+    try:
+        messages = _seed_messages(user_query, history)
+        answer, t_in, t_out = _gather(messages, business_id)
+        if answer is None:
+            messages.append({"role": "user", "content": _FINALIZE})
+            resp = _client.chat.completions.create(
+                model=MODEL, messages=messages, temperature=0.2, max_tokens=1800)
+            u = getattr(resp, "usage", None)
+            t_in += getattr(u, "prompt_tokens", 0) or 0
+            t_out += getattr(u, "completion_tokens", 0) or 0
+            answer = resp.choices[0].message.content or ""
+    except Exception as e:
+        logger.error(f"[AGENT-LOOP] run failed: {e}", exc_info=True)
+        answer = _friendly_error(e)
     _log_tokens(business_id, t_in, t_out, "/ask")
     return {"text": answer, "tokens_in": t_in, "tokens_out": t_out}
 
@@ -145,17 +163,38 @@ def run_agent_loop_stream(user_query: str, business_id: int, history: list):
         else:
             yield _sse("status", content="Writing your action plan…")
             messages.append({"role": "user", "content": _FINALIZE})
-            stream = _client.chat.completions.create(
-                model=MODEL, messages=messages, temperature=0.2, max_tokens=1800, stream=True)
+            _base = dict(model=MODEL, messages=messages,
+                         temperature=0.2, max_tokens=1800, stream=True)
+            try:
+                # Real usage for the streamed finalize call (R1) — arrives on a
+                # final choices-less chunk when include_usage is requested.
+                stream = _client.chat.completions.create(
+                    **_base, stream_options={"include_usage": True})
+            except TypeError:    # SDK too old for stream_options
+                stream = _client.chat.completions.create(**_base)
+            synth_usage = None
             for chunk in stream:
+                u = getattr(chunk, "usage", None)
+                if u is not None:
+                    synth_usage = u
+                if not getattr(chunk, "choices", None):
+                    continue
                 delta = chunk.choices[0].delta.content
                 if delta:
                     full_text += delta
                     yield _sse("token", content=delta)
+            if synth_usage is not None:
+                t_in  += getattr(synth_usage, "prompt_tokens", 0) or 0
+                t_out += getattr(synth_usage, "completion_tokens", 0) or 0
+            elif full_text:
+                # No usage exposed → estimate (~4 chars/token) instead of logging 0.
+                t_in  += sum(len(str(m.get("content") if isinstance(m, dict)
+                                     else getattr(m, "content", "") or "")) for m in messages) // 4
+                t_out += max(1, len(full_text) // 4)
     except Exception as e:
         logger.error(f"[AGENT-LOOP] stream failed: {e}", exc_info=True)
         if not full_text:
-            yield _sse("token", content="*The advisor hit an error — please try again.*")
+            yield _sse("token", content=_friendly_error(e))
 
     _log_tokens(business_id, t_in, t_out, "/ask/stream")
     yield _sse("ag_done", tokens={"input": t_in, "output": t_out}, full_text=full_text)

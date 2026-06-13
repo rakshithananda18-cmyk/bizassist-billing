@@ -40,7 +40,49 @@ class AdminUpdateUserRequest(BaseModel):
     business_name: Optional[str] = None
 
 
+class RouterModeRequest(BaseModel):
+    mode: str   # legacy | shadow | new
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
+
+@router.get("/admin/router-mode")
+def get_router_mode(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """Current routing mode: legacy (old stack) | shadow (compare) | new (LLM router)."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        from services.router_mode import get_mode, pretty, VALID_MODES
+        return {"mode": pretty(), "internal": get_mode(),
+                "options": ["legacy", "shadow", "new"]}
+    except HTTPException: raise
+    except Exception as e:
+        logger.error("admin/router-mode GET: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/admin/router-mode")
+def set_router_mode(req: RouterModeRequest,
+                    current_user: dict = Depends(get_active_user),
+                    db: Session = Depends(get_db)):
+    """
+    Switch routing LIVE — no restart. legacy = exact previous behaviour;
+    shadow = legacy answers + LLM comparison logging; new = LLM router steers
+    (legacy stays as automatic fallback). Resets to the .env default on restart.
+    """
+    try:
+        svc.require_admin(current_user["id"], db)
+        from services.router_mode import set_mode, pretty
+        try:
+            mode = set_mode(req.mode)
+        except ValueError as ve:
+            raise HTTPException(status_code=422, detail=str(ve))
+        return {"status": "success", "mode": pretty(mode),
+                "message": f"Routing switched to '{pretty(mode)}' — effective immediately."}
+    except HTTPException: raise
+    except Exception as e:
+        logger.error("admin/router-mode POST: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 
 @router.get("/admin/businesses")
 def admin_businesses(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):

@@ -10,7 +10,7 @@ Handles the full 4-tier routing pipeline:
   AI_SIMPLE      → Groq tool-calling, small model
   AI_COMPLEX     → LangGraph multi-agent, large model
 
-Called by routes/ask.py — keeps the FastAPI route thin.
+Called by routes/ask.py -- keeps the FastAPI route thin.
 
 ARCHITECTURE (Phase 0 unification)
 ----------------------------------
@@ -376,6 +376,43 @@ _AGGREGATE_HANDLERS = {
     "pending_list", "top_customers", "invoice_count",
 }
 
+# ── LLM-router decision-consumption guards (B1/B2/B6) ───────────────────────
+# Below this confidence the LLM guessed → keep the legacy decision (B1).
+_LLM_CONF_FLOOR = float(os.getenv("LLM_ROUTER_CONF_FLOOR", "0.6"))
+
+# Handlers that are already about ONE customer / invoice — a named-customer
+# entity does NOT need rerouting for these (B2).
+_CUSTOMER_SCOPED = {"client_summary", "customer_invoices", "invoice_detail"}
+
+# Exact dashboard templates legacy resolves deterministically — skip the LLM
+# router's 1-2s call when one of these already matched (B6).
+_LLM_FASTPATH_HANDLERS = {"overdue_range_detail", "revenue_month_detail"}
+
+
+def _resolve_llm_decision(decision, legacy_route: str, legacy_handler):
+    """
+    Decide whether/how to honor an LLM RouteDecision (pure → unit-testable).
+
+    Implements the two trust guards from the live-trace review:
+      B1 — below the confidence floor, the model guessed → fall back to the
+           legacy decision (which already handles bare-name lookups, etc.).
+      B2 — a named customer with a non-customer-scoped answer (or a 'chat')
+           means the user wants THAT customer's view, not a global table →
+           reroute to client_summary; never drop to chat when a customer is named.
+
+    Returns (route, handler_key, entities, accepted).
+    """
+    conf = getattr(decision, "confidence", 0.0)
+    if conf < _LLM_CONF_FLOOR:
+        return legacy_route, legacy_handler, {}, False
+    tier, handler = decision.tier, decision.handler_key
+    ents = getattr(decision, "entities", {}) or {}
+    cust = ents.get("customer")
+    if cust and getattr(decision, "mode", None) in ("answer", "chat") \
+            and handler not in _CUSTOMER_SCOPED:
+        tier, handler = "DIRECT", "client_summary"
+    return tier, handler, ents, True
+
 # Genuinely multi-entity phrasings ("compare X and Y") — don't scope to one
 # customer. (List/ranking words like "all"/"top" are handled by the name lookup
 # simply returning None, so they don't need to be here.)
@@ -384,8 +421,9 @@ _MULTI_SIGNAL = re.compile(
     re.I,
 )
 
-# A specific invoice ID (SUP-INV-0138) → its detail row.
-_INVOICE_ID_RE = re.compile(r"\b[A-Za-z]{2,6}-INV-\d+\b", re.I)
+# A specific invoice ID → its detail row. Matches bare "INV-0007" (the real data
+# format) and prefixed "SUP-INV-0138".
+_INVOICE_ID_RE = re.compile(r"\b(?:[A-Za-z]{2,6}-)?INV-\d+\b", re.I)
 
 # The user wants a customer's full invoice ledger, not just the summary.
 _INVOICE_LIST_SIGNAL = re.compile(
@@ -509,6 +547,53 @@ def _is_titleable(text: str) -> bool:
 def _title_from(text: str) -> str:
     t = (text or "").strip()
     return t[:40] + ("..." if len(t) > 40 else "")
+
+
+class _UsageEstimate:
+    """
+    Fallback usage for a streamed response that exposed no usage object
+    (~4 chars/token heuristic). Streamed traffic is the app's main path, so it
+    must never log 0 tokens (R1) — an estimate keeps budgets honest.
+    """
+    def __init__(self, messages, completion_text: str):
+        def _clen(m):
+            c = m.get("content") if isinstance(m, dict) else getattr(m, "content", "")
+            return len(str(c or ""))
+        self.prompt_tokens     = sum(_clen(m) for m in (messages or [])) // 4
+        self.completion_tokens = (max(1, len(completion_text) // 4)
+                                  if completion_text else 0)
+
+
+def _stream_deltas(client, messages, model, business_id, tier, acc, **kw):
+    """
+    Stream a chat completion, yielding text deltas. Requests real usage via
+    stream_options={"include_usage": True} (Groq is OpenAI-compatible); the
+    usage arrives on a final choices-less chunk, which is captured and logged
+    through _log_token_usage. Falls back gracefully:
+      - SDK too old for stream_options → retry without it
+      - no usage chunk seen           → character-count estimate
+    """
+    base = dict(messages=messages, model=model, stream=True, **kw)
+    try:
+        s = client.chat.completions.create(**base,
+                                           stream_options={"include_usage": True})
+    except TypeError:
+        s = client.chat.completions.create(**base)
+
+    usage, text = None, ""
+    for chunk in s:
+        u = getattr(chunk, "usage", None)
+        if u is not None:
+            usage = u                      # usage-only final chunk
+        choices = getattr(chunk, "choices", None)
+        if not choices:
+            continue
+        delta = choices[0].delta.content
+        if delta:
+            text += delta
+            yield delta
+    _log_token_usage(business_id, model, tier,
+                     usage or _UsageEstimate(messages, text), acc)
 
 
 def _resolve_session(active_user_id: int, session_id: str, user_query: str) -> str:
@@ -689,6 +774,10 @@ _AI_SIMPLE_SYSTEM_PROMPT = (
     "   amounts, dates, days overdue. Vague answers are useless.\n"
     "4. End with ONE concrete action the owner can take right now — not a generic tip.\n"
     "5. Never write code. Never pad with filler sentences.\n"
+    "6. You CANNOT perform actions — you cannot send emails/reminders, escalate, mark\n"
+    "   invoices paid, or place orders. NEVER claim you did ('Done.', 'Sent.',\n"
+    "   'I've escalated…'). If the user asks you to DO one of these, draft the content\n"
+    "   if helpful and tell them to use the action button to actually send/run it.\n"
     "\n"
     "TONE: Direct, clear, human. Think 'smart accountant on the phone', not 'dashboard report'.\n"
     "\n"
@@ -699,6 +788,23 @@ _CONVERSATIONAL_SYSTEM_PROMPT = (
     "You are BIZASSIST, a business assistant. The user sent a short conversational "
     "message. Reply briefly and naturally in 1-2 sentences. Do NOT volunteer business "
     "data, reports, or unsolicited recommendations."
+)
+
+_ADVISE_SYSTEM_PROMPT = (
+    "You are BIZASSIST, a sharp business advisor for Indian distributors. The user "
+    "asked for SUGGESTIONS, and their REAL data is provided below. Give practical, "
+    "specific advice grounded in that data.\n\n"
+    "RULES:\n"
+    "- Use ONLY the numbers, customers, and products in the data. NEVER invent any.\n"
+    "- NEVER use hypothetical examples, illustrative names, or made-up amounts — "
+    "no \"if Customer X has ₹50,000…\", no \"for example, a customer who…\". Every "
+    "name and figure you write MUST appear verbatim in the data below. If the data "
+    "doesn't support a point, leave it out.\n"
+    "- Name names: tie each suggestion to a specific customer/product/amount.\n"
+    "- 3-5 concrete suggestions, most impactful first. Short paragraphs or a brief "
+    "numbered list.\n"
+    "- Use ₹ with comma formatting (₹2,48,669). Never $.\n"
+    "- End with ONE thing to do today.\n"
 )
 
 
@@ -760,6 +866,40 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
         route, handler_key = _override
         logger.info(f"[ROUTER] override → {route}/{handler_key} q='{user_query[:60]}'")
 
+    # ── NEXT-GEN ROUTER SWITCH (LLM_ROUTER=on) ──────────────────────
+    # When ON, the LLM router's decision REPLACES the legacy one (a user's
+    # explicit override still wins). On ANY failure it returns None and the
+    # legacy decision above stands — legacy is the permanent safety net.
+    # New tiers it can produce: AI_ADVISE (data + grounded advice) and
+    # ACTION (gated preview — never auto-executed), handled below.
+    from services.router_mode import get_mode as _router_mode, pretty as _router_pretty
+    _rmode = _router_mode()            # legacy(off) | shadow | new(on) — resolved ONCE
+    _llm_decision = None
+    _llm_entities = {}                 # extracted hints we actually honor (B2/B3/B4)
+    # B6: legacy already matched an exact dashboard template → it's deterministic,
+    # so skip the LLM router's extra 1-2s call (it only agrees with these).
+    _llm_skip = (route == "DIRECT" and handler_key in _LLM_FASTPATH_HANDLERS)
+    if _override is None and _rmode == "on" and not _llm_skip:
+        try:
+            from services.llm_router import route as _llm_route
+            _r = _llm_route(user_query, client=client, business_id=active_user_id)
+            if _r is not None:
+                _, _, _decision = _r
+                _new_route, _new_handler, _ents, _accepted = _resolve_llm_decision(
+                    _decision, route, handler_key)
+                if not _accepted:
+                    logger.info(f"[ROUTER] llm conf {_decision.confidence:.2f} < floor "
+                                f"{_LLM_CONF_FLOOR} → keep legacy {route}/{handler_key} "
+                                f"q='{user_query[:60]}'")
+                else:
+                    _llm_decision = _decision
+                    _llm_entities = _ents
+                    logger.info(f"[ROUTER] llm → {_new_route}/{_new_handler} "
+                                f"(legacy was {route}/{handler_key}) q='{user_query[:60]}'")
+                    route, handler_key = _new_route, _new_handler
+        except Exception as _le:
+            logger.warning(f"[ROUTER] llm route failed, legacy stands: {_le}")
+
     # ── Rate limit ──────────────────────────────────────────────────
     rl = check_rate_limit(active_user_id, route)
     if not rl["allowed"]:
@@ -775,23 +915,43 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
     # keys on topic so "show overdue" and "who owes me" share one entry.
     _pre_topic   = _detect_topic(user_query)
     _is_writing  = bool(_WRITING_ACTIONS.search(user_query))   # "draft/write a reminder…"
+    # AI_ADVISE keys on the exact query (advice for "loyalty offers" must not be
+    # served to a different advice question that shares the topic). Compute the
+    # effective flag ONCE so the salt and the debug log lines agree (B7 — the REQ
+    # line used to print the topic-keyed disc for AI_ADVISE).
+    _eff_writing = _is_writing or route == "AI_ADVISE"
     history_salt = _cache_salt(active_user_id, route, user_query, _pre_topic,
-                               handler_key, is_writing=_is_writing)
+                               handler_key, is_writing=_eff_writing)
 
     # Full routing+cache context for root-cause debugging (LOG_LEVEL=DEBUG). This
     # is the line that makes cache-collision bugs obvious: if `handler` and
     # `cache_disc` disagree for a DIRECT query, two intents are sharing a key.
+    # One INFO line per request, ALIGNED with the response: rid + router mode +
+    # final route/handler. Grep "[REQ" to trace exactly which router (legacy /
+    # shadow / new) produced any answer, even across live mode switches.
     rid = uuid.uuid4().hex[:8]
-    logger.debug(
-        f"[REQ {rid}] user={active_user_id} route={route} handler={handler_key} "
-        f"topic={_pre_topic} writing={_is_writing} "
-        f"cache_disc='{_cache_disc(route, user_query, _pre_topic, handler_key, _is_writing)}' "
+    logger.info(
+        f"[REQ {rid}] router={_router_pretty(_rmode)} user={active_user_id} "
+        f"route={route} handler={handler_key} topic={_pre_topic} writing={_is_writing} "
+        f"cache_disc='{_cache_disc(route, user_query, _pre_topic, handler_key, _eff_writing)}' "
         f"q='{user_query[:100]}'"
     )
 
     # Phase 1 shadow routing (no-op unless INTENT_ROUTER=shadow|on) — gathers
     # semantic-vs-regex agreement data on real traffic without changing routing.
     _maybe_shadow_route(user_query, route, handler_key, _pre_topic)
+
+    # Next-gen LLM router shadow (services/llm_router.py — NEW parallel system).
+    # No-op unless LLM_ROUTER=shadow. Runs in a background thread (zero added
+    # latency) AFTER the legacy decision and changes NOTHING — it only logs
+    # '[ROUTER][llm-shadow] …' lines for analyze_llm_shadow.py.
+    if _rmode == "shadow":
+        try:
+            from services.llm_router import shadow_compare as _llm_shadow
+            _llm_shadow(user_query, route, handler_key, _pre_topic,
+                        business_id=active_user_id)
+        except Exception as _le:
+            logger.debug(f"[ROUTER][llm-shadow] skipped: {_le}")
 
     # ── Layer 1.5: CONVERSATIONAL short-circuit ─────────────────────
     if route == "CONVERSATIONAL":
@@ -802,15 +962,11 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
         ]
         if stream:
             full = ""
-            resp = client.chat.completions.create(
-                messages=conv_messages, model=MODEL_SIMPLE,
-                temperature=0.5, max_tokens=80, stream=True,
-            )
-            for chunk in resp:
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    full += delta
-                    yield {"type": "token", "content": delta}
+            for delta in _stream_deltas(client, conv_messages, MODEL_SIMPLE,
+                                        active_user_id, "CONVERSATIONAL", acc,
+                                        temperature=0.5, max_tokens=80):
+                full += delta
+                yield {"type": "token", "content": delta}
         else:
             resp = client.chat.completions.create(
                 messages=conv_messages, model=MODEL_SIMPLE,
@@ -833,11 +989,50 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
         }}
         return
 
+    # ── ACTION (LLM router only): gated preview, NEVER auto-executed ─
+    # "Escalate 90+ days" must return a confirm chip, not a hallucinated "Done."
+    if route == "ACTION":
+        _action = getattr(_llm_decision, "action", None)
+        _ents   = _llm_entities or (getattr(_llm_decision, "entities", {}) or {})
+        markdown = "I can't run that automatically yet — here's what I found instead."
+        suggestions = []
+        try:
+            from services.actions import is_action as _is_action, preview as _a_preview
+            if _action and _is_action(_action):
+                prev = _a_preview(_action, active_user_id, _ents)
+                nice = _action.replace("_", " ")
+                summary = (prev or {}).get("summary", "")
+                markdown = (f"I can **{nice}** for you. Nothing is sent or changed "
+                            f"until you confirm.\n\n{summary}".strip())
+                suggestions = [{
+                    "id": _action, "label": f"Preview & confirm: {nice}",
+                    "type": "action", "action": _action, "confirm": True,
+                    "params": _ents, "icon": "bell",
+                }]
+        except Exception as _ae:
+            logger.warning(f"[ACTION] preview failed: {_ae}")
+        _log_chat(active_user_id, user_query, markdown, session_id, session_title,
+                  source="action", remember=False)
+        yield {"type": "replace", "content": markdown}
+        yield {"type": "final", "envelope": {
+            "answer":        {"markdown": markdown, "title": ""},
+            "response":      markdown,
+            "source":        "action",
+            "suggestions":   suggestions,
+            "alerts":        [],
+            "chart":         None,
+            "session_id":    session_id,
+            "session_title": session_title,
+            "meta": {"tokens": acc["in"] + acc["out"], "model": MODEL_SIMPLE,
+                     "model_tier": "ACTION", "cached": False},
+        }}
+        return
+
     # ── Layer 2: universal cache check ──────────────────────────────
     cached = get_cached_query_response(active_user_id, user_query, history_salt)
     if cached:
         logger.info(f"[CACHE] HIT [REQ {rid}] source={cached.get('source','?')} "
-                    f"disc='{_cache_disc(route, user_query, _pre_topic, handler_key, _is_writing)}' query='{user_query[:80]}'")
+                    f"disc='{_cache_disc(route, user_query, _pre_topic, handler_key, _eff_writing)}' query='{user_query[:80]}'")
         markdown = cached.get("answer", {}).get("markdown") or cached.get("response", "")
         _log_chat(active_user_id, user_query, markdown, session_id, session_title,
                   source=cached.get("source", "ai"), model_tier=cached.get("model_tier"),
@@ -862,9 +1057,75 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
         yield {"type": "final", "envelope": envelope}
         return
 
+    # ── AI_ADVISE (LLM router only): real data + grounded advice ────
+    # "Suggest loyalty offers for my top customers" → fetch the top-customers
+    # data, then ask the 8B for advice grounded ON that data. Fixes the
+    # advice-questions-get-raw-tables bug.
+    if route == "AI_ADVISE":
+        data_md = None
+        if handler_key:
+            try:
+                data_md = direct_handle(handler_key, user_query, active_user_id, params=_llm_entities)
+            except Exception as _de:
+                logger.debug(f"[ADVISE] data fetch failed: {_de}")
+        if data_md and data_md != CUSTOMER_NOT_FOUND:
+            # B5: collection/DSO advice ("why is my collection rate low") needs
+            # real names to be specific — enrich with the actual top-debtors so
+            # the model cites them instead of inventing an example customer.
+            if handler_key in ("dso_summary", "overdue_amount", "total_revenue"):
+                try:
+                    _debtors_md = direct_handle("top_debtors", user_query, active_user_id)
+                    if _debtors_md:
+                        data_md = f"{data_md}\n\n--- YOUR TOP DEBTORS (real) ---\n{_debtors_md}"
+                except Exception:
+                    pass
+            logger.info(f"[ADVISE] grounding on handler={handler_key} | '{user_query[:60]}'")
+            advise_messages = [
+                {"role": "system", "content": _ADVISE_SYSTEM_PROMPT},
+                {"role": "user", "content":
+                    f"QUESTION: {user_query}\n\nTHEIR REAL BUSINESS DATA:\n{data_md[:3500]}"},
+            ]
+            if stream:
+                yield {"type": "status", "content": "Reading your data…"}
+                full_text = ""
+                for delta in _stream_deltas(client, advise_messages, MODEL_SIMPLE,
+                                            active_user_id, "AI_ADVISE", acc,
+                                            temperature=0.3, max_tokens=700):
+                    full_text += delta
+                    yield {"type": "token", "content": delta}
+            else:
+                _ar = client.chat.completions.create(
+                    messages=advise_messages, model=MODEL_SIMPLE,
+                    temperature=0.3, max_tokens=700,
+                )
+                _log_token_usage(active_user_id, MODEL_SIMPLE, "AI_ADVISE",
+                                 getattr(_ar, "usage", None), acc)
+                full_text = (_ar.choices[0].message.content or "").strip()
+            recs      = recommend(handler_key, active_user_id)
+            anomalies = detect_anomalies(active_user_id)
+            envelope = {
+                "answer":        {"markdown": full_text, "title": ""},
+                "response":      full_text,
+                "source":        "advice",
+                "suggestions":   recs,
+                "alerts":        anomalies,
+                "chart":         None,
+                "session_id":    session_id,
+                "session_title": session_title,
+                "meta": {"tokens": acc["in"] + acc["out"], "model": MODEL_SIMPLE,
+                         "model_tier": "AI_ADVISE", "cached": False},
+            }
+            set_cached_query_response(active_user_id, user_query, envelope, history_salt)
+            _log_chat(active_user_id, user_query, full_text, session_id, session_title,
+                      source="advice", model_tier="AI_ADVISE")
+            yield {"type": "final", "envelope": envelope}
+            return
+        # No grounding data → plain AI_SIMPLE (tool-calling) handles it below.
+        route, handler_key = "AI_SIMPLE", None
+
     # ── Layer 2.5: DIRECT DB answer → polish → cache ────────────────
     if route == "DIRECT":
-        answer = direct_handle(handler_key, user_query, active_user_id)
+        answer = direct_handle(handler_key, user_query, active_user_id, params=_llm_entities)
         if answer:
             logger.info(f"[DIRECT] handler={handler_key} | '{user_query}'")
             # Honest "customer not found" — return verbatim. Don't polish (the LLM
@@ -979,7 +1240,9 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
     # ── Layer 3a: AI_COMPLEX → LangGraph multi-agent ────────────────
     tool_calls_made = None
     if route == "AI_COMPLEX":
-        logger.info(f"[AI_COMPLEX] LangGraph agents | '{user_query}'")
+        _agent_mode = os.getenv("AGENT_MODE", "pipeline").lower()
+        logger.info(f"[AI_COMPLEX] {'agent-loop' if _agent_mode == 'loop' else 'LangGraph agents'} "
+                    f"| '{user_query}'")
         if stream:
             full_text = ""
             for event_str in run_agent_graph_stream(user_query, active_user_id, history):
@@ -1040,15 +1303,11 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
                                  "name": fn_name, "content": tr})
             if stream:
                 full_text = ""
-                s = client.chat.completions.create(
-                    messages=messages, model=selected_model,
-                    temperature=0.1, max_tokens=800, stream=True,
-                )
-                for chunk in s:
-                    delta = chunk.choices[0].delta.content
-                    if delta:
-                        full_text += delta
-                        yield {"type": "token", "content": delta}
+                for delta in _stream_deltas(client, messages, selected_model,
+                                            active_user_id, "AI_SIMPLE", acc,
+                                            temperature=0.1, max_tokens=800):
+                    full_text += delta
+                    yield {"type": "token", "content": delta}
             else:
                 second = client.chat.completions.create(
                     messages=messages, model=selected_model,
@@ -1059,15 +1318,11 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
         else:
             if stream:
                 full_text = ""
-                s = client.chat.completions.create(
-                    messages=messages, model=selected_model,
-                    temperature=0.1, max_tokens=800, stream=True,
-                )
-                for chunk in s:
-                    delta = chunk.choices[0].delta.content
-                    if delta:
-                        full_text += delta
-                        yield {"type": "token", "content": delta}
+                for delta in _stream_deltas(client, messages, selected_model,
+                                            active_user_id, "AI_SIMPLE", acc,
+                                            temperature=0.1, max_tokens=800):
+                    full_text += delta
+                    yield {"type": "token", "content": delta}
             else:
                 full_text = resp_msg.content or ""
 
@@ -1146,6 +1401,19 @@ def handle(prompt_message: str, session_id_in: Optional[str], current_user: dict
         _raise_pipeline_error(error_ev)
     if final_env is None:
         raise ask_error(500, "internal_error", "No response produced.")
+    # Traceability: stamp WHICH router produced this answer into meta, and log a
+    # [DONE] line that pairs with the request's [REQ] line (match on q=…).
+    try:
+        from services.router_mode import get_mode as _gm, pretty as _pp
+        final_env.setdefault("meta", {})["router"] = _pp(_gm())
+    except Exception:
+        pass
+    _m = final_env.get("meta", {})
+    logger.info(
+        f"[DONE] router={_m.get('router')} source={final_env.get('source')} "
+        f"tier={_m.get('model_tier')} tokens={_m.get('tokens')} cached={_m.get('cached')} "
+        f"q='{prompt_message.strip()[:80]}'"
+    )
     return final_env
 
 
@@ -1179,6 +1447,19 @@ def handle_stream(prompt_message: str, session_id_in, current_user: dict, client
                 yield ev["data"]
             elif t == "final":
                 env = ev["envelope"]
+                # Traceability: stamp the router mode into meta (flows into the
+                # 'done' SSE event) and pair this answer with its [REQ] line.
+                try:
+                    from services.router_mode import get_mode as _gm, pretty as _pp
+                    env.setdefault("meta", {})["router"] = _pp(_gm())
+                except Exception:
+                    pass
+                _m = env.get("meta", {})
+                logger.info(
+                    f"[DONE] router={_m.get('router')} source={env.get('source')} "
+                    f"tier={_m.get('model_tier')} tokens={_m.get('tokens')} cached={_m.get('cached')} "
+                    f"q='{prompt_message.strip()[:80]}'"
+                )
                 yield _sse("done",
                     source=env.get("source"),
                     suggestions=env.get("suggestions", []),

@@ -21,15 +21,24 @@ from services.dates import parse_date
 logger = logging.getLogger("bizassist.handlers.invoices")
 
 # Invoice IDs look like SUP-INV-0138 / ROY-INV-0001 — a 2–6 letter prefix, INV, digits.
-INVOICE_ID_RE = re.compile(r"\b([A-Za-z]{2,6}-INV-\d+)\b", re.I)
+# Matches both bare IDs ("INV-0007") and prefixed ones ("SUP-INV-0138"). The
+# real data uses bare INV-#### — the old prefix-required pattern silently failed
+# on it, so the handler returned None and the LLM hallucinated an invoice (B3).
+INVOICE_ID_RE = re.compile(r"\b((?:[A-Za-z]{2,6}-)?INV-\d+)\b", re.I)
 
 
-def _invoice_detail(user_id: int, query: str) -> str:
-    """Details for ONE invoice by its ID — straight from the DB, never generated."""
-    m = INVOICE_ID_RE.search(query or "")
-    if not m:
-        return None   # no ID present → let another layer handle it
-    inv_id = m.group(1)
+def _invoice_detail(user_id: int, query: str, invoice_id: str = None) -> str:
+    """Details for ONE invoice by its ID — straight from the DB, never generated.
+
+    `invoice_id`, when supplied (e.g. by the LLM router's extracted entity), is
+    authoritative; otherwise we parse it out of the query text.
+    """
+    inv_id = (invoice_id or "").strip()
+    if not inv_id:
+        m = INVOICE_ID_RE.search(query or "")
+        if not m:
+            return None   # no ID present → let another layer handle it
+        inv_id = m.group(1)
     db = SessionLocal()
     try:
         r = (

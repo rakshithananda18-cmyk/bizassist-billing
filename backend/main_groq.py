@@ -39,6 +39,18 @@ from logging_config import configure_logging, get_logger
 configure_logging()                       # one clean, env-tunable (LOG_LEVEL) config
 logger = get_logger("app")
 
+# ── Single-worker guard ───────────────────────────────────────────────────────
+# Caches, rate-limit windows, and the APScheduler are process-local (C5). With
+# >1 worker you'd get cache misses, doubled rate-limit allowances, and duplicate
+# alert emails. Warn loudly until shared state (Redis) lands in Phase 5.
+_workers = os.getenv("WEB_CONCURRENCY") or os.getenv("UVICORN_WORKERS") or os.getenv("GUNICORN_WORKERS")
+if _workers and str(_workers).strip().isdigit() and int(_workers) > 1:
+    logger.warning(
+        f"[ADMIN] {_workers} workers detected, but BizAssist's caches, rate "
+        f"limiter, and scheduler are process-local — run a SINGLE worker, or "
+        f"expect duplicate alerts and inconsistent limits."
+    )
+
 # ── DB ────────────────────────────────────────────────────────────────────────
 Base.metadata.create_all(bind=engine)
 run_migrations_and_seed()
@@ -53,8 +65,10 @@ async def lifespan(_app):
     stop_scheduler()
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
+# NOTE: the "null" origin (file:// pages) is intentionally NOT in the defaults —
+# it would let any locally-saved HTML file call the API. If you need it for
+# local file testing, add it explicitly via ALLOWED_ORIGINS.
 _default_origins = (
-    "null,"
     "http://localhost:5500,http://127.0.0.1:5500,"
     "http://localhost:3000,"
     "http://localhost:5173,http://127.0.0.1:5173,"

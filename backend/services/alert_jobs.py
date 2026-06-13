@@ -280,14 +280,34 @@ def run_daily_summary():
                 f"",
             ]
 
-            # Action callouts
-            if overdue_cnt > 0:
-                lines.append(f"🔴 Action: Follow up on {overdue_cnt} overdue invoice(s) — ₹{overdue_amt:,.0f} at risk.")
-            if low_stock_cnt > 0:
-                lines.append(f"🟡 Action: Reorder {low_stock_cnt} low-stock product(s) to prevent stockouts.")
-            if expiring_cnt > 0:
-                lines.append(f"🟠 Action: Promote or discount {expiring_cnt} product(s) expiring within {exp_days} days.")
-            if overdue_cnt == 0 and low_stock_cnt == 0 and expiring_cnt == 0:
+            # 🎯 Today's Focus — grounded, NAMED items from the insights engine
+            # (smart_insights.build_panel_insights: pure snapshot math, no LLM,
+            # so it names the actual customer/product instead of a bare count).
+            focus = []
+            try:
+                from services.smart_insights import build_panel_insights
+                panel = build_panel_insights(bid)
+                focus = (panel.get("improvements") or [])[:3]
+            except Exception as e:
+                logger.debug(f"[SCHED] panel insights unavailable, using counts: {e}")
+
+            if focus:
+                lines.append(f"── 🎯 Today's Focus ─────────────")
+                for i, item in enumerate(focus, 1):
+                    lines.append(f"  {i}. {item.get('title', '')}: {item.get('detail', '')}")
+                    if item.get("action"):
+                        lines.append(f"     → {item['action']}")
+                lines.append("")
+            else:
+                # Fallback: generic count-based callouts (insights engine empty/failed)
+                if overdue_cnt > 0:
+                    lines.append(f"🔴 Action: Follow up on {overdue_cnt} overdue invoice(s) — ₹{overdue_amt:,.0f} at risk.")
+                if low_stock_cnt > 0:
+                    lines.append(f"🟡 Action: Reorder {low_stock_cnt} low-stock product(s) to prevent stockouts.")
+                if expiring_cnt > 0:
+                    lines.append(f"🟠 Action: Promote or discount {expiring_cnt} product(s) expiring within {exp_days} days.")
+
+            if not focus and overdue_cnt == 0 and low_stock_cnt == 0 and expiring_cnt == 0:
                 lines.append(f"✅ All clear — no urgent actions today. Have a productive day!")
 
             lines += [f"", f"– BizAssist AI"]

@@ -9,10 +9,51 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState({ businesses: 0, revenue: 0, files: 0 })
   const [loading, setLoading] = useState(true)
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [routerMode, setRouterMode] = useState(null)      // 'legacy' | 'shadow' | 'new'
+  const [routerBusy, setRouterBusy] = useState(false)
 
   useEffect(() => {
     loadDashboardStats()
+    loadRouterMode()
   }, [])
+
+  async function loadRouterMode() {
+    try {
+      const res = await authFetch(`${API_BASE}/admin/router-mode`)
+      if (res.ok) {
+        const data = await res.json()
+        setRouterMode(data.mode)
+      }
+    } catch (err) {
+      console.error('router-mode load failed', err)
+    }
+  }
+
+  async function handleRouterMode(mode) {
+    if (mode === routerMode || routerBusy) return
+    const blurb = {
+      legacy: 'Switch to LEGACY routing? The app behaves exactly like the previous version (LLM router never called).',
+      shadow: 'Switch to SHADOW mode? Legacy keeps answering; the new LLM router silently logs comparisons for the report.',
+      new:    'Switch to NEW routing? The LLM router steers (advice, gated actions, analysis). Legacy stays as automatic fallback.',
+    }[mode]
+    if (!(await showConfirm(blurb))) return
+    setRouterBusy(true)
+    try {
+      const res = await authFetch(`${API_BASE}/admin/router-mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || data.error || 'Switch failed')
+      setRouterMode(data.mode)
+      await showAlert(data.message || `Routing switched to ${data.mode}.`)
+    } catch (err) {
+      await showError(err)
+    } finally {
+      setRouterBusy(false)
+    }
+  }
 
   async function loadDashboardStats() {
     setLoading(true)
@@ -131,6 +172,56 @@ export default function AdminDashboard() {
               <div className="vsummary-label">Total Files Logged</div>
               <div className="vsummary-value">{stats.files}</div>
               <div className="vsummary-sub">datasets uploaded</div>
+            </div>
+          </div>
+
+          {/* AI Router Mode switch */}
+          <div className="admin-table-widget" style={{ marginTop: 24 }}>
+            <div className="admin-table-title">
+              AI Router Mode
+              {routerMode && (
+                <span style={{
+                  marginLeft: 10, fontSize: 12, padding: '3px 10px', borderRadius: 12,
+                  background: routerMode === 'new' ? 'rgba(99,102,241,.15)'
+                            : routerMode === 'shadow' ? 'rgba(201,124,34,.15)'
+                            : 'rgba(100,116,139,.15)',
+                  color: routerMode === 'new' ? '#6366f1'
+                       : routerMode === 'shadow' ? '#c97c22'
+                       : 'var(--secondary-text)',
+                }}>
+                  ● {routerMode.toUpperCase()}
+                </span>
+              )}
+            </div>
+            <div style={{ color: 'var(--secondary-text)', fontSize: '13.5px', lineHeight: 1.6, margin: '10px 0 14px' }}>
+              Switch how chat questions are routed — takes effect on the next message, no restart.
+              Resets to the .env default (<code>LLM_ROUTER</code>) on server restart.
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {[
+                { key: 'legacy', icon: '🏛', label: 'Legacy',  desc: 'exact previous behaviour' },
+                { key: 'shadow', icon: '👁', label: 'Shadow',  desc: 'legacy answers + comparison logs' },
+                { key: 'new',    icon: '🧠', label: 'New',     desc: 'LLM router steers, legacy fallback' },
+              ].map(opt => (
+                <button
+                  key={opt.key}
+                  className="btn-flush"
+                  disabled={routerBusy}
+                  onClick={() => handleRouterMode(opt.key)}
+                  style={{
+                    padding: '10px 16px', fontSize: 13, textAlign: 'left',
+                    opacity: routerBusy ? 0.6 : 1,
+                    border: routerMode === opt.key
+                      ? '2px solid var(--accent-color)' : '1px solid var(--border-color)',
+                    fontWeight: routerMode === opt.key ? 700 : 500,
+                  }}
+                >
+                  {opt.icon} {opt.label}
+                  <span style={{ display: 'block', fontSize: 11, color: 'var(--secondary-text)', fontWeight: 400 }}>
+                    {opt.desc}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
 

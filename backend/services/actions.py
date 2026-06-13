@@ -92,10 +92,34 @@ def _reminder_message(customer: str, amount: float, business: str, due: Optional
 def _reminders_preview(user_id: int, params: dict) -> dict:
     # Honour an explicit customer selection from the Send-reminders picker; when
     # none is given, fall back to every overdue customer.
-    selected = [c for c in (params or {}).get("customers", []) if c]
+    params = params or {}
+    selected = [c for c in params.get("customers", []) if c]
     db = SessionLocal()
     try:
         business = _business_name(db, user_id)
+        # Honour a SINGLE named target from the LLM router (e.g. "follow up with
+        # Sri Venkateswara about INV-0007") — fuzzy-resolve the hint to a real
+        # overdue customer so the preview scopes to them, not all 20 (B4). An
+        # invoice_id hint resolves to that invoice's customer.
+        if not selected:
+            target = params.get("customer")
+            inv_id = params.get("invoice_id")
+            overdue_names = [r[0] for r in db.query(Invoice.customer)
+                             .filter(Invoice.business_id == user_id,
+                                     Invoice.status == "Overdue").distinct().all()]
+            if not target and inv_id:
+                row = (db.query(Invoice.customer)
+                       .filter(Invoice.business_id == user_id,
+                               func.lower(Invoice.invoice_id) == str(inv_id).lower())
+                       .first())
+                if row:
+                    target = row[0]
+            if target:
+                from services.direct_query_handler import _match_customer_name
+                resolved = _match_customer_name(target, overdue_names) or \
+                    (target if target in overdue_names else None)
+                if resolved:
+                    selected = [resolved]
         q = (
             db.query(
                 Invoice.customer,

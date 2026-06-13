@@ -36,6 +36,27 @@ def _no_token_log():
         yield
 
 
+def test_friendly_error_quota_message():
+    # a 429 / token-per-day error → honest "daily limit" message, not "error"
+    e = Exception("Error code: 429 - rate_limit_exceeded: tokens per day (TPD): Limit 100000")
+    msg = al._friendly_error(e)
+    assert "daily ai analysis limit" in msg.lower()
+    assert "error" not in msg.lower() or "limit" in msg.lower()
+
+
+def test_friendly_error_generic_message():
+    msg = al._friendly_error(ValueError("boom"))
+    assert "error" in msg.lower()
+
+
+def test_run_agent_loop_quota_returns_friendly_text():
+    boom = Exception("429 tokens per day (TPD) rate_limit_exceeded")
+    with patch.object(al._client.chat.completions, "create", side_effect=boom):
+        out = al.run_agent_loop("plan my business", 1, [])
+    assert "daily ai analysis limit" in out["text"].lower()
+    assert out["tokens_in"] == 0 and out["tokens_out"] == 0
+
+
 def test_loop_calls_tool_then_answers():
     seq = [
         _resp(tool_calls=[_tc("summarize_invoices")]),       # round 1: ask for a tool
