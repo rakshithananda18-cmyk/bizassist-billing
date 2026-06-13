@@ -495,3 +495,37 @@ class QueryOverride(Base, TimestampMixin):
     handler_key = Column(String,  nullable=True)     # for DIRECT
     created_at  = Column(DateTime, default=datetime.utcnow)
     updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — Proactive Memory
+# ---------------------------------------------------------------------------
+
+class BusinessFact(Base, TimestampMixin):
+    """
+    Durable, distilled business facts compiled weekly by the LLM memory job.
+
+    Each row captures one stable pattern about a business — e.g. a customer
+    who habitually pays late, a product that moves fastest on weekends, or a
+    seasonal revenue dip — keyed by (business_id, fact_key).
+
+    These facts are injected into every LLM system prompt under [Durable
+    Memories] so the AI advisor can give personalised, context-aware answers
+    without re-analysing history on every request.
+
+    Lifecycle:
+      • Written weekly by services.memory_service.distill_memory()
+      • Read on every AI call by services.memory_service.get_business_facts()
+      • Visible via GET /alerts/memory-facts (enterprise only)
+    """
+    __tablename__ = "business_facts"
+    __table_args__ = (
+        UniqueConstraint("business_id", "fact_key", name="uq_business_facts_biz_key"),
+    )
+
+    id          = Column(Integer, primary_key=True, index=True)
+    business_id = Column(Integer, index=True, nullable=False)
+    fact_key    = Column(String,  index=True, nullable=False)   # e.g. "payment_delay_star_bazaar"
+    category    = Column(String,  nullable=True)                 # e.g. "payment_delay" | "sales_pattern"
+    fact_text   = Column(Text,    nullable=False)                # Human-readable sentence
+    confidence  = Column(Float,   default=1.0, nullable=True)   # 0.0–1.0; low confidence facts hidden

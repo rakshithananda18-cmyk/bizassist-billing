@@ -19,15 +19,34 @@ export default function MessageFeedback({ query, source, modelTier, sessionId })
   const [intents, setIntents]       = useState(_intentsCache || [])
   const [doneMsg, setDoneMsg]       = useState(null)
   const rootRef = useRef(null)
+  const downRef = useRef(null)
+  const [pickerPos, setPickerPos] = useState(null)
 
-  // Close the "what did you want?" picker on an outside click.
+  // Keep the picker positioned while open; close only on outside-click / Escape.
   useEffect(() => {
     if (!showPicker) return
-    function onDocClick(e) {
-      if (rootRef.current && !rootRef.current.contains(e.target)) setShowPicker(false)
+    const place = () => {
+      const r = downRef.current?.getBoundingClientRect()
+      if (!r) return
+      const PW = 300, PH = 240, GAP = 6, PAD = 10
+      const left = Math.min(Math.max(r.left, PAD), window.innerWidth - PW - PAD)
+      const spaceBelow = window.innerHeight - r.bottom
+      const top = spaceBelow >= PH + GAP ? r.bottom + GAP : Math.max(PAD, r.top - PH - GAP)
+      setPickerPos({ top, left })
     }
+    place()
+    const onDocClick = (e) => { if (rootRef.current && !rootRef.current.contains(e.target)) setShowPicker(false) }
+    const onKey = (e) => { if (e.key === 'Escape') setShowPicker(false) }
     document.addEventListener('mousedown', onDocClick)
-    return () => document.removeEventListener('mousedown', onDocClick)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => {
+      document.removeEventListener('mousedown', onDocClick)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
+    }
   }, [showPicker])
 
   if (!query || source === 'error') return null
@@ -57,8 +76,16 @@ export default function MessageFeedback({ query, source, modelTier, sessionId })
   }
 
   async function onDown() {
-    // Clicking 👎 again (while the picker is open) closes it.
+    // Clicking the thumb again (while the picker is open) closes it.
     if (showPicker) { setShowPicker(false); return }
+    const r = downRef.current?.getBoundingClientRect()
+    if (r) {
+      const PW = 300, PH = 240, GAP = 6, PAD = 10
+      const left = Math.min(Math.max(r.left, PAD), window.innerWidth - PW - PAD)
+      const spaceBelow = window.innerHeight - r.bottom
+      const top = spaceBelow >= PH + GAP ? r.bottom + GAP : Math.max(PAD, r.top - PH - GAP)
+      setPickerPos({ top, left })
+    }
     setVerdict('down')
     if (!_intentsCache) {
       try {
@@ -106,15 +133,13 @@ export default function MessageFeedback({ query, source, modelTier, sessionId })
     <div style={{ marginTop: 0 }} ref={rootRef}>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <button style={verdict === 'up' ? btnActive : btn} onClick={onUp} title="Good answer" aria-label="Good answer"><ThumbUp /></button>
-        <button style={verdict === 'down' ? btnActive : btn} onClick={onDown} title="Wrong answer" aria-label="Wrong answer"><ThumbDown /></button>
+        <button ref={downRef} style={verdict === 'down' ? btnActive : btn} onClick={onDown} title="Wrong answer" aria-label="Wrong answer"><ThumbDown /></button>
       </div>
 
-      {showPicker && (
-        <div style={{
-          marginTop: 6, padding: 8, borderRadius: 8,
-          border: '1px solid rgba(127,127,127,0.25)', maxWidth: 320,
-        }}>
-          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>What did you want?</div>
+      {showPicker && pickerPos && (
+        <div className="bz-popover" onClick={e => e.stopPropagation()}
+          style={{ position: 'fixed', top: pickerPos.top, left: pickerPos.left, width: 300, maxHeight: 240, overflowY: 'auto', zIndex: 1000 }}>
+          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>What did you want?</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {intents.map(it => (
               <button
@@ -122,7 +147,7 @@ export default function MessageFeedback({ query, source, modelTier, sessionId })
                 onClick={() => pick(it.key)}
                 style={{
                   fontSize: 12, padding: '4px 10px', borderRadius: 999,
-                  border: '1px solid rgba(127,127,127,0.3)', background: 'transparent',
+                  border: '1px solid var(--border-color)', background: 'transparent',
                   cursor: 'pointer', color: 'inherit',
                 }}
               >

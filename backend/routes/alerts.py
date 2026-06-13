@@ -133,9 +133,9 @@ def trigger_alert_manually(
 ):
     """
     Manually trigger a specific alert job for testing purposes.
-    alert_type: one of 'overdue', 'low_stock', 'expiry', 'daily_summary'
+    alert_type: one of 'overdue', 'low_stock', 'expiry', 'daily_summary', 'memory_distillation'
     """
-    allowed = ["overdue", "low_stock", "expiry", "daily_summary"]
+    allowed = ["overdue", "low_stock", "expiry", "daily_summary", "memory_distillation"]
     if alert_type not in allowed:
         raise HTTPException(
             status_code=400,
@@ -148,12 +148,14 @@ def trigger_alert_manually(
             run_low_stock_alerts,
             run_expiry_alerts,
             run_daily_summary,
+            run_memory_distillation,
         )
         dispatch = {
-            "overdue":       run_overdue_alerts,
-            "low_stock":     run_low_stock_alerts,
-            "expiry":        run_expiry_alerts,
-            "daily_summary": run_daily_summary,
+            "overdue":              run_overdue_alerts,
+            "low_stock":            run_low_stock_alerts,
+            "expiry":               run_expiry_alerts,
+            "daily_summary":        run_daily_summary,
+            "memory_distillation":  run_memory_distillation,
         }
         dispatch[alert_type]()
         return {"success": True, "message": f"Alert '{alert_type}' triggered manually."}
@@ -181,3 +183,73 @@ def scheduler_status(current_user: dict = Depends(get_active_user)):
         })
 
     return {"running": True, "jobs": jobs}
+
+
+# ── GET memory facts ─────────────────────────────────────────
+
+@router.get("/memory-facts")
+def get_memory_facts(current_user: dict = Depends(get_active_user)):
+    """
+    Phase 4 — Returns all distilled business memory facts for the
+    current user's business. Facts are written weekly by the memory
+    distillation job and injected into every LLM prompt.
+    """
+    from database.db import SessionLocal
+    from database.models import BusinessFact
+
+    business_id = current_user["id"]
+    db = SessionLocal()
+    try:
+        facts = (
+            db.query(BusinessFact)
+            .filter(BusinessFact.business_id == business_id)
+            .order_by(BusinessFact.category, BusinessFact.fact_key)
+            .all()
+        )
+        return {
+            "business_id": business_id,
+            "count": len(facts),
+            "facts": [
+                {
+                    "id":         f.id,
+                    "fact_key":   f.fact_key,
+                    "category":   f.category,
+                    "fact_text":  f.fact_text,
+                    "confidence": f.confidence,
+                    "updated_at": f.updated_at.isoformat() if f.updated_at else None,
+                }
+                for f in facts
+            ],
+        }
+    finally:
+        db.close()
+
+
+# ── DELETE one memory fact ───────────────────────────────────────
+
+@router.delete("/memory-facts/{fact_id}")
+def delete_memory_fact(fact_id: int, current_user: dict = Depends(get_active_user)):
+    """
+    Phase 4 - delete a single distilled fact (scoped to the current business),
+    so the owner can remove anything wrong or stale. The weekly job may re-derive
+    it if the underlying pattern still holds.
+    """
+    from database.db import SessionLocal
+    from database.models import BusinessFact
+
+    business_id = current_user["id"]
+    db = SessionLocal()
+    try:
+        fact = (
+            db.query(BusinessFact)
+            .filter(BusinessFact.id == fact_id, BusinessFact.business_id == business_id)
+            .first()
+        )
+        if not fact:
+            raise HTTPException(status_code=404, detail="Fact not found")
+        logger.info(f"[MEMORY] delete fact id={fact_id} key='{fact.fact_key}' business_id={business_id}")
+        db.delete(fact)
+        db.commit()
+        return {"deleted": fact_id}
+    finally:
+        db.close()

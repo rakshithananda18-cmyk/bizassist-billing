@@ -49,6 +49,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   const [suggestions, setSuggestions]     = useState([])
   const [actionPreview, setActionPreview] = useState(null)
   const [actionBusy, setActionBusy]       = useState(false)
+  const [memoryFacts, setMemoryFacts]     = useState([])   // distilled facts (Phase 4)
 
   const [bizName, setBizName]             = useState(() => localStorage.getItem('biz_name') || user?.business_name || 'My Business')
   const [isRenamingBanner, setIsRenamingBanner] = useState(false)
@@ -449,6 +450,14 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   }
 
   // ── Effects ───────────────────────────────────────────────────────────────
+  // Fetch distilled business memory once on mount (drives the header badge).
+  useEffect(() => {
+    authFetch(`${API_BASE}/alerts/memory-facts`)
+      .then(r => r.ok ? r.json() : { facts: [] })
+      .then(d => setMemoryFacts(d.facts || []))
+      .catch(() => {})
+  }, [authFetch])
+
   useEffect(() => {
     if (user?.business_name && !localStorage.getItem('biz_name')) {
       setBizName(user.business_name); setTempBannerBiz(user.business_name)
@@ -627,6 +636,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
                 msg={msg}
                 query={priorQuery}
                 sessionId={activeId}
+                memoryFacts={memoryFacts}
                 innerRef={i === messages.length - 1 && msg.role === 'assistant' ? activeBotMessageRef : null}
               />
             )
@@ -635,7 +645,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
           {/* Only the brief pre-stream window before the assistant bubble exists.
              Once the bubble is added, its own below-message mark animates instead
              (see MessageBubble .bot-mark--gen), so they never both show. */}
-          {loading && <TypingIndicator />}
+          {loading && <TypingIndicator memoryCount={memoryFacts.length} />}
         </div>
 
         <div className="chat-scroll-fade"></div>

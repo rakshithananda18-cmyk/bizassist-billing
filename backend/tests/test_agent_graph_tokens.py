@@ -4,6 +4,7 @@ tests/test_agent_graph_tokens.py
 Phase 0 / C1 regression — agent_graph token counts must live in graph STATE,
 not a module-level global, so concurrent AI_COMPLEX runs can't corrupt each
 other's token/billing data.
+Also covers JSON mode enforcement and semantic fallback routing tests.
 """
 import os
 import sys
@@ -31,6 +32,7 @@ def _blank_state():
         "user_query": "analyze my business", "business_id": 1, "history": [],
         "plan": {}, "invoice_result": "", "inventory_result": "",
         "payment_result": "", "final_response": "", "tokens_in": 0, "tokens_out": 0,
+        "detected_topic": None,
     }
 
 
@@ -70,3 +72,52 @@ def test_synthesizer_adds_on_top_of_incoming_tokens(mock_create):
     assert out["tokens_in"] == 150, "synth must add to the tokens it received, not overwrite"
     assert out["tokens_out"] == 50
     assert out["final_response"] == "Final growth plan."
+
+
+@patch("services.agent_graph.client.chat.completions.create")
+def test_planner_uses_json_mode(mock_create):
+    plan_json = '{"needs_invoice": false, "needs_inventory": false, "needs_payment": false, "overall_goal": "x"}'
+    mock_create.return_value = _resp(plan_json, prompt=100, completion=20)
+
+    ag.planner_node(_blank_state())
+    mock_create.assert_called_once()
+    kwargs = mock_create.call_args[1]
+    assert kwargs.get("response_format") == {"type": "json_object"}
+
+
+@patch("services.agent_graph.client.chat.completions.create")
+def test_planner_fallback_by_detected_topic(mock_create):
+    # Simulate API error
+    mock_create.side_effect = Exception("Groq API error")
+
+    # 1. Fallback for inventory topics
+    state = _blank_state()
+    state["detected_topic"] = "low_stock"
+    s1 = ag.planner_node(state)
+    assert s1["plan"]["needs_invoice"] is False
+    assert s1["plan"]["needs_inventory"] is True
+    assert s1["plan"]["needs_payment"] is False
+
+    # 2. Fallback for invoices / collections topics
+    state = _blank_state()
+    state["detected_topic"] = "overdue_list"
+    s2 = ag.planner_node(state)
+    assert s2["plan"]["needs_invoice"] is True
+    assert s2["plan"]["needs_inventory"] is False
+    assert s2["plan"]["needs_payment"] is False
+
+    # 3. Fallback for payments / profit topics
+    state = _blank_state()
+    state["detected_topic"] = "profit_summary"
+    s3 = ag.planner_node(state)
+    assert s3["plan"]["needs_invoice"] is True
+    assert s3["plan"]["needs_inventory"] is False
+    assert s3["plan"]["needs_payment"] is True
+
+    # 4. Fallback for unknown/unmatched topics
+    state = _blank_state()
+    state["detected_topic"] = "unknown_topic"
+    s4 = ag.planner_node(state)
+    assert s4["plan"]["needs_invoice"] is True
+    assert s4["plan"]["needs_inventory"] is True
+    assert s4["plan"]["needs_payment"] is True

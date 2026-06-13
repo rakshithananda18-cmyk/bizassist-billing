@@ -9,6 +9,7 @@ import { renderMarkdown } from '../../utils/markdown'
 import TierBadge from './TierBadge'
 import InlineChart from './InlineChart'
 import MessageFeedback from './MessageFeedback'
+import MemoryChip from './MemoryChip'
 import { BuildingMark, SkylineLoader } from '../Logo'
 import { Icon } from '../icons'
 
@@ -49,7 +50,7 @@ function relevantAlerts(alerts, content) {
   })
 }
 
-export default function MessageBubble({ msg, innerRef, query, sessionId }) {
+export default function MessageBubble({ msg, innerRef, query, sessionId, memoryFacts = [] }) {
   if (msg.role === 'user') {
     return (
       <div className="message-row user-row">
@@ -60,6 +61,7 @@ export default function MessageBubble({ msg, innerRef, query, sessionId }) {
 
   const done    = msg.source && msg.source !== 'error' && (msg.content || '').trim()
   const alerts  = done ? relevantAlerts(msg.alerts, msg.content) : []
+  const showMem = done && msg.source !== 'conversational' && Array.isArray(memoryFacts) && memoryFacts.length > 0
 
   return (
     <div className="message-row bot-row">
@@ -91,6 +93,7 @@ export default function MessageBubble({ msg, innerRef, query, sessionId }) {
                 <Icon name={(ALERT_META[a.type] || {}).icon || 'alert'} size={16} />
               </span>
             ))}
+            {showMem && <MemoryChip facts={memoryFacts} />}
             <MessageFeedback
               query={query}
               source={msg.source}

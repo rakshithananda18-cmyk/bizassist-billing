@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useDialog } from '../contexts/DialogContext'
 import { API_BASE } from '../config'
 import { PageHeader, Section } from '../components/ui'
 import { Icon } from '../components/icons'
@@ -26,6 +27,7 @@ function daysUntil(dateStr) {
 
 export default function Alerts() {
   const { authFetch } = useAuth()
+  const { showConfirm } = useDialog()
   const navigate = useNavigate()
 
   const [loading, setLoading] = useState(true)
@@ -46,7 +48,12 @@ export default function Alerts() {
   })
   const [saveStatus, setSaveStatus] = useState('')
   const [savingConfig, setSavingConfig] = useState(false)
-  const [tab, setTab] = useState('live')  // 'live' | 'config'
+  const [tab, setTab] = useState('live')  // 'live' | 'config' | 'memory'
+
+  // Memory distillation state
+  const [memoryRunning, setMemoryRunning] = useState(false)
+  const [memoryStatus, setMemoryStatus] = useState('')   // '' | 'success' | 'error'
+  const [memoryFacts, setMemoryFacts] = useState(null)   // null = not loaded yet
 
   // intent set -> deterministic /intent (0 AI tokens); else natural-language AI query
   function sendChip(query, intent) {
@@ -126,6 +133,48 @@ export default function Alerts() {
     }
   }
 
+  async function runMemoryDistillation() {
+    setMemoryRunning(true)
+    setMemoryStatus('')
+    try {
+      const res = await authFetch(`${API_BASE}/alerts/test/memory_distillation`, { method: 'POST' })
+      if (res.ok) {
+        setMemoryStatus('success')
+        // Auto-load updated facts
+        await loadMemoryFacts()
+      } else {
+        setMemoryStatus('error')
+      }
+    } catch {
+      setMemoryStatus('error')
+    } finally {
+      setMemoryRunning(false)
+    }
+  }
+
+  async function loadMemoryFacts() {
+    try {
+      const res = await authFetch(`${API_BASE}/alerts/memory-facts`)
+      if (res.ok) {
+        const data = await res.json()
+        setMemoryFacts(data.facts || [])
+      }
+    } catch (e) {
+      console.error('Failed to load memory facts:', e)
+    }
+  }
+
+  async function deleteFact(id) {
+    if (id == null) return
+    if (!(await showConfirm('Delete this memory? The weekly job may re-derive it if the pattern still holds.'))) return
+    try {
+      const res = await authFetch(`${API_BASE}/alerts/memory-facts/${id}`, { method: 'DELETE' })
+      if (res.ok) setMemoryFacts(prev => (prev || []).filter(f => f.id !== id))
+    } catch (e) {
+      console.error('Failed to delete fact:', e)
+    }
+  }
+
   // Compute alert buckets from data
   const { invoices, inventory, summary } = data
 
@@ -186,6 +235,13 @@ export default function Alerts() {
               onClick={() => setTab('live')}
             >
               Live Alerts
+            </button>
+            <button
+              className="chip"
+              style={{ opacity: tab === 'memory' ? 1 : 0.55, fontWeight: tab === 'memory' ? 700 : 400, display: 'inline-flex', alignItems: 'center', gap: 5 }}
+              onClick={() => { setTab('memory'); if (!memoryFacts) loadMemoryFacts() }}
+            >
+              <Icon name="memory" size={13} /> Memory
             </button>
             <button
               className="chip"
@@ -544,6 +600,121 @@ export default function Alerts() {
               )}
             </div>
           </form>
+        </div>
+      )}
+
+      {/* MEMORY TAB */}
+      {tab === 'memory' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Run button card */}
+          <div className="widget" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <div className="widget-title" style={{ marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon name="memory" size={18} style={{ color: 'var(--accent-color)' }} />
+                Business Memory Distillation
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--secondary-text)', maxWidth: 420 }}>
+                Analyses your invoices, inventory, and chat history using AI to extract stable business patterns.
+                Runs automatically every Sunday — or trigger it manually below.
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {memoryStatus === 'success' && (
+                <span style={{ fontSize: 13, color: '#27864a', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <Icon name="check" size={14} /> Distillation complete
+                </span>
+              )}
+              {memoryStatus === 'error' && (
+                <span style={{ fontSize: 13, color: '#c02a2a', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  <Icon name="x" size={14} /> Failed — check logs
+                </span>
+              )}
+              <button
+                id="run-memory-distillation-btn"
+                className="chip upload-btn-highlight"
+                style={{ padding: '9px 20px', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 8, opacity: memoryRunning ? 0.7 : 1 }}
+                onClick={runMemoryDistillation}
+                disabled={memoryRunning}
+              >
+                {memoryRunning ? (
+                  <>
+                    <span style={{ display: 'inline-block', width: 14, height: 14, border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                    Analysing…
+                  </>
+                ) : (
+                  <><Icon name="memory" size={15} /> Run Now</>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Facts display */}
+          {memoryFacts === null && (
+            <div className="widget" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: '32px 0' }}>
+              <div style={{ marginBottom: 8, opacity: 0.4 }}><Icon name="memory" size={36} /></div>
+              <div style={{ fontWeight: 600 }}>No facts loaded yet</div>
+              <div style={{ fontSize: 13, marginTop: 4 }}>Click "Run Now" to distil your first business memories.</div>
+            </div>
+          )}
+
+          {memoryFacts !== null && memoryFacts.length === 0 && (
+            <div className="widget" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: '32px 0' }}>
+              <div style={{ marginBottom: 8, opacity: 0.4 }}><Icon name="chat" size={36} /></div>
+              <div style={{ fontWeight: 600 }}>No facts distilled yet</div>
+              <div style={{ fontSize: 13, marginTop: 4 }}>Click "Run Now" to analyse your business data and extract insights.</div>
+            </div>
+          )}
+
+          {memoryFacts !== null && memoryFacts.length > 0 && (
+            <div className="widget">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <div className="widget-title" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icon name="memory" size={16} style={{ color: 'var(--accent-color)' }} />
+                  Distilled Facts <span className="vbadge" style={{ background: 'rgba(99,102,241,0.12)', color: '#6366f1' }}>{memoryFacts.length}</span>
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--secondary-text)' }}>Injected into every AI response automatically</div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {memoryFacts.map((fact, i) => {
+                  const catColors = {
+                    payment_delay:      { bg: 'rgba(192,42,42,0.08)',   color: '#c02a2a'  },
+                    sales_pattern:      { bg: 'rgba(39,134,74,0.08)',   color: '#27864a'  },
+                    concentration_risk: { bg: 'rgba(201,124,34,0.10)',  color: '#c97c22'  },
+                    cash_flow:          { bg: 'rgba(74,144,201,0.08)',  color: '#4a90c9'  },
+                    inventory_risk:     { bg: 'rgba(155,110,201,0.10)', color: '#9b6ec9'  },
+                    other:              { bg: 'rgba(100,100,100,0.08)', color: 'var(--secondary-text)' },
+                  }
+                  const c = catColors[fact.category] || catColors.other
+                  return (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 12,
+                      padding: '12px 14px', borderRadius: 10,
+                      background: 'var(--bg-color)', border: '1px solid var(--border-color)'
+                    }}>
+                      <span className="vpill" style={{ background: c.bg, color: c.color, fontSize: 11, whiteSpace: 'nowrap', marginTop: 1 }}>
+                        {fact.category?.replace(/_/g, ' ')}
+                      </span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, lineHeight: 1.5 }}>{fact.fact_text}</div>
+                        <div style={{ fontSize: 11, color: 'var(--secondary-text)', marginTop: 4 }}>
+                          Confidence: {Math.round((fact.confidence || 1) * 100)}%
+                          {fact.updated_at && <> · Updated {new Date(fact.updated_at).toLocaleDateString('en-IN')}</>}
+                        </div>
+                      </div>
+                      <button
+                        title="Delete this memory"
+                        onClick={() => deleteFact(fact.id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--secondary-text)', padding: 4, marginTop: 1, lineHeight: 0 }}
+                      >
+                        <Icon name="x" size={14} />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </>

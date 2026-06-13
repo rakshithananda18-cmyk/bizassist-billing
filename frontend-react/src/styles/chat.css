@@ -2011,3 +2011,99 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
   border-left-color: #818cf8;
   color: var(--text-secondary, #cbd5e1);
 }
+
+/* ---- MEMORY THINKING LABEL — shown while AI processes with memory context ---- */
+.memory-thinking-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--accent-color);
+    opacity: 0;
+    animation: memory-label-fadein 0.4s ease 0.3s forwards;
+    letter-spacing: 0.01em;
+}
+
+@keyframes memory-label-fadein {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 0.85; transform: translateY(0); }
+}
+
+.memory-thinking-dot {
+    display: inline-block;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    animation: memory-dot-pulse 1.4s ease-in-out infinite;
+}
+
+.memory-thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+.memory-thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes memory-dot-pulse {
+    0%, 100% { opacity: 0.25; transform: scale(0.8); }
+    50%       { opacity: 1;    transform: scale(1.2); }
+}
+
+/* ---- MEMORY BADGE + POPOVER (Phase 4, in the assistant header) ---- */
+.ah-memory { margin-left: auto; }
+.memory-badge-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 20px; cursor: pointer;
+    font-size: 12px; font-weight: 600;
+    border: 1px solid var(--border-color);
+    background: var(--card-color); color: var(--accent-color);
+    transition: opacity 0.15s;
+}
+.memory-badge-btn:hover { opacity: 0.85; }
+.memory-popover {
+    position: absolute; top: calc(100% + 8px); right: 0; z-index: 999;
+    width: 320px; max-height: 340px; overflow-y: auto;
+    background: var(--card-color); border: 1px solid var(--border-color);
+    border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    padding: 14px 16px;
+}
+.memory-popover-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+}
+.memory-popover-title {
+    font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; gap: 6px;
+}
+.memory-popover-close {
+    background: none; border: none; cursor: pointer;
+    color: var(--secondary-text); padding: 2px;
+}
+.memory-popover-sub { font-size: 11px; color: var(--secondary-text); margin-bottom: 10px; }
+.memory-popover-list { display: flex; flex-direction: column; gap: 8px; }
+.memory-fact {
+    padding: 8px 10px; border-radius: 8px;
+    background: var(--bg-color); border: 1px solid var(--border-color);
+    font-size: 12px; line-height: 1.5;
+}
+.memory-fact-cat {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--accent-color);
+    display: block; margin-bottom: 3px;
+}
+
+/* ---- MEMORY CHIP (footer, near feedback) — popover opens UPWARD ---- */
+.mem-chip { position: relative; display: inline-flex; }
+
+
+/* ---- Shared floating popover (memory + feedback picker) ---- */
+.bz-popover {
+    background: var(--card-color);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 10px 34px rgba(0,0,0,0.20);
+    padding: 12px 14px;
+}
+.bz-popover-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.bz-popover-title { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.bz-popover-close { background: none; border: none; cursor: pointer; color: var(--secondary-text); padding: 2px; }
+.bz-popover-sub { font-size: 11px; color: var(--secondary-text); margin-bottom: 10px; }
+.bz-popover-list { display: flex; flex-direction: column; gap: 8px; }

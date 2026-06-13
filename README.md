@@ -1,5 +1,11 @@
 # BizAssist
 
+## Documentation
+
+- **[SETUP.md](SETUP.md)** - clone-to-run setup for any computer (dependencies, `.env`, database options, local Postgres, running, tests, deploy).
+- **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** - end-user guide to using the app (AI Assistant, data pages, uploads, alerts, actions).
+
+
 BizAssist is a business-intelligence assistant for Indian distributors and small businesses. Owners upload their invoices, inventory and payments (CSV/XLSX/PDF) and then ask plain-language questions — "who owes me the most?", "what's expiring this month?", "why is my collection rate low?" — and get grounded, data-backed answers, advice, and one-tap actions (payment reminders, escalations, reorder drafts). An isolated Admin workspace monitors usage, rate limits, and per-merchant data.
 
 Answers are **grounded**: the models reason only over real numbers pulled from the database, never fabricated.

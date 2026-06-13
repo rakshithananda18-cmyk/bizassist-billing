@@ -214,6 +214,7 @@ def classify(query: str, client=None, business_id: int = None) -> Optional[Route
             raw = raw.strip("`")
             if raw.startswith("json"):
                 raw = raw[4:]
+        logger.debug(f"[ROUTER][llm] raw response: {raw[:300]}")
         decision = _validated(json.loads(raw))
         if decision:
             logger.info(

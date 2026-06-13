@@ -2,7 +2,7 @@
 setlocal
 
 echo ==================================
-echo  BIZASSIST — SETUP
+echo  BIZASSIST - SETUP
 echo ==================================
 echo.
 
@@ -14,22 +14,27 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo [1/4] Creating virtual environment...
-python -m venv venv
-if %errorlevel% neq 0 (
-    echo ERROR: Failed to create venv.
-    pause
-    exit /b 1
+echo [1/4] Checking virtual environment...
+if exist "venv\Scripts\python.exe" (
+    echo      venv already exists - reusing it.
+) else (
+    echo      Creating virtual environment...
+    python -m venv venv
+    if %errorlevel% neq 0 (
+        echo ERROR: Failed to create venv.
+        pause
+        exit /b 1
+    )
 )
 
 echo [2/4] Activating virtual environment...
 call venv\Scripts\activate
 
 echo [3/4] Upgrading pip...
-python -m pip install --upgrade pip --quiet
+venv\Scripts\python.exe -m pip install --upgrade pip --quiet
 
-echo [4/4] Installing dependencies...
-pip install --prefer-binary -r requirements.txt
+echo [4/4] Installing / updating dependencies...
+venv\Scripts\python.exe -m pip install --prefer-binary -r requirements.txt
 if %errorlevel% neq 0 (
     echo ERROR: pip install failed. Check requirements.txt and your internet connection.
     pause
@@ -44,6 +49,7 @@ echo.
 echo Next steps:
 echo  1. Copy .env.example to .env and fill in your keys:
 echo       - GROQ_API_KEY (required for AI)
+echo       - DATABASE_URL (local Postgres; leave unset to use SQLite)
 echo       - EMAIL_USER / EMAIL_PASS (for email alerts)
 echo       - TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN (for WhatsApp alerts)
 echo  2. Run start.bat to launch the backend

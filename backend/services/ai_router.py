@@ -52,6 +52,7 @@ from services.rate_limiter import check_rate_limit
 from services.errors import AskError, ask_error
 from services.dates import parse_date
 from services.intent_router import classify as _semantic_classify
+from services.charts import build_chart_data
 from database.db import SessionLocal
 from database.models import Invoice, ChatMessage
 
@@ -73,131 +74,6 @@ _INTENT_DIRECT = {
     "revenue_summary", "top_debtors", "top_customers", "low_stock",
     "expiring_soon", "inventory_count", "invoice_count",
 }
-
-
-def _build_chart_data(user_query: str, user_id: int) -> Optional[dict]:
-    """
-    Detects chart/graph intent and returns a Chart.js-compatible data payload.
-    Returns None if no chart is needed.
-    """
-    import re as _re
-    from collections import defaultdict
-    q = user_query.lower()
-    is_chart = bool(_re.search(r"chart|graph|visuali[sz]e|plot|bar chart|pie chart|line chart|show.*graph|trend", q))
-    if not is_chart:
-        return None
-
-    db2 = SessionLocal()
-    try:
-        # Monthly revenue trend (line chart) — checked FIRST before generic "revenue" match
-        if any(k in q for k in ["monthly", "month", "trend", "month wise", "per month", "over time"]):
-            rows = (
-                db2.query(Invoice.invoice_date, func.sum(Invoice.amount).label("total"))
-                .filter(Invoice.business_id == user_id, Invoice.invoice_date.isnot(None))
-                .group_by(Invoice.invoice_date)
-                .all()
-            )
-            if rows:
-                # Aggregate by YYYY-MM
-                monthly = defaultdict(float)
-                for r in rows:
-                    parsed = parse_date(r.invoice_date)
-                    if parsed is not None:
-                        monthly[parsed.strftime("%Y-%m")] += float(r.total or 0)
-                if monthly:
-                    sorted_keys = sorted(monthly.keys())
-                    from datetime import datetime as _dt
-                    labels = [_dt.strptime(k, "%Y-%m").strftime("%b %Y") for k in sorted_keys]
-                    data   = [round(monthly[k], 2) for k in sorted_keys]
-                    return {
-                        "type":  "line",
-                        "title": "Monthly Revenue Trend",
-                        "labels": labels,
-                        "datasets": [{
-                            "label":           "Revenue (₹)",
-                            "data":            data,
-                            "borderColor":     "#6366f1",
-                            "backgroundColor": "rgba(99,102,241,0.15)",
-                            "tension":         0.4,
-                            "fill":            True,
-                            "pointRadius":     4,
-                            "pointBackgroundColor": "#6366f1"
-                        }]
-                    }
-
-        # Revenue by status (pie/doughnut) — for revenue/invoice/payment queries
-        if any(k in q for k in ["revenue", "invoice", "payment", "overdue", "pending", "status"]):
-            rows = (
-                db2.query(Invoice.status, func.sum(Invoice.amount).label("total"))
-                .filter(Invoice.business_id == user_id)
-                .group_by(Invoice.status)
-                .all()
-            )
-            if rows:
-                color_map = {"Paid": "#22c55e", "Pending": "#f59e0b", "Overdue": "#ef4444", "Disputed": "#8b5cf6"}
-                labels = [r.status for r in rows]
-                data   = [round(float(r.total or 0), 2) for r in rows]
-                return {
-                    "type": "doughnut",
-                    "title": "Revenue by Status",
-                    "labels": labels,
-                    "datasets": [{
-                        "label": "Amount",
-                        "data": data,
-                        "backgroundColor": [color_map.get(l, "#94a3b8") for l in labels]
-                    }]
-                }
-
-        # Top customers by revenue (bar) — for customer/client/top queries
-        if any(k in q for k in ["customer", "client", "top", "debtor"]):
-            rows = (
-                db2.query(Invoice.customer, func.sum(Invoice.amount).label("total"))
-                .filter(Invoice.business_id == user_id)
-                .group_by(Invoice.customer)
-                .order_by(func.sum(Invoice.amount).desc())
-                .limit(7).all()
-            )
-            if rows:
-                return {
-                    "type": "bar",
-                    "title": "Top Customers by Revenue",
-                    "labels": [r.customer for r in rows],
-                    "datasets": [{
-                        "label": "Revenue (₹)",
-                        "data": [round(float(r.total or 0), 2) for r in rows],
-                        "backgroundColor": "#6366f1",
-                        "borderRadius": 6
-                    }]
-                }
-
-        # Default: revenue breakdown bar chart
-        rows = (
-            db2.query(Invoice.status, func.sum(Invoice.amount).label("total"))
-            .filter(Invoice.business_id == user_id)
-            .group_by(Invoice.status)
-            .all()
-        )
-        if rows:
-            color_map = {"Paid": "#22c55e", "Pending": "#f59e0b", "Overdue": "#ef4444", "Disputed": "#8b5cf6"}
-            labels = [r.status for r in rows]
-            data   = [round(float(r.total or 0), 2) for r in rows]
-            return {
-                "type": "bar",
-                "title": "Invoice Status Breakdown",
-                "labels": labels,
-                "datasets": [{
-                    "label": "Amount (₹)",
-                    "data": data,
-                    "backgroundColor": [color_map.get(l, "#94a3b8") for l in labels],
-                    "borderRadius": 6
-                }]
-            }
-        return None
-    except Exception as e:
-        logger.warning(f"[CHART] Failed to build chart data: {e}")
-        return None
-    finally:
-        db2.close()
 
 
 # ── Topic detector — maps any query/tool-call to a recommend() key ────
@@ -879,7 +755,10 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
     # B6: legacy already matched an exact dashboard template → it's deterministic,
     # so skip the LLM router's extra 1-2s call (it only agrees with these).
     _llm_skip = (route == "DIRECT" and handler_key in _LLM_FASTPATH_HANDLERS)
+    if _rmode == "on" and _llm_skip:
+        logger.debug(f"[ROUTER] llm skipped (deterministic fastpath {handler_key}) q='{user_query[:60]}'")
     if _override is None and _rmode == "on" and not _llm_skip:
+        logger.debug(f"[ROUTER] invoking llm router (mode=on, floor={_LLM_CONF_FLOOR}) q='{user_query[:60]}'")
         try:
             from services.llm_router import route as _llm_route
             _r = _llm_route(user_query, client=client, business_id=active_user_id)
@@ -1215,7 +1094,7 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
                 raw_md    = _ir["answer"]["markdown"]
                 polished  = raw_md   # no insight bulb — see Smart Insights advisor
                 anomalies = detect_anomalies(active_user_id)
-                chart     = _build_chart_data(user_query, active_user_id)
+                chart     = build_chart_data(user_query, active_user_id)
                 recs      = _ir.get("suggestions", recommend(_pre_topic, active_user_id))
                 envelope = {
                     "answer":        {"markdown": polished, "title": ""},
@@ -1245,7 +1124,7 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
                     f"| '{user_query}'")
         if stream:
             full_text = ""
-            for event_str in run_agent_graph_stream(user_query, active_user_id, history):
+            for event_str in run_agent_graph_stream(user_query, active_user_id, history, detected_topic=_pre_topic):
                 try:
                     evt = json.loads(event_str[6:])  # strip "data: "
                     if evt.get("type") == "ag_done":
@@ -1260,6 +1139,7 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
         else:
             _ag = run_agent_graph(
                 user_query=user_query, business_id=active_user_id, history=history,
+                detected_topic=_pre_topic
             )
             # run_agent_graph returns {text, tokens_in, tokens_out}; tolerate a bare
             # string too (older callers / test mocks).
@@ -1327,7 +1207,7 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
                 full_text = resp_msg.content or ""
 
     # ── Shared: assemble + cache + log the AI envelope ──────────────
-    chart       = _build_chart_data(user_query, active_user_id)
+    chart       = build_chart_data(user_query, active_user_id)
     topic       = _detect_topic(user_query, tool_calls_made if route != "AI_COMPLEX" else None)
     suggestions = recommend(topic, active_user_id)
     anomalies   = detect_anomalies(active_user_id)

@@ -7,7 +7,7 @@ python-dotenv>=1.0.0
 # ── Database ───────────────────────────────────────────────────
 sqlalchemy>=2.0.0
 alembic>=1.13.0                # schema migrations (alembic/ + alembic.ini)
-# psycopg2-binary>=2.9.0       # PostgreSQL only — uncomment when you move off SQLite
+psycopg2-binary>=2.9.0          # PostgreSQL driver (local + Supabase)
 
 # ── Auth ───────────────────────────────────────────────────────
 bcrypt>=4.0.0

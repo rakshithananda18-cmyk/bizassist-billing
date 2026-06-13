@@ -10,6 +10,7 @@ Schedule:
   09:00  — Overdue invoice alerts
   09:05  — Low stock alerts
   09:10  — Expiry warnings
+  Sun 23:00 — Weekly memory distillation (Phase 4)
 
 Usage:
   from services.scheduler import start_scheduler
@@ -37,6 +38,7 @@ def start_scheduler():
         run_overdue_alerts,
         run_low_stock_alerts,
         run_expiry_alerts,
+        run_memory_distillation,
     )
 
     _scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
@@ -77,10 +79,20 @@ def start_scheduler():
         misfire_grace_time=3600,
     )
 
+    _scheduler.add_job(
+        run_memory_distillation,
+        CronTrigger(day_of_week="sun", hour=23, minute=0),
+        id="memory_distillation",
+        name="Weekly Memory Distillation",
+        replace_existing=True,
+        misfire_grace_time=86400,  # tolerate up to 24h (weekly job)
+    )
+
     _scheduler.start()
     logger.info(
         "[SCHED] Started. Jobs: daily summary @ 8:00 IST, "
-        "overdue/low-stock/expiry @ 9:00–9:10 IST."
+        "overdue/low-stock/expiry @ 9:00–9:10 IST, "
+        "memory distillation @ Sunday 23:00 IST."
     )
 
 

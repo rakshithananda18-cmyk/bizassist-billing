@@ -52,6 +52,25 @@ def _load_active_configs() -> list:
         db.close()
 
 
+def _load_all_business_ids() -> list:
+    """
+    Returns a list of all business IDs from the users table.
+    Used by memory distillation which must run for EVERY user,
+    not just those who have configured alert notifications.
+    """
+    db = SessionLocal()
+    try:
+        users = db.query(User.id).all()
+        return [u.id for u in users]
+    except Exception as e:
+        logger.warning(f"[MEMORY] _load_all_business_ids failed: {e}")
+        return []
+    finally:
+        db.close()
+
+
+
+
 # ── Job 1: Overdue Invoices ───────────────────────────────────
 
 def run_overdue_alerts():
@@ -318,3 +337,29 @@ def run_daily_summary():
             logger.info(f"[ALERT] Daily summary dispatched for business_id={bid}")
     finally:
         db.close()
+
+
+# ── Job 5: Weekly Memory Distillation ────────────────────────────────
+
+def run_memory_distillation():
+    """
+    Phase 4 — Proactive Memory.
+    Loops over ALL registered users (not just those with alert configs)
+    and calls memory_service.distill_memory() to extract durable business
+    facts from live data + chat history.
+    Runs weekly (Sunday 23:00 IST) so facts stay fresh without burning tokens.
+    """
+    logger.info("[SCHED] Running weekly memory distillation...")
+    business_ids = _load_all_business_ids()
+    if not business_ids:
+        logger.info("[SCHED] No registered users found for memory distillation.")
+        return
+
+    logger.info(f"[SCHED] Memory distillation for {len(business_ids)} user(s): {business_ids}")
+    from services.memory_service import distill_memory
+
+    for bid in business_ids:
+        try:
+            distill_memory(bid)
+        except Exception as e:
+            logger.error(f"[MEMORY] Failed for business_id={bid}: {e}", exc_info=True)

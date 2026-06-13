@@ -1,4 +1,4 @@
-# HuggingFace Spaces build — SQLite only (no psycopg2).
+# HuggingFace Spaces build — PostgreSQL via Supabase.
 
 # ── Web framework ──────────────────────────────────────────────
 fastapi>=0.95.0
@@ -9,7 +9,7 @@ python-dotenv>=1.0.0
 # ── Database ───────────────────────────────────────────────────
 sqlalchemy>=2.0.0
 alembic>=1.13.0                # schema migrations
-# psycopg2-binary NOT included — HF free tier uses SQLite. Add if you move to PostgreSQL.
+psycopg2-binary>=2.9.0         # PostgreSQL driver for Supabase
 
 # ── Auth ───────────────────────────────────────────────────────
 bcrypt>=4.0.0

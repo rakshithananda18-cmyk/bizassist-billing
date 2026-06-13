@@ -218,7 +218,18 @@ def get_business_snapshot(user_id: int) -> str:
         ]
         if low_stock:   parts.append(f"Low stock: {low_stock} items")
         if expiring_7d: parts.append(f"Expiring in 7d: {expiring_7d} items")
-        return "[Live Business Data] " + " | ".join(parts)
+        snapshot = "[Live Business Data] " + " | ".join(parts)
+
+        # Inject durable memory facts (Phase 4)
+        try:
+            from services.memory_service import get_business_facts
+            facts = get_business_facts(user_id)
+            if facts:
+                snapshot = snapshot + "\n" + facts
+        except Exception as mem_err:
+            logger.debug(f"[RECS] memory injection skipped: {mem_err}")
+
+        return snapshot
     except Exception as e:
         logger.error("[RECS] get_business_snapshot failed: %s", e)
         return ""

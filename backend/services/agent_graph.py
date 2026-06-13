@@ -27,7 +27,7 @@ so a "how much overdue do I have?" complex query won't trigger inventory/payment
 import json
 import logging
 import os
-from typing import TypedDict
+from typing import TypedDict, Optional
 
 from groq import Groq
 from services.tools import execute_tool
@@ -52,6 +52,7 @@ class AgentState(TypedDict):
     final_response:    str
     tokens_in:         int    # token counts carried IN STATE (not a module global)
     tokens_out:        int    # — so concurrent AI_COMPLEX runs can't corrupt each other (C1)
+    detected_topic:    Optional[str]
 
 
 # ── Node 1: Planner ───────────────────────────────────────────────────
@@ -109,6 +110,7 @@ def planner_node(state: AgentState) -> AgentState:
             model=MODEL_PLANNER,   # small model — just routing JSON, no reasoning needed
             temperature=0.0,
             max_tokens=300,
+            response_format={"type": "json_object"},
         )
         # Capture tokens right after the call (counted even if JSON parsing fails below).
         p_in  = resp.usage.prompt_tokens     or 0
@@ -116,18 +118,35 @@ def planner_node(state: AgentState) -> AgentState:
         logger.info(f"[PLANNER] Tokens — input: {p_in}, output: {p_out}")
 
         raw = resp.choices[0].message.content.strip()
-        if "```" in raw:
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        plan = json.loads(raw.strip())
+        plan = json.loads(raw)
         logger.info(f"[PLANNER] Plan decided: {plan}")
     except Exception as e:
-        logger.warning(f"[PLANNER] Could not parse plan ({e}). Defaulting to all agents.")
+        logger.warning(f"[PLANNER] Could not parse plan ({e}). Using semantic fallback.")
+        topic = state.get("detected_topic")
+        needs_invoice = True
+        needs_inventory = True
+        needs_payment = True
+
+        if topic:
+            if topic in ["low_stock", "expiring_soon", "inventory_count", "product_performance"]:
+                needs_invoice = False
+                needs_inventory = True
+                needs_payment = False
+            elif topic in ["overdue_list", "overdue_amount", "pending_list", "total_revenue", 
+                           "revenue_summary", "top_customers", "top_debtors", "dso_summary", 
+                           "dormant_customers", "customer_margins"]:
+                needs_invoice = True
+                needs_inventory = False
+                needs_payment = False
+            elif topic in ["profit_summary", "business_summary"]:
+                needs_invoice = True
+                needs_inventory = False
+                needs_payment = True
+
         plan = {
-            "needs_invoice":   True,
-            "needs_inventory": True,
-            "needs_payment":   True,
+            "needs_invoice":   needs_invoice,
+            "needs_inventory": needs_inventory,
+            "needs_payment":   needs_payment,
             "overall_goal":    state["user_query"],
         }
 
@@ -348,7 +367,7 @@ def get_agent_graph():
 
 # ── Public entry point ────────────────────────────────────────────────
 
-def run_agent_graph(user_query: str, business_id: int, history: list) -> str:
+def run_agent_graph(user_query: str, business_id: int, history: list, detected_topic: Optional[str] = None) -> dict:
     """
     Entry point called by main_groq.py for AI_COMPLEX queries.
     Returns the final synthesized response string.
@@ -376,6 +395,7 @@ def run_agent_graph(user_query: str, business_id: int, history: list) -> str:
         "final_response":   "",
         "tokens_in":        0,
         "tokens_out":       0,
+        "detected_topic":    detected_topic,
     }
 
     logger.info(f"[AGENT] ── Starting multi-agent run ──")
@@ -417,7 +437,7 @@ def run_agent_graph(user_query: str, business_id: int, history: list) -> str:
 
 # ── Streaming entry point ─────────────────────────────────────────────
 
-def run_agent_graph_stream(user_query: str, business_id: int, history: list):
+def run_agent_graph_stream(user_query: str, business_id: int, history: list, detected_topic: Optional[str] = None):
     """
     Generator for SSE streaming.
     Runs agent nodes manually, streams synthesizer output token by token.
@@ -443,7 +463,7 @@ def run_agent_graph_stream(user_query: str, business_id: int, history: list):
             yield from run_agent_loop_stream(user_query, business_id, history)
             return
 
-    state = {
+    state: AgentState = {
         "user_query":       user_query,
         "business_id":      business_id,
         "history":          history,
@@ -454,6 +474,7 @@ def run_agent_graph_stream(user_query: str, business_id: int, history: list):
         "final_response":   "",
         "tokens_in":        0,
         "tokens_out":       0,
+        "detected_topic":    detected_topic,
     }
 
     yield _sse("status", content="Planning query\u2026")

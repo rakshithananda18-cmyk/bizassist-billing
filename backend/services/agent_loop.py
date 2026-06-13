@@ -207,12 +207,19 @@ def _log_tokens(business_id: int, t_in: int, t_out: int, endpoint: str) -> None:
         from database.models import TokenUsage
         db = SessionLocal()
         try:
+            # Portable ORM insert (works on SQLite + Postgres). We deliberately
+            # do NOT set id - the DB assigns it. On Postgres this requires the
+            # token_usage sequence to be in sync after a data migration; the
+            # migrate_sqlite_to_postgres.py script resets all sequences for us.
             db.add(TokenUsage(
                 business_id=business_id, model=MODEL, model_tier="AI_COMPLEX",
                 input_tokens=t_in, output_tokens=t_out,
-                total_tokens=t_in + t_out, endpoint=endpoint,
+                total_tokens=t_in + t_out, cached_tokens=0, endpoint=endpoint,
             ))
             db.commit()
+        except Exception:
+            db.rollback()
+            raise
         finally:
             db.close()
     except Exception as e:

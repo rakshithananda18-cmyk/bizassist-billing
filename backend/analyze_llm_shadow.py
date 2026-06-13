@@ -99,8 +99,8 @@ def main(argv):
             if len(shown) >= top:
                 break
 
-    print("\nCutover guidance: flip when AGREE≥95% on comparable routes AND every "
-          "DISAGREE has been hand-labelled with the LLM right ≥90% of the time.\n")
+    print("\nCutover guidance: flip when AGREE>=95% on comparable routes AND every "
+          "DISAGREE has been hand-labelled with the LLM right >=90% of the time.\n")
     return 0
 
 
