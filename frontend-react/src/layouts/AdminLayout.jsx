@@ -1,12 +1,14 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useState, useEffect } from 'react'
+import { BuildingMark } from '../components/Logo'
+import { Icon } from '../components/icons'
 
 const ADMIN_NAV = [
-  { to: '/admin/dashboard',  label: '📊 Overview' },
-  { to: '/admin/businesses', label: '🏢 Businesses' },
-  { to: '/admin/usage',      label: '📈 Usage & Limits' },
-  { to: '/admin/cache',      label: '🗑 Cache & System' },
+  { to: '/admin/dashboard',  icon: 'dashboard', label: 'Overview' },
+  { to: '/admin/businesses', icon: 'users',     label: 'Businesses' },
+  { to: '/admin/usage',      icon: 'chart',     label: 'Usage & Limits' },
+  { to: '/admin/cache',      icon: 'trash',     label: 'Cache & System' },
 ]
 
 export default function AdminLayout() {
@@ -98,7 +100,7 @@ export default function AdminLayout() {
             alignItems: 'center',
             gap: 6,
           }}>
-            <span style={{ color: 'var(--accent-color)' }}>✦</span> BIZASSIST
+            <BuildingMark size={20} /> BIZASSIST
             <span style={{
               fontSize: 10,
               fontFamily: "'DM Sans', sans-serif",
@@ -133,7 +135,7 @@ export default function AdminLayout() {
                   transition: 'all 0.15s ease',
                 })}
               >
-                {n.label}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}><Icon name={n.icon} size={15} /> {n.label}</span>
               </NavLink>
             ))}
           </nav>
@@ -243,7 +245,7 @@ export default function AdminLayout() {
                   display: 'block',
                 })}
               >
-                {n.label}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}><Icon name={n.icon} size={15} /> {n.label}</span>
               </NavLink>
             ))}
           </div>

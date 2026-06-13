@@ -175,12 +175,38 @@ html.chat-active .chat-box {
 
 /* "BizAssist" name label above the response — like Claude shows "Claude" */
 .bot-name-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 13px;
     font-weight: 600;
     color: var(--text-color);
     line-height: 1;
-    margin-bottom: 2px;
+    margin-bottom: 6px;
 }
+
+/* Brand mark shown BELOW each response — accent coloured. While generating it
+   animates (rising skyline); once done it stops as a static accent mark. */
+/* Tag + Helpful? on one inline row, above the logo. align-items:flex-start so the
+   source icon stays at the top when the feedback picker expands (it no longer
+   floats to the vertical middle of the tall picker). */
+.bot-footer-row {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 10px;
+}
+/* Nudge the inline icons down ~2px so they sit level with the thumb buttons. */
+.bot-footer-row > .tier-ico,
+.bot-footer-row > .alert-ico { margin-top: 2px; }
+
+.bot-mark {
+    display: flex;
+    margin-top: 8px;
+    color: var(--accent-color);
+}
+.bot-mark--done { color: var(--accent-color); }
 
 /* Bot message — NO background, plain text */
 .bot {
@@ -1286,21 +1312,28 @@ html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {
         border-bottom-left-radius: 16px !important;
     }
 
-    /* On mobile, keep panel content visible so it slides out smoothly as a full drawer without disappearing instantly */
-    div#insights-panel .rp-brand-text,
-    div#insights-panel .rp-nav-label,
-    div#insights-panel .rp-sep,
-    div#insights-panel .rp-content {
+    /* On mobile the open drawer must ALWAYS show its content — even when the
+       panel also carries the `collapsed` class from the desktop state. The
+       `.mobile-open` qualifier raises specificity above the collapsed-hide rule
+       (#insights-panel.collapsed .rp-content { display:none }), which otherwise
+       wins and leaves the drawer blank. */
+    div#insights-panel.mobile-open .rp-brand-text,
+    div#insights-panel.mobile-open .rp-nav-label,
+    div#insights-panel.mobile-open .rp-sep,
+    div#insights-panel.mobile-open .rp-content {
         display: flex !important;
         opacity: 1 !important;
         visibility: visible !important;
         pointer-events: auto !important;
     }
-    div#insights-panel .rp-brand-text {
+    div#insights-panel.mobile-open .rp-brand-text {
         display: inline-block !important;
     }
-    div#insights-panel .rp-sep {
+    div#insights-panel.mobile-open .rp-sep {
         display: block !important;
+    }
+    div#insights-panel.mobile-open .rp-topbar-right {
+        display: flex !important;
     }
 
     /* Show right panel collapse button inside header on mobile */

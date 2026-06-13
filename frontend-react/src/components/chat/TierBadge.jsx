@@ -39,15 +39,15 @@ function tierSvg(name) {
 
   return (
     <svg
-      width="11"
-      height="11"
+      width="16"
+      height="16"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2.3"
+      strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      style={{ display: 'inline-block' }}
+      style={{ display: 'block' }}
     >
       {paths}
     </svg>
@@ -85,21 +85,18 @@ export default function TierBadge({ source, modelTier, cached, content }) {
     effectiveModelTier = isDirect ? undefined : (modelTier || 'AI_SIMPLE')
   }
 
-  // CACHED must be checked first — a cache hit can have any underlying source
-  if (cached) {
-    return <span className="tier-badge tier-cache">{tierSvg('cache')} CACHED</span>
-  }
-  if (effectiveSource === 'conversational') {
-    return <span className="tier-badge tier-simple">{tierSvg('simple')} CONVERSATIONAL</span>
-  }
-  if (effectiveSource === 'intent') {
-    return <span className="tier-badge tier-intent">{tierSvg('direct')} INTENT</span>
-  }
-  if (effectiveSource === 'db') {
-    return <span className="tier-badge tier-direct">{tierSvg('direct')} DIRECT</span>
-  }
-  if (effectiveModelTier === 'AI_COMPLEX') {
-    return <span className="tier-badge tier-complex">{tierSvg('simple')} AI_COMPLEX</span>
-  }
-  return <span className="tier-badge tier-simple">{tierSvg('simple')} AI_SIMPLE</span>
+  // Resolve to one icon-only chip. `tone`: free (green, 0-token/cached) | ai (yellow).
+  // The label is the hover tooltip only — no visible text (Claude-style icon row).
+  let icon = 'simple', label = 'AI_SIMPLE', tone = 'ai'
+  if (cached)                              { icon = 'cache';   label = 'CACHED';         tone = 'free' }
+  else if (effectiveSource === 'conversational') { icon = 'simple'; label = 'CONVERSATIONAL'; tone = 'free' }
+  else if (effectiveSource === 'intent')   { icon = 'direct';  label = 'INTENT';         tone = 'free' }
+  else if (effectiveSource === 'db')       { icon = 'direct';  label = 'DIRECT';         tone = 'free' }
+  else if (effectiveModelTier === 'AI_COMPLEX') { icon = 'complex'; label = 'AI_COMPLEX'; tone = 'ai' }
+
+  return (
+    <span className={`tier-ico tier-ico--${tone}`} title={label} aria-label={`Answer source: ${label}`}>
+      {tierSvg(icon)}
+    </span>
+  )
 }

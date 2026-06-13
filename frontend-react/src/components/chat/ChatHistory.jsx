@@ -4,6 +4,7 @@
  * Popup panel showing session list with rename/delete actions.
  * Anchors above the input area.
  */
+import { Icon } from '../icons'
 
 export default function ChatHistory({
   sessions,
@@ -95,7 +96,7 @@ export default function ChatHistory({
                 {menuOpenId === s.session_id && (
                   <div
                     className="rp-chat-menu"
-                    style={{ position: 'fixed', top: menuPos.top, left: menuPos.left }}
+                    style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, right: 'auto', width: 160 }}
                     onClick={e => e.stopPropagation()}
                   >
                     <button
@@ -105,7 +106,7 @@ export default function ChatHistory({
                         onMenuClose()
                       }}
                     >
-                      ✏ Rename
+                      <Icon name="edit" size={14} /> Rename
                     </button>
                     <button
                       className="rp-chat-menu-item danger"
@@ -114,7 +115,7 @@ export default function ChatHistory({
                         onDeleteSession(e, s.session_id)
                       }}
                     >
-                      🗑 Delete
+                      <Icon name="trash" size={14} /> Delete
                     </button>
                   </div>
                 )}

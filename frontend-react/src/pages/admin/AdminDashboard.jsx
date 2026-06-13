@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useDialog } from '../../contexts/DialogContext'
 import { API_BASE } from '../../config'
+import { BuildingMark } from '../../components/Logo'
 
 export default function AdminDashboard() {
   const { authFetch, adminLogout } = useAuth()
@@ -125,7 +126,7 @@ export default function AdminDashboard() {
     <div className="admin-main" style={{ margin: 0, padding: 0 }}>
       <div className="admin-header-row">
         <div className="admin-title-group">
-          <h1>✦ BIZASSIST ADMIN WORKSPACE</h1>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><BuildingMark size={24} /> BIZASSIST ADMIN WORKSPACE</h1>
           <p>Aggregated tracking & telemetry for all enterprise business accounts</p>
         </div>
         <div className="admin-header-actions">

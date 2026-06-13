@@ -1,0 +1,26 @@
+# Runtime data — never commit (the app creates these fresh at startup)
+*.db
+*.db.bak
+*.sqlite
+*.sqlite3
+chroma_db/
+
+# Logs (may contain customer data)
+*.log
+logs/
+
+# User uploads
+uploads/
+
+# Local env / secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Envs
+venv/
+env/
+.venv/

@@ -9,6 +9,7 @@ import ChatInput from '../components/chat/ChatInput'
 import { renderMarkdown } from '../utils/markdown'
 import { fetchSessions } from '../utils/sessionsCache'
 import { Icon } from '../components/icons'
+import { BuildingMark } from '../components/Logo'
 
 // ── Inline SVG helper for CHIPS ──────────────────────────────────────────────
 const svgIcon = (children) => (
@@ -596,7 +597,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
           {messages.length === 0 && !loading && !activeId && (
             <div className="chat-empty-state" id="chat-empty-state">
               <div className="ces-glow"></div>
-              <div className="ces-symbol">✦</div>
+              <div className="ces-symbol" style={{ color: 'var(--accent-color)' }}><BuildingMark size={40} /></div>
               <div className="ces-greeting">{greeting}</div>
               <div className="ces-sub">
                 Ask anything about your business —<br />
@@ -632,6 +633,9 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
             )
           })}
 
+          {/* Only the brief pre-stream window before the assistant bubble exists.
+             Once the bubble is added, its own below-message mark animates instead
+             (see MessageBubble .bot-mark--gen), so they never both show. */}
           {loading && <TypingIndicator />}
         </div>
 

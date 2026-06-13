@@ -1,16 +1,15 @@
 /**
  * components/chat/TypingIndicator.jsx
  * =====================================
- * Animated three-dot typing indicator shown while the AI is responding.
+ * Shown while the AI is responding — the small bars-only skyline loader.
  */
+import { InlineLoader } from '../Logo'
 
 export default function TypingIndicator() {
   return (
     <div className="message-row bot-row">
       <div className="loading-dots">
-        <div className="typing">
-          <span></span><span></span><span></span>
-        </div>
+        <InlineLoader size={30} />
       </div>
     </div>
   )

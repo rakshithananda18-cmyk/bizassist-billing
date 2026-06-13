@@ -80,7 +80,7 @@ export default function ChatInput({
                 boxShadow: 'var(--shadow-sm)',
               }}
             >
-              <span className="chip-icon" style={{ fontSize: '13px', lineHeight: 1 }}>✦</span>
+              <span className="chip-icon" style={{ lineHeight: 0, display: 'inline-flex' }}><Icon name="sparkle" size={13} /></span>
               <span className="chip-label" style={{ opacity: 1, maxWidth: 'none', marginLeft: '6px', display: 'inline-block', fontWeight: 600 }}>
                 {uploadedQuery}
               </span>

@@ -5,10 +5,12 @@ import { API_BASE } from '../config'
 import Chat from '../pages/Chat'
 import InsightsPanel from '../components/InsightsPanel'
 import { Icon } from '../components/icons'
+import { BuildingMark } from '../components/Logo'
+import PageLoader from '../components/PageLoader'
 import Modal from '../components/Modal'
 
 const NAV = [
-  { to: '/chat',      id: 'ai-btn',       label: 'AI Assistant', icon: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg> },
+  { to: '/chat',      id: 'ai-btn',       label: 'AI Assistant', icon: <BuildingMark size={24} /> },
   { to: '/dashboard', id: 'dashboard-btn', label: 'Dashboard',    icon: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg> },
   { to: '/invoices',  id: 'invoices-btn',  label: 'Invoices',     icon: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> },
   { to: '/payments',  id: 'payments-btn',  label: 'Payments',     icon: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg> },
@@ -26,6 +28,7 @@ export default function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('sidebar_collapsed') === 'true')
   const [insightsCollapsed, setInsightsCollapsed] = useState(() => localStorage.getItem('insights_collapsed') === 'true')
   const [isMounting, setIsMounting] = useState(true)
+  const [appReady, setAppReady] = useState(false)   // gate the splash until core data loads
 
   // Mobile layout open states
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
@@ -135,12 +138,19 @@ export default function AppLayout() {
   };
 
   useEffect(() => {
-    loadSummaryStats();
-    
+    // Keep the full-screen loader up until the app's core data has loaded
+    // (summary stats) AND a short minimum, so login -> app is smooth, not a
+    // flash of empty shell. A safety cap guarantees it never hangs.
+    let dataDone = false, minElapsed = false;
+    const reveal = () => { if (dataDone && minElapsed) setAppReady(true); };
+    loadSummaryStats().finally(() => { dataDone = true; reveal(); });
+    const minTimer  = setTimeout(() => { minElapsed = true; reveal(); }, 700);
+    const maxTimer  = setTimeout(() => setAppReady(true), 5000);
+
     const timer = setTimeout(() => {
       setIsMounting(false);
     }, 100);
-    
+
     // Add event listener for data updates
     const handleDataUpdated = () => {
       loadSummaryStats();
@@ -158,6 +168,8 @@ export default function AppLayout() {
 
     return () => {
       clearTimeout(timer);
+      clearTimeout(minTimer);
+      clearTimeout(maxTimer);
       window.removeEventListener("data-updated", handleDataUpdated);
       window.removeEventListener("ai-shortcut", handleAiShortcut);
     };
@@ -343,6 +355,7 @@ export default function AppLayout() {
 
   return (
     <div className="app">
+      {!appReady && <PageLoader />}
       {/* MOBILE NAVBAR */}
       <div className="mobile-navbar">
         <button className="mobile-nav-btn mobile-sidebar-toggle" onClick={(e) => { e.stopPropagation(); setMobileSidebarOpen(true); }} title="Toggle Sidebar">
@@ -381,9 +394,9 @@ export default function AppLayout() {
                 <div className="profile-menu-theme" onClick={(e) => e.stopPropagation()}>
                   <span className="profile-menu-theme-label">Theme</span>
                   <div className="profile-theme-toggle">
-                    <button className={`theme-opt-btn light-opt ${theme === 'light' ? 'active' : ''}`} onClick={() => setTheme('light')} title="Light mode">☀</button>
-                    <button className={`theme-opt-btn dark-opt ${theme === 'dark' ? 'active' : ''}`} onClick={() => setTheme('dark')} title="Dark mode">☾</button>
-                    <button className={`theme-opt-btn system-opt ${theme === 'system' ? 'active' : ''}`} onClick={() => setTheme('system')} title="System theme">◐</button>
+                    <button className={`theme-opt-btn light-opt ${theme === 'light' ? 'active' : ''}`} onClick={() => setTheme('light')} title="Light mode"><Icon name="sun" size={15} /></button>
+                    <button className={`theme-opt-btn dark-opt ${theme === 'dark' ? 'active' : ''}`} onClick={() => setTheme('dark')} title="Dark mode"><Icon name="moon" size={15} /></button>
+                    <button className={`theme-opt-btn system-opt ${theme === 'system' ? 'active' : ''}`} onClick={() => setTheme('system')} title="System theme"><Icon name="monitor" size={15} /></button>
                   </div>
                 </div>
               </div>
@@ -395,7 +408,9 @@ export default function AppLayout() {
       {/* SIDEBAR */}
       <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileSidebarOpen ? 'mobile-open' : ''} ${isMounting ? 'no-transition' : ''}`} id="sidebar-nav">
         <div className="sidebar-header">
-          <div className="sidebar-brand-text">BizAssist</div>
+          <div className="sidebar-brand-text">
+            Biz<span style={{ color: 'var(--accent-color)' }}>Assist</span>
+          </div>
           <button className="sidebar-toggle-btn matte-glass" onClick={() => {
             if (window.matchMedia('(max-width: 1024px)').matches) {
               setMobileSidebarOpen(false);
@@ -461,9 +476,9 @@ export default function AppLayout() {
                 <div className="profile-menu-theme" onClick={(e) => e.stopPropagation()}>
                   <span className="profile-menu-theme-label">Theme</span>
                   <div className="profile-theme-toggle">
-                    <button className={`theme-opt-btn light-opt ${theme === 'light' ? 'active' : ''}`} onClick={() => setTheme('light')} title="Light mode">☀</button>
-                    <button className={`theme-opt-btn dark-opt ${theme === 'dark' ? 'active' : ''}`} onClick={() => setTheme('dark')} title="Dark mode">☾</button>
-                    <button className={`theme-opt-btn system-opt ${theme === 'system' ? 'active' : ''}`} onClick={() => setTheme('system')} title="System theme">◐</button>
+                    <button className={`theme-opt-btn light-opt ${theme === 'light' ? 'active' : ''}`} onClick={() => setTheme('light')} title="Light mode"><Icon name="sun" size={15} /></button>
+                    <button className={`theme-opt-btn dark-opt ${theme === 'dark' ? 'active' : ''}`} onClick={() => setTheme('dark')} title="Dark mode"><Icon name="moon" size={15} /></button>
+                    <button className={`theme-opt-btn system-opt ${theme === 'system' ? 'active' : ''}`} onClick={() => setTheme('system')} title="System theme"><Icon name="monitor" size={15} /></button>
                   </div>
                 </div>
               </div>
@@ -483,12 +498,12 @@ export default function AppLayout() {
               <p id="total-revenue">₹{Number(stats.total_revenue).toLocaleString('en-IN')}</p>
             </div>
             <div className="card">
-              <span className="card-icon">⏳</span>
+              <span className="card-icon"><Icon name="clock" size={18} /></span>
               <h3>Pending Payments</h3>
               <p id="pending-payments">{stats.pending_invoices}</p>
             </div>
             <div className="card">
-              <span className="card-icon">📋</span>
+              <span className="card-icon"><Icon name="file" size={18} /></span>
               <h3>Invoices</h3>
               <p id="invoice-count">{stats.invoice_count}</p>
             </div>
@@ -534,7 +549,7 @@ export default function AppLayout() {
       {/* ALERTS PREFERENCES MODAL */}
       {showAlertsModal && (
         <Modal
-          title="🔔 Proactive Alert Settings"
+          title="Proactive Alert Settings"
           onClose={() => setShowAlertsModal(false)}
           maxWidth={520}
           footer={

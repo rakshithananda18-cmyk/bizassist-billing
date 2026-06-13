@@ -2594,6 +2594,34 @@ details[open] > .tree-summary::after {
 .tier-complex { background: rgba(202,170,30,0.12); color: #7a6000;  border: 1px solid rgba(202,170,30,0.35); }
 .tier-simple  { background: rgba(202,170,30,0.12); color: #7a6000;  border: 1px solid rgba(202,170,30,0.35); }
 
+/* Icon-only answer-source tag (no text; type shown via hover tooltip). */
+.tier-ico {
+    display: inline-flex;
+    align-items: center;
+    cursor: default;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+}
+.tier-ico:hover { opacity: 1; }
+.tier-ico--free { color: #1a8a30; }   /* DIRECT / CACHED / INTENT — 0-token */
+.tier-ico--ai   { color: #b08600; }   /* AI_SIMPLE / AI_COMPLEX — token spend */
+.dark-mode .tier-ico--free { color: #5fbf6b; }
+.dark-mode .tier-ico--ai   { color: #d6b13a; }
+
+/* Contextual anomaly icon (footer) — only shown when relevant to the answer. */
+.alert-ico {
+    display: inline-flex;
+    align-items: center;
+    cursor: default;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+}
+.alert-ico:hover { opacity: 1; }
+.alert-ico[data-sev="critical"] { color: #d14343; }
+.alert-ico[data-sev="warning"]  { color: #c98a1e; }
+.dark-mode .alert-ico[data-sev="critical"] { color: #e87070; }
+.dark-mode .alert-ico[data-sev="warning"]  { color: #e0a83e; }
+
 /* =========================================
    CHAT SESSION HISTORY — kebab rename menu
 ========================================= */

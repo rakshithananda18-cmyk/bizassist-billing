@@ -298,7 +298,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
                       {menuOpenId === s.session_id && (
                         <div
                           className="rp-chat-menu"
-                          style={{ position: 'fixed', top: menuPos.top, left: menuPos.left }}
+                          style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, right: 'auto', width: 160 }}
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button
@@ -309,7 +309,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
                               setMenuOpenId(null)
                             }}
                           >
-                            ✏ Rename
+                            <Icon name="edit" size={14} /> Rename
                           </button>
                           <button
                             className="rp-chat-menu-item danger"
@@ -318,7 +318,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
                               handleDeleteSession(e, s.session_id)
                             }}
                           >
-                            🗑 Delete
+                            <Icon name="trash" size={14} /> Delete
                           </button>
                         </div>
                       )}
@@ -392,8 +392,8 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
               <>
                 {/* What's working */}
                 <div className="ip-insight-group">
-                  <div className="ip-insight-head" style={{ color: '#3a9a5c' }}>
-                    ✓ What's working
+                  <div className="ip-insight-head" style={{ color: '#3a9a5c', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Icon name="check" size={14} /> What's working
                   </div>
                   {(panelInsights.positives || []).length === 0 && (
                     <div style={{ fontSize: 12, opacity: 0.55, padding: '2px 0 8px' }}>—</div>
@@ -408,8 +408,8 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
 
                 {/* Could be better */}
                 <div className="ip-insight-group" style={{ marginTop: 10 }}>
-                  <div className="ip-insight-head" style={{ color: '#c97c22' }}>
-                    ⚠ Could be better
+                  <div className="ip-insight-head" style={{ color: '#c97c22', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Icon name="warn" size={14} /> Could be better
                   </div>
                   {(panelInsights.improvements || []).length === 0 && (
                     <div style={{ fontSize: 12, opacity: 0.55, padding: '2px 0 8px' }}>Nothing urgent — nicely done.</div>
@@ -429,9 +429,10 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
                   className="ip-card"
                   onClick={() => sendChip('Smart Insights — grow my business', null, true)}
                   style={{ width: '100%', textAlign: 'center', marginTop: 10, cursor: 'pointer',
-                           border: '1px dashed var(--border-color)', background: 'transparent', fontSize: 12, fontWeight: 600 }}
+                           border: '1px dashed var(--accent-color)', background: 'transparent',
+                           color: 'var(--accent-color)', fontSize: 12, fontWeight: 600 }}
                 >
-                  🚀 Get full AI growth plan
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}><Icon name="rocket" size={14} /> Get full AI growth plan</span>
                 </button>
               </>
             )}
