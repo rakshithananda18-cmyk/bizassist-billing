@@ -21,7 +21,7 @@ const WINDOWS = [
 
 export function BuildingMark({ size = 28, accent = 'var(--accent-color)', strokeWidth = 1.8, style }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-hidden="true"
+    <svg width={size} height={size} viewBox="0 -5 64 64" fill="none" aria-hidden="true"
          shapeRendering="geometricPrecision"
          style={{ display: 'block', flexShrink: 0, ...style }}>
       <g stroke="currentColor" strokeWidth={strokeWidth} strokeLinejoin="round">

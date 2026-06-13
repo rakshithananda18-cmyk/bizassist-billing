@@ -295,12 +295,11 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
       if (data.source === 'empty' || ins.length === 0) {
         md = data.message || 'Not enough data yet for tailored insights — upload invoices and inventory first.'
       } else {
-        const icon = { collections: '💰', customers: '🤝', products: '📦', profit: '📈', risk: '⚠️' }
-        md = '**🚀 Smart Insights — your top moves**\n\n' + ins.map((it, i) =>
-          `**${i + 1}. ${it.title}** ${icon[it.dimension] || ''}\n\n` +
+        md = '**Smart Insights — your top moves**\n\n' + ins.map((it, i) =>
+          `**${i + 1}. ${it.title}**\n\n` +
           `${it.insight}\n\n` +
-          `➡️ **Do this:** ${it.action}\n\n` +
-          `📊 **Impact:** ${it.impact}`
+          `**Do this:** ${it.action}\n\n` +
+          `**Impact:** ${it.impact}`
         ).join('\n\n---\n\n')
         if (data.source === 'deterministic') md += '\n\n_(Showing key figures; full AI analysis was unavailable.)_'
       }

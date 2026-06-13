@@ -106,7 +106,7 @@ html.chat-active .chat-box {
 .message-row.user-row {
     justify-content: flex-end;
     padding: 4px 20px 4px 80px;
-    max-width: 715px;   /* 5px less than input's 720px */
+    max-width: 760px;   /* Claude-style centered reading column */
     margin: 0 auto;
     width: 100%;
 }
@@ -116,7 +116,7 @@ html.chat-active .chat-box {
     padding: 6px 20px 6px 20px;
     gap: 10px;
     align-items: flex-start;
-    max-width: 715px;   /* 5px less than input's 720px */
+    max-width: 760px;   /* Claude-style centered reading column */
     margin: 0 auto;
     width: 100%;
 }
@@ -302,7 +302,7 @@ html.chat-active .chat-box {
     position: relative;
     display: flex;
     flex-direction: column;
-    max-width: 720px;
+    max-width: 768px;
     margin: 0 auto;
     background: var(--card-color);
     border: 1.5px solid var(--border-color);
@@ -929,8 +929,9 @@ div#insights-panel {
 }
 
 html[data-active="ai"] .dashboard-grid {
-    grid-template-columns: minmax(0, 1fr) calc(8vw + 13rem) !important;
-    transition: grid-template-columns 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    grid-template-columns: minmax(0, 1fr) clamp(300px, 24vw, 330px) !important;
+    /* No grid-template-columns transition: animating it reflows the chat every
+       frame and made route switches feel janky. The switch now snaps cleanly. */
 }
 html[data-active="ai"] .dashboard-grid.insights-collapsed,
 html[data-active="ai"] .dashboard-grid:has(#insights-panel.collapsed) {

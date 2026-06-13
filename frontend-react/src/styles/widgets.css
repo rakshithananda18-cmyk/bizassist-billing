@@ -1090,7 +1090,7 @@ div.main {
 
 /* AI view: chat on left, insights on right — equal-ish split */
 html[data-active="ai"] .dashboard-grid {
-    grid-template-columns: minmax(0, 1fr) calc(8vw + 13rem);
+    grid-template-columns: minmax(0, 1fr) clamp(300px, 24vw, 330px);
     gap: 12px;
 }
 
