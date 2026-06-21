@@ -41,6 +41,10 @@ def setup_db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
+        db.query(User).filter(User.id == USER_ID).delete()
+        db.query(Invoice).filter(Invoice.business_id == USER_ID).delete()
+        db.query(Inventory).filter(Inventory.business_id == USER_ID).delete()
+        db.commit()
         db.add(User(id=USER_ID, username="intent_test_user",
                     password=hash_password("Test123"),
                     business_name="Intent Test Co", role="enterprise"))

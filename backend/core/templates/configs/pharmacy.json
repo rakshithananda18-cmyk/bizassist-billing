@@ -1,0 +1,38 @@
+{
+  "key": "pharmacy",
+  "label": "Pharmacy / Medical",
+  "terminology": {
+    "customer": "Patient",
+    "product": "Medicine",
+    "bill": "Bill",
+    "supplier": "Distributor"
+  },
+  "billing": {
+    "default_invoice_type": "B2C",
+    "tax_inclusive_default": true,
+    "entry_mode": "search",
+    "payment_modes": ["cash", "upi", "card", "credit"],
+    "eway_threshold": 50000,
+    "allow_returns": true
+  },
+  "inventory": {
+    "track_batch": true,
+    "track_expiry": true,
+    "track_serial": false,
+    "loose_qty": false,
+    "default_uoms": ["Strip", "Bottle", "Box", "Nos"],
+    "reorder_default": 10
+  },
+  "product_fields": [
+    {"field": "name", "required": true},
+    {"field": "hsn_sac", "label": "HSN", "required": true},
+    {"field": "mrp", "required": true},
+    {"field": "barcode"},
+    {"attr": "salt", "label": "Salt / Composition"},
+    {"attr": "drug_schedule", "label": "Drug Schedule", "type": "enum", "options": ["", "G", "H", "H1", "X"]},
+    {"attr": "manufacturer", "label": "Manufacturer"}
+  ],
+  "invoice_layout": "a4_tax_invoice",
+  "workflows": ["expiry_register", "schedule_h_log"],
+  "ai_pack": "available"
+}

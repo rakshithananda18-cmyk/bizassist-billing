@@ -1,0 +1,38 @@
+{
+  "key": "supermarket",
+  "label": "Supermarket / Kirana",
+  "terminology": {
+    "customer": "Customer",
+    "product": "Product",
+    "bill": "Bill",
+    "supplier": "Supplier"
+  },
+  "billing": {
+    "default_invoice_type": "B2C",
+    "tax_inclusive_default": true,
+    "entry_mode": "barcode",
+    "payment_modes": ["cash", "upi", "card", "credit"],
+    "eway_threshold": 50000,
+    "allow_returns": true
+  },
+  "inventory": {
+    "track_batch": false,
+    "track_expiry": false,
+    "track_serial": false,
+    "loose_qty": true,
+    "default_uoms": ["Nos", "Kg", "g", "Pack", "Litre"],
+    "reorder_default": 10
+  },
+  "product_fields": [
+    {"field": "name", "required": true},
+    {"field": "barcode"},
+    {"field": "hsn_sac", "label": "HSN"},
+    {"field": "mrp", "required": true},
+    {"field": "selling_price"},
+    {"field": "unit"},
+    {"attr": "brand", "label": "Brand"}
+  ],
+  "invoice_layout": "thermal_80mm",
+  "workflows": ["weighing_scale"],
+  "ai_pack": "available"
+}

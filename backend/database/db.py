@@ -1,6 +1,7 @@
 import os
+from datetime import datetime
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, MetaData
+from sqlalchemy import create_engine, MetaData, Column, Integer, DateTime
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -39,6 +40,26 @@ SessionLocal = sessionmaker(
 )
 
 Base = declarative_base(metadata=MetaData(naming_convention=_NAMING_CONVENTION))
+
+
+# ---------------------------------------------------------------------------
+# SHARED MIXINS
+# ---------------------------------------------------------------------------
+# Live here (neutral, model-free module) rather than in database/models.py so
+# that BOTH the shared models AND core/models.py can inherit them without an
+# import cycle (core/models ↔ database/models would otherwise loop). They are
+# re-exported from database.models for backward compatibility.
+
+class TimestampMixin:
+    """Adds created_at / updated_at. Does NOT add id or business_id."""
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
+
+
+class BusinessOwnedMixin(TimestampMixin):
+    """Every tenant-scoped table inherits this: id, business_id, timestamps."""
+    id          = Column(Integer, primary_key=True, index=True)
+    business_id = Column(Integer, index=True, nullable=True)
 
 
 def get_db():

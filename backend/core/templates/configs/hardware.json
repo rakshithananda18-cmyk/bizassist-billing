@@ -1,0 +1,39 @@
+{
+  "key": "hardware",
+  "label": "Hardware / Electricals",
+  "terminology": {
+    "customer": "Customer",
+    "product": "Product",
+    "bill": "Invoice",
+    "supplier": "Supplier"
+  },
+  "billing": {
+    "default_invoice_type": "B2C",
+    "tax_inclusive_default": false,
+    "entry_mode": "search",
+    "payment_modes": ["cash", "upi", "card", "credit"],
+    "eway_threshold": 50000,
+    "allow_returns": true
+  },
+  "inventory": {
+    "track_batch": false,
+    "track_expiry": false,
+    "track_serial": false,
+    "loose_qty": true,
+    "default_uoms": ["Nos", "Metre", "Kg", "Box", "Set", "Pair"],
+    "reorder_default": 10
+  },
+  "product_fields": [
+    {"field": "name", "required": true},
+    {"field": "hsn_sac", "label": "HSN"},
+    {"field": "selling_price", "required": true},
+    {"field": "mrp"},
+    {"field": "barcode"},
+    {"field": "unit"},
+    {"attr": "brand", "label": "Brand"},
+    {"attr": "size_spec", "label": "Size / Spec"}
+  ],
+  "invoice_layout": "a4_tax_invoice",
+  "workflows": [],
+  "ai_pack": "available"
+}

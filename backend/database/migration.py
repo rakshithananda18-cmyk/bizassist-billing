@@ -102,6 +102,8 @@ _COLUMN_MIGRATIONS = [
     # token_usage — gained TimestampMixin
     {"table": "token_usage", "column": "created_at", "ddl": "ALTER TABLE token_usage ADD COLUMN created_at DATETIME"},
     {"table": "token_usage", "column": "updated_at", "ddl": "ALTER TABLE token_usage ADD COLUMN updated_at DATETIME"},
+    # users — app settings JSON blob
+    {"table": "users", "column": "settings", "ddl": "ALTER TABLE users ADD COLUMN settings TEXT"},
 ]
 
 

@@ -1,0 +1,4 @@
+name,phone,email,address,gstin,state_code,pan,credit_limit,credit_days,opening_dues
+Sharma Medicals,+919876543210,sharma@meds.com,12 Main Road Bangalore,29ASHPM1234A1Z1,29,ASHPM1234A,50000.00,30,0.00
+Metro Pharmacy,+919876543211,contact@metropharma.in,55 Ring Road Indiranagar,29METRO5678B1Z2,29,METRO5678B,100000.00,45,5000.00
+Apollo Clinic,+919876543212,billing@apolloclinic.com,88 Residency Road,29APOLL9012C1Z3,29,APOLL9012C,250000.00,60,15000.00

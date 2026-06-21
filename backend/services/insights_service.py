@@ -47,14 +47,97 @@ def uploads_list(user_id: int, db: Session) -> list:
 
 
 def dashboard_summary(user_id: int, db: Session) -> dict:
+    from datetime import datetime, timedelta
+    from database.models import Invoice, Product, PurchaseInvoice, Customer
+    from core.models import InvoicePayment
+    from core.stock import ledger as SL
+    import json
+    
     invoices = db.query(Invoice).filter(Invoice.business_id == user_id).all()
-    inventory = db.query(Inventory).filter(Inventory.business_id == user_id).all()
+    products = db.query(Product).filter(Product.business_id == user_id).all()
+    
+    total_revenue = sum(i.total_amount or 0 for i in invoices)
+    invoice_count = len(invoices)
+    
+    thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    
+    rev_30d = sum(i.total_amount or 0 for i in invoices if i.invoice_date and i.invoice_date >= thirty_days_ago)
+    
+    pending_invoices = [i for i in invoices if i.status == "Pending"]
+    pending_count = len(pending_invoices)
+    pending_amount = sum((i.total_amount or 0) - (i.paid_amount or 0) for i in pending_invoices)
+    
+    payments_today = db.query(InvoicePayment).filter(
+        InvoicePayment.business_id == user_id,
+        InvoicePayment.payment_date == today_str
+    ).all()
+    paid_today = sum(p.amount_paid or 0.0 for p in payments_today)
+    
+    overdue_invoices = [i for i in invoices if i.status == "Overdue"]
+    overdue_count = len(overdue_invoices)
+    overdue_amount = sum((i.total_amount or 0) - (i.paid_amount or 0) for i in overdue_invoices)
+    
+    purchases = db.query(PurchaseInvoice).filter(
+        PurchaseInvoice.business_id == user_id,
+        PurchaseInvoice.invoice_date >= thirty_days_ago
+    ).all()
+    purchases_30d = sum(p.total_amount or 0.0 for p in purchases)
+    
+    active_cust_set = {i.customer for i in invoices if i.invoice_date and i.invoice_date >= thirty_days_ago and i.customer}
+    active_customers = len(active_cust_set)
+    
+    low_stock_items = []
+    low_stock_count = 0
+    for p in products:
+        if p.track_inventory:
+            stock = SL.current_stock(db, user_id, product_id=p.id)
+            min_s = 0.0
+            if p.attributes:
+                try:
+                    attrs = json.loads(p.attributes)
+                    min_s = float(attrs.get("min_stock") or 0.0)
+                except Exception:
+                    pass
+            if stock <= min_s:
+                low_stock_count += 1
+                low_stock_items.append({
+                    "name": p.name,
+                    "quantity": stock,
+                    "min_stock": min_s
+                })
+                
+    low_stock_items = low_stock_items[:5]
+    
+    recent_invoices_db = sorted(invoices, key=lambda i: (i.invoice_date or "", i.id), reverse=True)[:5]
+    recent_invoices = []
+    for i in recent_invoices_db:
+        recent_invoices.append({
+            "id": i.id,
+            "invoice_number": i.invoice_id,
+            "customer_name": i.customer or "Cash Customer",
+            "total_amount": i.total_amount,
+            "status": i.status
+        })
+        
     return {
-        "total_revenue":    sum(i.amount or 0 for i in invoices),
-        "invoice_count":    len(invoices),
-        "overdue_amount":   sum(i.amount or 0 for i in invoices if i.status == "Overdue"),
-        "pending_invoices": sum(1 for i in invoices if i.status == "Pending"),
-        "inventory_count":  len(inventory),
+        "total_revenue": total_revenue,
+        "invoice_count": invoice_count,
+        "inventory_count": len(products),
+        "overdue_amount": overdue_amount,
+        "pending_invoices": pending_count,
+        
+        "revenue_30d": rev_30d,
+        "pending_count": pending_count,
+        "pending_amount": pending_amount,
+        "paid_today": paid_today,
+        "overdue_count": overdue_count,
+        "low_stock_count": low_stock_count,
+        "purchases_30d": purchases_30d,
+        "active_customers": active_customers,
+        "gross_margin": 25.0,
+        "recent_invoices": recent_invoices,
+        "low_stock_items": low_stock_items
     }
 
 
@@ -72,7 +155,8 @@ def database_view(user_id: int, db: Session) -> dict:
         "payment_count":   len(payments),
         "invoices": [
             {"id": i.id, "invoice_id": i.invoice_id, "customer": i.customer, "product": i.product,
-             "amount": i.amount, "status": i.status, "invoice_date": i.invoice_date, "due_date": i.due_date}
+             "amount": i.amount, "status": i.status, "invoice_date": i.invoice_date, "due_date": i.due_date,
+             "paid_amount": i.paid_amount or 0.0, "total_amount": i.total_amount or i.amount or 0.0}
             for i in invoices
         ],
         "inventory": [

@@ -3,7 +3,7 @@ import bcrypt
 import jwt
 import logging
 from datetime import datetime, timedelta
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Depends
 
 import secrets as _secrets
 
@@ -63,3 +63,23 @@ def get_active_user(authorization: str = Header(None)) -> dict:
         raise HTTPException(status_code=401, detail="Bearer authorization token missing or malformed")
     token = authorization.split(" ")[1]
     return decode_access_token(token)
+
+
+# ── Role-based access control (single source of truth) ───────────────────────
+# Staff roles today:
+#   • owner-level — anything NOT "cashier" (e.g. "enterprise"/"admin"/"owner"):
+#                   full access.
+#   • "cashier"   — billing-floor staff: ring up sales + take payments, but NOT
+#                   reports/margins, returns/credit notes, imports, or settings.
+# Guards raise 403 so a forbidden role never reaches the route body.
+
+def restrict_cashier(current_user: dict = Depends(get_active_user)) -> dict:
+    """Block cashiers from owner-only (admin / financial) actions."""
+    if (current_user.get("role") or "").lower() == "cashier":
+        logger.info("[AUTH] cashier blocked from owner-only action (user=%s)",
+                    current_user.get("username"))
+        raise HTTPException(status_code=403, detail="Permission denied: cashier restricted")
+    return current_user
+
+# Readable alias for owner-only routes.
+require_owner = restrict_cashier

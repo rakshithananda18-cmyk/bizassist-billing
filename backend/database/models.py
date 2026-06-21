@@ -20,23 +20,14 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from database.db import Base
+# Shared mixins live in database.db (a model-free module) so core/models.py can
+# inherit them too without an import cycle. Re-exported here for back-compat.
+from database.db import TimestampMixin, BusinessOwnedMixin  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
 # MIXINS
 # ---------------------------------------------------------------------------
-
-class TimestampMixin:
-    """Adds created_at / updated_at. Does NOT add id or business_id."""
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
-
-
-class BusinessOwnedMixin(TimestampMixin):
-    """Every tenant-scoped table inherits this: id, business_id, timestamps."""
-    id          = Column(Integer, primary_key=True, index=True)
-    business_id = Column(Integer, index=True, nullable=True)
-
 
 class GSTFieldsMixin:
     """
@@ -52,6 +43,12 @@ class GSTFieldsMixin:
     igst_total      = Column(Float,  nullable=True, default=0.0)
     cess_total      = Column(Float,  nullable=True, default=0.0)
     total_amount    = Column(Float,  nullable=True, default=0.0)
+    # GST-mandatory + universal compatibility (Rule 46 + all business types).
+    # All additive/nullable — a format uses only what applies (the template decides).
+    reverse_charge  = Column(Boolean, default=False)      # Rule-46 MANDATORY field (was missing)
+    is_tax_inclusive= Column(Boolean, default=False)      # retail: prices entered incl. GST (MRP)
+    discount_total  = Column(Float,  nullable=True, default=0.0)  # invoice-level PRE-tax discount (reduces taxable)
+    round_off       = Column(Float,  nullable=True, default=0.0)  # final rounding adjustment (₹)
     irn             = Column(String, nullable=True)       # e-invoice IRN (Phase 3)
     ack_no          = Column(String, nullable=True)
     ack_date        = Column(String, nullable=True)
@@ -70,7 +67,11 @@ class User(Base, TimestampMixin):
     username      = Column(String, unique=True, index=True)
     password      = Column(String)
     business_name = Column(String)
-    role          = Column(String, default="enterprise")  # enterprise|admin
+    role          = Column(String, default="enterprise")  # enterprise|admin (owner-level) | cashier (staff)
+    # Staff sub-accounts: NULL for an owner (this row IS the business); for a
+    # staff login it points to the owner's user id — the business they belong to.
+    parent_business_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    public_id     = Column(String, unique=True, index=True, nullable=True)  # BizID (BA-XXXXXX)
     # Business GST identity (Phase 3)
     gstin         = Column(String, nullable=True)
     phone         = Column(String, nullable=True)
@@ -78,6 +79,9 @@ class User(Base, TimestampMixin):
     address       = Column(Text,   nullable=True)
     state_code    = Column(String, nullable=True)
     pan           = Column(String, nullable=True)
+    logo          = Column(Text,   nullable=True)
+    # App configuration blob — JSON-encoded key/value preferences (own naming schema)
+    settings      = Column(Text,   nullable=True)
 
 
 class UploadedFile(Base, TimestampMixin):
@@ -114,6 +118,7 @@ class Customer(Base, BusinessOwnedMixin):
     credit_limit = Column(Float,   nullable=True, default=0.0)
     credit_days  = Column(Integer, nullable=True, default=30)
     is_active    = Column(Boolean, default=True)
+    price_tier   = Column(String, nullable=True, default="standard")
 
     invoices = relationship(
         "Invoice", back_populates="customer_ref", lazy="dynamic",
@@ -146,6 +151,7 @@ class Vendor(Base, BusinessOwnedMixin):
         foreign_keys="Inventory.vendor_id"
     )
     purchase_orders = relationship("PurchaseOrder", back_populates="vendor", lazy="dynamic")
+    purchase_invoices = relationship("PurchaseInvoice", back_populates="supplier_ref", lazy="dynamic")
 
 
 # ---------------------------------------------------------------------------
@@ -159,9 +165,11 @@ class Product(Base, BusinessOwnedMixin):
     name          = Column(String, index=True)
     description   = Column(Text,   nullable=True)
     hsn_sac       = Column(String, nullable=True, index=True)
-    unit          = Column(String, nullable=True, default="Nos")
-    barcode       = Column(String, nullable=True, index=True)
+    unit          = Column(String, nullable=True, default="Nos")   # stock/sale UoM
+    barcode       = Column(String, nullable=True, index=True)       # primary/display code (see ProductBarcode)
     selling_price = Column(Float,  nullable=True, default=0.0)
+    wholesale_price = Column(Float,  nullable=True, default=0.0)
+    distributor_price = Column(Float,  nullable=True, default=0.0)
     cost_price    = Column(Float,  nullable=True, default=0.0)
     mrp           = Column(Float,  nullable=True)
     cgst_rate     = Column(Float,  nullable=True, default=0.0)
@@ -169,6 +177,21 @@ class Product(Base, BusinessOwnedMixin):
     igst_rate     = Column(Float,  nullable=True, default=0.0)
     is_service    = Column(Boolean, default=False)
     is_active     = Column(Boolean, default=True)
+
+    # ── Universal item-master fields (ERPNext-style) — make the catalogue fit
+    #    EVERY business type. All additive/nullable; a format uses only what it needs.
+    sku             = Column(String,  nullable=True, index=True)   # item code / internal SKU (≠ barcode)
+    brand           = Column(String,  nullable=True)
+    manufacturer    = Column(String,  nullable=True)
+    category        = Column(String,  nullable=True, index=True)
+    track_inventory = Column(Boolean, default=True)               # services / prepared food → False
+    price_includes_tax = Column(Boolean, default=False)           # retail MRP-inclusive pricing
+    purchase_unit   = Column(String,  nullable=True)              # e.g. "Carton" (buy unit)
+    conversion_factor = Column(Float, nullable=True, default=1.0) # stock units per purchase unit (carton→pcs)
+    variant_of      = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)  # garments size/colour
+    attributes      = Column(Text,    nullable=True)              # JSON escape-hatch: size/colour, drug-schedule,
+                                                                  # IMEI, fabric, table-no… any vertical field,
+                                                                  # NO migration needed to add a vertical
 
     invoice_line_items = relationship(
         "InvoiceLineItem", back_populates="product_ref", lazy="dynamic",
@@ -201,12 +224,17 @@ class Invoice(Base, BusinessOwnedMixin, GSTFieldsMixin):
 
     # New FK
     customer_id  = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    godown_id    = Column(Integer, nullable=True, index=True)
 
     # Payment tracking
     paid_amount  = Column(Float,  nullable=True, default=0.0)
     payment_date = Column(String, nullable=True)
     payment_mode = Column(String, nullable=True)
     notes        = Column(Text,   nullable=True)
+
+    # POST-tax cash discount / round-off (R4) — sales-only, so it lives on Invoice
+    # (NOT the shared GSTFieldsMixin). Reduces the payable, never the taxable/GST.
+    cash_discount = Column(Float, nullable=True, default=0.0)
 
     customer_ref = relationship("Customer", back_populates="invoices", foreign_keys=[customer_id])
     line_items   = relationship(
@@ -237,12 +265,15 @@ class InvoiceLineItem(Base, TimestampMixin):
     product_id    = Column(Integer, ForeignKey("products.id"), nullable=True,  index=True)
 
     product_name  = Column(String, nullable=False)
+    description   = Column(Text,   nullable=True)                  # extra line description (GST allows)
     hsn_sac       = Column(String, nullable=True)
     unit          = Column(String, nullable=True, default="Nos")
     quantity      = Column(Float,  nullable=False, default=1.0)
     unit_price    = Column(Float,  nullable=False, default=0.0)
     discount      = Column(Float,  nullable=True,  default=0.0)
     discount_pct  = Column(Float,  nullable=True,  default=0.0)
+    batch_no      = Column(String, nullable=True)                  # pharma/perishable at point of sale
+    serial_no     = Column(String, nullable=True)                  # electronics/IMEI tracking
 
     cgst_rate     = Column(Float,  nullable=True, default=0.0)
     sgst_rate     = Column(Float,  nullable=True, default=0.0)
@@ -277,6 +308,7 @@ class Inventory(Base, BusinessOwnedMixin):
 
     vendor_id     = Column(Integer, ForeignKey("vendors.id"),  nullable=True, index=True)
     product_id    = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
+    godown_id     = Column(Integer, nullable=True, index=True)
 
     unit          = Column(String,  nullable=True, default="Nos")
     hsn_sac       = Column(String,  nullable=True)
@@ -361,6 +393,69 @@ class PurchaseOrderLineItem(Base, TimestampMixin):
     received_qty  = Column(Float,  nullable=True,  default=0.0)
 
     purchase_order = relationship("PurchaseOrder", back_populates="line_items")
+
+
+# ---------------------------------------------------------------------------
+# PURCHASE INVOICE (RECEIVED BILLS)
+# ---------------------------------------------------------------------------
+
+class PurchaseInvoice(Base, BusinessOwnedMixin, GSTFieldsMixin):
+    """Received supplier invoice / purchase bill."""
+    __tablename__ = "purchase_invoices"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    supplier_id    = Column(Integer, ForeignKey("vendors.id"), nullable=True, index=True)
+    supplier_name  = Column(String, nullable=True)
+    invoice_number = Column(String, index=True, nullable=True)
+    invoice_date   = Column(String, nullable=True)
+    due_date       = Column(String, nullable=True)
+    status         = Column(String, nullable=True, default="Pending")
+    notes          = Column(Text,   nullable=True)
+    file_id        = Column(Integer, nullable=True, index=True)
+    godown_id      = Column(Integer, nullable=True, index=True)
+
+    supplier_ref   = relationship("Vendor", back_populates="purchase_invoices", foreign_keys=[supplier_id])
+    line_items     = relationship(
+        "PurchaseInvoiceLineItem", back_populates="purchase_invoice",
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    __table_args__ = (
+        Index("ix_purchase_invoice_business_status", "business_id", "status"),
+        Index("ix_purchase_invoice_business_date",   "business_id", "invoice_date"),
+    )
+
+
+class PurchaseInvoiceLineItem(Base, TimestampMixin):
+    """One product line on a purchase invoice."""
+    __tablename__ = "purchase_invoice_line_items"
+
+    id                  = Column(Integer, primary_key=True, index=True)
+    purchase_invoice_id = Column(Integer, ForeignKey("purchase_invoices.id"), nullable=False, index=True)
+    product_id          = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
+
+    product_name      = Column(String, nullable=False)
+    hsn_sac           = Column(String, nullable=True)
+    unit              = Column(String, nullable=True, default="Nos")
+    quantity          = Column(Float,  nullable=False, default=1.0)
+    purchase_unit     = Column(String, nullable=True)
+    conversion_factor = Column(Float,  nullable=False, default=1.0)
+    unit_price        = Column(Float,  nullable=False, default=0.0)
+    cgst_rate         = Column(Float,  nullable=True,  default=0.0)
+    sgst_rate         = Column(Float,  nullable=True,  default=0.0)
+    igst_rate         = Column(Float,  nullable=True,  default=0.0)
+    taxable_value     = Column(Float,  nullable=True,  default=0.0)
+    cgst_amount       = Column(Float,  nullable=True,  default=0.0)
+    sgst_amount       = Column(Float,  nullable=True,  default=0.0)
+    igst_amount       = Column(Float,  nullable=True,  default=0.0)
+    line_total        = Column(Float,  nullable=True,  default=0.0)
+    batch             = Column(String, nullable=True)
+    expiry            = Column(String, nullable=True)
+    confidence_score  = Column(Float,  nullable=True,  default=1.0)
+    is_matched        = Column(Boolean, default=True)
+
+    purchase_invoice   = relationship("PurchaseInvoice", back_populates="line_items")
+    product_ref        = relationship("Product", foreign_keys=[product_id])
 
 
 # ---------------------------------------------------------------------------
@@ -529,3 +624,21 @@ class BusinessFact(Base, TimestampMixin):
     category    = Column(String,  nullable=True)                 # e.g. "payment_delay" | "sales_pattern"
     fact_text   = Column(Text,    nullable=False)                # Human-readable sentence
     confidence  = Column(Float,   default=1.0, nullable=True)   # 0.0–1.0; low confidence facts hidden
+
+
+# ---------------------------------------------------------------------------
+# CORE (BILLING ECOSYSTEM) TABLES — defined in core/models.py
+# ---------------------------------------------------------------------------
+# The billing ecosystem owns its own tables (StockLedger, ProductBarcode,
+# BusinessSettings, …) and defines them in `core/models.py` so the schema is
+# organised by domain. They register on this SAME shared `Base` (one database,
+# one metadata — a modular monolith, not separate DBs), so a sale can write
+# shared `Invoice`/`InvoiceLineItem` and core `StockLedger` in one atomic
+# transaction. This import at the bottom (after the mixins/shared models above)
+# pulls them in so the tables register on `Base.metadata` whenever the shared
+# models are loaded, and keeps `from database.models import StockLedger` working.
+from core.models import (  # noqa: E402,F401
+    StockLedger, ProductBarcode, BusinessSettings, InvoicePayment,
+    B2BConnection, ConnectionCode, B2BOrder, B2BOrderLineItem, SharedLedger,
+    Expense, Godown, StockTransfer, StockTransferLineItem,
+)

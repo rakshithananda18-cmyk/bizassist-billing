@@ -12,7 +12,7 @@ Answers are **grounded**: the models reason only over real numbers pulled from t
 
 ## Tech Stack
 
-- **Frontend:** React + Vite (`frontend-react/`), with light/dark theming.
+- **Frontend:** React + Vite (`frontend-ai/` for the AI Dashboard, and `frontend-billing/` for the Billing Frontend).
 - **Backend:** FastAPI, SQLAlchemy, SQLite (Alembic migrations), Groq API for the LLM tiers, and a local MiniLM embedding model (no API cost) for semantic routing and chat memory.
 - **Testing:** Pytest (backend) + Vitest (frontend).
 
@@ -37,10 +37,15 @@ Copy `.env.example` to `backend/.env` and fill it in (see the table below). At m
 ### 3. Run the backend
 Run `start.bat` (or `start_dev.bat`) — starts FastAPI on `http://localhost:8001`.
 
-### 4. Run the frontend
+### 4. Run the frontends
+Frontend packages are installed automatically by `dependencies.bat`. To start them manually:
 ```bash
-cd frontend-react
-npm install
+# AI Dashboard (default: port 5173)
+cd frontend-ai
+npm run dev
+
+# Billing Frontend (default: port 5174)
+cd frontend-billing
 npm run dev
 ```
 

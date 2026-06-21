@@ -27,6 +27,7 @@ from routes.actions import router as actions_router
 from routes.ask import router as ask_router
 from routes.feedback import router as feedback_router
 from routes.smart_insights import router as smart_insights_router
+from core.api import core_router          # billing ecosystem — wired from core/
 from database.db import engine
 from database.models import Base
 from database.migration import run_migrations_and_seed
@@ -72,6 +73,7 @@ _default_origins = (
     "http://localhost:5500,http://127.0.0.1:5500,"
     "http://localhost:3000,"
     "http://localhost:5173,http://127.0.0.1:5173,"
+    "http://localhost:5174,http://127.0.0.1:5174,"
     "https://bizassist-react.vercel.app,"
     "https://bizassist.vercel.app,"
     "https://rakshit-dev-bizassist.hf.space"
@@ -89,6 +91,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
+    expose_headers=["X-Total-Count"],
 )
 
 # ── Error contract ────────────────────────────────────────────────────────────
@@ -109,3 +112,4 @@ app.include_router(intents_router)
 app.include_router(actions_router)
 app.include_router(feedback_router)
 app.include_router(smart_insights_router)
+app.include_router(core_router)           # billing ecosystem (sales + business templates + future)

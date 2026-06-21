@@ -1,0 +1,38 @@
+{
+  "key": "restaurant",
+  "label": "Restaurant / Café",
+  "terminology": {
+    "customer": "Customer",
+    "product": "Item",
+    "bill": "KOT+Bill",
+    "supplier": "Supplier"
+  },
+  "billing": {
+    "default_invoice_type": "B2C",
+    "tax_inclusive_default": true,
+    "entry_mode": "menu",
+    "payment_modes": ["cash", "upi", "card"],
+    "eway_threshold": 50000,
+    "allow_returns": false
+  },
+  "inventory": {
+    "track_batch": false,
+    "track_expiry": false,
+    "track_serial": false,
+    "loose_qty": false,
+    "track_inventory_default": false,
+    "default_uoms": ["Plate", "Half", "Full", "Nos"],
+    "reorder_default": 0
+  },
+  "product_fields": [
+    {"field": "name", "required": true},
+    {"field": "selling_price", "label": "Menu Price", "required": true},
+    {"field": "hsn_sac", "label": "SAC"},
+    {"attr": "is_veg", "label": "Veg / Non-veg", "type": "enum", "options": ["veg", "non-veg", "egg"]},
+    {"attr": "portion", "label": "Portion"},
+    {"attr": "prep_station", "label": "Prep Station"}
+  ],
+  "invoice_layout": "thermal_80mm",
+  "workflows": ["tables_kot"],
+  "ai_pack": "available"
+}

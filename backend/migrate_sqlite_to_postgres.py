@@ -44,6 +44,8 @@ TABLE_ORDER = [
     "payments",
     "purchase_orders",
     "purchase_order_line_items",
+    "purchase_invoices",
+    "purchase_invoice_line_items",
     "inventory",
     "uploaded_files",
     "document_embeddings",
@@ -54,6 +56,23 @@ TABLE_ORDER = [
     "query_override",
     "rate_limit_configs",
     "token_usage",
+    "business_facts",
+    "stock_ledger",
+    "product_barcodes",
+    "business_settings",
+    "invoice_payments",
+    "b2b_connections",
+    "connection_codes",
+    "b2b_orders",
+    "b2b_order_line_items",
+    "shared_ledgers",
+    "expenses",
+    "godowns",
+    "stock_transfers",
+    "stock_transfer_line_items",
+    "journal_entries",
+    "journal_lines",
+    "period_locks",
 ]
 
 total_rows = 0
@@ -75,8 +94,15 @@ with sqlite_engine.connect() as src, pg_engine.connect() as dst:
             continue
 
         pg_table = pg_meta.tables[table_name]
-        cols = [c.key for c in src_table.columns]
-        dicts = [dict(zip(cols, row)) for row in rows]
+        src_cols = set(c.key for c in src_table.columns)
+        dst_cols = set(c.key for c in pg_table.columns)
+        common_cols = src_cols.intersection(dst_cols)
+
+        dicts = []
+        for row in rows:
+            row_dict = dict(row._mapping)
+            filtered_dict = {k: v for k, v in row_dict.items() if k in common_cols}
+            dicts.append(filtered_dict)
 
         # pg_insert with ON CONFLICT DO NOTHING for idempotency
         stmt = pg_insert(pg_table).values(dicts).on_conflict_do_nothing()

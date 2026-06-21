@@ -1,0 +1,40 @@
+{
+  "key": "textile",
+  "label": "Textile / Garments",
+  "terminology": {
+    "customer": "Customer",
+    "product": "Product",
+    "bill": "Invoice",
+    "supplier": "Supplier"
+  },
+  "billing": {
+    "default_invoice_type": "B2C",
+    "tax_inclusive_default": false,
+    "entry_mode": "search",
+    "payment_modes": ["cash", "upi", "card", "credit"],
+    "eway_threshold": 50000,
+    "allow_returns": true
+  },
+  "inventory": {
+    "track_batch": false,
+    "track_expiry": false,
+    "track_serial": false,
+    "loose_qty": false,
+    "default_uoms": ["Piece", "Metre", "Set", "Nos"],
+    "reorder_default": 5
+  },
+  "product_fields": [
+    {"field": "name", "required": true},
+    {"field": "hsn_sac", "label": "HSN"},
+    {"field": "selling_price", "required": true},
+    {"field": "mrp"},
+    {"field": "barcode"},
+    {"attr": "size", "label": "Size"},
+    {"attr": "colour", "label": "Colour"},
+    {"attr": "fabric", "label": "Fabric"},
+    {"attr": "brand", "label": "Brand"}
+  ],
+  "invoice_layout": "a4_tax_invoice",
+  "workflows": ["variant_matrix"],
+  "ai_pack": "available"
+}

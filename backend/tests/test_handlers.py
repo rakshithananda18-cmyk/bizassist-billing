@@ -37,6 +37,11 @@ def setup_db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
+        db.query(User).filter(User.id == 99).delete()
+        db.query(Invoice).filter(Invoice.business_id == 99).delete()
+        db.query(Inventory).filter(Inventory.business_id == 99).delete()
+        db.query(Payment).filter(Payment.business_id == 99).delete()
+        db.commit()
         # Seed a test user
         user = User(
             id=99, username="test_handler_user",
@@ -75,10 +80,14 @@ def setup_db():
         for inv in invoices:
             db.add(inv)
 
-        # Inventory — mix of low stock and normal stock, one expiring soon
+        # Inventory — mix of low stock and normal stock, one expiring soon.
+        # Item A's expiry is computed RELATIVE TO TODAY (7 days out) so the
+        # "expiring within 30 days" test never drifts as the calendar moves.
+        from datetime import datetime as _dt, timedelta as _td
+        _expiring_soon = (_dt.today() + _td(days=7)).strftime("%Y-%m-%d")
         items = [
             Inventory(business_id=99, product_name="Item A", stock=5,
-                      expiry_date="2026-06-15", supplier="Supplier X"),   # low + expiring
+                      expiry_date=_expiring_soon, supplier="Supplier X"),   # low + expiring (today+7)
             Inventory(business_id=99, product_name="Item B", stock=3,
                       expiry_date="2026-12-01", supplier="Supplier Y"),   # low only
             Inventory(business_id=99, product_name="Item C", stock=200,
@@ -223,7 +232,7 @@ def test_low_stock():
 def test_expiring_soon():
     result = handle("expiring_soon", "expiring soon", USER_ID)
     assert result is not None
-    # Item A expires 2026-06-15 — within 30 days of 2026-06-08
+    # Item A is seeded to expire 7 days from today → always within the 30-day window
     assert "Item A" in result
 
 

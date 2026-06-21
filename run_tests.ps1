@@ -43,18 +43,22 @@ try {
         Pop-Location
     }
 
-    # --- Frontend -----------------------------------------------------------
+    # --- Frontend (both apps: billing = canonical, ai = the AI dashboard) ----
     if ($Only -eq "all" -or $Only -eq "frontend") {
-        Write-Host ""
-        Write-Host "=== Frontend tests (vitest) ===" -ForegroundColor Cyan
-        Push-Location (Join-Path $root "frontend-react")
-        if (-not (Test-Path "node_modules")) {
-            Write-Host "Installing frontend dependencies (first run only)..." -ForegroundColor Yellow
-            npm install
+        foreach ($fe in @("frontend-billing", "frontend-ai")) {
+            $fePath = Join-Path $root $fe
+            if (-not (Test-Path $fePath)) { continue }
+            Write-Host ""
+            Write-Host "=== Frontend tests (vitest) - $fe ===" -ForegroundColor Cyan
+            Push-Location $fePath
+            if (-not (Test-Path "node_modules")) {
+                Write-Host "Installing $fe dependencies (first run only)..." -ForegroundColor Yellow
+                npm install
+            }
+            npm test
+            if ($LASTEXITCODE -ne 0) { $frontendExit = $LASTEXITCODE }
+            Pop-Location
         }
-        npm test
-        $frontendExit = $LASTEXITCODE
-        Pop-Location
     }
 }
 finally {

@@ -2,9 +2,10 @@
 
 Everything you need to get BizAssist running after cloning the repo, on any computer.
 
-BizAssist has two parts:
+BizAssist has three parts:
 - **Backend** - FastAPI (Python), runs on `http://localhost:8001`
-- **Frontend** - React + Vite, runs on `http://localhost:5173`
+- **AI Dashboard Frontend** - React + Vite, runs on `http://localhost:5173`
+- **Billing Frontend** - React + Vite, runs on `http://localhost:5174`
 
 ---
 
@@ -26,9 +27,15 @@ This creates the Python virtual environment (`venv`) and installs all backend
 packages. It is safe to re-run any time - it reuses the existing venv and only
 installs what's missing.
 
-Then install the frontend packages:
+Frontend packages are installed automatically by `dependencies.bat`. If you ever need to manually update/install them, you can run:
 ```powershell
-cd frontend-react
+# Install AI Dashboard dependencies
+cd frontend-ai
+npm install
+cd ..
+
+# Install Billing Frontend dependencies
+cd frontend-billing
 npm install
 cd ..
 ```
@@ -139,14 +146,20 @@ Run from the `backend\` folder. It prints `OK <table>: N rows`, then
 **Or run them separately:**
 ```powershell
 # backend
-.\start.bat                       # -> http://localhost:8001
+cd backend
+..\venv\Scripts\activate
+uvicorn main_groq:app --reload --port 8001
 
-# frontend (in a second terminal)
-cd frontend-react
-npm run dev                       # -> http://localhost:5173
+# AI dashboard (in another terminal)
+cd frontend-ai
+npm run dev -- --port 5173
+
+# Billing App (in another terminal)
+cd frontend-billing
+npm run dev -- --port 5174
 ```
 
-Open **http://localhost:5173** in your browser.
+Open **http://localhost:5173** (AI Dashboard) and **http://localhost:5174** (Billing app) in your browser.
 
 ---
 
@@ -174,8 +187,7 @@ Tests run on SQLite and should all pass.
 git clone <repo>
 cd bizassist
 .\dependencies.bat
-cd frontend-react && npm install && cd ..
-copy .env.example backend\.env      # then add GROQ_API_KEY (+ DATABASE_URL if not SQLite)
+copy backend\.env.example backend\.env   # then add GROQ_API_KEY (+ DATABASE_URL if not SQLite)
 .\start_dev.bat
 ```
 With SQLite (the default), that's the whole process. Postgres only adds section 4.

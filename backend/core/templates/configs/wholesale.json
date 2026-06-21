@@ -1,0 +1,39 @@
+{
+  "key": "wholesale",
+  "label": "Wholesale / Distribution",
+  "terminology": {
+    "customer": "Buyer",
+    "product": "Product",
+    "bill": "Tax Invoice",
+    "supplier": "Supplier"
+  },
+  "billing": {
+    "default_invoice_type": "B2B",
+    "tax_inclusive_default": false,
+    "entry_mode": "search",
+    "payment_modes": ["upi", "cash", "card", "credit", "cheque"],
+    "eway_threshold": 50000,
+    "allow_returns": true
+  },
+  "inventory": {
+    "track_batch": true,
+    "track_expiry": false,
+    "track_serial": false,
+    "loose_qty": false,
+    "default_uoms": ["Box", "Case", "Nos", "Kg", "Bag"],
+    "reorder_default": 20
+  },
+  "product_fields": [
+    {"field": "name", "required": true},
+    {"field": "hsn_sac", "label": "HSN", "required": true},
+    {"field": "selling_price", "required": true},
+    {"field": "mrp"},
+    {"field": "barcode"},
+    {"field": "unit"},
+    {"attr": "brand", "label": "Brand"},
+    {"attr": "case_qty", "label": "Units per Case", "type": "number"}
+  ],
+  "invoice_layout": "a4_tax_invoice",
+  "workflows": [],
+  "ai_pack": "available"
+}

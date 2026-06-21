@@ -8,53 +8,75 @@ echo.
 
 REM Check Python is installed
 python --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo ERROR: Python not found. Install Python 3.10+ from https://python.org
+if errorlevel 1 (
+    echo ERROR: Python not found.
     pause
     exit /b 1
 )
 
-echo [1/4] Checking virtual environment...
+REM Check Node.js is installed
+node --version >nul 2>&1
+if errorlevel 1 (
+    echo WARNING: Node.js not found.
+)
+
+REM Check npm is installed
+call npm --version >nul 2>&1
+if errorlevel 1 (
+    echo WARNING: npm not found.
+)
+
+echo.
+echo [1/5] Checking virtual environment...
+
 if exist "venv\Scripts\python.exe" (
     echo      venv already exists - reusing it.
 ) else (
     echo      Creating virtual environment...
     python -m venv venv
-    if %errorlevel% neq 0 (
-        echo ERROR: Failed to create venv.
+
+    if errorlevel 1 (
+        echo ERROR: Failed to create virtual environment.
         pause
         exit /b 1
     )
 )
 
-echo [2/4] Activating virtual environment...
-call venv\Scripts\activate
+echo.
+echo [2/5] Activating virtual environment...
 
-echo [3/4] Upgrading pip...
-venv\Scripts\python.exe -m pip install --upgrade pip --quiet
+call venv\Scripts\activate.bat
 
-echo [4/4] Installing / updating dependencies...
-venv\Scripts\python.exe -m pip install --prefer-binary -r requirements.txt
-if %errorlevel% neq 0 (
-    echo ERROR: pip install failed. Check requirements.txt and your internet connection.
-    pause
-    exit /b 1
+echo.
+echo [3/5] Upgrading pip...
+
+venv\Scripts\python.exe -m pip install --upgrade pip
+
+echo.
+echo [4/5] Installing Python dependencies...
+
+if exist "requirements.txt" (
+    venv\Scripts\python.exe -m pip install --prefer-binary -r requirements.txt
+)
+
+echo.
+echo [5/5] Installing frontend dependencies...
+
+if exist "frontend-ai\package.json" (
+    pushd frontend-ai
+    call npm install
+    popd
+)
+
+if exist "frontend-billing\package.json" (
+    pushd frontend-billing
+    call npm install
+    popd
 )
 
 echo.
 echo ==================================
 echo  SETUP COMPLETE
 echo ==================================
-echo.
-echo Next steps:
-echo  1. Copy .env.example to .env and fill in your keys:
-echo       - GROQ_API_KEY (required for AI)
-echo       - DATABASE_URL (local Postgres; leave unset to use SQLite)
-echo       - EMAIL_USER / EMAIL_PASS (for email alerts)
-echo       - TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN (for WhatsApp alerts)
-echo  2. Run start.bat to launch the backend
-echo  3. Open frontend\index.html with VS Code Live Server (port 5500)
-echo  4. Configure alerts via: POST /alerts/config
-echo  5. Test alerts via:      POST /alerts/test/daily_summary
-echo.
+
 pause

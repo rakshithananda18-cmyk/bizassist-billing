@@ -1,0 +1,6 @@
+name,sku,barcode,unit,description,brand,manufacturer,category,selling_price,cost_price,mrp,cgst_rate,sgst_rate,igst_rate,opening_stock
+Paracetamol 650mg,PARA650,8901234567890,Nos,Pain reliever & fever reducer,Calpol,GSK,Medicines,15.00,10.00,18.00,6.0,6.0,0.0,100
+Amoxicillin 500mg,AMOX500,8901234567891,Nos,Antibiotic medication,Mox,Sun Pharma,Medicines,35.00,20.00,42.00,6.0,6.0,0.0,50
+Dolo 650,DOLO650,8901234567892,Nos,Fever reducer tablet,Dolo,Micro Labs,Medicines,18.00,12.00,20.00,6.0,6.0,0.0,200
+Cetirizine 10mg,CET10,8901234567893,Nos,Antihistamine for allergy relief,Okacet,Cipla,Medicines,5.00,2.50,6.00,6.0,6.0,0.0,300
+Ibuprofen 400mg,IBU400,8901234567894,Nos,Anti-inflammatory painkiller,Brufen,Abbott,Medicines,12.00,7.00,15.00,6.0,6.0,0.0,150
