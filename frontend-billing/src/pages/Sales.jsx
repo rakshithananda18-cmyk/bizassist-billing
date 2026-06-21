@@ -1569,7 +1569,7 @@ export default function Sales() {
                 display: 'flex',
                 flexDirection: 'column',
                 padding: '16px',
-                background: '#f8fafc',
+                background: 'var(--bg)',
                 borderLeft: '1px solid var(--border)',
                 overflowY: 'auto',
                 gap: '20px'
@@ -1618,11 +1618,11 @@ export default function Sales() {
                             e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.02)'
                           }}
                         >
-                          <div style={{ fontWeight: 600, fontSize: '0.82rem', color: '#1e293b', lineHeight: 1.3 }}>
+                          <div style={{ fontWeight: 600, fontSize: '0.82rem', color: 'var(--text-primary)', lineHeight: 1.3 }}>
                             {p.name}
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '6px' }}>
-                            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                               {p.unit || 'pcs'}
                             </span>
                             <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)' }}>

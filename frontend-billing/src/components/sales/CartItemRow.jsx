@@ -39,7 +39,7 @@ export default function CartItemRow({
         zIndex: 2,
         background: 'var(--bg-2)',
         fontWeight: 600,
-        color: '#64748b'
+        color: 'var(--text-muted)'
       }}>{index + 1}</td>
       {columnOrder.map(col => {
         const isVisible = col === 'sku' ? colVisible.sku :
@@ -73,7 +73,7 @@ export default function CartItemRow({
           if (col === 'sku') {
             return (
               <td key="sku" style={style}>
-                <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: '#475569' }}>
+                <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                   {item.sku || '—'}
                 </span>
               </td>
@@ -107,7 +107,7 @@ export default function CartItemRow({
                 {item.product_id ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
                     <select
-                      style={{ fontSize: '0.72rem', padding: '2px 4px', border: '1px solid #cbd5e1', borderRadius: '4px', background: '#f8fafc', color: '#334155', maxWidth: '130px', textOverflow: 'ellipsis' }}
+                      style={{ fontSize: '0.72rem', padding: '2px 4px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg-3)', color: 'var(--text-primary)', maxWidth: '130px', textOverflow: 'ellipsis' }}
                       value={item.batch_no || ''}
                       onChange={e => {
                         const selectedBatchNo = e.target.value
@@ -142,7 +142,7 @@ export default function CartItemRow({
                     )}
                   </div>
                 ) : (
-                  <span style={{ color: '#94a3b8' }}>—</span>
+                  <span style={{ color: 'var(--text-muted)' }}>—</span>
                 )}
               </td>
             );
@@ -154,7 +154,7 @@ export default function CartItemRow({
               <td key="price_option" style={{ ...style, textAlign: 'center', padding: '4px 8px' }}>
                 {item.product_id ? (
                   <select
-                    style={{ fontSize: '0.72rem', padding: '2px 4px', border: '1px solid #cbd5e1', borderRadius: '4px', background: '#f8fafc', color: '#334155', maxWidth: '145px', textOverflow: 'ellipsis' }}
+                    style={{ fontSize: '0.72rem', padding: '2px 4px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg-3)', color: 'var(--text-primary)', maxWidth: '145px', textOverflow: 'ellipsis' }}
                     value={item.selected_price_label || 'Standard Price'}
                     onFocus={async () => {
                       try {
@@ -192,7 +192,7 @@ export default function CartItemRow({
                     )}
                   </select>
                 ) : (
-                  <span style={{ color: '#94a3b8' }}>—</span>
+                  <span style={{ color: 'var(--text-muted)' }}>—</span>
                 )}
               </td>
             );
@@ -201,7 +201,7 @@ export default function CartItemRow({
           if (col === 'mrp') {
             return (
               <td key="mrp" style={{ ...style, textAlign: 'right' }}>
-                <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: '#475569' }}>
+                <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                   {fmt(products.find(p => p.id === item.product_id)?.mrp || item.price)}
                 </span>
               </td>
@@ -211,7 +211,7 @@ export default function CartItemRow({
           if (col === 'hsn') {
             return (
               <td key="hsn" style={{ ...style, textAlign: 'center' }}>
-                <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: '#475569' }}>
+                <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                   {products.find(p => p.id === item.product_id)?.hsn || '—'}
                 </span>
               </td>
@@ -236,7 +236,7 @@ export default function CartItemRow({
 
           if (col === 'unit') {
             return (
-              <td key="unit" style={{ ...style, textAlign: 'center', fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>
+              <td key="unit" style={{ ...style, textAlign: 'center', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)' }}>
                 pcs
               </td>
             );
@@ -263,7 +263,7 @@ export default function CartItemRow({
                     }}
                   />
                 ) : (
-                  <span style={{ color: '#94a3b8' }}>—</span>
+                  <span style={{ color: 'var(--text-muted)' }}>—</span>
                 )}
               </td>
             );
@@ -272,7 +272,7 @@ export default function CartItemRow({
           if (col === 'price') {
             return (
               <td key="price" style={{ ...style, textAlign: 'right' }}>
-                <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: '#475569' }}>
+                <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                   {item.product ? fmt(lineTotal(item)) : '—'}
                 </span>
               </td>
@@ -282,7 +282,7 @@ export default function CartItemRow({
           if (col === 'discount') {
             return (
               <td key="discount" style={{ ...style, textAlign: 'right' }}>
-                <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: '#475569' }}>
+                <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                   {fmt(parseFloat(item.discount) || 0)}
                 </span>
               </td>
@@ -295,7 +295,7 @@ export default function CartItemRow({
             const igstRate = item.igst_rate ? parseFloat(item.igst_rate) : (cgstRate + sgstRate)
             const totalRate = isIntrastate ? (cgstRate + sgstRate) : igstRate
             return (
-              <td key="tax" style={{ ...style, textAlign: 'center', fontSize: '0.8rem', fontWeight: 600, color: '#475569' }}>
+              <td key="tax" style={{ ...style, textAlign: 'center', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
                 {item.is_custom ? (
                   <input
                     type="number"
@@ -334,7 +334,7 @@ export default function CartItemRow({
             const rate = isIntrastate ? (cgstR + sgstR) : igstR
             const totalAfterTax = lineTotal(item) * (1 + rate / 100)
             return (
-              <td key="total" style={{ ...style, textAlign: 'right', fontWeight: 700, fontSize: '0.85rem', color: '#0f172a' }}>
+              <td key="total" style={{ ...style, textAlign: 'right', fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>
                 {item.product ? fmt(totalAfterTax) : '—'}
               </td>
             );

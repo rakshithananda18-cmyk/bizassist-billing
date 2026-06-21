@@ -10,6 +10,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [businessConfig, setBusinessConfig] = useState(null)
   const [attributesSchema, setAttributesSchema] = useState([])
+  const [appReady, setAppReady] = useState(false)
 
   // Restore session from localStorage on mount
   useEffect(() => {
@@ -104,6 +105,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('billing_user')
     setToken(null)
     setUser(null)
+    setAppReady(false)
   }, [])
 
   const [profile, setProfile] = useState(null)
@@ -190,7 +192,7 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       user, token, loading, login, logout, signup, authFetch, profile, fetchProfile, setProfile,
-      businessConfig, attributesSchema, fetchBusinessConfig
+      businessConfig, attributesSchema, fetchBusinessConfig, appReady, setAppReady
     }}>
       {children}
     </AuthContext.Provider>

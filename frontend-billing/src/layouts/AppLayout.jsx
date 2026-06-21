@@ -2,6 +2,7 @@ import React from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { BuildingMark } from '../components/Logo'
+import PageLoader from '../components/PageLoader'
 import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon } from '../components/Icons'
 
 const NAV = [
@@ -63,9 +64,40 @@ const PAGE_TITLES = {
 }
 
 export default function AppLayout({ children, title }) {
-  const { user, logout, profile } = useAuth()
+  const { user, logout, profile, token, businessConfig, appReady, setAppReady } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+
+  React.useEffect(() => {
+    if (appReady) return
+
+    let minElapsed = false
+    let maxElapsed = false
+
+    const checkReady = () => {
+      const dataLoaded = token ? (profile !== null && businessConfig !== null) : true
+      if ((dataLoaded && minElapsed) || maxElapsed) {
+        setAppReady(true)
+      }
+    }
+
+    const minTimer = setTimeout(() => {
+      minElapsed = true
+      checkReady()
+    }, 1000)
+
+    const maxTimer = setTimeout(() => {
+      maxElapsed = true
+      setAppReady(true)
+    }, 5000)
+
+    checkReady()
+
+    return () => {
+      clearTimeout(minTimer)
+      clearTimeout(maxTimer)
+    }
+  }, [appReady, setAppReady, token, profile, businessConfig])
 
   // Role gating (defense-in-depth — the backend restrict_cashier guard is the
   // real authority; this just hides owner-only destinations from cashiers).
@@ -238,6 +270,7 @@ export default function AppLayout({ children, title }) {
 
   return (
     <div className={`app-shell ${isSalesPage ? 'pos-layout-shell' : ''}`}>
+      {!appReady && <PageLoader />}
       {/* ── Sidebar ── */}
       {!isSalesPage && (
         <aside className="sidebar">

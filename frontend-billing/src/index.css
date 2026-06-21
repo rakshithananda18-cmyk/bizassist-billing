@@ -1633,14 +1633,14 @@ img { display: block; max-width: 100%; }
 
 .pos-top-bar {
   height: 44px;
-  background: #f5f5f7;
-  border-bottom: 1px solid #e5e5ea;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 16px;
   font-size: 0.8rem;
-  color: #1d1d1f;
+  color: var(--text-primary);
   user-select: none;
 }
 
@@ -1655,7 +1655,7 @@ img { display: block; max-width: 100%; }
   align-items: center;
   gap: 6px;
   font-weight: 700;
-  color: #000000;
+  color: var(--text-primary);
   margin-right: 20px;
 }
 

@@ -9,37 +9,7 @@ import {
   InventoryIcon,
   ReportsIcon
 } from '../components/Icons'
-
-const STAR = 'M50 0 L51.5 4.5 L56 6 L51.5 7.5 L50 12 L48.5 7.5 L44 6 L48.5 4.5 Z'
-const WINDOWS = [
-  [10.6, 39], [15.1, 39],
-  [28.5, 29], [33.2, 29], [28.5, 34], [33.2, 34],
-  [46.5, 23], [51.2, 23], [46.5, 28], [51.2, 28], [46.5, 33], [51.2, 33],
-]
-
-function BuildingMark({ size = 28, strokeWidth = 1.8 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 -5 64 64" fill="none" aria-hidden="true"
-         shapeRendering="geometricPrecision" style={{ display: 'block', flexShrink: 0 }}>
-      <g stroke="currentColor" strokeWidth={strokeWidth} strokeLinejoin="round">
-        <rect x="8" y="36" width="12" height="18" rx="1" />
-        <rect x="26" y="26" width="12" height="28" rx="1" />
-        <rect x="44" y="16" width="12" height="38" rx="1" />
-      </g>
-      <g fill="currentColor">
-        {WINDOWS.map(([x, y], i) => (
-          <rect key={i} x={x} y={y} width="2.1" height="2.1" />
-        ))}
-      </g>
-      <g stroke="currentColor" strokeWidth={strokeWidth} fill="none" strokeLinejoin="round">
-        <rect x="11.4" y="46" width="5.2" height="8" />
-        <rect x="29.4" y="43" width="5.2" height="11" />
-        <rect x="47.4" y="40" width="5.2" height="14" />
-      </g>
-      <path d={STAR} fill="var(--accent)" />
-    </svg>
-  )
-}
+import { BuildingMark } from '../components/Logo'
 
 export default function Register() {
   const { signup } = useAuth()

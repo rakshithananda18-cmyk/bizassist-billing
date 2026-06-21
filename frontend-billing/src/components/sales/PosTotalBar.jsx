@@ -20,14 +20,14 @@ export default function PosTotalBar({
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      background: 'rgba(255, 255, 255, 0.7)',
+      background: 'var(--glass-bg)',
       backdropFilter: 'blur(20px) saturate(180%)',
       WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-      border: '1px solid rgba(255, 255, 255, 0.4)',
+      border: '1px solid var(--glass-border)',
       borderRadius: 'var(--radius-lg)',
       padding: '12px 20px',
       marginTop: '10px',
-      boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.05)',
+      boxShadow: 'var(--shadow-md)',
       position: 'relative',
       zIndex: 101
     }}>
