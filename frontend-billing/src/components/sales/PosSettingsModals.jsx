@@ -21,16 +21,16 @@ export function PosCounterSettingsModal({
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 450 }}>
         <div className="modal-header">
-          <span className="modal-title" style={{ color: '#0f172a', fontWeight: 700 }}><SettingsIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> POS Counter Settings</span>
-          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{ color: '#64748b' }} aria-label="Close"><CloseIcon size={16} /></button>
+          <span className="modal-title" style={{ color: 'var(--text-primary)', fontWeight: 700 }}><SettingsIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> POS Counter Settings</span>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{ color: 'var(--text-muted)' }} aria-label="Close"><CloseIcon size={16} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>Your UPI ID (VPA) for Collections</label>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Your UPI ID (VPA) for Collections</label>
             <input
               type="text"
               className="pos-form-input"
-              style={{ height: 35, fontSize: '0.85rem', padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
+              style={{ height: 35, fontSize: '0.85rem', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg-3)', color: 'var(--text-primary)' }}
               placeholder="e.g. name@upi"
               value={upiVpa}
               onChange={e => {
@@ -40,10 +40,10 @@ export function PosCounterSettingsModal({
             />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>Merchant GST State Code</label>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Merchant GST State Code</label>
             <select
               className="pos-form-select"
-              style={{ height: 35, fontSize: '0.85rem', padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
+              style={{ height: 35, fontSize: '0.85rem', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg-3)', color: 'var(--text-primary)' }}
               value={merchantState}
               onChange={e => {
                 setMerchantState(e.target.value)
@@ -60,8 +60,8 @@ export function PosCounterSettingsModal({
             </select>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Visible Columns</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Visible Columns</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', background: 'var(--bg-3)', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)' }}>
               {[
                 { label: 'Item SKU/Code', key: 'pos_show_sku', toggleable: true },
                 { label: 'Item Name', key: 'name', toggleable: false },
@@ -83,7 +83,7 @@ export function PosCounterSettingsModal({
                       ? settings?.transactions?.[col.key] === true
                       : settings?.transactions?.[col.key] !== false);
                 return (
-                  <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', fontWeight: 600, color: '#334155', cursor: col.toggleable ? 'pointer' : 'not-allowed', opacity: col.toggleable ? 1 : 0.6 }}>
+                  <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', cursor: col.toggleable ? 'pointer' : 'not-allowed', opacity: col.toggleable ? 1 : 0.6 }}>
                     <input
                       type="checkbox"
                       checked={checkedVal}
@@ -99,8 +99,8 @@ export function PosCounterSettingsModal({
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rearrange Columns</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0', maxHeight: '200px', overflowY: 'auto' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rearrange Columns</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: 'var(--bg-3)', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', maxHeight: '200px', overflowY: 'auto' }}>
               {columnOrder.map((col, idx) => {
                 const isVisible = col === 'sku' ? colVisible.sku :
                                   col === 'mrp' ? colVisible.mrp :
@@ -114,15 +114,15 @@ export function PosCounterSettingsModal({
                                   true;
 
                 return (
-                  <div key={col} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', background: isVisible ? '#ffffff' : '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '4px', opacity: isVisible ? 1 : 0.6 }}>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
-                      {colLabels[col]} {!isVisible && <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>(Hidden)</span>}
+                  <div key={col} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', background: isVisible ? 'var(--bg-2)' : 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: '4px', opacity: isVisible ? 1 : 0.6 }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {colLabels[col]} {!isVisible && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>(Hidden)</span>}
                     </span>
                     <div style={{ display: 'flex', gap: 4 }}>
                       <button
                         type="button"
                         className="btn btn-ghost btn-sm"
-                        style={{ padding: '2px 6px', fontSize: '0.75rem', border: '1px solid #cbd5e1' }}
+                        style={{ padding: '2px 6px', fontSize: '0.75rem', border: '1px solid var(--border)' }}
                         disabled={idx === 0}
                         onClick={() => onMoveColumn(idx, 'up')}
                       >
@@ -131,7 +131,7 @@ export function PosCounterSettingsModal({
                       <button
                         type="button"
                         className="btn btn-ghost btn-sm"
-                        style={{ padding: '2px 6px', fontSize: '0.75rem', border: '1px solid #cbd5e1' }}
+                        style={{ padding: '2px 6px', fontSize: '0.75rem', border: '1px solid var(--border)' }}
                         disabled={idx === columnOrder.length - 1}
                         onClick={() => onMoveColumn(idx, 'down')}
                       >
@@ -145,8 +145,8 @@ export function PosCounterSettingsModal({
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>POS Hotkey Settings</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0', maxHeight: '180px', overflowY: 'auto' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>POS Hotkey Settings</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: 'var(--bg-3)', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)', maxHeight: '180px', overflowY: 'auto' }}>
               {[
                 { label: 'Change Quantity', key: 'qtyFocus' },
                 { label: 'Item Discount', key: 'discountFocus' },
@@ -161,8 +161,8 @@ export function PosCounterSettingsModal({
                 { label: '⏩ Flow: Move FORWARD', key: 'flowForward', isFlow: true },
                 { label: '⏪ Flow: Move BACK', key: 'flowBack', isFlow: true },
               ].map(item => (
-                <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', background: item.isFlow ? '#eff6ff' : '#ffffff', border: item.isFlow ? '1px solid #bfdbfe' : '1px solid #e2e8f0', borderRadius: '4px' }}>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: item.isFlow ? '#1d4ed8' : '#334155' }}>{item.label}</span>
+                <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', background: item.isFlow ? 'var(--accent-glow)' : 'var(--bg-2)', border: item.isFlow ? '1px solid var(--accent)' : '1px solid var(--border)', borderRadius: '4px' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: item.isFlow ? 'var(--accent)' : 'var(--text-secondary)' }}>{item.label}</span>
                   <select
                     className="pos-form-select"
                     style={{ width: '120px', height: '26px', padding: '2px 4px', fontSize: '0.75rem' }}
@@ -185,7 +185,7 @@ export function PosCounterSettingsModal({
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
             <button
               type="button"
               className="btn btn-ghost"
@@ -209,18 +209,18 @@ export function PosHotkeyModal({ onClose, funcKeys, setFuncKeys, defaultFuncKeys
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 450 }}>
         <div className="modal-header">
-          <span className="modal-title" style={{ color: '#0f172a', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}><KeyboardIcon size={18} /> Configure POS Hotkeys</span>
-          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{ color: '#64748b' }} aria-label="Close"><CloseIcon size={16} /></button>
+          <span className="modal-title" style={{ color: 'var(--text-primary)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}><KeyboardIcon size={18} /> Configure POS Hotkeys</span>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{ color: 'var(--text-muted)' }} aria-label="Close"><CloseIcon size={16} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 2 }}>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 2 }}>
             Select key mappings from the dropdown options below to customize your counter shortcuts.
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '340px', overflowY: 'auto', paddingRight: '4px' }}>
             {/* Flow navigation keys — highlighted section */}
-            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2, display: 'inline-flex', alignItems: 'center', gap: 4 }}><KeyboardIcon size={12} /> Payment Flow Navigation</div>
+            <div style={{ background: 'var(--accent-glow)', border: '1px solid var(--accent)', borderRadius: '8px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2, display: 'inline-flex', alignItems: 'center', gap: 4 }}><KeyboardIcon size={12} /> Payment Flow Navigation</div>
               {[
                 {
                   label: (
@@ -231,17 +231,17 @@ export function PosHotkeyModal({ onClose, funcKeys, setFuncKeys, defaultFuncKeys
                   key: 'proceedToPayment',
                   hint: 'From barcode scanner → start payment (goes to Customer Name)',
                   options: ['Escape', 'F5', 'F6', 'F7', 'F10', 'Enter'],
-                  highlight: '#f97316',
+                  highlight: 'var(--accent)',
                 },
                 { label: 'Move FORWARD (field by field)', key: 'flowForward', hint: 'Customer → Amount → Payment Mode → Confirm', options: ['Enter', 'Shift+Enter', 'Tab', 'F5', 'F6', 'F7'] },
                 { label: 'Move BACK (go back one field)', key: 'flowBack', hint: 'Payment Mode → Amount → Customer → Barcode', options: ['Shift+Enter', 'Enter', 'Tab', 'F5', 'F6', 'F7'] },
               ].map(item => (
                 <div key={item.key}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: item.highlight || '#1d4ed8' }}>{item.label}</span>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: item.highlight || 'var(--text-secondary)' }}>{item.label}</span>
                     <select
                       className="pos-form-select"
-                      style={{ width: '130px', height: '28px', padding: '2px 4px', fontSize: '0.8rem', borderColor: item.highlight ? '#fed7aa' : '#bfdbfe' }}
+                      style={{ width: '130px', height: '28px', padding: '2px 4px', fontSize: '0.8rem', borderColor: item.highlight ? 'var(--accent)' : 'var(--border)' }}
                       value={funcKeys[item.key] || ''}
                       onChange={e => {
                         const nextKeys = { ...funcKeys, [item.key]: e.target.value }
@@ -254,7 +254,7 @@ export function PosHotkeyModal({ onClose, funcKeys, setFuncKeys, defaultFuncKeys
                       ))}
                     </select>
                   </div>
-                  <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: 2 }}>{item.hint}</div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 2 }}>{item.hint}</div>
                 </div>
               ))}
             </div>
@@ -272,8 +272,8 @@ export function PosHotkeyModal({ onClose, funcKeys, setFuncKeys, defaultFuncKeys
               { label: 'Proceed Payment / Save', key: 'paymentProceed' },
               { label: 'Cancel Payment / Close', key: 'paymentCancel' }
             ].map(item => (
-              <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>{item.label}</span>
+              <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-3)', padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{item.label}</span>
                 <select
                   className="pos-form-select"
                   style={{ width: '110px', height: '28px', padding: '2px 4px', fontSize: '0.8rem' }}
@@ -292,9 +292,9 @@ export function PosHotkeyModal({ onClose, funcKeys, setFuncKeys, defaultFuncKeys
             ))}
           </div>
 
-          <div style={{ borderTop: '1px solid #e2e8f0', margin: '4px 0' }} />
-          <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Standard Control Shortcuts</label>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+          <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+          <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Standard Control Shortcuts</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', background: 'var(--bg-3)', padding: '12px', borderRadius: '6px', border: '1px solid var(--border)' }}>
             {[
               { label: 'Save & Print Bill', key: 'Ctrl+P' },
               { label: 'Save Bill Only', key: 'Ctrl+S' },
@@ -304,13 +304,13 @@ export function PosHotkeyModal({ onClose, funcKeys, setFuncKeys, defaultFuncKeys
               { label: 'Credit Payment', key: 'Ctrl+M' }
             ].map(item => (
               <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569' }}>{item.label}</span>
-                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#475569', background: '#e2e8f0', padding: '1px 6px', borderRadius: '4px' }}>{item.key}</span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{item.label}</span>
+                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-primary)', background: 'var(--bg-4)', padding: '1px 6px', borderRadius: '4px' }}>{item.key}</span>
               </div>
             ))}
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
             <button
               type="button"
               className="btn btn-ghost"

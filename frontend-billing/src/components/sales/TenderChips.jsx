@@ -17,11 +17,11 @@ export default function TenderChips({ grandTotal, onSelect }) {
           key={val}
           type="button"
           style={{
-            background: '#fafaf9',
+            background: 'var(--bg-3)',
             border: '1px solid var(--border)',
             borderRadius: '20px',
             padding: '6px 14px',
-            color: '#1c1917',
+            color: 'var(--text-primary)',
             fontSize: '0.8rem',
             fontWeight: '600',
             cursor: 'pointer',

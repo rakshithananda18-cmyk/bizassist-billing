@@ -439,16 +439,16 @@ export default function CheckoutModal({
         <div
           className="payment-modal-card"
           style={{
-            background: 'rgba(255, 255, 255, 0.85)',
+            background: 'var(--glass-bg, var(--bg-2))',
             backdropFilter: 'blur(30px) saturate(190%)',
             WebkitBackdropFilter: 'blur(30px) saturate(190%)',
-            color: '#1c1917',
-            border: '1px solid rgba(255, 255, 255, 0.45)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--glass-border, var(--border))',
             borderRadius: 'var(--radius-xl)',
             width: '100%',
             maxWidth: '850px',
             padding: '24px',
-            boxShadow: '0 30px 60px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.7)',
+            boxShadow: 'var(--shadow-lg)',
             zIndex: 2010,
             display: 'flex',
             flexDirection: 'column',
@@ -461,7 +461,7 @@ export default function CheckoutModal({
             <span style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-primary)' }}>POS Checkout</span>
             <button
               type="button"
-              style={{ color: '#78716c', fontSize: '1.2rem', padding: '0 4px', cursor: 'pointer', background: 'none', border: 'none' }}
+              style={{ color: 'var(--text-muted)', fontSize: '1.2rem', padding: '0 4px', cursor: 'pointer', background: 'none', border: 'none' }}
               onClick={onClose}
              aria-label="Close"><CloseIcon size={16} /></button>
           </div>
@@ -477,16 +477,16 @@ export default function CheckoutModal({
 
               {/* Customer search select dropdown */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', position: 'relative' }}>
-                <label style={{ fontSize: '0.8rem', color: '#78716c', fontWeight: 600 }}>Customer Name</label>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Customer Name</label>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <div style={{ flex: 1, position: 'relative' }}>
                     <input
                       ref={customerRef}
                       type="text"
                       style={{
-                        background: '#ffffff',
+                        background: 'var(--bg-3)',
                         border: '1px solid var(--border)',
-                        color: '#1c1917',
+                        color: 'var(--text-primary)',
                         height: 35,
                         padding: '4px 8px',
                         borderRadius: 'var(--radius-md)',
@@ -514,7 +514,7 @@ export default function CheckoutModal({
                           top: '50%',
                           transform: 'translateY(-50%)',
                           cursor: 'pointer',
-                          color: '#78716c',
+                          color: 'var(--text-muted)',
                           fontSize: '0.8rem',
                           fontWeight: 'bold',
                           padding: '4px'
@@ -567,7 +567,7 @@ export default function CheckoutModal({
                       setShowCustModal(true)
                     }}
                   >
-                    {form.customer_id ? '<EditIcon size={14} />' : '<PlusIcon size={14} />'}
+                    {form.customer_id ? <EditIcon size={14} /> : <PlusIcon size={14} />}
                   </button>
                 </div>
 
@@ -592,7 +592,7 @@ export default function CheckoutModal({
                         top: '100%',
                         left: 0,
                         right: 0,
-                        background: '#ffffff',
+                        background: 'var(--bg-2)',
                         border: '1px solid var(--border)',
                         borderRadius: 'var(--radius-md)',
                         boxShadow: 'var(--shadow-lg)',
@@ -631,7 +631,7 @@ export default function CheckoutModal({
                                     className={`pos-customer-dropdown-item ${isSelected ? 'active' : ''}`}
                                     style={{
                                       background: isSelected ? 'var(--accent)' : 'transparent',
-                                      color: isSelected ? '#ffffff' : '#1c1917',
+                                      color: isSelected ? '#ffffff' : 'var(--text-primary)',
                                       cursor: 'pointer',
                                       padding: '8px 12px'
                                     }}
@@ -650,7 +650,7 @@ export default function CheckoutModal({
                                 )
                               })
                             ) : (
-                              <div style={{ padding: '10px 12px', color: '#78716c', fontSize: '0.82rem', textAlign: 'center' }}>
+                              <div style={{ padding: '10px 12px', color: 'var(--text-muted)', fontSize: '0.82rem', textAlign: 'center' }}>
                                 No matching customer found.
                               </div>
                             )}
@@ -659,7 +659,7 @@ export default function CheckoutModal({
                                 style={{
                                   padding: '8px 12px',
                                   cursor: 'pointer',
-                                  background: '#fafaf9',
+                                  background: 'var(--bg-3)',
                                   color: 'var(--accent)',
                                   fontWeight: 600,
                                   fontSize: '0.82rem',
@@ -693,14 +693,14 @@ export default function CheckoutModal({
               {/* Godown Selection & Date Selection Row */}
               <div style={{ display: 'flex', gap: '12px' }}>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '0.8rem', color: '#78716c', fontWeight: 600 }}>Godown</label>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Godown</label>
                   <select
                     ref={godownRef}
                     className="pos-form-select"
                     style={{
-                      background: '#ffffff',
+                      background: 'var(--bg-3)',
                       border: '1px solid var(--border)',
-                      color: '#1c1917',
+                      color: 'var(--text-primary)',
                       height: 35,
                       padding: '4px 8px',
                       borderRadius: 'var(--radius-md)',
@@ -726,14 +726,14 @@ export default function CheckoutModal({
                 </div>
 
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '0.8rem', color: '#78716c', fontWeight: 600 }}>Invoice Date</label>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Invoice Date</label>
                   <input
                     ref={invoiceDateRef}
                     type="date"
                     style={{
-                      background: '#ffffff',
+                      background: 'var(--bg-3)',
                       border: '1px solid var(--border)',
-                      color: '#1c1917',
+                      color: 'var(--text-primary)',
                       height: 35,
                       padding: '4px 8px',
                       borderRadius: 'var(--radius-md)',
@@ -766,12 +766,12 @@ export default function CheckoutModal({
               {/* Selected customer's pending dues — inline, below the totals */}
               {customerDues && customerDues.total > 0.01 && (
                 <div style={{
-                  background: '#fef2f2',
-                  border: '1px solid #fecaca',
+                  background: 'var(--danger-dim)',
+                  border: '1px solid var(--danger)',
                   borderRadius: 'var(--radius-md)',
                   padding: '8px 10px',
                   fontSize: '0.78rem',
-                  color: '#b91c1c',
+                  color: 'var(--danger)',
                   lineHeight: 1.4
                 }}>
                   <strong>Pending due: {fmt(customerDues.total)}</strong>
@@ -784,13 +784,13 @@ export default function CheckoutModal({
 
               {/* Remarks / Reference Notes */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '0.8rem', color: '#78716c', fontWeight: 600 }}>Remarks / Notes</label>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Remarks / Notes</label>
                 <textarea
                   id="checkout-notes"
                   style={{
-                    background: '#ffffff',
+                    background: 'var(--bg-3)',
                     border: '1px solid var(--border)',
-                    color: '#1c1917',
+                    color: 'var(--text-primary)',
                     minHeight: 50,
                     padding: '8px 10px',
                     borderRadius: 'var(--radius-md)',
@@ -820,9 +820,9 @@ export default function CheckoutModal({
 
               {/* Single Discount (post-tax — reduces the payable, NOT GST) + automatic round-off */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.8rem', color: '#78716c', fontWeight: 600 }}>Discount (₹)</label>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Discount (₹)</label>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '1rem', color: '#78716c', fontWeight: 700 }}>₹</span>
+                  <span style={{ fontSize: '1rem', color: 'var(--text-muted)', fontWeight: 700 }}>₹</span>
                   <input
                     type="number"
                     min="0"
@@ -833,9 +833,9 @@ export default function CheckoutModal({
                     title="Discount on the payable. Does not change GST. Round-off is automatic."
                     style={{
                       flex: 1,
-                      background: '#ffffff',
+                      background: 'var(--bg-3)',
                       border: '1px solid var(--border)',
-                      color: '#1c1917',
+                      color: 'var(--text-primary)',
                       height: 38,
                       padding: '4px 12px',
                       borderRadius: 'var(--radius-md)',
@@ -847,20 +847,20 @@ export default function CheckoutModal({
                 </div>
                 {/* Auto round-off + discount → payable, computed live */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2, fontSize: '0.85rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#78716c' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
                     <span>Grand total</span><span>{fmt(grandTotal)}</span>
                   </div>
                   {Math.abs(roundOff || 0) >= 0.005 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#78716c' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
                       <span>Round-off (auto)</span><span>{(roundOff || 0) > 0 ? '+ ' : '− '}{fmt(Math.abs(roundOff || 0))}</span>
                     </div>
                   )}
                   {cashDiscountAmt > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#16a34a', fontWeight: 600 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--success)', fontWeight: 600 }}>
                       <span>Cash discount</span><span>− {fmt(cashDiscountAmt)}</span>
                     </div>
                   )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '1rem', color: '#1c1917', borderTop: '1px dashed var(--border)', paddingTop: 4, marginTop: 2 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)', borderTop: '1px dashed var(--border)', paddingTop: 4, marginTop: 2 }}>
                     <span>Payable</span><span>{fmt(pay)}</span>
                   </div>
                 </div>
@@ -868,16 +868,16 @@ export default function CheckoutModal({
 
               {/* Amount Received Input */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.8rem', color: '#78716c', fontWeight: 600 }}>Amount received</label>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Amount received</label>
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
-                  background: '#ffffff',
+                  background: 'var(--bg-3)',
                   border: '1.5px solid var(--accent)',
                   borderRadius: 'var(--radius-md)',
                   padding: '8px 14px'
                 }}>
-                  <span style={{ fontSize: '1.25rem', color: '#78716c', marginRight: '6px' }}>₹</span>
+                  <span style={{ fontSize: '1.25rem', color: 'var(--text-muted)', marginRight: '6px' }}>₹</span>
                   <input
                     ref={amountReceivedRef}
                     type="number"
@@ -886,7 +886,7 @@ export default function CheckoutModal({
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: '#1c1917',
+                      color: 'var(--text-primary)',
                       fontSize: '1.5rem',
                       fontWeight: '700',
                       width: '100%',
@@ -927,11 +927,11 @@ export default function CheckoutModal({
                       ref={isActive ? paymentModeRef : null}
                       onKeyDown={(e) => handlePaymentModeButtonKeyDown(e, mode)}
                       style={{
-                        background: isActive ? 'var(--accent)' : '#fafaf9',
+                        background: isActive ? 'var(--accent)' : 'var(--bg-3)',
                         border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
                         borderRadius: 'var(--radius-md)',
                         padding: '10px 0',
-                        color: isActive ? '#ffffff' : '#1c1917',
+                        color: isActive ? '#ffffff' : 'var(--text-primary)',
                         fontSize: '0.85rem',
                         fontWeight: '700',
                         textTransform: 'capitalize',
@@ -960,7 +960,7 @@ export default function CheckoutModal({
               {/* Dynamic UPI QR Code */}
               {form.payment_mode === 'upi' && grandTotal > 0 && (
                 <div style={{
-                  background: '#ffffff',
+                  background: 'var(--bg-3)',
                   borderRadius: 'var(--radius-md)',
                   padding: '12px',
                   display: 'flex',
@@ -981,8 +981,8 @@ export default function CheckoutModal({
                     alt="UPI QR Code"
                     style={{ width: 120, height: 120 }}
                   />
-                  <div style={{ fontSize: '0.7rem', color: '#676560' }}>
-                    VPA: <span style={{ fontWeight: 600, color: '#1c1917' }}>{upiVpa}</span>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    VPA: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{upiVpa}</span>
                   </div>
                   {/* Soundbox Simulator Panel
                   <div style={{
@@ -1049,10 +1049,10 @@ export default function CheckoutModal({
 
               {/* Change to return (positive) OR balance still due (negative → red) */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.85rem', color: '#78716c' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                   {balance < 0 ? 'Balance still due' : 'Change to return'}
                 </span>
-                <span style={{ fontSize: '1.25rem', fontWeight: 800, color: balance < 0 ? '#dc2626' : '#16a34a' }}>
+                <span style={{ fontSize: '1.25rem', fontWeight: 800, color: balance < 0 ? 'var(--danger)' : 'var(--success)' }}>
                   {balance < 0 ? `− ${fmt(Math.abs(balance))}` : fmt(balance)}
                 </span>
               </div>
@@ -1086,7 +1086,7 @@ export default function CheckoutModal({
                     border: '1px solid var(--border)',
                     borderRadius: 'var(--radius-md)',
                     padding: '8px',
-                    color: '#78716c',
+                    color: 'var(--text-muted)',
                     fontSize: '0.85rem',
                     fontWeight: '600',
                     cursor: 'pointer',
@@ -1108,15 +1108,15 @@ export default function CheckoutModal({
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCustModal(false)} style={{ zIndex: 2020 }}>
           <div className="modal" style={{ maxWidth: 400 }}>
             <div className="modal-header">
-              <span className="modal-title" style={{ color: '#0f172a', fontWeight: 700 }}>
+              <span className="modal-title" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
                 <UserIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> {custModalFields.id ? 'Edit Customer Details' : 'Add New Customer'}
               </span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowCustModal(false)} style={{ color: '#64748b' }} aria-label="Close"><CloseIcon size={16} /></button>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowCustModal(false)} style={{ color: 'var(--text-muted)' }} aria-label="Close"><CloseIcon size={16} /></button>
             </div>
             <form onSubmit={handleSaveCustomer}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>Customer Name *</label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Customer Name *</label>
                   <input
                     type="text"
                     required
@@ -1128,7 +1128,7 @@ export default function CheckoutModal({
                 </div>
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>Phone Number</label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Phone Number</label>
                   <input
                     type="text"
                     className="pos-form-input"
@@ -1139,7 +1139,7 @@ export default function CheckoutModal({
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>GSTIN</label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>GSTIN</label>
                   <input
                     type="text"
                     className="pos-form-input"
@@ -1150,7 +1150,7 @@ export default function CheckoutModal({
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>Price Tier</label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Price Tier</label>
                   <select
                     className="pos-form-select"
                     value={custModalFields.price_tier}
@@ -1162,7 +1162,7 @@ export default function CheckoutModal({
                   </select>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12, borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
                   <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowCustModal(false)}>
                     Cancel
                   </button>

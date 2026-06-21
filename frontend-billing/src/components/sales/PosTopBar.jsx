@@ -17,10 +17,6 @@ export default function PosTopBar({
   return (
     <div className="pos-top-bar">
       <div className="pos-top-bar-left">
-        <div className="pos-logo-section">
-          <BuildingMark size={18} />
-          <span style={{ fontFamily: "'DM Sans', sans-serif" }}>Biz<span style={{ color: 'var(--accent)' }}>Assist</span></span>
-        </div>
         <div className="pos-tabs-row">
           {tabs.map(tab => {
             const isActive = tab.id === activeTabId;

@@ -18,37 +18,37 @@ export default function InvoiceBreakdownCard({
   grandTotal,
 }) {
   return (
-    <div style={{ background: '#fafaf9', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#78716c', textTransform: 'uppercase', marginBottom: '4px' }}>Invoice Breakdown</div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#1c1917' }}>
+    <div style={{ background: 'var(--bg-3)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Invoice Breakdown</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-primary)' }}>
         <span>Subtotal (Without Tax):</span>
         <span>{fmt(subtotal)}</span>
       </div>
       {discount > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#16a34a', fontWeight: 600 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--success)', fontWeight: 600 }}>
           <span>Bill Discount:</span>
           <span>− {fmt(discount)}</span>
         </div>
       )}
       {cgstAmt > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#444440' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
           <span>CGST:</span>
           <span>{fmt(cgstAmt)}</span>
         </div>
       )}
       {sgstAmt > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#444440' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
           <span>SGST:</span>
           <span>{fmt(sgstAmt)}</span>
         </div>
       )}
       {igstAmt > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#444440' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
           <span>IGST:</span>
           <span>{fmt(igstAmt)}</span>
         </div>
       )}
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#444440' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
         <span>Total Tax:</span>
         <span>{fmt(gstAmt)}</span>
       </div>

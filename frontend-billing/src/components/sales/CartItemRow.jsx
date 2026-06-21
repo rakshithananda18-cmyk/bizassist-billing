@@ -353,7 +353,7 @@ export default function CartItemRow({
           type="button"
           className="btn btn-ghost btn-icon btn-sm"
           onClick={() => onRemove(index)}
-          style={{ color: '#ef4444', padding: 4 }}
+          style={{ color: 'var(--danger)', padding: 4 }}
          aria-label="Close"><CloseIcon size={16} /></button>
       </td>
     </tr>

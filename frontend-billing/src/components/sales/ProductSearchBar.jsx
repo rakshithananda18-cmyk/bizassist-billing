@@ -31,7 +31,7 @@ const ProductSearchBar = forwardRef(function ProductSearchBar({
             onChange={e => onSearchChange(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder={placeholder}
-            style={{ width: '100%', color: '#0f172a' }}
+            style={{ width: '100%', color: 'var(--text-primary)' }}
           />
         </div>
         <button type="button" className="btn btn-secondary" onClick={onAddCustom} style={{ whiteSpace: 'nowrap', fontSize: '0.8rem', padding: '0 16px' }}>
@@ -61,22 +61,22 @@ const ProductSearchBar = forwardRef(function ProductSearchBar({
                 key={p.id}
                 style={{
                   padding: '10px 14px',
-                  background: isSelected ? '#eff6ff' : 'transparent',
-                  color: isSelected ? '#1d4ed8' : '#0f172a',
+                  background: isSelected ? 'var(--accent-glow)' : 'transparent',
+                  color: isSelected ? 'var(--accent)' : 'var(--text-primary)',
                   cursor: 'pointer',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  borderBottom: '1px solid #f1f5f9'
+                  borderBottom: '1px solid var(--border)'
                 }}
                 onClick={() => onPick(p)}
                 onMouseEnter={() => onHoverIndex(idx)}
               >
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.name}</span>
-                  <span style={{ fontSize: '0.72rem', color: '#64748b' }}>SKU: {p.sku || '—'} {p.barcode ? `| Barcode: ${p.barcode}` : ''}</span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>SKU: {p.sku || '—'} {p.barcode ? `| Barcode: ${p.barcode}` : ''}</span>
                 </div>
-                <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#16a34a' }}>{fmt(p.selling_price)}</span>
+                <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--success)' }}>{fmt(p.selling_price)}</span>
               </div>
             );
           })}

@@ -34,11 +34,11 @@ export default function TotalBreakupModal({
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 400 }}>
         <div className="modal-header">
-          <span className="modal-title" style={{ color: '#0f172a', fontWeight: 700 }}><SummaryIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Total Breakup Details</span>
-          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{ color: '#64748b' }} aria-label="Close"><CloseIcon size={16} /></button>
+          <span className="modal-title" style={{ color: 'var(--text-primary)', fontWeight: 700 }}><SummaryIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Total Breakup Details</span>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{ color: 'var(--text-muted)' }} aria-label="Close"><CloseIcon size={16} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#334155' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
             <span>Subtotal (Without Tax):</span>
             <span style={{ fontWeight: 600 }}>{fmt(subtotal)}</span>
           </div>
@@ -46,56 +46,56 @@ export default function TotalBreakupModal({
             <>
               {isIntrastate ? (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#64748b', paddingLeft: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: 'var(--text-muted)', paddingLeft: 12 }}>
                     <span>CGST:</span>
                     <span>{fmt(cgstAmt)}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#64748b', paddingLeft: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: 'var(--text-muted)', paddingLeft: 12 }}>
                     <span>SGST:</span>
                     <span>{fmt(sgstAmt)}</span>
                   </div>
                 </>
               ) : (
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#64748b', paddingLeft: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: 'var(--text-muted)', paddingLeft: 12 }}>
                   <span>IGST:</span>
                   <span>{fmt(igstAmt)}</span>
                 </div>
               )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#334155' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
                 <span>Total Tax:</span>
                 <span style={{ fontWeight: 600 }}>{fmt(gstAmt)}</span>
               </div>
             </>
           ) : (
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#334155' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
               <span>Tax (GST 0%):</span>
               <span style={{ fontWeight: 600 }}>{fmt(0)}</span>
             </div>
           )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1rem', color: '#1e40af', fontWeight: 800, borderTop: '1px solid #cbd5e1', paddingTop: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1rem', color: 'var(--accent)', fontWeight: 800, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
             <span>Grand Total:</span>
             <span>{fmt(grandTotal)}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#334155', borderTop: '1px dashed #cbd5e1', paddingTop: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--text-secondary)', borderTop: '1px dashed var(--border)', paddingTop: 8 }}>
             <span>Amount Received:</span>
             <span style={{ fontWeight: 600 }}>{fmt(amountReceived)}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#166534', fontWeight: 700 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--success)', fontWeight: 700 }}>
             <span>Change to Return:</span>
             <span>{fmt(changeToReturn)}</span>
           </div>
           {paymentMode === 'upi' && grandTotal > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '10px 0', borderTop: '1px dashed #cbd5e1' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#3b82f6' }}>Scan to pay ₹{grandTotal.toFixed(2)}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '10px 0', borderTop: '1px dashed var(--border)' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--accent)' }}>Scan to pay ₹{grandTotal.toFixed(2)}</div>
               <img
                 src={qrImageUrl(buildUpiUri({ vpa: upiVpa, payeeName: businessName, amount: grandTotal, note: 'POS-Invoicing' }))}
                 alt="UPI QR Code"
-                style={{ width: 120, height: 120, border: '1px solid #cbd5e1', borderRadius: '4px' }}
+                style={{ width: 120, height: 120, border: '1px solid var(--border)', borderRadius: '4px' }}
               />
-              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>UPI: {upiVpa}</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>UPI: {upiVpa}</span>
             </div>
           )}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12, borderTop: '1px solid #cbd5e1', paddingTop: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
             <button type="button" className="btn btn-primary btn-sm" onClick={onClose}>
               Close
             </button>
