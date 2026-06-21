@@ -214,6 +214,12 @@ export default function AppLayout({ children, title }) {
   }, [checkMinimized])
 
   React.useEffect(() => {
+    if (location.pathname !== '/sales') {
+      sessionStorage.setItem('last_page', location.pathname)
+    }
+  }, [location.pathname])
+
+  React.useEffect(() => {
     if (title) {
       document.title = `${title} | BizAssist`
     }

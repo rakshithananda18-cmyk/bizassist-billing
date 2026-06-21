@@ -659,7 +659,8 @@ export default function Sales() {
   const handleMinimize = () => {
     localStorage.setItem('pos_minimized', 'true')
     window.dispatchEvent(new Event('pos_minimized_changed'))
-    navigate('/')
+    const lastPage = sessionStorage.getItem('last_page') || '/'
+    navigate(lastPage)
   }
 
 
@@ -1129,12 +1130,13 @@ export default function Sales() {
 
   // Accidental exit prevention handler
   const handleCloseConfirm = useCallback(() => {
+    const lastPage = sessionStorage.getItem('last_page') || '/'
     if (form.items.length > 0) {
       if (window.confirm('Are you sure you want to close this bill? Unsaved changes will be lost.')) {
-        navigate('/')
+        navigate(lastPage)
       }
     } else {
-      navigate('/')
+      navigate(lastPage)
     }
   }, [form.items, navigate])
 

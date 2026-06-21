@@ -406,7 +406,7 @@ img { display: block; max-width: 100%; }
 }
 .nav-section-label {
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-secondary);
@@ -561,7 +561,7 @@ img { display: block; max-width: 100%; }
 }
 
 .profile-menu-biz {
-  font-weight: 700;
+  font-weight: 500;
   font-size: 13px;
   color: var(--text-primary);
   white-space: nowrap;
@@ -878,7 +878,7 @@ img { display: block; max-width: 100%; }
 .page-title {
   font-family: 'Crimson Pro', Georgia, serif;
   font-size: 22px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-primary);
   letter-spacing: -0.02em;
   display: flex;
@@ -1132,7 +1132,7 @@ img { display: block; max-width: 100%; }
 .data-table th {
   padding: 10px 12px;
   font-size: 11.5px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-primary);
