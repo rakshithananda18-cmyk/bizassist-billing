@@ -104,6 +104,7 @@ _COLUMN_MIGRATIONS = [
     {"table": "token_usage", "column": "updated_at", "ddl": "ALTER TABLE token_usage ADD COLUMN updated_at DATETIME"},
     # users — app settings JSON blob
     {"table": "users", "column": "settings", "ddl": "ALTER TABLE users ADD COLUMN settings TEXT"},
+    {"table": "users", "column": "logo",     "ddl": "ALTER TABLE users ADD COLUMN logo TEXT"},
 ]
 
 
@@ -112,16 +113,19 @@ _COLUMN_MIGRATIONS = [
 # ---------------------------------------------------------------------------
 
 def _run_column_migrations(conn):
+    from sqlalchemy import inspect
+    inspector = inspect(conn)
     for m in _COLUMN_MIGRATIONS:
         table, column, ddl = m["table"], m["column"], m["ddl"]
         try:
-            conn.execute(text(f"SELECT {column} FROM {table} LIMIT 1"))
-        except Exception:
-            try:
+            columns = [c["name"] for c in inspector.get_columns(table)]
+            if column not in columns:
                 conn.execute(text(ddl))
                 logger.info(f"[Migration] Added {table}.{column}")
-            except Exception as e:
-                logger.error(f"[Migration] Failed to add {table}.{column}: {e}")
+                # Refresh inspector because schema changed
+                inspector = inspect(conn)
+        except Exception as e:
+            logger.error(f"[Migration] Failed to add {table}.{column}: {e}")
     conn.commit()
 
 
