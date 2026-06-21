@@ -443,6 +443,50 @@ This is a **strong core, not yet a finished product.** The hard, easy-to-get-wro
 
 ---
 
+### 10.2.1 — UPDATED HONEST REVIEW  ·  *2026-06-22*
+
+> Re-rates §10.2 (2026-06-20) after the R1–R8 remediation work, R7a/R7a-next compliance builders, the tenant-isolation audit, and the full `Sales.jsx` decomposition. Same rubric, same candor. **One real difference from last time:** every frontend extraction this round was verified by the user running `npm test` + `npm run dev` after each step — so the UI/POS scores rest on *some* live verification now, not pure code-reading. They are still the user's verification, not a formal a11y/mobile/device pass. No score is inflated; gaps that remain are called gaps.
+
+#### Updated scorecard (Δ vs 2026-06-20)
+
+| Area | 06-20 | 06-22 | Why it moved (or didn't) |
+|---|---|---|---|
+| Backend architecture | 8.5 | **8.5** | Compliance module, hash-chain, period-lock all landed cleanly on the same disciplined patterns. No inflation — already high. |
+| Data model / GST correctness | 8 | **8** | `cash_discount` + e-invoice field mapping added correctly; no structural change. |
+| Accounting depth | 8 | **8.5** | Now has period **close/lock** (event-sourced, enforced at the one choke point), a **tamper-evident hash chain**, and **opening-balance carry-forward**. That's a real close-the-books + audit story, not just reports. |
+| B2B ecosystem (USP) | 8 | **8.5** | Tenant-isolation audit (125 queries) found no leak; BizID **contact privacy gate** added + tested. Moat reinforced. |
+| Test discipline | 7.5 | **8** | Frontend went from smoke-only to **9 render/interaction test files**; backend added compliance/period-lock/hash-chain/cash-discount suites. Still: no e2e, no load tests. |
+| Scalability / performance | 6.5 | **7** | **Pagination shipped** on all unbounded list endpoints (the cited remaining gap). Still **unproven under real load**; no offline/RLS. |
+| POS (counter) | 6.5 | **7.5** | The 2,856-line god-component is **decomposed into 9 tested components** (~1,650 lines, orchestration only), user-verified rendering. Held back from higher by the **unchanged MRP-as-price pricing debt** (R4 Slice3 deferred). |
+| UI / frontend code quality | 5.5 | **6.5** | A real **reusable component layer + render tests** now exist where there was inline sprawl. Still: inline styles elsewhere, **color-only status**, **a11y + mobile unverified** (R6 open). |
+| Compliance (e-invoice/e-way) | 3 | **5** | Schema-correct **INV-01 + e-way JSON builders**, ₹50k/₹5cr **gating**, **IRN persistence** — all tested. BUT this is the **offline half only**: no live IRP/EWB API call, no digital-signature handling, **no CA-validated real filing**. Cannot actually file yet. |
+| Offline / sync (D5) | 2 | **2** | Unchanged. Still not started. The biggest true product gap. |
+| **Overall** | **~6.8** | **~7.3** | The core got materially stronger and the worst code-smell (POS god-component) is gone. The two genuine *product* gaps — **offline** and **live compliance filing** — plus a formal **visual/a11y** pass are what still separate this from shippable-at-scale. |
+
+#### What actually changed (no spin)
+- **The "books only audit-grade going forward" problem is now largely closed.** Period lock + hash chain + carry-forward together mean: you can close a period, nobody can silently rewrite it, and a windowed ledger ties to the cumulative figure. That was the headline accounting gap on 06-20.
+- **The POS god-component — the loudest maintainability complaint — is resolved.** Nine focused, individually tested components; `Sales.jsx` is ~42% smaller and is now state/orchestration. This is the single most visible quality delta.
+- **Compliance moved off zero but is not "done."** There are now correct, tested JSON builders and threshold/IRN plumbing — real and useful — but a merchant still cannot file an e-invoice through the app. Calling this "5/10, half-built" is the honest framing; anything higher would be dishonest.
+- **Tenant isolation is now audited, not assumed.** 125 queries swept, no leak, plus the BizID privacy fix.
+
+#### What did NOT change (still true from 06-20)
+- **Offline/sync/RLS is unbuilt (2/10).** The Indian-SMB connectivity pitch still rests on something that doesn't exist yet.
+- **No live load test** — pagination and indices exist; "fast at 10k invoices on a real Postgres" is still unproven.
+- **The pricing model is still clever debt** (MRP-as-price + discount-as-savings). Decomposition made it *safer to change*, but it hasn't been changed.
+- **No formal UI pass** — still no a11y audit, no mobile/real-device testing, status still color-only in places.
+
+#### Best recommendations — prioritized (added to the plan)
+1. **R7b — Offline-first + outbox/delta sync + idempotency, then Postgres RLS.** Highest strategic value: it's the lowest score (2), it's load-bearing for the whole SMB pitch, and the idempotent/append-only backend is already built to support exactly-once replay. Biggest single lift to "shippable."
+2. **Live IRP/EWB API + CA-validate one real flow.** Turns compliance from 5→8 and unlocks ₹5cr+ merchants. The offline builders are done; this needs sandbox credentials + digital-signature handling + one CA-checked filing. Gate e-invoice by the turnover flag (already wired) so you never mis-issue.
+3. **R4 Slice3 — retire the MRP-as-price pricing model** for explicit `unit_price` + `line_discount`. Now low-risk (Sales.jsx is decomposed + the math is isolated in `invoiceMath`), and it removes a recurring bug class.
+4. **Finish R5 — split `Reports.jsx`** (the 7-branch ternary) into one component per report behind a registry/map. Last god-component; same proven incremental method.
+5. **R6 — live UI/UX pass:** capture POS + Reports on a real device, fix a11y (don't signal status by colour alone), empty/error states, mobile layout. Converts the UI score from "code estimate" to "verified."
+6. **Load-test the hot paths** (now that pagination exists) — seed ~10–50k invoices on Postgres and prove the date-windowed reports + registers hold up. Converts scalability from "done in code" to "proven."
+
+**Suggested order:** (3) and (4) are quick, low-risk cleanups to do now; (1) is the big strategic build; (2) unblocks larger customers once creds exist; (5)+(6) are verification passes that should precede any "production-ready" claim.
+
+---
+
 ### 10.3 — PRIORITIZED REMEDIATION PLAN  ·  *2026-06-21*
 
 > Turns the open §10.2 problems into concrete, sequenced work. Effort: **S** ≤½ day · **M** 1–2 days · **L** 3+ days / multi-session. Each item ships under the 3 gates (tests · logging · this tracker). Recommended order is top-to-bottom: cheap-and-safe first, then the integrity moat, then the risky/large bets.
