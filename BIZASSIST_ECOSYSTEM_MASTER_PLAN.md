@@ -53,7 +53,20 @@ This is the section to scrutinize. Each decision below resolves a real conflict 
 - *Conflict:* "installable locally" (owner's words) vs "customer app needs cloud" (everyone).
 - *Decision:* **Cloud-first.** Cloud Postgres is the system of record. The merchant app is an **offline-capable client**: it can bill with no internet (queues to a local SQLite), and syncs deltas to cloud on reconnect. The customer app is cloud-only (it must be reachable).
 - *Why:* true local-first multi-master sync is the single hardest thing in this whole plan and will sink the timeline. "Works offline, syncs, backed up" satisfies the owner's *real* needs (uptime + data safety + control) without the multi-master nightmare. Ship offline cache in Phase 3, not Phase 1.
+- *How dynamic database dialects (SQLite vs Postgres) are handled:*
+  1. **Environment-Driven Configuration:** The database engine is configured dynamically via the `DATABASE_URL` environment variable. If `DATABASE_URL` starts with `sqlite`, SQLAlchemy configures a local SQLite engine (with thread-safety flags). If it starts with `postgresql` or `postgres`, SQLAlchemy uses PostgreSQL (e.g. Supabase in cloud deployments).
+  2. **ORM Abstraction:** The codebase queries models via SQLAlchemy ORM, which automatically translates standard queries into the correct dialect-specific SQL (SQLite or PostgreSQL) under the hood.
+  3. **Dialect-Safe Migrations & Startup Checks:**
+     - *Alembic constraints/indexes:* SQLite batch migrations require special rendering (`render_as_batch=True`). Dialect name guards (`if op.get_context().dialect.name == 'sqlite':`) are used to wrap SQLite-specific steps (like redundant baseline index or foreign key creation/drops) to prevent PostgreSQL transaction aborts.
+     - *Startup migrations:* Rather than executing dummy `SELECT` queries that abort transaction blocks on PostgreSQL upon failure, dynamic column migrations check for existing columns in database metadata using SQLAlchemy `inspect(conn)`.
+- *Recommendation for Hybrid Requirement (Merchant needing both local speed & cloud features):*
+  - **Local Counter / Cloud Backbone Hybrid Model:**
+    - The shopkeeper's physical POS checkout counter runs the app locally pointing to a local, encrypted SQLite database. This guarantees sub-second checkout speed and 100% counter uptime even during internet blackouts.
+    - An asynchronous background **Sync Agent** runs on the merchant's machine, polling a local sync outbox queue to push transaction deltas (e.g., finalized sales, inventory adjustments) to the cloud PostgreSQL database and pull remote updates (e.g. new buyer orders, partner price lists).
+    - Cross-business features (such as B2B invoice transfers, catalog discovery, and AI analysis) run exclusively on the Cloud Postgres server via secure REST APIs. If a seller wants to transfer an invoice to a buyer, the seller's Sync Agent pushes it to the cloud, and the buyer's Sync Agent pulls it down to their local counter.
+    - Data integrity across dialects is maintained by applying the exact same Alembic schema migrations on both local and cloud databases.
 - *Concrete cloud choice:* keep your **own Postgres + Alembic** chain (you already migrated). For the customer-app realtime layer, either (a) add a thin WebSocket/SSE service on your stack (you already use SSE for chat), or (b) adopt **Supabase** (managed Postgres + realtime + auth) if you want speed-to-market and don't mind some lock-in. **Recommendation:** start on your own Postgres + a small SSE push service to avoid lock-in; revisit Supabase only if realtime fan-out becomes a burden. (This is a reversible call — flagged in §13 for your sign-off.)
+
 
 ### D6 — Payments/subscriptions: **Razorpay, manual activation first.** ✅ decided
 - *Decision:* For India, **Razorpay** over Stripe. For the pilot cohort, **manually activate plans** (admin toggles `plan`) — don't build self-serve checkout yet. Add Razorpay self-serve once you have >10 paying businesses.
@@ -741,3 +754,23 @@ Before building anything, ask: **does this deepen a moat (§14 🟢), or is it a
 
 ### Immediate next step
 On your sign-off of §13, I'll turn **Phase 1** into a concrete engineering task list against the codebase: exact new Alembic migrations (`stock_ledger`, sales extensions), the FastAPI route group, the `Sales.jsx`/`Stock.jsx` React pages, the invoice-PDF + e-way generation, and the test files — so you can start building the thing that lands this customer.
+
+---
+
+## 17. Appendix: Known Database Schema Issues & Future Actions
+
+### 17.1 Missing `invoices.godown_id` Column on Cloud PostgreSQL
+- **Issue Description:** When authenticating and loading dashboard/insights data on the cloud backend (e.g. for User 2 / Business ID 2 who was already present in the database), the application errors with:
+  ```
+  psycopg2.errors.UndefinedColumn: column invoices.godown_id does not exist
+  ```
+  This happens because the `godown_id` column exists in the local SQLite database but was omitted from the Alembic migrations and the declarative startup migrations in `_COLUMN_MIGRATIONS`.
+- **Impact:** Crashes the dashboard summary, top-customers list, and smart insights snapshot retrieval.
+- **Recommended Action (to be executed later):**
+  1. Add `godown_id` to the declarative migration list (`_COLUMN_MIGRATIONS`) in [migration.py](file:///d:/Dev%20Workspace/ai_agent_lab_google(1)/bizassist-billing/backend/database/migration.py):
+     ```python
+     {"table": "invoices", "column": "godown_id", "ddl": "ALTER TABLE invoices ADD COLUMN godown_id INTEGER"}
+     ```
+  2. Verify if other tables (e.g. `inventory`) also require a similar column entry.
+  3. Deploy the backend updates to the Hugging Face Space repository. When the server boots up, the startup migration check will detect the missing column on the Supabase/Postgres database and dynamically execute the DDL without data loss.
+

@@ -105,6 +105,18 @@ _COLUMN_MIGRATIONS = [
     # users — app settings JSON blob
     {"table": "users", "column": "settings", "ddl": "ALTER TABLE users ADD COLUMN settings TEXT"},
     {"table": "users", "column": "logo",     "ddl": "ALTER TABLE users ADD COLUMN logo TEXT"},
+    # invoices additions
+    {"table": "invoices", "column": "godown_id",        "ddl": "ALTER TABLE invoices ADD COLUMN godown_id INTEGER"},
+    {"table": "invoices", "column": "reverse_charge",   "ddl": "ALTER TABLE invoices ADD COLUMN reverse_charge BOOLEAN DEFAULT FALSE"},
+    {"table": "invoices", "column": "is_tax_inclusive", "ddl": "ALTER TABLE invoices ADD COLUMN is_tax_inclusive BOOLEAN DEFAULT FALSE"},
+    {"table": "invoices", "column": "discount_total",   "ddl": "ALTER TABLE invoices ADD COLUMN discount_total REAL DEFAULT 0.0"},
+    {"table": "invoices", "column": "round_off",        "ddl": "ALTER TABLE invoices ADD COLUMN round_off REAL DEFAULT 0.0"},
+    {"table": "invoices", "column": "cash_discount",    "ddl": "ALTER TABLE invoices ADD COLUMN cash_discount REAL DEFAULT 0.0"},
+    # inventory additions
+    {"table": "inventory", "column": "godown_id",       "ddl": "ALTER TABLE inventory ADD COLUMN godown_id INTEGER"},
+    # users additions
+    {"table": "users", "column": "parent_business_id",  "ddl": "ALTER TABLE users ADD COLUMN parent_business_id INTEGER"},
+    {"table": "users", "column": "public_id",           "ddl": "ALTER TABLE users ADD COLUMN public_id TEXT"},
 ]
 
 
