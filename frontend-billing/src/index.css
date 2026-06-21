@@ -164,7 +164,8 @@ img { display: block; max-width: 100%; }
   flex-direction: column;
   overflow: hidden;
   background: var(--bg);
-  /* No padding — right panel is a flat sheet, sidebar floats on top of it */
+  margin: 5px 12px 7px 12px;
+  height: calc(100vh - 12px);
 }
 
 /* === APP TOPBAR (sticky page header, all pages except POS) === */
@@ -310,7 +311,6 @@ img { display: block; max-width: 100%; }
   overflow-y: auto;
   padding: 0 36px 20px; /* No top padding — page-header starts flush */
   background: var(--bg);
-  /* Flat sheet — no card border or radius */
 }
 
 /* === STICKY PAGE HEADER (per-page, pinned while content scrolls under) === */
@@ -377,7 +377,7 @@ img { display: block; max-width: 100%; }
 }
 .sidebar-brand .brand-name {
   font-family: 'DM Sans', sans-serif;
-  font-weight: 700;
+  font-weight: 500;
   font-size: 19px;
   color: var(--text-primary);
   letter-spacing: 0.05em;
@@ -518,7 +518,6 @@ img { display: block; max-width: 100%; }
   cursor: pointer;
   white-space: nowrap;
   text-align: left;
-  text-transform: uppercase;
 }
 .user-name:hover {
   color: var(--accent);
@@ -1127,7 +1126,7 @@ img { display: block; max-width: 100%; }
   border-collapse: collapse;
 }
 .data-table thead {
-  background: #f7f7f5;
+  background: var(--bg-3);
   border-bottom: 1px solid var(--border);
 }
 .data-table th {
@@ -1149,7 +1148,7 @@ img { display: block; max-width: 100%; }
   vertical-align: middle;
 }
 .data-table tbody tr { transition: background var(--dur) var(--ease); }
-.data-table tbody tr:nth-child(even) { background: #fafaf9; }
+.data-table tbody tr:nth-child(even) { background: var(--bg-3); }
 .data-table tbody tr:hover { background: var(--accent-glow) !important; }
 .data-table tbody tr:last-child td { border-bottom: none; }
 .data-table .td-primary { color: var(--text-primary); font-weight: 600; }
