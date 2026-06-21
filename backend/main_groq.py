@@ -100,6 +100,12 @@ async def _ask_error_handler(_request: Request, exc: AskError):
     """Render AskError as a real HTTP status code with the canonical envelope (H1)."""
     return JSONResponse(status_code=exc.status_code, content=exc.payload)
 
+
+@app.get("/")
+async def root():
+    return {"status": "ok", "message": "BizAssist API is running"}
+
+
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(ask_router)
 app.include_router(auth_router)
