@@ -117,6 +117,28 @@ _COLUMN_MIGRATIONS = [
     # users additions
     {"table": "users", "column": "parent_business_id",  "ddl": "ALTER TABLE users ADD COLUMN parent_business_id INTEGER"},
     {"table": "users", "column": "public_id",           "ddl": "ALTER TABLE users ADD COLUMN public_id TEXT"},
+    # products additions
+    {"table": "products", "column": "wholesale_price",   "ddl": "ALTER TABLE products ADD COLUMN wholesale_price REAL DEFAULT 0.0"},
+    {"table": "products", "column": "distributor_price", "ddl": "ALTER TABLE products ADD COLUMN distributor_price REAL DEFAULT 0.0"},
+    {"table": "products", "column": "sku",               "ddl": "ALTER TABLE products ADD COLUMN sku TEXT"},
+    {"table": "products", "column": "brand",             "ddl": "ALTER TABLE products ADD COLUMN brand TEXT"},
+    {"table": "products", "column": "manufacturer",      "ddl": "ALTER TABLE products ADD COLUMN manufacturer TEXT"},
+    {"table": "products", "column": "category",          "ddl": "ALTER TABLE products ADD COLUMN category TEXT"},
+    {"table": "products", "column": "track_inventory",   "ddl": "ALTER TABLE products ADD COLUMN track_inventory BOOLEAN DEFAULT TRUE"},
+    {"table": "products", "column": "price_includes_tax","ddl": "ALTER TABLE products ADD COLUMN price_includes_tax BOOLEAN DEFAULT FALSE"},
+    {"table": "products", "column": "purchase_unit",     "ddl": "ALTER TABLE products ADD COLUMN purchase_unit TEXT"},
+    {"table": "products", "column": "conversion_factor", "ddl": "ALTER TABLE products ADD COLUMN conversion_factor REAL DEFAULT 1.0"},
+    {"table": "products", "column": "variant_of",        "ddl": "ALTER TABLE products ADD COLUMN variant_of INTEGER"},
+    {"table": "products", "column": "attributes",        "ddl": "ALTER TABLE products ADD COLUMN attributes TEXT"},
+    # invoice_line_items additions
+    {"table": "invoice_line_items", "column": "description", "ddl": "ALTER TABLE invoice_line_items ADD COLUMN description TEXT"},
+    {"table": "invoice_line_items", "column": "batch_no",    "ddl": "ALTER TABLE invoice_line_items ADD COLUMN batch_no TEXT"},
+    {"table": "invoice_line_items", "column": "serial_no",   "ddl": "ALTER TABLE invoice_line_items ADD COLUMN serial_no TEXT"},
+    # purchase_orders additions
+    {"table": "purchase_orders", "column": "reverse_charge",   "ddl": "ALTER TABLE purchase_orders ADD COLUMN reverse_charge BOOLEAN DEFAULT FALSE"},
+    {"table": "purchase_orders", "column": "is_tax_inclusive", "ddl": "ALTER TABLE purchase_orders ADD COLUMN is_tax_inclusive BOOLEAN DEFAULT FALSE"},
+    {"table": "purchase_orders", "column": "discount_total",   "ddl": "ALTER TABLE purchase_orders ADD COLUMN discount_total REAL DEFAULT 0.0"},
+    {"table": "purchase_orders", "column": "round_off",        "ddl": "ALTER TABLE purchase_orders ADD COLUMN round_off REAL DEFAULT 0.0"},
 ]
 
 
