@@ -10,8 +10,17 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from database.models import (
-    User, Invoice, Inventory, Payment, UploadedFile,
-    DocumentEmbedding, ChatMessage, TokenUsage, RateLimitConfig
+    User, Invoice, InvoiceLineItem, Inventory, Payment, UploadedFile,
+    DocumentEmbedding, ChatMessage, TokenUsage, RateLimitConfig,
+    Customer, Vendor, Product, PurchaseOrder, PurchaseOrderLineItem,
+    PurchaseInvoice, PurchaseInvoiceLineItem, Feedback, QueryOverride,
+    BusinessFact, AlertConfig
+)
+from core.models import (
+    StockLedger, ProductBarcode, BusinessSettings, InvoicePayment,
+    B2BConnection, ConnectionCode, B2BOrder, B2BOrderLineItem,
+    SharedLedger, Expense, Godown, StockTransfer, StockTransferLineItem,
+    JournalEntry, JournalLine, PeriodLock
 )
 from services.auth import hash_password
 from services.context_cache import invalidate, invalidate_user_cache, get_cache_stats
@@ -67,13 +76,93 @@ def wipe_all_data(db: Session) -> dict:
 
 def wipe_user_data(user_id: int, db: Session) -> dict:
     target = require_target_user(user_id, db)
-    for model in (Invoice, Inventory, Payment, UploadedFile, DocumentEmbedding, ChatMessage):
-        db.query(model).filter(model.business_id == user_id).delete()
+    
+    # 1. Delete child lines that do NOT have business_id directly
+    db.query(InvoiceLineItem).filter(
+        InvoiceLineItem.invoice_id.in_(
+            db.query(Invoice.id).filter(Invoice.business_id == user_id)
+        )
+    ).delete(synchronize_session=False)
+    
+    db.query(PurchaseInvoiceLineItem).filter(
+        PurchaseInvoiceLineItem.purchase_invoice_id.in_(
+            db.query(PurchaseInvoice.id).filter(PurchaseInvoice.business_id == user_id)
+        )
+    ).delete(synchronize_session=False)
+    
+    db.query(PurchaseOrderLineItem).filter(
+        PurchaseOrderLineItem.purchase_order_id.in_(
+            db.query(PurchaseOrder.id).filter(PurchaseOrder.business_id == user_id)
+        )
+    ).delete(synchronize_session=False)
+    
+    db.query(B2BOrderLineItem).filter(
+        B2BOrderLineItem.order_id.in_(
+            db.query(B2BOrder.id).filter(
+                (B2BOrder.seller_business_id == user_id) | (B2BOrder.buyer_business_id == user_id)
+            )
+        )
+    ).delete(synchronize_session=False)
+    
+    db.query(JournalLine).filter(
+        JournalLine.entry_id.in_(
+            db.query(JournalEntry.id).filter(JournalEntry.business_id == user_id)
+        )
+    ).delete(synchronize_session=False)
+    
+    db.query(StockTransferLineItem).filter(
+        StockTransferLineItem.transfer_id.in_(
+            db.query(StockTransfer.id).filter(StockTransfer.business_id == user_id)
+        )
+    ).delete(synchronize_session=False)
+    
+    db.query(ProductBarcode).filter(
+        ProductBarcode.product_id.in_(
+            db.query(Product.id).filter(Product.business_id == user_id)
+        )
+    ).delete(synchronize_session=False)
+
+    # 2. Delete parent records in correct dependency order
+    db.query(InvoicePayment).filter(InvoicePayment.business_id == user_id).delete(synchronize_session=False)
+    db.query(Invoice).filter(Invoice.business_id == user_id).delete(synchronize_session=False)
+    db.query(PurchaseInvoice).filter(PurchaseInvoice.business_id == user_id).delete(synchronize_session=False)
+    db.query(PurchaseOrder).filter(PurchaseOrder.business_id == user_id).delete(synchronize_session=False)
+    db.query(B2BOrder).filter(
+        (B2BOrder.seller_business_id == user_id) | (B2BOrder.buyer_business_id == user_id)
+    ).delete(synchronize_session=False)
+    db.query(JournalEntry).filter(JournalEntry.business_id == user_id).delete(synchronize_session=False)
+    db.query(StockTransfer).filter(StockTransfer.business_id == user_id).delete(synchronize_session=False)
+    db.query(StockLedger).filter(StockLedger.business_id == user_id).delete(synchronize_session=False)
+    db.query(Inventory).filter(Inventory.business_id == user_id).delete(synchronize_session=False)
+    db.query(Product).filter(Product.business_id == user_id).delete(synchronize_session=False)
+    db.query(Customer).filter(Customer.business_id == user_id).delete(synchronize_session=False)
+    db.query(Vendor).filter(Vendor.business_id == user_id).delete(synchronize_session=False)
+    
+    # B2B network relationships (use correct key names)
+    db.query(B2BConnection).filter(
+        (B2BConnection.seller_business_id == user_id) | (B2BConnection.buyer_business_id == user_id)
+    ).delete(synchronize_session=False)
+    db.query(ConnectionCode).filter(ConnectionCode.seller_business_id == user_id).delete(synchronize_session=False)
+    db.query(SharedLedger).filter(
+        (SharedLedger.seller_business_id == user_id) | (SharedLedger.buyer_business_id == user_id)
+    ).delete(synchronize_session=False)
+
+    # 3. Delete all other business-scoped data
+    for model in (
+        Payment, UploadedFile, DocumentEmbedding, ChatMessage, TokenUsage,
+        RateLimitConfig, AlertConfig, Feedback, QueryOverride, BusinessFact,
+        BusinessSettings, Expense, Godown, PeriodLock
+    ):
+        db.query(model).filter(model.business_id == user_id).delete(synchronize_session=False)
+
+    # 4. Purge embeddings from Chroma vector store
     try:
         from services.embeddings import delete_user_chroma_memories
         delete_user_chroma_memories(user_id)
     except Exception as e:
         logger.error("Chroma purge failed for user %s: %s", user_id, e, exc_info=True)
+        
+    # 5. Delete the target user and invalidate cache
     db.delete(target)
     db.commit()
     invalidate_user_cache(user_id)

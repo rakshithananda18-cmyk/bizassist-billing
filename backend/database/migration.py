@@ -139,6 +139,8 @@ _COLUMN_MIGRATIONS = [
     {"table": "purchase_orders", "column": "is_tax_inclusive", "ddl": "ALTER TABLE purchase_orders ADD COLUMN is_tax_inclusive BOOLEAN DEFAULT FALSE"},
     {"table": "purchase_orders", "column": "discount_total",   "ddl": "ALTER TABLE purchase_orders ADD COLUMN discount_total REAL DEFAULT 0.0"},
     {"table": "purchase_orders", "column": "round_off",        "ddl": "ALTER TABLE purchase_orders ADD COLUMN round_off REAL DEFAULT 0.0"},
+    # purchase_invoices additions
+    {"table": "purchase_invoices", "column": "godown_id",      "ddl": "ALTER TABLE purchase_invoices ADD COLUMN godown_id INTEGER"},
 ]
 
 
@@ -200,15 +202,17 @@ def _seed_users(db):
             {"id": 1, "username": "admin", "password": _admin_pw,
              "business_name": "Admin Central", "role": "admin"}
         ]
-        from database.models import Invoice, Inventory, Payment, UploadedFile, DocumentEmbedding, ChatMessage
+        from services.admin_service import wipe_user_data
         demo_usernames = ["pharmacy", "supermarket", "store"]
         demo_users = db.query(User).filter(User.username.in_(demo_usernames)).all()
         for du in demo_users:
             logger.info(f"[Seed] Removing demo user '{du.username}'...")
-            for model in (Invoice, Inventory, Payment, UploadedFile, DocumentEmbedding, ChatMessage):
-                db.query(model).filter(model.business_id == du.id).delete()
-            db.delete(du)
-        db.commit()
+            try:
+                wipe_user_data(du.id, db)
+            except Exception as e:
+                logger.error(f"[Seed] Failed to wipe user data for {du.username}: {e}")
+                db.delete(du)
+                db.commit()
 
     for u in default_users:
         if not db.query(User).filter(User.username == u["username"]).first():
