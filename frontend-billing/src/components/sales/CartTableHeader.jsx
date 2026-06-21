@@ -72,7 +72,7 @@ export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets
               return (
                 <th key="rate" style={{ ...style, width: 150, minWidth: 150, textAlign: 'right' }}>
                   PRICE PER UNIT<br/>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>BEFORE TAX (₹)</span>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>BEFORE TAX (₹)</span>
                 </th>
               );
             }
@@ -80,7 +80,7 @@ export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets
               return (
                 <th key="price" style={{ ...style, width: 130, minWidth: 130, textAlign: 'right' }}>
                   TOTAL<br/>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>BEFORE TAX (₹)</span>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>BEFORE TAX (₹)</span>
                 </th>
               );
             }
@@ -94,7 +94,7 @@ export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets
               return (
                 <th key="total" style={{ ...style, width: 130, minWidth: 130, textAlign: 'right' }}>
                   TOTAL<br/>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>AFTER TAX (₹)</span>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>AFTER TAX (₹)</span>
                 </th>
               );
             }
