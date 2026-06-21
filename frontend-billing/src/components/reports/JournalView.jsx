@@ -9,7 +9,7 @@ export default function JournalView({ reportData, fmt, isAudit }) {
     <div className="card" style={{ padding: '20px 24px' }}>
       {isAudit && (
         <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 12 }}>
-          🔒 Posted at transaction time · append-only audit trail
+          <LockIcon size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> Posted at transaction time · append-only audit trail
         </div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -43,11 +43,19 @@ export default function JournalView({ reportData, fmt, isAudit }) {
         color: reportData.totals?.balanced ? '#2e7d32' : 'var(--danger)',
         border: `1px solid ${reportData.totals?.balanced ? 'rgba(46, 125, 50, 0.2)' : 'rgba(220, 38, 38, 0.2)'}`,
       }}>
-        <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
-          {reportData.totals?.balanced ? '✓ Balanced' : '⚠ Out of balance'} · {reportData.entries?.length || 0} entries
-        </span>
+          {reportData.totals?.balanced ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <CheckIcon size={14} style={{ color: 'var(--success)' }} /> Balanced
+            </span>
+          ) : (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <AlertIcon size={14} style={{ color: 'var(--danger)' }} /> Out of balance
+            </span>
+          )} · {reportData.entries?.length || 0} entries
         <span style={{ fontSize: '0.82rem' }}>Dr {fmt(reportData.totals?.total_debit)} · Cr {fmt(reportData.totals?.total_credit)}</span>
       </div>
     </div>
   )
 }
+
+import { AlertIcon, CheckIcon, LockIcon } from '../../components/Icons'

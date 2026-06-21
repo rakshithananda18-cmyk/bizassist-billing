@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
-import { OrderIcon, SummaryIcon } from '../components/Icons'
+import { AlertIcon, BillsIcon, CheckIcon, CloseIcon, DownloadIcon, ImportIcon, OrderIcon, PackageIcon, PlusIcon, SummaryIcon, TruckIcon, BellIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 
 const fmt = (n) =>
@@ -150,13 +150,13 @@ export default function Orders() {
   const handleRealtimeEvent = (event) => {
     if (event.type === 'order.created') {
       logger.info('[ORDER] order.created received', event.order_number)
-      showToast(`📦 New B2B Order placed by ${event.buyer_name} for ${fmt(event.total_amount)}!`, 'success')
+      showToast(`<PackageIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> New B2B Order placed by ${event.buyer_name} for ${fmt(event.total_amount)}!`, 'success')
       if (activeTab === 'incoming') {
         loadOrders()
       }
     } else if (event.type === 'order.status') {
       logger.info('[ORDER] order.status received', event.order_number, '→', event.status)
-      showToast(`🚚 Order #${event.order_number} status updated to: ${event.status}`, 'info')
+      showToast(`<TruckIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Order #${event.order_number} status updated to: ${event.status}`, 'info')
       loadOrders()
     } else if (event.type === 'order.invoiced') {
       // Phase 4: the buyer's stock-in landed. Surface it + flag the row live.
@@ -166,7 +166,7 @@ export default function Orders() {
         next.add(event.order_number)
         return next
       })
-      showToast(`📥 Stock auto-received — order #${event.order_number} stocked into your inventory.`, 'success')
+      showToast(`<DownloadIcon size={32} style={{ color: 'var(--accent)' }} /> Stock auto-received — order #${event.order_number} stocked into your inventory.`, 'success')
       loadOrders()
     }
   }
@@ -331,16 +331,16 @@ export default function Orders() {
             maxWidth: 400,
             animation: 'slideIn 0.3s var(--ease)'
           }}>
-            <span style={{ fontSize: '1.2rem' }}>{toast.type === 'success' ? '🔔' : '🚚'}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}>{toast.type === 'success' ? <BellIcon size={16} /> : <TruckIcon size={16} />}</span>
             <span style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-primary)' }}>{toast.msg}</span>
-            <button onClick={() => setToast(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', marginLeft: 'auto' }}>✕</button>
+            <button onClick={() => setToast(null)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', marginLeft: 'auto' }} aria-label="Close"><CloseIcon size={16} /></button>
           </div>
         )}
 
         {alert && (
-          <div className={`alert alert-${alert.type} mb-4`}>
-            {alert.type === 'success' ? '✅' : '❌'} {alert.msg}
-            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button>
+          <div className={`alert alert-${alert.type} mb-4`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {alert.type === 'success' ? <CheckIcon size={14} style={{ color: 'var(--success)' }} /> : <AlertIcon size={14} style={{ color: 'var(--danger)' }} />} {alert.msg}
+            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }} aria-label="Close"><CloseIcon size={16} /></button>
           </div>
         )}
 
@@ -353,7 +353,7 @@ export default function Orders() {
           {activeTab === 'outgoing' && (
             <div className="page-actions">
               <button className="btn btn-primary" onClick={handleOpenCatalogModal}>
-                ＋ Place B2B Order
+                <PlusIcon size={14} /> Place B2B Order
               </button>
             </div>
           )}
@@ -362,10 +362,10 @@ export default function Orders() {
         {/* Tabs */}
         <div className="tabs page-subbar">
           <button className={`tab${activeTab === 'incoming' ? ' active' : ''}`} onClick={() => setActiveTab('incoming')}>
-            📥 Incoming Orders (Sales)
+            <ImportIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Incoming Orders (Sales)
           </button>
           <button className={`tab${activeTab === 'outgoing' ? ' active' : ''}`} onClick={() => setActiveTab('outgoing')}>
-            📤 Outgoing Orders (Purchases)
+            <DownloadIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Outgoing Orders (Purchases)
           </button>
         </div>
 
@@ -425,7 +425,7 @@ export default function Orders() {
                             {activeTab === 'outgoing' && order.status === 'completed' &&
                               (order.seller_invoice_id || justInvoiced.has(order.order_number)) && (
                               <span className="badge badge-success" style={{ fontSize: '0.68rem' }} title="Items were automatically added to your inventory as a PURCHASE">
-                                📥 Stock received
+                                <ImportIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Stock received
                               </span>
                             )}
                           </div>
@@ -489,7 +489,7 @@ export default function Orders() {
                     ID: {selectedOrder.id} · Date: {selectedOrder.order_date}
                   </div>
                 </div>
-                <button className="btn btn-ghost btn-icon" onClick={() => setSelectedOrder(null)}>✕</button>
+                <button className="btn btn-ghost btn-icon" onClick={() => setSelectedOrder(null)} aria-label="Close"><CloseIcon size={16} /></button>
               </div>
               <div className="modal-body">
                 {/* Meta details */}
@@ -526,7 +526,7 @@ export default function Orders() {
                     gap: '4px'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                      <span>📦 B2B Sync Status: Completed</span>
+                      <span><PackageIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> B2B Sync Status: Completed</span>
                     </div>
                     {activeTab === 'outgoing' ? (
                       <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
@@ -539,7 +539,7 @@ export default function Orders() {
                     )}
                     {selectedOrder.seller_invoice_id && (
                       <div style={{ marginTop: '4px', fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-primary)' }}>
-                        📄 Seller Invoice Number: <span className="td-mono" style={{ background: 'var(--bg-2)', padding: '2px 4px', borderRadius: 4 }}>B2B-{selectedOrder.order_number}</span>
+                        <BillsIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Seller Invoice Number: <span className="td-mono" style={{ background: 'var(--bg-2)', padding: '2px 4px', borderRadius: 4 }}>B2B-{selectedOrder.order_number}</span>
                       </div>
                     )}
                   </div>
@@ -641,7 +641,7 @@ export default function Orders() {
                     className="btn btn-primary"
                     onClick={() => handleStatusChange(selectedOrder.id, STATUS_FLOW[selectedOrder.status].next)}
                   >
-                    ✓ {STATUS_FLOW[selectedOrder.status].nextLabel} Order
+                    <CheckIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> {STATUS_FLOW[selectedOrder.status].nextLabel} Order
                   </button>
                 )}
                 {activeTab === 'outgoing' && ['pending', 'accepted'].includes(selectedOrder.status) && (
@@ -664,8 +664,8 @@ export default function Orders() {
           <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCatalogModal(false)}>
             <div className="modal modal-lg" style={{ maxWidth: '90%' }}>
               <div className="modal-header">
-                <span className="modal-title">🚚 Create B2B Purchase Order</span>
-                <button className="btn btn-ghost btn-icon" onClick={() => setShowCatalogModal(false)}>✕</button>
+                <span className="modal-title"><TruckIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Create B2B Purchase Order</span>
+                <button className="btn btn-ghost btn-icon" onClick={() => setShowCatalogModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
               </div>
               <div className="modal-body" style={{ display: 'flex', gap: 16, height: '70vh', overflow: 'hidden' }}>
                 
@@ -832,7 +832,7 @@ export default function Orders() {
                       onClick={handlePlaceOrder}
                       disabled={cartItems.length === 0 || placingOrder}
                     >
-                      {placingOrder ? 'Submitting PO...' : '✓ Submit Purchase Order'}
+                      {placingOrder ? 'Submitting PO...' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Submit Purchase Order</span>}
                     </button>
                   </div>
                 </div>

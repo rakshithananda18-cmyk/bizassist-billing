@@ -245,10 +245,10 @@ export default function Alerts() {
             </button>
             <button
               className="chip"
-              style={{ opacity: tab === 'config' ? 1 : 0.55, fontWeight: tab === 'config' ? 700 : 400 }}
+              style={{ opacity: tab === 'config' ? 1 : 0.55, fontWeight: tab === 'config' ? 700 : 400, display: 'inline-flex', alignItems: 'center', gap: 5 }}
               onClick={() => setTab('config')}
             >
-              ⚙ Configure
+              <Icon name="settings" size={13} /> Configure
             </button>
           </>
         }
@@ -537,11 +537,11 @@ export default function Alerts() {
             <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 12 }}>
               <div style={{ fontSize: 12, color: 'var(--secondary-text)', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Alert types</div>
               {[
-                ['alert_overdue', '🔴 Overdue invoice alerts'],
-                ['alert_low_stock', '📦 Low stock alerts'],
-                ['alert_expiry', '⏰ Product expiry alerts'],
-                ['alert_daily_summary', '📊 Daily business summary'],
-              ].map(([key, label]) => (
+                { key: 'alert_overdue', label: 'Overdue invoice alerts', icon: <Icon name="alert" size={14} style={{ color: 'var(--danger-color, #ef4444)' }} /> },
+                { key: 'alert_low_stock', label: 'Low stock alerts', icon: <Icon name="package" size={14} /> },
+                { key: 'alert_expiry', label: 'Product expiry alerts', icon: <Icon name="clock" size={14} /> },
+                { key: 'alert_daily_summary', label: 'Daily business summary', icon: <Icon name="chart" size={14} /> },
+              ].map(({ key, label, icon }) => (
                 <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: 8 }}>
                   <input
                     type="checkbox"
@@ -549,7 +549,10 @@ export default function Alerts() {
                     onChange={e => setForm(f => ({ ...f, [key]: e.target.checked }))}
                     style={{ width: 16, height: 16, accentColor: 'var(--accent-color)' }}
                   />
-                  <span style={{ fontSize: 14 }}>{label}</span>
+                  <span style={{ fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    {icon}
+                    {label}
+                  </span>
                 </label>
               ))}
             </div>

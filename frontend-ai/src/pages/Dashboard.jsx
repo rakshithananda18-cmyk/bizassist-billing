@@ -350,15 +350,15 @@ export default function Dashboard() {
             {uploading ? (
               <Spinner />
             ) : (
-              <><span className="vaction-icon">↑</span> Upload Data</>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="upload" size={14} /> Upload Data</span>
             )}
           </button>
           <input type="file" id="file-upload-dash" accept=".csv,.xlsx,.pdf" onChange={handleFileUpload} hidden />
           <button className="vaction-btn" onClick={() => sendChip('Generate a business summary')}>
-            <span className="vaction-icon">✦</span> Business Summary
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="sparkle" size={14} style={{ color: 'var(--accent-color)' }} /> Business Summary</span>
           </button>
           <button className="vaction-btn" onClick={() => handleQuickNav('invoices')}>
-            <span className="vaction-icon">◫</span> View Invoices
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="file" size={14} /> View Invoices</span>
           </button>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
-import { ConnectionIcon, BillsIcon, SettingsIcon } from '../components/Icons'
+import { AlertIcon, BillsIcon, CartIcon, CheckIcon, CloseIcon, ConnectionIcon, SettingsIcon, ShieldIcon, SparkleIcon } from '../components/Icons'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -182,7 +182,7 @@ export default function Connections() {
         {alert && (
           <div className={`alert alert-${alert.type} mb-4`}>
             {alert.type === 'success' ? '✅' : '❌'} {alert.msg}
-            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button>
+            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }} aria-label="Close"><CloseIcon size={16} /></button>
           </div>
         )}
 
@@ -206,7 +206,7 @@ export default function Connections() {
           }}>
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <span style={{ fontSize: '1.25rem' }}>💎</span>
+                <span style={{ fontSize: '1.25rem' }}><SparkleIcon size={18} style={{ color: 'var(--accent)' }} /></span>
                 <span style={{ fontSize: '0.82rem', textTransform: 'uppercase', tracking: '0.05em', color: 'var(--text-secondary)' }}>My Network Address</span>
               </div>
               <h3 style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: 16 }}>
@@ -239,7 +239,7 @@ export default function Connections() {
           <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <span style={{ fontSize: '1.25rem' }}>🔌</span>
+                <span style={{ fontSize: '1.25rem' }}><ConnectionIcon size={16} /></span>
                 <span style={{ fontSize: '0.82rem', textTransform: 'uppercase', tracking: '0.05em', color: 'var(--text-secondary)' }}>Connect Business Channel</span>
               </div>
               <p style={{ fontSize: '0.87rem', color: 'var(--text-secondary)', marginBottom: 12 }}>
@@ -268,7 +268,7 @@ export default function Connections() {
                 </select>
               </div>
               <button type="submit" className="btn btn-primary" disabled={connecting} style={{ width: '100%' }}>
-                {connecting ? 'Establishing Connection...' : '🔌 Connect Business'}
+                {connecting ? 'Establishing Connection...' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ConnectionIcon size={16} /> Connect Business</span>}
               </button>
             </form>
           </div>
@@ -277,10 +277,10 @@ export default function Connections() {
         {/* Tab Controls & Connections List */}
         <div className="tabs page-subbar">
           <button className={`tab${activeTab === 'Customers' ? ' active' : ''}`} onClick={() => setActiveTab('Customers')}>
-            🛡️ My Customers <span style={{ marginLeft: 4, fontSize: '0.7rem', opacity: 0.7 }}>({connections.as_seller.length})</span>
+            <ShieldIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> My Customers <span style={{ marginLeft: 4, fontSize: '0.7rem', opacity: 0.7 }}>({connections.as_seller.length})</span>
           </button>
           <button className={`tab${activeTab === 'Suppliers' ? ' active' : ''}`} onClick={() => setActiveTab('Suppliers')}>
-            🛒 My Suppliers <span style={{ marginLeft: 4, fontSize: '0.7rem', opacity: 0.7 }}>({connections.as_buyer.length})</span>
+            <CartIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> My Suppliers <span style={{ marginLeft: 4, fontSize: '0.7rem', opacity: 0.7 }}>({connections.as_buyer.length})</span>
           </button>
         </div>
 
@@ -433,7 +433,7 @@ export default function Connections() {
             <div className="modal">
               <div className="modal-header">
                 <span className="modal-title">⚙️ Policy: {selectedConnection.buyer_name}</span>
-                <button className="btn btn-ghost btn-icon" onClick={() => setShowPolicyModal(false)}>✕</button>
+                <button className="btn btn-ghost btn-icon" onClick={() => setShowPolicyModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
               </div>
               <form onSubmit={handleSavePolicy}>
                 <div className="modal-body">
@@ -508,7 +508,7 @@ export default function Connections() {
                 <div className="modal-footer">
                   <button type="button" className="btn btn-secondary" onClick={() => setShowPolicyModal(false)}>Cancel</button>
                   <button type="submit" className="btn btn-primary" disabled={policySubmitting}>
-                    {policySubmitting ? 'Saving...' : '✓ Save Policies'}
+                    {policySubmitting ? 'Saving...' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Save Policies</span>}
                   </button>
                 </div>
               </form>
@@ -521,8 +521,8 @@ export default function Connections() {
           <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowRevokeModal(false)}>
             <div className="modal">
               <div className="modal-header" style={{ borderBottomColor: 'rgba(239, 68, 68, 0.2)' }}>
-                <span className="modal-title" style={{ color: 'var(--danger)' }}>⚠️ Revoke Partnership?</span>
-                <button className="btn btn-ghost btn-icon" onClick={() => setShowRevokeModal(false)}>✕</button>
+                <span className="modal-title" style={{ color: 'var(--danger)' }}><AlertIcon size={16} style={{ color: 'var(--danger)', marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Revoke Partnership?</span>
+                <button className="btn btn-ghost btn-icon" onClick={() => setShowRevokeModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
               </div>
               <div className="modal-body">
                 <p style={{ marginBottom: 12 }}>

@@ -1,5 +1,5 @@
 // Render tests for <Orders> focused on the Phase-4 BUYER auto-stock-in UI:
-//   • a completed outgoing (purchase) order shows the "📥 Stock received" badge
+//   • a completed outgoing (purchase) order shows the "<ImportIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Stock received" badge
 //     once it carries a seller_invoice_id,
 //   • the same badge does NOT show for a still-in-flight order.
 // AuthContext, AppLayout and the SSE fetch are mocked so the page renders in
@@ -70,3 +70,5 @@ describe('Orders — buyer auto-stock-in UI', () => {
     expect(screen.getAllByText(/Stock received/)).toHaveLength(1)
   })
 })
+
+import { ImportIcon } from '../components/Icons'

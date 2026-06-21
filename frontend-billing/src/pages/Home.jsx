@@ -5,11 +5,12 @@ import { useAuth } from '../contexts/AuthContext'
 import { BuildingMark } from '../components/Logo'
 import {
   CounterIcon,
+  DashboardIcon,
   SummaryIcon,
   InventoryIcon,
   CashIcon,
   ContactsIcon,
-  TaxIcon,
+  ReportsIcon,
   PhoneIcon,
   MailIcon,
   MapPinIcon
@@ -17,11 +18,11 @@ import {
 
 const QUICK_LINKS = [
   { label: 'New Invoice', href: '/sales',     icon: <CounterIcon size={24} />,   desc: 'Open the billing counter' },
-  { label: 'Dashboard',   href: '/dashboard', icon: <SummaryIcon size={24} />,   desc: 'View business summary' },
+  { label: 'Dashboard',   href: '/dashboard', icon: <DashboardIcon size={24} />,   desc: 'View business summary' },
   { label: 'Inventory',   href: '/stock',     icon: <InventoryIcon size={24} />, desc: 'Manage your stock' },
   { label: 'Cash Book',   href: '/payments',  icon: <CashIcon size={24} />,      desc: 'Track payments' },
   { label: 'Contacts',    href: '/parties',   icon: <ContactsIcon size={24} />,   desc: 'Customers & suppliers' },
-  { label: 'Reports',     href: '/reports',   icon: <TaxIcon size={24} />,        desc: 'Tax & profit books' },
+  { label: 'GST & Tax Reports', href: '/reports', icon: <ReportsIcon size={24} />, desc: 'View financial & tax statements' },
 ]
 
 export default function Home() {

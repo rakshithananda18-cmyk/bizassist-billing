@@ -34,6 +34,9 @@ const PATHS = {
   warn:    <><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></>,
   sparkle: <><path d="M12 2 14 9 21 12 14 15 12 22 10 15 3 12 10 9 12 2Z" /></>,
   memory:  <><path d="M8 2h6l4 4v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" /><path d="M9 6v2.6" /><path d="M11.5 6v2.6" /><path d="M14 7v1.6" /></>,
+  chevronDown: <><polyline points="6 9 12 15 18 9" /></>,
+  chevronRight: <><polyline points="9 18 15 12 9 6" /></>,
+  chevronLeft: <><polyline points="15 18 9 12 15 6" /></>,
 }
 
 export function Icon({ name, size = 16, ...rest }) {

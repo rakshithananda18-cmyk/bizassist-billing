@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
 import { useDialog } from '../contexts/DialogContext'
 import { Spinner, PageHeader } from '../components/ui'
+import { Icon } from '../components/icons'
 
 const ACCEPTED = '.csv,.xlsx,.pdf'
 
@@ -127,7 +128,9 @@ export default function Upload() {
           </>
         ) : (
           <>
-            <div className="drop-icon">📁</div>
+            <div className="drop-icon" style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+              <Icon name="upload" size={40} style={{ color: 'var(--accent-color)' }} />
+            </div>
             <div className="drop-label">
               {dragging ? 'Drop to upload' : 'Drag & drop or click to select'}
             </div>
@@ -148,17 +151,17 @@ export default function Upload() {
         <div className="widget-title">Supported Formats</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginTop: 12 }}>
           {[
-            { icon: '📄', name: 'Invoices CSV/XLSX', cols: 'invoice_id, customer, product, amount, status, due_date' },
-            { icon: '📦', name: 'Inventory CSV/XLSX', cols: 'product_name, stock, expiry_date, supplier' },
-            { icon: '💳', name: 'Payments CSV/XLSX', cols: 'customer, amount, due_date, paid' },
-            { icon: '📋', name: 'PDF Invoice', cols: 'Any structured invoice PDF — AI extracts the data' },
+            { icon: <Icon name="file" size={24} style={{ color: 'var(--accent-color)' }} />, name: 'Invoices CSV/XLSX', cols: 'invoice_id, customer, product, amount, status, due_date' },
+            { icon: <Icon name="package" size={24} style={{ color: 'var(--accent-color)' }} />, name: 'Inventory CSV/XLSX', cols: 'product_name, stock, expiry_date, supplier' },
+            { icon: <Icon name="card" size={24} style={{ color: 'var(--accent-color)' }} />, name: 'Payments CSV/XLSX', cols: 'customer, amount, due_date, paid' },
+            { icon: <Icon name="monitor" size={24} style={{ color: 'var(--accent-color)' }} />, name: 'PDF Invoice', cols: 'Any structured invoice PDF — AI extracts the data' },
           ].map(f => (
             <div key={f.name} style={{
               background: 'var(--accent-softer)',
               borderRadius: 10, padding: '12px 14px',
               border: '1px solid var(--border-subtle)'
             }}>
-              <div style={{ fontSize: 22, marginBottom: 6 }}>{f.icon}</div>
+              <div style={{ display: 'flex', marginBottom: 6 }}>{f.icon}</div>
               <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>{f.name}</div>
               <div style={{ fontSize: 11, color: 'var(--secondary-text)', fontFamily: "'DM Mono', monospace" }}>{f.cols}</div>
             </div>
@@ -193,7 +196,8 @@ export default function Upload() {
                       className="delete-btn"
                       onClick={() => deleteUpload(f.id, f.filename)}
                       title="Delete file"
-                    >✕</button>
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4 }}
+                    ><Icon name="x" size={12} /></button>
                   </div>
                   <div className="upload-meta">
                     {f.rows ?? f.rows_count} rows • {f.uploaded ?? f.upload_time}

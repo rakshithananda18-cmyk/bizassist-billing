@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
-import { ContactsIcon, MessageIcon, InventoryIcon, BillsIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, HandshakeIcon, InventoryIcon, MessageIcon, PlusIcon, PrinterIcon, SearchIcon, SyncIcon, UserIcon, WarehouseIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import { buildUpiUri, buildWhatsAppShareUrl, normalizePhoneIN } from '../utils/share'
 
@@ -280,7 +280,7 @@ export default function Parties() {
         {alert && (
           <div className={`alert alert-${alert.type} mb-4`}>
             {alert.type === 'success' ? '✅' : '❌'} {alert.msg}
-            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button>
+            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }} aria-label="Close"><CloseIcon size={16} /></button>
           </div>
         )}
 
@@ -292,7 +292,7 @@ export default function Parties() {
           </div>
           <div className="page-actions">
             <button className="btn btn-primary" onClick={() => { setForm(defaultForm); setShowModal(true) }}>
-              ＋ Add Party
+              <PlusIcon size={14} /> Add Party
             </button>
           </div>
         </div>
@@ -311,7 +311,7 @@ export default function Parties() {
             </button>
           </div>
           <div className="search-bar">
-            <span style={{ color: 'var(--text-muted)' }}>🔍</span>
+            <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${activeTab.toLowerCase()}…`} />
           </div>
         </div>
@@ -374,7 +374,7 @@ export default function Parties() {
                             {p.invoice_number || `#${p.id}`}
                             {p.invoice_type === 'credit_note' && (
                               <span style={{ fontSize: '0.65rem', display: 'block', color: 'var(--accent)' }}>
-                                🔄 RETURN (CN)
+                                <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> RETURN (CN)
                               </span>
                             )}
                           </td>
@@ -393,14 +393,14 @@ export default function Parties() {
                                 className="btn btn-secondary btn-sm"
                                 onClick={() => handlePrintInvoice(p.invoice_number || p.invoice_no)}
                               >
-                                🖨️ Print
+                                <PrinterIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Print
                               </button>
                               <button
                                 className="btn btn-secondary btn-sm"
                                 onClick={() => handleWhatsAppShareInvoice(p)}
                                 title="Share invoice on WhatsApp"
                               >
-                                💬 Share
+                                <MessageIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Share
                               </button>
                               {p.invoice_type !== 'credit_note' && (
                                 <button
@@ -408,7 +408,7 @@ export default function Parties() {
                                   onClick={() => handleOpenReturn(p)}
                                   title="Record Sales Return / Credit Note"
                                 >
-                                  🔄 Return
+                                  <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Return
                                 </button>
                               )}
                             </div>
@@ -443,7 +443,7 @@ export default function Parties() {
                           {activeTab === 'Customers' ? (
                             <>
                               <button className="btn btn-secondary btn-sm" onClick={() => handleViewInvoices(p)}>
-                                📄 View Invoices
+                                <BillsIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> View Invoices
                               </button>
                               {outstanding > 0 && (
                                 <button
@@ -477,8 +477,8 @@ export default function Parties() {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
           <div className="modal modal-lg">
             <div className="modal-header">
-              <span className="modal-title">🤝 Add Party</span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}>✕</button>
+              <span className="modal-title"><HandshakeIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Add Party</span>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
@@ -487,10 +487,10 @@ export default function Parties() {
                   <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Type:</span>
                   <div className="tabs">
                     <button type="button" className={`tab${form.party_type === 'customer' ? ' active' : ''}`} onClick={() => setField('party_type', 'customer')}>
-                      👤 Customer
+                      <UserIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Customer
                     </button>
                     <button type="button" className={`tab${form.party_type === 'vendor' ? ' active' : ''}`} onClick={() => setField('party_type', 'vendor')}>
-                      🏭 Vendor
+                      <WarehouseIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Vendor
                     </button>
                   </div>
                 </div>
@@ -535,7 +535,7 @@ export default function Parties() {
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={submitting}>
-                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Saving…</> : '✓ Add Party'}
+                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Saving…</> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Add Party</span>}
                 </button>
               </div>
             </form>
@@ -552,7 +552,7 @@ export default function Parties() {
                 {selectedParty.type === 'customer' ? <BillsIcon size={16} /> : <InventoryIcon size={16} />}
                 <span>{selectedParty.type === 'customer' ? 'Invoices' : 'Purchases'} for {selectedParty.name}</span>
               </span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setSelectedParty(null)}>✕</button>
+              <button className="btn btn-ghost btn-icon" onClick={() => setSelectedParty(null)} aria-label="Close"><CloseIcon size={16} /></button>
             </div>
             <div className="modal-body">
               <div className="data-table-wrap" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
@@ -590,7 +590,7 @@ export default function Parties() {
                           {selectedParty.type === 'customer' ? (item.invoice_number || `#${item.id}`) : (item.bill_number || `#${item.id}`)}
                           {item.invoice_type === 'credit_note' && (
                             <span style={{ fontSize: '0.65rem', display: 'block', color: 'var(--accent)' }}>
-                              🔄 RETURN (CN)
+                              <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> RETURN (CN)
                             </span>
                           )}
                         </td>
@@ -615,14 +615,14 @@ export default function Parties() {
                                 className="btn btn-secondary btn-sm"
                                 onClick={() => handlePrintInvoice(item.invoice_number || item.invoice_no)}
                               >
-                                🖨️ Print
+                                <PrinterIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Print
                               </button>
                               <button
                                 className="btn btn-secondary btn-sm"
                                 onClick={() => handleWhatsAppShareInvoice(item, selectedParty)}
                                 title="Share invoice on WhatsApp"
                               >
-                                💬 Share
+                                <MessageIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Share
                               </button>
                               {item.invoice_type !== 'credit_note' && (
                                 <button
@@ -630,7 +630,7 @@ export default function Parties() {
                                   onClick={() => handleOpenReturn(item)}
                                   title="Record Sales Return / Credit Note"
                                 >
-                                  🔄 Return
+                                  <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Return
                                 </button>
                               )}
                             </div>
@@ -652,8 +652,8 @@ export default function Parties() {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowReturnModal(false)}>
           <div className="modal modal-lg" style={{ maxWidth: '850px', width: '95%' }}>
             <div className="modal-header">
-              <span className="modal-title">🔄 Record Sales Return (Credit Note)</span>
-              <button className="btn btn-ghost btn-icon" onClick={() => { setShowReturnModal(false); setReturningInvoice(null); }}>✕</button>
+              <span className="modal-title"><SyncIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Record Sales Return (Credit Note)</span>
+              <button className="btn btn-ghost btn-icon" onClick={() => { setShowReturnModal(false); setReturningInvoice(null); }} aria-label="Close"><CloseIcon size={16} /></button>
             </div>
             <div className="modal-body">
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderBottom: '1px solid var(--border)', paddingBottom: 10, marginBottom: 15 }}>
@@ -753,7 +753,7 @@ export default function Parties() {
                 disabled={savingReturn || returnLines.every(l => !(parseFloat(l.quantity) > 0))}
                 onClick={handleSaveReturn}
               >
-                {savingReturn ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Saving…</> : '✓ Record Return'}
+                {savingReturn ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Saving…</> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Record Return</span>}
               </button>
             </div>
           </div>

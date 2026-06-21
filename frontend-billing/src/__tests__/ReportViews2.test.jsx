@@ -23,7 +23,8 @@ describe('JournalView', () => {
     render(<JournalView reportData={data} fmt={fmt} isAudit={false} />)
     expect(screen.getByText('Cash & Bank')).toBeInTheDocument()
     expect(screen.getByText('Sales')).toBeInTheDocument()
-    expect(screen.getByText(/Balanced · 1 entries/)).toBeInTheDocument()
+    expect(screen.getByText(/Balanced/)).toBeInTheDocument()
+    expect(screen.getByText(/1 entries/)).toBeInTheDocument()
     expect(screen.queryByText(/Posted at transaction time/)).not.toBeInTheDocument()
   })
 

@@ -9,9 +9,9 @@
 // refs — so the input classNames here MUST stay identical for F-key nav to work.
 // Returns a <tr> so it sits directly inside the existing <tbody>.
 import React from 'react'
+import { AlertIcon, CloseIcon } from '../../components/Icons'
 import { fmt } from '../../utils/format'
 import { lineTotal } from '../../utils/invoiceMath'
-import { AlertIcon } from '../Icons'
 
 export default function CartItemRow({
   item,
@@ -354,9 +354,7 @@ export default function CartItemRow({
           className="btn btn-ghost btn-icon btn-sm"
           onClick={() => onRemove(index)}
           style={{ color: '#ef4444', padding: 4 }}
-        >
-          ✕
-        </button>
+         aria-label="Close"><CloseIcon size={16} /></button>
       </td>
     </tr>
   )

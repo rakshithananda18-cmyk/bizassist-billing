@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState } from 'react'
+import { Icon } from '../components/icons'
 
 const DialogContext = createContext(null)
 
@@ -50,7 +51,15 @@ export function DialogProvider({ children }) {
         <div className="custom-modal-overlay" style={{ zIndex: 99999 }}>
           <div className="custom-modal-card" style={{ maxWidth: 420 }}>
             <div className="custom-modal-title">
-              {dialog.type === 'confirm' ? '⚠️ Confirm Action' : 'ℹ️ Notification'}
+              {dialog.type === 'confirm' ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Icon name="warn" size={18} style={{ color: 'var(--warning-color, #f59e0b)' }} /> Confirm Action
+                </span>
+              ) : (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Icon name="alert" size={18} style={{ color: 'var(--info-color, #3b82f6)' }} /> Notification
+                </span>
+              )}
             </div>
             <div className="custom-modal-body" style={{ margin: '8px 0', fontSize: '14px', lineHeight: '1.5' }}>
               {dialog.message.split('\n').map((line, idx) => (

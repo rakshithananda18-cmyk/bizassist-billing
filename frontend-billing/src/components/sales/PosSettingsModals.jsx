@@ -21,8 +21,8 @@ export function PosCounterSettingsModal({
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 450 }}>
         <div className="modal-header">
-          <span className="modal-title" style={{ color: '#0f172a', fontWeight: 700 }}>⚙️ POS Counter Settings</span>
-          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{ color: '#64748b' }}>✕</button>
+          <span className="modal-title" style={{ color: '#0f172a', fontWeight: 700 }}><SettingsIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> POS Counter Settings</span>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{ color: '#64748b' }} aria-label="Close"><CloseIcon size={16} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -192,7 +192,7 @@ export function PosCounterSettingsModal({
               style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.85rem', padding: '6px 0' }}
               onClick={onAdvancedSettings}
             >
-              Advanced Settings ➔
+              Advanced Settings <ChevronRightIcon size={14} style={{ marginLeft: 4, display: 'inline-block', verticalAlign: 'middle' }} />
             </button>
             <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>
               Close
@@ -209,8 +209,8 @@ export function PosHotkeyModal({ onClose, funcKeys, setFuncKeys, defaultFuncKeys
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 450 }}>
         <div className="modal-header">
-          <span className="modal-title" style={{ color: '#0f172a', fontWeight: 700 }}>⌨️ Configure POS Hotkeys</span>
-          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{ color: '#64748b' }}>✕</button>
+          <span className="modal-title" style={{ color: '#0f172a', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}><KeyboardIcon size={18} /> Configure POS Hotkeys</span>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{ color: '#64748b' }} aria-label="Close"><CloseIcon size={16} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 2 }}>
@@ -220,10 +220,14 @@ export function PosHotkeyModal({ onClose, funcKeys, setFuncKeys, defaultFuncKeys
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '340px', overflowY: 'auto', paddingRight: '4px' }}>
             {/* Flow navigation keys — highlighted section */}
             <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>⌨️ Payment Flow Navigation</div>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2, display: 'inline-flex', alignItems: 'center', gap: 4 }}><KeyboardIcon size={12} /> Payment Flow Navigation</div>
               {[
                 {
-                  label: '🛒 → 💳 Proceed to Payment',
+                  label: (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <CartIcon size={14} /> &rarr; <CashIcon size={14} /> Proceed to Payment
+                    </span>
+                  ),
                   key: 'proceedToPayment',
                   hint: 'From barcode scanner → start payment (goes to Customer Name)',
                   options: ['Escape', 'F5', 'F6', 'F7', 'F10', 'Enter'],
@@ -327,3 +331,5 @@ export function PosHotkeyModal({ onClose, funcKeys, setFuncKeys, defaultFuncKeys
     </div>
   )
 }
+
+import { CartIcon, CashIcon, ChevronRightIcon, CloseIcon, SettingsIcon, KeyboardIcon } from '../../components/Icons'

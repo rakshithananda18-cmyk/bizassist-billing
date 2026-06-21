@@ -25,11 +25,16 @@ export function SummaryIcon({ size, strokeWidth }) {
 export function CounterIcon({ size, strokeWidth }) {
   return (
     <svg {...defaultSvgProps(size, strokeWidth)}>
-      <rect x="4" y="2" width="16" height="20" rx="2" />
+      <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
       <line x1="8" y1="6" x2="16" y2="6" />
-      <line x1="8" y1="10" x2="16" y2="10" />
-      <line x1="8" y1="14" x2="12" y2="14" />
-      <path d="M7 18h10" />
+      <line x1="16" y1="14" x2="16" y2="18" />
+      <path d="M16 10h.01" />
+      <path d="M12 10h.01" />
+      <path d="M8 10h.01" />
+      <path d="M12 14h.01" />
+      <path d="M8 14h.01" />
+      <path d="M12 18h.01" />
+      <path d="M8 18h.01" />
     </svg>
   )
 }
@@ -293,6 +298,233 @@ export function MessageIcon({ size, strokeWidth }) {
   return (
     <svg {...defaultSvgProps(size, strokeWidth)}>
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  )
+}
+
+export function LockIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  )
+}
+
+export function TruckIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <rect x="1" y="3" width="15" height="13" />
+      <polygon points="16 8 20 8 23 11 23 16 16 16" />
+      <circle cx="5.5" cy="18.5" r="2.5" />
+      <circle cx="18.5" cy="18.5" r="2.5" />
+    </svg>
+  )
+}
+
+export function ZapIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </svg>
+  )
+}
+
+export function PackageIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <line x1="16.5" y1="9.4" x2="7.5" y2="4.21" />
+      <polygon points="12 22.08 12 12 3 6.92 3 17.08 12 22.08" />
+      <polygon points="12 22.08 12 12 21 6.92 21 17.08 12 22.08" />
+      <polygon points="12 2 21 6.92 12 11.85 3 6.92 12 2" />
+      <line x1="12" y1="22.08" x2="12" y2="12" />
+    </svg>
+  )
+}
+
+export function CartIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <circle cx="9" cy="21" r="1" />
+      <circle cx="20" cy="21" r="1" />
+      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+    </svg>
+  )
+}
+
+export function ArrowUpIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <line x1="12" y1="19" x2="12" y2="5" />
+      <polyline points="5 12 12 5 19 12" />
+    </svg>
+  )
+}
+
+export function ArrowDownIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <polyline points="19 12 12 19 5 12" />
+    </svg>
+  )
+}
+
+export function ShieldIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  )
+}
+
+export function WarehouseIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <path d="M22 21H2V9l10-6 10 6v12z" />
+      <path d="M6 12h12v9H6z" />
+    </svg>
+  )
+}
+
+export function PlugIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <path d="M18 10h-1.5c-.8 0-1.5-.7-1.5-1.5V7a3 3 0 0 0-6 0v1.5C9 9.3 8.3 10 7.5 10H6c-1.1 0-2 .9-2 2v3c0 1.1.9 2 2 2h1.5c.8 0 1.5-.7 1.5-1.5V14" />
+      <path d="M12 17v4M8 2h2M14 2h2" />
+    </svg>
+  )
+}
+
+export function SparkleIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <path d="M12 2L14 9L21 12L14 15L12 22L10 15L3 12L10 9L12 2Z" />
+    </svg>
+  )
+}
+
+export function VolumeIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+    </svg>
+  )
+}
+
+export function InfoIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="16" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12.01" y2="8" />
+    </svg>
+  )
+}
+
+export function HandshakeIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </svg>
+  )
+}
+
+export function ChevronLeftIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  )
+}
+
+export function KeyboardIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <rect x="2" y="4" width="20" height="16" rx="2" ry="2" />
+      <line x1="6" y1="8" x2="6" y2="8" />
+      <line x1="10" y1="8" x2="10" y2="8" />
+      <line x1="14" y1="8" x2="14" y2="8" />
+      <line x1="18" y1="8" x2="18" y2="8" />
+      <line x1="6" y1="12" x2="6" y2="12" />
+      <line x1="10" y1="12" x2="14" y2="12" />
+      <line x1="18" y1="12" x2="18" y2="12" />
+      <line x1="7" y1="16" x2="17" y2="16" />
+    </svg>
+  )
+}
+
+export function BellIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  )
+}
+
+export function HomeIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <polyline points="9 22 9 12 15 12 15 22" />
+    </svg>
+  )
+}
+
+export function DashboardIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <rect x="3" y="3" width="7" height="9" rx="1" />
+      <rect x="14" y="3" width="7" height="5" rx="1" />
+      <rect x="14" y="12" width="7" height="9" rx="1" />
+      <rect x="3" y="16" width="7" height="5" rx="1" />
+    </svg>
+  )
+}
+
+export function ReportsIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <line x1="18" y1="20" x2="18" y2="10" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="14" />
+    </svg>
+  )
+}
+
+export function SunIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <circle cx="12" cy="12" r="5" />
+      <line x1="12" y1="1" x2="12" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="23" />
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+      <line x1="1" y1="12" x2="3" y2="12" />
+      <line x1="21" y1="12" x2="23" y2="12" />
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
+  )
+}
+
+export function MoonIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  )
+}
+
+export function MonitorIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+      <line x1="8" y1="21" x2="16" y2="21" />
+      <line x1="12" y1="17" x2="12" y2="21" />
     </svg>
   )
 }

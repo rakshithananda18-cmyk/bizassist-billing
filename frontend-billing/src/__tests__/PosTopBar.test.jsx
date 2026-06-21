@@ -57,9 +57,8 @@ describe('PosTopBar', () => {
 
   it('fires onCloseTab (with the tab id) when a tab ✕ is clicked', () => {
     const onCloseTab = vi.fn()
-    render(<PosTopBar {...base} onCloseTab={onCloseTab} />)
-    // The active tab's ✕ — there are two ✕ for tabs plus the window close (by title).
-    const closers = screen.getAllByText('✕').filter(el => el.className.includes('pos-tab-close'))
+    const { container } = render(<PosTopBar {...base} onCloseTab={onCloseTab} />)
+    const closers = container.querySelectorAll('.pos-tab-close')
     fireEvent.click(closers[0])
     expect(onCloseTab).toHaveBeenCalled()
     expect(onCloseTab.mock.calls[0][0]).toBe('1')

@@ -7,7 +7,7 @@ import {
   SummaryIcon,
   CounterIcon,
   InventoryIcon,
-  TaxIcon
+  ReportsIcon
 } from '../components/Icons'
 
 const STAR = 'M50 0 L51.5 4.5 L56 6 L51.5 7.5 L50 12 L48.5 7.5 L44 6 L48.5 4.5 Z'
@@ -128,17 +128,19 @@ export default function Register() {
     <div className="login-backdrop" aria-hidden="true">
       <aside className="lb-sidebar">
         <div className="lb-logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><BuildingMark size={18} /> BizAssist</div>
-        <div className="lb-nav-section">Home</div>
+        <div className="lb-nav-section">Supply & Inflow</div>
+        <div className="lb-navitem">Supplier Orders</div>
+        <div className="lb-navitem">Purchase Bills</div>
+        <div className="lb-navitem">Store Sync</div>
+        <div className="lb-navitem">Data Migration</div>
+        <div className="lb-nav-section">Hub</div>
         <div className="lb-navitem active">Home</div>
-        <div className="lb-nav-section">Daily Operations</div>
+        <div className="lb-navitem">Dashboard</div>
+        <div className="lb-nav-section">Sales & Operations</div>
         <div className="lb-navitem">Billing Counter</div>
         <div className="lb-navitem">Cash Book</div>
         <div className="lb-navitem">Contacts & Dues</div>
-        <div className="lb-nav-section">Stock & Supply</div>
-        <div className="lb-navitem">My Inventory</div>
-        <div className="lb-navitem">Purchase Bills</div>
-        <div className="lb-nav-section">Books & Migration</div>
-        <div className="lb-navitem">Tax & Profit Books</div>
+        <div className="lb-navitem">GST & Tax Reports</div>
       </aside>
       <main className="lb-main" style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
         <div className="lb-h1" style={{ fontSize: '1.5rem', fontWeight: 700 }}>Home</div>
@@ -392,7 +394,7 @@ export default function Register() {
 
             <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
               <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyCenter: 'center', flexShrink: 0, paddingLeft: 8, paddingTop: 8 }}>
-                <TaxIcon size={18} />
+                <ReportsIcon size={18} />
               </div>
               <div>
                 <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Real-time Accounting Reports</div>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
-import { InventoryIcon, AlertIcon, SyncIcon, PlusIcon } from '../components/Icons'
+import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, ZapIcon } from '../components/Icons'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -227,7 +227,7 @@ export default function Stock() {
         {alert && (
           <div className={`alert alert-${alert.type} mb-4`}>
             {alert.type === 'success' ? '✅' : '❌'} {alert.msg}
-            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button>
+            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }} aria-label="Close"><CloseIcon size={16} /></button>
           </div>
         )}
 
@@ -241,15 +241,15 @@ export default function Stock() {
             {activeTab === 'catalogue' ? (
               <>
                 <button className="btn btn-secondary" onClick={() => { setAdjustForm(defaultAdjust); setShowAdjustModal(true) }}>
-                  ↕ Adjust Stock
+                  <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Adjust Stock
                 </button>
                 <button className="btn btn-primary" onClick={() => { setForm(defaultProduct); setShowAddModal(true) }}>
-                  ＋ Add Product
+                  <PlusIcon size={14} /> Add Product
                 </button>
               </>
             ) : (
               <button className="btn btn-primary" onClick={() => { setTransferForm(defaultTransfer); setShowTransferModal(true) }}>
-                ＋ Transfer Stock
+                <PlusIcon size={14} /> Transfer Stock
               </button>
             )}
           </div>
@@ -315,7 +315,7 @@ export default function Stock() {
             {/* Filters */}
             <div className="flex items-center gap-3 mb-4" style={{ flexWrap: 'wrap' }}>
               <div className="search-bar">
-                <span style={{ color: 'var(--text-muted)' }}>🔍</span>
+                <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search products…" />
               </div>
               <select
@@ -431,7 +431,7 @@ export default function Stock() {
                     <input className="form-input" style={{ height: 35, fontSize: '0.82rem' }} placeholder="e.g. Ground Floor, Sector 4" value={newGodownAddress} onChange={e => setNewGodownAddress(e.target.value)} />
                   </div>
                   <button type="submit" className="btn btn-primary btn-sm" disabled={submitting} style={{ alignSelf: 'flex-start' }}>
-                    {submitting ? 'Registering…' : '✓ Register Godown'}
+                    {submitting ? 'Registering…' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Register Godown</span>}
                   </button>
                 </form>
               </div>
@@ -439,7 +439,7 @@ export default function Stock() {
 
             {/* Right side: Stock Transfer History */}
             <div>
-              <h3 style={{ color: '#0f172a', fontWeight: 800, marginBottom: 12 }}>⚡ Stock Transfer Log</h3>
+              <h3 style={{ color: '#0f172a', fontWeight: 800, marginBottom: 12 }}><ZapIcon size={14} style={{ color: 'var(--accent)', marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Stock Transfer Log</h3>
               <div className="data-table-wrap" style={{ maxHeight: '420px', overflowY: 'auto' }}>
                 <table className="data-table" style={{ fontSize: '0.8rem' }}>
                   <thead>
@@ -494,7 +494,7 @@ export default function Stock() {
                 <InventoryIcon size={16} />
                 <span>Add Product</span>
               </span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowAddModal(false)}>✕</button>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowAddModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
             </div>
             <form onSubmit={handleAddProduct}>
               <div className="modal-body">
@@ -575,7 +575,7 @@ export default function Stock() {
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={submitting}>
-                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Saving…</> : '✓ Add Product'}
+                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Saving…</> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Add Product</span>}
                 </button>
               </div>
             </form>
@@ -588,8 +588,8 @@ export default function Stock() {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowAdjustModal(false)}>
           <div className="modal">
             <div className="modal-header">
-              <span className="modal-title">↕ Adjust Stock</span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowAdjustModal(false)}>✕</button>
+              <span className="modal-title"><SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Adjust Stock</span>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowAdjustModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
             </div>
             <form onSubmit={handleAdjust}>
               <div className="modal-body">
@@ -606,9 +606,9 @@ export default function Stock() {
                   <div className="form-group">
                     <label className="form-label">Movement Type</label>
                     <select className="form-select" value={adjustForm.movement_type} onChange={e => setAdjField('movement_type', e.target.value)}>
-                      <option value="stock_in">📥 Stock In</option>
-                      <option value="stock_out">📤 Stock Out</option>
-                      <option value="adjustment">✏️ Adjustment</option>
+                      <option value="stock_in"><DownloadIcon size={32} style={{ color: 'var(--accent)' }} /> Stock In</option>
+                      <option value="stock_out"><UploadIcon size={32} style={{ color: 'var(--accent)' }} /> Stock Out</option>
+                      <option value="adjustment"><EditIcon size={14} /> Adjustment</option>
                     </select>
                   </div>
                   <div className="form-group">
@@ -628,7 +628,7 @@ export default function Stock() {
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowAdjustModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={submitting}>
-                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Adjusting…</> : '✓ Apply Adjustment'}
+                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Adjusting…</> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Apply Adjustment</span>}
                 </button>
               </div>
             </form>
@@ -645,7 +645,7 @@ export default function Stock() {
                 <SyncIcon size={16} />
                 <span>Transfer Stock</span>
               </span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowTransferModal(false)}>✕</button>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowTransferModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
             </div>
             <form onSubmit={handleTransferStock}>
               <div className="modal-body">
@@ -690,7 +690,7 @@ export default function Stock() {
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowTransferModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={submitting}>
-                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Transferring…</> : '✓ Transfer Stock'}
+                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Transferring…</> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Transfer Stock</span>}
                 </button>
               </div>
             </form>

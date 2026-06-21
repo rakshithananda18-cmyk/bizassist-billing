@@ -5,6 +5,7 @@
 // subtotal / GST split / grand total / change / UPI QR. No business logic here.
 // First step of decomposing the Sales god-component — behaviour is identical.
 import React from 'react'
+import { CloseIcon, SummaryIcon } from '../../components/Icons'
 import { fmt } from '../../utils/format'
 import { buildUpiUri, qrImageUrl } from '../../utils/share'
 
@@ -33,8 +34,8 @@ export default function TotalBreakupModal({
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 400 }}>
         <div className="modal-header">
-          <span className="modal-title" style={{ color: '#0f172a', fontWeight: 700 }}>📊 Total Breakup Details</span>
-          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{ color: '#64748b' }}>✕</button>
+          <span className="modal-title" style={{ color: '#0f172a', fontWeight: 700 }}><SummaryIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Total Breakup Details</span>
+          <button className="btn btn-ghost btn-icon" onClick={onClose} style={{ color: '#64748b' }} aria-label="Close"><CloseIcon size={16} /></button>
         </div>
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: '#334155' }}>

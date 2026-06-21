@@ -66,17 +66,19 @@ export default function Login() {
     <div className="login-backdrop" aria-hidden="true">
       <aside className="lb-sidebar">
         <div className="lb-logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><BuildingMark size={18} /> BizAssist</div>
-        <div className="lb-nav-section">Home</div>
+        <div className="lb-nav-section">Supply & Inflow</div>
+        <div className="lb-navitem">Supplier Orders</div>
+        <div className="lb-navitem">Purchase Bills</div>
+        <div className="lb-navitem">Store Sync</div>
+        <div className="lb-navitem">Data Migration</div>
+        <div className="lb-nav-section">Hub</div>
         <div className="lb-navitem active">Home</div>
-        <div className="lb-nav-section">Daily Operations</div>
+        <div className="lb-navitem">Dashboard</div>
+        <div className="lb-nav-section">Sales & Operations</div>
         <div className="lb-navitem">Billing Counter</div>
         <div className="lb-navitem">Cash Book</div>
         <div className="lb-navitem">Contacts & Dues</div>
-        <div className="lb-nav-section">Stock & Supply</div>
-        <div className="lb-navitem">My Inventory</div>
-        <div className="lb-navitem">Purchase Bills</div>
-        <div className="lb-nav-section">Books & Migration</div>
-        <div className="lb-navitem">Tax & Profit Books</div>
+        <div className="lb-navitem">GST & Tax Reports</div>
       </aside>
       <main className="lb-main" style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
         <div className="lb-h1" style={{ fontSize: '1.5rem', fontWeight: 700 }}>Home</div>

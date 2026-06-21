@@ -1,17 +1,7 @@
 import React, { useState } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
-import {
-  SummaryIcon,
-  CounterIcon,
-  InventoryIcon,
-  TaxIcon,
-  AlertIcon,
-  CashIcon,
-  BillsIcon,
-  DownloadIcon,
-  ChevronRightIcon
-} from '../components/Icons'
+import { AlertIcon, BillsIcon, CashIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, CounterIcon, DownloadIcon, InventoryIcon, SummaryIcon, TaxIcon } from '../components/Icons'
 import DayBookView from '../components/reports/DayBookView'
 import BalanceSheetView from '../components/reports/BalanceSheetView'
 import TrialBalanceView from '../components/reports/TrialBalanceView'
@@ -339,21 +329,21 @@ export default function Reports() {
   const colKeys = reportData?.length ? Object.keys(reportData[0]) : []
 
   return (
-    <AppLayout title="Tax & Profit Books">
+    <AppLayout title="GST & Tax Reports">
       <div className="slide-up">
 
         {alert && (
           <div className={`alert alert-${alert.type} mb-4`} style={{ alignItems: 'center' }}>
             <AlertIcon size={16} style={{ flexShrink: 0 }} />
             <span style={{ marginLeft: 4 }}>{alert.msg}</span>
-            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button>
+            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }} aria-label="Close"><CloseIcon size={16} /></button>
           </div>
         )}
 
         {/* Header */}
         <div className="page-header">
           <div className="page-header-left">
-            <h1 className="page-title">Tax & Profit Books</h1>
+            <h1 className="page-title">GST & Tax Reports</h1>
             <p className="page-subtitle">Generate financial statements and tax filings for your business</p>
           </div>
         </div>
@@ -421,7 +411,9 @@ export default function Reports() {
                     {activeInGroup && !isOpen && (
                       <span title="Active report in this group" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)' }} />
                     )}
-                    <span style={{ fontSize: '0.6rem', display: 'inline-block', width: 8, transition: 'transform .15s ease', transform: isOpen ? 'rotate(90deg)' : 'none' }}>▶</span>
+                    <span style={{ display: 'inline-flex', color: isOpen ? '#fff' : 'var(--text-muted)', transition: 'transform .18s ease', transform: isOpen ? 'rotate(180deg)' : 'none' }}>
+                      <ChevronDownIcon size={14} />
+                    </span>
                   </button>
                 )
               })}

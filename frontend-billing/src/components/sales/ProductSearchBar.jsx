@@ -7,7 +7,6 @@
 // the global POS keydown handler focuses it (F9, post-save, Escape-clear) exactly
 // as before. Presentational otherwise: query/results/handlers are passed in.
 import { forwardRef } from 'react'
-import { SearchIcon } from '../Icons'
 import { fmt } from '../../utils/format'
 
 const ProductSearchBar = forwardRef(function ProductSearchBar({
@@ -36,7 +35,7 @@ const ProductSearchBar = forwardRef(function ProductSearchBar({
           />
         </div>
         <button type="button" className="btn btn-secondary" onClick={onAddCustom} style={{ whiteSpace: 'nowrap', fontSize: '0.8rem', padding: '0 16px' }}>
-          ＋ Custom Item
+          <PlusIcon size={14} /> Custom Item
         </button>
       </div>
 
@@ -88,3 +87,5 @@ const ProductSearchBar = forwardRef(function ProductSearchBar({
 })
 
 export default ProductSearchBar
+
+import { PlusIcon, SearchIcon } from '../../components/Icons'

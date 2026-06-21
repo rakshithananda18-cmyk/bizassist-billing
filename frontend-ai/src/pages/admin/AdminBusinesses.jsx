@@ -267,7 +267,7 @@ export default function AdminBusinesses() {
                         <div style={{ display: 'flex', gap: 6 }}>
                           <button className="btn-flush" onClick={() => openInspectModal(b)}>Inspect</button>
                           <button className="btn-flush" onClick={() => openEditModal(b)}>Edit</button>
-                          <button className="btn-flush" onClick={() => openLimitsModal(b)}>⚙ Limits</button>
+                          <button className="btn-flush" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => openLimitsModal(b)}><Icon name="settings" size={12} /> Limits</button>
                           <button className="btn-flush" onClick={() => handleFlushCache(b.id, b.business_name)}>Flush Cache</button>
                           <button className="btn-wipe-row" onClick={() => handleWipeUser(b.id, b.business_name)}>Wipe Data</button>
                         </div>
@@ -456,8 +456,8 @@ export default function AdminBusinesses() {
           <div className="custom-modal-card admin-inspect-modal" style={{ maxWidth: 800, width: '90%', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <div className="custom-modal-title" style={{ fontSize: 22 }}>
-                  🔍 Inspect: {inspectDetails?.business_name || 'Loading...'}
+                <div className="custom-modal-title" style={{ fontSize: 22, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Icon name="search" size={20} /> Inspect: {inspectDetails?.business_name || 'Loading...'}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--secondary-text)', marginTop: 4 }}>
                   User ID: {inspectDetails?.id} | Username: {inspectDetails?.username}
@@ -465,9 +465,10 @@ export default function AdminBusinesses() {
               </div>
               <button
                 onClick={() => setShowInspectModal(false)}
-                style={{ background: 'transparent', border: 'none', fontSize: 24, cursor: 'pointer', color: 'var(--secondary-text)' }}
+                style={{ background: 'transparent', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--secondary-text)' }}
+                aria-label="Close"
               >
-                ×
+                <Icon name="x" size={20} />
               </button>
             </div>
 
@@ -477,7 +478,7 @@ export default function AdminBusinesses() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 24 }}>
                 {/* Uploaded datasets */}
                 <details className="tree-node">
-                  <summary className="tree-summary">📦 Uploaded Datasets ({inspectDetails.uploads.length})</summary>
+                  <summary className="tree-summary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="package" size={14} /> Uploaded Datasets ({inspectDetails.uploads.length})</summary>
                   <div className="tree-content">
                     {inspectDetails.uploads.length === 0 ? (
                       <div style={{ color: 'var(--secondary-text)', padding: '10px 0' }}>No datasets uploaded.</div>
@@ -510,7 +511,7 @@ export default function AdminBusinesses() {
 
                 {/* Invoices */}
                 <details className="tree-node">
-                  <summary className="tree-summary">📄 Invoices & Sales ({inspectDetails.invoices.length})</summary>
+                  <summary className="tree-summary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="file" size={14} /> Invoices & Sales ({inspectDetails.invoices.length})</summary>
                   <div className="tree-content">
                     {inspectDetails.invoices.length === 0 ? (
                       <div style={{ color: 'var(--secondary-text)', padding: '10px 0' }}>No invoices present.</div>
@@ -559,7 +560,7 @@ export default function AdminBusinesses() {
 
                 {/* Inventory */}
                 <details className="tree-node">
-                  <summary className="tree-summary">📦 Inventory Stock ({inspectDetails.inventory.length} items)</summary>
+                  <summary className="tree-summary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="package" size={14} /> Inventory Stock ({inspectDetails.inventory.length} items)</summary>
                   <div className="tree-content">
                     {inspectDetails.inventory.length === 0 ? (
                       <div style={{ color: 'var(--secondary-text)', padding: '10px 0' }}>No inventory records.</div>
@@ -597,7 +598,7 @@ export default function AdminBusinesses() {
 
                 {/* Payments */}
                 <details className="tree-node">
-                  <summary className="tree-summary">💳 Logged Payments & Dues ({inspectDetails.payments.length})</summary>
+                  <summary className="tree-summary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="card" size={14} /> Logged Payments & Dues ({inspectDetails.payments.length})</summary>
                   <div className="tree-content">
                     {inspectDetails.payments.length === 0 ? (
                       <div style={{ color: 'var(--secondary-text)', padding: '10px 0' }}>No payment entries.</div>
@@ -642,8 +643,8 @@ export default function AdminBusinesses() {
 
                 {/* Chat History */}
                 <details className="tree-node">
-                  <summary className="tree-summary">
-                    💬 Chat Threads History ({Object.keys(inspectDetails.chat_history.reduce((acc, m) => {
+                  <summary className="tree-summary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Icon name="chat" size={14} /> Chat Threads History ({Object.keys(inspectDetails.chat_history.reduce((acc, m) => {
                       const sid = m.session_id || 'default'
                       acc[sid] = true
                       return acc

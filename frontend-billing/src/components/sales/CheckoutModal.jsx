@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react'
-import { AlertIcon } from '../Icons'
+import { AlertIcon, CashIcon, CheckIcon, CloseIcon, EditIcon, PhoneIcon, PlusIcon, UserIcon, VolumeIcon } from '../../components/Icons'
 import InvoiceBreakdownCard from './InvoiceBreakdownCard'
 import TenderChips from './TenderChips'
 import { changeDue, paymentBalance } from '../../utils/invoiceMath'
@@ -463,9 +463,7 @@ export default function CheckoutModal({
               type="button"
               style={{ color: '#78716c', fontSize: '1.2rem', padding: '0 4px', cursor: 'pointer', background: 'none', border: 'none' }}
               onClick={onClose}
-            >
-              ✕
-            </button>
+             aria-label="Close"><CloseIcon size={16} /></button>
           </div>
 
           {/* Two Column Layout */}
@@ -474,7 +472,7 @@ export default function CheckoutModal({
             {/* Left Column - Billing & Breakdown */}
             <div style={{ flex: 1, minWidth: '350px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent)', borderBottom: '1px dashed var(--border)', paddingBottom: '4px' }}>
-                👤 Billing Info
+                <UserIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Billing Info
               </div>
 
               {/* Customer search select dropdown */}
@@ -526,9 +524,7 @@ export default function CheckoutModal({
                           setCustomerSearchQuery('')
                         }}
                         title="Clear Selection"
-                      >
-                        ✕
-                      </span>
+                      ><CloseIcon size={12} /></span>
                     )}
                   </div>
                   <button
@@ -571,7 +567,7 @@ export default function CheckoutModal({
                       setShowCustModal(true)
                     }}
                   >
-                    {form.customer_id ? '✏️' : '＋'}
+                    {form.customer_id ? '<EditIcon size={14} />' : '<PlusIcon size={14} />'}
                   </button>
                 </div>
 
@@ -649,7 +645,7 @@ export default function CheckoutModal({
                                     onMouseEnter={() => setCustomerSelectedIndex(idx)}
                                   >
                                     <div className="pos-customer-dropdown-item-title" style={{ fontWeight: 600 }}>{c.name}</div>
-                                    {c.phone && <div className="pos-customer-dropdown-item-phone" style={{ fontSize: '0.75rem', opacity: 0.8 }}>📞 {c.phone}</div>}
+                                    {c.phone && <div className="pos-customer-dropdown-item-phone" style={{ fontSize: '0.75rem', opacity: 0.8 }}><PhoneIcon size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> {c.phone}</div>}
                                   </div>
                                 )
                               })
@@ -683,7 +679,7 @@ export default function CheckoutModal({
                                   setShowCustModal(true)
                                 }}
                               >
-                                ＋ Create customer "{customerSearchQuery}"
+                                <PlusIcon size={14} /> Create customer "{customerSearchQuery}"
                               </div>
                             )}
                           </>
@@ -819,7 +815,7 @@ export default function CheckoutModal({
             {/* Right Column - Tendering & Checkout */}
             <div style={{ flex: 1, minWidth: '350px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent)', borderBottom: '1px dashed var(--border)', paddingBottom: '4px' }}>
-                💳 Tendering
+                <CashIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Tendering
               </div>
 
               {/* Single Discount (post-tax — reduces the payable, NOT GST) + automatic round-off */}
@@ -1003,7 +999,7 @@ export default function CheckoutModal({
                     marginTop: '4px'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '1.1rem' }}>🔊</span>
+                      <span style={{ fontSize: '1.1rem' }}><VolumeIcon size={16} /></span>
                       <span style={{ fontSize: '0.75rem', fontWeight: 800, color: soundboxStatus === 'waiting' ? '#1d4ed8' : soundboxStatus === 'success' ? '#15803d' : '#475569' }}>
                         UPI Soundbox Simulator
                       </span>
@@ -1019,7 +1015,7 @@ export default function CheckoutModal({
                     {soundboxStatus === 'success' && (
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                         <span style={{ fontSize: '0.7rem', color: '#16a34a', fontWeight: 700 }}>
-                          ✓ Payment Successful!
+                          <CheckIcon size={18} style={{ color: 'var(--success)', display: 'inline-block', verticalAlign: 'middle', marginRight: 6 }} /> Payment Successful!
                         </span>
                         <span style={{ fontSize: '0.65rem', color: '#15803d', textAlign: 'center' }}>
                           Voice confirmation played. Auto-printing...
@@ -1113,9 +1109,9 @@ export default function CheckoutModal({
           <div className="modal" style={{ maxWidth: 400 }}>
             <div className="modal-header">
               <span className="modal-title" style={{ color: '#0f172a', fontWeight: 700 }}>
-                👤 {custModalFields.id ? 'Edit Customer Details' : 'Add New Customer'}
+                <UserIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> {custModalFields.id ? 'Edit Customer Details' : 'Add New Customer'}
               </span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowCustModal(false)} style={{ color: '#64748b' }}>✕</button>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowCustModal(false)} style={{ color: '#64748b' }} aria-label="Close"><CloseIcon size={16} /></button>
             </div>
             <form onSubmit={handleSaveCustomer}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

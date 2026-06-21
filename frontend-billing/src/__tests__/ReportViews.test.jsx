@@ -34,13 +34,13 @@ describe('TrialBalanceView', () => {
     }
     render(<TrialBalanceView reportData={data} fmt={fmt} />)
     expect(screen.getByText('Cash & Bank')).toBeInTheDocument()
-    expect(screen.getByText('✓ Balanced — Debits equal Credits')).toBeInTheDocument()
+    expect(screen.getByText(/Balanced — Debits equal Credits/)).toBeInTheDocument()
   })
 
   it('shows the out-of-balance warning when not balanced', () => {
     const data = { accounts: [], totals: { total_debit: 100, total_credit: 90, balanced: false }, memo: {} }
     render(<TrialBalanceView reportData={data} fmt={fmt} />)
-    expect(screen.getByText('⚠ Out of balance — check data')).toBeInTheDocument()
+    expect(screen.getByText(/Out of balance — check data/)).toBeInTheDocument()
   })
 })
 
@@ -64,3 +64,5 @@ describe('PartyLedgerView', () => {
     expect(screen.getByText('No transactions in this period.')).toBeInTheDocument()
   })
 })
+
+import { AlertIcon, CheckIcon } from '../components/Icons'

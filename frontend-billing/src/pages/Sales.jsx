@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
-import { AlertIcon, CheckIcon, CloseIcon, BillsIcon, ChevronRightIcon } from '../components/Icons'
+import { AlertIcon, BillsIcon, CheckIcon, ChevronRightIcon, CloseIcon, TagIcon } from '../components/Icons'
 // Shared formatting helpers (money / today / amount-in-words) live in utils/format.
 import { fmt, getTodayDateStr } from '../utils/format'
 // Invoice money-math (line totals, intra/inter GST split, change due) — pure + tested.
@@ -1389,7 +1389,7 @@ export default function Sales() {
               <div className={`alert alert-${alert.type} mb-3`} style={{ padding: '8px 12px', fontSize: '0.82rem', alignItems: 'center' }}>
                 {alert.type === 'success' ? <CheckIcon size={14} style={{ marginRight: 4 }} /> : <AlertIcon size={14} style={{ marginRight: 4 }} />}
                 <span>{alert.msg}</span>
-                <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button>
+                <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }} aria-label="Close"><CloseIcon size={16} /></button>
               </div>
             )}
 
@@ -1483,16 +1483,14 @@ export default function Sales() {
                     onClick={e => e.stopPropagation()}
                   >
                     <div className="modal-header" style={{ borderBottom: '1px solid var(--border)' }}>
-                      <span className="modal-title" style={{ fontSize: '1.1rem', fontWeight: 800 }}>
-                        🏷️ Price Selection — {form.items[priceSelectorIndex]?.product}
+                      <span className="modal-title" style={{ fontSize: '1.1rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <TagIcon size={18} style={{ color: 'var(--accent)' }} /> Price Selection — {form.items[priceSelectorIndex]?.product}
                       </span>
                       <button
                         className="btn btn-ghost btn-icon"
                         onClick={() => setPriceSelectorIndex(null)}
                         style={{ color: '#78716c' }}
-                      >
-                        ✕
-                      </button>
+                       aria-label="Close"><CloseIcon size={16} /></button>
                     </div>
                     <div className="modal-body" style={{ padding: '16px 20px' }}>
                       <p style={{ fontSize: '0.82rem', color: '#78716c', marginBottom: '12px' }}>
@@ -1525,8 +1523,7 @@ export default function Sales() {
                                   onClick={() => handleSelectPriceOption(opt.price, opt.label)}
                                   onMouseEnter={() => setSelectedPriceOptIndex(oIdx)}
                                 >
-                                  <td style={{ padding: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    {isSelected ? '👉' : '  '}
+                                  <td style={{ padding: '12px' }}>
                                     <span>{opt.label}</span>
                                   </td>
                                   <td style={{ padding: '12px', color: isSelected ? 'var(--text-primary)' : '#78716c' }}>
@@ -1577,7 +1574,7 @@ export default function Sales() {
               }}
             >
               <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)', borderBottom: '2.5px solid var(--accent)', paddingBottom: '6px', marginBottom: '4px' }}>
-                🍽️ Menu / Catalogue
+                <InventoryIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Menu / Catalogue
               </div>
               {Object.keys(groupedProducts).length === 0 ? (
                 <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '40px' }}>

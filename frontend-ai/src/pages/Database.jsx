@@ -255,9 +255,9 @@ export default function Database() {
             <button
               onClick={loadDatabase}
               className="chip"
-              style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600 }}
+              style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}
             >
-              ↻ Refresh
+              <Icon name="refresh" size={13} /> Refresh
             </button>
 
             <button
@@ -736,8 +736,9 @@ export default function Database() {
               </div>
               <button
                 onClick={closePreview}
-                style={{ border: 'none', background: 'transparent', fontSize: 22, cursor: 'pointer', color: 'var(--secondary-text)', lineHeight: 1, padding: '4px 8px', borderRadius: 6 }}
-              >✕</button>
+                style={{ border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--secondary-text)', padding: '4px 8px', borderRadius: 6 }}
+                aria-label="Close"
+              ><Icon name="x" size={16} /></button>
             </div>
 
             {/* Modal Body */}

@@ -2,81 +2,46 @@ import React from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { BuildingMark } from '../components/Logo'
-import {
-  SummaryIcon,
-  CounterIcon,
-  BillsIcon,
-  InventoryIcon,
-  ContactsIcon,
-  CashIcon,
-  TaxIcon,
-  ConnectionIcon,
-  OrderIcon,
-  ImportIcon,
-  LogoutIcon,
-  ChevronDownIcon,
-  SettingsIcon
-} from '../components/Icons'
-
+import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon } from '../components/Icons'
 
 const NAV = [
   {
-    section: 'Home',
+    section: 'Supply & Inflow',
     items: [
-      { to: '/',          icon: <SummaryIcon    size={16} />, label: 'Home'      },
-      { to: '/dashboard', icon: <CounterIcon    size={16} />, label: 'Dashboard' },
-    ]
-  },
-  {
-    section: 'Daily Operations',
-    items: [
-      { to: '/sales', icon: <CounterIcon size={16} />, label: 'Billing Counter' },
-      { to: '/payments', icon: <CashIcon size={16} />, label: 'Cash Book' },
-      { to: '/parties', icon: <ContactsIcon size={16} />, label: 'Contacts & Dues' },
-    ]
-  },
-  {
-    section: 'Stock & Supply',
-    items: [
-      { to: '/stock', icon: <InventoryIcon size={16} />, label: 'My Inventory' },
-      { to: '/purchases', icon: <BillsIcon size={16} />, label: 'Purchase Bills' },
-    ]
-  },
-  {
-    section: 'B2B Network (Auto Sync)',
-    items: [
-      { to: '/connections', icon: <ConnectionIcon size={16} />, label: 'Store Sync' },
       { to: '/orders', icon: <OrderIcon size={16} />, label: 'Supplier Orders' },
-    ]
-  },
-  {
-    section: 'Books & Migration',
-    items: [
-      { to: '/reports', icon: <TaxIcon size={16} />, label: 'Tax & Profit Books' },
+      { to: '/purchases', icon: <BillsIcon size={16} />, label: 'Purchase Bills' },
+      { to: '/connections', icon: <ConnectionIcon size={16} />, label: 'Store Sync' },
       { to: '/import', icon: <ImportIcon size={16} />, label: 'Data Migration' },
     ]
   },
   {
-    section: 'Settings',
+    section: 'Hub',
     items: [
-      { to: '/profile',  icon: <ContactsIcon size={16} />, label: 'My Profile' },
-      { to: '/staff',    icon: <ContactsIcon size={16} />, label: 'Staff & Cashiers' },
-      { to: '/settings', icon: <SettingsIcon  size={16} />, label: 'App Settings' },
+      { to: '/',          icon: <HomeIcon size={16} />, label: 'Home'      },
+      { to: '/dashboard', icon: <DashboardIcon size={16} />, label: 'Dashboard' },
+    ]
+  },
+  {
+    section: 'Sales & Operations',
+    items: [
+      { to: '/sales', icon: <CounterIcon size={16} />, label: 'Billing Counter' },
+      { to: '/payments', icon: <CashIcon size={16} />, label: 'Cash Book' },
+      { to: '/parties', icon: <ContactsIcon size={16} />, label: 'Contacts & Dues' },
+      { to: '/reports', icon: <ReportsIcon size={16} />, label: 'GST & Tax Reports' },
     ]
   }
 ]
 
 // Flat list for sub-navbar (only key pages, grouped)
 const SUBNAV = [
-  { to: '/',           label: 'Home',         icon: <SummaryIcon size={14} /> },
-  { to: '/dashboard',  label: 'Dashboard',    icon: <CounterIcon size={14} /> },
+  { to: '/',           label: 'Home',         icon: <HomeIcon size={14} /> },
+  { to: '/dashboard',  label: 'Dashboard',    icon: <DashboardIcon size={14} /> },
   { to: '/sales',      label: 'Billing',      icon: <CounterIcon size={14} /> },
   { to: '/payments',   label: 'Cash Book',    icon: <CashIcon size={14} /> },
   { to: '/parties',    label: 'Contacts',     icon: <ContactsIcon size={14} /> },
   { to: '/stock',      label: 'Inventory',    icon: <InventoryIcon size={14} /> },
   { to: '/purchases',  label: 'Purchases',    icon: <BillsIcon size={14} /> },
-  { to: '/reports',    label: 'Reports',      icon: <TaxIcon size={14} /> },
-  { to: '/settings',   label: 'Settings',     icon: <SettingsIcon size={14} /> },
+  { to: '/reports',    label: 'Reports',      icon: <ReportsIcon size={14} /> },
 ]
 
 // Map route -> page title
@@ -90,7 +55,7 @@ const PAGE_TITLES = {
   '/purchases':   'Purchase Bills',
   '/connections': 'Store Sync',
   '/orders':      'Supplier Orders',
-  '/reports':     'Tax & Profit Books',
+  '/reports':     'GST & Tax Reports',
   '/import':      'Data Migration',
   '/profile':     'My Profile',
   '/staff':       'Staff & Cashiers',
@@ -110,16 +75,31 @@ export default function AppLayout({ children, title }) {
     ? NAV.map(s => ({ ...s, items: s.items.filter(i => !OWNER_ONLY_PATHS.has(i.to)) })).filter(s => s.items.length > 0)
     : NAV
 
-  // Track collapsed state per section
-  const [collapsed, setCollapsed] = React.useState({
-    'Home': false,
-    'Daily Operations': false,
-    'Stock & Supply': false,
-    'B2B Network (Auto Sync)': true,
-    'Books & Migration': false,
-    'Settings': false,
-
+  // Track collapsed state per section with localStorage persistence
+  const [collapsed, setCollapsed] = React.useState(() => {
+    try {
+      const saved = localStorage.getItem('sidebar_collapsed_sections')
+      if (saved) {
+        return JSON.parse(saved)
+      }
+    } catch (e) {
+      console.error(e)
+    }
+    return {
+      'Hub': true,
+      'Sales & Operations': true,
+      'Supply & Inflow': true,
+    }
   })
+
+  // Persist collapsed state to localStorage
+  React.useEffect(() => {
+    try {
+      localStorage.setItem('sidebar_collapsed_sections', JSON.stringify(collapsed))
+    } catch (e) {
+      console.error(e)
+    }
+  }, [collapsed])
 
   // Auto-expand a collapsed section if one of its child routes is active
   React.useEffect(() => {
@@ -130,6 +110,67 @@ export default function AppLayout({ children, title }) {
       }
     })
   }, [location.pathname])
+
+  // Theme support
+  const [theme, setTheme] = React.useState(() => {
+    return localStorage.getItem('billing_theme') || 'light'
+  })
+
+  React.useEffect(() => {
+    const root = document.documentElement
+    root.classList.remove('dark-mode')
+    
+    const applyTheme = (t) => {
+      if (t === 'dark') {
+        root.classList.add('dark-mode')
+      } else if (t === 'light') {
+        root.classList.remove('dark-mode')
+      } else if (t === 'system') {
+        const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (isSystemDark) {
+          root.classList.add('dark-mode')
+        } else {
+          root.classList.remove('dark-mode')
+        }
+      }
+    }
+    
+    applyTheme(theme)
+    localStorage.setItem('billing_theme', theme)
+    
+    if (theme === 'system') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+      const handler = (e) => {
+        if (e.matches) {
+          root.classList.add('dark-mode')
+        } else {
+          root.classList.remove('dark-mode')
+        }
+      }
+      mediaQuery.addEventListener('change', handler)
+      return () => mediaQuery.removeEventListener('change', handler)
+    }
+  }, [theme])
+
+  // Profile popover menu
+  const [showProfileMenu, setShowProfileMenu] = React.useState(false)
+  const profileMenuRef = React.useRef(null)
+  const userChipRef = React.useRef(null)
+
+  React.useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (
+        profileMenuRef.current &&
+        !profileMenuRef.current.contains(e.target) &&
+        userChipRef.current &&
+        !userChipRef.current.contains(e.target)
+      ) {
+        setShowProfileMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
 
   const [minimizedBill, setMinimizedBill] = React.useState(null)
 
@@ -295,7 +336,7 @@ export default function AppLayout({ children, title }) {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.02em' }}>
-                    ⚡ Minimized Invoice
+                    <ZapIcon size={14} style={{ color: 'var(--accent)', marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Minimized Invoice
                   </span>
                   <button
                     style={{
@@ -319,9 +360,7 @@ export default function AppLayout({ children, title }) {
                         window.dispatchEvent(new Event('pos_minimized_changed'));
                       }
                     }}
-                  >
-                    ✕
-                  </button>
+                   aria-label="Close"><CloseIcon size={16} /></button>
                 </div>
                 <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                   {minimizedBill.name} {minimizedBill.tabsCount > 1 ? `(+${minimizedBill.tabsCount - 1} tabs)` : ''}
@@ -334,7 +373,44 @@ export default function AppLayout({ children, title }) {
                 </div>
               </div>
             )}
-            <div className="user-chip" title="My Profile" onClick={() => navigate('/profile')}>
+            
+            {showProfileMenu && (
+              <div className="profile-menu" ref={profileMenuRef}>
+                <div className="profile-menu-header">
+                  <div className="profile-menu-biz">{profile?.business_name || user?.username || 'BizAssist User'}</div>
+                  <div className="profile-menu-sub">Enterprise Account</div>
+                </div>
+                <div className="profile-menu-sep" />
+                <button className="profile-menu-item" onClick={() => { setShowProfileMenu(false); navigate('/profile'); }}>
+                  <UserIcon size={14} /> My Profile
+                </button>
+                <button className="profile-menu-item" onClick={() => { setShowProfileMenu(false); navigate('/settings'); }}>
+                  <SettingsIcon size={14} /> App Settings
+                </button>
+                <button className="profile-menu-item" onClick={() => { setShowProfileMenu(false); navigate('/staff'); }}>
+                  <ContactsIcon size={14} /> Staff & Cashiers
+                </button>
+                <button className="profile-menu-item logout" onClick={() => { setShowProfileMenu(false); logout(); navigate('/login'); }}>
+                  <LogoutIcon size={14} /> Sign Out
+                </button>
+                <div className="profile-menu-theme">
+                  <span className="profile-menu-theme-label">Theme</span>
+                  <div className="profile-theme-toggle">
+                    <button className={`theme-opt-btn ${theme === 'light' ? 'active' : ''}`} onClick={() => setTheme('light')} title="Light Mode">
+                      <SunIcon size={14} />
+                    </button>
+                    <button className={`theme-opt-btn ${theme === 'dark' ? 'active' : ''}`} onClick={() => setTheme('dark')} title="Dark Mode">
+                      <MoonIcon size={14} />
+                    </button>
+                    <button className={`theme-opt-btn ${theme === 'system' ? 'active' : ''}`} onClick={() => setTheme('system')} title="System Mode">
+                      <MonitorIcon size={14} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="user-chip" title="Settings & Profile" ref={userChipRef} onClick={() => setShowProfileMenu(!showProfileMenu)}>
               <div className="user-avatar">
                 {profile?.logo ? (
                   <img src={profile.logo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }} />
@@ -344,8 +420,8 @@ export default function AppLayout({ children, title }) {
               </div>
               <div className="user-info">
                 <div className="user-name">{profile?.business_name || user?.username || 'User'}</div>
-                <div className="user-role" onClick={(e) => { e.stopPropagation(); logout(); }} style={{ cursor: 'pointer', textDecoration: 'underline' }}>
-                  Sign Out
+                <div className="user-role">
+                  Settings Menu
                 </div>
               </div>
             </div>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
-import { CashIcon } from '../components/Icons'
+import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, WarehouseIcon } from '../components/Icons'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '₹0'
@@ -146,7 +146,7 @@ export default function Payments() {
         {alert && (
           <div className={`alert alert-${alert.type} mb-4`}>
             {alert.type === 'success' ? '✅' : '❌'} {alert.msg}
-            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button>
+            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }} aria-label="Close"><CloseIcon size={16} /></button>
           </div>
         )}
 
@@ -163,11 +163,11 @@ export default function Payments() {
           <div className="page-actions">
             {activeTab === 'Expenses' ? (
               <button className="btn btn-primary" onClick={() => { setExpenseForm(defaultExpenseForm); setShowExpenseModal(true) }}>
-                ＋ Log Expense
+                <PlusIcon size={14} /> Log Expense
               </button>
             ) : (
               <button className="btn btn-primary" onClick={() => { setForm(defaultForm); setShowModal(true) }}>
-                ＋ Record Payment
+                <PlusIcon size={14} /> Record Payment
               </button>
             )}
           </div>
@@ -365,7 +365,7 @@ export default function Payments() {
           <div className="modal">
             <div className="modal-header">
               <span className="modal-title">💳 Record Payment</span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}>✕</button>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
@@ -394,10 +394,10 @@ export default function Payments() {
                   <div className="form-group">
                     <label className="form-label">Payment Method</label>
                     <select className="form-select" value={form.method} onChange={e => setField('method', e.target.value)}>
-                      <option value="Cash">💵 Cash</option>
-                      <option value="UPI">📱 UPI</option>
-                      <option value="Bank">🏦 Bank Transfer</option>
-                      <option value="Cheque">📋 Cheque</option>
+                      <option value="Cash"><CashIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Cash</option>
+                      <option value="UPI"><PhoneIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> UPI</option>
+                      <option value="Bank"><WarehouseIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Bank Transfer</option>
+                      <option value="Cheque"><BillsIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Cheque</option>
                     </select>
                   </div>
                 </div>
@@ -409,7 +409,7 @@ export default function Payments() {
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={submitting}>
-                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Recording…</> : '✓ Record Payment'}
+                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Recording…</> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Record Payment</span>}
                 </button>
               </div>
             </form>
@@ -422,8 +422,8 @@ export default function Payments() {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowExpenseModal(false)}>
           <div className="modal">
             <div className="modal-header">
-              <span className="modal-title">💸 Log Business Expense</span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowExpenseModal(false)}>✕</button>
+              <span className="modal-title"><CashIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Log Business Expense</span>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowExpenseModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
             </div>
             <form onSubmit={handleExpenseSubmit}>
               <div className="modal-body">
@@ -458,9 +458,9 @@ export default function Payments() {
                   <div className="form-group">
                     <label className="form-label">Payment Mode</label>
                     <select className="form-select" value={expenseForm.payment_mode} onChange={e => setExpenseField('payment_mode', e.target.value)}>
-                      <option value="Cash">💵 Cash</option>
-                      <option value="UPI">📱 UPI</option>
-                      <option value="Bank">🏦 Bank Transfer</option>
+                      <option value="Cash"><CashIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Cash</option>
+                      <option value="UPI"><PhoneIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> UPI</option>
+                      <option value="Bank"><WarehouseIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Bank Transfer</option>
                     </select>
                   </div>
                 </div>
@@ -478,7 +478,7 @@ export default function Payments() {
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowExpenseModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={submitting}>
-                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Saving…</> : '✓ Save Expense'}
+                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Saving…</> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Save Expense</span>}
                 </button>
               </div>
             </form>

@@ -2,14 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
-import { CheckIcon, SettingsIcon, BillsIcon, InventoryIcon, PrinterIcon, TagIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, InventoryIcon, PrinterIcon, SettingsIcon, TagIcon, WarehouseIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import { SkylineLoader } from '../components/Logo'
 import { getHeaderLayout, isHeaderLineEnabled, moveItem } from '../utils/printLayout'
 
 // Sample content shown for each draggable header line in the live preview.
 const PREVIEW_HEADER_CONTENT = {
-  logo:            { node: '🏢', style: { fontSize: '1rem', lineHeight: 1 } },
+  logo:            { node: <WarehouseIcon size={24} style={{ color: 'var(--text-muted)' }} />, style: { fontSize: '1rem', lineHeight: 1 } },
   company_name:    { node: 'MY RETAIL STORE', style: { fontWeight: 'bold', fontSize: '0.88rem' } },
   company_address: { node: '123 Market Road, Bengaluru', style: { fontSize: '0.62rem', color: '#64748b' } },
   company_contact: { node: 'Ph: +91 98765 43210 · store@gmail.com', style: { fontSize: '0.62rem', color: '#64748b' } },
@@ -970,7 +970,7 @@ export default function Settings() {
                     {/* Header bar colored by theme_color */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `2px solid ${pr.theme_color || '#3b82f6'}`, paddingBottom: '12px', marginBottom: '12px' }}>
                       <div>
-                        {pr.print_logo && <Editable k="print_logo" style={{ fontSize: '1.4rem', marginBottom: '4px' }}>🏢</Editable>}
+                        {pr.print_logo && <Editable k="print_logo" style={{ fontSize: '1.4rem', marginBottom: '4px' }}><WarehouseIcon size={24} style={{ color: 'var(--text-muted)' }} /></Editable>}
                         {pr.print_company_name && <Editable k="print_company_name" style={{ fontWeight: 800, fontSize: '1rem', color: pr.theme_color || '#3b82f6' }}>MY COMPLIANT COMPANY</Editable>}
                         {pr.print_company_address && <Editable k="print_company_address" style={{ color: '#64748b', fontSize: '0.65rem' }}>45, GST Boulevard, Industrial Area, Bangalore</Editable>}
                         {(pr.print_company_phone || pr.print_company_email) && (

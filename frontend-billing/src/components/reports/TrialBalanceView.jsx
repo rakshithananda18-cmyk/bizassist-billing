@@ -40,9 +40,15 @@ export default function TrialBalanceView({ reportData, fmt }) {
         border: `1px solid ${reportData.totals?.balanced ? 'rgba(46, 125, 50, 0.2)' : 'rgba(220, 38, 38, 0.2)'}`,
         color: reportData.totals?.balanced ? '#2e7d32' : 'var(--danger)',
       }}>
-        <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
-          {reportData.totals?.balanced ? '✓ Balanced — Debits equal Credits' : '⚠ Out of balance — check data'}
-        </span>
+          {reportData.totals?.balanced ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <CheckIcon size={14} style={{ color: 'var(--success)' }} /> Balanced — Debits equal Credits
+            </span>
+          ) : (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <AlertIcon size={14} style={{ color: 'var(--danger)' }} /> Out of balance — check data
+            </span>
+          )}
         <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
           Capital / Owner's Equity: {fmt(reportData.memo?.capital_owner_equity)}
         </span>
@@ -50,3 +56,5 @@ export default function TrialBalanceView({ reportData, fmt }) {
     </div>
   )
 }
+
+import { AlertIcon, CheckIcon } from '../../components/Icons'

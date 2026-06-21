@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useDialog } from '../../contexts/DialogContext'
 import { API_BASE } from '../../config'
 import { BuildingMark } from '../../components/Logo'
+import { Icon } from '../../components/icons'
 
 export default function AdminDashboard() {
   const { authFetch, adminLogout } = useAuth()
@@ -132,21 +133,21 @@ export default function AdminDashboard() {
         <div className="admin-header-actions">
           {/* Flush Cache Dropdown */}
           <div className={`flush-dropdown ${dropdownOpen ? 'open' : ''}`} onClick={e => e.stopPropagation()}>
-            <button className="btn-flush" style={{ padding: '10px 16px', fontSize: 13 }} onClick={() => setDropdownOpen(!dropdownOpen)}>
-              🗑 System Cache ▾
+            <button className="btn-flush" style={{ padding: '10px 16px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => setDropdownOpen(!dropdownOpen)}>
+              <Icon name="trash" size={14} /> System Cache <Icon name="chevronDown" size={12} />
             </button>
             <div className="flush-dropdown-menu">
               <button className="flush-dropdown-item" onClick={() => { setDropdownOpen(false); handleFlushAll(); }}>
-                🔄 Flush All Query Cache
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="refresh" size={14} /> Flush All Query Cache</span>
                 <span style={{ fontSize: 11, color: 'var(--secondary-text)', marginLeft: 'auto' }}>All users</span>
               </button>
               <button className="flush-dropdown-item" onClick={() => { setDropdownOpen(false); handleResetChroma(); }}>
-                🧠 Reset Chroma Documents
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="brain" size={14} /> Reset Chroma Documents</span>
                 <span style={{ fontSize: 11, color: 'var(--secondary-text)', marginLeft: 'auto' }}>Fix dim errors</span>
               </button>
-              <div className="flush-dropdown-divider"></div>
-              <button className="flush-dropdown-item danger" onClick={() => { setDropdownOpen(false); handleWipeAllData(); }}>
-                ⚠ Wipe All Business Data
+              <button className="flush-dropdown-item" onClick={() => { setDropdownOpen(false); handleWipeAllData(); }} style={{ borderTop: '1px solid var(--border-color)' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--danger-color)' }}><Icon name="warn" size={14} /> Wipe All Business Data</span>
+                <span style={{ fontSize: 11, color: 'var(--secondary-text)', marginLeft: 'auto' }}>Wipe DB</span>
               </button>
             </div>
           </div>
@@ -200,9 +201,9 @@ export default function AdminDashboard() {
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               {[
-                { key: 'legacy', icon: '🏛', label: 'Legacy',  desc: 'exact previous behaviour' },
-                { key: 'shadow', icon: '👁', label: 'Shadow',  desc: 'legacy answers + comparison logs' },
-                { key: 'new',    icon: '🧠', label: 'New',     desc: 'LLM router steers, legacy fallback' },
+                { key: 'legacy', icon: <Icon name="building" size={16} />, label: 'Legacy',  desc: 'exact previous behaviour' },
+                { key: 'shadow', icon: <Icon name="eye" size={16} />, label: 'Shadow',  desc: 'legacy answers + comparison logs' },
+                { key: 'new',    icon: <Icon name="brain" size={16} />, label: 'New',     desc: 'LLM router steers, legacy fallback' },
               ].map(opt => (
                 <button
                   key={opt.key}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useDialog } from '../../contexts/DialogContext'
 import { API_BASE } from '../../config'
+import { Icon } from '../../components/icons'
 
 export default function AdminCache() {
   const { authFetch } = useAuth()
@@ -60,14 +61,14 @@ export default function AdminCache() {
           <p>Inspect in-memory context caches and saved model prompt answer collections</p>
         </div>
         <div className="admin-header-actions">
-          <button className="btn-flush" onClick={handleFlushAll}>
-            🔄 Flush All Caches
+          <button className="btn-flush" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={handleFlushAll}>
+            <Icon name="refresh" size={13} /> Flush All Caches
           </button>
-          <button className="btn-flush" onClick={handleResetChroma}>
-            🧠 Reset Chroma
+          <button className="btn-flush" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={handleResetChroma}>
+            <Icon name="brain" size={13} /> Reset Chroma
           </button>
-          <button className="btn-flush" onClick={loadCache}>
-            Refresh Stats ⟳
+          <button className="btn-flush" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={loadCache}>
+            Refresh Stats <Icon name="refresh" size={13} />
           </button>
         </div>
       </div>

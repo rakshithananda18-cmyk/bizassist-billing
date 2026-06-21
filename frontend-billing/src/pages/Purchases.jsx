@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
-import { SyncIcon, BillsIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIcon, ImportIcon, InfoIcon, SearchIcon, SyncIcon } from '../components/Icons'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -312,7 +312,7 @@ export default function Purchases() {
         {alert && (
           <div className={`alert alert-${alert.type} mb-4`}>
             {alert.type === 'success' ? '✅' : '❌'} {alert.msg}
-            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }}>✕</button>
+            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }} aria-label="Close"><CloseIcon size={16} /></button>
           </div>
         )}
 
@@ -324,7 +324,7 @@ export default function Purchases() {
           </div>
           <div className="page-actions">
             <button className="btn btn-secondary" style={{ marginRight: 8 }} onClick={openReturnModal}>
-              🔄 Record Return
+              <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Record Return
             </button>
             <button className="btn btn-primary" onClick={openModal}>
               ⬆ Upload Bill
@@ -349,7 +349,7 @@ export default function Purchases() {
             ))}
           </div>
           <div className="search-bar">
-            <span style={{ color: 'var(--text-muted)' }}>🔍</span>
+            <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search bills…" />
           </div>
         </div>
@@ -415,9 +415,9 @@ export default function Purchases() {
           <div className="modal" style={{ maxWidth: step === 'review' ? '1200px' : '520px', width: '95%' }}>
             <div className="modal-header">
               <span className="modal-title">
-                {step === 'upload' ? '📄 Upload Bill' : '🔍 Review Extracted Data'}
+                {step === 'upload' ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><BillsIcon size={14} /> Upload Bill</span> : '🔍 Review Extracted Data'}
               </span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)}>✕</button>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
             </div>
 
             <div className="modal-body">
@@ -443,7 +443,7 @@ export default function Purchases() {
                       gap: 12,
                     }}
                   >
-                    <span style={{ fontSize: '2.5rem' }}>{dragOver ? '📥' : '📤'}</span>
+                    {dragOver ? <DownloadIcon size={32} style={{ color: 'var(--accent)' }} /> : <UploadIcon size={32} style={{ color: 'var(--accent)' }} />}
                     <div>
                       <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
                         {file ? file.name : 'Drag & drop your bill here'}
@@ -468,7 +468,7 @@ export default function Purchases() {
                 <>
                   {/* Extracted items review */}
                   <div className="alert alert-info mb-4" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    🤖 <span>AI extracted the following details. Correct any fields and verify product mappings before confirming.</span>
+                    <InfoIcon size={16} style={{ color: 'var(--info)', marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> <span>AI extracted the following details. Correct any fields and verify product mappings before confirming.</span>
                   </div>
 
                   {/* Header info editing */}
@@ -677,16 +677,16 @@ export default function Purchases() {
                   >
                     {uploading
                       ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Extracting…</>
-                      : '🚀 Upload & Extract'}
+                      : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ImportIcon size={14} /> Upload & Extract</span>}
                   </button>
                 </>
               ) : (
                 <>
-                  <button className="btn btn-secondary" onClick={() => setStep('upload')}>← Back</button>
+                  <button className="btn btn-secondary" onClick={() => setStep('upload')}><ChevronLeftIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Back</button>
                   <button className="btn btn-primary" disabled={confirming} onClick={handleConfirm}>
                     {confirming
                       ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Confirming…</>
-                      : '✓ Confirm Bill'}
+                      : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Confirm Bill</span>}
                   </button>
                 </>
               )}
@@ -700,8 +700,8 @@ export default function Purchases() {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowReturnModal(false)}>
           <div className="modal" style={{ maxWidth: returnStep === 'enter_items' ? '850px' : '480px', width: '95%' }}>
             <div className="modal-header">
-              <span className="modal-title">🔄 Record Purchase Return (Debit Note)</span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowReturnModal(false)}>✕</button>
+              <span className="modal-title"><SyncIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Record Purchase Return (Debit Note)</span>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowReturnModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
             </div>
 
             <div className="modal-body">
@@ -869,14 +869,14 @@ export default function Purchases() {
                     disabled={!returnBillId}
                     onClick={handleSelectBillNext}
                   >
-                    Next Step →
+                    Next Step <ChevronRightIcon size={14} style={{ marginLeft: 6, display: 'inline-block', verticalAlign: 'middle' }} />
                   </button>
                 </>
               ) : (
                 <>
-                  <button className="btn btn-secondary" onClick={() => setReturnStep('select_bill')}>← Back</button>
+                  <button className="btn btn-secondary" onClick={() => setReturnStep('select_bill')}><ChevronLeftIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Back</button>
                   <button className="btn btn-primary" disabled={confirming} onClick={handleSaveReturn}>
-                    {confirming ? 'Recording Return…' : '✓ Confirm & Save Return'}
+                    {confirming ? 'Recording Return…' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Confirm & Save Return</span>}
                   </button>
                 </>
               )}
@@ -891,9 +891,9 @@ export default function Purchases() {
           <div className="modal" style={{ maxWidth: '750px', width: '95%' }}>
             <div className="modal-header">
               <span className="modal-title">
-                {selectedDetail.invoice_type === 'debit_note' ? '🔄 Debit Note Details' : '📄 Purchase Invoice Details'}
+                {selectedDetail.invoice_type === 'debit_note' ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><SyncIcon size={14} /> Debit Note Details</span> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><BillsIcon size={14} /> Purchase Invoice Details</span>}
               </span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowDetailModal(false)}>✕</button>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowDetailModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
             </div>
 
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
