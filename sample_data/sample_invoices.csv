@@ -1,421 +1,301 @@
 invoice_id,customer,product,amount,status,invoice_date,due_date
-INV-0001,Nilgiris Fresh,Colgate Toothpaste,1479.72,Overdue,2025-05-19,2025-06-03
-INV-0002,Daily Needs Store,Chilli Powder 500g,800.02,Paid,2025-04-02,2025-05-02
-INV-0003,Namdhari Fresh,Coffee Powder 500g,9086.99,Paid,2026-03-02,2026-04-01
-INV-0004,Nilgiris Fresh,Tea Leaves 1kg,7106.42,Paid,2025-12-11,2026-01-10
-INV-0005,Annapurna Provisions,Wheat Flour 10kg,2807.88,Overdue,2025-04-06,2025-05-06
-INV-0006,Star Bazaar,Biscuits Pack,3037.88,Overdue,2026-01-19,2026-02-03
-INV-0007,Sri Venkateswara Stores,Milk Powder 500g,5646.08,Overdue,2025-03-09,2025-03-24
-INV-0008,Daily Needs Store,Detergent Powder 3kg,6421.04,Paid,2026-01-21,2026-02-20
-INV-0009,More Supermarket,Milk Powder 500g,3952.29,Overdue,2025-09-27,2025-10-12
-INV-0010,Star Bazaar,Tea Leaves 1kg,5158.63,Overdue,2025-09-30,2025-10-30
-INV-0011,Star Bazaar,Detergent Powder 3kg,6158.73,Paid,2025-11-16,2025-12-31
-INV-0012,Daily Needs Store,Coffee Powder 500g,8566.86,Paid,2026-02-06,2026-03-23
-INV-0013,Daily Needs Store,Chilli Powder 500g,5191.73,Paid,2026-02-09,2026-03-11
-INV-0014,Srinivas Kirana,Cooking Oil 5L,3712.13,Paid,2025-02-14,2025-03-01
-INV-0015,Big Basket Retail,Sugar 50kg,11956.4,Overdue,2026-04-21,2026-05-21
-INV-0016,Nilgiris Fresh,Wheat Flour 10kg,10571.75,Paid,2025-09-27,2025-10-27
-INV-0017,Vijaya Retail Hub,Basmati Rice 25kg,35509.08,Paid,2025-09-23,2025-10-23
-INV-0018,Daily Needs Store,Coffee Powder 500g,3274.96,Overdue,2025-06-11,2025-06-26
-INV-0019,Big Basket Retail,Milk Powder 500g,8101.04,Paid,2025-11-07,2025-12-07
-INV-0020,Daily Needs Store,Sugar 50kg,19192.86,Paid,2025-03-08,2025-04-07
-INV-0021,Namdhari Fresh,Tea Leaves 1kg,3533.55,Overdue,2026-03-06,2026-04-05
-INV-0022,Spencer's Retail,Soap Bar 100g,1846.84,Overdue,2026-01-14,2026-02-28
-INV-0023,Nature's Basket,Detergent Powder 3kg,1251.17,Overdue,2025-01-18,2025-02-17
-INV-0024,Nilgiris Fresh,Detergent Powder 3kg,1275.34,Paid,2025-01-29,2025-02-28
-INV-0025,Big Basket Retail,Coffee Powder 500g,7476.19,Overdue,2026-04-26,2026-05-26
-INV-0026,Spencer's Retail,Wheat Flour 10kg,2950.62,Paid,2026-03-14,2026-04-13
-INV-0027,Star Bazaar,Wheat Flour 10kg,2471.3,Paid,2025-12-10,2025-12-25
-INV-0028,Big Basket Retail,Toor Dal 5kg,9179.79,Paid,2025-10-09,2025-11-23
-INV-0029,Vijaya Retail Hub,Wheat Flour 10kg,2344.52,Overdue,2025-01-12,2025-01-27
-INV-0030,More Supermarket,Chilli Powder 500g,3184.89,Overdue,2025-08-03,2025-09-17
-INV-0031,Nilgiris Fresh,Salt 1kg,850.34,Paid,2026-04-07,2026-05-07
-INV-0032,Namdhari Fresh,Cooking Oil 5L,4719.77,Overdue,2025-10-27,2025-11-26
-INV-0033,Namdhari Fresh,Sunflower Oil 15L,25124.2,Overdue,2025-02-24,2025-03-11
-INV-0034,Srinivas Kirana,Tea Leaves 1kg,1762.68,Overdue,2026-06-01,2026-06-16
-INV-0035,Nilgiris Fresh,Detergent Powder 3kg,3560.42,Overdue,2025-09-06,2025-09-21
-INV-0036,ABC Supermarket,Shampoo 1L,7156.45,Paid,2025-07-25,2025-08-24
-INV-0037,Heritage Fresh,Biscuits Pack,2080.95,Paid,2025-03-12,2025-03-27
-INV-0038,Big Basket Retail,Sugar 50kg,15586.92,Paid,2026-05-30,2026-06-29
-INV-0039,Nilgiris Fresh,Detergent Powder 3kg,3348.65,Overdue,2025-06-07,2025-07-22
-INV-0040,Sri Venkateswara Stores,Basmati Rice 25kg,27726.41,Overdue,2025-10-30,2025-11-14
-INV-0041,Nilgiris Fresh,Wheat Flour 10kg,11780.34,Paid,2025-06-05,2025-07-05
-INV-0042,Daily Needs Store,Coffee Powder 500g,9296.84,Paid,2025-09-24,2025-11-08
-INV-0043,Star Bazaar,Sugar 50kg,17753.37,Paid,2025-10-07,2025-10-22
-INV-0044,Metro Cash & Carry,Tea Leaves 1kg,7912.59,Paid,2026-03-10,2026-03-25
-INV-0045,Reliance Smart Point,Sunflower Oil 15L,27917.8,Paid,2025-05-28,2025-07-12
-INV-0046,Nilgiris Fresh,Milk Powder 500g,2988.01,Paid,2025-09-09,2025-09-24
-INV-0047,Rahul Traders,Toor Dal 5kg,17623.64,Overdue,2025-08-27,2025-09-26
-INV-0048,Rahul Traders,Basmati Rice 25kg,12545.44,Overdue,2025-12-03,2026-01-17
-INV-0049,Nature's Basket,Colgate Toothpaste,1180.71,Overdue,2025-04-17,2025-06-01
-INV-0050,Nature's Basket,Coffee Powder 500g,10843.43,Paid,2026-04-13,2026-05-13
-INV-0051,Nature's Basket,Detergent Powder 3kg,1023.66,Paid,2025-07-13,2025-08-27
-INV-0052,Metro Cash & Carry,Milk Powder 500g,6545.37,Overdue,2026-02-10,2026-03-12
-INV-0053,Daily Needs Store,Tea Leaves 1kg,6556.24,Paid,2025-09-25,2025-10-10
-INV-0054,Annapurna Provisions,Chilli Powder 500g,3939.84,Paid,2026-06-04,2026-06-19
-INV-0055,Metro Cash & Carry,Sunflower Oil 15L,24822.83,Paid,2024-12-29,2025-01-28
-INV-0056,Daily Needs Store,Shampoo 1L,5524.5,Paid,2025-05-04,2025-06-03
-INV-0057,Annapurna Provisions,Salt 1kg,1894.07,Paid,2025-05-07,2025-06-06
-INV-0058,More Supermarket,Soap Bar 100g,1970.95,Paid,2024-12-28,2025-01-27
-INV-0059,ABC Supermarket,Shampoo 1L,4200.56,Paid,2026-03-25,2026-04-24
-INV-0060,More Supermarket,Sugar 50kg,10539.63,Overdue,2025-12-06,2025-12-21
-INV-0061,Heritage Fresh,Detergent Powder 3kg,6503.2,Paid,2025-05-27,2025-06-11
-INV-0062,Sri Venkateswara Stores,Sugar 50kg,14317.72,Paid,2025-07-15,2025-08-29
-INV-0063,Nilgiris Fresh,Wheat Flour 10kg,12647.89,Overdue,2025-08-09,2025-09-08
-INV-0064,Vijaya Retail Hub,Sunflower Oil 15L,20885.74,Paid,2025-05-01,2025-06-15
-INV-0065,Srinivas Kirana,Shampoo 1L,7554.52,Overdue,2026-03-26,2026-05-10
-INV-0066,More Supermarket,Cooking Oil 5L,9357.83,Overdue,2025-09-07,2025-10-07
-INV-0067,Nature's Basket,Colgate Toothpaste,2568.29,Paid,2025-10-16,2025-11-15
-INV-0068,Nilgiris Fresh,Toor Dal 5kg,5167.48,Overdue,2026-01-24,2026-02-23
-INV-0069,Big Basket Retail,Shampoo 1L,4792.12,Paid,2026-02-26,2026-03-13
-INV-0070,ABC Supermarket,Basmati Rice 25kg,35067.53,Paid,2026-01-21,2026-03-07
-INV-0071,Kumar Stores,Chilli Powder 500g,3659.25,Paid,2025-08-10,2025-09-24
-INV-0072,Nilgiris Fresh,Salt 1kg,1069.54,Overdue,2026-02-15,2026-03-17
-INV-0073,Sri Venkateswara Stores,Basmati Rice 25kg,36856.54,Overdue,2025-01-24,2025-02-08
-INV-0074,Big Basket Retail,Tea Leaves 1kg,1801.05,Paid,2026-01-20,2026-02-19
-INV-0075,Big Basket Retail,Colgate Toothpaste,4122.78,Overdue,2026-03-04,2026-04-03
-INV-0076,Namdhari Fresh,Sunflower Oil 15L,33835.47,Overdue,2025-12-21,2026-01-20
-INV-0077,Star Bazaar,Basmati Rice 25kg,38462.61,Overdue,2025-07-20,2025-08-04
-INV-0078,Big Basket Retail,Wheat Flour 10kg,9842.42,Overdue,2025-08-08,2025-09-22
-INV-0079,More Supermarket,Wheat Flour 10kg,12914.22,Paid,2025-06-13,2025-07-13
-INV-0080,Daily Needs Store,Salt 1kg,1227.34,Overdue,2025-07-19,2025-08-03
-INV-0081,Nature's Basket,Wheat Flour 10kg,11792.6,Overdue,2025-11-01,2025-11-16
-INV-0082,Star Bazaar,Milk Powder 500g,5889.35,Paid,2026-01-11,2026-01-26
-INV-0083,Big Basket Retail,Cooking Oil 5L,4309.04,Overdue,2026-01-02,2026-02-16
-INV-0084,Srinivas Kirana,Colgate Toothpaste,3498.77,Paid,2026-05-07,2026-06-21
-INV-0085,Metro Cash & Carry,Shampoo 1L,7068.36,Overdue,2025-03-26,2025-04-25
-INV-0086,Big Basket Retail,Salt 1kg,1090.32,Paid,2026-05-18,2026-06-17
-INV-0087,Daily Needs Store,Shampoo 1L,3055.28,Paid,2025-10-06,2025-10-21
-INV-0088,Star Bazaar,Chilli Powder 500g,3464.5,Overdue,2025-08-31,2025-10-15
-INV-0089,Nilgiris Fresh,Sugar 50kg,11193.85,Paid,2026-02-15,2026-03-17
-INV-0090,Royal Mart,Milk Powder 500g,5027.65,Overdue,2025-12-01,2025-12-31
-INV-0091,Daily Needs Store,Detergent Powder 3kg,1785.1,Paid,2025-07-13,2025-08-12
-INV-0092,More Supermarket,Coffee Powder 500g,4377.54,Overdue,2026-05-07,2026-06-06
-INV-0093,Srinivas Kirana,Soap Bar 100g,4471.92,Paid,2025-07-14,2025-08-13
-INV-0094,Nilgiris Fresh,Toor Dal 5kg,7488.48,Overdue,2025-02-21,2025-03-23
-INV-0095,Big Basket Retail,Wheat Flour 10kg,14576.21,Paid,2025-10-15,2025-11-29
-INV-0096,Nilgiris Fresh,Colgate Toothpaste,5189.35,Overdue,2026-05-01,2026-05-16
-INV-0097,Daily Needs Store,Sunflower Oil 15L,9937.74,Overdue,2025-11-04,2025-11-19
-INV-0098,Big Basket Retail,Detergent Powder 3kg,6605.09,Overdue,2026-01-21,2026-03-07
-INV-0099,Big Basket Retail,Soap Bar 100g,2767.98,Overdue,2025-02-27,2025-03-14
-INV-0100,Star Bazaar,Colgate Toothpaste,3797.83,Paid,2025-06-06,2025-07-06
-INV-0101,Nilgiris Fresh,Chilli Powder 500g,3306.53,Paid,2026-04-23,2026-05-23
-INV-0102,Daily Needs Store,Biscuits Pack,939.82,Overdue,2025-08-24,2025-09-23
-INV-0103,Spencer's Retail,Chilli Powder 500g,1394.64,Overdue,2025-08-15,2025-09-14
-INV-0104,Daily Needs Store,Sunflower Oil 15L,10447.85,Paid,2025-11-07,2025-12-07
-INV-0105,Heritage Fresh,Salt 1kg,2631.83,Paid,2026-05-24,2026-07-08
-INV-0106,Rahul Traders,Shampoo 1L,5472.83,Paid,2025-01-23,2025-02-07
-INV-0107,ABC Supermarket,Basmati Rice 25kg,41717.47,Overdue,2025-09-29,2025-10-14
-INV-0108,Big Basket Retail,Colgate Toothpaste,1391.18,Overdue,2026-03-19,2026-05-03
-INV-0109,Rahul Traders,Shampoo 1L,3444.07,Paid,2025-04-14,2025-05-14
-INV-0110,Heritage Fresh,Salt 1kg,2324.24,Paid,2025-02-03,2025-03-20
-INV-0111,Nilgiris Fresh,Salt 1kg,2456.44,Paid,2024-12-29,2025-02-12
-INV-0112,Daily Needs Store,Cooking Oil 5L,12723.15,Paid,2025-02-18,2025-03-20
-INV-0113,Daily Needs Store,Biscuits Pack,5417.43,Paid,2026-05-08,2026-05-23
-INV-0114,Nature's Basket,Tea Leaves 1kg,4456.69,Paid,2025-01-11,2025-02-25
-INV-0115,Big Basket Retail,Biscuits Pack,5797.25,Overdue,2025-06-03,2025-07-18
-INV-0116,Daily Needs Store,Chilli Powder 500g,5605.39,Paid,2026-04-25,2026-05-25
-INV-0117,Star Bazaar,Toor Dal 5kg,18237.65,Paid,2025-10-06,2025-11-20
-INV-0118,Metro Cash & Carry,Basmati Rice 25kg,17365.93,Overdue,2025-10-29,2025-12-13
-INV-0119,Royal Mart,Milk Powder 500g,4386.45,Overdue,2026-01-18,2026-03-04
-INV-0120,Nature's Basket,Salt 1kg,877.44,Paid,2026-02-21,2026-03-08
-INV-0121,Kumar Stores,Salt 1kg,2802.61,Overdue,2025-06-01,2025-07-16
-INV-0122,Daily Needs Store,Wheat Flour 10kg,15111.56,Paid,2026-03-23,2026-04-07
-INV-0123,Reliance Smart Point,Chilli Powder 500g,5867.65,Paid,2025-06-04,2025-06-19
-INV-0124,Annapurna Provisions,Salt 1kg,1946.94,Overdue,2025-11-29,2026-01-13
-INV-0125,Royal Mart,Sunflower Oil 15L,24440.1,Overdue,2025-08-25,2025-09-24
-INV-0126,Rahul Traders,Wheat Flour 10kg,13457.62,Paid,2025-04-09,2025-05-24
-INV-0127,Nilgiris Fresh,Sunflower Oil 15L,15580.49,Paid,2025-02-23,2025-03-25
-INV-0128,Nature's Basket,Chilli Powder 500g,4103.58,Paid,2025-06-30,2025-07-30
-INV-0129,Kumar Stores,Detergent Powder 3kg,4750.06,Paid,2025-05-23,2025-06-22
-INV-0130,Daily Needs Store,Basmati Rice 25kg,39393.11,Overdue,2026-04-18,2026-05-18
-INV-0131,Big Basket Retail,Milk Powder 500g,10403.33,Overdue,2025-10-30,2025-12-14
-INV-0132,Heritage Fresh,Coffee Powder 500g,14349.35,Paid,2026-05-06,2026-05-21
-INV-0133,ABC Supermarket,Soap Bar 100g,4759.45,Overdue,2025-10-26,2025-11-10
-INV-0134,Metro Cash & Carry,Basmati Rice 25kg,27768.02,Overdue,2025-02-16,2025-04-02
-INV-0135,Nature's Basket,Milk Powder 500g,3439.88,Overdue,2025-07-10,2025-08-09
-INV-0136,Reliance Smart Point,Wheat Flour 10kg,15827.62,Overdue,2025-02-06,2025-03-08
-INV-0137,Daily Needs Store,Toor Dal 5kg,4538.62,Overdue,2025-10-26,2025-11-25
-INV-0138,Star Bazaar,Milk Powder 500g,6309.42,Paid,2025-10-03,2025-11-02
-INV-0139,Royal Mart,Soap Bar 100g,3701.8,Paid,2025-12-09,2025-12-24
-INV-0140,Star Bazaar,Salt 1kg,2814.57,Overdue,2026-01-06,2026-01-21
-INV-0141,Nilgiris Fresh,Biscuits Pack,2685.47,Overdue,2025-09-22,2025-11-06
-INV-0142,Big Basket Retail,Detergent Powder 3kg,4624.12,Overdue,2025-11-28,2025-12-28
-INV-0143,Vijaya Retail Hub,Soap Bar 100g,3285.71,Paid,2025-04-26,2025-05-26
-INV-0144,Big Basket Retail,Wheat Flour 10kg,3453.5,Paid,2025-05-15,2025-06-29
-INV-0145,Namdhari Fresh,Chilli Powder 500g,4319.9,Overdue,2025-06-04,2025-07-19
-INV-0146,Sri Venkateswara Stores,Chilli Powder 500g,6448.69,Overdue,2025-10-10,2025-10-25
-INV-0147,Big Basket Retail,Detergent Powder 3kg,7647.51,Paid,2025-04-08,2025-05-08
-INV-0148,Lakshmi General Store,Sunflower Oil 15L,18294.27,Overdue,2025-07-10,2025-07-25
-INV-0149,Daily Needs Store,Coffee Powder 500g,10108.23,Overdue,2025-01-18,2025-02-02
-INV-0150,Star Bazaar,Coffee Powder 500g,2829.96,Overdue,2025-07-28,2025-08-27
-INV-0151,Star Bazaar,Basmati Rice 25kg,17889.64,Paid,2025-05-25,2025-06-24
-INV-0152,Big Basket Retail,Basmati Rice 25kg,12631.45,Overdue,2025-12-29,2026-01-28
-INV-0153,Daily Needs Store,Sunflower Oil 15L,9876.7,Overdue,2026-03-04,2026-03-19
-INV-0154,Lakshmi General Store,Wheat Flour 10kg,9078.22,Overdue,2025-08-11,2025-08-26
-INV-0155,Srinivas Kirana,Soap Bar 100g,2468.2,Overdue,2025-01-28,2025-02-12
-INV-0156,Rahul Traders,Wheat Flour 10kg,9703.67,Overdue,2026-03-27,2026-04-11
-INV-0157,Star Bazaar,Sugar 50kg,8048.0,Overdue,2025-11-25,2026-01-09
-INV-0158,Vijaya Retail Hub,Chilli Powder 500g,1398.06,Paid,2025-04-24,2025-05-24
-INV-0159,Rahul Traders,Shampoo 1L,7571.86,Overdue,2026-02-09,2026-03-26
-INV-0160,Daily Needs Store,Colgate Toothpaste,2534.29,Paid,2025-06-02,2025-07-17
-INV-0161,Daily Needs Store,Chilli Powder 500g,1387.04,Overdue,2026-01-13,2026-02-12
-INV-0162,Namdhari Fresh,Shampoo 1L,6380.2,Overdue,2026-02-21,2026-03-23
-INV-0163,Rahul Traders,Sunflower Oil 15L,36768.58,Paid,2025-11-12,2025-12-12
-INV-0164,Reliance Smart Point,Cooking Oil 5L,6779.72,Overdue,2025-04-17,2025-05-17
-INV-0165,Metro Cash & Carry,Detergent Powder 3kg,7431.14,Paid,2025-01-23,2025-02-22
-INV-0166,Daily Needs Store,Shampoo 1L,3928.61,Overdue,2025-07-01,2025-07-31
-INV-0167,Reliance Smart Point,Basmati Rice 25kg,11381.47,Paid,2025-08-05,2025-09-19
-INV-0168,Daily Needs Store,Soap Bar 100g,3719.34,Paid,2025-03-24,2025-04-08
-INV-0169,Star Bazaar,Sugar 50kg,11816.62,Overdue,2026-03-07,2026-04-21
-INV-0170,Spencer's Retail,Wheat Flour 10kg,7540.68,Overdue,2025-04-20,2025-05-20
-INV-0171,Srinivas Kirana,Soap Bar 100g,611.09,Paid,2026-02-05,2026-02-20
-INV-0172,Star Bazaar,Toor Dal 5kg,17602.48,Paid,2025-10-20,2025-11-19
-INV-0173,Rahul Traders,Tea Leaves 1kg,2873.45,Paid,2025-08-20,2025-09-19
-INV-0174,Star Bazaar,Chilli Powder 500g,922.74,Overdue,2025-03-17,2025-04-16
-INV-0175,Rahul Traders,Soap Bar 100g,937.55,Paid,2025-01-18,2025-02-17
-INV-0176,Vijaya Retail Hub,Milk Powder 500g,2359.49,Paid,2025-04-15,2025-05-15
-INV-0177,Daily Needs Store,Salt 1kg,2678.81,Paid,2025-12-10,2026-01-09
-INV-0178,Nilgiris Fresh,Coffee Powder 500g,13941.01,Overdue,2025-12-20,2026-01-19
-INV-0179,Reliance Smart Point,Detergent Powder 3kg,1846.3,Paid,2025-09-16,2025-10-16
-INV-0180,Nilgiris Fresh,Tea Leaves 1kg,11652.69,Pending,2026-05-17,2026-07-01
-INV-0181,Vijaya Retail Hub,Shampoo 1L,8064.02,Paid,2025-11-16,2025-12-16
-INV-0182,Heritage Fresh,Colgate Toothpaste,3815.36,Paid,2025-12-23,2026-01-07
-INV-0183,Star Bazaar,Milk Powder 500g,9569.0,Overdue,2025-03-16,2025-03-31
-INV-0184,Vijaya Retail Hub,Sunflower Oil 15L,20779.89,Overdue,2025-07-08,2025-08-07
-INV-0185,Star Bazaar,Biscuits Pack,1235.16,Paid,2025-12-14,2025-12-29
-INV-0186,Star Bazaar,Biscuits Pack,6584.96,Paid,2026-06-17,2026-07-17
-INV-0187,Kumar Stores,Chilli Powder 500g,5728.39,Paid,2025-02-19,2025-03-21
-INV-0188,Big Basket Retail,Soap Bar 100g,1596.3,Paid,2025-05-30,2025-06-29
-INV-0189,Lakshmi General Store,Soap Bar 100g,4972.69,Overdue,2026-02-02,2026-03-04
-INV-0190,Heritage Fresh,Salt 1kg,2090.79,Overdue,2025-11-29,2025-12-29
-INV-0191,Srinivas Kirana,Sugar 50kg,21729.74,Paid,2026-03-06,2026-04-05
-INV-0192,Star Bazaar,Shampoo 1L,8837.29,Paid,2026-05-09,2026-06-08
-INV-0193,Nilgiris Fresh,Soap Bar 100g,4411.88,Overdue,2025-04-10,2025-04-25
-INV-0194,Sri Venkateswara Stores,Toor Dal 5kg,14791.78,Paid,2025-06-03,2025-07-03
-INV-0195,Sri Venkateswara Stores,Tea Leaves 1kg,9364.04,Paid,2025-02-10,2025-03-27
-INV-0196,Vijaya Retail Hub,Soap Bar 100g,3989.7,Paid,2026-04-01,2026-05-01
-INV-0197,Big Basket Retail,Coffee Powder 500g,7016.07,Overdue,2026-03-24,2026-05-08
-INV-0198,Srinivas Kirana,Chilli Powder 500g,7033.39,Overdue,2025-07-20,2025-08-19
-INV-0199,Big Basket Retail,Milk Powder 500g,7017.91,Paid,2025-04-12,2025-04-27
-INV-0200,Metro Cash & Carry,Biscuits Pack,6167.64,Paid,2025-05-27,2025-07-11
-INV-0201,Vijaya Retail Hub,Milk Powder 500g,10745.68,Paid,2026-02-25,2026-03-12
-INV-0202,Kumar Stores,Sugar 50kg,14954.57,Overdue,2025-01-25,2025-02-24
-INV-0203,Annapurna Provisions,Toor Dal 5kg,5848.33,Overdue,2025-10-17,2025-12-01
-INV-0204,Big Basket Retail,Biscuits Pack,4411.86,Paid,2025-03-19,2025-04-03
-INV-0205,Namdhari Fresh,Chilli Powder 500g,1554.96,Paid,2025-10-19,2025-11-18
-INV-0206,Big Basket Retail,Biscuits Pack,1014.47,Overdue,2026-05-23,2026-06-07
-INV-0207,Reliance Smart Point,Soap Bar 100g,2484.74,Overdue,2025-12-24,2026-01-23
-INV-0208,Nilgiris Fresh,Milk Powder 500g,2245.0,Paid,2026-06-19,2026-07-04
-INV-0209,Kumar Stores,Milk Powder 500g,4100.51,Overdue,2025-01-13,2025-02-12
-INV-0210,Nilgiris Fresh,Shampoo 1L,2352.62,Overdue,2025-12-23,2026-01-22
-INV-0211,Big Basket Retail,Cooking Oil 5L,14442.84,Overdue,2025-05-15,2025-05-30
-INV-0212,Star Bazaar,Soap Bar 100g,1396.84,Paid,2025-07-20,2025-08-04
-INV-0213,Big Basket Retail,Cooking Oil 5L,7697.74,Paid,2025-07-11,2025-08-10
-INV-0214,Annapurna Provisions,Colgate Toothpaste,1249.48,Overdue,2026-01-08,2026-02-22
-INV-0215,Kumar Stores,Shampoo 1L,9287.15,Paid,2026-05-20,2026-07-04
-INV-0216,Metro Cash & Carry,Sugar 50kg,24501.44,Overdue,2025-03-18,2025-05-02
-INV-0217,Namdhari Fresh,Soap Bar 100g,1987.1,Overdue,2025-03-19,2025-04-18
-INV-0218,Big Basket Retail,Tea Leaves 1kg,9262.92,Paid,2025-12-22,2026-02-05
-INV-0219,Lakshmi General Store,Chilli Powder 500g,2654.17,Overdue,2025-02-24,2025-03-11
-INV-0220,Srinivas Kirana,Tea Leaves 1kg,12216.46,Paid,2025-05-23,2025-07-07
-INV-0221,Daily Needs Store,Milk Powder 500g,5461.24,Overdue,2025-01-30,2025-03-01
-INV-0222,Lakshmi General Store,Biscuits Pack,5430.2,Paid,2025-05-17,2025-06-16
-INV-0223,Nature's Basket,Wheat Flour 10kg,2572.71,Paid,2025-07-06,2025-08-20
-INV-0224,Big Basket Retail,Colgate Toothpaste,5079.79,Overdue,2026-03-29,2026-04-28
-INV-0225,Big Basket Retail,Coffee Powder 500g,3838.18,Paid,2025-03-13,2025-04-27
-INV-0226,Daily Needs Store,Shampoo 1L,6851.69,Overdue,2025-03-04,2025-04-03
-INV-0227,More Supermarket,Milk Powder 500g,6778.01,Overdue,2025-05-01,2025-05-31
-INV-0228,Big Basket Retail,Basmati Rice 25kg,22878.4,Overdue,2026-01-09,2026-02-23
-INV-0229,Sri Venkateswara Stores,Sugar 50kg,7126.16,Paid,2026-02-08,2026-03-25
-INV-0230,ABC Supermarket,Sugar 50kg,8733.47,Paid,2025-11-17,2025-12-02
-INV-0231,Lakshmi General Store,Toor Dal 5kg,21157.34,Paid,2025-07-02,2025-08-01
-INV-0232,Star Bazaar,Wheat Flour 10kg,11073.61,Paid,2025-11-04,2025-12-04
-INV-0233,Nature's Basket,Milk Powder 500g,11313.67,Pending,2026-06-12,2026-07-12
-INV-0234,Daily Needs Store,Toor Dal 5kg,16044.21,Overdue,2025-04-02,2025-05-02
-INV-0235,More Supermarket,Shampoo 1L,8391.62,Paid,2025-02-08,2025-02-23
-INV-0236,ABC Supermarket,Colgate Toothpaste,4411.6,Paid,2026-02-27,2026-03-14
-INV-0237,Heritage Fresh,Soap Bar 100g,2836.89,Paid,2026-02-16,2026-03-18
-INV-0238,More Supermarket,Biscuits Pack,3306.52,Paid,2026-04-17,2026-05-17
-INV-0239,Daily Needs Store,Milk Powder 500g,11676.04,Paid,2025-05-10,2025-06-09
-INV-0240,Star Bazaar,Biscuits Pack,1436.27,Paid,2026-04-02,2026-05-02
-INV-0241,Big Basket Retail,Chilli Powder 500g,2542.57,Overdue,2025-06-09,2025-07-09
-INV-0242,Spencer's Retail,Tea Leaves 1kg,7324.83,Paid,2026-06-08,2026-07-23
-INV-0243,Nilgiris Fresh,Sugar 50kg,31187.14,Pending,2026-05-29,2026-07-13
-INV-0244,Daily Needs Store,Sunflower Oil 15L,8306.48,Paid,2026-05-18,2026-07-02
-INV-0245,Nilgiris Fresh,Chilli Powder 500g,1779.85,Overdue,2025-09-24,2025-10-24
-INV-0246,Kumar Stores,Sunflower Oil 15L,26500.71,Overdue,2025-07-15,2025-08-14
-INV-0247,Big Basket Retail,Colgate Toothpaste,5513.14,Overdue,2025-04-28,2025-05-28
-INV-0248,Annapurna Provisions,Milk Powder 500g,9498.09,Paid,2025-07-19,2025-09-02
-INV-0249,Star Bazaar,Shampoo 1L,8191.35,Paid,2026-06-12,2026-07-27
-INV-0250,Reliance Smart Point,Shampoo 1L,9290.99,Paid,2025-11-19,2025-12-19
-INV-0251,Heritage Fresh,Shampoo 1L,5666.62,Pending,2026-06-02,2026-07-17
-INV-0252,Nilgiris Fresh,Milk Powder 500g,5111.45,Overdue,2025-04-19,2025-06-03
-INV-0253,Nilgiris Fresh,Cooking Oil 5L,8274.36,Overdue,2025-08-18,2025-09-02
-INV-0254,Big Basket Retail,Toor Dal 5kg,20517.03,Overdue,2025-09-02,2025-09-17
-INV-0255,Spencer's Retail,Basmati Rice 25kg,26837.12,Paid,2026-03-01,2026-03-31
-INV-0256,Big Basket Retail,Sunflower Oil 15L,31579.41,Pending,2026-06-12,2026-07-12
-INV-0257,Royal Mart,Salt 1kg,1268.67,Overdue,2025-06-23,2025-08-07
-INV-0258,Daily Needs Store,Colgate Toothpaste,4268.5,Paid,2025-07-12,2025-08-11
-INV-0259,Daily Needs Store,Soap Bar 100g,4037.15,Paid,2026-05-12,2026-06-11
-INV-0260,Metro Cash & Carry,Soap Bar 100g,1065.83,Overdue,2026-01-20,2026-03-06
-INV-0261,Reliance Smart Point,Soap Bar 100g,659.22,Overdue,2025-03-18,2025-04-17
-INV-0262,Royal Mart,Coffee Powder 500g,5144.65,Paid,2025-10-01,2025-10-31
-INV-0263,ABC Supermarket,Detergent Powder 3kg,3272.13,Paid,2025-08-16,2025-09-15
-INV-0264,Royal Mart,Wheat Flour 10kg,14373.25,Overdue,2025-05-17,2025-06-01
-INV-0265,More Supermarket,Chilli Powder 500g,5407.76,Overdue,2026-04-29,2026-06-13
-INV-0266,Heritage Fresh,Shampoo 1L,3825.97,Overdue,2025-02-26,2025-03-13
-INV-0267,Nilgiris Fresh,Tea Leaves 1kg,6581.71,Overdue,2025-06-26,2025-07-11
-INV-0268,Royal Mart,Tea Leaves 1kg,12683.72,Paid,2025-10-20,2025-11-04
-INV-0269,Big Basket Retail,Shampoo 1L,3830.74,Pending,2026-06-17,2026-08-01
-INV-0270,Big Basket Retail,Colgate Toothpaste,1749.95,Paid,2025-04-22,2025-05-22
-INV-0271,Metro Cash & Carry,Tea Leaves 1kg,1849.95,Overdue,2025-12-08,2026-01-07
-INV-0272,More Supermarket,Salt 1kg,2846.47,Paid,2026-06-08,2026-07-08
-INV-0273,More Supermarket,Toor Dal 5kg,13580.58,Paid,2025-09-08,2025-09-23
-INV-0274,Daily Needs Store,Shampoo 1L,4003.81,Overdue,2025-01-08,2025-02-07
-INV-0275,Star Bazaar,Wheat Flour 10kg,10649.6,Overdue,2025-06-09,2025-07-24
-INV-0276,Heritage Fresh,Wheat Flour 10kg,13790.44,Overdue,2025-10-26,2025-11-25
-INV-0277,Star Bazaar,Cooking Oil 5L,6331.36,Overdue,2026-01-14,2026-02-28
-INV-0278,Namdhari Fresh,Coffee Powder 500g,13463.06,Paid,2025-03-21,2025-05-05
-INV-0279,ABC Supermarket,Wheat Flour 10kg,3382.99,Pending,2026-05-29,2026-06-28
-INV-0280,Daily Needs Store,Biscuits Pack,1457.26,Paid,2025-07-26,2025-09-09
-INV-0281,Star Bazaar,Biscuits Pack,1563.91,Overdue,2026-02-26,2026-04-12
-INV-0282,Heritage Fresh,Basmati Rice 25kg,25724.04,Overdue,2024-12-31,2025-01-30
-INV-0283,Daily Needs Store,Sugar 50kg,21065.81,Overdue,2025-02-27,2025-03-14
-INV-0284,Heritage Fresh,Chilli Powder 500g,2180.46,Paid,2025-05-15,2025-06-29
-INV-0285,Vijaya Retail Hub,Salt 1kg,1497.3,Paid,2025-05-13,2025-06-12
-INV-0286,Kumar Stores,Toor Dal 5kg,19193.42,Overdue,2025-08-13,2025-08-28
-INV-0287,Vijaya Retail Hub,Chilli Powder 500g,4678.54,Paid,2025-08-20,2025-09-19
-INV-0288,Star Bazaar,Wheat Flour 10kg,2874.83,Paid,2026-03-02,2026-03-17
-INV-0289,Nilgiris Fresh,Biscuits Pack,4721.41,Overdue,2025-02-15,2025-03-17
-INV-0290,Nature's Basket,Coffee Powder 500g,13521.84,Paid,2025-02-23,2025-03-25
-INV-0291,Daily Needs Store,Shampoo 1L,3494.14,Paid,2025-05-23,2025-06-22
-INV-0292,Star Bazaar,Chilli Powder 500g,4873.11,Overdue,2025-02-14,2025-03-16
-INV-0293,Srinivas Kirana,Shampoo 1L,7617.99,Paid,2026-02-19,2026-03-21
-INV-0294,Big Basket Retail,Detergent Powder 3kg,8963.94,Overdue,2025-10-31,2025-11-30
-INV-0295,Namdhari Fresh,Chilli Powder 500g,7828.41,Paid,2025-05-14,2025-06-28
-INV-0296,Nilgiris Fresh,Biscuits Pack,6451.13,Paid,2025-04-01,2025-05-01
-INV-0297,Sri Venkateswara Stores,Sunflower Oil 15L,39170.5,Paid,2025-07-08,2025-08-07
-INV-0298,Annapurna Provisions,Soap Bar 100g,5545.5,Overdue,2025-01-12,2025-02-11
-INV-0299,Big Basket Retail,Cooking Oil 5L,21437.72,Overdue,2025-07-25,2025-09-08
-INV-0300,Heritage Fresh,Salt 1kg,1803.84,Paid,2025-12-30,2026-01-29
-INV-0301,Royal Mart,Biscuits Pack,1368.91,Overdue,2026-04-22,2026-05-22
-INV-0302,Rahul Traders,Sunflower Oil 15L,27829.49,Paid,2025-08-11,2025-09-10
-INV-0303,ABC Supermarket,Chilli Powder 500g,3052.9,Paid,2025-07-16,2025-08-15
-INV-0304,Nature's Basket,Cooking Oil 5L,14362.22,Overdue,2025-12-08,2026-01-07
-INV-0305,Royal Mart,Biscuits Pack,1852.32,Paid,2025-12-23,2026-01-22
-INV-0306,More Supermarket,Sunflower Oil 15L,26506.39,Overdue,2025-03-14,2025-03-29
-INV-0307,Nature's Basket,Sugar 50kg,26432.11,Paid,2025-01-06,2025-02-05
-INV-0308,Sri Venkateswara Stores,Cooking Oil 5L,16575.81,Paid,2025-01-13,2025-01-28
-INV-0309,Nilgiris Fresh,Colgate Toothpaste,4025.09,Paid,2025-10-17,2025-11-01
-INV-0310,Rahul Traders,Tea Leaves 1kg,3067.2,Paid,2025-04-05,2025-05-05
-INV-0311,Metro Cash & Carry,Milk Powder 500g,4727.28,Paid,2026-02-07,2026-02-22
-INV-0312,ABC Supermarket,Detergent Powder 3kg,10451.33,Overdue,2025-08-16,2025-09-15
-INV-0313,Star Bazaar,Sugar 50kg,17744.02,Paid,2026-01-18,2026-03-04
-INV-0314,Star Bazaar,Sugar 50kg,20537.51,Overdue,2026-03-17,2026-04-16
-INV-0315,Big Basket Retail,Sunflower Oil 15L,15689.22,Paid,2026-04-28,2026-05-28
-INV-0316,Daily Needs Store,Sunflower Oil 15L,13807.7,Overdue,2025-11-15,2025-11-30
-INV-0317,Kumar Stores,Sugar 50kg,14695.98,Overdue,2025-08-31,2025-10-15
-INV-0318,Kumar Stores,Toor Dal 5kg,21237.22,Paid,2025-03-18,2025-04-17
-INV-0319,Daily Needs Store,Shampoo 1L,6984.56,Paid,2026-02-07,2026-03-09
-INV-0320,Big Basket Retail,Cooking Oil 5L,8123.01,Paid,2026-01-16,2026-03-02
-INV-0321,Kumar Stores,Sugar 50kg,28731.02,Overdue,2025-10-26,2025-11-25
-INV-0322,Star Bazaar,Salt 1kg,2628.81,Paid,2025-06-03,2025-07-18
-INV-0323,Nilgiris Fresh,Soap Bar 100g,2897.09,Paid,2025-09-30,2025-10-15
-INV-0324,Big Basket Retail,Chilli Powder 500g,1707.92,Overdue,2025-03-29,2025-04-28
-INV-0325,Annapurna Provisions,Salt 1kg,395.62,Overdue,2026-02-24,2026-04-10
-INV-0326,Namdhari Fresh,Detergent Powder 3kg,6624.44,Paid,2025-06-19,2025-08-03
-INV-0327,Daily Needs Store,Cooking Oil 5L,6518.35,Paid,2025-06-17,2025-08-01
-INV-0328,Nilgiris Fresh,Milk Powder 500g,4632.32,Overdue,2025-09-06,2025-10-21
-INV-0329,Nilgiris Fresh,Toor Dal 5kg,10472.96,Overdue,2026-02-06,2026-03-08
-INV-0330,Annapurna Provisions,Biscuits Pack,3071.54,Paid,2025-05-16,2025-06-15
-INV-0331,Spencer's Retail,Cooking Oil 5L,9959.69,Paid,2026-02-08,2026-03-10
-INV-0332,Royal Mart,Detergent Powder 3kg,4311.33,Paid,2025-10-11,2025-11-25
-INV-0333,Spencer's Retail,Tea Leaves 1kg,10358.66,Overdue,2025-01-24,2025-03-10
-INV-0334,Daily Needs Store,Sugar 50kg,30508.31,Paid,2026-02-19,2026-04-05
-INV-0335,Daily Needs Store,Toor Dal 5kg,19887.64,Paid,2026-01-18,2026-02-02
-INV-0336,ABC Supermarket,Salt 1kg,2091.35,Overdue,2026-03-01,2026-03-16
-INV-0337,Namdhari Fresh,Sugar 50kg,9290.29,Paid,2025-09-08,2025-10-08
-INV-0338,ABC Supermarket,Salt 1kg,3499.4,Paid,2025-12-02,2026-01-16
-INV-0339,Star Bazaar,Detergent Powder 3kg,5495.78,Overdue,2026-02-01,2026-03-18
-INV-0340,Srinivas Kirana,Toor Dal 5kg,11510.75,Paid,2025-01-22,2025-03-08
-INV-0341,Daily Needs Store,Wheat Flour 10kg,18452.38,Paid,2025-05-22,2025-06-21
-INV-0342,Spencer's Retail,Cooking Oil 5L,10769.05,Overdue,2025-04-06,2025-05-21
-INV-0343,Daily Needs Store,Soap Bar 100g,731.7,Overdue,2025-04-24,2025-05-09
-INV-0344,More Supermarket,Detergent Powder 3kg,6202.38,Overdue,2025-06-09,2025-07-09
-INV-0345,Nature's Basket,Salt 1kg,2421.86,Paid,2025-07-06,2025-08-20
-INV-0346,Spencer's Retail,Biscuits Pack,4961.54,Overdue,2026-01-30,2026-02-14
-INV-0347,Nilgiris Fresh,Wheat Flour 10kg,17944.15,Paid,2025-07-07,2025-08-06
-INV-0348,Metro Cash & Carry,Cooking Oil 5L,14536.4,Overdue,2025-11-13,2025-12-28
-INV-0349,Lakshmi General Store,Milk Powder 500g,11586.43,Overdue,2025-06-22,2025-07-22
-INV-0350,Reliance Smart Point,Shampoo 1L,2578.51,Paid,2025-11-05,2025-11-20
-INV-0351,Srinivas Kirana,Salt 1kg,1740.62,Paid,2025-05-18,2025-07-02
-INV-0352,Namdhari Fresh,Tea Leaves 1kg,8931.45,Paid,2026-05-13,2026-06-12
-INV-0353,Big Basket Retail,Sunflower Oil 15L,41118.01,Paid,2025-01-06,2025-02-20
-INV-0354,Namdhari Fresh,Cooking Oil 5L,12159.67,Pending,2026-05-15,2026-06-29
-INV-0355,More Supermarket,Sugar 50kg,23394.75,Paid,2025-08-10,2025-09-09
-INV-0356,Daily Needs Store,Tea Leaves 1kg,11868.23,Overdue,2026-05-19,2026-06-03
-INV-0357,Daily Needs Store,Sunflower Oil 15L,37142.16,Overdue,2026-03-24,2026-04-23
-INV-0358,Star Bazaar,Soap Bar 100g,5424.82,Paid,2025-01-30,2025-03-16
-INV-0359,Daily Needs Store,Biscuits Pack,7002.47,Paid,2025-04-27,2025-05-27
-INV-0360,Lakshmi General Store,Chilli Powder 500g,2247.16,Overdue,2025-05-19,2025-06-18
-INV-0361,ABC Supermarket,Milk Powder 500g,8063.14,Overdue,2025-06-18,2025-07-18
-INV-0362,Daily Needs Store,Wheat Flour 10kg,5132.36,Overdue,2026-02-22,2026-03-09
-INV-0363,Reliance Smart Point,Toor Dal 5kg,9541.55,Overdue,2025-11-22,2025-12-22
-INV-0364,Royal Mart,Toor Dal 5kg,17231.0,Paid,2025-09-29,2025-11-13
-INV-0365,Nilgiris Fresh,Salt 1kg,2089.01,Paid,2025-10-08,2025-11-07
-INV-0366,ABC Supermarket,Basmati Rice 25kg,49613.42,Overdue,2025-04-02,2025-05-17
-INV-0367,Daily Needs Store,Salt 1kg,1098.55,Paid,2026-03-12,2026-04-11
-INV-0368,Daily Needs Store,Shampoo 1L,6771.17,Overdue,2025-05-10,2025-06-24
-INV-0369,Star Bazaar,Sunflower Oil 15L,11384.56,Paid,2026-04-12,2026-04-27
-INV-0370,Vijaya Retail Hub,Biscuits Pack,749.23,Overdue,2026-03-11,2026-04-10
-INV-0371,Heritage Fresh,Tea Leaves 1kg,13262.79,Overdue,2025-10-04,2025-10-19
-INV-0372,Daily Needs Store,Tea Leaves 1kg,2540.11,Paid,2025-11-05,2025-12-05
-INV-0373,Nilgiris Fresh,Basmati Rice 25kg,19776.11,Overdue,2025-03-17,2025-04-16
-INV-0374,Vijaya Retail Hub,Basmati Rice 25kg,10333.38,Overdue,2025-12-14,2025-12-29
-INV-0375,Reliance Smart Point,Cooking Oil 5L,5240.09,Overdue,2026-01-24,2026-02-08
-INV-0376,Daily Needs Store,Milk Powder 500g,12313.25,Overdue,2025-05-17,2025-07-01
-INV-0377,Reliance Smart Point,Toor Dal 5kg,5369.66,Paid,2025-01-05,2025-02-04
-INV-0378,Reliance Smart Point,Chilli Powder 500g,5774.59,Paid,2026-03-26,2026-04-25
-INV-0379,Nilgiris Fresh,Salt 1kg,1562.92,Overdue,2026-03-12,2026-04-11
-INV-0380,Nilgiris Fresh,Detergent Powder 3kg,6796.89,Overdue,2025-10-15,2025-10-30
-INV-0381,Heritage Fresh,Coffee Powder 500g,10944.6,Pending,2026-06-02,2026-07-02
-INV-0382,Nilgiris Fresh,Detergent Powder 3kg,6222.49,Paid,2025-04-22,2025-05-22
-INV-0383,Srinivas Kirana,Basmati Rice 25kg,55908.29,Paid,2025-11-17,2025-12-17
-INV-0384,Rahul Traders,Milk Powder 500g,8410.77,Overdue,2025-06-22,2025-08-06
-INV-0385,Nilgiris Fresh,Sugar 50kg,6725.58,Overdue,2025-08-05,2025-08-20
-INV-0386,Kumar Stores,Soap Bar 100g,4145.63,Paid,2026-05-25,2026-07-09
-INV-0387,Namdhari Fresh,Toor Dal 5kg,10428.49,Paid,2025-11-10,2025-11-25
-INV-0388,Star Bazaar,Shampoo 1L,5360.2,Overdue,2025-03-05,2025-04-04
-INV-0389,Nature's Basket,Sunflower Oil 15L,17460.21,Paid,2026-03-17,2026-04-01
-INV-0390,Heritage Fresh,Tea Leaves 1kg,3482.03,Paid,2025-05-17,2025-06-01
-INV-0391,Srinivas Kirana,Colgate Toothpaste,1794.82,Overdue,2025-05-06,2025-06-05
-INV-0392,Nilgiris Fresh,Shampoo 1L,9494.23,Paid,2025-10-02,2025-10-17
-INV-0393,Daily Needs Store,Cooking Oil 5L,13614.71,Paid,2025-12-31,2026-01-15
-INV-0394,Lakshmi General Store,Tea Leaves 1kg,5302.99,Paid,2025-04-12,2025-04-27
-INV-0395,Star Bazaar,Basmati Rice 25kg,21655.53,Paid,2026-04-25,2026-05-25
-INV-0396,Nilgiris Fresh,Chilli Powder 500g,2786.97,Overdue,2025-09-08,2025-10-23
-INV-0397,Nilgiris Fresh,Milk Powder 500g,3352.47,Paid,2025-02-19,2025-03-21
-INV-0398,Star Bazaar,Salt 1kg,619.2,Overdue,2026-04-18,2026-05-18
-INV-0399,Nilgiris Fresh,Biscuits Pack,824.95,Overdue,2025-07-21,2025-08-20
-INV-0400,Star Bazaar,Biscuits Pack,3538.64,Overdue,2026-05-17,2026-06-16
-INV-0401,Nature's Basket,Toor Dal 5kg,3986.94,Paid,2026-02-20,2026-03-07
-INV-0402,Nilgiris Fresh,Shampoo 1L,1548.87,Paid,2026-01-17,2026-02-16
-INV-0403,Nature's Basket,Chilli Powder 500g,4927.82,Overdue,2025-02-27,2025-03-29
-INV-0404,Star Bazaar,Chilli Powder 500g,6590.82,Overdue,2026-01-13,2026-02-27
-INV-0405,Nilgiris Fresh,Toor Dal 5kg,19369.46,Overdue,2026-02-04,2026-02-19
-INV-0406,Star Bazaar,Detergent Powder 3kg,4277.87,Overdue,2025-11-15,2025-12-30
-INV-0407,Annapurna Provisions,Biscuits Pack,2831.78,Paid,2025-03-14,2025-04-13
-INV-0408,Big Basket Retail,Toor Dal 5kg,6438.21,Paid,2026-04-02,2026-05-17
-INV-0409,Daily Needs Store,Coffee Powder 500g,10134.27,Overdue,2026-04-16,2026-05-16
-INV-0410,Daily Needs Store,Sunflower Oil 15L,16591.52,Paid,2025-11-28,2025-12-28
-INV-0411,Daily Needs Store,Salt 1kg,2174.18,Overdue,2025-10-30,2025-11-29
-INV-0412,Big Basket Retail,Biscuits Pack,5007.21,Paid,2025-09-09,2025-09-24
-INV-0413,Reliance Smart Point,Wheat Flour 10kg,2830.44,Paid,2025-08-12,2025-09-11
-INV-0414,Daily Needs Store,Colgate Toothpaste,7170.0,Overdue,2025-03-14,2025-03-29
-INV-0415,Big Basket Retail,Toor Dal 5kg,6143.61,Paid,2025-12-02,2025-12-17
-INV-0416,More Supermarket,Chilli Powder 500g,7634.72,Paid,2026-02-05,2026-03-22
-INV-0417,More Supermarket,Milk Powder 500g,4589.1,Paid,2025-07-07,2025-08-06
-INV-0418,Star Bazaar,Detergent Powder 3kg,8016.99,Pending,2026-05-22,2026-07-06
-INV-0419,Daily Needs Store,Colgate Toothpaste,3385.46,Overdue,2026-03-02,2026-04-01
-INV-0420,Nature's Basket,Basmati Rice 25kg,57990.31,Paid,2025-12-30,2026-02-13
+INV-0001,Nilgiris Fresh,Colgate Toothpaste,1480.6,Paid,2025-08-31,2025-10-15
+INV-0002,Namdhari Fresh,Sugar 50kg,15875.72,Paid,2025-07-07,2025-07-22
+INV-0003,Nilgiris Fresh,Coffee Powder 500g,9103.15,Paid,2026-06-15,2026-07-30
+INV-0004,Metro Cash & Carry,Basmati Rice 25kg,29101.2,Paid,2025-09-10,2025-10-25
+INV-0005,Star Bazaar,Shampoo 1L,1614.44,Paid,2026-01-01,2026-01-16
+INV-0006,Daily Needs Store,Sunflower Oil 15L,23774.65,Overdue,2026-03-22,2026-04-06
+INV-0007,Namdhari Fresh,Soap Bar 100g,3421.39,Overdue,2026-05-03,2026-06-02
+INV-0008,Star Bazaar,Detergent Powder 3kg,5843.43,Overdue,2025-07-31,2025-08-15
+INV-0009,Vijaya Retail Hub,Milk Powder 500g,2481.85,Overdue,2025-12-19,2026-01-03
+INV-0010,Daily Needs Store,Tea Leaves 1kg,5805.25,Paid,2025-10-24,2025-11-08
+INV-0011,Star Bazaar,Shampoo 1L,6361.92,Overdue,2025-07-19,2025-08-03
+INV-0012,Kumar Stores,Colgate Toothpaste,708.51,Paid,2026-04-07,2026-05-22
+INV-0013,Kumar Stores,Biscuits Pack,1185.62,Overdue,2025-08-31,2025-09-15
+INV-0014,ABC Supermarket,Chilli Powder 500g,5241.75,Paid,2026-01-11,2026-02-10
+INV-0015,Srinivas Kirana,Cooking Oil 5L,3750.0,Paid,2025-07-15,2025-07-30
+INV-0016,Big Basket Retail,Sugar 50kg,12085.19,Paid,2026-04-22,2026-05-22
+INV-0017,Nilgiris Fresh,Wheat Flour 10kg,10691.6,Overdue,2026-03-22,2026-04-21
+INV-0018,Daily Needs Store,Chilli Powder 500g,1477.88,Overdue,2025-06-22,2025-08-06
+INV-0019,Star Bazaar,Wheat Flour 10kg,13247.03,Paid,2025-11-20,2026-01-04
+INV-0020,Daily Needs Store,Tea Leaves 1kg,5969.57,Overdue,2026-03-19,2026-04-03
+INV-0021,Big Basket Retail,Milk Powder 500g,8222.96,Paid,2025-11-25,2025-12-10
+INV-0022,Daily Needs Store,Sugar 50kg,19492.4,Overdue,2025-07-26,2025-09-09
+INV-0023,Big Basket Retail,Tea Leaves 1kg,3590.66,Overdue,2026-04-27,2026-05-27
+INV-0024,Spencer's Retail,Soap Bar 100g,1877.71,Paid,2026-05-30,2026-07-14
+INV-0025,Vijaya Retail Hub,Wheat Flour 10kg,5021.8,Paid,2025-07-23,2025-08-22
+INV-0026,ABC Supermarket,Detergent Powder 3kg,891.85,Paid,2026-06-18,2026-08-02
+INV-0027,Nilgiris Fresh,Shampoo 1L,1481.02,Overdue,2025-10-20,2025-11-19
+INV-0028,Star Bazaar,Cooking Oil 5L,6037.54,Paid,2026-02-18,2026-03-20
+INV-0029,Big Basket Retail,Milk Powder 500g,4686.19,Paid,2026-02-15,2026-04-01
+INV-0030,Big Basket Retail,Sunflower Oil 15L,16051.3,Paid,2025-12-11,2025-12-26
+INV-0031,Big Basket Retail,Toor Dal 5kg,9381.75,Paid,2025-11-10,2025-12-10
+INV-0032,Vijaya Retail Hub,Wheat Flour 10kg,2397.37,Overdue,2026-03-24,2026-04-08
+INV-0033,Nature's Basket,Tea Leaves 1kg,4931.08,Overdue,2026-02-22,2026-03-09
+INV-0034,More Supermarket,Salt 1kg,261.99,Overdue,2026-01-06,2026-02-05
+INV-0035,Heritage Fresh,Chilli Powder 500g,4393.69,Overdue,2026-04-01,2026-05-16
+INV-0036,Daily Needs Store,Coffee Powder 500g,12550.17,Paid,2026-04-13,2026-05-28
+INV-0037,Star Bazaar,Sunflower Oil 15L,21277.72,Paid,2026-03-05,2026-04-19
+INV-0038,Daily Needs Store,Tea Leaves 1kg,1916.15,Overdue,2025-07-25,2025-09-08
+INV-0039,ABC Supermarket,Detergent Powder 3kg,4871.12,Paid,2025-07-11,2025-08-25
+INV-0040,ABC Supermarket,Shampoo 1L,7358.61,Overdue,2025-10-03,2025-11-17
+INV-0041,Big Basket Retail,Toor Dal 5kg,13686.77,Paid,2025-11-21,2025-12-21
+INV-0042,Daily Needs Store,Basmati Rice 25kg,21712.21,Paid,2026-04-05,2026-04-20
+INV-0043,Daily Needs Store,Toor Dal 5kg,18071.33,Paid,2025-07-26,2025-08-10
+INV-0044,Daily Needs Store,Basmati Rice 25kg,28567.55,Overdue,2026-03-31,2026-04-30
+INV-0045,Star Bazaar,Colgate Toothpaste,993.0,Overdue,2025-08-14,2025-09-28
+INV-0046,Star Bazaar,Shampoo 1L,2444.2,Paid,2026-05-11,2026-06-10
+INV-0047,Nilgiris Fresh,Sugar 50kg,18319.5,Paid,2025-11-09,2025-11-24
+INV-0048,Metro Cash & Carry,Tea Leaves 1kg,8168.97,Paid,2026-03-30,2026-05-14
+INV-0049,Nilgiris Fresh,Toor Dal 5kg,11784.55,Overdue,2025-12-27,2026-02-10
+INV-0050,Star Bazaar,Soap Bar 100g,1835.03,Paid,2025-07-11,2025-08-10
+INV-0051,Nilgiris Fresh,Milk Powder 500g,7886.33,Overdue,2026-01-15,2026-03-01
+INV-0052,Nature's Basket,Tea Leaves 1kg,10418.48,Paid,2025-09-19,2025-10-19
+INV-0053,Annapurna Provisions,Chilli Powder 500g,5129.11,Paid,2025-10-26,2025-11-25
+INV-0054,Kumar Stores,Sunflower Oil 15L,29792.74,Overdue,2025-10-12,2025-10-27
+INV-0055,Heritage Fresh,Detergent Powder 3kg,2481.85,Paid,2026-05-24,2026-06-08
+INV-0056,Nilgiris Fresh,Colgate Toothpaste,2171.96,Overdue,2026-03-08,2026-04-07
+INV-0057,Annapurna Provisions,Basmati Rice 25kg,10979.54,Overdue,2025-11-01,2025-11-16
+INV-0058,Star Bazaar,Wheat Flour 10kg,10352.14,Overdue,2025-12-14,2026-01-28
+INV-0059,Srinivas Kirana,Wheat Flour 10kg,7333.21,Paid,2026-04-12,2026-04-27
+INV-0060,Nilgiris Fresh,Coffee Powder 500g,6061.39,Overdue,2025-07-26,2025-09-09
+INV-0061,Big Basket Retail,Soap Bar 100g,2464.04,Paid,2026-05-28,2026-06-27
+INV-0062,Namdhari Fresh,Toor Dal 5kg,6002.62,Pending,2026-05-27,2026-06-26
+INV-0063,Sri Venkateswara Stores,Soap Bar 100g,2052.49,Paid,2025-06-21,2025-07-21
+INV-0064,ABC Supermarket,Shampoo 1L,4376.4,Paid,2026-02-02,2026-03-19
+INV-0065,More Supermarket,Sugar 50kg,10985.98,Pending,2026-05-26,2026-07-10
+INV-0066,Star Bazaar,Soap Bar 100g,1304.35,Paid,2025-09-30,2025-10-15
+INV-0067,Big Basket Retail,Sugar 50kg,14938.03,Paid,2026-05-09,2026-06-23
+INV-0068,Royal Mart,Salt 1kg,875.67,Paid,2026-05-22,2026-07-06
+INV-0069,Big Basket Retail,Chilli Powder 500g,1973.49,Paid,2026-06-12,2026-07-27
+INV-0070,Big Basket Retail,Biscuits Pack,1271.14,Paid,2026-02-13,2026-03-30
+INV-0071,Annapurna Provisions,Biscuits Pack,3870.45,Overdue,2026-03-06,2026-04-05
+INV-0072,More Supermarket,Cooking Oil 5L,9799.09,Paid,2025-10-25,2025-12-09
+INV-0073,Royal Mart,Detergent Powder 3kg,2946.37,Paid,2025-07-30,2025-09-13
+INV-0074,Daily Needs Store,Sugar 50kg,7810.8,Overdue,2025-10-17,2025-11-16
+INV-0075,Daily Needs Store,Chilli Powder 500g,3077.58,Paid,2026-03-25,2026-04-24
+INV-0076,Big Basket Retail,Salt 1kg,2541.91,Paid,2026-04-16,2026-05-31
+INV-0077,ABC Supermarket,Salt 1kg,1474.05,Overdue,2025-12-18,2026-01-17
+INV-0078,Rahul Traders,Detergent Powder 3kg,4562.43,Paid,2025-11-07,2025-12-07
+INV-0079,Kumar Stores,Tea Leaves 1kg,9619.75,Paid,2025-08-25,2025-10-09
+INV-0080,ABC Supermarket,Basmati Rice 25kg,10365.65,Overdue,2026-01-26,2026-02-10
+INV-0081,Daily Needs Store,Salt 1kg,1106.9,Paid,2026-02-08,2026-03-10
+INV-0082,Metro Cash & Carry,Chilli Powder 500g,2214.36,Paid,2025-08-01,2025-08-31
+INV-0083,Lakshmi General Store,Detergent Powder 3kg,5818.75,Overdue,2026-05-20,2026-06-04
+INV-0084,Spencer's Retail,Basmati Rice 25kg,29130.05,Paid,2025-10-21,2025-11-05
+INV-0085,Star Bazaar,Biscuits Pack,4451.11,Overdue,2025-12-26,2026-01-10
+INV-0086,Big Basket Retail,Tea Leaves 1kg,10970.56,Paid,2025-08-15,2025-09-29
+INV-0087,Big Basket Retail,Salt 1kg,2685.66,Overdue,2025-09-30,2025-10-15
+INV-0088,Nature's Basket,Wheat Flour 10kg,12453.48,Overdue,2025-11-22,2026-01-06
+INV-0089,Nilgiris Fresh,Milk Powder 500g,6222.09,Paid,2026-05-25,2026-06-24
+INV-0090,Nilgiris Fresh,Chilli Powder 500g,5603.53,Overdue,2025-08-14,2025-09-13
+INV-0091,Vijaya Retail Hub,Toor Dal 5kg,10729.33,Paid,2026-03-15,2026-04-29
+INV-0092,Namdhari Fresh,Cooking Oil 5L,10394.05,Paid,2026-04-20,2026-05-20
+INV-0093,Nilgiris Fresh,Colgate Toothpaste,5108.27,Overdue,2025-10-23,2025-11-22
+INV-0094,Annapurna Provisions,Basmati Rice 25kg,25150.14,Paid,2025-12-04,2025-12-19
+INV-0095,Metro Cash & Carry,Shampoo 1L,3240.45,Overdue,2026-04-22,2026-06-06
+INV-0096,Srinivas Kirana,Coffee Powder 500g,2988.45,Overdue,2026-01-15,2026-02-14
+INV-0097,Big Basket Retail,Cooking Oil 5L,10211.91,Paid,2025-06-29,2025-07-14
+INV-0098,Nature's Basket,Soap Bar 100g,3327.56,Overdue,2025-12-26,2026-01-25
+INV-0099,Daily Needs Store,Milk Powder 500g,7890.92,Paid,2025-11-06,2025-12-06
+INV-0100,Star Bazaar,Shampoo 1L,2061.44,Paid,2026-03-22,2026-05-06
+INV-0101,Big Basket Retail,Colgate Toothpaste,4343.19,Paid,2026-03-16,2026-04-30
+INV-0102,Star Bazaar,Soap Bar 100g,1403.03,Paid,2025-09-20,2025-10-20
+INV-0103,Metro Cash & Carry,Sunflower Oil 15L,36124.08,Overdue,2026-03-31,2026-04-30
+INV-0104,Big Basket Retail,Wheat Flour 10kg,15537.82,Paid,2026-04-10,2026-05-10
+INV-0105,More Supermarket,Sunflower Oil 15L,13727.33,Overdue,2026-02-20,2026-03-07
+INV-0106,Daily Needs Store,Sunflower Oil 15L,10601.97,Paid,2026-04-05,2026-05-05
+INV-0107,Big Basket Retail,Detergent Powder 3kg,7049.43,Overdue,2026-01-01,2026-01-31
+INV-0108,Big Basket Retail,Soap Bar 100g,2955.38,Overdue,2025-07-21,2025-09-04
+INV-0109,Star Bazaar,Coffee Powder 500g,5340.66,Paid,2025-08-01,2025-08-16
+INV-0110,More Supermarket,Basmati Rice 25kg,22729.9,Paid,2026-06-08,2026-07-23
+INV-0111,Daily Needs Store,Soap Bar 100g,3579.24,Overdue,2026-02-08,2026-02-23
+INV-0112,ABC Supermarket,Coffee Powder 500g,7426.45,Overdue,2026-03-26,2026-04-10
+INV-0113,Reliance Smart Point,Sugar 50kg,6415.22,Overdue,2025-11-25,2026-01-09
+INV-0114,Heritage Fresh,Biscuits Pack,1320.35,Pending,2026-06-08,2026-07-08
+INV-0115,Srinivas Kirana,Cooking Oil 5L,10354.88,Overdue,2026-04-23,2026-05-08
+INV-0116,Sri Venkateswara Stores,Colgate Toothpaste,637.98,Overdue,2025-10-16,2025-11-30
+INV-0117,Nilgiris Fresh,Colgate Toothpaste,3651.01,Paid,2025-09-18,2025-10-18
+INV-0118,Metro Cash & Carry,Tea Leaves 1kg,11928.03,Overdue,2026-01-30,2026-03-16
+INV-0119,Royal Mart,Milk Powder 500g,5370.34,Paid,2025-12-02,2026-01-16
+INV-0120,Big Basket Retail,Cooking Oil 5L,7899.7,Paid,2026-01-12,2026-02-26
+INV-0121,Daily Needs Store,Shampoo 1L,2107.7,Overdue,2026-01-13,2026-02-27
+INV-0122,Big Basket Retail,Chilli Powder 500g,1139.85,Overdue,2026-03-13,2026-04-12
+INV-0123,Vijaya Retail Hub,Sunflower Oil 15L,12576.43,Overdue,2026-03-29,2026-04-13
+INV-0124,Royal Mart,Wheat Flour 10kg,2478.32,Pending,2026-05-09,2026-06-23
+INV-0125,Heritage Fresh,Basmati Rice 25kg,28670.25,Overdue,2025-08-07,2025-08-22
+INV-0126,Vijaya Retail Hub,Wheat Flour 10kg,12486.99,Overdue,2025-09-07,2025-10-07
+INV-0127,Daily Needs Store,Chilli Powder 500g,6045.0,Paid,2026-02-17,2026-03-04
+INV-0128,Star Bazaar,Toor Dal 5kg,19675.4,Paid,2025-11-09,2025-12-09
+INV-0129,Metro Cash & Carry,Basmati Rice 25kg,18742.02,Overdue,2025-11-20,2026-01-04
+INV-0130,Reliance Smart Point,Biscuits Pack,3840.59,Overdue,2025-12-14,2026-01-13
+INV-0131,Vijaya Retail Hub,Shampoo 1L,8129.25,Pending,2026-06-13,2026-06-28
+INV-0132,Big Basket Retail,Sunflower Oil 15L,16505.28,Overdue,2026-02-18,2026-04-04
+INV-0133,Reliance Smart Point,Cooking Oil 5L,19822.39,Overdue,2025-08-24,2025-10-08
+INV-0134,Nilgiris Fresh,Biscuits Pack,1216.03,Overdue,2026-02-09,2026-02-24
+INV-0135,Reliance Smart Point,Sugar 50kg,17155.7,Overdue,2025-11-03,2025-12-03
+INV-0136,Daily Needs Store,Shampoo 1L,8057.55,Overdue,2026-03-21,2026-04-20
+INV-0137,Royal Mart,Sunflower Oil 15L,26488.53,Overdue,2025-10-19,2025-12-03
+INV-0138,Star Bazaar,Sugar 50kg,16324.77,Overdue,2025-08-10,2025-09-24
+INV-0139,Star Bazaar,Soap Bar 100g,4700.02,Overdue,2025-07-14,2025-08-13
+INV-0140,Daily Needs Store,Chilli Powder 500g,1759.28,Overdue,2026-03-19,2026-04-18
+INV-0141,More Supermarket,Tea Leaves 1kg,2410.69,Overdue,2026-01-02,2026-02-16
+INV-0142,ABC Supermarket,Toor Dal 5kg,7683.34,Paid,2026-05-13,2026-06-12
+INV-0143,Vijaya Retail Hub,Soap Bar 100g,3651.83,Paid,2025-09-09,2025-09-24
+INV-0144,Daily Needs Store,Chilli Powder 500g,5283.14,Paid,2026-02-09,2026-03-11
+INV-0145,Royal Mart,Wheat Flour 10kg,6036.76,Overdue,2026-04-09,2026-05-09
+INV-0146,Heritage Fresh,Basmati Rice 25kg,46098.58,Paid,2026-05-24,2026-06-23
+INV-0147,Star Bazaar,Cooking Oil 5L,17930.38,Overdue,2025-11-14,2025-11-29
+INV-0148,Spencer's Retail,Colgate Toothpaste,4425.0,Pending,2026-05-24,2026-07-08
+INV-0149,Star Bazaar,Soap Bar 100g,4222.28,Paid,2025-07-08,2025-08-22
+INV-0150,Daily Needs Store,Shampoo 1L,7381.87,Paid,2025-09-18,2025-10-03
+INV-0151,Lakshmi General Store,Colgate Toothpaste,5329.43,Overdue,2025-10-30,2025-11-29
+INV-0152,Daily Needs Store,Wheat Flour 10kg,9999.61,Overdue,2025-07-29,2025-08-13
+INV-0153,Big Basket Retail,Milk Powder 500g,2487.56,Paid,2026-01-09,2026-01-24
+INV-0154,Daily Needs Store,Colgate Toothpaste,3925.6,Paid,2026-05-13,2026-06-12
+INV-0155,Nilgiris Fresh,Shampoo 1L,8825.44,Paid,2025-10-12,2025-11-26
+INV-0156,Heritage Fresh,Chilli Powder 500g,1614.79,Paid,2025-07-14,2025-07-29
+INV-0157,Big Basket Retail,Detergent Powder 3kg,8597.46,Paid,2025-08-29,2025-09-28
+INV-0158,Namdhari Fresh,Chilli Powder 500g,4722.81,Overdue,2025-09-08,2025-10-08
+INV-0159,Sri Venkateswara Stores,Chilli Powder 500g,7052.57,Overdue,2025-11-11,2025-11-26
+INV-0160,Big Basket Retail,Detergent Powder 3kg,8366.51,Paid,2025-08-10,2025-09-24
+INV-0161,Lakshmi General Store,Sunflower Oil 15L,20021.07,Overdue,2025-09-26,2025-10-11
+INV-0162,Daily Needs Store,Coffee Powder 500g,11066.11,Paid,2026-04-22,2026-05-07
+INV-0163,Star Bazaar,Coffee Powder 500g,3099.19,Overdue,2026-03-31,2026-04-15
+INV-0164,Nature's Basket,Shampoo 1L,7771.01,Paid,2026-04-22,2026-05-07
+INV-0165,Reliance Smart Point,Colgate Toothpaste,5258.71,Overdue,2025-08-16,2025-09-30
+INV-0166,Daily Needs Store,Detergent Powder 3kg,6148.65,Paid,2025-06-29,2025-07-14
+INV-0167,Big Basket Retail,Wheat Flour 10kg,15021.88,Overdue,2026-02-19,2026-03-21
+INV-0168,Big Basket Retail,Biscuits Pack,3858.46,Overdue,2026-05-01,2026-05-16
+INV-0169,Srinivas Kirana,Soap Bar 100g,2711.73,Overdue,2025-07-06,2025-07-21
+INV-0170,Rahul Traders,Wheat Flour 10kg,10664.66,Overdue,2026-02-03,2026-02-18
+INV-0171,Star Bazaar,Sugar 50kg,8847.95,Overdue,2026-05-06,2026-06-20
+INV-0172,Kumar Stores,Soap Bar 100g,2702.64,Paid,2026-04-26,2026-05-26
+INV-0173,Namdhari Fresh,Coffee Powder 500g,8261.44,Paid,2025-10-15,2025-11-14
+INV-0174,Rahul Traders,Wheat Flour 10kg,7630.84,Paid,2025-11-28,2026-01-12
+INV-0175,Royal Mart,Sugar 50kg,7948.01,Paid,2025-08-03,2025-08-18
+INV-0176,Lakshmi General Store,Toor Dal 5kg,14837.67,Overdue,2026-04-17,2026-06-01
+INV-0177,Rahul Traders,Milk Powder 500g,10730.2,Paid,2026-01-23,2026-03-09
+INV-0178,Daily Needs Store,Milk Powder 500g,2724.35,Paid,2026-03-07,2026-03-22
+INV-0179,Big Basket Retail,Milk Powder 500g,10468.27,Overdue,2025-12-26,2026-01-10
+INV-0180,Rahul Traders,Basmati Rice 25kg,33586.09,Paid,2026-05-23,2026-07-07
+INV-0181,Daily Needs Store,Shampoo 1L,4338.34,Overdue,2025-09-21,2025-10-06
+INV-0182,Reliance Smart Point,Basmati Rice 25kg,12572.52,Paid,2026-03-19,2026-04-03
+INV-0183,More Supermarket,Milk Powder 500g,4928.91,Overdue,2025-12-04,2026-01-18
+INV-0184,Reliance Smart Point,Tea Leaves 1kg,10426.54,Paid,2025-07-16,2025-08-30
+INV-0185,Rahul Traders,Cooking Oil 5L,14763.32,Paid,2026-01-19,2026-02-18
+INV-0186,Lakshmi General Store,Chilli Powder 500g,1651.14,Pending,2026-06-03,2026-07-18
+INV-0187,Heritage Fresh,Sunflower Oil 15L,14514.58,Paid,2026-04-23,2026-05-08
+INV-0188,Star Bazaar,Toor Dal 5kg,19504.55,Paid,2025-11-16,2025-12-16
+INV-0189,Rahul Traders,Tea Leaves 1kg,3184.94,Paid,2026-03-20,2026-05-04
+INV-0190,Lakshmi General Store,Sugar 50kg,16668.24,Paid,2025-07-12,2025-08-11
+INV-0191,Annapurna Provisions,Chilli Powder 500g,4870.43,Paid,2026-06-19,2026-08-03
+INV-0192,Nilgiris Fresh,Shampoo 1L,2845.48,Overdue,2026-05-03,2026-06-02
+INV-0193,Daily Needs Store,Chilli Powder 500g,6770.16,Overdue,2025-10-23,2025-11-22
+INV-0194,Kumar Stores,Soap Bar 100g,4303.16,Overdue,2025-10-12,2025-11-11
+INV-0195,Nilgiris Fresh,Coffee Powder 500g,15499.12,Overdue,2025-12-16,2026-01-15
+INV-0196,Reliance Smart Point,Detergent Powder 3kg,2053.28,Paid,2025-10-30,2025-11-14
+INV-0197,Nilgiris Fresh,Tea Leaves 1kg,12962.93,Paid,2026-05-08,2026-06-07
+INV-0198,ABC Supermarket,Biscuits Pack,5219.12,Overdue,2026-04-06,2026-05-21
+INV-0199,Annapurna Provisions,Toor Dal 5kg,12850.63,Overdue,2026-02-16,2026-03-18
+INV-0200,ABC Supermarket,Sunflower Oil 15L,19563.77,Paid,2025-07-28,2025-08-27
+INV-0201,Daily Needs Store,Soap Bar 100g,854.61,Overdue,2025-08-06,2025-09-20
+INV-0202,ABC Supermarket,Sunflower Oil 15L,23178.31,Paid,2026-04-09,2026-05-24
+INV-0203,Srinivas Kirana,Toor Dal 5kg,24128.94,Overdue,2026-02-06,2026-02-21
+INV-0204,Daily Needs Store,Tea Leaves 1kg,2178.53,Pending,2026-06-18,2026-07-18
+INV-0205,Sri Venkateswara Stores,Tea Leaves 1kg,6074.73,Paid,2025-11-12,2025-12-12
+INV-0206,Nilgiris Fresh,Shampoo 1L,1959.8,Overdue,2025-08-08,2025-09-22
+INV-0207,Star Bazaar,Shampoo 1L,2101.89,Overdue,2026-05-26,2026-06-10
+INV-0208,Big Basket Retail,Toor Dal 5kg,16403.96,Overdue,2025-08-03,2025-09-02
+INV-0209,Annapurna Provisions,Toor Dal 5kg,18065.82,Paid,2026-06-06,2026-07-21
+INV-0210,Srinivas Kirana,Milk Powder 500g,1924.17,Overdue,2025-11-26,2025-12-11
+INV-0211,Big Basket Retail,Coffee Powder 500g,5695.06,Paid,2025-08-30,2025-09-14
+INV-0212,Big Basket Retail,Sunflower Oil 15L,31349.6,Overdue,2026-05-03,2026-05-18
+INV-0213,Star Bazaar,Tea Leaves 1kg,10478.65,Paid,2025-07-13,2025-08-12
+INV-0214,Vijaya Retail Hub,Soap Bar 100g,4465.89,Paid,2026-02-05,2026-02-20
+INV-0215,Big Basket Retail,Coffee Powder 500g,7855.74,Paid,2026-04-09,2026-05-09
+INV-0216,Big Basket Retail,Chilli Powder 500g,7877.4,Paid,2025-10-01,2025-11-15
+INV-0217,Big Basket Retail,Milk Powder 500g,7862.32,Overdue,2025-08-12,2025-09-26
+INV-0218,Heritage Fresh,Sugar 50kg,28010.65,Overdue,2025-11-07,2025-12-07
+INV-0219,Big Basket Retail,Sugar 50kg,33389.29,Overdue,2025-10-12,2025-11-11
+INV-0220,Rahul Traders,Sunflower Oil 15L,21800.95,Paid,2025-12-29,2026-01-13
+INV-0221,Star Bazaar,Basmati Rice 25kg,23122.88,Overdue,2025-08-10,2025-09-24
+INV-0222,Reliance Smart Point,Sunflower Oil 15L,17760.76,Overdue,2026-02-17,2026-04-03
+INV-0223,Royal Mart,Biscuits Pack,4956.8,Paid,2025-07-31,2025-08-15
+INV-0224,Namdhari Fresh,Chilli Powder 500g,1747.51,Paid,2025-11-15,2025-11-30
+INV-0225,Big Basket Retail,Biscuits Pack,1140.41,Paid,2026-03-03,2026-04-17
+INV-0226,ABC Supermarket,Detergent Powder 3kg,7940.56,Paid,2025-11-17,2025-12-17
+INV-0227,ABC Supermarket,Chilli Powder 500g,2311.12,Paid,2026-05-29,2026-06-13
+INV-0228,Srinivas Kirana,Basmati Rice 25kg,26487.21,Overdue,2026-02-16,2026-03-03
+INV-0229,Metro Cash & Carry,Basmati Rice 25kg,25066.07,Paid,2025-07-25,2025-08-24
+INV-0230,Big Basket Retail,Shampoo 1L,2651.37,Paid,2025-12-18,2026-02-01
+INV-0231,Vijaya Retail Hub,Cooking Oil 5L,16281.32,Overdue,2025-08-29,2025-09-13
+INV-0232,Star Bazaar,Soap Bar 100g,1575.08,Paid,2025-10-01,2025-10-16
+INV-0233,Big Basket Retail,Cooking Oil 5L,8682.36,Paid,2026-05-18,2026-06-02
+INV-0234,Star Bazaar,Shampoo 1L,3964.0,Overdue,2025-12-26,2026-01-25
+INV-0235,Kumar Stores,Shampoo 1L,10480.76,Paid,2026-03-02,2026-04-16
+INV-0236,Srinivas Kirana,Colgate Toothpaste,5854.87,Paid,2026-01-24,2026-02-08
+INV-0237,More Supermarket,Soap Bar 100g,2243.7,Overdue,2025-07-31,2025-08-30
+INV-0238,Big Basket Retail,Tea Leaves 1kg,10461.89,Paid,2025-12-17,2026-01-16
+INV-0239,Lakshmi General Store,Chilli Powder 500g,2998.52,Overdue,2025-07-20,2025-08-04
+INV-0240,Srinivas Kirana,Tea Leaves 1kg,13805.15,Overdue,2025-09-02,2025-10-17
+INV-0241,Reliance Smart Point,Sugar 50kg,13098.03,Paid,2026-05-17,2026-06-16
+INV-0242,Star Bazaar,Toor Dal 5kg,19135.62,Paid,2025-12-27,2026-01-26
+INV-0243,Star Bazaar,Milk Powder 500g,6363.99,Paid,2026-05-19,2026-06-18
+INV-0244,Star Bazaar,Cooking Oil 5L,14240.68,Paid,2026-04-04,2026-04-19
+INV-0245,Big Basket Retail,Coffee Powder 500g,18067.9,Overdue,2025-11-14,2025-12-29
+INV-0246,Big Basket Retail,Toor Dal 5kg,23236.48,Overdue,2026-02-07,2026-02-22
+INV-0247,Daily Needs Store,Shampoo 1L,7765.75,Paid,2026-06-19,2026-07-04
+INV-0248,Daily Needs Store,Tea Leaves 1kg,10888.45,Paid,2026-06-14,2026-07-29
+INV-0249,Nature's Basket,Wheat Flour 10kg,21580.98,Overdue,2025-08-31,2025-09-15
+INV-0250,Daily Needs Store,Biscuits Pack,6498.95,Overdue,2026-03-30,2026-04-14
+INV-0251,Daily Needs Store,Salt 1kg,3653.67,Paid,2026-02-21,2026-04-07
+INV-0252,ABC Supermarket,Sugar 50kg,9922.47,Paid,2025-11-30,2026-01-14
+INV-0253,Srinivas Kirana,Milk Powder 500g,3321.93,Overdue,2026-03-30,2026-05-14
+INV-0254,Reliance Smart Point,Chilli Powder 500g,4792.72,Paid,2025-07-19,2025-08-03
+INV-0255,Star Bazaar,Shampoo 1L,10401.42,Overdue,2025-10-14,2025-11-13
+INV-0256,Heritage Fresh,Sugar 50kg,13818.56,Paid,2026-05-12,2026-06-26
+INV-0257,Sri Venkateswara Stores,Sugar 50kg,21574.85,Overdue,2025-09-15,2025-10-30
+INV-0258,Daily Needs Store,Sunflower Oil 15L,39861.3,Paid,2025-07-05,2025-07-20
+INV-0259,ABC Supermarket,Colgate Toothpaste,5026.7,Overdue,2026-04-09,2026-05-09
+INV-0260,Daily Needs Store,Soap Bar 100g,3233.24,Paid,2026-06-06,2026-07-06
+INV-0261,Nilgiris Fresh,Tea Leaves 1kg,7553.08,Paid,2026-02-23,2026-03-25
+INV-0262,Annapurna Provisions,Shampoo 1L,8566.09,Paid,2025-12-14,2026-01-13
+INV-0263,Namdhari Fresh,Wheat Flour 10kg,8799.42,Paid,2026-02-14,2026-03-01
+INV-0264,Nilgiris Fresh,Sunflower Oil 15L,18955.61,Paid,2026-01-03,2026-02-17
+INV-0265,More Supermarket,Shampoo 1L,10533.38,Overdue,2025-11-28,2025-12-13
+INV-0266,Srinivas Kirana,Biscuits Pack,4404.73,Paid,2025-11-25,2025-12-25
+INV-0267,Srinivas Kirana,Biscuits Pack,7847.8,Paid,2025-10-09,2025-11-23
+INV-0268,Big Basket Retail,Cooking Oil 5L,9795.96,Paid,2025-06-25,2025-07-10
+INV-0269,Lakshmi General Store,Salt 1kg,1607.89,Overdue,2026-01-12,2026-01-27
+INV-0270,Daily Needs Store,Sugar 50kg,18323.4,Paid,2026-02-06,2026-03-23
+INV-0271,Sri Venkateswara Stores,Wheat Flour 10kg,5080.03,Paid,2025-08-09,2025-09-08
+INV-0272,Namdhari Fresh,Milk Powder 500g,10869.12,Paid,2025-09-30,2025-11-14
+INV-0273,Star Bazaar,Sunflower Oil 15L,13033.38,Paid,2025-12-08,2026-01-07
+INV-0274,Star Bazaar,Shampoo 1L,10637.28,Paid,2025-12-01,2025-12-16
+INV-0275,Heritage Fresh,Shampoo 1L,6489.3,Paid,2026-03-08,2026-04-22
+INV-0276,Royal Mart,Basmati Rice 25kg,27252.84,Overdue,2026-05-31,2026-06-15
+INV-0277,Nilgiris Fresh,Cooking Oil 5L,9480.19,Pending,2026-05-22,2026-07-06
+INV-0278,ABC Supermarket,Cooking Oil 5L,7452.03,Pending,2026-05-09,2026-06-23
+INV-0279,Reliance Smart Point,Detergent Powder 3kg,1584.49,Paid,2026-06-14,2026-06-29
+INV-0280,Rahul Traders,Toor Dal 5kg,13738.57,Paid,2025-10-03,2025-11-02
+INV-0281,Royal Mart,Sunflower Oil 15L,36255.06,Overdue,2026-03-13,2026-03-28
+INV-0282,Royal Mart,Salt 1kg,1456.86,Overdue,2025-09-17,2025-10-17
+INV-0283,Daily Needs Store,Colgate Toothpaste,4902.81,Paid,2025-09-27,2025-10-12
+INV-0284,Daily Needs Store,Soap Bar 100g,4638.17,Paid,2026-06-09,2026-07-24
+INV-0285,Namdhari Fresh,Colgate Toothpaste,2655.62,Paid,2026-04-10,2026-05-25
+INV-0286,Kumar Stores,Milk Powder 500g,13492.81,Paid,2025-09-03,2025-10-03
+INV-0287,Daily Needs Store,Milk Powder 500g,13138.83,Pending,2026-05-22,2026-06-21
+INV-0288,Daily Needs Store,Colgate Toothpaste,1606.4,Overdue,2026-05-02,2026-06-16
+INV-0289,Star Bazaar,Detergent Powder 3kg,1819.88,Overdue,2026-01-18,2026-02-17
+INV-0290,Star Bazaar,Basmati Rice 25kg,56065.23,Overdue,2025-09-09,2025-10-09
+INV-0291,Royal Mart,Cooking Oil 5L,18066.02,Paid,2025-11-15,2025-12-15
+INV-0292,Nilgiris Fresh,Detergent Powder 3kg,6795.17,Paid,2025-07-10,2025-07-25
+INV-0293,Star Bazaar,Salt 1kg,3127.42,Overdue,2025-09-24,2025-11-08
+INV-0294,Star Bazaar,Basmati Rice 25kg,24562.26,Overdue,2026-04-25,2026-05-10
+INV-0295,Big Basket Retail,Cooking Oil 5L,23401.67,Paid,2025-08-28,2025-10-12
+INV-0296,Nilgiris Fresh,Shampoo 1L,3191.24,Paid,2026-02-10,2026-03-27
+INV-0297,Daily Needs Store,Soap Bar 100g,3900.27,Overdue,2025-09-27,2025-10-12
+INV-0298,Kumar Stores,Chilli Powder 500g,5179.85,Overdue,2025-08-04,2025-09-03
+INV-0299,Star Bazaar,Cooking Oil 5L,11037.43,Paid,2025-10-26,2025-11-10
+INV-0300,Daily Needs Store,Shampoo 1L,4621.73,Paid,2026-04-10,2026-04-25

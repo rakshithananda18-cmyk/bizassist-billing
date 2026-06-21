@@ -1,6 +1,9 @@
 name,sku,barcode,unit,description,brand,manufacturer,category,selling_price,cost_price,mrp,cgst_rate,sgst_rate,igst_rate,opening_stock
-Paracetamol 650mg,PARA650,8901234567890,Nos,Pain reliever & fever reducer,Calpol,GSK,Medicines,15.00,10.00,18.00,6.0,6.0,0.0,100
-Amoxicillin 500mg,AMOX500,8901234567891,Nos,Antibiotic medication,Mox,Sun Pharma,Medicines,35.00,20.00,42.00,6.0,6.0,0.0,50
-Dolo 650,DOLO650,8901234567892,Nos,Fever reducer tablet,Dolo,Micro Labs,Medicines,18.00,12.00,20.00,6.0,6.0,0.0,200
-Cetirizine 10mg,CET10,8901234567893,Nos,Antihistamine for allergy relief,Okacet,Cipla,Medicines,5.00,2.50,6.00,6.0,6.0,0.0,300
-Ibuprofen 400mg,IBU400,8901234567894,Nos,Anti-inflammatory painkiller,Brufen,Abbott,Medicines,12.00,7.00,15.00,6.0,6.0,0.0,150
+Basmati Rice 25kg,PROD-SKU-000,8901234567000,Nos,High quality organic Basmati Rice 25kg for retail distribution.,Surf Excel,Organic India Pvt Ltd,Grocery,112.72,86.73,123.99,6.0,6.0,0.0,262
+Sunflower Oil 15L,PROD-SKU-001,8901234567001,Nos,High quality organic Sunflower Oil 15L for retail distribution.,Nestle,Himalaya Wellness,Grocery,378.37,325.37,416.21,6.0,6.0,0.0,228
+Sugar 50kg,PROD-SKU-002,8901234567002,Nos,High quality organic Sugar 50kg for retail distribution.,Tata,Colgate-Palmolive,Household,166.53,136.69,183.18,6.0,6.0,0.0,228
+Wheat Flour 10kg,PROD-SKU-003,8901234567003,Nos,High quality organic Wheat Flour 10kg for retail distribution.,Himalaya,Unilever,Grocery,228.08,187.61,250.89,6.0,6.0,0.0,84
+Toor Dal 5kg,PROD-SKU-004,8901234567004,Nos,High quality organic Toor Dal 5kg for retail distribution.,Organic India,Organic India Pvt Ltd,Grocery,169.21,133.08,186.13,6.0,6.0,0.0,225
+Tea Leaves 1kg,PROD-SKU-005,8901234567005,Nos,High quality organic Tea Leaves 1kg for retail distribution.,Tata,Himalaya Wellness,Grocery,301.47,240.87,331.62,6.0,6.0,0.0,314
+Coffee Powder 500g,PROD-SKU-006,8901234567006,Nos,High quality organic Coffee Powder 500g for retail distribution.,Colgate,Unilever,Household,110.45,94.08,121.5,6.0,6.0,0.0,168
+Detergent Powder 3kg,PROD-SKU-007,8901234567007,Nos,High quality organic Detergent Powder 3kg for retail distribution.,Tata,Himalaya Wellness,Personal Care,357.53,287.3,393.28,6.0,6.0,0.0,271

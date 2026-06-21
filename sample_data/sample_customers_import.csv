@@ -1,4 +1,11 @@
 name,phone,email,address,gstin,state_code,pan,credit_limit,credit_days,opening_dues
-Sharma Medicals,+919876543210,sharma@meds.com,12 Main Road Bangalore,29ASHPM1234A1Z1,29,ASHPM1234A,50000.00,30,0.00
-Metro Pharmacy,+919876543211,contact@metropharma.in,55 Ring Road Indiranagar,29METRO5678B1Z2,29,METRO5678B,100000.00,45,5000.00
-Apollo Clinic,+919876543212,billing@apolloclinic.com,88 Residency Road,29APOLL9012C1Z3,29,APOLL9012C,250000.00,60,15000.00
+Nilgiris Fresh,+919876543200,nilgirisfresh@test.com,"10 Main St, Business Hub, Bangalore",29TESTC1234A1Z0,29,TESTC1234A,250000.0,30,15000.0
+Star Bazaar,+919876543201,starbazaar@test.com,"11 Main St, Business Hub, Bangalore",29TESTC1235A1Z1,29,TESTC1235A,250000.0,60,15000.0
+Daily Needs Store,+919876543202,dailyneedsstore@test.com,"12 Main St, Business Hub, Bangalore",29TESTC1236A1Z2,29,TESTC1236A,100000.0,45,2000.0
+Big Basket Retail,+919876543203,bigbasketretail@test.com,"13 Main St, Business Hub, Bangalore",29TESTC1237A1Z3,29,TESTC1237A,50000.0,30,0.0
+Reliance Smart Point,+919876543204,reliancesmartpoint@test.com,"14 Main St, Business Hub, Bangalore",29TESTC1238A1Z4,29,TESTC1238A,100000.0,30,15000.0
+More Supermarket,+919876543205,moresupermarket@test.com,"15 Main St, Business Hub, Bangalore",29TESTC1239A1Z5,29,TESTC1239A,250000.0,60,15000.0
+Spencer's Retail,+919876543206,spencer'sretail@test.com,"16 Main St, Business Hub, Bangalore",29TESTC1240A1Z6,29,TESTC1240A,250000.0,60,15000.0
+Nature's Basket,+919876543207,nature'sbasket@test.com,"17 Main St, Business Hub, Bangalore",29TESTC1241A1Z7,29,TESTC1241A,50000.0,45,2000.0
+Metro Cash & Carry,+919876543208,metrocash&carry@test.com,"18 Main St, Business Hub, Bangalore",29TESTC1242A1Z8,29,TESTC1242A,100000.0,45,15000.0
+Heritage Fresh,+919876543209,heritagefresh@test.com,"19 Main St, Business Hub, Bangalore",29TESTC1243A1Z9,29,TESTC1243A,250000.0,60,15000.0

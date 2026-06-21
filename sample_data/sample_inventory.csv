@@ -1,26 +1,26 @@
 product_name,stock,expiry_date,supplier,cost_price,selling_price,reorder_point
-Basmati Rice 25kg,216,2027-07-22,Hindustan Distributors,496.56,632.67,20
-Sunflower Oil 15L,53,2027-08-02,AgroFoods Wholesale,279.05,329.56,15
-Sugar 50kg,7,2027-06-14,Hindustan Distributors,422.04,506.71,10
-Wheat Flour 10kg,166,2028-04-17,AgroFoods Wholesale,437.84,495.23,25
-Toor Dal 5kg,334,2027-04-14,Hindustan Distributors,444.9,597.45,25
-Tea Leaves 1kg,7,2027-10-21,Nandi Agro,305.99,369.36,25
-Coffee Powder 500g,7,2028-05-18,Hindustan Distributors,78.83,96.98,15
-Detergent Powder 3kg,9,2027-08-31,Hindustan Distributors,114.34,130.0,10
-Colgate Toothpaste,291,2027-06-14,Nandi Agro,191.05,227.98,10
-Soap Bar 100g,152,2027-09-23,Nandi Agro,63.04,73.07,25
-Shampoo 1L,7,2027-04-18,Sri Balaji Traders,113.32,128.87,10
-Milk Powder 500g,4,2027-03-13,AgroFoods Wholesale,216.01,290.88,25
-Salt 1kg,226,2027-11-28,Nandi Agro,428.61,522.56,15
-Chilli Powder 500g,212,2027-03-07,Hindustan Distributors,372.24,454.08,10
-Biscuits Pack,9,2027-09-08,Hindustan Distributors,78.73,91.9,15
-Cooking Oil 5L,327,2027-04-16,Metro Supply Co,257.38,321.07,20
-Bread Loaf,93,2026-07-16,Sri Balaji Traders,403.15,479.1,10
-Cheese Slices 200g,47,2026-06-28,AgroFoods Wholesale,48.79,61.06,25
-Curd 400g,194,2026-07-11,Metro Supply Co,109.08,131.22,25
-Eggs 30pc,160,2026-06-24,Hindustan Distributors,70.82,92.74,25
-Paneer 200g,169,2026-07-03,Nandi Agro,135.81,152.91,15
-Sona Masoori Rice 25kg,286,2028-08-08,AgroFoods Wholesale,390.15,524.64,25
-Chana Dal 10kg,568,2027-05-31,Sri Balaji Traders,509.39,606.64,25
-Jaggery 5kg,139,2027-09-07,Sri Balaji Traders,293.15,388.66,20
-Vermicelli 1kg,387,2027-06-27,AgroFoods Wholesale,72.86,90.72,15
+Basmati Rice 25kg,224,2027-02-17,Metro Supply Co,171.16,202.55,30
+Sunflower Oil 15L,4,2028-03-16,Sri Balaji Traders,317.92,358.43,30
+Sugar 50kg,3,2027-10-30,Nandi Agro,196.73,255.0,10
+Wheat Flour 10kg,153,2028-02-20,Hindustan Distributors,134.23,152.42,30
+Toor Dal 5kg,7,2028-05-03,Metro Supply Co,61.75,77.65,30
+Tea Leaves 1kg,315,2027-01-10,Nandi Agro,355.27,417.9,10
+Coffee Powder 500g,268,2028-05-18,AgroFoods Wholesale,190.79,223.97,10
+Detergent Powder 3kg,71,2027-04-05,Sri Balaji Traders,314.03,407.77,10
+Colgate Toothpaste,306,2027-05-17,Nandi Agro,226.36,268.58,30
+Soap Bar 100g,3,2026-12-14,Metro Supply Co,251.64,315.26,30
+Shampoo 1L,8,2028-05-18,AgroFoods Wholesale,336.43,395.13,10
+Milk Powder 500g,9,2026-11-10,Metro Supply Co,394.99,489.74,20
+Salt 1kg,170,2028-06-02,AgroFoods Wholesale,155.18,175.98,30
+Chilli Powder 500g,8,2026-12-23,Nandi Agro,357.9,475.89,30
+Biscuits Pack,3,2026-11-20,Sri Balaji Traders,287.56,358.83,10
+Cooking Oil 5L,249,2027-12-23,Sri Balaji Traders,390.3,521.66,30
+Bread Loaf,112,2026-07-07,Metro Supply Co,183.4,227.53,30
+Cheese Slices 200g,111,2026-06-25,Nandi Agro,195.71,225.91,20
+Curd 400g,49,2026-07-13,Sri Balaji Traders,114.36,142.23,10
+Eggs 30pc,45,2026-06-28,Nandi Agro,347.27,412.96,30
+Paneer 200g,115,2026-07-09,Hindustan Distributors,100.52,123.29,10
+Sona Masoori Rice 25kg,288,2027-01-10,AgroFoods Wholesale,246.84,331.41,30
+Chana Dal 10kg,365,2028-04-25,Nandi Agro,235.5,284.8,20
+Jaggery 5kg,494,2028-07-04,Metro Supply Co,121.17,153.73,20
+Vermicelli 1kg,295,2027-09-17,Metro Supply Co,346.5,395.45,30

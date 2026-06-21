@@ -1,91 +1,81 @@
 customer,amount,due_date,paid
-Lakshmi General Store,23425.3,2025-11-28,Yes
-Metro Cash & Carry,28973.36,2025-12-28,Yes
-Metro Cash & Carry,5575.08,2026-03-01,No
-Big Basket Retail,40752.19,2025-06-29,No
-Rahul Traders,36204.13,2026-06-08,Yes
-Kumar Stores,26280.66,2026-02-08,Yes
-Royal Mart,53135.92,2026-03-06,Yes
-Daily Needs Store,54361.08,2025-12-05,No
-Srinivas Kirana,54226.39,2026-03-05,No
-Sri Venkateswara Stores,8976.35,2025-07-31,No
-More Supermarket,58385.56,2025-08-10,No
-Reliance Smart Point,26555.74,2025-06-07,No
-Rahul Traders,59841.62,2025-08-28,No
-Sri Venkateswara Stores,20545.47,2025-09-26,No
-Daily Needs Store,24509.75,2025-06-30,Yes
-Annapurna Provisions,32141.91,2025-10-05,No
-Nilgiris Fresh,38137.36,2026-05-10,Yes
-Rahul Traders,26037.66,2025-07-13,Yes
-ABC Supermarket,45985.89,2026-03-11,No
-Big Basket Retail,47213.59,2026-03-01,No
-Namdhari Fresh,52917.83,2025-11-09,Yes
-Royal Mart,37319.8,2026-03-05,Yes
-Metro Cash & Carry,10343.45,2025-12-09,No
-Kumar Stores,24955.98,2025-06-05,No
-Nature's Basket,45253.49,2025-06-11,No
-Lakshmi General Store,21596.23,2025-05-27,No
-Heritage Fresh,50885.1,2025-10-07,No
-Big Basket Retail,9794.36,2025-09-10,No
-Vijaya Retail Hub,49897.75,2026-06-17,Yes
-Rahul Traders,39442.18,2026-03-22,Yes
-Spencer's Retail,44974.8,2025-12-11,No
-Lakshmi General Store,31885.64,2025-06-14,Yes
-Heritage Fresh,31394.13,2026-05-15,Yes
-Srinivas Kirana,3678.99,2026-03-04,Yes
-Spencer's Retail,16470.44,2025-06-15,Yes
-Lakshmi General Store,13548.37,2026-05-12,Yes
-Vijaya Retail Hub,25022.65,2026-01-30,No
-Nilgiris Fresh,23603.07,2025-09-17,Yes
-More Supermarket,36039.05,2026-01-14,Yes
-More Supermarket,45439.75,2025-09-26,No
-Heritage Fresh,24420.81,2025-05-31,Yes
-ABC Supermarket,57965.22,2026-06-20,No
-Nature's Basket,13990.4,2026-04-28,No
-Srinivas Kirana,52148.54,2025-05-27,No
-Nilgiris Fresh,54867.9,2026-01-14,No
-Sri Venkateswara Stores,14978.66,2025-05-21,No
-Heritage Fresh,58087.42,2026-05-16,No
-Rahul Traders,51392.0,2025-11-25,Yes
-Spencer's Retail,19524.42,2026-01-10,Yes
-Sri Venkateswara Stores,35900.26,2025-12-06,Yes
-Lakshmi General Store,39545.84,2026-02-28,No
-Heritage Fresh,8270.06,2026-05-02,Yes
-Metro Cash & Carry,20857.95,2026-04-09,Yes
-Heritage Fresh,10695.9,2025-08-21,No
-Star Bazaar,25437.71,2026-03-20,Yes
-Reliance Smart Point,3476.41,2026-05-21,Yes
-Heritage Fresh,54600.87,2025-09-26,Yes
-Star Bazaar,43068.0,2026-03-11,Yes
-Spencer's Retail,44139.89,2025-11-08,Yes
-Namdhari Fresh,47524.03,2026-04-08,No
-Lakshmi General Store,19411.3,2026-01-31,Yes
-Namdhari Fresh,19039.48,2025-08-17,Yes
-Metro Cash & Carry,48883.94,2026-05-23,No
-More Supermarket,54176.29,2026-04-30,No
-Nature's Basket,14953.02,2025-11-14,No
-Rahul Traders,23557.58,2025-11-02,Yes
-Vijaya Retail Hub,29291.12,2025-07-16,No
-ABC Supermarket,56769.46,2026-03-10,Yes
-Spencer's Retail,8949.32,2026-01-28,No
-Srinivas Kirana,25960.22,2025-10-16,No
-Reliance Smart Point,59556.18,2025-07-26,Yes
-ABC Supermarket,10307.0,2026-01-06,No
-More Supermarket,6687.07,2026-06-19,Yes
-More Supermarket,38800.94,2025-10-24,Yes
-Metro Cash & Carry,46149.21,2025-09-01,Yes
-More Supermarket,47542.23,2026-01-22,No
-Reliance Smart Point,27155.26,2026-03-27,Yes
-Rahul Traders,24232.35,2026-01-16,Yes
-Spencer's Retail,23639.88,2026-05-26,Yes
-Annapurna Provisions,50327.26,2026-06-08,Yes
-Nilgiris Fresh,44548.99,2026-04-02,Yes
-Lakshmi General Store,9477.99,2025-10-23,Yes
-ABC Supermarket,11687.17,2025-10-20,No
-Heritage Fresh,28443.73,2025-10-12,Yes
-Srinivas Kirana,27152.58,2025-11-05,No
-Reliance Smart Point,59776.06,2025-11-08,Yes
-Spencer's Retail,56988.89,2025-08-09,No
-Kumar Stores,15248.26,2025-05-26,No
-Reliance Smart Point,44576.44,2025-09-02,Yes
-More Supermarket,23262.3,2025-07-19,No
+Spencer's Retail,14275.39,2025-07-17,No
+Sri Venkateswara Stores,39692.06,2025-07-11,Yes
+ABC Supermarket,26471.72,2026-05-30,Yes
+Annapurna Provisions,43194.83,2025-11-23,Yes
+Spencer's Retail,34368.93,2025-08-20,No
+Nature's Basket,28384.86,2026-06-12,Yes
+Nature's Basket,16507.83,2026-03-30,Yes
+Vijaya Retail Hub,30246.3,2026-03-21,Yes
+Lakshmi General Store,40078.1,2026-03-10,Yes
+Royal Mart,41401.88,2025-12-01,Yes
+Rahul Traders,26626.04,2025-07-14,Yes
+Reliance Smart Point,13952.51,2025-06-29,No
+ABC Supermarket,15398.08,2026-01-20,Yes
+Nature's Basket,26931.16,2026-01-01,Yes
+Namdhari Fresh,42625.51,2026-05-22,Yes
+Royal Mart,34062.95,2026-05-15,Yes
+Lakshmi General Store,8878.26,2025-09-15,Yes
+More Supermarket,44593.59,2026-03-25,No
+Srinivas Kirana,38240.88,2025-07-08,Yes
+Star Bazaar,20320.47,2025-06-24,No
+Nature's Basket,32701.12,2025-07-25,Yes
+Srinivas Kirana,18674.43,2026-02-09,No
+Sri Venkateswara Stores,30689.94,2026-02-23,Yes
+Namdhari Fresh,20276.22,2026-03-30,Yes
+Metro Cash & Carry,44054.13,2026-03-22,Yes
+Rahul Traders,7494.69,2025-09-20,Yes
+Reliance Smart Point,11061.15,2025-10-22,Yes
+Lakshmi General Store,36387.33,2025-11-04,Yes
+Kumar Stores,26730.09,2026-02-11,No
+Nature's Basket,31729.75,2025-11-21,No
+Star Bazaar,20021.69,2025-08-07,Yes
+Royal Mart,29743.42,2025-07-19,No
+Daily Needs Store,38503.85,2026-03-03,No
+Annapurna Provisions,44047.83,2026-04-06,No
+Srinivas Kirana,12650.19,2025-07-12,No
+ABC Supermarket,14385.99,2026-02-19,No
+Metro Cash & Carry,26667.41,2026-03-26,Yes
+Annapurna Provisions,43381.71,2025-06-29,Yes
+Kumar Stores,15569.63,2025-07-30,Yes
+ABC Supermarket,31435.47,2026-01-06,Yes
+Kumar Stores,36200.92,2025-08-31,No
+Daily Needs Store,34309.18,2026-03-04,Yes
+Big Basket Retail,12750.05,2026-01-30,Yes
+Sri Venkateswara Stores,43104.05,2026-05-01,Yes
+Annapurna Provisions,29633.16,2025-07-06,No
+Vijaya Retail Hub,12581.81,2026-02-27,Yes
+Kumar Stores,10800.99,2026-01-28,Yes
+Kumar Stores,35431.03,2025-08-03,Yes
+Nature's Basket,6087.28,2026-06-21,No
+Metro Cash & Carry,18960.0,2025-09-07,No
+Reliance Smart Point,16300.49,2026-01-06,Yes
+Nilgiris Fresh,21678.91,2025-11-25,No
+Big Basket Retail,6666.48,2025-08-27,Yes
+Namdhari Fresh,24522.52,2026-04-01,Yes
+Daily Needs Store,26277.23,2025-12-19,Yes
+Annapurna Provisions,3518.31,2026-01-04,Yes
+Daily Needs Store,41018.72,2026-04-03,No
+ABC Supermarket,10122.48,2026-03-14,Yes
+Reliance Smart Point,15647.51,2025-11-05,Yes
+Daily Needs Store,21256.4,2025-09-14,Yes
+Royal Mart,18167.25,2025-07-30,No
+Royal Mart,28900.09,2026-04-21,Yes
+Reliance Smart Point,3284.23,2025-11-23,Yes
+Sri Venkateswara Stores,36771.21,2026-01-01,Yes
+Annapurna Provisions,37249.97,2026-01-27,No
+Sri Venkateswara Stores,15618.28,2025-08-29,No
+Spencer's Retail,16195.7,2026-02-21,No
+Annapurna Provisions,33864.72,2025-11-17,No
+ABC Supermarket,16687.22,2025-10-23,Yes
+Kumar Stores,7783.29,2025-12-24,Yes
+ABC Supermarket,10556.94,2026-03-27,No
+Nilgiris Fresh,42604.95,2026-02-12,Yes
+Heritage Fresh,5904.66,2026-06-10,No
+Rahul Traders,23970.74,2026-05-31,No
+Nature's Basket,30663.84,2025-10-28,No
+Kumar Stores,21860.8,2025-07-28,Yes
+ABC Supermarket,25443.43,2026-01-12,No
+Rahul Traders,4544.14,2026-03-26,No
+Namdhari Fresh,29803.58,2026-04-21,Yes
+Nature's Basket,30917.14,2026-05-23,Yes
