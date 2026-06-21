@@ -148,6 +148,10 @@ _COLUMN_MIGRATIONS = [
     # journal_entries additions
     {"table": "journal_entries", "column": "prev_hash", "ddl": "ALTER TABLE journal_entries ADD COLUMN prev_hash TEXT"},
     {"table": "journal_entries", "column": "entry_hash", "ddl": "ALTER TABLE journal_entries ADD COLUMN entry_hash TEXT"},
+    # stock_ledger additions
+    {"table": "stock_ledger", "column": "godown_id", "ddl": "ALTER TABLE stock_ledger ADD COLUMN godown_id INTEGER"},
+    {"table": "stock_ledger", "column": "batch_no", "ddl": "ALTER TABLE stock_ledger ADD COLUMN batch_no TEXT"},
+    {"table": "stock_ledger", "column": "expiry_date", "ddl": "ALTER TABLE stock_ledger ADD COLUMN expiry_date TEXT"},
 ]
 
 
