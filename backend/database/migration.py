@@ -141,6 +141,13 @@ _COLUMN_MIGRATIONS = [
     {"table": "purchase_orders", "column": "round_off",        "ddl": "ALTER TABLE purchase_orders ADD COLUMN round_off REAL DEFAULT 0.0"},
     # purchase_invoices additions
     {"table": "purchase_invoices", "column": "godown_id",      "ddl": "ALTER TABLE purchase_invoices ADD COLUMN godown_id INTEGER"},
+    # customers additions
+    {"table": "customers", "column": "price_tier", "ddl": "ALTER TABLE customers ADD COLUMN price_tier TEXT DEFAULT 'standard'"},
+    # b2b_orders additions
+    {"table": "b2b_orders", "column": "seller_invoice_id", "ddl": "ALTER TABLE b2b_orders ADD COLUMN seller_invoice_id INTEGER"},
+    # journal_entries additions
+    {"table": "journal_entries", "column": "prev_hash", "ddl": "ALTER TABLE journal_entries ADD COLUMN prev_hash TEXT"},
+    {"table": "journal_entries", "column": "entry_hash", "ddl": "ALTER TABLE journal_entries ADD COLUMN entry_hash TEXT"},
 ]
 
 
@@ -163,6 +170,30 @@ def _run_column_migrations(conn):
         except Exception as e:
             logger.error(f"[Migration] Failed to add {table}.{column}: {e}")
     conn.commit()
+
+
+def _check_schema_integrity(conn):
+    from sqlalchemy import inspect
+    inspector = inspect(conn)
+    missing = []
+    for table_name, table in Base.metadata.tables.items():
+        try:
+            if inspector.has_table(table_name):
+                db_columns = {c["name"] for c in inspector.get_columns(table_name)}
+                for column in table.columns:
+                    if column.name not in db_columns:
+                        missing.append(f"{table_name}.{column.name}")
+        except Exception as e:
+            logger.error(f"[Migration Check] Error inspecting table {table_name}: {e}")
+    
+    if missing:
+        msg = (
+            f"CRITICAL: Database schema mismatch! The following columns are defined in SQLAlchemy "
+            f"models but missing from the database: {', '.join(missing)}. "
+            f"Please add them to _COLUMN_MIGRATIONS in backend/database/migration.py."
+        )
+        logger.critical(msg)
+        raise RuntimeError(msg)
 
 
 def _backfill_null_business_ids(conn):
@@ -240,6 +271,7 @@ def run_migrations_and_seed():
     # 2. Add missing columns to existing tables
     with engine.connect() as conn:
         _run_column_migrations(conn)
+        _check_schema_integrity(conn)
 
     # 3. Backfills
     with engine.connect() as conn:
