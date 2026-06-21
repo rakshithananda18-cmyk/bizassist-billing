@@ -165,13 +165,18 @@ export function AuthProvider({ children }) {
     }
 
     logger.debug(`authFetch request started for path: ${path} (mapped to ${apiPath}), method: ${opts.method || 'GET'}`)
+    
+    const headers = {
+      ...(opts.headers || {}),
+      Authorization: `Bearer ${token}`
+    }
+    if (!(opts.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json'
+    }
+
     const res = await fetch(`${API_BASE}${apiPath}`, {
       ...opts,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(opts.headers || {}),
-        Authorization: `Bearer ${token}`
-      }
+      headers
     })
     if (res.status === 401) {
       logger.warn(`authFetch encountered 401 (Unauthorized) for path: ${path}. Auto-logging out.`)
