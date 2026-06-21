@@ -214,21 +214,56 @@ class ColumnMapper:
         Returns a MappingResult with renamed_df if df is provided.
         """
         mapping  = {}
-        unmapped = []
+        mapped_canonical = set()
+        all_canonical = INVOICE_FIELDS | INVENTORY_FIELDS | PAYMENT_FIELDS
 
+        # Pass 1: Exact matches against canonical names
         for col in raw_columns:
-            canonical = self._lookup(col)
-            if canonical:
-                mapping[col] = canonical
-            else:
-                unmapped.append(col)
+            token = col.strip().lower()
+            if token in all_canonical:
+                if token not in mapped_canonical:
+                    mapping[col] = token
+                    mapped_canonical.add(token)
+
+        # Pass 2: Synonym dictionary lookup
+        for col in raw_columns:
+            if col in mapping:
+                continue
+            token = col.strip().lower()
+            if token in _REVERSE:
+                canonical = _REVERSE[token]
+                if canonical not in mapped_canonical:
+                    mapping[col] = canonical
+                    mapped_canonical.add(canonical)
+
+        # Pass 3: Fuzzy matches
+        for col in raw_columns:
+            if col in mapping:
+                continue
+            token = col.strip().lower()
+            all_tokens = list(_REVERSE.keys()) + list(all_canonical)
+            matches = get_close_matches(token, all_tokens, n=1, cutoff=0.75)
+            if matches:
+                best = matches[0]
+                canonical = _REVERSE.get(best, best if best in all_canonical else None)
+                if canonical and canonical not in mapped_canonical:
+                    mapping[col] = canonical
+                    mapped_canonical.add(canonical)
+
+        # Identify remaining unmapped columns
+        unmapped = [col for col in raw_columns if col not in mapping]
 
         # AI fallback for anything still unmapped
         if unmapped and self._groq:
-            ai_mapping = self._ai_map(unmapped, filename)
-            for col, canonical in ai_mapping.items():
-                mapping[col]   = canonical
-                unmapped.remove(col)
+            remaining_canonical = sorted(all_canonical - mapped_canonical)
+            if remaining_canonical:
+                ai_mapping = self._ai_map(unmapped, filename, remaining_canonical)
+                for col, canonical in ai_mapping.items():
+                    if canonical not in mapped_canonical:
+                        mapping[col] = canonical
+                        mapped_canonical.add(canonical)
+                        if col in unmapped:
+                            unmapped.remove(col)
 
         detected_type = self._detect_type(set(mapping.values()))
         confidence    = self._confidence(mapping, raw_columns, detected_type)
@@ -252,42 +287,19 @@ class ColumnMapper:
             warnings=warnings,
         )
 
-    # ── Layer 1 + 2: exact and synonym lookup ────────────────────────────────
-
-    def _lookup(self, raw_col: str) -> Optional[str]:
-        """Exact → synonym → fuzzy. Returns canonical name or None."""
-        token = raw_col.strip().lower()
-
-        # Layer 1: exact match against canonical names
-        all_canonical = INVOICE_FIELDS | INVENTORY_FIELDS | PAYMENT_FIELDS
-        if token in all_canonical:
-            return token
-
-        # Layer 2: synonym dictionary
-        if token in _REVERSE:
-            return _REVERSE[token]
-
-        # Layer 3: fuzzy match against all synonym tokens
-        all_tokens = list(_REVERSE.keys()) + list(all_canonical)
-        matches = get_close_matches(token, all_tokens, n=1, cutoff=0.75)
-        if matches:
-            best = matches[0]
-            return _REVERSE.get(best, best if best in all_canonical else None)
-
-        return None
-
     # ── Layer 4: AI fallback ─────────────────────────────────────────────────
 
-    def _ai_map(self, unmapped_cols: list[str], filename: str) -> dict[str, str]:
+    def _ai_map(self, unmapped_cols: list[str], filename: str, remaining_canonical: list[str] = None) -> dict[str, str]:
         """
         Ask Groq to map remaining unmapped columns.
         ~30 tokens per call. Only fires when fuzzy matching fails.
         """
-        all_canonical = sorted(INVOICE_FIELDS | INVENTORY_FIELDS | PAYMENT_FIELDS)
+        if remaining_canonical is None:
+            remaining_canonical = sorted(INVOICE_FIELDS | INVENTORY_FIELDS | PAYMENT_FIELDS)
         prompt = (
             f"Map these CSV column headers to the closest canonical field names.\n"
             f"Column headers: {unmapped_cols}\n"
-            f"Canonical fields: {all_canonical}\n"
+            f"Canonical fields: {remaining_canonical}\n"
             f"Return ONLY a JSON object like {{\"raw_col\": \"canonical_field\"}}. "
             f"If no match, omit the key. No explanation."
         )
@@ -304,7 +316,7 @@ class ColumnMapper:
                 text = text.split("```")[1].lstrip("json").strip()
             result = json.loads(text)
             valid = {k: v for k, v in result.items()
-                     if k in unmapped_cols and v in (INVOICE_FIELDS | INVENTORY_FIELDS | PAYMENT_FIELDS)}
+                     if k in unmapped_cols and v in remaining_canonical}
             logger.info(f"[MAPPER] AI mapped: {valid}")
             return valid
         except Exception as e:

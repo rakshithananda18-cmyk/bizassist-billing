@@ -126,6 +126,24 @@ def test_pricing_columns_map():
     assert r.detected_type == "inventory"
 
 
+def test_pricing_columns_map_uniqueness():
+    from services.column_mapper import ColumnMapper
+    # Multiple raw columns (name, sku, description) would all map to 'product_name' if we didn't enforce uniqueness.
+    # Similarly, brand and manufacturer would both map to 'supplier'.
+    r = ColumnMapper().map_columns(["name", "sku", "description", "brand", "manufacturer", "stock"])
+    
+    # Check that each canonical column is mapped at most once
+    mapped_canonicals = list(r.mapping.values())
+    assert len(mapped_canonicals) == len(set(mapped_canonicals))
+    
+    # Check that renaming a DataFrame results in unique columns
+    import pandas as pd
+    df = pd.DataFrame(columns=["name", "sku", "description", "brand", "manufacturer", "stock"])
+    r_df = ColumnMapper().map_columns(df.columns.tolist(), df=df)
+    assert len(r_df.renamed_df.columns) == len(set(r_df.renamed_df.columns))
+
+
+
 def test_product_margins_compute_and_flag():
     out = json.loads(execute_tool("product_margins", {}, BID))
     by = {p["product"]: p for p in out["top_by_profit"]}
