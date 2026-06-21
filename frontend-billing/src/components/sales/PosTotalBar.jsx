@@ -12,7 +12,6 @@ export default function PosTotalBar({
   subtotal,
   gstAmt,
   grandTotal,
-  onShowShortcuts,
   onPay,
 }) {
   return (
@@ -40,39 +39,9 @@ export default function PosTotalBar({
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Tax</span>
           <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(gstAmt)}</span>
         </div>
-
-        {/* Shortcuts Help button */}
-        <button
-          type="button"
-          className="btn btn-ghost btn-icon btn-sm"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '28px',
-            height: '28px',
-            borderRadius: '50%',
-            background: 'var(--bg-3)',
-            border: '1px solid var(--border)',
-            marginLeft: '10px',
-            fontSize: '0.9rem',
-            fontWeight: 'bold',
-            color: 'var(--text-secondary)'
-          }}
-          onClick={onShowShortcuts}
-          title="Keyboard Shortcuts [?]"
-        >
-          ?
-        </button>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-        {/* Inline hints */}
-        <div style={{ display: 'flex', gap: '12px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-          <span>F9: Search</span>
-          <span>F11: Customer</span>
-        </div>
-
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
           <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Grand Total</span>
           <span style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--accent)', lineHeight: 1 }}>{fmt(grandTotal)}</span>

@@ -40,6 +40,8 @@ export default function CheckoutModal({
   const invoiceDateRef = useRef(null)
   const amountReceivedRef = useRef(null)
   const paymentModeRef = useRef(null)
+  const discountRef = useRef(null)
+  const notesRef = useRef(null)
 
   const [customerSearchQuery, setCustomerSearchQuery] = useState('')
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
@@ -200,7 +202,7 @@ export default function CheckoutModal({
       e.preventDefault()
       setShowCustomerDropdown(false)
       setCustomerSelectedIndex(-1)
-      onClose()
+      setTimeout(() => paymentModeRef.current?.focus(), 50)
     } else if (matchesKey(e, funcKeys?.flowForward) || (e.key === 'Enter' && !e.shiftKey && !(funcKeys?.flowForward || 'Enter').includes('Shift'))) {
       e.preventDefault()
       if (showCustomerDropdown && customerSelectedIndex !== -1 && filteredCustomers[customerSelectedIndex]) {
@@ -245,7 +247,7 @@ export default function CheckoutModal({
   }
 
   const handlePaymentModeButtonKeyDown = (e, currentMode) => {
-    const modes = ['cash', 'upi', 'card', 'wallet', 'credit']
+    const modes = ['cash', 'upi', 'card', 'credit']
     const idx = modes.indexOf(currentMode)
     
     if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
@@ -282,6 +284,13 @@ export default function CheckoutModal({
         const btn = document.querySelector(`.payment-mode-btn-${nextMode}`)
         btn?.focus()
       }, 30)
+    } else if (e.shiftKey && e.key === 'Enter') {
+      e.preventDefault()
+      e.stopPropagation()
+      setTimeout(() => {
+        amountReceivedRef.current?.focus()
+        amountReceivedRef.current?.select()
+      }, 30)
     } else if (e.key === 'Enter') {
       e.preventDefault()
       e.stopPropagation()
@@ -290,13 +299,6 @@ export default function CheckoutModal({
       e.preventDefault()
       e.stopPropagation()
       onClose()
-    } else if (e.shiftKey && e.key === 'Enter') {
-      e.preventDefault()
-      e.stopPropagation()
-      setTimeout(() => {
-        amountReceivedRef.current?.focus()
-        amountReceivedRef.current?.select()
-      }, 30)
     }
   }
 
@@ -304,11 +306,11 @@ export default function CheckoutModal({
     if (e.key === 'Enter') {
       e.preventDefault()
       e.stopPropagation()
-      const amt = parseFloat(form.amount_received) || 0
-      if (Math.abs(amt - pay) < 0.01) {
-        setTimeout(() => paymentModeRef.current?.focus(), 50)
+      if (e.shiftKey) {
+        discountRef.current?.focus()
+        discountRef.current?.select()
       } else {
-        onSaveInvoice(true)
+        setTimeout(() => paymentModeRef.current?.focus(), 50)
       }
     } else if (e.key === 'Escape') {
       e.preventDefault()
@@ -711,7 +713,12 @@ export default function CheckoutModal({
                     onKeyDown={e => {
                       if (e.key === 'Enter') {
                         e.preventDefault()
-                        invoiceDateRef.current?.focus()
+                        if (e.shiftKey) {
+                          customerRef.current?.focus()
+                          customerRef.current?.select()
+                        } else {
+                          invoiceDateRef.current?.focus()
+                        }
                       }
                     }}
                     required
@@ -745,7 +752,11 @@ export default function CheckoutModal({
                     onKeyDown={e => {
                       if (e.key === 'Enter') {
                         e.preventDefault()
-                        document.getElementById('checkout-notes')?.focus()
+                        if (e.shiftKey) {
+                          godownRef.current?.focus()
+                        } else {
+                          notesRef.current?.focus()
+                        }
                       }
                     }}
                   />
@@ -801,11 +812,17 @@ export default function CheckoutModal({
                   placeholder="Remarks or internal notes…"
                   value={form.notes}
                   onChange={e => setField('notes', e.target.value)}
+                  ref={notesRef}
                   onKeyDown={e => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      amountReceivedRef.current?.focus()
-                      amountReceivedRef.current?.select()
+                    if (e.key === 'Enter') {
+                      if (e.shiftKey) {
+                        e.preventDefault()
+                        invoiceDateRef.current?.focus()
+                      } else {
+                        e.preventDefault()
+                        discountRef.current?.focus()
+                        discountRef.current?.select()
+                      }
                     }
                   }}
                 />
@@ -824,6 +841,7 @@ export default function CheckoutModal({
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <span style={{ fontSize: '1rem', color: 'var(--text-muted)', fontWeight: 700 }}>₹</span>
                   <input
+                    ref={discountRef}
                     type="number"
                     min="0"
                     step="any"
@@ -831,6 +849,17 @@ export default function CheckoutModal({
                     onChange={e => setField('cash_discount', e.target.value)}
                     placeholder="0.00"
                     title="Discount on the payable. Does not change GST. Round-off is automatic."
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        if (e.shiftKey) {
+                          notesRef.current?.focus()
+                        } else {
+                          amountReceivedRef.current?.focus()
+                          amountReceivedRef.current?.select()
+                        }
+                      }
+                    }}
                     style={{
                       flex: 1,
                       background: 'var(--bg-3)',
@@ -915,9 +944,8 @@ export default function CheckoutModal({
                 }}
               />
 
-              {/* Payment Modes */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
-                {['cash', 'upi', 'card', 'wallet', 'credit'].map(mode => {
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                {['cash', 'upi', 'card', 'credit'].map(mode => {
                   const isActive = form.payment_mode === mode
                   return (
                     <button
@@ -936,7 +964,9 @@ export default function CheckoutModal({
                         fontWeight: '700',
                         textTransform: 'capitalize',
                         cursor: 'pointer',
-                        transition: 'all 0.15s ease'
+                        transition: 'all 0.15s ease',
+                        outline: 'none',
+                        boxShadow: isActive ? '0 0 0 2px var(--bg-2), 0 0 0 4px var(--accent)' : 'none'
                       }}
                       onClick={() => {
                         setForm(f => {

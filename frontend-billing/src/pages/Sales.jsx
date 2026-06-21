@@ -20,7 +20,7 @@ import CartTableHeader from '../components/sales/CartTableHeader'
 import CartEmptyRows from '../components/sales/CartEmptyRows'
 import CartItemRow from '../components/sales/CartItemRow'
 import CartFooterRow from '../components/sales/CartFooterRow'
-import { PosCounterSettingsModal, PosHotkeyModal } from '../components/sales/PosSettingsModals'
+import { PosCounterSettingsModal } from '../components/sales/PosSettingsModals'
 import usePaymentFlow from '../hooks/usePaymentFlow'
 
 const colLabels = {
@@ -70,6 +70,7 @@ export default function Sales() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [settingsInitialTab, setSettingsInitialTab] = useState('general')
   const [showBreakupModal, setShowBreakupModal] = useState(false)
   const [bindingAction, setBindingAction] = useState(null)
   const [dbInvoices, setDbInvoices]   = useState([])
@@ -144,7 +145,7 @@ export default function Sales() {
     return ['sku', 'name', 'batch', 'price_option', 'mrp', 'hsn', 'qty', 'unit', 'rate', 'price', 'discount', 'tax', 'total']
   })
 
-  const [showHotkeySettingsModal, setShowHotkeySettingsModal] = useState(false)
+
   const [priceSelectorIndex, setPriceSelectorIndex] = useState(null)
   const [selectedPriceOptIndex, setSelectedPriceOptIndex] = useState(0)
 
@@ -1215,7 +1216,7 @@ export default function Sales() {
         return
       }
 
-      if (showSettingsModal || showBreakupModal || showHotkeySettingsModal) return
+      if (showSettingsModal || showBreakupModal) return
 
       if (showPaymentPopup) {
         return
@@ -1306,7 +1307,10 @@ export default function Sales() {
         else if (action === 'barcodeFocus') barcodeRef.current?.focus()
         else if (action === 'customerFocus') openPaymentFlow('customer')
         else if (action === 'remarksFocus') openPaymentFlow('remarks')
-        else if (action === 'configureShortcuts') setShowHotkeySettingsModal(true)
+        else if (action === 'configureShortcuts') {
+          setSettingsInitialTab('shortcuts')
+          setShowSettingsModal(true)
+        }
       }
 
       // ── Universal Proceed-to-Payment (Escape / configurable) ──────────────────
@@ -1352,7 +1356,7 @@ export default function Sales() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [showSettingsModal, showBreakupModal, showHotkeySettingsModal, showPayConfirmModal, searchQuery, handleSaveInvoice, activeTabId, closeTab, handleNewBill, funcKeys, bindingAction, priceSelectorIndex, selectedPriceOptIndex, form.items, matchesKey, showPaymentPopup, openPaymentFlow, executeSaveInvoice])
+  }, [showSettingsModal, showBreakupModal, settingsInitialTab, showPayConfirmModal, searchQuery, handleSaveInvoice, activeTabId, closeTab, handleNewBill, funcKeys, bindingAction, priceSelectorIndex, selectedPriceOptIndex, form.items, matchesKey, showPaymentPopup, openPaymentFlow, executeSaveInvoice])
 
   const stickyOffsets = getStickyLeftOffsets(columnOrder, colVisible)
 
@@ -1378,7 +1382,11 @@ export default function Sales() {
           onNewBill={handleNewBill}
           onMinimize={handleMinimize}
           onClose={handleCloseConfirm}
-          onOpenSettings={() => setShowSettingsModal(true)}
+          onOpenSettings={() => {
+            setSettingsInitialTab('general')
+            setShowSettingsModal(true)
+          }}
+          funcKeys={funcKeys}
         />
 
         {/* Workspace body split */}
@@ -1475,37 +1483,37 @@ export default function Sales() {
                     className="modal"
                     style={{
                       maxWidth: '580px',
-                      background: 'rgba(255, 255, 255, 0.85)',
+                      background: 'var(--glass-bg)',
                       backdropFilter: 'blur(30px) saturate(190%)',
                       WebkitBackdropFilter: 'blur(30px) saturate(190%)',
-                      border: '1px solid rgba(255, 255, 255, 0.45)',
-                      color: '#1c1917',
-                      boxShadow: '0 30px 60px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.7)'
+                      border: '1px solid var(--glass-border)',
+                      color: 'var(--text-primary)',
+                      boxShadow: 'var(--shadow-lg)'
                     }}
                     onClick={e => e.stopPropagation()}
                   >
                     <div className="modal-header" style={{ borderBottom: '1px solid var(--border)' }}>
-                      <span className="modal-title" style={{ fontSize: '1.1rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <span className="modal-title" style={{ fontSize: '1.1rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--text-primary)' }}>
                         <TagIcon size={18} style={{ color: 'var(--accent)' }} /> Price Selection — {form.items[priceSelectorIndex]?.product}
                       </span>
                       <button
                         className="btn btn-ghost btn-icon"
                         onClick={() => setPriceSelectorIndex(null)}
-                        style={{ color: '#78716c' }}
+                        style={{ color: 'var(--text-muted)' }}
                        aria-label="Close"><CloseIcon size={16} /></button>
                     </div>
                     <div className="modal-body" style={{ padding: '16px 20px' }}>
-                      <p style={{ fontSize: '0.82rem', color: '#78716c', marginBottom: '12px' }}>
+                      <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>
                         Multiple prices found for this item. Use <kbd>↑</kbd> <kbd>↓</kbd> arrows and <kbd>Enter</kbd> / <kbd>Esc</kbd> or click a row to select.
                       </p>
                       
                       <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
                           <thead>
-                            <tr style={{ background: '#fafaf9', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-                              <th style={{ padding: '10px 12px', fontWeight: 700, color: '#78716c' }}>Price Option</th>
-                              <th style={{ padding: '10px 12px', fontWeight: 700, color: '#78716c' }}>Date Added</th>
-                              <th style={{ padding: '10px 12px', fontWeight: 700, color: '#78716c', textAlign: 'right' }}>Price</th>
+                            <tr style={{ background: 'var(--bg-3)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+                              <th style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-muted)' }}>Price Option</th>
+                              <th style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-muted)' }}>Date Added</th>
+                              <th style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-muted)', textAlign: 'right' }}>Price</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1515,11 +1523,11 @@ export default function Sales() {
                                 <tr
                                   key={oIdx}
                                   style={{
-                                    background: isSelected ? 'var(--accent-dim)' : 'transparent',
+                                    background: isSelected ? 'var(--accent-glow)' : 'transparent',
                                     borderBottom: '1px solid var(--border)',
                                     cursor: 'pointer',
                                     transition: 'background 0.15s ease',
-                                    color: isSelected ? 'var(--text-primary)' : '#1c1917',
+                                    color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
                                     fontWeight: isSelected ? 600 : 'normal'
                                   }}
                                   onClick={() => handleSelectPriceOption(opt.price, opt.label)}
@@ -1528,10 +1536,10 @@ export default function Sales() {
                                   <td style={{ padding: '12px' }}>
                                     <span>{opt.label}</span>
                                   </td>
-                                  <td style={{ padding: '12px', color: isSelected ? 'var(--text-primary)' : '#78716c' }}>
+                                  <td style={{ padding: '12px', color: isSelected ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                                     {opt.formatted_date}
                                   </td>
-                                  <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: isSelected ? 'var(--accent)' : '#000000' }}>
+                                  <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: isSelected ? 'var(--accent)' : 'var(--text-primary)' }}>
                                     {fmt(opt.price)}
                                   </td>
                                 </tr>
@@ -1552,7 +1560,6 @@ export default function Sales() {
                 subtotal={subtotal}
                 gstAmt={gstAmt}
                 grandTotal={grandTotal}
-                onShowShortcuts={() => setShowHotkeySettingsModal(true)}
                 onPay={openPaymentFlow}
               />
             )}
@@ -1705,16 +1712,8 @@ export default function Sales() {
           funcKeys={funcKeys}
           setFuncKeys={setFuncKeys}
           onAdvancedSettings={() => { setShowSettingsModal(false); navigate('/settings'); }}
-        />
-      )}
-
-      {/* Hotkey Settings Modal */}
-      {showHotkeySettingsModal && (
-        <PosHotkeyModal
-          onClose={() => setShowHotkeySettingsModal(false)}
-          funcKeys={funcKeys}
-          setFuncKeys={setFuncKeys}
           defaultFuncKeys={defaultFuncKeys}
+          initialTab={settingsInitialTab}
         />
       )}
 

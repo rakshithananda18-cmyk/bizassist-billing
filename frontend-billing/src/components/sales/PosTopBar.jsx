@@ -13,6 +13,7 @@ export default function PosTopBar({
   onMinimize,
   onClose,
   onOpenSettings,
+  funcKeys = {},
 }) {
   return (
     <div className="pos-top-bar">
@@ -40,7 +41,54 @@ export default function PosTopBar({
           </div>
         </div>
       </div>
-      <div className="pos-top-bar-right" style={{ gap: 12 }}>
+      <div className="pos-top-bar-right" style={{ gap: 12, alignItems: 'center' }}>
+        <div className="pos-help-hover-container">
+          <div className="pos-help-pill-bar">
+            <div className="pos-help-item">
+              <kbd className="pos-kbd">{funcKeys?.barcodeFocus || 'F9'}</kbd>
+              <span className="pos-kbd-label">Search</span>
+            </div>
+            <span className="pos-kbd-divider">•</span>
+            <div className="pos-help-item">
+              <kbd className="pos-kbd">{funcKeys?.customerFocus || 'F11'}</kbd>
+              <span className="pos-kbd-label">Customer</span>
+            </div>
+            <span className="pos-kbd-divider">•</span>
+            <div className="pos-help-item">
+              <kbd className="pos-kbd">{funcKeys?.remarksFocus || 'F12'}</kbd>
+              <span className="pos-kbd-label">Remarks</span>
+            </div>
+            <span className="pos-kbd-divider">•</span>
+            <div className="pos-help-item">
+              <kbd className="pos-kbd">Ctrl+S</kbd>
+              <span className="pos-kbd-label">Save</span>
+            </div>
+            <span className="pos-kbd-divider">•</span>
+            <div className="pos-help-item">
+              <kbd className="pos-kbd">Ctrl+P</kbd>
+              <span className="pos-kbd-label">Print</span>
+            </div>
+            <span className="pos-kbd-divider">•</span>
+            <div className="pos-help-item">
+              <kbd className="pos-kbd">Ctrl+T</kbd>
+              <span className="pos-kbd-label">Tab</span>
+            </div>
+            <span className="pos-kbd-divider">•</span>
+            <div className="pos-help-item">
+              <kbd className="pos-kbd">Ctrl+W</kbd>
+              <span className="pos-kbd-label">Close</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="pos-help-trigger-btn"
+            title="Keyboard Shortcuts"
+            style={{ outline: 'none' }}
+          >
+            ?
+          </button>
+        </div>
+
         <span style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', color: 'var(--text-muted)' }} onClick={onOpenSettings} title="Settings">
           <SettingsIcon size={16} />
         </span>

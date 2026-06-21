@@ -1,6 +1,6 @@
 // Render tests for <PosTotalBar> — the always-visible POS totals bar (piece b)
 // extracted from Sales.jsx. Presentational only: shows the right amounts and
-// fires its two callbacks.
+// fires its pay callback.
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import PosTotalBar from '../components/sales/PosTotalBar'
@@ -9,7 +9,6 @@ const base = {
   subtotal: 200,
   gstAmt: 36,
   grandTotal: 236,
-  onShowShortcuts: () => {},
   onPay: () => {},
 }
 
@@ -29,12 +28,5 @@ describe('PosTotalBar', () => {
     render(<PosTotalBar {...base} onPay={onPay} />)
     fireEvent.click(screen.getByText(/Pay/))
     expect(onPay).toHaveBeenCalledTimes(1)
-  })
-
-  it('fires onShowShortcuts when the ? button is clicked', () => {
-    const onShowShortcuts = vi.fn()
-    render(<PosTotalBar {...base} onShowShortcuts={onShowShortcuts} />)
-    fireEvent.click(screen.getByTitle(/Keyboard Shortcuts/))
-    expect(onShowShortcuts).toHaveBeenCalledTimes(1)
   })
 })

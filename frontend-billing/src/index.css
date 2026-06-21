@@ -1732,6 +1732,96 @@ img { display: block; max-width: 100%; }
   cursor: pointer;
 }
 
+/* POS Help Pill Bar & Hover Styles */
+.pos-help-hover-container {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.pos-help-pill-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 0;
+  height: 28px;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              opacity 0.2s ease, 
+              padding 0.3s ease, 
+              margin-right 0.3s ease;
+  margin-right: 0;
+  box-shadow: var(--shadow-sm);
+}
+
+.pos-help-hover-container:hover .pos-help-pill-bar {
+  max-width: 580px;
+  opacity: 1;
+  padding: 4px 14px;
+  margin-right: 8px;
+}
+
+.pos-help-trigger-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  font-weight: bold;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pos-help-hover-container:hover .pos-help-trigger-btn,
+.pos-help-trigger-btn:hover {
+  background: var(--bg-4);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+  box-shadow: 0 0 0 2px var(--border);
+}
+
+.pos-kbd {
+  background: var(--bg-4);
+  border: 1px solid var(--border);
+  border-bottom: 2px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  font-family: inherit;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+}
+
+.pos-kbd-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-left: 5px;
+  font-weight: 600;
+}
+
+.pos-kbd-divider {
+  color: var(--border);
+  font-size: 0.75rem;
+  user-select: none;
+}
+
+.pos-help-item {
+  display: flex;
+  align-items: center;
+}
+
 .pos-workspace {
   display: flex;
   height: calc(100vh - 44px);

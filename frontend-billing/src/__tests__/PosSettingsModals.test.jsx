@@ -1,9 +1,9 @@
 // Render tests for the POS settings modals extracted from Sales.jsx (R5):
-// <PosCounterSettingsModal> (gear) and <PosHotkeyModal>. Presentational leaf
-// modals — assert they render and fire their key callbacks.
+// <PosCounterSettingsModal> (gear). Presentational leaf modal — asserts it
+// renders tabs and fires key callbacks.
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import { PosCounterSettingsModal, PosHotkeyModal } from '../components/sales/PosSettingsModals'
+import { PosCounterSettingsModal } from '../components/sales/PosSettingsModals'
 
 afterEach(cleanup)
 
@@ -22,13 +22,39 @@ const counterBase = {
   funcKeys: {},
   setFuncKeys: () => {},
   onAdvancedSettings: () => {},
+  defaultFuncKeys: { qtyFocus: 'F2' },
 }
 
 describe('PosCounterSettingsModal', () => {
-  it('renders and reflects the saved UPI VPA', () => {
+  it('renders and reflects the saved UPI VPA on general settings tab', () => {
     render(<PosCounterSettingsModal {...counterBase} />)
     expect(screen.getByText(/POS Counter Settings/)).toBeInTheDocument()
     expect(screen.getByDisplayValue('shop@upi')).toBeInTheDocument()
+  })
+
+  it('renders column settings when the Columns tab is clicked', () => {
+    render(<PosCounterSettingsModal {...counterBase} />)
+    fireEvent.click(screen.getByText('Table Columns'))
+    
+    // Check that column reorder and column visible headings are shown
+    expect(screen.getByText('Visible Columns')).toBeInTheDocument()
+    expect(screen.getByText('Rearrange Columns')).toBeInTheDocument()
+  })
+
+  it('renders shortcut settings when the Shortcuts tab is clicked', () => {
+    render(<PosCounterSettingsModal {...counterBase} />)
+    fireEvent.click(screen.getByText('Shortcuts / Keys'))
+    
+    expect(screen.getByText('Payment Flow Navigation')).toBeInTheDocument()
+    expect(screen.getByText('F-Key / Action Mappings')).toBeInTheDocument()
+    expect(screen.getByText(/Standard Control Shortcuts/)).toBeInTheDocument()
+  })
+
+  it('Reset Defaults restores the default key map on shortcuts tab', () => {
+    const setFuncKeys = vi.fn()
+    render(<PosCounterSettingsModal {...counterBase} setFuncKeys={setFuncKeys} initialTab="shortcuts" />)
+    fireEvent.click(screen.getByText('Reset Defaults'))
+    expect(setFuncKeys).toHaveBeenCalledWith({ qtyFocus: 'F2' })
   })
 
   it('fires onClose and onAdvancedSettings', () => {
@@ -43,39 +69,10 @@ describe('PosCounterSettingsModal', () => {
 
   it('fires onMoveColumn from the reorder arrows', () => {
     const onMoveColumn = vi.fn()
-    render(<PosCounterSettingsModal {...counterBase} onMoveColumn={onMoveColumn} />)
+    render(<PosCounterSettingsModal {...counterBase} onMoveColumn={onMoveColumn} initialTab="columns" />)
     // idx 0 ▲ is disabled; the second ▲ (idx 1) is enabled.
     const ups = screen.getAllByText('▲')
     fireEvent.click(ups[1])
     expect(onMoveColumn).toHaveBeenCalledWith(1, 'up')
-  })
-})
-
-describe('PosHotkeyModal', () => {
-  const hotkeyBase = {
-    onClose: () => {},
-    funcKeys: {},
-    setFuncKeys: () => {},
-    defaultFuncKeys: { qtyFocus: 'F2' },
-  }
-
-  it('renders the hotkey configuration', () => {
-    render(<PosHotkeyModal {...hotkeyBase} />)
-    expect(screen.getByText(/Configure POS Hotkeys/)).toBeInTheDocument()
-    expect(screen.getByText('Standard Control Shortcuts')).toBeInTheDocument()
-  })
-
-  it('Reset Defaults restores the default key map', () => {
-    const setFuncKeys = vi.fn()
-    render(<PosHotkeyModal {...hotkeyBase} setFuncKeys={setFuncKeys} />)
-    fireEvent.click(screen.getByText('Reset Defaults'))
-    expect(setFuncKeys).toHaveBeenCalledWith({ qtyFocus: 'F2' })
-  })
-
-  it('fires onClose', () => {
-    const onClose = vi.fn()
-    render(<PosHotkeyModal {...hotkeyBase} onClose={onClose} />)
-    fireEvent.click(screen.getByText('Close'))
-    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })

@@ -25,11 +25,12 @@ const base = {
 }
 
 describe('PosTopBar', () => {
-  it('renders every tab and the New Bill button', () => {
+  it('renders every tab, the New Bill button, and the Help ? button', () => {
     render(<PosTopBar {...base} />)
     expect(screen.getByText('Invoice #1001')).toBeInTheDocument()
     expect(screen.getByText('Invoice #1002')).toBeInTheDocument()
     expect(screen.getByText(/New Bill/)).toBeInTheDocument()
+    expect(screen.getByText('?')).toBeInTheDocument()
   })
 
   it('fires onSelectTab when an inactive tab is clicked', () => {
