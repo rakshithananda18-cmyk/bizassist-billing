@@ -2269,6 +2269,10 @@ img { display: block; max-width: 100%; }
   padding: 24px;
 }
 
+.dark-mode .login-container {
+  background: rgba(26, 25, 21, 0.75);
+}
+
 .login-card {
   background: var(--glass-bg);
   backdrop-filter: blur(12px);
