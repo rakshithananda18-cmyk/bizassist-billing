@@ -1,21 +1,27 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
-import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
-import { SettingsIcon, SearchIcon, AlertIcon, CheckIcon, CloseIcon, BillsIcon, ChevronRightIcon } from '../components/Icons'
+import { AlertIcon, CheckIcon, CloseIcon, BillsIcon, ChevronRightIcon } from '../components/Icons'
 // Shared formatting helpers (money / today / amount-in-words) live in utils/format.
-import { fmt, getTodayDateStr, numberToWords } from '../utils/format'
+import { fmt, getTodayDateStr } from '../utils/format'
 // Invoice money-math (line totals, intra/inter GST split, change due) — pure + tested.
-import { lineTotal, computeInvoiceTotals, changeDue, buildInvoicePayload, columnTotals, suggestedTenders, schemeDiscount, gstSlabBreakdown } from '../utils/invoiceMath'
+import { lineTotal, computeInvoiceTotals, changeDue, buildInvoicePayload, columnTotals, suggestedTenders, schemeDiscount } from '../utils/invoiceMath'
 import { logger } from '../utils/logger'
 import TotalBreakupModal from '../components/sales/TotalBreakupModal'
 import PosTotalBar from '../components/sales/PosTotalBar'
 import InvoiceBreakdownCard from '../components/sales/InvoiceBreakdownCard'
 import TenderChips from '../components/sales/TenderChips'
 import CheckoutModal from '../components/sales/CheckoutModal'
+import ThermalReceipt from '../components/sales/ThermalReceipt'
+import PosTopBar from '../components/sales/PosTopBar'
+import ProductSearchBar from '../components/sales/ProductSearchBar'
+import CartTableHeader from '../components/sales/CartTableHeader'
+import CartEmptyRows from '../components/sales/CartEmptyRows'
+import CartItemRow from '../components/sales/CartItemRow'
+import CartFooterRow from '../components/sales/CartFooterRow'
+import { PosCounterSettingsModal, PosHotkeyModal } from '../components/sales/PosSettingsModals'
 import usePaymentFlow from '../hooks/usePaymentFlow'
-import { getHeaderLayout } from '../utils/printLayout'
 
 const colLabels = {
   sku: 'Item Code',
@@ -769,33 +775,6 @@ export default function Sales() {
   const colFooter = columnTotals(form.items)   // per-column totals for the cart footer row
 
   // Receipt header lines, rendered in the saved order + alignment (Settings → Print).
-  const renderReceiptHeaderLine = (key, align) => {
-    const p = settings?.print || {}
-    const textAlign = align || 'center'
-    switch (key) {
-      case 'logo':
-        if (!p.print_logo || !profile?.logo) return null
-        return <div key="logo" style={{ textAlign, marginBottom: 2 }}><img src={profile.logo} alt="logo" style={{ maxHeight: 26, maxWidth: 96, objectFit: 'contain' }} /></div>
-      case 'company_name':
-        if (p.print_company_name === false) return null
-        return <h3 key="company_name" style={{ textAlign }}>{(profile?.business_name || 'BIZASSIST POS').toUpperCase()}</h3>
-      case 'company_address':
-        if (p.print_company_address === false || !profile?.address) return null
-        return <p key="company_address" style={{ textAlign }}>{profile.address}</p>
-      case 'company_contact': {
-        const showPhone = p.print_company_phone !== false && profile?.phone
-        const showEmail = p.print_company_email !== false && profile?.email
-        if (!showPhone && !showEmail) return null
-        return <p key="company_contact" style={{ textAlign }}>{showPhone ? `Phone: ${profile.phone}` : ''}{showPhone && showEmail ? '  ·  ' : ''}{showEmail ? `Email: ${profile.email}` : ''}</p>
-      }
-      case 'gstin':
-        if (p.print_gstin === false || !profile?.gstin) return null
-        return <p key="gstin" style={{ textAlign }}>GSTIN: {profile.gstin}</p>
-      default:
-        return null
-    }
-  }
-
   const amountReceivedNum = parseFloat(form.amount_received) || 0
   // Change is against the PAYABLE (= grand total − cash discount). With no cash
   // discount, payable === grandTotal, so this is unchanged for existing flows.
@@ -1389,42 +1368,16 @@ export default function Sales() {
         
 
         {/* Tab-Style Bar */}
-        <div className="pos-top-bar">
-          <div className="pos-top-bar-left">
-            <div className="pos-tabs-row">
-              {tabs.map(tab => {
-                const isActive = tab.id === activeTabId;
-                return (
-                  <div
-                    key={tab.id}
-                    className={`pos-tab ${isActive ? '' : 'inactive'}`}
-                    onClick={() => setActiveTabId(tab.id)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <span>{tab.name}</span>
-                    {isActive && (
-                      <span style={{ fontSize: '0.65rem', color: '#94a3b8', marginLeft: 8, marginRight: 4 }}>Ctrl+W</span>
-                    )}
-                    <span className="pos-tab-close" onClick={(e) => closeTab(tab.id, e)}>✕</span>
-                  </div>
-                );
-              })}
-              <div className="pos-tab-add" title="New Invoice (Ctrl+T)" onClick={handleNewBill}>
-                ＋ New Bill [Ctrl+T]
-              </div>
-            </div>
-          </div>
-          <div className="pos-top-bar-right" style={{ gap: 12 }}>
-            <span style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', color: 'var(--text-muted)' }} onClick={() => setShowSettingsModal(true)} title="Settings">
-              <SettingsIcon size={16} />
-            </span>
-            <span style={{ color: 'var(--border)' }}>|</span>
-            <div style={{ display: 'flex', gap: 2 }}>
-              <span className="pos-window-control-btn" style={{ width: 20, height: 20, fontSize: '0.75rem', cursor: 'pointer' }} onClick={handleMinimize} title="Minimize to Sidebar">—</span>
-              <span className="pos-window-control-btn close-btn" style={{ width: 20, height: 20, fontSize: '0.75rem', cursor: 'pointer' }} onClick={handleCloseConfirm} title="Close POS">✕</span>
-            </div>
-          </div>
-        </div>
+        <PosTopBar
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onSelectTab={setActiveTabId}
+          onCloseTab={closeTab}
+          onNewBill={handleNewBill}
+          onMinimize={handleMinimize}
+          onClose={handleCloseConfirm}
+          onOpenSettings={() => setShowSettingsModal(true)}
+        />
 
         {/* Workspace body split */}
         <div className="pos-workspace">
@@ -1441,600 +1394,71 @@ export default function Sales() {
             )}
 
             {/* Product autocomplete search */}
-            <div className="pos-search-container" style={{ position: 'relative' }}>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div className="search-bar" style={{ flex: 1, padding: '8px 12px', background: 'var(--bg-2)', borderColor: 'var(--border)' }}>
-                  <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={14} /></span>
-                  <input
-                    ref={barcodeRef}
-                    value={searchQuery}
-                    onChange={e => {
-                      setSearchQuery(e.target.value)
-                      setSelectedIndex(-1)
-                    }}
-                    onKeyDown={handleSearchKeyDown}
-                    placeholder={`Scan barcode or search by ${t('product', 'item')} code, model no or name (F9)…`}
-                    style={{ width: '100%', color: '#0f172a' }}
-                  />
-                </div>
-                <button type="button" className="btn btn-secondary" onClick={addCustomItemToCart} style={{ whiteSpace: 'nowrap', fontSize: '0.8rem', padding: '0 16px' }}>
-                  ＋ Custom Item
-                </button>
-              </div>
-
-              {/* Autocomplete Overlay */}
-              {filteredProducts.length > 0 && (
-                <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  right: 0,
-                  background: 'var(--bg-2)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-md)',
-                  boxShadow: 'var(--shadow-lg)',
-                  zIndex: 1000,
-                  marginTop: 6,
-                  overflow: 'hidden'
-                }}>
-                  {filteredProducts.map((p, idx) => {
-                    const isSelected = idx === selectedIndex;
-                    return (
-                      <div
-                        key={p.id}
-                        style={{
-                          padding: '10px 14px',
-                          background: isSelected ? '#eff6ff' : 'transparent',
-                          color: isSelected ? '#1d4ed8' : '#0f172a',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          borderBottom: '1px solid #f1f5f9'
-                        }}
-                        onClick={() => addProductToCart(p)}
-                        onMouseEnter={() => setSelectedIndex(idx)}
-                      >
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{p.name}</span>
-                          <span style={{ fontSize: '0.72rem', color: '#64748b' }}>SKU: {p.sku || '—'} {p.barcode ? `| Barcode: ${p.barcode}` : ''}</span>
-                        </div>
-                        <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#16a34a' }}>{fmt(p.selling_price)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            <ProductSearchBar
+              ref={barcodeRef}
+              searchQuery={searchQuery}
+              onSearchChange={(v) => { setSearchQuery(v); setSelectedIndex(-1) }}
+              onKeyDown={handleSearchKeyDown}
+              placeholder={`Scan barcode or search by ${t('product', 'item')} code, model no or name (F9)…`}
+              onAddCustom={addCustomItemToCart}
+              filteredProducts={filteredProducts}
+              selectedIndex={selectedIndex}
+              onHoverIndex={setSelectedIndex}
+              onPick={addProductToCart}
+            />
 
             {/* Cart Table list container */}
             <div className="pos-cart-wrapper" style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
               <div ref={tableContainerRef} className="pos-cart-container" style={{ flex: 1, overflow: 'auto' }}>
                 <table className="pos-cart-table">
-                  <thead>
-                    <tr>
-                      <th style={{ position: 'sticky', left: 0, top: 0, zIndex: 12, background: 'var(--bg-3)', width: 40, minWidth: 40 }}>#</th>
-                      {columnOrder.map(col => {
-                        const isVisible = col === 'sku' ? colVisible.sku :
-                                          col === 'mrp' ? colVisible.mrp :
-                                          col === 'hsn' ? colVisible.hsn :
-                                          col === 'unit' ? colVisible.unit :
-                                          col === 'discount' ? colVisible.discount :
-                                          col === 'tax' ? colVisible.tax :
-                                          col === 'batch' ? colVisible.batch :
-                                          col === 'price_option' ? colVisible.price_option :
-                                          col === 'rate' ? colVisible.rate :
-                                          true;
-                        if (!isVisible) return null;
-
-                        const isSticky = stickyOffsets[col] !== undefined;
-                        const style = {
-                          position: 'sticky',
-                          top: 0,
-                          zIndex: isSticky ? 12 : 10,
-                          background: 'var(--bg-3)',
-                        };
-                        if (isSticky) {
-                          style.left = stickyOffsets[col];
-                        }
-
-                        const renderHeader = () => {
-                          if (col === 'sku') {
-                            return <th key="sku" style={{ ...style, width: 95, minWidth: 95 }}>ITEM CODE</th>;
-                          }
-                          if (col === 'name') {
-                            return (
-                              <th key="name" style={{
-                                ...style,
-                                width: '100%',
-                                minWidth: 180,
-                                borderRight: '1px solid var(--border)',
-                                boxShadow: '4px 0 4px -2px rgba(0,0,0,0.1)'
-                              }}>{(t('product', 'item')).toUpperCase()} NAME</th>
-                            );
-                          }
-                          if (col === 'batch') {
-                            return <th key="batch" style={{ ...style, width: 140, minWidth: 140, textAlign: 'center' }}>BATCH</th>;
-                          }
-                          if (col === 'price_option') {
-                            return <th key="price_option" style={{ ...style, width: 155, minWidth: 155, textAlign: 'center' }}>PRICE OPTION</th>;
-                          }
-                          if (col === 'mrp') {
-                            return <th key="mrp" style={{ ...style, width: 90, minWidth: 90, textAlign: 'right' }}>MRP (₹)</th>;
-                          }
-                          if (col === 'hsn') {
-                            return <th key="hsn" style={{ ...style, width: 80, minWidth: 80, textAlign: 'center' }}>HSN</th>;
-                          }
-                          if (col === 'qty') {
-                            return <th key="qty" style={{ ...style, width: 80, minWidth: 80, textAlign: 'center' }}>QTY</th>;
-                          }
-                          if (col === 'unit') {
-                            return <th key="unit" style={{ ...style, width: 70, minWidth: 70, textAlign: 'center' }}>UNIT</th>;
-                          }
-                          if (col === 'rate') {
-                            return (
-                              <th key="rate" style={{ ...style, width: 150, minWidth: 150, textAlign: 'right' }}>
-                                PRICE PER UNIT<br/>
-                                <span style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>BEFORE TAX (₹)</span>
-                              </th>
-                            );
-                          }
-                          if (col === 'price') {
-                            return (
-                              <th key="price" style={{ ...style, width: 130, minWidth: 130, textAlign: 'right' }}>
-                                TOTAL<br/>
-                                <span style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>BEFORE TAX (₹)</span>
-                              </th>
-                            );
-                          }
-                          if (col === 'discount') {
-                            return <th key="discount" style={{ ...style, width: 100, minWidth: 100, textAlign: 'right' }}>DISCOUNT (₹)</th>;
-                          }
-                          if (col === 'tax') {
-                            return <th key="tax" style={{ ...style, width: 110, minWidth: 110, textAlign: 'center' }}>TAX APPLIED(%)</th>;
-                          }
-                          if (col === 'total') {
-                            return (
-                              <th key="total" style={{ ...style, width: 130, minWidth: 130, textAlign: 'right' }}>
-                                TOTAL<br/>
-                                <span style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>AFTER TAX (₹)</span>
-                              </th>
-                            );
-                          }
-                          return null;
-                        };
-                        const headerEl = renderHeader();
-                        if (headerEl) {
-                          return React.cloneElement(headerEl, { className: `${headerEl.props.className || ''} col-${col}`.trim() });
-                        }
-                        return null;
-                      })}
-                      {form.items.length > 0 && <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-3)', width: 40, minWidth: 40, textAlign: 'center' }}></th>}
-                    </tr>
-                  </thead>
+                  <CartTableHeader
+                    columnOrder={columnOrder}
+                    colVisible={colVisible}
+                    stickyOffsets={stickyOffsets}
+                    t={t}
+                    hasItems={form.items.length > 0}
+                  />
                   <tbody>
                     {form.items.length === 0 ? (
-                      Array.from({ length: emptyRowCount }).map((_, idx) => (
-                        <tr key={`empty-${idx}`} style={{ height: '35px' }}>
-                          <td style={{ position: 'sticky', left: 0, background: 'var(--bg-2)' }}></td>
-                          {columnOrder.map(col => {
-                            const isVisible = col === 'sku' ? colVisible.sku :
-                                              col === 'mrp' ? colVisible.mrp :
-                                              col === 'hsn' ? colVisible.hsn :
-                                              col === 'unit' ? colVisible.unit :
-                                              col === 'discount' ? colVisible.discount :
-                                              col === 'tax' ? colVisible.tax :
-                                              col === 'batch' ? colVisible.batch :
-                                              col === 'price_option' ? colVisible.price_option :
-                                              col === 'rate' ? colVisible.rate :
-                                              true;
-                            if (!isVisible) return null;
-                            const isSticky = stickyOffsets[col] !== undefined;
-                            const style = { background: 'var(--bg-2)' };
-                            if (isSticky) {
-                              style.position = 'sticky';
-                              style.left = stickyOffsets[col];
-                              if (col === 'name') {
-                                style.borderRight = '1px solid var(--border)';
-                                style.boxShadow = '4px 0 4px -2px rgba(0,0,0,0.1)';
-                              }
-                            }
-                            return <td key={col} className={`col-${col}`} style={style}></td>;
-                          })}
-                        </tr>
-                      ))
+                      <CartEmptyRows
+                        rowCount={emptyRowCount}
+                        columnOrder={columnOrder}
+                        colVisible={colVisible}
+                        stickyOffsets={stickyOffsets}
+                      />
                     ) : (
                       form.items.map((item, i) => (
-                        <tr key={i} className="item-row">
-                          <td style={{
-                            position: 'sticky',
-                            left: 0,
-                            zIndex: 2,
-                            background: 'var(--bg-2)',
-                            fontWeight: 600,
-                            color: '#64748b'
-                          }}>{i + 1}</td>
-                          {columnOrder.map(col => {
-                            const isVisible = col === 'sku' ? colVisible.sku :
-                                              col === 'mrp' ? colVisible.mrp :
-                                              col === 'hsn' ? colVisible.hsn :
-                                              col === 'unit' ? colVisible.unit :
-                                              col === 'discount' ? colVisible.discount :
-                                              col === 'tax' ? colVisible.tax :
-                                              col === 'batch' ? colVisible.batch :
-                                              col === 'price_option' ? colVisible.price_option :
-                                              col === 'rate' ? colVisible.rate :
-                                              true;
-                            if (!isVisible) return null;
-
-                            const isSticky = stickyOffsets[col] !== undefined;
-                            const style = {
-                              zIndex: isSticky ? 2 : undefined,
-                              background: 'var(--bg-2)',
-                            };
-                            if (isSticky) {
-                              style.position = 'sticky';
-                              style.left = stickyOffsets[col];
-                              if (col === 'name') {
-                                style.borderRight = '1px solid var(--border)';
-                                style.boxShadow = '4px 0 4px -2px rgba(0,0,0,0.1)';
-                                style.textAlign = 'left';
-                              }
-                            }
-
-                            const renderCell = () => {
-                              if (col === 'sku') {
-                                return (
-                                  <td key="sku" style={style}>
-                                    <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: '#475569' }}>
-                                      {item.sku || '—'}
-                                    </span>
-                                  </td>
-                                );
-                              }
-
-                              if (col === 'name') {
-                                return (
-                                  <td key="name" style={style}>
-                                    {item.is_custom ? (
-                                      <input
-                                        className="pos-cell-input"
-                                        style={{ textAlign: 'left' }}
-                                        placeholder="Type item name…"
-                                        value={item.product}
-                                        onChange={e => setItem(i, 'product', e.target.value)}
-                                        required
-                                      />
-                                    ) : (
-                                      <div>
-                                        <span className="pos-cell-text">{item.product}</span>
-                                      </div>
-                                    )}
-                                  </td>
-                                );
-                              }
-
-                              if (col === 'batch') {
-                                return (
-                                  <td key="batch" style={{ ...style, textAlign: 'center', padding: '4px 8px' }}>
-                                    {item.product_id ? (
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
-                                        <select
-                                          style={{ fontSize: '0.72rem', padding: '2px 4px', border: '1px solid #cbd5e1', borderRadius: '4px', background: '#f8fafc', color: '#334155', maxWidth: '130px', textOverflow: 'ellipsis' }}
-                                          value={item.batch_no || ''}
-                                          onChange={e => {
-                                            const selectedBatchNo = e.target.value
-                                            const batches = productBatches[item.product_id] || []
-                                            const found = batches.find(b => b.batch_no === selectedBatchNo)
-                                            setItem(i, {
-                                              batch_no: selectedBatchNo,
-                                              expiry_date: found ? found.expiry_date : ''
-                                            })
-                                          }}
-                                        >
-                                          <option value="">-- Select Batch --</option>
-                                          {(productBatches[item.product_id] || []).map(b => (
-                                            <option key={b.batch_no} value={b.batch_no}>
-                                              {b.batch_no || 'No Batch'} ({b.godown_name || 'Main'}) - Stock: {b.stock} {b.expiry_date ? `(Exp: ${b.expiry_date})` : ''}
-                                            </option>
-                                          ))}
-                                        </select>
-                                        {item.expiry_date && (
-                                          (() => {
-                                            const today = new Date()
-                                            const expDate = new Date(item.expiry_date)
-                                            const diffTime = expDate - today
-                                            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-                                            if (diffDays <= 0) {
-                                              return <span style={{ fontSize: '0.68rem', color: 'var(--danger)', fontWeight: 600, display: 'block' }}><AlertIcon size={10} style={{ display: 'inline', marginRight: 2, verticalAlign: 'middle' }} />Expired!</span>
-                                            } else if (diffDays <= 30) {
-                                              return <span style={{ fontSize: '0.68rem', color: 'var(--warning)', fontWeight: 600, display: 'block' }}><AlertIcon size={10} style={{ display: 'inline', marginRight: 2, verticalAlign: 'middle' }} />Expiring in {diffDays} days</span>
-                                            }
-                                            return <span style={{ fontSize: '0.68rem', color: 'var(--success)', display: 'block' }}>Expires: {item.expiry_date}</span>
-                                          })()
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <span style={{ color: '#94a3b8' }}>—</span>
-                                    )}
-                                  </td>
-                                );
-                              }
-
-                              if (col === 'price_option') {
-                                const opts = getPriceOptions(item)
-                                return (
-                                  <td key="price_option" style={{ ...style, textAlign: 'center', padding: '4px 8px' }}>
-                                    {item.product_id ? (
-                                      <select
-                                        style={{ fontSize: '0.72rem', padding: '2px 4px', border: '1px solid #cbd5e1', borderRadius: '4px', background: '#f8fafc', color: '#334155', maxWidth: '145px', textOverflow: 'ellipsis' }}
-                                        value={item.selected_price_label || 'Standard Price'}
-                                        onFocus={async () => {
-                                          try {
-                                            const res = await authFetch(`/products/${item.product_id}/stock`)
-                                            if (res.ok) {
-                                              const data = await res.json()
-                                              setProductBatches(prev => ({
-                                                ...prev,
-                                                [item.product_id]: data.batches || []
-                                              }))
-                                            }
-                                          } catch (err) {
-                                            logger.error('[SALES] failed to update batches', err)
-                                          }
-                                        }}
-                                        onChange={e => {
-                                          const selectedLabel = e.target.value
-                                          const selectedOpt = opts.find(o => o.label === selectedLabel)
-                                          if (selectedOpt) {
-                                            const pVal = parseFloat(selectedOpt.price) || 0
-                                            setItem(i, {
-                                              selected_price: pVal,
-                                              selected_price_label: selectedLabel
-                                            })
-                                          }
-                                        }}
-                                      >
-                                        {opts.map(opt => (
-                                          <option key={opt.label} value={opt.label}>
-                                            {opt.label} (₹{opt.price})
-                                          </option>
-                                        ))}
-                                        {item.selected_price_label === 'Custom Price' && (
-                                          <option value="Custom Price">Custom Price (₹{parseFloat(item.selected_price || item.price).toFixed(2)})</option>
-                                        )}
-                                      </select>
-                                    ) : (
-                                      <span style={{ color: '#94a3b8' }}>—</span>
-                                    )}
-                                  </td>
-                                );
-                              }
-
-                              if (col === 'mrp') {
-                                return (
-                                  <td key="mrp" style={{ ...style, textAlign: 'right' }}>
-                                    <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: '#475569' }}>
-                                      {fmt(products.find(p => p.id === item.product_id)?.mrp || item.price)}
-                                    </span>
-                                  </td>
-                                );
-                              }
-
-                              if (col === 'hsn') {
-                                return (
-                                  <td key="hsn" style={{ ...style, textAlign: 'center' }}>
-                                    <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: '#475569' }}>
-                                      {products.find(p => p.id === item.product_id)?.hsn || '—'}
-                                    </span>
-                                  </td>
-                                );
-                              }
-
-                              if (col === 'qty') {
-                                return (
-                                  <td key="qty" style={style}>
-                                    <input
-                                      type="number"
-                                      min="0.01"
-                                      step="any"
-                                      className="pos-cell-input qty-input"
-                                      value={item.qty}
-                                      onChange={e => handleQtyChange(i, e.target.value)}
-                                      required
-                                    />
-                                  </td>
-                                );
-                              }
-
-                              if (col === 'unit') {
-                                return (
-                                  <td key="unit" style={{ ...style, textAlign: 'center', fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>
-                                    pcs
-                                  </td>
-                                );
-                              }
-
-                              if (col === 'rate') {
-                                const currentRate = parseFloat(item.selected_price) || (parseFloat(item.price) - (parseFloat(item.discount) / (parseFloat(item.qty) || 1)))
-                                return (
-                                  <td key="rate" style={style}>
-                                    {item.product_id ? (
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        step="any"
-                                        className="pos-cell-input rate-input"
-                                        style={{ textAlign: 'right', fontWeight: 600, color: 'var(--primary)' }}
-                                        value={isNaN(currentRate) ? '' : parseFloat(currentRate.toFixed(2))}
-                                        onChange={e => {
-                                          const newRate = parseFloat(e.target.value) || 0
-                                          setItem(i, {
-                                            selected_price: newRate,
-                                            selected_price_label: 'Custom Price'
-                                          })
-                                        }}
-                                      />
-                                    ) : (
-                                      <span style={{ color: '#94a3b8' }}>—</span>
-                                    )}
-                                  </td>
-                                );
-                              }
-
-                              if (col === 'price') {
-                                return (
-                                  <td key="price" style={{ ...style, textAlign: 'right' }}>
-                                    <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: '#475569' }}>
-                                      {item.product ? fmt(lineTotal(item)) : '—'}
-                                    </span>
-                                  </td>
-                                );
-                              }
-
-                              if (col === 'discount') {
-                                return (
-                                  <td key="discount" style={{ ...style, textAlign: 'right' }}>
-                                    <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: '#475569' }}>
-                                      {fmt(parseFloat(item.discount) || 0)}
-                                    </span>
-                                  </td>
-                                );
-                              }
-
-                              if (col === 'tax') {
-                                const cgstRate = parseFloat(item.cgst_rate) || 0
-                                const sgstRate = parseFloat(item.sgst_rate) || 0
-                                const igstRate = item.igst_rate ? parseFloat(item.igst_rate) : (cgstRate + sgstRate)
-                                const totalRate = isIntrastate ? (cgstRate + sgstRate) : igstRate
-                                return (
-                                  <td key="tax" style={{ ...style, textAlign: 'center', fontSize: '0.8rem', fontWeight: 600, color: '#475569' }}>
-                                    {item.is_custom ? (
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        max="100"
-                                        className="pos-cell-input"
-                                        style={{ textAlign: 'center', width: '60px' }}
-                                        value={totalRate || ''}
-                                        onChange={e => {
-                                          const rate = parseFloat(e.target.value) || 0
-                                          setForm(f => {
-                                            const items = [...f.items]
-                                            if (items[i]) {
-                                              items[i] = {
-                                                ...items[i],
-                                                cgst_rate: rate / 2,
-                                                sgst_rate: rate / 2,
-                                                igst_rate: rate
-                                              }
-                                            }
-                                            return { ...f, items }
-                                          })
-                                        }}
-                                      />
-                                    ) : (
-                                      <span>{totalRate > 0 ? `${totalRate}% · ${fmt(lineTotal(item) * totalRate / 100)}` : '0%'}</span>
-                                    )}
-                                  </td>
-                                );
-                              }
-
-                              if (col === 'total') {
-                                const cgstR = parseFloat(item.cgst_rate) || 0
-                                const sgstR = parseFloat(item.sgst_rate) || 0
-                                const igstR = item.igst_rate ? parseFloat(item.igst_rate) : (cgstR + sgstR)
-                                const rate = isIntrastate ? (cgstR + sgstR) : igstR
-                                const totalAfterTax = lineTotal(item) * (1 + rate / 100)
-                                return (
-                                  <td key="total" style={{ ...style, textAlign: 'right', fontWeight: 700, fontSize: '0.85rem', color: '#0f172a' }}>
-                                    {item.product ? fmt(totalAfterTax) : '—'}
-                                  </td>
-                                );
-                              }
-
-                              return null;
-                            };
-                            const cellEl = renderCell();
-                            if (cellEl) {
-                              return React.cloneElement(cellEl, { className: `${cellEl.props.className || ''} col-${col}`.trim() });
-                            }
-                            return null;
-                          })}
-                          <td style={{ textAlign: 'center' }}>
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-icon btn-sm"
-                              onClick={() => removeItem(i)}
-                              style={{ color: '#ef4444', padding: 4 }}
-                            >
-                              ✕
-                            </button>
-                          </td>
-                        </tr>
+                        <CartItemRow
+                          key={i}
+                          item={item}
+                          index={i}
+                          columnOrder={columnOrder}
+                          colVisible={colVisible}
+                          stickyOffsets={stickyOffsets}
+                          products={products}
+                          productBatches={productBatches}
+                          setProductBatches={setProductBatches}
+                          isIntrastate={isIntrastate}
+                          setItem={setItem}
+                          onQtyChange={handleQtyChange}
+                          onRemove={removeItem}
+                          setForm={setForm}
+                          getPriceOptions={getPriceOptions}
+                          authFetch={authFetch}
+                          logger={logger}
+                        />
                       ))
                     )}
                   </tbody>
                   {form.items.length > 0 && (
-                    <tfoot>
-                      <tr className="pos-cart-foot">
-                        <td style={{
-                          position: 'sticky',
-                          left: 0,
-                          bottom: 0,
-                          zIndex: 12,
-                          background: 'var(--bg-3)',
-                          fontWeight: 600,
-                          borderTop: '1px solid var(--border)'
-                        }}></td>
-                        {columnOrder.map(col => {
-                          const isVisible = col === 'sku' ? colVisible.sku :
-                                            col === 'mrp' ? colVisible.mrp :
-                                            col === 'hsn' ? colVisible.hsn :
-                                            col === 'unit' ? colVisible.unit :
-                                            col === 'discount' ? colVisible.discount :
-                                            col === 'tax' ? colVisible.tax :
-                                            col === 'batch' ? colVisible.batch :
-                                            col === 'price_option' ? colVisible.price_option :
-                                            col === 'rate' ? colVisible.rate :
-                                            true;
-                          if (!isVisible) return null;
-                          const isSticky = stickyOffsets[col] !== undefined;
-                          const style = {
-                            position: 'sticky',
-                            bottom: 0,
-                            zIndex: isSticky ? 12 : 10,
-                            background: 'var(--bg-3)',
-                            fontWeight: 600,
-                            borderTop: '1px solid var(--border)'
-                          };
-                          if (isSticky) {
-                            style.left = stickyOffsets[col];
-                          }
-                          const renderFoot = () => {
-                            if (col === 'name')     return <td key="name" style={{ ...style, fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>COLUMN TOTALS</td>;
-                            if (col === 'qty')      return <td key="qty" style={{ ...style, textAlign: 'center' }}>{colFooter.qty}</td>;
-                            if (col === 'price')    return <td key="price" style={{ ...style, textAlign: 'right' }}>{fmt(colFooter.total)}</td>;
-                            if (col === 'discount') return <td key="discount" style={{ ...style, textAlign: 'right' }}>{fmt(colFooter.discount)}</td>;
-                            if (col === 'tax')      return <td key="tax" style={{ ...style, textAlign: 'center' }}>{fmt(gstAmt)}</td>;
-                            if (col === 'total')    return <td key="total" style={{ ...style, textAlign: 'right' }}>{fmt(grandTotal)}</td>;
-                            return <td key={col} style={style}></td>;
-                          };
-                          const footEl = renderFoot();
-                          if (footEl) {
-                            return React.cloneElement(footEl, { className: `${footEl.props.className || ''} col-${col}`.trim() });
-                          }
-                          return null;
-                        })}
-                        <td style={{
-                          position: 'sticky',
-                          bottom: 0,
-                          zIndex: 10,
-                          background: 'var(--bg-3)',
-                          borderTop: '1px solid var(--border)'
-                        }}></td>
-                      </tr>
-                    </tfoot>
+                    <CartFooterRow
+                      columnOrder={columnOrder}
+                      colVisible={colVisible}
+                      stickyOffsets={stickyOffsets}
+                      colFooter={colFooter}
+                      gstAmt={gstAmt}
+                      grandTotal={grandTotal}
+                    />
                   )}
                 </table>
               </div>
@@ -2267,590 +1691,56 @@ export default function Sales() {
 
       {/* Main Settings Modal */}
       {showSettingsModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowSettingsModal(false)}>
-          <div className="modal" style={{ maxWidth: 450 }}>
-            <div className="modal-header">
-              <span className="modal-title" style={{ color: '#0f172a', fontWeight: 700 }}>⚙️ POS Counter Settings</span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowSettingsModal(false)} style={{ color: '#64748b' }}>✕</button>
-            </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>Your UPI ID (VPA) for Collections</label>
-                <input
-                  type="text"
-                  className="pos-form-input"
-                  style={{ height: 35, fontSize: '0.85rem', padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
-                  placeholder="e.g. name@upi"
-                  value={upiVpa}
-                  onChange={e => {
-                    setUpiVpa(e.target.value)
-                    localStorage.setItem('pos_upi_vpa', e.target.value)
-                  }}
-                />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>Merchant GST State Code</label>
-                <select
-                  className="pos-form-select"
-                  style={{ height: 35, fontSize: '0.85rem', padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: '4px' }}
-                  value={merchantState}
-                  onChange={e => {
-                    setMerchantState(e.target.value)
-                    localStorage.setItem('pos_merchant_state', e.target.value)
-                  }}
-                >
-                  <option value="37">37 - Andhra Pradesh (AP)</option>
-                  <option value="29">29 - Karnataka (KA)</option>
-                  <option value="33">33 - Tamil Nadu (TN)</option>
-                  <option value="27">27 - Maharashtra (MH)</option>
-                  <option value="07">07 - Delhi (DL)</option>
-                  <option value="09">09 - Uttar Pradesh (UP)</option>
-                  <option value="19">19 - West Bengal (WB)</option>
-                </select>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Visible Columns</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                  {[
-                    { label: 'Item SKU/Code', key: 'pos_show_sku', toggleable: true },
-                    { label: 'Item Name', key: 'name', toggleable: false },
-                    { label: 'Batch Selector', key: 'pos_show_batch', toggleable: true },
-                    { label: 'Price Option', key: 'price_option', toggleable: false },
-                    { label: 'MRP', key: 'pos_show_mrp', toggleable: true },
-                    { label: 'HSN/SAC Code', key: 'pos_show_hsn', toggleable: true },
-                    { label: 'Quantity', key: 'qty', toggleable: false },
-                    { label: 'Unit', key: 'pos_show_unit', toggleable: true },
-                    { label: 'Price Per Unit Before Tax', key: 'rate', toggleable: false },
-                    { label: 'Total Before Tax', key: 'price', toggleable: false },
-                    { label: 'Discount', key: 'pos_show_discount', toggleable: true },
-                    { label: 'Tax', key: 'pos_show_tax', toggleable: true },
-                    { label: 'Total After Tax', key: 'total', toggleable: false }
-                  ].map(col => {
-                    const checkedVal = !col.toggleable 
-                      ? true 
-                      : (col.key === 'pos_show_hsn' || col.key === 'pos_show_mrp'
-                          ? settings?.transactions?.[col.key] === true
-                          : settings?.transactions?.[col.key] !== false);
-                    return (
-                      <label key={col.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', fontWeight: 600, color: '#334155', cursor: col.toggleable ? 'pointer' : 'not-allowed', opacity: col.toggleable ? 1 : 0.6 }}>
-                        <input
-                          type="checkbox"
-                          checked={checkedVal}
-                          disabled={!col.toggleable}
-                          onChange={e => col.toggleable && handleToggleColumnSetting(col.key, e.target.checked)}
-                          style={{ accentColor: 'var(--accent)', width: 14, height: 14 }}
-                        />
-                        {col.label}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rearrange Columns</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0', maxHeight: '200px', overflowY: 'auto' }}>
-                  {columnOrder.map((col, idx) => {
-                    const isVisible = col === 'sku' ? colVisible.sku :
-                                      col === 'mrp' ? colVisible.mrp :
-                                      col === 'hsn' ? colVisible.hsn :
-                                      col === 'unit' ? colVisible.unit :
-                                      col === 'discount' ? colVisible.discount :
-                                      col === 'tax' ? colVisible.tax :
-                                      col === 'batch' ? colVisible.batch :
-                                      col === 'price_option' ? colVisible.price_option :
-                                      col === 'rate' ? colVisible.rate :
-                                      true;
-                    
-                    return (
-                      <div key={col} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', background: isVisible ? '#ffffff' : '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '4px', opacity: isVisible ? 1 : 0.6 }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
-                          {colLabels[col]} {!isVisible && <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>(Hidden)</span>}
-                        </span>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm"
-                            style={{ padding: '2px 6px', fontSize: '0.75rem', border: '1px solid #cbd5e1' }}
-                            disabled={idx === 0}
-                            onClick={() => handleMoveColumn(idx, 'up')}
-                          >
-                            ▲
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm"
-                            style={{ padding: '2px 6px', fontSize: '0.75rem', border: '1px solid #cbd5e1' }}
-                            disabled={idx === columnOrder.length - 1}
-                            onClick={() => handleMoveColumn(idx, 'down')}
-                          >
-                            ▼
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
-                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>POS Hotkey Settings</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0', maxHeight: '180px', overflowY: 'auto' }}>
-                  {[
-                    { label: 'Change Quantity', key: 'qtyFocus' },
-                    { label: 'Item Discount', key: 'discountFocus' },
-                    { label: 'Remove Item', key: 'removeItem' },
-                    { label: 'Receive Amount / Pay', key: 'amountReceivedFocus' },
-                    { label: 'Search Item / Barcode', key: 'barcodeFocus' },
-                    { label: 'Select Customer', key: 'customerFocus' },
-                    { label: 'Remarks / Notes', key: 'remarksFocus' },
-                    { label: 'Configure Shortcuts', key: 'configureShortcuts' },
-                    { label: 'Proceed Payment / Save', key: 'paymentProceed' },
-                    { label: 'Cancel Payment / Close', key: 'paymentCancel' },
-                    { label: '⏩ Flow: Move FORWARD', key: 'flowForward', isFlow: true },
-                    { label: '⏪ Flow: Move BACK', key: 'flowBack', isFlow: true },
-                  ].map(item => (
-                    <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', background: item.isFlow ? '#eff6ff' : '#ffffff', border: item.isFlow ? '1px solid #bfdbfe' : '1px solid #e2e8f0', borderRadius: '4px' }}>
-                      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: item.isFlow ? '#1d4ed8' : '#334155' }}>{item.label}</span>
-                      <select
-                        className="pos-form-select"
-                        style={{ width: '120px', height: '26px', padding: '2px 4px', fontSize: '0.75rem' }}
-                        value={funcKeys[item.key] || ''}
-                        onChange={e => {
-                          const nextKeys = { ...funcKeys, [item.key]: e.target.value }
-                          setFuncKeys(nextKeys)
-                          localStorage.setItem('pos_func_keys', JSON.stringify(nextKeys))
-                        }}
-                      >
-                        {(item.isFlow
-                          ? ['Enter', 'Shift+Enter', 'Tab', 'F5', 'F6', 'F7']
-                          : ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12', 'Enter', 'Escape']
-                        ).map(k => (
-                          <option key={k} value={k}>{k}</option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.85rem', padding: '6px 0' }}
-                  onClick={() => {
-                    setShowSettingsModal(false);
-                    navigate('/settings');
-                  }}
-                >
-                  Advanced Settings ➔
-                </button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowSettingsModal(false)}>
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <PosCounterSettingsModal
+          onClose={() => setShowSettingsModal(false)}
+          upiVpa={upiVpa}
+          setUpiVpa={setUpiVpa}
+          merchantState={merchantState}
+          setMerchantState={setMerchantState}
+          settings={settings}
+          onToggleColumn={handleToggleColumnSetting}
+          columnOrder={columnOrder}
+          colVisible={colVisible}
+          colLabels={colLabels}
+          onMoveColumn={handleMoveColumn}
+          funcKeys={funcKeys}
+          setFuncKeys={setFuncKeys}
+          onAdvancedSettings={() => { setShowSettingsModal(false); navigate('/settings'); }}
+        />
       )}
 
       {/* Hotkey Settings Modal */}
       {showHotkeySettingsModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowHotkeySettingsModal(false)}>
-          <div className="modal" style={{ maxWidth: 450 }}>
-            <div className="modal-header">
-              <span className="modal-title" style={{ color: '#0f172a', fontWeight: 700 }}>⌨️ Configure POS Hotkeys</span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowHotkeySettingsModal(false)} style={{ color: '#64748b' }}>✕</button>
-            </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 2 }}>
-                Select key mappings from the dropdown options below to customize your counter shortcuts.
-              </p>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '340px', overflowY: 'auto', paddingRight: '4px' }}>
-                {/* Flow navigation keys — highlighted section */}
-                <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>⌨️ Payment Flow Navigation</div>
-                  {[
-                    {
-                      label: '🛒 → 💳 Proceed to Payment',
-                      key: 'proceedToPayment',
-                      hint: 'From barcode scanner → start payment (goes to Customer Name)',
-                      options: ['Escape', 'F5', 'F6', 'F7', 'F10', 'Enter'],
-                      highlight: '#f97316',
-                    },
-                    { label: 'Move FORWARD (field by field)', key: 'flowForward', hint: 'Customer → Amount → Payment Mode → Confirm', options: ['Enter', 'Shift+Enter', 'Tab', 'F5', 'F6', 'F7'] },
-                    { label: 'Move BACK (go back one field)', key: 'flowBack', hint: 'Payment Mode → Amount → Customer → Barcode', options: ['Shift+Enter', 'Enter', 'Tab', 'F5', 'F6', 'F7'] },
-                  ].map(item => (
-                    <div key={item.key}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: item.highlight || '#1d4ed8' }}>{item.label}</span>
-                        <select
-                          className="pos-form-select"
-                          style={{ width: '130px', height: '28px', padding: '2px 4px', fontSize: '0.8rem', borderColor: item.highlight ? '#fed7aa' : '#bfdbfe' }}
-                          value={funcKeys[item.key] || ''}
-                          onChange={e => {
-                            const nextKeys = { ...funcKeys, [item.key]: e.target.value }
-                            setFuncKeys(nextKeys)
-                            localStorage.setItem('pos_func_keys', JSON.stringify(nextKeys))
-                          }}
-                        >
-                          {item.options.map(k => (
-                            <option key={k} value={k}>{k}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: 2 }}>{item.hint}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Other function keys */}
-                {[
-                  { label: 'Change Quantity', key: 'qtyFocus' },
-                  { label: 'Item Discount', key: 'discountFocus' },
-                  { label: 'Remove Item', key: 'removeItem' },
-                  { label: 'Receive Amount / Pay', key: 'amountReceivedFocus' },
-                  { label: 'Search Item / Barcode', key: 'barcodeFocus' },
-                  { label: 'Select Customer', key: 'customerFocus' },
-                  { label: 'Remarks / Notes', key: 'remarksFocus' },
-                  { label: 'Configure Shortcuts', key: 'configureShortcuts' },
-                  { label: 'Proceed Payment / Save', key: 'paymentProceed' },
-                  { label: 'Cancel Payment / Close', key: 'paymentCancel' }
-                ].map(item => (
-                  <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>{item.label}</span>
-                    <select
-                      className="pos-form-select"
-                      style={{ width: '110px', height: '28px', padding: '2px 4px', fontSize: '0.8rem' }}
-                      value={funcKeys[item.key] || ''}
-                      onChange={e => {
-                        const nextKeys = { ...funcKeys, [item.key]: e.target.value }
-                        setFuncKeys(nextKeys)
-                        localStorage.setItem('pos_func_keys', JSON.stringify(nextKeys))
-                      }}
-                    >
-                      {['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12', 'Enter', 'Escape'].map(k => (
-                        <option key={k} value={k}>{k}</option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ borderTop: '1px solid #e2e8f0', margin: '4px 0' }} />
-              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Standard Control Shortcuts</label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                {[
-                  { label: 'Save & Print Bill', key: 'Ctrl+P' },
-                  { label: 'Save Bill Only', key: 'Ctrl+S' },
-                  { label: 'New Active Tab', key: 'Ctrl+T' },
-                  { label: 'Close Active Tab', key: 'Ctrl+W' },
-                  { label: 'Toggle Breakup', key: 'Ctrl+F' },
-                  { label: 'Credit Payment', key: 'Ctrl+M' }
-                ].map(item => (
-                  <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#475569' }}>{item.label}</span>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#475569', background: '#e2e8f0', padding: '1px 6px', borderRadius: '4px' }}>{item.key}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.82rem', padding: '6px 0' }}
-                  onClick={() => {
-                    setFuncKeys(defaultFuncKeys);
-                    localStorage.setItem('pos_func_keys', JSON.stringify(defaultFuncKeys));
-                  }}
-                >
-                  Reset Defaults
-                </button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowHotkeySettingsModal(false)}>
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <PosHotkeyModal
+          onClose={() => setShowHotkeySettingsModal(false)}
+          funcKeys={funcKeys}
+          setFuncKeys={setFuncKeys}
+          defaultFuncKeys={defaultFuncKeys}
+        />
       )}
 
       
       {/* Print-only thermal receipt container rendered via Portal directly in document.body */}
-      {activeTab && createPortal(
-        <div 
-          id="thermal-receipt" 
-          className={`size-${settings?.print?.thermal_page_size || '3inch'} text-size-${settings?.print?.text_size || 'medium'} theme-${settings?.print?.thermal_theme || 'theme_standard'}`}
-        >
-          <div className="receipt-header">
-            {getHeaderLayout(settings?.print).map(line => renderReceiptHeaderLine(line.key, line.align))}
-            <div className="dashed" />
-          </div>
-
-          <div className="receipt-info">
-            <p><strong>Bill No:</strong> {activeTab.name}</p>
-            <p><strong>Date:</strong> {getTodayDateStr()} &nbsp; <strong>Time:</strong> {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</p>
-            <p><strong>Cashier:</strong> {user?.username || 'POS'} &nbsp; <strong>Counter:</strong> {settings?.print?.counter_id || 'CTR1'}</p>
-            {(() => {
-              const c = customers.find(x => String(x.id) === String(form.customer_id))
-              return c ? (
-                <>
-                  <p><strong>Customer:</strong> {c.name}</p>
-                  {c.phone && <p><strong>Phone:</strong> {c.phone}</p>}
-                  {c.gstin && <p><strong>GSTIN:</strong> {c.gstin}</p>}
-                </>
-              ) : null
-            })()}
-            <div className="dashed" />
-          </div>
-
-          <table className="receipt-table">
-            <thead>
-              {settings?.print?.thermal_theme === 'theme_compact' ? (
-                <tr>
-                  <th colSpan={settings?.print?.print_item_hsn ? 3 : 2}>Description</th>
-                  <th className="text-right">Amt</th>
-                </tr>
-              ) : (
-                <tr>
-                  {settings?.print?.print_item_sno !== false && <th style={{ width: '25px' }}>#</th>}
-                  <th>Item</th>
-                  {settings?.print?.print_item_hsn && <th>HSN</th>}
-                  <th className="text-right">MRP</th>
-                  <th className="text-right">Rate</th>
-                  <th className="text-right">Qty</th>
-                  {settings?.print?.print_item_tax !== false && <th className="text-right">GST</th>}
-                  <th className="text-right">Amt</th>
-                </tr>
-              )}
-            </thead>
-            <tbody>
-              {form.items.map((it, idx) => {
-                const cgstRate = parseFloat(it.cgst_rate) || 0
-                const sgstRate = parseFloat(it.sgst_rate) || 0
-                const igstRate = it.igst_rate ? parseFloat(it.igst_rate) : (cgstRate + sgstRate)
-                const totalRate = isIntrastate ? (cgstRate + sgstRate) : igstRate
-                const lineUnitPrice = parseFloat(it.price) || 0
-
-                if (settings?.print?.thermal_theme === 'theme_compact') {
-                  return (
-                    <tr key={idx} style={{ borderBottom: '1px dotted #ccc' }}>
-                      <td colSpan={settings?.print?.print_item_hsn ? 2 : 1}>
-                        <div style={{ fontWeight: 'bold', fontSize: '10px' }}>{it.product}</div>
-                        <div style={{ fontSize: '9px', color: '#555' }}>
-                          {it.qty} {it.unit || 'Nos'} · MRP ₹{lineUnitPrice.toFixed(2)} → ₹{((parseFloat(it.qty) || 1) ? lineTotal(it) / (parseFloat(it.qty) || 1) : lineUnitPrice).toFixed(2)}
-                          {settings?.print?.print_item_hsn && it.hsn_sac && ` (HSN: ${it.hsn_sac})`}
-                          {settings?.print?.print_item_tax !== false && totalRate > 0 && ` (Tax: ${totalRate}%)`}
-                        </div>
-                      </td>
-                      <td className="text-right" style={{ verticalAlign: 'bottom', fontSize: '10px' }}>
-                        ₹{lineTotal(it).toFixed(2)}
-                      </td>
-                    </tr>
-                  )
-                } else {
-                  const qn = parseFloat(it.qty) || 1
-                  const rate = qn ? lineTotal(it) / qn : lineUnitPrice   // chosen selling price per unit
-                  return (
-                    <tr key={idx}>
-                      {settings?.print?.print_item_sno !== false && <td>{idx + 1}</td>}
-                      <td>{it.product}</td>
-                      {settings?.print?.print_item_hsn && <td>{it.hsn_sac || '—'}</td>}
-                      <td className="text-right">₹{lineUnitPrice.toFixed(2)}</td>
-                      <td className="text-right">₹{rate.toFixed(2)}</td>
-                      <td className="text-right">{it.qty}</td>
-                      {settings?.print?.print_item_tax !== false && <td className="text-right">{totalRate}%</td>}
-                      <td className="text-right">₹{lineTotal(it).toFixed(2)}</td>
-                    </tr>
-                  )
-                }
-              })}
-            </tbody>
-          </table>
-
-          <div className="dashed" />
-
-          <div className="receipt-totals">
-            <div className="receipt-row">
-              <span>Subtotal:</span>
-              <span>₹{subtotal.toFixed(2)}</span>
-            </div>
-            {billDiscountAmt > 0 && (
-              <div className="receipt-row">
-                <span>Discount:</span>
-                <span>− ₹{billDiscountAmt.toFixed(2)}</span>
-              </div>
-            )}
-            {settings?.print?.print_tax_breakdown !== false && (
-              <>
-                {cgstAmt > 0 && (
-                  <div className="receipt-row">
-                    <span>CGST:</span>
-                    <span>₹{cgstAmt.toFixed(2)}</span>
-                  </div>
-                )}
-                {sgstAmt > 0 && (
-                  <div className="receipt-row">
-                    <span>SGST:</span>
-                    <span>₹{sgstAmt.toFixed(2)}</span>
-                  </div>
-                )}
-                {igstAmt > 0 && (
-                  <div className="receipt-row">
-                    <span>IGST:</span>
-                    <span>₹{igstAmt.toFixed(2)}</span>
-                  </div>
-                )}
-              </>
-            )}
-            {(cashDiscountAmt > 0 || Math.abs(roundOff || 0) >= 0.005) ? (
-              <>
-                <div className="receipt-row">
-                  <span>Total:</span>
-                  <span>₹{grandTotal.toFixed(2)}</span>
-                </div>
-                {cashDiscountAmt > 0 && (
-                  <div className="receipt-row">
-                    <span>(−) Cash Discount:</span>
-                    <span>₹{cashDiscountAmt.toFixed(2)}</span>
-                  </div>
-                )}
-                {Math.abs(roundOff || 0) >= 0.005 && (
-                  <div className="receipt-row">
-                    <span>Round Off:</span>
-                    <span>{(roundOff || 0) > 0 ? '+' : '−'} ₹{Math.abs(roundOff || 0).toFixed(2)}</span>
-                  </div>
-                )}
-                <div className="receipt-row grand-total">
-                  <span>PAYABLE:</span>
-                  <span>₹{payable.toFixed(2)}</span>
-                </div>
-              </>
-            ) : (
-              <div className="receipt-row grand-total">
-                <span>GRAND TOTAL:</span>
-                <span>₹{grandTotal.toFixed(2)}</span>
-              </div>
-            )}
-            {settings?.print?.print_amount_in_words && (
-              <div className="receipt-row" style={{ fontSize: '9px', fontStyle: 'italic', textTransform: 'capitalize', marginTop: '2px' }}>
-                <span>In Words: {numberToWords(payable)}</span>
-              </div>
-            )}
-            <div className="receipt-row" style={{ marginTop: 4 }}>
-              <span>Payment Mode:</span>
-              <span>{form.payment_mode ? form.payment_mode.toUpperCase() : 'CASH'}</span>
-            </div>
-            <div className="receipt-row">
-              <span>Amount Received:</span>
-              <span>₹{parseFloat(form.amount_received || 0).toFixed(2)}</span>
-            </div>
-            {changeToReturn > 0 && (
-              <div className="receipt-row">
-                <span>Change Return:</span>
-                <span>₹{changeToReturn.toFixed(2)}</span>
-              </div>
-            )}
-            <div className="receipt-row" style={{ marginTop: 4 }}>
-              <span>Qty: {colFooter.qty}</span>
-              <span>Items: {form.items.length}</span>
-            </div>
-            {(colFooter.discount + billDiscountAmt + cashDiscountAmt) > 0.005 && (
-              <div className="receipt-row" style={{ fontWeight: 700 }}>
-                <span>You have Saved:</span>
-                <span>₹{(colFooter.discount + billDiscountAmt + cashDiscountAmt).toFixed(2)}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Per-slab GST tax table (Tax% · Taxable · CGST/SGST), like the kirana receipt */}
-          {settings?.print?.print_tax_breakdown !== false && form.items.length > 0 && (() => {
-            const slabs = gstSlabBreakdown(form.items, { isIntrastate })
-            if (!slabs.length) return null
-            return (
-              <>
-                <div className="dashed" />
-                <table className="receipt-table" style={{ fontSize: '9px' }}>
-                  <thead>
-                    <tr>
-                      <th>Tax%</th>
-                      <th className="text-right">Taxable</th>
-                      {isIntrastate
-                        ? (<><th className="text-right">CGST</th><th className="text-right">SGST</th></>)
-                        : (<th className="text-right">IGST</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {slabs.map((s, i) => (
-                      <tr key={i}>
-                        <td>{s.rate}%</td>
-                        <td className="text-right">₹{s.taxable.toFixed(2)}</td>
-                        {isIntrastate
-                          ? (<><td className="text-right">₹{s.cgst.toFixed(2)}</td><td className="text-right">₹{s.sgst.toFixed(2)}</td></>)
-                          : (<td className="text-right">₹{s.igst.toFixed(2)}</td>)}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </>
-            )
-          })()}
-
-          {(settings?.print?.fssai_no || settings?.print?.prices_incl_gst) && (
-            <div style={{ fontSize: '9px', textAlign: 'center', marginTop: 4 }}>
-              {settings?.print?.prices_incl_gst && <div>E. &amp; O.E. · Prices Incl. GST</div>}
-              {settings?.print?.fssai_no && <div>FSSAI: {settings.print.fssai_no}</div>}
-            </div>
-          )}
-
-          {form.notes && (
-            <>
-              <div className="dashed" />
-              <div className="receipt-notes">
-                <p><strong>Notes:</strong> {form.notes}</p>
-              </div>
-            </>
-          )}
-
-          {settings?.print?.print_terms_conditions && settings?.print?.terms_conditions_text && (
-            <>
-              <div className="dashed" />
-              <div className="receipt-terms" style={{ fontSize: '9px', textAlign: 'center' }}>
-                <p><strong>Terms & Conditions:</strong></p>
-                <p style={{ whiteSpace: 'pre-wrap' }}>{settings.print.terms_conditions_text}</p>
-              </div>
-            </>
-          )}
-
-          {/* Signature lines */}
-          {(settings?.print?.customer_signature || settings?.print?.print_signature) && (
-            <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between', fontSize: '9px' }}>
-              {settings?.print?.customer_signature && (
-                <div style={{ textAlign: 'center', flex: 1 }}>
-                  <div style={{ borderBottom: '1px solid #000', width: '80%', margin: '0 auto 4px auto', height: '15px' }} />
-                  <div>{settings.print.customer_signature_label || 'Customer Signature'}</div>
-                </div>
-              )}
-              {settings?.print?.print_signature && (
-                <div style={{ textAlign: 'center', flex: 1 }}>
-                  <div style={{ borderBottom: '1px solid #000', width: '80%', margin: '0 auto 4px auto', height: '15px' }} />
-                  <div>{settings.print.signature_label || 'Authorised Signatory'}</div>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="dashed" />
-          <div className="receipt-footer">
-            <p>Thank you for shopping with us!</p>
-            <p>Powered by BizAssist</p>
-          </div>
-        </div>,
-        document.body
-      )}
+      <ThermalReceipt
+        settings={settings}
+        profile={profile}
+        activeTab={activeTab}
+        form={form}
+        customers={customers}
+        user={user}
+        isIntrastate={isIntrastate}
+        subtotal={subtotal}
+        billDiscountAmt={billDiscountAmt}
+        cgstAmt={cgstAmt}
+        sgstAmt={sgstAmt}
+        igstAmt={igstAmt}
+        cashDiscountAmt={cashDiscountAmt}
+        roundOff={roundOff}
+        grandTotal={grandTotal}
+        payable={payable}
+        changeToReturn={changeToReturn}
+        colFooter={colFooter}
+      />
     </AppLayout>
   )
 }

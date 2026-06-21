@@ -143,6 +143,22 @@ def test_pricing_columns_map_uniqueness():
     assert len(r_df.renamed_df.columns) == len(set(r_df.renamed_df.columns))
 
 
+def test_unit_column_does_not_hijack_stock():
+    """Regression: a unit-of-measure column ('unit' = "Nos") must NOT be mapped to the
+    integer `stock` field; the real quantity column ('opening_stock') must win instead.
+    Previously 'unit' fuzzy-matched the 'units'/'nos' synonyms and routed "Nos" into
+    stock, aborting the whole inventory import with a ValueError. (sample_products_import.csv)"""
+    from services.column_mapper import ColumnMapper
+    cols = ["name", "sku", "barcode", "unit", "description", "brand", "manufacturer",
+            "category", "selling_price", "cost_price", "mrp", "cgst_rate", "sgst_rate",
+            "igst_rate", "opening_stock"]
+    r = ColumnMapper().map_columns(cols, filename="sample_products_import.csv")
+    assert "unit" not in r.mapping                          # UoM column ignored, not stock
+    assert r.mapping.get("opening_stock") == "stock"        # real quantity wins the slot
+    assert r.mapping.get("name") == "product_name"
+    assert r.detected_type == "inventory"
+
+
 
 def test_product_margins_compute_and_flag():
     out = json.loads(execute_tool("product_margins", {}, BID))

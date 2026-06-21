@@ -25,6 +25,7 @@ from core.api.godowns import router as godowns_router
 from core.api.transfers import router as transfers_router
 from core.api.staff import router as staff_router
 from core.api.period_lock import router as period_lock_router
+from core.api.compliance import router as compliance_router
 
 core_router = APIRouter()
 core_router.include_router(sales_router)
@@ -43,5 +44,6 @@ core_router.include_router(godowns_router)
 core_router.include_router(transfers_router)
 core_router.include_router(staff_router)
 core_router.include_router(period_lock_router)
+core_router.include_router(compliance_router)
 
 __all__ = ["core_router"]

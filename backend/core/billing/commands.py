@@ -309,7 +309,7 @@ def record_payment(db, *, business_id: int, invoice_id: int,
     Updates invoice.paid_amount and .status:
       paid_amount >= total_amount → 'Paid'
       0 < paid_amount < total_amount → 'Partial'
-      paid_amount == 0 → 'Unpaid' / original status preserved
+      paid_amount == 0 → 'Pending' (matches create_sale_invoice; dashboard filters on 'Pending')
 
     NEVER deletes or overwrites a payment row — corrections are new rows.
     """
@@ -371,7 +371,7 @@ def record_payment(db, *, business_id: int, invoice_id: int,
     elif inv.paid_amount > 0:
         inv.status = "Partial"
     else:
-        inv.status = "Unpaid"
+        inv.status = "Pending"   # vocab consistent with create_sale_invoice + dashboard filters
     inv.payment_mode = payment_mode or inv.payment_mode
     inv.payment_date = payment_date or datetime.today().strftime("%Y-%m-%d")
 

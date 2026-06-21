@@ -55,7 +55,7 @@ def effective_lock(db, business_id) -> Optional[str]:
 
 
 def assert_period_open(db, business_id, entry_date) -> None:
-    """Raise AskError(409) if `entry_date` falls in a locked (closed) period.
+    """Raise PeriodLockedError (a ValueError → HTTP 422) if `entry_date` falls in a locked (closed) period.
 
     A missing/empty entry_date can't be proven to be in the open period, so it is
     treated conservatively as on-or-before any lock and rejected when a lock

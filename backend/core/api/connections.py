@@ -81,21 +81,42 @@ def lookup_bizid(code: str, current_user: dict = Depends(get_active_user), db: S
     target = db.query(User).filter(User.public_id == code).first()
     if not target:
         raise HTTPException(status_code=404, detail="BizID not found")
-        
+
     # Find business type
     settings = db.query(BusinessSettings).filter(BusinessSettings.business_id == target.id).first()
     biz_type = settings.template_key if settings else "general"
-    
-    return {
+
+    # Privacy gate: contact details (phone/email/address) are revealed only once an
+    # ACCEPTED connection exists between the two businesses (either direction), or
+    # when looking up one's own BizID. Discovery before connecting shows just the
+    # public identity (name, type, state) so a BizID can't be used to scrape
+    # contact lists of businesses you have no relationship with.
+    me = current_user["id"]
+    connected = me == target.id or (
+        db.query(B2BConnection)
+        .filter(
+            B2BConnection.status == "accepted",
+            ((B2BConnection.seller_business_id == target.id) & (B2BConnection.buyer_business_id == me))
+            | ((B2BConnection.seller_business_id == me) & (B2BConnection.buyer_business_id == target.id)),
+        )
+        .first()
+        is not None
+    )
+
+    out = {
         "public_id": target.public_id,
         "business_name": target.business_name,
         "business_type": biz_type,
         "state_code": target.state_code,
-        "address": target.address,
-        "phone": target.phone,
-        "email": target.email,
-        "accepts_orders": True
+        "accepts_orders": True,
+        "connected": connected,
     }
+    if connected:
+        out.update({"address": target.address, "phone": target.phone, "email": target.email})
+    else:
+        out.update({"address": None, "phone": None, "email": None})
+    logger.info("[CONN] bizid lookup biz=%s target=%s connected=%s", me, target.id, connected)
+    return out
 
 @router.post("/connections/code")
 def generate_join_code(current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):

@@ -123,10 +123,14 @@ _SYNONYMS: dict[str, list[str]] = {
         "goods name", "article", "material", "material name",
         "description", "particulars", "name",
     ],
+    # NOTE: quantity ONLY. Do NOT add unit-of-measure tokens here ("unit", "units",
+    # "nos", "pcs", "kg", …) — those name the UoM column, not the count, and a fuzzy
+    # match would route text like "Nos" into this integer field and abort the import.
     "stock": [
-        "stock", "quantity", "qty", "units", "count", "balance qty",
+        "stock", "quantity", "qty", "count", "balance qty",
+        "opening stock", "opening_stock", "opening qty", "opening_qty",
         "closing stock", "closing qty", "available", "available qty",
-        "on hand", "in hand", "current stock", "nos",
+        "stock qty", "qty in hand", "on hand", "in hand", "current stock",
     ],
     "expiry_date": [
         "expiry date", "expiry", "expiration date", "exp date",

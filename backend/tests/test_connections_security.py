@@ -140,3 +140,44 @@ def test_revoke_immediately_closes_the_pipe():
     assert client.get(f"/catalog/{seller_bizid}", headers=buyer["headers"]).status_code == 200
     assert client.post(f"/connections/{conn_id}/revoke", headers=buyer["headers"]).status_code == 200
     assert client.get(f"/catalog/{seller_bizid}", headers=buyer["headers"]).status_code == 403
+
+
+def _set_contact(bid, phone, email, address):
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.id == bid).first()
+        u.phone, u.email, u.address = phone, email, address
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_bizid_hides_contact_until_connected():
+    """Privacy gate: a BizID lookup reveals only public identity until an accepted
+    connection exists — contact details (phone/email/address) must NOT be scrapable
+    by any authenticated stranger."""
+    seller, buyer = _signup("Seller P"), _signup("Buyer P")
+    _set_contact(seller["bid"], "9990001111", "seller@p.in", "12 MG Road, Bengaluru, 560001")
+    seller_bizid = _bizid(seller["bid"])
+
+    # Unconnected: public identity yes, contact nulled, connected=False.
+    pre = client.get(f"/bizid/{seller_bizid}", headers=buyer["headers"]).json()
+    assert pre["business_name"] == "Seller P"
+    assert pre["connected"] is False
+    assert pre["phone"] is None and pre["email"] is None and pre["address"] is None
+
+    # After an accepted connection: contact revealed, connected=True.
+    _connect(seller, buyer)
+    post = client.get(f"/bizid/{seller_bizid}", headers=buyer["headers"]).json()
+    assert post["connected"] is True
+    assert post["phone"] == "9990001111"
+    assert post["email"] == "seller@p.in"
+    assert post["address"].startswith("12 MG Road")
+
+
+def test_bizid_own_lookup_shows_contact():
+    """A business looking up its own BizID always sees its own contact details."""
+    me = _signup("Self Look")
+    _set_contact(me["bid"], "8887776665", "me@self.in", "5 Market St, Mysuru, 570001")
+    out = client.get(f"/bizid/{_bizid(me['bid'])}", headers=me["headers"]).json()
+    assert out["connected"] is True and out["phone"] == "8887776665"

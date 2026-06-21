@@ -53,9 +53,13 @@ export default function Upload() {
         throw new Error(data.detail || `Upload failed (${res.status})`)
       }
 
+      // Surface backend steering/validation notes (e.g. "use the billing Import
+      // screen for full product details") so they aren't silently dropped.
+      const notes = Array.isArray(data.warnings) ? data.warnings.filter(Boolean) : []
       setResult({
         ok: true,
         message: `✅ Uploaded successfully — ${data.rows} rows · type: ${data.file_type}`
+          + (notes.length ? `\n\n⚠️ ${notes.join('\n⚠️ ')}` : '')
       })
       loadUploads()
       window.dispatchEvent(new CustomEvent('data-updated'))
@@ -134,7 +138,7 @@ export default function Upload() {
 
       {/* RESULT MESSAGE */}
       {result && (
-        <div className={`upload-result ${result.ok ? 'success' : 'error'}`} style={{ marginBottom: 16 }}>
+        <div className={`upload-result ${result.ok ? 'success' : 'error'}`} style={{ marginBottom: 16, whiteSpace: 'pre-line' }}>
           {result.message}
         </div>
       )}

@@ -224,6 +224,14 @@ async def upload_file(
             after = db.query(Inventory).filter(Inventory.business_id == active_user_id).count()
             stats["added"] = max(0, after - before)
             stats["updated"] = len(df) - stats["added"]
+            # This analytics ingest keeps only name/stock/supplier/cost/sell/reorder.
+            # For a full product import (SKU, barcode, HSN, MRP, GST rates, opening
+            # stock → ledger), steer the user to the billing app's Import screen.
+            mapping_result.warnings.append(
+                "Imported for analytics only — SKU, barcode, HSN, MRP and GST rates "
+                "were not stored. To import products with full details (and seed opening "
+                "stock), use the billing app's Import screen (Products → Import)."
+            )
 
         elif file_type == "payment":
             before = db.query(Payment).filter(Payment.business_id == active_user_id).count()

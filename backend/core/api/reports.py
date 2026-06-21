@@ -1517,6 +1517,29 @@ def _build_journal_entries(db: Session, bid: int, from_date, to_date):
     return entries
 
 
+def _opening_balances(db: Session, bid: int, from_date) -> dict:
+    """Per-account opening balance (Dr − Cr) of ALL activity STRICTLY BEFORE
+    `from_date` — i.e. the prior period's closing balances carried forward (R2b).
+
+    Returns {} when no `from_date` is given (an unwindowed report already covers
+    full history, so its running balance starts correctly at zero). Dates are ISO
+    'YYYY-MM-DD' strings; NULL/blank dates sort before any real date and so fold
+    into the opening, exactly mirroring `_build_journal_entries`' `within()` rule.
+    The boundary day itself (date == from_date) belongs to the window, never the
+    opening, so a transaction is counted once and only once.
+    """
+    if not from_date:
+        return {}
+    prior = _build_journal_entries(db, bid, None, from_date)
+    bal: dict = {}
+    for e in prior:
+        if (e["date"] or "") >= from_date:      # keep STRICTLY-before the window
+            continue
+        for ln in e["lines"]:
+            bal[ln["account"]] = bal.get(ln["account"], 0.0) + ln["debit"] - ln["credit"]
+    return {a: round(v, 2) for a, v in bal.items()}
+
+
 @router.get("/reports/journal")
 def report_journal(
     from_date: Optional[str] = Query(None, alias="from"),
@@ -1549,6 +1572,10 @@ def report_general_ledger(
     balance (Dr − Cr). Optionally filter to a single account."""
     bid = current_user["id"]
     entries = _build_journal_entries(db, bid, from_date, to_date)
+    # Carry the prior period's closing balances forward as this window's opening
+    # balances (R2b), so each account's running balance is a TRUE balance, not just
+    # in-window movement. Empty {} when no `from_date` (full history → opens at 0).
+    opening = _opening_balances(db, bid, from_date)
 
     buckets = {}
     for e in entries:
@@ -1560,24 +1587,29 @@ def report_general_ledger(
 
     if account:
         buckets = {a: p for a, p in buckets.items() if a.lower() == account.lower()}
+        opening = {a: b for a, b in opening.items() if a.lower() == account.lower()}
 
     ledgers = []
-    for acct in sorted(buckets):
-        running = 0.0
+    # Include accounts that have only an opening balance (no in-window postings) so
+    # the ledger is complete — a carried-forward balance must still be visible.
+    for acct in sorted(set(buckets) | set(opening)):
+        ob = round(opening.get(acct, 0.0), 2)
+        running = ob
         rows = []
-        for p in buckets[acct]:           # already chronological (entries sorted)
+        for p in buckets.get(acct, []):   # already chronological (entries sorted)
             running += p["debit"] - p["credit"]
             rows.append({**p, "balance": round(running, 2)})
         ledgers.append({
             "account": acct,
+            "opening_balance": ob,
             "postings": rows,
             "total_debit": round(sum(r["debit"] for r in rows), 2),
             "total_credit": round(sum(r["credit"] for r in rows), 2),
             "closing_balance": round(running, 2),
         })
 
-    logger.info("[REPORT] general-ledger bid=%s accounts=%d filter=%s",
-                bid, len(ledgers), account or "all")
+    logger.info("[REPORT] general-ledger bid=%s accounts=%d filter=%s opening_accts=%d",
+                bid, len(ledgers), account or "all", len(opening))
     return {"ledgers": ledgers}
 
 

@@ -145,3 +145,82 @@ def test_journal_tenant_isolation():
     data_b = client.get("/reports/journal", headers=b["headers"]).json()
     assert data_b["entries"] == []
     assert data_b["totals"]["total_debit"] == 0.0
+
+
+# ── R2b: opening-balance carry-forward in the General Ledger ──────────────────
+
+def _cf_product(owner):
+    p = client.post("/products", headers=owner["headers"], json={
+        "name": "CF Prod", "selling_price": 100.0, "cost_price": 60.0,
+        "sku": f"CF-{uuid.uuid4().hex[:5]}", "track_inventory": False,
+    })
+    assert p.status_code in (200, 201), p.text
+    return p.json()["id"]
+
+
+def _dated_credit_sale(owner, pid, date):
+    r = client.post("/sales", headers=owner["headers"], json={
+        "lines": [{"product_id": pid, "product_name": "CF Prod", "quantity": 1.0,
+                   "unit_price": 100.0, "cgst_rate": 9.0, "sgst_rate": 9.0, "igst_rate": 0.0}],
+        "customer": "CF Cust", "invoice_no": f"INV-{uuid.uuid4().hex[:6]}",
+        "invoice_date": date, "paid_amount": 0.0, "payment_mode": "Credit",
+    })
+    assert r.status_code == 200, r.text
+
+
+def _gl(owner, **params):
+    data = client.get("/reports/general-ledger", headers=owner["headers"], params=params).json()
+    return {l["account"]: l for l in data["ledgers"]}
+
+
+def test_general_ledger_carries_opening_forward():
+    """A windowed GL must open at the prior period's closing balance (R2b), so a
+    windowed closing equals the cumulative as-of-to closing — the report no longer
+    silently drops everything before `from`."""
+    owner = _owner("JN CF")
+    pid = _cf_product(owner)
+    _dated_credit_sale(owner, pid, "2025-12-20")   # prior period
+    _dated_credit_sale(owner, pid, "2026-01-15")   # inside the window
+
+    win = _gl(owner, **{"from": "2026-01-01", "to": "2026-01-31"})
+    assert "opening_balance" in win["Sales"]
+
+    # opening(window) == closing of all activity strictly before the window
+    asof_dec = _gl(owner, **{"to": "2025-12-31"})
+    assert abs(win["Sales"]["opening_balance"] - asof_dec["Sales"]["closing_balance"]) < 0.01
+
+    # closing(window) == cumulative closing as-of the window's end (no `from`)
+    asof_jan = _gl(owner, **{"to": "2026-01-31"})
+    assert abs(win["Sales"]["closing_balance"] - asof_jan["Sales"]["closing_balance"]) < 0.01
+
+    # opening + in-window movement == closing (internal consistency)
+    movement = win["Sales"]["total_debit"] - win["Sales"]["total_credit"]
+    assert abs(win["Sales"]["opening_balance"] + movement - win["Sales"]["closing_balance"]) < 0.01
+    # Prior Dec sale is NOT a posting inside the window — it lives in the opening only.
+    assert len(win["Sales"]["postings"]) == 1
+
+
+def test_general_ledger_boundary_day_counted_once():
+    """A transaction dated exactly on `from_date` belongs to the window, never the
+    opening — counted once, not double."""
+    owner = _owner("JN CF2")
+    pid = _cf_product(owner)
+    _dated_credit_sale(owner, pid, "2026-01-01")   # exactly on the boundary
+
+    win = _gl(owner, **{"from": "2026-01-01", "to": "2026-01-31"})
+    assert win["Sales"]["opening_balance"] == 0.0          # nothing strictly before
+    assert len(win["Sales"]["postings"]) == 1              # the boundary sale is in-window
+
+
+def test_general_ledger_opening_only_account_appears():
+    """An account with a carried-forward balance but no in-window activity must still
+    show up (with its opening == closing and no postings)."""
+    owner = _owner("JN CF3")
+    pid = _cf_product(owner)
+    _dated_credit_sale(owner, pid, "2025-12-10")   # only prior-period activity
+
+    win = _gl(owner, **{"from": "2026-01-01", "to": "2026-01-31"})
+    assert "Sales" in win                                   # carried forward, still listed
+    assert win["Sales"]["postings"] == []
+    assert abs(win["Sales"]["opening_balance"] - win["Sales"]["closing_balance"]) < 0.01
+    assert win["Sales"]["opening_balance"] != 0.0
