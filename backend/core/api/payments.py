@@ -17,6 +17,7 @@ from database.db import get_db
 from database.models import Invoice, InvoicePayment, Customer, Expense
 from services.auth import get_active_user, restrict_cashier
 from core.billing import commands as billing
+from core.sync.idempotency import ReplayGuard, replay_guard
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.payments")
@@ -172,11 +173,18 @@ def record_payment(
     req: RecordPaymentRequestFlexible,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
+    guard: ReplayGuard = Depends(replay_guard),
 ):
-    """Record payment receipt against an invoice. Supports both native and frontend schemas."""
+    """Record payment receipt against an invoice. Supports both native and frontend schemas.
+    Idempotent on the body `idempotency_key` (inner wall) AND, when sent, on the
+    `X-Client-Request-Id` header (offline outbox replay — see core.sync.idempotency)."""
     bid = current_user["id"]
     payment_type = req.type or "received"
-    
+
+    hit = guard.replay()
+    if hit is not None:
+        return hit
+
     amt = req.amount if req.amount is not None else req.amount_paid
     if amt is None:
         raise HTTPException(status_code=422, detail="amount or amount_paid is required")
@@ -220,7 +228,7 @@ def record_payment(
             note=p_note,
             idempotency_key=req.idempotency_key,
         )
-        return {
+        return guard.store({
             # Legacy/Test fields
             "id": p.id,
             "invoice_id": p.invoice_id,
@@ -242,7 +250,7 @@ def record_payment(
             "amount": p.amount_paid,
             "method": p.payment_mode,
             "reference": p.note or p.idempotency_key or "",
-        }
+        }, status_code=201)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:

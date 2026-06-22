@@ -22,6 +22,8 @@ import CartItemRow from '../components/sales/CartItemRow'
 import CartFooterRow from '../components/sales/CartFooterRow'
 import { PosCounterSettingsModal } from '../components/sales/PosSettingsModals'
 import usePaymentFlow from '../hooks/usePaymentFlow'
+import { syncManager } from '../sync/syncManager'
+import { pendingInvoiceRows } from '../sync/pendingInvoices'
 
 const colLabels = {
   sku: 'Item Code',
@@ -75,6 +77,32 @@ export default function Sales() {
   const [bindingAction, setBindingAction] = useState(null)
   const [dbInvoices, setDbInvoices]   = useState([])
   const [showPayConfirmModal, setShowPayConfirmModal] = useState(false)
+
+  // ── Offline sync (R7b Slice 3c) ───────────────────────────────────────────
+  // Bills saved while offline live in the durable outbox until reconnect. We mirror
+  // the pending list into state (for the "N unsynced" badge) AND a ref (so number
+  // allocation can read it without re-running the data load). `mergePending` folds
+  // the queued invoice numbers into the "known invoices" the allocator sees, so two
+  // offline bills never collide on the same number (which the server's inner wall
+  // would silently drop).
+  const [pendingSync, setPendingSync] = useState([])
+  const pendingSyncRef = useRef([])
+  const refreshPendingSync = useCallback(async () => {
+    try {
+      const ops = await syncManager.pending()
+      pendingSyncRef.current = ops
+      setPendingSync(ops)
+    } catch { /* outbox unavailable — ignore */ }
+  }, [])
+  const enqueueOffline = useCallback(async (op) => {
+    const rec = await syncManager.queue(op)
+    await refreshPendingSync()
+    return rec
+  }, [refreshPendingSync])
+  const mergePending = useCallback(
+    (invs) => [...(invs || []), ...pendingInvoiceRows(pendingSyncRef.current)],
+    [],
+  )
 
   const defaultFuncKeys = {
     qtyFocus: 'F2',
@@ -545,8 +573,9 @@ export default function Sales() {
         godown_id: f.godown_id || defaultGodownId
       }))
 
-      // Dynamically rename initial tab to match database next number and resolve duplicates
-      setTabs(prev => syncTabNames(prev, invs))
+      // Dynamically rename initial tab to match database next number and resolve
+      // duplicates — folding in any offline-queued bills so numbers don't collide.
+      setTabs(prev => syncTabNames(prev, mergePending(invs)))
     }).finally(() => {
       setLoading(false)
       setTimeout(() => barcodeRef.current?.focus(), 100)
@@ -560,6 +589,30 @@ export default function Sales() {
       window.removeEventListener('focus', load)
     }
   }, [load])
+
+  // Flush the offline outbox whenever we (re)connect, then refresh the server
+  // list + the "unsynced" badge. flushOutbox is a no-op while offline.
+  useEffect(() => {
+    refreshPendingSync()
+    const syncNow = async () => {
+      try {
+        const summary = await syncManager.flushOutbox()
+        if (summary && summary.sent) {
+          const invs = await authFetch('/billing/invoices').then(r => r.ok ? r.json() : null).catch(() => null)
+          if (invs) {
+            setDbInvoices(invs)
+            setTabs(prev => syncTabNames(prev, mergePending(invs)))
+          }
+        }
+      } finally {
+        refreshPendingSync()
+      }
+    }
+    const onOnline = () => { syncNow() }
+    window.addEventListener('online', onOnline)
+    if (typeof navigator === 'undefined' || navigator.onLine !== false) syncNow()
+    return () => window.removeEventListener('online', onOnline)
+  }, [authFetch, syncTabNames, mergePending, refreshPendingSync])
 
   // Listen for window focus to reload batches/dated prices for all items in the cart
   useEffect(() => {
@@ -612,7 +665,7 @@ export default function Sales() {
     }
     setTabs(prev => {
       const updated = [...prev, { id: newId, name: 'TEMP', form: newForm }]
-      return syncTabNames(updated, dbInvoices)
+      return syncTabNames(updated, mergePending(dbInvoices))
     })
     setActiveTabId(newId)
     setPriceSelectorIndex(null)
@@ -643,8 +696,12 @@ export default function Sales() {
       setTabs([{ id: newId, name: 'TEMP', form: newForm }])
       setActiveTabId(newId)
       authFetch('/billing/invoices').then(r => r.ok ? r.json() : []).then(invs => {
-        setTabs(prev => syncTabNames(prev, invs))
-      }).catch(() => {})
+        setDbInvoices(invs)
+        setTabs(prev => syncTabNames(prev, mergePending(invs)))
+      }).catch(() => {
+        // Offline — keep last-known server list + queued bills for numbering.
+        setTabs(prev => syncTabNames(prev, mergePending(dbInvoices)))
+      })
       setTimeout(() => barcodeRef.current?.focus(), 100)
       return
     }
@@ -655,7 +712,7 @@ export default function Sales() {
       const remainingTab = newTabs[newTabs.length - 1]
       setActiveTabId(remainingTab.id)
     }
-  }, [tabs, activeTabId, godowns, authFetch, syncTabNames])
+  }, [tabs, activeTabId, godowns, authFetch, syncTabNames, mergePending, dbInvoices])
 
   const handleMinimize = () => {
     localStorage.setItem('pos_minimized', 'true')
@@ -810,6 +867,7 @@ export default function Sales() {
     setAlert,
     setSubmitting,
     barcodeRef,
+    enqueueOffline,
   })
 
   const entryMode = config?.billing?.entry_mode || 'search'
@@ -1395,6 +1453,21 @@ export default function Sales() {
           {/* Left Pane (72% width) */}
           <div className="pos-left-pane">
             
+            {pendingSync.length > 0 && (
+              <div
+                role="status"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 8,
+                  padding: '4px 10px', fontSize: '0.78rem', borderRadius: 999,
+                  background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b',
+                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                }}
+              >
+                <span style={{ width: 7, height: 7, borderRadius: 999, background: '#f59e0b' }} />
+                {pendingSync.length} bill{pendingSync.length > 1 ? 's' : ''} saved offline — will sync when online
+              </div>
+            )}
+
             {alert && (
               <div className={`alert alert-${alert.type} mb-3`} style={{ padding: '8px 12px', fontSize: '0.82rem', alignItems: 'center' }}>
                 {alert.type === 'success' ? <CheckIcon size={14} style={{ marginRight: 4 }} /> : <AlertIcon size={14} style={{ marginRight: 4 }} />}

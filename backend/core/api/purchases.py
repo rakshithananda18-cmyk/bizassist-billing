@@ -10,6 +10,7 @@ from services.auth import get_active_user, restrict_cashier
 from services.purchase_ocr import parse_purchase_file
 from services.purchase_mapper import map_purchase_items_to_catalog
 from core.purchase import commands as purchase_commands
+from core.sync.idempotency import ReplayGuard, replay_guard
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.purchases")
@@ -111,16 +112,24 @@ async def upload_purchase_bill(
 def confirm_purchase_invoice(
     payload: dict,
     current_user: dict = Depends(restrict_cashier),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    guard: ReplayGuard = Depends(replay_guard),
 ):
-    """Confirm a reviewed purchase invoice draft and save it to the database + stock ledger."""
+    """Confirm a reviewed purchase invoice draft and save it to the database + stock ledger.
+    Idempotent on (business_id, supplier_id, invoice_number) (inner wall) AND, when
+    sent, on the `X-Client-Request-Id` header (offline replay — core.sync.idempotency)."""
     if current_user.get("role") == "cashier":
         raise HTTPException(status_code=403, detail="Permission denied: cashiers cannot record purchases.")
 
     bid = current_user["id"]
+
+    hit = guard.replay()
+    if hit is not None:
+        return hit
+
     try:
         inv = purchase_commands.accept_supplier_invoice(db, bid, payload)
-        return _invoice_out(inv)
+        return guard.store(_invoice_out(inv))
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:

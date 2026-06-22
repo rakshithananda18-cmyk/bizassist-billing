@@ -207,6 +207,53 @@ class InvoicePayment(Base, TimestampMixin):
 
 
 # ---------------------------------------------------------------------------
+# OFFLINE-FIRST SYNC — HTTP-level exactly-once replay guard  (R7b, Slice 1)
+# ---------------------------------------------------------------------------
+
+class IdempotencyKey(Base):
+    """
+    HTTP-level exactly-once replay guard for offline-first sync (R7b).
+
+    The client generates a stable UUID per user-intent mutation and sends it in
+    the `X-Client-Request-Id` header. The FIRST request to arrive does the work
+    and stores its response here; any retry (flaky network, offline outbox
+    replay on reconnect) finds the stored row and gets back the SAME response —
+    never a double-post and never a confusing "duplicate" error. Tenant-scoped:
+    UNIQUE(business_id, client_request_id).
+
+    This is the OUTER wall. The per-command idempotency that already exists
+    (sale `invoice_no`, payment `idempotency_key`, `post_entry` source-key, the
+    B2B order-sync guard) remains the INNER wall — so even two *concurrent*
+    identical requests that both miss this table still cannot double-post. The
+    two walls compose: the inner one guarantees correctness, the outer one
+    guarantees the client always gets a consistent reply on replay.
+
+    Append-only: a row is written once after the mutation commits and never
+    mutated. `response_json` is JSON-in-Text (SQLite-friendly, like the rest of
+    the schema); the stored body is replayed verbatim.
+    """
+    __tablename__ = "idempotency_keys"
+    __table_args__ = (
+        UniqueConstraint(
+            "business_id", "client_request_id",
+            name="uq_idempotency_biz_key",
+        ),
+        Index("ix_idempotency_biz_key", "business_id", "client_request_id"),
+    )
+
+    id                = Column(Integer, primary_key=True, index=True)
+    business_id       = Column(Integer, index=True, nullable=False)
+    client_request_id = Column(String,  nullable=False, index=True)
+
+    method            = Column(String,  nullable=True)   # audit: which HTTP verb
+    path              = Column(String,  nullable=True)   # audit: which route
+    status_code       = Column(Integer, nullable=False, default=200)
+    response_json     = Column(Text,    nullable=False)  # stored body (JSON-in-Text)
+
+    created_at        = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+# ---------------------------------------------------------------------------
 # B2B ECOSYSTEM — Connections and Ordering (Phase 3)
 # ---------------------------------------------------------------------------
 

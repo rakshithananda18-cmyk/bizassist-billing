@@ -28,6 +28,7 @@ from services.auth import get_active_user
 from core.billing import commands as billing
 from core.catalog import barcode as PB
 from core import templates as T
+from core.sync.idempotency import ReplayGuard, replay_guard
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.sales")
@@ -119,9 +120,19 @@ def _product_out(p: Product) -> dict:
 @router.post("/sales")
 def create_sale(req: SaleRequest,
                 current_user: dict = Depends(get_active_user),
-                db: Session = Depends(get_db)):
-    """Create a sale invoice (atomic: invoice + lines + stock). Idempotent on invoice_no."""
+                db: Session = Depends(get_db),
+                guard: ReplayGuard = Depends(replay_guard)):
+    """Create a sale invoice (atomic: invoice + lines + stock). Idempotent on
+    invoice_no AND, when the client sends X-Client-Request-Id, on that key (the
+    offline outbox replay guard — see core.sync.idempotency)."""
     bid = current_user["id"]
+
+    # Outer wall: an offline-replay/retry of an already-processed request returns
+    # the stored response verbatim instead of re-doing the work.
+    hit = guard.replay()
+    if hit is not None:
+        return hit
+
     if not req.lines:
         raise HTTPException(status_code=422, detail="at least one line is required")
 
@@ -144,7 +155,7 @@ def create_sale(req: SaleRequest,
             device_id=req.device_id, godown_id=req.godown_id,
             cash_discount=req.cash_discount, mark_paid=req.mark_paid,
         )
-        return _invoice_out(inv)
+        return guard.store(_invoice_out(inv))
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:
@@ -800,9 +811,17 @@ def create_sale_invoice_frontend(
     req: FrontendInvoiceRequest,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
+    guard: ReplayGuard = Depends(replay_guard),
 ):
+    """The POS counter "Save Bill" path. Idempotent on invoice_no (inner wall) AND,
+    when the offline outbox replays it, on the `X-Client-Request-Id` header (outer
+    wall — see core.sync.idempotency). This is the route the client outbox flushes."""
     bid = current_user["id"]
-    
+
+    hit = guard.replay()
+    if hit is not None:
+        return hit
+
     # Resolve customer name
     customer_name = None
     if req.customer_id:
@@ -844,8 +863,8 @@ def create_sale_invoice_frontend(
             inv.notes = req.notes
             db.commit()
             db.refresh(inv)
-            
-        return _invoice_out_for_frontend(inv)
+
+        return guard.store(_invoice_out_for_frontend(inv), status_code=201)
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:

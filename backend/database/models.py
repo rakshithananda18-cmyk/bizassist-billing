@@ -638,7 +638,7 @@ class BusinessFact(Base, TimestampMixin):
 # pulls them in so the tables register on `Base.metadata` whenever the shared
 # models are loaded, and keeps `from database.models import StockLedger` working.
 from core.models import (  # noqa: E402,F401
-    StockLedger, ProductBarcode, BusinessSettings, InvoicePayment,
+    StockLedger, ProductBarcode, BusinessSettings, InvoicePayment, IdempotencyKey,
     B2BConnection, ConnectionCode, B2BOrder, B2BOrderLineItem, SharedLedger,
     Expense, Godown, StockTransfer, StockTransferLineItem,
 )
