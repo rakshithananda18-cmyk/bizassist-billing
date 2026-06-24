@@ -751,6 +751,7 @@ class FrontendInvoiceItem(BaseModel):
     product: str
     qty: float
     price: float
+    discount: Optional[float] = 0.0
     product_id: Optional[int] = None
     cgst_rate: Optional[float] = None
     sgst_rate: Optional[float] = None
@@ -837,6 +838,7 @@ def create_sale_invoice_frontend(
             "product_name": it.product,
             "quantity": it.qty,
             "unit_price": it.price,
+            "discount": it.discount,
             "cgst_rate": it.cgst_rate,
             "sgst_rate": it.sgst_rate,
             "igst_rate": it.igst_rate,
