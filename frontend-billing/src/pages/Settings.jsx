@@ -589,41 +589,41 @@ export default function Settings() {
               <SectionHeader title="Appearance" />
               <SettingRow
                 label="App Display Size"
-                description={`Scale the entire application UI. Current: ${g.app_zoom ?? 100}%`}
+                description="Scale the entire application interface to suit your screen and preference."
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', minWidth: 28 }}>80%</span>
-                  <input
-                    type="range"
-                    min={80} max={130} step={5}
-                    value={g.app_zoom ?? 100}
-                    onChange={e => {
-                      const v = parseInt(e.target.value)
-                      patch('general', 'app_zoom', v)
-                      // Live preview while dragging
-                      document.documentElement.style.zoom = `${v}%`
-                    }}
-                    style={{ width: 140, accentColor: 'var(--accent)' }}
-                  />
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', minWidth: 28 }}>130%</span>
-                  <span style={{
-                    minWidth: 46, textAlign: 'center', fontWeight: 700,
-                    fontSize: '0.85rem', color: 'var(--accent)',
-                  }}>
-                    {g.app_zoom ?? 100}%
-                  </span>
-                  {(g.app_zoom ?? 100) !== 100 && (
-                    <button
-                      className="btn btn-ghost"
-                      style={{ fontSize: '0.75rem', padding: '4px 8px' }}
-                      onClick={() => {
-                        patch('general', 'app_zoom', 100)
-                        document.documentElement.style.zoom = '100%'
-                      }}
-                    >
-                      Reset
-                    </button>
-                  )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {[80, 90, 100, 110, 120, 130].map(v => {
+                    const active = (g.app_zoom ?? 100) === v
+                    return (
+                      <button
+                        key={v}
+                        onClick={() => {
+                          patch('general', 'app_zoom', v)
+                          document.documentElement.style.zoom = `${v}%`
+                        }}
+                        style={{
+                          padding: '5px 11px',
+                          borderRadius: 'var(--radius-md)',
+                          border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                          background: active ? 'var(--accent)' : 'var(--bg-3)',
+                          color: active ? '#fff' : 'var(--text-muted)',
+                          fontSize: '0.78rem',
+                          fontWeight: active ? 700 : 500,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s',
+                          whiteSpace: 'nowrap',
+                          lineHeight: 1.2,
+                        }}
+                      >
+                        {v === 100 ? (
+                          <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                            <span>100%</span>
+                            <span style={{ fontSize: '0.6rem', opacity: 0.7, letterSpacing: '0.03em' }}>Default</span>
+                          </span>
+                        ) : `${v}%`}
+                      </button>
+                    )
+                  })}
                 </div>
               </SettingRow>
 
