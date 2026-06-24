@@ -1180,6 +1180,10 @@ img { display: block; max-width: 100%; }
   z-index: 2000;
   padding: 20px;
   animation: fadeIn 120ms var(--ease);
+  /* Block ALL interaction with elements underneath the overlay */
+  pointer-events: all;
+  touch-action: none;
+  isolation: isolate;          /* new stacking context — z-index is unambiguous */
 }
 .modal {
   background: var(--bg-2);

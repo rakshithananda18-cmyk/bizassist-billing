@@ -216,12 +216,14 @@ _DEFAULT_SETTINGS = {
     # ── General ──────────────────────────────────────────────────────────────
     "general": {
         "passcode_lock": False,
+        "lock_timeout_minutes": 60,      # 0=never, 30, 60, 120
         "privacy_mode": False,           # hides dashboard revenue figures
         "auto_backup": False,
         "backup_reminder_days": 7,
         "date_format": "DD/MM/YYYY",     # 0=DD/MM/YYYY, 1=MM/DD/YYYY, 2=YYYY-MM-DD
         "quantity_decimal_places": 2,
         "amount_decimal_places": 2,
+        "app_zoom": 100,                 # UI scale percentage: 80-130
     },
     # ── Transactions ─────────────────────────────────────────────────────────
     "transactions": {

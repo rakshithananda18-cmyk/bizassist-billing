@@ -1,6 +1,7 @@
 import React from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useLock } from '../contexts/LockContext'
 import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
 import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon } from '../components/Icons'
@@ -65,6 +66,7 @@ const PAGE_TITLES = {
 
 export default function AppLayout({ children, title }) {
   const { user, logout, profile, token, businessConfig, appReady, setAppReady } = useAuth()
+  const { hasLock, lock, resetInactivityTimer } = useLock()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -261,6 +263,33 @@ export default function AppLayout({ children, title }) {
     }
   }, [title])
 
+  // ── App zoom: apply from settings whenever businessConfig changes ─────────
+  React.useEffect(() => {
+    // Try localStorage first (instant, before API resolves)
+    const stored = localStorage.getItem('billing_app_zoom')
+    const zoom = businessConfig?.general?.app_zoom
+      ?? (stored ? parseInt(stored, 10) : null)
+      ?? 100
+    document.documentElement.style.zoom = `${zoom}%`
+    if (stored !== String(zoom)) {
+      localStorage.setItem('billing_app_zoom', String(zoom))
+    }
+  }, [businessConfig])
+
+  // ── Inactivity timer: wire to LockContext ─────────────────────────────────
+  React.useEffect(() => {
+    const timeoutMinutes = businessConfig?.general?.lock_timeout_minutes ?? 60
+    const timeoutMs = timeoutMinutes > 0 ? timeoutMinutes * 60 * 1000 : 0
+    if (!hasLock || timeoutMs === 0) return
+
+    const reset = () => resetInactivityTimer(timeoutMs)
+    // Reset timer on any user activity
+    const events = ['mousemove', 'keydown', 'touchstart', 'click', 'scroll']
+    events.forEach(ev => window.addEventListener(ev, reset, { passive: true }))
+    reset() // start immediately
+    return () => events.forEach(ev => window.removeEventListener(ev, reset))
+  }, [hasLock, resetInactivityTimer, businessConfig])
+
   const toggleSection = (section) => {
     setCollapsed(prev => ({ ...prev, [section]: !prev[section] }))
   }
@@ -401,6 +430,15 @@ export default function AppLayout({ children, title }) {
                 <button className="profile-menu-item" onClick={() => { setShowProfileMenu(false); navigate('/staff'); }}>
                   <ContactsIcon size={14} /> Staff & Cashiers
                 </button>
+                {hasLock && (
+                  <button
+                    className="profile-menu-item"
+                    onClick={() => { setShowProfileMenu(false); lock() }}
+                    style={{ color: 'var(--warning, #f59e0b)' }}
+                  >
+                    🔒 Lock Session
+                  </button>
+                )}
                 <button className="profile-menu-item logout" onClick={() => { setShowProfileMenu(false); logout(); navigate('/login'); }}>
                   <LogoutIcon size={14} /> Sign Out
                 </button>

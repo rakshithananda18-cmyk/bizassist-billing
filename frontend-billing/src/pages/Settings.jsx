@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
+import { useLock } from '../contexts/LockContext'
 import { API_BASE } from '../config'
 import { BillsIcon, CheckIcon, InventoryIcon, PrinterIcon, SettingsIcon, TagIcon, WarehouseIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
@@ -129,10 +130,120 @@ const TABS = [
   { id: 'labels',       label: 'Custom Labels', icon: <TagIcon size={16} /> },
 ]
 
+// ── Passcode Setup Modal ──────────────────────────────────────────────────
+function PasscodeModal({ open, hasLock, onClose, setupPasscode, clearPasscode }) {
+  const [step,      setStep]      = useState('menu')  // 'menu' | 'set' | 'confirm' | 'clear'
+  const [newPin,    setNewPin]    = useState('')
+  const [confirm,  setConfirm]   = useState('')
+  const [error,    setError]      = useState('')
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    if (open) { setStep(hasLock ? 'menu' : 'set'); setNewPin(''); setConfirm(''); setError('') }
+  }, [open, hasLock])
+
+  useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 100) }, [step, open])
+
+  if (!open) return null
+
+  const handleSet = async () => {
+    if (newPin.length < 4) { setError('Passcode must be at least 4 characters.'); return }
+    if (step === 'set') { setStep('confirm'); setConfirm(''); setError(''); return }
+    if (newPin !== confirm) { setError('Passcodes do not match. Try again.'); setConfirm(''); return }
+    await setupPasscode(newPin)
+    setError('')
+    onClose()
+  }
+
+  const handleClear = () => { clearPasscode(); onClose() }
+
+  const overlayStyle = {
+    position: 'fixed', inset: 0, zIndex: 9000,
+    background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: 20, pointerEvents: 'all', touchAction: 'none',
+  }
+  const boxStyle = {
+    background: 'var(--bg-2)', border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-xl)', padding: '28px 28px 24px',
+    width: '100%', maxWidth: 360, boxShadow: 'var(--shadow-lg)',
+    display: 'flex', flexDirection: 'column', gap: 16,
+  }
+  const inputStyle = {
+    padding: '10px 14px', background: 'var(--bg-3)',
+    border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
+    color: 'var(--text-primary)', fontSize: '1rem',
+    outline: 'none', width: '100%', boxSizing: 'border-box',
+    textAlign: 'center', letterSpacing: '0.15em',
+  }
+
+  return (
+    <div style={overlayStyle} onMouseDown={(e) => e.stopPropagation()}>
+      <div style={boxStyle}>
+        <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
+          {step === 'menu'    && '🔒 Passcode Lock'}
+          {step === 'set'     && 'Set New Passcode'}
+          {step === 'confirm' && 'Confirm Passcode'}
+          {step === 'clear'   && 'Remove Passcode'}
+        </div>
+
+        {step === 'menu' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <button className="btn btn-secondary" onClick={() => { setStep('set'); setNewPin(''); setError('') }}
+              style={{ justifyContent: 'flex-start' }}>✏️ Change Passcode</button>
+            <button className="btn" onClick={() => setStep('clear')}
+              style={{ background: 'var(--danger-muted,rgba(239,68,68,.12))', color: 'var(--danger,#ef4444)', border: '1px solid var(--danger,#ef4444)', justifyContent: 'flex-start' }}
+            >🗑️ Remove Passcode</button>
+            <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          </div>
+        )}
+
+        {(step === 'set' || step === 'confirm') && (
+          <>
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+              {step === 'set' ? 'Enter a passcode (min 4 characters)' : 'Re-enter to confirm'}
+            </div>
+            <input
+              ref={inputRef}
+              type="password"
+              placeholder={step === 'set' ? 'New passcode' : 'Confirm passcode'}
+              value={step === 'set' ? newPin : confirm}
+              onChange={e => step === 'set' ? setNewPin(e.target.value) : setConfirm(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSet()}
+              style={inputStyle}
+              autoComplete="new-password"
+            />
+            {error && <div style={{ fontSize: '0.78rem', color: 'var(--danger,#ef4444)', textAlign: 'center' }}>{error}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-ghost" onClick={() => step === 'confirm' ? (setStep('set'), setConfirm(''), setError('')) : onClose()} style={{ flex: 1 }}>Back</button>
+              <button className="btn btn-primary" onClick={handleSet} style={{ flex: 2 }}>
+                {step === 'set' ? 'Continue' : 'Save Passcode'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === 'clear' && (
+          <>
+            <div style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>Remove the session lock? The app will no longer require a passcode.</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-ghost" onClick={() => setStep('menu')} style={{ flex: 1 }}>Cancel</button>
+              <button className="btn" onClick={handleClear}
+                style={{ flex: 2, background: 'var(--danger,#ef4444)', color: '#fff', border: 'none' }}>Remove</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Settings() {
   const { authFetch } = useAuth()
   const { config, refreshConfig } = useBusinessConfig()
+  const { hasLock, setupPasscode, clearPasscode } = useLock()
+  const [showPasscodeModal, setShowPasscodeModal] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
   // Which format the print preview shows (independent of the saved thermal_printer_mode).
   const [previewMode, setPreviewMode] = useState('thermal')
@@ -387,9 +498,38 @@ export default function Settings() {
               </SettingRow>
 
               <SectionHeader title="Security" />
-              <SettingRow label="Passcode Lock" description="Require a PIN to open the app after locking the screen.">
-                <Toggle id="passcode_lock" checked={g.passcode_lock} onChange={v => patch('general', 'passcode_lock', v)} />
+              <SettingRow label="Passcode Lock" description="Require a passcode to unlock the app after inactivity or manual lock.">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {g.passcode_lock && (
+                    <button
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.78rem', padding: '5px 12px' }}
+                      onClick={() => setShowPasscodeModal(true)}
+                    >
+                      {hasLock ? 'Change PIN' : 'Set PIN'}
+                    </button>
+                  )}
+                  <Toggle id="passcode_lock" checked={g.passcode_lock} onChange={v => {
+                    patch('general', 'passcode_lock', v)
+                    if (!v) clearPasscode()
+                  }} />
+                </div>
               </SettingRow>
+              {g.passcode_lock && (
+                <SettingRow label="Auto-Lock Timeout" description="Lock the session automatically after this period of inactivity.">
+                  <select
+                    className="form-input"
+                    style={{ width: 160 }}
+                    value={g.lock_timeout_minutes ?? 60}
+                    onChange={e => patch('general', 'lock_timeout_minutes', parseInt(e.target.value))}
+                  >
+                    <option value={0}>Never</option>
+                    <option value={30}>30 minutes</option>
+                    <option value={60}>1 hour</option>
+                    <option value={120}>2 hours</option>
+                  </select>
+                </SettingRow>
+              )}
               <SettingRow label="Privacy Mode" description="Hide revenue amounts and balances on the dashboard. Useful in customer-facing environments.">
                 <Toggle id="privacy_mode" checked={g.privacy_mode} onChange={v => patch('general', 'privacy_mode', v)} />
               </SettingRow>
@@ -445,6 +585,56 @@ export default function Settings() {
                   {[0,1,2].map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
               </SettingRow>
+
+              <SectionHeader title="Appearance" />
+              <SettingRow
+                label="App Display Size"
+                description={`Scale the entire application UI. Current: ${g.app_zoom ?? 100}%`}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', minWidth: 28 }}>80%</span>
+                  <input
+                    type="range"
+                    min={80} max={130} step={5}
+                    value={g.app_zoom ?? 100}
+                    onChange={e => {
+                      const v = parseInt(e.target.value)
+                      patch('general', 'app_zoom', v)
+                      // Live preview while dragging
+                      document.documentElement.style.zoom = `${v}%`
+                    }}
+                    style={{ width: 140, accentColor: 'var(--accent)' }}
+                  />
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', minWidth: 28 }}>130%</span>
+                  <span style={{
+                    minWidth: 46, textAlign: 'center', fontWeight: 700,
+                    fontSize: '0.85rem', color: 'var(--accent)',
+                  }}>
+                    {g.app_zoom ?? 100}%
+                  </span>
+                  {(g.app_zoom ?? 100) !== 100 && (
+                    <button
+                      className="btn btn-ghost"
+                      style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+                      onClick={() => {
+                        patch('general', 'app_zoom', 100)
+                        document.documentElement.style.zoom = '100%'
+                      }}
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+              </SettingRow>
+
+              {/* Passcode modal */}
+              <PasscodeModal
+                open={showPasscodeModal}
+                hasLock={hasLock}
+                onClose={() => setShowPasscodeModal(false)}
+                setupPasscode={setupPasscode}
+                clearPasscode={clearPasscode}
+              />
             </>
           )}
 

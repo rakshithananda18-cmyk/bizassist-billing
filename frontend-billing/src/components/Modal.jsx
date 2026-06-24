@@ -44,6 +44,15 @@ export default function Modal({
       onMouseDown={(e) => {
         if (closeOnOverlay && e.target === e.currentTarget) onClose?.()
       }}
+      onTouchStart={(e) => {
+        // Prevent touch events from reaching elements underneath the overlay
+        if (e.target === e.currentTarget) {
+          e.stopPropagation()
+          if (closeOnOverlay) onClose?.()
+        } else {
+          e.stopPropagation()
+        }
+      }}
     >
       <div className={`modal${size ? ` modal-${size}` : ''}`} role="dialog" aria-modal="true">
         {(title || showClose) && (

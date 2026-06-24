@@ -1,6 +1,8 @@
 import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { LockProvider } from './contexts/LockContext'
+import LockScreen from './components/LockScreen'
 import PageLoader from './components/PageLoader'
 
 // Pages
@@ -60,8 +62,13 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <LockProvider>
+          {/* Lock screen intercepts entire UI when session is locked */}
+          <LockScreen />
+          <AppRoutes />
+        </LockProvider>
       </AuthProvider>
     </BrowserRouter>
   )
 }
+
