@@ -7,6 +7,7 @@ Intentionally thin — wires app, middleware, and routers only.
 All business logic lives in services/ and routes/.
 """
 from contextlib import asynccontextmanager
+from sqlalchemy import text
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -132,7 +133,7 @@ async def _set_rls_business_id(request: Request, call_next):
             # Only set for Postgres; SQLite ignores this gracefully
             if db.bind.dialect.name == "postgresql":
                 db.execute(
-                    f"SET LOCAL app.current_business_id = {int(business_id)}"
+                    text(f"SET LOCAL app.current_business_id = {int(business_id)}")
                 )
                 db.commit()
                 logger.debug(
