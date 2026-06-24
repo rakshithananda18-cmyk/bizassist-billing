@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from database.db import get_db
 from database.models import Invoice, Product, PurchaseInvoice, Customer, Vendor, Expense, User, Inventory, InvoiceLineItem
-from core.models import StockLedger, InvoicePayment, JournalEntry
+from core.models import StockLedger, InvoicePayment, JournalEntry, JournalLine
 from services.auth import get_active_user, restrict_cashier
 from core.accounting.posting import (
     ACC_CASH, ACC_AR, ACC_AP, ACC_SALES, ACC_PURCHASES, ACC_GST_OUT, ACC_GST_IN,
@@ -1036,7 +1036,16 @@ def report_day_book(
     transactions = []
     
     # 1. Sales Invoices
-    invoices = db.query(Invoice).filter(
+    invoices = db.query(
+        Invoice.id,
+        Invoice.invoice_date,
+        Invoice.invoice_type,
+        Invoice.invoice_id,
+        Invoice.customer,
+        Invoice.total_amount,
+        Invoice.payment_mode,
+        Invoice.status
+    ).filter(
         Invoice.business_id == bid,
         Invoice.invoice_date >= f_date,
         Invoice.invoice_date <= t_date
@@ -1056,7 +1065,15 @@ def report_day_book(
         })
         
     # 2. Purchase Invoices
-    purchases = db.query(PurchaseInvoice).filter(
+    purchases = db.query(
+        PurchaseInvoice.id,
+        PurchaseInvoice.invoice_date,
+        PurchaseInvoice.invoice_type,
+        PurchaseInvoice.invoice_number,
+        PurchaseInvoice.supplier_name,
+        PurchaseInvoice.total_amount,
+        PurchaseInvoice.status
+    ).filter(
         PurchaseInvoice.business_id == bid,
         PurchaseInvoice.invoice_date >= f_date,
         PurchaseInvoice.invoice_date <= t_date
@@ -1075,7 +1092,13 @@ def report_day_book(
         })
         
     # 3. Expenses
-    expenses = db.query(Expense).filter(
+    expenses = db.query(
+        Expense.id,
+        Expense.expense_date,
+        Expense.category,
+        Expense.amount,
+        Expense.payment_mode
+    ).filter(
         Expense.business_id == bid,
         Expense.expense_date >= f_date,
         Expense.expense_date <= t_date
@@ -1093,7 +1116,13 @@ def report_day_book(
         })
         
     # 4. Invoice Payments
-    payments = db.query(InvoicePayment).filter(
+    payments = db.query(
+        InvoicePayment.id,
+        InvoicePayment.payment_date,
+        InvoicePayment.customer_id,
+        InvoicePayment.amount_paid,
+        InvoicePayment.payment_mode
+    ).filter(
         InvoicePayment.business_id == bid,
         InvoicePayment.payment_date >= f_date,
         InvoicePayment.payment_date <= t_date
@@ -1544,18 +1573,28 @@ def _opening_balances(db: Session, bid: int, from_date) -> dict:
 def report_journal(
     from_date: Optional[str] = Query(None, alias="from"),
     to_date: Optional[str] = Query(None, alias="to"),
+    limit: int = Query(DEFAULT_PAGE_LIMIT, ge=0, le=MAX_PAGE_LIMIT),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
     """General Journal — every transaction as balanced Dr/Cr postings."""
     bid = current_user["id"]
+    limit, offset = _clamp_page(limit, offset)
     entries = _build_journal_entries(db, bid, from_date, to_date)
     td = round(sum(e["debit_total"] for e in entries), 2)
     tc = round(sum(e["credit_total"] for e in entries), 2)
-    logger.info("[REPORT] journal bid=%s entries=%d dr=%.2f cr=%.2f balanced=%s",
-                bid, len(entries), td, tc, abs(td - tc) < 0.01)
+    
+    total_entries = len(entries)
+    page = entries[offset:offset + limit]
+    
+    logger.info("[REPORT] journal bid=%s total=%d offset=%d limit=%d dr=%.2f cr=%.2f balanced=%s",
+                bid, total_entries, offset, limit, td, tc, abs(td - tc) < 0.01)
     return {
-        "entries": entries,
+        "entries": page,
+        "total": total_entries,
+        "limit": limit,
+        "offset": offset,
         "totals": {"total_debit": td, "total_credit": tc, "balanced": abs(td - tc) < 0.01},
     }
 
@@ -1617,6 +1656,8 @@ def report_general_ledger(
 def report_audit_journal(
     from_date: Optional[str] = Query(None, alias="from"),
     to_date: Optional[str] = Query(None, alias="to"),
+    limit: int = Query(DEFAULT_PAGE_LIMIT, ge=0, le=MAX_PAGE_LIMIT),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
@@ -1625,12 +1666,40 @@ def report_audit_journal(
     `/reports/journal` (reconstructed on read), this is the permanent, append-
     only audit trail of every money movement."""
     bid = current_user["id"]
+    limit, offset = _clamp_page(limit, offset)
+
+    # 1. Compute totals over the entire date window using fast DB aggregation
+    totals_q = db.query(
+        func.coalesce(func.sum(JournalLine.debit), 0.0).label("td"),
+        func.coalesce(func.sum(JournalLine.credit), 0.0).label("tc")
+    ).join(JournalEntry).filter(JournalEntry.business_id == bid)
+    
+    if from_date:
+        totals_q = totals_q.filter(JournalEntry.entry_date >= from_date)
+    if to_date:
+        totals_q = totals_q.filter(JournalEntry.entry_date <= to_date)
+        
+    td, tc = totals_q.first() or (0.0, 0.0)
+    td = round(td, 2)
+    tc = round(tc, 2)
+
+    # 2. Query only the paginated entries
     q = db.query(JournalEntry).filter(JournalEntry.business_id == bid)
     if from_date:
         q = q.filter(JournalEntry.entry_date >= from_date)
     if to_date:
         q = q.filter(JournalEntry.entry_date <= to_date)
-    rows = q.order_by(JournalEntry.entry_date.asc(), JournalEntry.id.asc()).all()
+        
+    total_entries = q.count()
+    
+    from sqlalchemy.orm import selectinload
+    rows = (
+        q.options(selectinload(JournalEntry.lines))
+        .order_by(JournalEntry.entry_date.asc(), JournalEntry.id.asc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
     entries = []
     for e in rows:
@@ -1645,12 +1714,13 @@ def report_audit_journal(
             "balanced": abs(dt - ct) < 0.01,
         })
 
-    td = round(sum(e["debit_total"] for e in entries), 2)
-    tc = round(sum(e["credit_total"] for e in entries), 2)
-    logger.info("[REPORT] audit-journal bid=%s entries=%d dr=%.2f cr=%.2f balanced=%s",
-                bid, len(entries), td, tc, abs(td - tc) < 0.01)
+    logger.info("[REPORT] audit-journal bid=%s total=%d offset=%d limit=%d dr=%.2f cr=%.2f balanced=%s",
+                bid, total_entries, offset, limit, td, tc, abs(td - tc) < 0.01)
     return {
         "entries": entries,
+        "total": total_entries,
+        "limit": limit,
+        "offset": offset,
         "totals": {"total_debit": td, "total_credit": tc, "balanced": abs(td - tc) < 0.01,
                    "posted": True},
     }

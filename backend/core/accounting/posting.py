@@ -137,8 +137,10 @@ def verify_chain(db, business_id) -> dict:
     entries pre-dating R3 (no entry_hash) are skipped, so the chain verifies from
     the first hashed entry forward.
     """
+    from sqlalchemy.orm import selectinload
     entries = (
         db.query(JournalEntry)
+        .options(selectinload(JournalEntry.lines))
         .filter(JournalEntry.business_id == business_id)
         .order_by(JournalEntry.id.asc())
         .all()
