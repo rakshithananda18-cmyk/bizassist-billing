@@ -176,15 +176,39 @@ export function AuthProvider({ children }) {
       headers['Content-Type'] = 'application/json'
     }
 
-    const res = await fetch(`${API_BASE}${apiPath}`, {
-      ...opts,
-      headers
-    })
+    let res
+    try {
+      res = await fetch(`${API_BASE}${apiPath}`, {
+        ...opts,
+        headers
+      })
+    } catch (err) {
+      logger.error(`authFetch network failure for path: ${path}`, err)
+      window.dispatchEvent(new CustomEvent('show_toast', {
+        detail: { type: 'error', msg: err.message || 'Network connection failed' }
+      }))
+      throw err
+    }
+
     if (res.status === 401) {
       logger.warn(`authFetch encountered 401 (Unauthorized) for path: ${path}. Auto-logging out.`)
       logout()
       throw new Error('Session expired')
     }
+
+    if (!res.ok) {
+      res.clone().json().then(err => {
+        const detail = err?.detail || `Error: ${res.statusText || res.status}`
+        window.dispatchEvent(new CustomEvent('show_toast', {
+          detail: { type: 'error', msg: detail }
+        }))
+      }).catch(() => {
+        window.dispatchEvent(new CustomEvent('show_toast', {
+          detail: { type: 'error', msg: `Request failed with status ${res.status}` }
+        }))
+      })
+    }
+
     logger.debug(`authFetch response status for path ${path}: ${res.status}`)
     return res
   }, [token, logout])

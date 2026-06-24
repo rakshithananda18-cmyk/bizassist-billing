@@ -16,7 +16,10 @@ logger = logging.getLogger("bizassist.routes.insights")
 
 
 def _user_id(authorization):
-    return get_active_user(authorization)["id"]
+    user = get_active_user(authorization)
+    if (user.get("role") or "").lower() == "cashier":
+        raise HTTPException(status_code=403, detail="Permission denied: cashier restricted")
+    return user["id"]
 
 
 @router.get("/insights")

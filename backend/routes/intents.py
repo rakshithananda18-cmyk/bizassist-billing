@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from database.db import SessionLocal
 from database.models import ChatMessage
-from services.auth import get_active_user
+from services.auth import get_active_user, restrict_cashier
 from services.intents import resolve_intent
 from services.recommendations import recommend
 
@@ -69,7 +69,7 @@ def _persist_turn(user_id: int, session_id: str, question: str, answer_md: str,
 
 
 @router.post("/intent")
-def run_intent(req: IntentRequest, current_user: dict = Depends(get_active_user)):
+def run_intent(req: IntentRequest, current_user: dict = Depends(restrict_cashier)):
     user_id = current_user["id"]
     env = resolve_intent(req.intent, user_id, req.params)
     if env is None:
@@ -86,5 +86,5 @@ def run_intent(req: IntentRequest, current_user: dict = Depends(get_active_user)
 
 
 @router.post("/suggestions")
-def get_suggestions(req: SuggestRequest, current_user: dict = Depends(get_active_user)):
+def get_suggestions(req: SuggestRequest, current_user: dict = Depends(restrict_cashier)):
     return {"suggestions": recommend(req.context, current_user["id"])}

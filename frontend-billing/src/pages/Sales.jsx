@@ -1436,7 +1436,7 @@ export default function Sales() {
 
   return (
     <AppLayout title="POS Counter">
-      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         
 
         {/* Tab-Style Bar */}

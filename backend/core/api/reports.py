@@ -150,7 +150,7 @@ def stock_ledger(
     date_to: Optional[str] = None,
     limit: int = Query(DEFAULT_PAGE_LIMIT, ge=0, le=MAX_PAGE_LIMIT),
     offset: int = Query(0, ge=0),
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
     """

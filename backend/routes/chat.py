@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database.db import get_db
 from database.models import ChatMessage
-from services.auth import get_active_user
+from services.auth import get_active_user, restrict_cashier
 from sqlalchemy import func
 
 router = APIRouter()
@@ -11,7 +11,7 @@ logger = logging.getLogger("bizassist.chat")
 
 
 @router.get("/chat/sessions")
-def get_chat_sessions(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def get_chat_sessions(current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     active_user_id = current_user["id"]
     logger.info(f"User {active_user_id} fetching list of chat sessions...")
     try:
@@ -45,7 +45,7 @@ def get_chat_sessions(current_user: dict = Depends(get_active_user), db: Session
 
 
 @router.get("/chat/history")
-def get_chat_history(session_id: str = None, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def get_chat_history(session_id: str = None, current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     active_user_id = current_user["id"]
     logger.info(f"User {active_user_id} fetching session chat history for session_id={session_id}...")
     try:
@@ -84,7 +84,7 @@ def get_chat_history(session_id: str = None, current_user: dict = Depends(get_ac
 
 
 @router.delete("/chat/history")
-def delete_chat_history(session_id: str = None, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def delete_chat_history(session_id: str = None, current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     active_user_id = current_user["id"]
     logger.warning(f"User {active_user_id} requested deletion of chat history for session_id={session_id}.")
     try:
@@ -132,7 +132,7 @@ class RenameSessionRequest(BaseModel):
 
 
 @router.patch("/chat/session/title")
-def rename_chat_session(req: RenameSessionRequest, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def rename_chat_session(req: RenameSessionRequest, current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     active_user_id = current_user["id"]
     new_title = (req.title or "").strip()[:80]
     logger.info(f"User {active_user_id} renaming session {req.session_id} -> '{new_title}'")

@@ -73,6 +73,48 @@ OWNER_ONLY = [
     ("POST", "/import/products", {"items": []}),                          # manual body read
     ("POST", "/business/setup", {"template_key": "general"}),            # SetupRequest
     ("POST", "/products/999999/stock/adjustment", {"qty_delta": 1, "note": "x"}),
+    
+    # Connections / B2B Gating:
+    ("GET",  "/connections", None),
+    ("GET",  "/bizid", None),
+    ("POST", "/connections/redeem", {"code": "abc"}),
+    ("POST", "/connections/connect", {"seller_bizid": 1}),
+    
+    # B2B ordering Gating:
+    ("GET",  "/catalog/123", None),
+    ("POST", "/orders", {"seller_bizid": 1, "items": []}),
+    ("GET",  "/orders", None),
+    
+    # Alerts Config Gating:
+    ("GET",  "/alerts/config", None),
+    ("POST", "/alerts/config", {"email": "test@domain.com"}),
+    
+    # Chat / Ask AI Gating:
+    ("GET",  "/chat/sessions", None),
+    ("GET",  "/chat/history", None),
+    
+    # Action Exec Gating:
+    ("POST", "/action/preview", {"action": "remind"}),
+    ("POST", "/action/execute", {"action": "remind"}),
+    ("GET",  "/action/history", None),
+    
+    # Deterministic Intents Gating:
+    ("POST", "/intent", {"intent": "remind"}),
+    ("POST", "/suggestions", {"context": "remind"}),
+    
+    # Smart Advisory Gating:
+    ("GET",  "/smart-insights", None),
+    ("GET",  "/smart-insights/summary", None),
+    
+    # File Import/Upload Gating:
+    ("GET",  "/upload/999/data", None),
+    ("DELETE", "/upload/999", None),
+    
+    # Dashboard Insights Gating:
+    ("GET",  "/insights", None),
+    ("GET",  "/dashboard-summary", None),
+    ("GET",  "/database", None),
+    ("GET",  "/stock/ledger", None),
 ]
 
 
@@ -86,6 +128,26 @@ def test_cashier_is_blocked_from_owner_routes(cashier, method, path, body):
 def test_owner_is_not_role_blocked(owner, method, path, body):
     resp = client.request(method, path, headers=owner["headers"], json=body)
     assert resp.status_code != 403, f"{method} {path} should not be role-blocked for owner, got 403: {resp.text}"
+
+
+def test_cashier_settings_modification(cashier, owner):
+    # Cashier cannot modify non-general settings (e.g. transactions)
+    resp = client.put("/settings", headers=cashier["headers"], json={
+        "transactions": {"terms_and_conditions": "No returns"}
+    })
+    assert resp.status_code == 403
+    
+    # Cashier can modify general settings
+    resp = client.put("/settings", headers=cashier["headers"], json={
+        "general": {"business_name": "Cashier Shop Name Edit"}
+    })
+    assert resp.status_code == 200
+    
+    # Owner can modify both
+    resp = client.put("/settings", headers=owner["headers"], json={
+        "transactions": {"terms_and_conditions": "Standard terms"}
+    })
+    assert resp.status_code == 200
 
 
 def test_cashier_can_ring_up_a_sale(cashier):

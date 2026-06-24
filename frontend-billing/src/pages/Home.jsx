@@ -26,8 +26,12 @@ const QUICK_LINKS = [
 ]
 
 export default function Home() {
-  const { profile } = useAuth()
+  const { profile, user } = useAuth()
   const navigate = useNavigate()
+
+  const isCashier = (user?.role || '').toLowerCase() === 'cashier'
+  const OWNER_ONLY_PATHS = React.useMemo(() => new Set(['/purchases', '/connections', '/orders', '/reports', '/import', '/staff', '/dashboard']), [])
+  const visibleLinks = QUICK_LINKS.filter(link => !isCashier || !OWNER_ONLY_PATHS.has(link.href))
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
@@ -43,7 +47,7 @@ export default function Home() {
 
   return (
     <AppLayout title="Home">
-      <div className="slide-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 0', minHeight: 'calc(100vh - 12px)', justifyContent: 'center' }}>
+      <div className="slide-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 0', minHeight: '100%', justifyContent: 'center' }}>
         
         {/* Center Welcome Section */}
         <div style={{
@@ -92,7 +96,7 @@ export default function Home() {
 
           {/* Prompt Chips */}
           <div className="ces-chips" style={{ marginBottom: 32 }}>
-            {QUICK_LINKS.map(link => (
+            {visibleLinks.map(link => (
               <button
                 key={link.href}
                 className="chip"

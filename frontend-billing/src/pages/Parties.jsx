@@ -223,13 +223,17 @@ export default function Parties() {
   const handleSaveReturn = async () => {
     const activeLines = returnLines.filter(l => l.quantity > 0)
     if (activeLines.length === 0) {
-      alert("Please enter a return quantity greater than zero for at least one item.")
+      window.dispatchEvent(new CustomEvent('show_toast', {
+        detail: { type: 'error', msg: 'Please enter a return quantity greater than zero for at least one item.' }
+      }))
       return
     }
     
     const invalidLine = activeLines.find(l => l.quantity > l.max_quantity)
     if (invalidLine) {
-      alert(`Return quantity for ${invalidLine.product_name} cannot exceed original quantity (${invalidLine.max_quantity}).`)
+      window.dispatchEvent(new CustomEvent('show_toast', {
+        detail: { type: 'error', msg: `Return quantity for ${invalidLine.product_name} cannot exceed original quantity (${invalidLine.max_quantity}).` }
+      }))
       return
     }
 

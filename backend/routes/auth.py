@@ -360,6 +360,14 @@ def update_settings(
 ):
     """Merge-update the user's app settings and persist."""
     logger.info(f"[SETTINGS] PUT /settings requested by user '{current_user.get('username')}' (ID {current_user.get('id')})")
+
+    # Restrict cashiers from modifying non-general settings
+    is_cashier = (current_user.get("role") or "").lower() == "cashier"
+    if is_cashier:
+        if req.transactions is not None or req.inventory is not None or req.print is not None or req.labels is not None:
+            logger.warning(f"[SETTINGS] Cashier '{current_user.get('username')}' blocked from modifying global settings")
+            raise HTTPException(status_code=403, detail="Permission denied: cashier restricted from modifying global settings")
+
     user = db.query(User).filter(User.id == current_user["id"]).first()
     if not user:
         logger.warning(f"[SETTINGS] User with ID {current_user.get('id')} not found during update")

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { useLock } from '../contexts/LockContext'
 import { API_BASE } from '../config'
-import { BillsIcon, CheckIcon, InventoryIcon, PrinterIcon, SettingsIcon, TagIcon, WarehouseIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import { SkylineLoader } from '../components/Logo'
 import { getHeaderLayout, isHeaderLineEnabled, moveItem } from '../utils/printLayout'
@@ -128,7 +129,29 @@ const TABS = [
   { id: 'inventory',    label: 'Items & Stock', icon: <InventoryIcon size={16} /> },
   { id: 'print',        label: 'Print & PDF',   icon: <PrinterIcon size={16} /> },
   { id: 'labels',       label: 'Custom Labels', icon: <TagIcon size={16} /> },
+  { id: 'lock',         label: 'Lock & Staff',  icon: <ShieldIcon size={16} /> },
 ]
+
+// ── Global Modal Style Constants ───────────────────────────────────────────
+const overlayStyle = {
+  position: 'fixed', inset: 0, zIndex: 9000,
+  background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  padding: 20, pointerEvents: 'all', touchAction: 'none',
+}
+const boxStyle = {
+  background: 'var(--bg-2)', border: '1px solid var(--border)',
+  borderRadius: 'var(--radius-xl)', padding: '28px 28px 24px',
+  width: '100%', maxWidth: 360, boxShadow: 'var(--shadow-lg)',
+  display: 'flex', flexDirection: 'column', gap: 16,
+}
+const inputStyle = {
+  padding: '10px 14px', background: 'var(--bg-3)',
+  border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
+  color: 'var(--text-primary)', fontSize: '1rem',
+  outline: 'none', width: '100%', boxSizing: 'border-box',
+  textAlign: 'center', letterSpacing: '0.15em',
+}
 
 // ── Passcode Setup Modal ──────────────────────────────────────────────────
 function PasscodeModal({ open, hasLock, onClose, setupPasscode, clearPasscode }) {
@@ -157,31 +180,12 @@ function PasscodeModal({ open, hasLock, onClose, setupPasscode, clearPasscode })
 
   const handleClear = () => { clearPasscode(); onClose() }
 
-  const overlayStyle = {
-    position: 'fixed', inset: 0, zIndex: 9000,
-    background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    padding: 20, pointerEvents: 'all', touchAction: 'none',
-  }
-  const boxStyle = {
-    background: 'var(--bg-2)', border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-xl)', padding: '28px 28px 24px',
-    width: '100%', maxWidth: 360, boxShadow: 'var(--shadow-lg)',
-    display: 'flex', flexDirection: 'column', gap: 16,
-  }
-  const inputStyle = {
-    padding: '10px 14px', background: 'var(--bg-3)',
-    border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
-    color: 'var(--text-primary)', fontSize: '1rem',
-    outline: 'none', width: '100%', boxSizing: 'border-box',
-    textAlign: 'center', letterSpacing: '0.15em',
-  }
-
   return (
     <div style={overlayStyle} onMouseDown={(e) => e.stopPropagation()}>
       <div style={boxStyle}>
-        <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
-          {step === 'menu'    && '🔒 Passcode Lock'}
+        <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          {(step === 'menu' || step === 'clear') && <LockIcon size={18} />}
+          {step === 'menu'    && 'Passcode Lock'}
           {step === 'set'     && 'Set New Passcode'}
           {step === 'confirm' && 'Confirm Passcode'}
           {step === 'clear'   && 'Remove Passcode'}
@@ -246,10 +250,107 @@ export default function Settings() {
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
   const visibleTabs = isCashier ? TABS.filter(t => t.id === 'general') : TABS
   const [showPasscodeModal, setShowPasscodeModal] = useState(false)
-  const [activeTab, setActiveTab] = useState('general')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [activeTab, setActiveTab] = useState(() => {
+    const tabParam = new URLSearchParams(window.location.search).get('tab')
+    return (tabParam && TABS.some(t => t.id === tabParam)) ? tabParam : 'general'
+  })
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab')
+    if (tabParam && TABS.some(t => t.id === tabParam) && tabParam !== activeTab) {
+      setActiveTab(tabParam)
+    }
+  }, [searchParams])
   // Which format the print preview shows (independent of the saved thermal_printer_mode).
   const [previewMode, setPreviewMode] = useState('thermal')
   const [dragKey, setDragKey] = useState(null)   // header line being dragged in the preview
+
+  // ── Staff state (used in Lock & Staff tab) ──────────────────────────────────
+  const [staffList,      setStaffList]      = useState([])
+  const [staffLoading,   setStaffLoading]   = useState(false)
+  const [staffForm,      setStaffForm]      = useState({ username: '', password: '' })
+  const [staffSubmit,    setStaffSubmit]    = useState(false)
+  const [staffError,     setStaffError]     = useState('')
+  const [staffSuccess,   setStaffSuccess]   = useState('')
+  // Reset-password inline modal
+  const [resetTarget,    setResetTarget]    = useState(null)  // { id, username }
+  const [resetPw,        setResetPw]        = useState('')
+  const [resetError,     setResetError]     = useState('')
+  // Remove confirmation inline
+  const [removeTarget,   setRemoveTarget]   = useState(null)  // { id, username }
+
+  const loadStaff = useCallback(async () => {
+    setStaffLoading(true)
+    try {
+      const res = await authFetch('/staff')
+      if (res.ok) setStaffList(await res.json())
+      else if (res.status === 403) setStaffError('Only the business owner can manage staff.')
+    } catch { setStaffError('Could not load staff.') }
+    finally   { setStaffLoading(false) }
+  }, [authFetch])
+
+  // Load staff when Lock & Staff tab becomes active
+  useEffect(() => {
+    if (activeTab === 'lock' && !isCashier) loadStaff()
+  }, [activeTab, isCashier, loadStaff])
+
+  const handleAddStaff = async (e) => {
+    e.preventDefault()
+    setStaffError(''); setStaffSuccess('')
+    if (!staffForm.username.trim() || !staffForm.password) {
+      setStaffError('Username and password are required.')
+      return
+    }
+    setStaffSubmit(true)
+    try {
+      const res = await authFetch('/staff', {
+        method: 'POST',
+        body: JSON.stringify({ username: staffForm.username.trim(), password: staffForm.password, role: 'cashier' }),
+      })
+      if (res.ok) {
+        const created = await res.json()
+        setStaffSuccess(`Cashier "${created.username}" created successfully.`)
+        setStaffForm({ username: '', password: '' })
+        loadStaff()
+      } else {
+        const err = await res.json().catch(() => ({}))
+        setStaffError(err.detail || 'Could not create staff.')
+      }
+    } catch { setStaffError('Network error.') }
+    finally   { setStaffSubmit(false) }
+  }
+
+  const handleResetPassword = async () => {
+    if (!resetPw || !resetTarget) return
+    setResetError('')
+    try {
+      const res = await authFetch(`/staff/${resetTarget.id}`, { method: 'PATCH', body: JSON.stringify({ password: resetPw }) })
+      if (res.ok) {
+        setStaffSuccess(`Password reset for "${resetTarget.username}".`)
+        setResetTarget(null); setResetPw('')
+      } else {
+        const err = await res.json().catch(() => ({}))
+        setResetError(err.detail || 'Could not reset password.')
+      }
+    } catch { setResetError('Network error.') }
+  }
+
+  const handleRemoveStaff = async () => {
+    if (!removeTarget) return
+    try {
+      const res = await authFetch(`/staff/${removeTarget.id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setStaffSuccess(`Removed "${removeTarget.username}".`)
+        setStaffList(prev => prev.filter(x => x.id !== removeTarget.id))
+        setRemoveTarget(null)
+      } else {
+        const err = await res.json().catch(() => ({}))
+        setStaffError(err.detail || 'Could not remove staff.')
+        setRemoveTarget(null)
+      }
+    } catch { setStaffError('Network error.'); setRemoveTarget(null) }
+  }
 
   // Click a preview element → scroll its setting into view on the left and flash it.
   const jumpToSetting = (key) => {
@@ -329,6 +430,31 @@ export default function Settings() {
     loadSettings()
   }, [loadSettings])
 
+  useEffect(() => {
+    const pageContent = document.querySelector('.page-content')
+    if (pageContent) {
+      const originalOverflow = pageContent.style.overflow
+      const originalDisplay = pageContent.style.display
+      const originalFlexDir = pageContent.style.flexDirection
+      const originalHeight = pageContent.style.height
+      const originalMinHeight = pageContent.style.minHeight
+      
+      pageContent.style.overflow = 'hidden'
+      pageContent.style.display = 'flex'
+      pageContent.style.flexDirection = 'column'
+      pageContent.style.height = '100%'
+      pageContent.style.minHeight = '0'
+      
+      return () => {
+        pageContent.style.overflow = originalOverflow
+        pageContent.style.display = originalDisplay
+        pageContent.style.flexDirection = originalFlexDir
+        pageContent.style.height = originalHeight
+        pageContent.style.minHeight = originalMinHeight
+      }
+    }
+  }, [])
+
   // ── Patch a single key inside a section ───────────────────────────────────
   const patch = (section, key, value) => {
     logger.debug(`[Settings] Patching ${section}.${key} =`, value)
@@ -342,6 +468,7 @@ export default function Settings() {
   const handleTabChange = (tabId) => {
     logger.debug('[Settings] Tab changed to:', tabId)
     setActiveTab(tabId)
+    setSearchParams({ tab: tabId })
   }
 
   // ── Save all settings to backend ───────────────────────────────────────────
@@ -399,16 +526,16 @@ export default function Settings() {
 
   return (
     <AppLayout title="App Settings">
-      <div className="slide-up">
+      <div className="slide-up" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%', minHeight: 0 }}>
 
         {/* ── Page header (sticky, title + subtitle + Save button) ── */}
-        <div className="page-header">
+        <div className="page-header" style={{ flexShrink: 0 }}>
           <div className="page-header-left">
             <h1 className="page-title">App Settings</h1>
             <p className="page-subtitle">Configure how your billing system behaves — transactions, printing, stock, and more.</p>
           </div>
           <button
-            className="btn btn-accent"
+            className="btn btn-primary"
             onClick={save}
             disabled={saving}
             style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}
@@ -427,58 +554,71 @@ export default function Settings() {
             padding: '10px 16px',
             borderRadius: 'var(--radius-md)',
             marginTop: 12,
+            marginBottom: 12,
             fontSize: '0.88rem',
             display: 'flex',
             alignItems: 'center',
             gap: 8,
+            flexShrink: 0,
           }}>
             {toast.type === 'success' && <CheckIcon size={14} />}
             {toast.msg}
           </div>
         )}
 
-        {/* Tab strip — pinned directly below the page-header */}
-        <div className="page-subbar" style={{
+        {/* ── Panel container (one big card) ── */}
+        <div className="card" style={{
           display: 'flex',
-          gap: 4,
-          borderBottom: '2px solid var(--border)',
-          background: 'var(--bg)',
-          overflowX: 'auto',
-          marginTop: 0,
-          marginLeft: -36,
-          marginRight: -36,
-          paddingLeft: 36,
-          paddingRight: 36,
-          marginBottom: 20,
+          flexDirection: 'column',
+          overflow: 'hidden',
+          flex: 1,
+          padding: 0,
+          marginTop: 12,
+          borderRadius: 'var(--radius-lg, 12px)',
+          minHeight: 0,
         }}>
-          {visibleTabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => handleTabChange(tab.id)}
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: '10px 18px',
-                cursor: 'pointer',
-                fontSize: '0.83rem',
-                fontWeight: activeTab === tab.id ? 700 : 500,
-                color: activeTab === tab.id ? 'var(--accent)' : 'var(--text-muted)',
-                borderBottom: activeTab === tab.id ? '2px solid var(--accent)' : '2px solid transparent',
-                marginBottom: -2,
-                whiteSpace: 'nowrap',
-                transition: 'all 0.15s',
-              }}
-            >
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                {tab.icon}
-                <span>{tab.label}</span>
-              </span>
-            </button>
-          ))}
-        </div>
+          {/* Tab strip inside the card */}
+          <div style={{
+            display: 'flex',
+            gap: 4,
+            borderBottom: '1px solid var(--border)',
+            background: 'var(--bg-2)',
+            overflowX: 'auto',
+            padding: '0 24px',
+            flexShrink: 0,
+          }}>
+            {visibleTabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => handleTabChange(tab.id)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '12px 18px',
+                  cursor: 'pointer',
+                  fontSize: '0.83rem',
+                  fontWeight: activeTab === tab.id ? 700 : 500,
+                  color: activeTab === tab.id ? 'var(--accent)' : 'var(--text-muted)',
+                  borderBottom: activeTab === tab.id ? '2.5px solid var(--accent)' : '2.5px solid transparent',
+                  marginBottom: -1,
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s',
+                }}
+              >
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                </span>
+              </button>
+            ))}
+          </div>
 
-        {/* ── Panel body ── */}
-        <div className="card" style={{ padding: '4px 28px 28px', borderTopLeftRadius: 0, borderTopRightRadius: 0, marginTop: 0 }}>
+          {/* Scrollable contents inside the card */}
+          <div style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '24px 28px 28px',
+          }}>
 
           {/* ═══════════════════════════ GENERAL ══════════════════════════════ */}
           {activeTab === 'general' && (
@@ -503,103 +643,6 @@ export default function Settings() {
                 </>
               )}
 
-              <SectionHeader title="Security" />
-              <SettingRow label="Passcode Lock" description="Require a passcode to unlock the app after inactivity or manual lock.">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  {g.passcode_lock && (
-                    <button
-                      className="btn btn-secondary"
-                      style={{ fontSize: '0.78rem', padding: '5px 12px' }}
-                      onClick={() => setShowPasscodeModal(true)}
-                    >
-                      {hasLock ? 'Change PIN' : 'Set PIN'}
-                    </button>
-                  )}
-                  <Toggle id="passcode_lock" checked={g.passcode_lock} onChange={v => {
-                    patch('general', 'passcode_lock', v)
-                    if (!v) clearPasscode()
-                  }} />
-                </div>
-              </SettingRow>
-              {g.passcode_lock && (
-                <SettingRow label="Auto-Lock Timeout" description="Lock the session automatically after this period of inactivity.">
-                  <select
-                    className="form-input"
-                    style={{ width: 160 }}
-                    value={g.lock_timeout_minutes ?? 60}
-                    onChange={e => patch('general', 'lock_timeout_minutes', parseInt(e.target.value))}
-                  >
-                    <option value={0}>Never</option>
-                    <option value={30}>30 minutes</option>
-                    <option value={60}>1 hour</option>
-                    <option value={120}>2 hours</option>
-                  </select>
-                </SettingRow>
-              )}
-              <SettingRow label="Privacy Mode" description="Hide revenue amounts and balances on the dashboard. Useful in customer-facing environments.">
-                <Toggle id="privacy_mode" checked={g.privacy_mode} onChange={v => patch('general', 'privacy_mode', v)} />
-              </SettingRow>
-
-              {!isCashier && (
-                <>
-                  <SectionHeader title="Backup" />
-                  <SettingRow label="Auto Backup" description="Automatically back up your data on schedule.">
-                    <Toggle id="auto_backup" checked={g.auto_backup} onChange={v => patch('general', 'auto_backup', v)} />
-                  </SettingRow>
-                  {g.auto_backup && (
-                    <SettingRow label="Backup Reminder (days)" description="Alert if no backup taken within this many days.">
-                      <input
-                        type="number"
-                        min={1}
-                        max={90}
-                        value={g.backup_reminder_days}
-                        onChange={e => patch('general', 'backup_reminder_days', parseInt(e.target.value) || 7)}
-                        className="form-input"
-                        style={{ width: 80, padding: '6px 10px', textAlign: 'center' }}
-                      />
-                    </SettingRow>
-                  )}
-                </>
-              )}
-
-              {!isCashier && (
-                <>
-                  <SectionHeader title="Number Formats" />
-                  <SettingRow label="Date Format" description="How dates are displayed across invoices and reports.">
-                    <select
-                      className="form-input"
-                      style={{ width: 180 }}
-                      value={g.date_format}
-                      onChange={e => patch('general', 'date_format', e.target.value)}
-                    >
-                      <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                      <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                      <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                    </select>
-                  </SettingRow>
-                  <SettingRow label="Quantity Decimal Places" description="Decimal digits for item quantities (e.g. 2.50 kg).">
-                    <select
-                      className="form-input"
-                      style={{ width: 100 }}
-                      value={g.quantity_decimal_places}
-                      onChange={e => patch('general', 'quantity_decimal_places', parseInt(e.target.value))}
-                    >
-                      {[0,1,2,3].map(n => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                  </SettingRow>
-                  <SettingRow label="Amount Decimal Places" description="Decimal digits for currency amounts (e.g. ₹ 100.00).">
-                    <select
-                      className="form-input"
-                      style={{ width: 100 }}
-                      value={g.amount_decimal_places}
-                      onChange={e => patch('general', 'amount_decimal_places', parseInt(e.target.value))}
-                    >
-                      {[0,1,2].map(n => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                  </SettingRow>
-                </>
-              )}
-
               <SectionHeader title="Appearance" />
               <SettingRow
                 label="App Display Size"
@@ -611,10 +654,26 @@ export default function Settings() {
                     return (
                       <button
                         key={v}
-                        onClick={() => {
+                        onClick={async () => {
                           patch('general', 'app_zoom', v)
+                          localStorage.setItem('billing_app_zoom', String(v))
                           document.documentElement.style.zoom = `${v}%`
-                          document.documentElement.style.minHeight = `${parseFloat((100 / (v / 100)).toFixed(2))}%`
+                          document.documentElement.style.setProperty('--zoom', v / 100)
+                          document.documentElement.style.minHeight = ''
+                          
+                          // Auto-save zoom level to backend
+                          try {
+                            const newSettings = {
+                              ...settings,
+                              general: { ...settings.general, app_zoom: v }
+                            }
+                            await authFetch('/settings', {
+                              method: 'PUT',
+                              body: JSON.stringify(newSettings)
+                            })
+                          } catch (err) {
+                            logger.error('[Settings] Auto-saving zoom failed:', err)
+                          }
                         }}
                         style={{
                           padding: '5px 11px',
@@ -642,14 +701,67 @@ export default function Settings() {
                 </div>
               </SettingRow>
 
-              {/* Passcode modal */}
-              <PasscodeModal
-                open={showPasscodeModal}
-                hasLock={hasLock}
-                onClose={() => setShowPasscodeModal(false)}
-                setupPasscode={setupPasscode}
-                clearPasscode={clearPasscode}
-              />
+              {!isCashier && (
+                <>
+                  <SectionHeader title="Localization & Formats" />
+                  <SettingRow label="Date Format" description="Set the display format for dates throughout the app.">
+                    <select
+                      className="form-input"
+                      style={{ width: 220 }}
+                      value={g.date_format || 'DD/MM/YYYY'}
+                      onChange={e => patch('general', 'date_format', e.target.value)}
+                    >
+                      <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                      <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                      <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                    </select>
+                  </SettingRow>
+
+                  <SettingRow label="Quantity Decimals" description="Number of decimal places shown for quantities.">
+                    <select
+                      className="form-input"
+                      style={{ width: 220 }}
+                      value={g.quantity_decimal_places ?? 2}
+                      onChange={e => patch('general', 'quantity_decimal_places', parseInt(e.target.value))}
+                    >
+                      <option value={1}>1 decimal place (0.0)</option>
+                      <option value={2}>2 decimal places (0.00)</option>
+                      <option value={3}>3 decimal places (0.000)</option>
+                    </select>
+                  </SettingRow>
+
+                  <SettingRow label="Amount Decimals" description="Number of decimal places shown for rates and amounts.">
+                    <select
+                      className="form-input"
+                      style={{ width: 220 }}
+                      value={g.amount_decimal_places ?? 2}
+                      onChange={e => patch('general', 'amount_decimal_places', parseInt(e.target.value))}
+                    >
+                      <option value={2}>2 decimal places (0.00)</option>
+                      <option value={3}>3 decimal places (0.000)</option>
+                    </select>
+                  </SettingRow>
+
+                  <SectionHeader title="Data & Backup" />
+                  <SettingRow label="Auto Backup" description="Periodically request backup files for storage.">
+                    <Toggle id="auto_backup" checked={g.auto_backup === true} onChange={v => patch('general', 'auto_backup', v)} />
+                  </SettingRow>
+                  {g.auto_backup && (
+                    <SettingRow label="Backup Reminder Interval" description="How often to remind for data backups.">
+                      <select
+                        className="form-input"
+                        style={{ width: 220 }}
+                        value={g.backup_reminder_days ?? 7}
+                        onChange={e => patch('general', 'backup_reminder_days', parseInt(e.target.value))}
+                      >
+                        <option value={7}>Every 7 Days</option>
+                        <option value={15}>Every 15 Days</option>
+                        <option value={30}>Every 30 Days</option>
+                      </select>
+                    </SettingRow>
+                  )}
+                </>
+              )}
             </>
           )}
 
@@ -1326,22 +1438,317 @@ export default function Settings() {
               ))}
             </>
           )}
-        </div>
 
-        {/* ── Bottom save bar ── */}
-        <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', paddingBottom: 32 }}>
-          <button
-            className="btn btn-accent"
-            onClick={save}
-            disabled={saving}
-            style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-          >
-            {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <CheckIcon size={14} />}
-            Save Changes
-          </button>
+          {/* ═══════════════════════════ LOCK & STAFF ═════════════════════════ */}
+          {activeTab === 'lock' && !isCashier && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+              
+              <div>
+                <SectionHeader title="Passcode & Session Security" />
+                
+                <SettingRow 
+                  label="Passcode App Lock" 
+                  description="Require a passcode to unlock the app session after inactivity."
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: hasLock ? 'var(--success)' : 'var(--text-muted)' }}>
+                      {hasLock ? 'Enabled (PIN set)' : 'Disabled'}
+                    </span>
+                    <button 
+                      type="button" 
+                      className={`btn ${hasLock ? 'btn-secondary' : 'btn-primary'}`}
+                      onClick={() => setShowPasscodeModal(true)}
+                      style={{ padding: '6px 14px', fontSize: '0.82rem' }}
+                    >
+                      {hasLock ? 'Manage Lock' : 'Enable Lock'}
+                    </button>
+                  </div>
+                </SettingRow>
+
+                <SettingRow 
+                  label="Auto-Lock Timeout" 
+                  description="Lock the session automatically after a period of user inactivity."
+                >
+                  <select
+                    className="form-input"
+                    style={{ width: 220 }}
+                    value={g.lock_timeout_minutes ?? 60}
+                    onChange={e => patch('general', 'lock_timeout_minutes', parseInt(e.target.value))}
+                  >
+                    <option value={0}>Never Auto-Lock</option>
+                    <option value={15}>15 Minutes</option>
+                    <option value={30}>30 Minutes</option>
+                    <option value={60}>1 Hour</option>
+                    <option value={120}>2 Hours</option>
+                  </select>
+                </SettingRow>
+
+                <SettingRow 
+                  label="Privacy Mode" 
+                  description="Hide sensitive business revenue and profit figures on the dashboard."
+                >
+                  <Toggle 
+                    id="privacy_mode" 
+                    checked={g.privacy_mode === true} 
+                    onChange={v => patch('general', 'privacy_mode', v)} 
+                  />
+                </SettingRow>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 24 }}>
+                <SectionHeader title="Staff & Cashier Management" />
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 20, marginTop: 4, lineHeight: 1.5 }}>
+                  Create and manage separate cashier accounts. Cashiers can log in to view stock, ring up sales, and take payments, but cannot see dashboard stats, tax reports, purchase records, or change store settings.
+                </p>
+
+                {staffError && (
+                  <div style={{
+                    background: 'var(--danger-dim)',
+                    color: 'var(--danger)',
+                    border: '1px solid var(--danger)',
+                    padding: '10px 14px',
+                    borderRadius: 'var(--radius-md)',
+                    marginBottom: 16,
+                    fontSize: '0.82rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8
+                  }}>
+                    <CloseIcon size={14} /> {staffError}
+                  </div>
+                )}
+
+                {staffSuccess && (
+                  <div style={{
+                    background: 'var(--success-dim)',
+                    color: 'var(--success)',
+                    border: '1px solid var(--success)',
+                    padding: '10px 14px',
+                    borderRadius: 'var(--radius-md)',
+                    marginBottom: 16,
+                    fontSize: '0.82rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8
+                  }}>
+                    <CheckIcon size={14} /> {staffSuccess}
+                  </div>
+                )}
+
+                {/* Add Cashier Form */}
+                <form onSubmit={handleAddStaff} className="card" style={{ 
+                  background: 'var(--bg-3)', 
+                  border: '1px solid var(--border)',
+                  padding: 20,
+                  display: 'grid', 
+                  gridTemplateColumns: '1fr 1fr auto', 
+                  gap: 16, 
+                  alignItems: 'end', 
+                  marginBottom: 24,
+                  borderRadius: 'var(--radius-md)'
+                }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600 }}>Username</label>
+                    <input 
+                      className="form-input"
+                      value={staffForm.username} 
+                      onChange={e => setStaffForm(f => ({ ...f, username: e.target.value }))}
+                      placeholder="e.g. cashier_john" 
+                      autoComplete="off" 
+                      style={{ height: 38 }}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600 }}>Password</label>
+                    <input 
+                      type="password" 
+                      className="form-input"
+                      value={staffForm.password} 
+                      onChange={e => setStaffForm(f => ({ ...f, password: e.target.value }))}
+                      placeholder="Min 8 characters" 
+                      autoComplete="new-password"
+                      style={{ height: 38 }}
+                    />
+                  </div>
+                  <button type="submit" className="btn btn-primary" disabled={staffSubmit} style={{ height: 38, padding: '0 20px', fontWeight: 600 }}>
+                    {staffSubmit ? 'Adding…' : '+ Add Cashier'}
+                  </button>
+                </form>
+
+                {/* Cashier List */}
+                {staffLoading ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '20px 0', color: 'var(--text-muted)' }}>
+                    <span className="spinner" style={{ width: 16, height: 16 }} />
+                    <span style={{ fontSize: '0.82rem' }}>Loading staff accounts…</span>
+                  </div>
+                ) : staffList.length === 0 ? (
+                  <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', border: '1px dashed var(--border)', borderRadius: 'var(--radius-md)' }}>
+                    No cashiers registered yet. Create a cashier login above.
+                  </div>
+                ) : (
+                  <div className="data-table-wrap" style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                    <table className="data-table" style={{ margin: 0 }}>
+                      <thead>
+                        <tr>
+                          <th>Username</th>
+                          <th>Role</th>
+                          <th style={{ textAlign: 'right' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {staffList.map(s => (
+                          <tr key={s.id}>
+                            <td className="td-primary" style={{ fontWeight: 600 }}>{s.username}</td>
+                            <td>
+                              <span className="badge badge-muted" style={{ textTransform: 'capitalize' }}>{s.role}</span>
+                            </td>
+                            <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              <button 
+                                type="button" 
+                                className="btn btn-ghost btn-sm" 
+                                onClick={() => { setResetTarget(s); setResetPw(''); setResetError('') }} 
+                                style={{ marginRight: 8, fontSize: '0.78rem' }}
+                              >
+                                Reset password
+                              </button>
+                              <button 
+                                type="button" 
+                                className="btn btn-ghost btn-sm" 
+                                onClick={() => setRemoveTarget(s)} 
+                                style={{ color: 'var(--danger)', fontSize: '0.78rem' }}
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+            </div>
+          )}
+          </div>
         </div>
 
       </div>
+
+      {/* ── Passcode Modal (rendered globally outside tab scopes) ── */}
+      <PasscodeModal
+        open={showPasscodeModal}
+        hasLock={hasLock}
+        onClose={() => setShowPasscodeModal(false)}
+        setupPasscode={setupPasscode}
+        clearPasscode={clearPasscode}
+      />
+
+      {/* ── Reset Password Modal ── */}
+      {resetTarget && (
+        <div style={overlayStyle} onMouseDown={(e) => e.stopPropagation()}>
+          <div style={boxStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <LockIcon size={18} /> Reset Password
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setResetTarget(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 4 }}
+              >
+                <CloseIcon size={18} />
+              </button>
+            </div>
+
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+              Enter a new password for cashier account <strong>{resetTarget.username}</strong>.
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <input
+                type="password"
+                placeholder="New Password (min 8 characters)"
+                value={resetPw}
+                onChange={e => setResetPw(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleResetPassword()}
+                style={inputStyle}
+                autoFocus
+              />
+              
+              {resetError && (
+                <div style={{ fontSize: '0.78rem', color: 'var(--danger)', textAlign: 'center' }}>
+                  {resetError}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <button 
+                className="btn btn-ghost" 
+                onClick={() => setResetTarget(null)} 
+                style={{ flex: 1 }}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn btn-primary" 
+                onClick={handleResetPassword} 
+                style={{ flex: 2 }}
+              >
+                Update Password
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Remove Cashier Confirmation Modal ── */}
+      {removeTarget && (
+        <div style={overlayStyle} onMouseDown={(e) => e.stopPropagation()}>
+          <div style={boxStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                ⚠️ Delete Account
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setRemoveTarget(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 4 }}
+              >
+                <CloseIcon size={18} />
+              </button>
+            </div>
+
+            <div style={{ fontSize: '0.84rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              Are you sure you want to remove the cashier account <strong>{removeTarget.username}</strong>? They will be signed out immediately and won't be able to log in to this business anymore.
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <button 
+                className="btn btn-ghost" 
+                onClick={() => setRemoveTarget(null)} 
+                style={{ flex: 1 }}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn" 
+                onClick={handleRemoveStaff}
+                style={{ 
+                  flex: 2, 
+                  background: 'var(--danger)', 
+                  color: '#fff', 
+                  border: 'none',
+                  fontWeight: 600
+                }}
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   )
 }

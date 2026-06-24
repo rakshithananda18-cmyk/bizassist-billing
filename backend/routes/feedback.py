@@ -12,7 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from services.auth import get_active_user
+from services.auth import get_active_user, restrict_cashier
 from services.feedback_service import record_feedback, CORRECTION_ROUTES
 
 logger = logging.getLogger("bizassist.routes.feedback")
@@ -49,7 +49,7 @@ _INTENT_LABELS = {
 
 
 @router.get("/feedback/intents")
-def feedback_intents(current_user: dict = Depends(get_active_user)):
+def feedback_intents(current_user: dict = Depends(restrict_cashier)):
     """The correctable intents, in display order, for the 'what did you want?' picker."""
     return {"intents": [
         {"key": k, "label": _INTENT_LABELS.get(k, k)}
@@ -58,7 +58,7 @@ def feedback_intents(current_user: dict = Depends(get_active_user)):
 
 
 @router.post("/feedback")
-def submit_feedback(body: FeedbackRequest, current_user: dict = Depends(get_active_user)):
+def submit_feedback(body: FeedbackRequest, current_user: dict = Depends(restrict_cashier)):
     if not (body.query or "").strip():
         raise HTTPException(status_code=400, detail="query is required")
 

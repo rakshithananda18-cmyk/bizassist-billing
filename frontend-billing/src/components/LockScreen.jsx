@@ -11,6 +11,7 @@ import { useLock } from '../contexts/LockContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { BuildingMark } from './Logo'
+import { LockIcon } from './Icons'
 import { logger } from '../utils/logger'
 
 export default function LockScreen() {
@@ -141,9 +142,8 @@ export default function LockScreen() {
           background: 'var(--bg-3, #1a2035)',
           border: '1px solid var(--border, #1e2535)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '1.6rem',
         }}>
-          🔒
+          <LockIcon size={24} style={{ color: 'var(--accent, #C2714F)' }} />
         </div>
 
         {/* PIN input form */}

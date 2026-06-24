@@ -30,7 +30,7 @@ from services.parser import (
     save_inventory,
     save_payments
 )
-from services.auth import get_active_user
+from services.auth import get_active_user, restrict_cashier
 from services.rate_limiter import check_upload_rate_limit
 from services.embeddings import index_new_file_records
 from services.pdf_parser import (
@@ -49,7 +49,7 @@ logger = logging.getLogger("bizassist.upload")
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
     active_user_id = current_user["id"]
@@ -278,7 +278,7 @@ async def upload_file(
 @router.get("/upload/{file_id}/data")
 async def get_upload_data(
     file_id: int,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
     active_user_id = current_user["id"]
@@ -365,7 +365,7 @@ async def get_upload_data(
 async def delete_upload(
     file_id: int,
     cascade: bool = False,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
     active_user_id = current_user["id"]

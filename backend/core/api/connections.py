@@ -65,7 +65,7 @@ def _conn_out(conn: B2BConnection, db: Session) -> dict:
 # ── Routes ───────────────────────────────────────────────────────────────────
 
 @router.get("/bizid")
-def get_my_bizid(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def get_my_bizid(current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     """Get the logged-in user's own public BizID."""
     user = db.query(User).filter(User.id == current_user["id"]).first()
     if not user:
@@ -73,7 +73,7 @@ def get_my_bizid(current_user: dict = Depends(get_active_user), db: Session = De
     return {"public_id": user.public_id}
 
 @router.get("/bizid/{code}")
-def lookup_bizid(code: str, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def lookup_bizid(code: str, current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     """
     Public lookup for a BizID. Returns ONLY safe public profile data.
     Leaks NO transactional data or cost margins.
@@ -161,7 +161,7 @@ def connect_via_bizid(req: ConnectRequest, current_user: dict = Depends(restrict
         raise HTTPException(status_code=500, detail="Could not establish connection")
 
 @router.get("/connections")
-def list_connections(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def list_connections(current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     """List connections where the user acts as either buyer or seller."""
     bid = current_user["id"]
     conns_as_seller = db.query(B2BConnection).filter(B2BConnection.seller_business_id == bid).all()
@@ -210,7 +210,7 @@ def revoke_partnership(id: int, current_user: dict = Depends(restrict_cashier), 
         raise HTTPException(status_code=500, detail="Could not revoke partnership")
 
 @router.get("/realtime/events")
-async def sse_realtime_feed(current_user: dict = Depends(get_active_user)):
+async def sse_realtime_feed(current_user: dict = Depends(restrict_cashier)):
     """
     Server-Sent Events stream for real-time B2B notifications.
     Streams events scoped to the logged-in business.

@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useLock } from '../contexts/LockContext'
 import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
-import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon } from '../components/Icons'
+import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon } from '../components/Icons'
 
 const NAV = [
   {
@@ -26,10 +26,11 @@ const NAV = [
   {
     section: 'Sales & Operations',
     items: [
-      { to: '/sales', icon: <CounterIcon size={16} />, label: 'Billing Counter' },
-      { to: '/payments', icon: <CashIcon size={16} />, label: 'Cash Book' },
-      { to: '/parties', icon: <ContactsIcon size={16} />, label: 'Contacts & Dues' },
-      { to: '/reports', icon: <ReportsIcon size={16} />, label: 'GST & Tax Reports' },
+      { to: '/sales',    icon: <CounterIcon size={16} />,   label: 'Billing Counter' },
+      { to: '/payments', icon: <CashIcon size={16} />,      label: 'Cash Book' },
+      { to: '/parties',  icon: <ContactsIcon size={16} />,  label: 'Contacts & Dues' },
+      { to: '/stock',    icon: <InventoryIcon size={16} />, label: 'Inventory' },
+      { to: '/reports',  icon: <ReportsIcon size={16} />,   label: 'GST & Tax Reports' },
     ]
   }
 ]
@@ -104,7 +105,14 @@ export default function AppLayout({ children, title }) {
   // Role gating (defense-in-depth — the backend restrict_cashier guard is the
   // real authority; this just hides owner-only destinations from cashiers).
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
-  const OWNER_ONLY_PATHS = new Set(['/purchases', '/connections', '/orders', '/reports', '/import', '/staff'])
+  const OWNER_ONLY_PATHS = React.useMemo(() => new Set(['/purchases', '/connections', '/orders', '/reports', '/import', '/staff', '/dashboard']), [])
+
+  React.useEffect(() => {
+    if (isCashier && OWNER_ONLY_PATHS.has(location.pathname)) {
+      navigate('/sales', { replace: true })
+    }
+  }, [isCashier, location.pathname, navigate, OWNER_ONLY_PATHS])
+
   const visibleNav = isCashier
     ? NAV.map(s => ({ ...s, items: s.items.filter(i => !OWNER_ONLY_PATHS.has(i.to)) })).filter(s => s.items.length > 0)
     : NAV
@@ -124,9 +132,9 @@ export default function AppLayout({ children, title }) {
       console.error(e)
     }
     return {
-      'Hub': true,
-      'Sales & Operations': true,
-      'Supply & Inflow': true,
+      'Hub': false,
+      'Sales & Operations': false,
+      'Supply & Inflow': false,
     }
   })
 
@@ -277,8 +285,14 @@ export default function AppLayout({ children, title }) {
       ?? 100
     // Apply zoom + compensate minHeight so page always fills the viewport
     // at zoom < 100%, content shrinks → gap appears; minHeight = 100/zoom × 100%
+    // Apply zoom to html, and simultaneously set --zoom so CSS layout
+    // heights (calc(100vh / var(--zoom))) invert the zoom and panels
+    // always render exactly at viewport height — no gap at low zoom,
+    // no overflow/clipped footer at high zoom.
     document.documentElement.style.zoom = `${zoom}%`
-    document.documentElement.style.minHeight = `${parseFloat((100 / (zoom / 100)).toFixed(2))}%`
+    document.documentElement.style.setProperty('--zoom', zoom / 100)
+    // Remove old minHeight hack — the --zoom formula handles this correctly
+    document.documentElement.style.minHeight = ''
     if (stored !== String(zoom)) {
       localStorage.setItem('billing_app_zoom', String(zoom))
     }
@@ -301,6 +315,24 @@ export default function AppLayout({ children, title }) {
   const toggleSection = (section) => {
     setCollapsed(prev => ({ ...prev, [section]: !prev[section] }))
   }
+
+  // ── Global Toast Notifications ─────────────────────────────────────────────
+  const [toasts, setToasts] = React.useState([])
+
+  React.useEffect(() => {
+    const handleToast = (e) => {
+      const { type, msg, duration = 4000 } = e.detail || {}
+      if (!msg) return
+      const id = Math.random().toString(36).slice(2, 9)
+      setToasts(prev => [...prev, { id, type, msg }])
+      
+      setTimeout(() => {
+        setToasts(prev => prev.filter(t => t.id !== id))
+      }, duration)
+    }
+    window.addEventListener('show_toast', handleToast)
+    return () => window.removeEventListener('show_toast', handleToast)
+  }, [])
 
   const initials = user?.username
     ? user.username.slice(0, 2).toUpperCase()
@@ -439,7 +471,7 @@ export default function AppLayout({ children, title }) {
                 <button className="profile-menu-item" onClick={() => { setShowProfileMenu(false); navigate('/settings'); }}>
                   <SettingsIcon size={14} /> App Settings
                 </button>
-                <button className="profile-menu-item" onClick={() => { setShowProfileMenu(false); navigate('/staff'); }}>
+                <button className="profile-menu-item" onClick={() => { setShowProfileMenu(false); navigate('/settings?tab=lock'); }}>
                   <ContactsIcon size={14} /> Staff & Cashiers
                 </button>
                 <button
@@ -453,9 +485,9 @@ export default function AppLayout({ children, title }) {
                       navigate('/settings')
                     }
                   }}
-                  style={{ color: 'var(--warning, #f59e0b)' }}
+                  style={{ color: 'var(--warning, #f59e0b)', display: 'flex', alignItems: 'center', gap: 8 }}
                 >
-                  🔒 {hasLock ? 'Lock Session' : 'Lock App (Set PIN)'}
+                  <LockIcon size={14} /> {hasLock ? 'Lock Session' : 'Lock App (Set PIN)'}
                 </button>
                 <button className="profile-menu-item logout" onClick={() => { setShowProfileMenu(false); logout(); navigate('/login'); }}>
                   <LogoutIcon size={14} /> Sign Out
@@ -523,6 +555,65 @@ export default function AppLayout({ children, title }) {
           {children}
         </main>
       </div>
+
+      {toasts.length > 0 && (
+        <div style={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          zIndex: 10000,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+          maxWidth: 360,
+          pointerEvents: 'none'
+        }}>
+          {toasts.map(toast => (
+            <div key={toast.id} style={{
+              pointerEvents: 'auto',
+              background: 'var(--bg-3, #fff)',
+              border: '1px solid var(--border, #e2e8f0)',
+              borderLeft: `4px solid ${
+                toast.type === 'success' ? 'var(--success, #22c55e)' :
+                toast.type === 'error' ? 'var(--danger, #ef4444)' :
+                toast.type === 'warning' ? 'var(--warning, #f59e0b)' : 'var(--accent, #3b82f6)'
+              }`,
+              padding: '12px 16px',
+              borderRadius: 'var(--radius-md, 8px)',
+              boxShadow: 'var(--shadow-lg, 0 10px 15px -3px rgba(0,0,0,0.1))',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              animation: 'slideIn 0.2s ease-out'
+            }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                {toast.type === 'success' ? <CheckIcon size={16} style={{ color: 'var(--success, #22c55e)' }} /> :
+                 toast.type === 'error' ? <AlertIcon size={16} style={{ color: 'var(--danger, #ef4444)' }} /> :
+                 <SummaryIcon size={16} style={{ color: 'var(--accent, #3b82f6)' }} />}
+              </span>
+              <span style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text, #1e293b)', lineHeight: 1.4 }}>
+                {toast.msg}
+              </span>
+              <button
+                onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted, #64748b)',
+                  cursor: 'pointer',
+                  marginLeft: 'auto',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: 0
+                }}
+                aria-label="Close"
+              >
+                <CloseIcon size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

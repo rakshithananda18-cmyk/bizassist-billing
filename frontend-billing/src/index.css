@@ -37,6 +37,7 @@
   /* Layout */
   --sidebar-w:     240px;
   --header-h:      56px;
+  --zoom:          1; /* CSS zoom factor — updated by JS when user changes App Display Size */
   --radius-sm:     6px;
   --radius-md:     8px;
   --radius-lg:     12px;
@@ -111,16 +112,30 @@
 /* === RESET === */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { font-size: 14px; scroll-behavior: smooth; }
+/* The single source of truth for zoom adaptability.
+   calc(100vh / var(--zoom)) makes html exactly fill the visual viewport
+   at any zoom level. All descendants use height:100% down the chain. */
+html {
+  font-size: 14px;
+  scroll-behavior: smooth;
+  height: calc(100vh / var(--zoom));
+  overflow: hidden;
+}
 
 body {
   font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: var(--bg);
   color: var(--text-primary);
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+  overflow: hidden;
 }
 
 a { color: inherit; text-decoration: none; }
@@ -135,16 +150,18 @@ img { display: block; max-width: 100%; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
 /* === LAYOUT === */
+/* --zoom is set by JS to match the CSS zoom on <html>.
+   html height compensates once; all children inherit via height:100%. */
 .app-shell {
   display: flex;
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
   background: var(--bg);
 }
 
 .sidebar {
   width: var(--sidebar-w);
-  height: calc(100vh - 12px);
+  height: calc(100% - 12px);
   margin: 5px 0 7px 7px;
   background: var(--bg-2);
   border: 1px solid var(--border);
@@ -156,6 +173,7 @@ img { display: block; max-width: 100%; }
   position: relative;
   z-index: 10;
   overflow: hidden;
+  min-height: 0;
 }
 
 .main-area {
@@ -165,7 +183,8 @@ img { display: block; max-width: 100%; }
   overflow: hidden;
   background: var(--bg);
   margin: 5px 12px 7px 12px;
-  height: calc(100vh - 12px);
+  height: calc(100% - 12px);
+  min-height: 0;
 }
 
 /* === APP TOPBAR (sticky page header, all pages except POS) === */
@@ -308,6 +327,7 @@ img { display: block; max-width: 100%; }
 
 .page-content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 0 36px 20px; /* No top padding — page-header starts flush */
   background: var(--bg);
@@ -362,6 +382,7 @@ img { display: block; max-width: 100%; }
   gap: 12px;
   padding: 14px 16px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .sidebar-brand .brand-icon {
   width: 32px; height: 32px;
@@ -403,6 +424,7 @@ img { display: block; max-width: 100%; }
   flex-direction: column;
   gap: 6px;
   overflow-y: auto;
+  min-height: 0;
 }
 .nav-section-label {
   font-size: 0.72rem;
@@ -469,6 +491,7 @@ img { display: block; max-width: 100%; }
 .sidebar-footer {
   padding: 12px 10px;
   border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .user-chip {
   display: flex;
@@ -1487,7 +1510,7 @@ img { display: block; max-width: 100%; }
 /* === SPLIT REGISTRATION PAGE === */
 .split-page {
   display: flex;
-  height: 100vh;
+  height: 100%;
   background: var(--bg);
   overflow: hidden;
 }
@@ -1609,8 +1632,8 @@ img { display: block; max-width: 100%; }
 .pos-layout-shell {
   background: var(--bg) !important;
   color: var(--text-primary) !important;
-  height: 100vh;
-  width: 100vw;
+  height: 100% !important;
+  width: 100% !important;
   overflow: hidden;
 }
 
@@ -1618,7 +1641,7 @@ img { display: block; max-width: 100%; }
   background: var(--bg) !important;
   color: var(--text-primary) !important;
   flex: 1;
-  height: 100vh !important;
+  height: 100% !important;
   width: 100% !important;
   padding: 0 !important;
   margin: 0 !important;
@@ -1630,7 +1653,7 @@ img { display: block; max-width: 100%; }
   color: var(--text-primary) !important;
   padding: 0 !important;
   margin: 0 !important;
-  height: 100vh !important;
+  height: 100% !important;
   width: 100% !important;
   overflow: hidden !important;
 }
@@ -1829,8 +1852,8 @@ img { display: block; max-width: 100%; }
 
 .pos-workspace {
   display: flex;
-  height: calc(100vh - 44px);
-  width: 100vw;
+  height: calc(100% - 44px);
+  width: 100%;
   overflow: hidden;
   background: var(--bg);
 }
@@ -3431,7 +3454,7 @@ img { display: block; max-width: 100%; }
   }
   .main-area {
     margin: 5px 7px 7px 7px !important;
-    height: calc(100vh - 80px) !important;
+    height: calc(100% - 80px) !important;
   }
   
   .mobile-nav-bar {
@@ -3476,6 +3499,18 @@ img { display: block; max-width: 100%; }
   .pos-cart-wrapper {
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch !important;
+  }
+}
+
+/* Toast Animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
 }
 

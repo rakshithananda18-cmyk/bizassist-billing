@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from database.db import get_db
 from database.models import User
 from core.models import B2BOrder, B2BOrderLineItem
-from services.auth import get_active_user
+from services.auth import get_active_user, restrict_cashier
 from services.realtime import realtime_manager
 from core.order import service as order_service
 
@@ -79,7 +79,7 @@ def _order_out(order: B2BOrder, db: Session) -> dict:
 # ── Routes ───────────────────────────────────────────────────────────────────
 
 @router.get("/catalog/{seller_bizid}")
-def get_catalog(seller_bizid: str, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def get_catalog(seller_bizid: str, current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     """Buyer browses connected supplier's catalog (scoped by connection policies)."""
     seller = db.query(User).filter(User.public_id == seller_bizid).first()
     if not seller:
@@ -99,7 +99,7 @@ def get_catalog(seller_bizid: str, current_user: dict = Depends(get_active_user)
         raise HTTPException(status_code=500, detail="Could not retrieve catalogue")
 
 @router.post("/orders")
-async def place_order(req: OrderRequest, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+async def place_order(req: OrderRequest, current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     """Place a B2B order (Buyer flow). Triggers real-time alert to Seller."""
     seller = db.query(User).filter(User.public_id == req.seller_bizid).first()
     if not seller:
@@ -134,7 +134,7 @@ async def place_order(req: OrderRequest, current_user: dict = Depends(get_active
         raise HTTPException(status_code=500, detail="Could not place order")
 
 @router.get("/orders")
-def list_orders(role: str = Query(..., description="buyer | seller"), current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def list_orders(role: str = Query(..., description="buyer | seller"), current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     """List incoming or outgoing orders for the logged-in user."""
     bid = current_user["id"]
     if role == "buyer":
@@ -147,7 +147,7 @@ def list_orders(role: str = Query(..., description="buyer | seller"), current_us
     return [_order_out(o, db) for o in orders]
 
 @router.get("/orders/{id}")
-def get_order_details(id: int, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def get_order_details(id: int, current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     """Get detailed view of a single B2B order."""
     order = db.query(B2BOrder).filter(B2BOrder.id == id).first()
     if not order:
@@ -159,7 +159,7 @@ def get_order_details(id: int, current_user: dict = Depends(get_active_user), db
     return _order_out(order, db)
 
 @router.post("/orders/{id}/status")
-async def update_order_status(id: int, req: StatusRequest, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+async def update_order_status(id: int, req: StatusRequest, current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     """Accept, Reject, Cancel, or Ship B2B order. Triggers real-time status update."""
     try:
         order = order_service.transition_order_status(

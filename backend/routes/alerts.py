@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from database.db import get_db
 from database.models import AlertConfig, User
-from services.auth import get_active_user
+from services.auth import get_active_user, restrict_cashier
 from services.scheduler import get_scheduler
 
 logger = logging.getLogger("bizassist.routes.alerts")
@@ -45,7 +45,7 @@ class AlertConfigRequest(BaseModel):
 
 @router.get("/config")
 def get_alert_config(
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
     """Returns the current alert configuration for the authenticated business."""
@@ -75,7 +75,7 @@ def get_alert_config(
 @router.post("/config")
 def save_alert_config(
     body: AlertConfigRequest,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
     """Create or update the alert configuration for the authenticated business."""
@@ -129,7 +129,7 @@ def save_alert_config(
 @router.post("/test/{alert_type}")
 def trigger_alert_manually(
     alert_type: str,
-    current_user: dict = Depends(get_active_user)
+    current_user: dict = Depends(restrict_cashier)
 ):
     """
     Manually trigger a specific alert job for testing purposes.
@@ -167,7 +167,7 @@ def trigger_alert_manually(
 # ── GET scheduler status ──────────────────────────────────────
 
 @router.get("/scheduler")
-def scheduler_status(current_user: dict = Depends(get_active_user)):
+def scheduler_status(current_user: dict = Depends(restrict_cashier)):
     """Returns current APScheduler job list and next run times."""
     scheduler = get_scheduler()
 
@@ -188,7 +188,7 @@ def scheduler_status(current_user: dict = Depends(get_active_user)):
 # ── GET memory facts ─────────────────────────────────────────
 
 @router.get("/memory-facts")
-def get_memory_facts(current_user: dict = Depends(get_active_user)):
+def get_memory_facts(current_user: dict = Depends(restrict_cashier)):
     """
     Phase 4 — Returns all distilled business memory facts for the
     current user's business. Facts are written weekly by the memory
@@ -228,7 +228,7 @@ def get_memory_facts(current_user: dict = Depends(get_active_user)):
 # ── DELETE one memory fact ───────────────────────────────────────
 
 @router.delete("/memory-facts/{fact_id}")
-def delete_memory_fact(fact_id: int, current_user: dict = Depends(get_active_user)):
+def delete_memory_fact(fact_id: int, current_user: dict = Depends(restrict_cashier)):
     """
     Phase 4 - delete a single distilled fact (scoped to the current business),
     so the owner can remove anything wrong or stale. The weekly job may re-derive

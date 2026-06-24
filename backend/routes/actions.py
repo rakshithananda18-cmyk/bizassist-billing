@@ -16,7 +16,7 @@ from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from services.auth import get_active_user
+from services.auth import get_active_user, restrict_cashier
 from services.actions import preview as action_preview, execute as action_execute
 from routes.intents import _persist_turn
 from sqlalchemy.orm import Session
@@ -35,7 +35,7 @@ class ActionRequest(BaseModel):
 
 
 @router.post("/action/preview")
-def preview_action(req: ActionRequest, current_user: dict = Depends(get_active_user)):
+def preview_action(req: ActionRequest, current_user: dict = Depends(restrict_cashier)):
     result = action_preview(req.action, current_user["id"], req.params)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Unknown action: {req.action}")
@@ -43,7 +43,7 @@ def preview_action(req: ActionRequest, current_user: dict = Depends(get_active_u
 
 
 @router.post("/action/execute")
-def execute_action(req: ActionRequest, current_user: dict = Depends(get_active_user)):
+def execute_action(req: ActionRequest, current_user: dict = Depends(restrict_cashier)):
     user_id = current_user["id"]
     result = action_execute(req.action, user_id, req.params)
     if result is None:
@@ -70,7 +70,7 @@ def execute_action(req: ActionRequest, current_user: dict = Depends(get_active_u
 @router.get("/action/history")
 def action_history(
     limit: int = 100,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
     """Audit trail of executed actions, newest first."""
