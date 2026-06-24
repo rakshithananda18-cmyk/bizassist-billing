@@ -107,3 +107,62 @@ Once all three parts are deployed, verify connectivity:
 1. Open the Vercel URL for `frontend-billing` in your browser.
 2. Verify you can sign in/sign up (which will request auth from your HF Space backend).
 3. Open `frontend-ai` and verify the AI Chat responds to commands.
+
+---
+
+## 4. Running Database Migrations on Production (Alembic)
+
+Since the backend application does not automatically run Alembic migrations on startup, you must apply new migrations manually to the production database when you release schema changes.
+
+### Step 1: Get the Production Database URL
+Retrieve the connection string from your Supabase Dashboard or the Hugging Face Space secrets. The URL looks like:
+`postgresql://postgres.[username]:[password]@aws-1-ap-south-1.pooler.supabase.com:5432/postgres`
+
+### Step 2: Run the Migration command
+Navigate to the `backend` directory, activate the Python virtual environment, set the `DATABASE_URL` environment variable, and execute the upgrade command:
+
+#### On Windows (PowerShell):
+```powershell
+# Navigate to backend
+cd backend
+
+# Set environment variable (temporary for this session)
+$env:DATABASE_URL="postgresql://postgres.[username]:[password]@aws-1-ap-south-1.pooler.supabase.com:5432/postgres"
+
+# Execute migration to head
+& ..\venv\Scripts\python -m alembic upgrade head
+```
+
+#### On Linux / macOS / Bash:
+```bash
+# Navigate to backend
+cd backend
+
+# Run migration
+DATABASE_URL="postgresql://postgres.[username]:[password]@aws-1-ap-south-1.pooler.supabase.com:5432/postgres" python -m alembic upgrade head
+```
+
+### Step 3: Rolling Back Migrations
+If you need to undo a migration, use the `downgrade` command:
+
+#### On Windows (PowerShell):
+```powershell
+& ..\venv\Scripts\python -m alembic downgrade -1
+```
+
+#### On Linux / macOS / Bash:
+```bash
+DATABASE_URL="postgresql://..." python -m alembic downgrade -1
+```
+
+### Step 4: Verification
+To check if the migration was successfully applied, run a quick query to inspect rowsecurity (RLS) on your tables:
+```python
+from sqlalchemy import create_engine, text
+engine = create_engine("DATABASE_URL_HERE")
+with engine.connect() as conn:
+    res = conn.execute(text("SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public'")).fetchall()
+    for row in res:
+         print(row[0], "RLS Enabled:", row[1])
+```
+
