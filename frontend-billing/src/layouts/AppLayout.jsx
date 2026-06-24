@@ -270,7 +270,10 @@ export default function AppLayout({ children, title }) {
     const zoom = businessConfig?.general?.app_zoom
       ?? (stored ? parseInt(stored, 10) : null)
       ?? 100
+    // Apply zoom + compensate minHeight so page always fills the viewport
+    // at zoom < 100%, content shrinks → gap appears; minHeight = 100/zoom × 100%
     document.documentElement.style.zoom = `${zoom}%`
+    document.documentElement.style.minHeight = `${parseFloat((100 / (zoom / 100)).toFixed(2))}%`
     if (stored !== String(zoom)) {
       localStorage.setItem('billing_app_zoom', String(zoom))
     }

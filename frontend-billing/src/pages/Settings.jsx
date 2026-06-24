@@ -600,6 +600,7 @@ export default function Settings() {
                         onClick={() => {
                           patch('general', 'app_zoom', v)
                           document.documentElement.style.zoom = `${v}%`
+                          document.documentElement.style.minHeight = `${parseFloat((100 / (v / 100)).toFixed(2))}%`
                         }}
                         style={{
                           padding: '5px 11px',
