@@ -362,8 +362,9 @@ export default function Sales() {
   }
 
   const [tabs, setTabs] = useState(() => {
-    const savedTabsStr = localStorage.getItem('pos_minimized_tabs')
-    const savedActiveId = localStorage.getItem('pos_minimized_active_id')
+    const uid = user?.id
+    const savedTabsStr = uid ? localStorage.getItem(`pos_minimized_tabs_${uid}`) : null
+    const savedActiveId = uid ? localStorage.getItem(`pos_minimized_active_id_${uid}`) : null
     if (savedTabsStr && savedActiveId) {
       try {
         const savedTabs = JSON.parse(savedTabsStr)
@@ -380,7 +381,8 @@ export default function Sales() {
   })
 
   const [activeTabId, setActiveTabId] = useState(() => {
-    const savedActiveId = localStorage.getItem('pos_minimized_active_id')
+    const uid = user?.id
+    const savedActiveId = uid ? localStorage.getItem(`pos_minimized_active_id_${uid}`) : null
     if (savedActiveId) return savedActiveId
     return '1'
   })
@@ -399,9 +401,11 @@ export default function Sales() {
   }, [activeTabId])
 
   useEffect(() => {
-    localStorage.setItem('pos_minimized_tabs', JSON.stringify(tabs))
-    localStorage.setItem('pos_minimized_active_id', activeTabId)
-  }, [tabs, activeTabId])
+    const uid = user?.id
+    if (!uid) return
+    localStorage.setItem(`pos_minimized_tabs_${uid}`, JSON.stringify(tabs))
+    localStorage.setItem(`pos_minimized_active_id_${uid}`, activeTabId)
+  }, [tabs, activeTabId, user?.id])
 
   useEffect(() => {
     setPriceSelectorIndex(null)
@@ -473,9 +477,11 @@ export default function Sales() {
 
 
   useEffect(() => {
-    localStorage.removeItem('pos_minimized')
-    window.dispatchEvent(new Event('pos_minimized_changed'))
-  }, [])
+    if (user?.id) {
+      localStorage.removeItem(`pos_minimized_${user.id}`)
+      window.dispatchEvent(new Event('pos_minimized_changed'))
+    }
+  }, [user?.id])
   
   const [productBatches, setProductBatches] = useState({})
   
@@ -715,8 +721,10 @@ export default function Sales() {
   }, [tabs, activeTabId, godowns, authFetch, syncTabNames, mergePending, dbInvoices])
 
   const handleMinimize = () => {
-    localStorage.setItem('pos_minimized', 'true')
-    window.dispatchEvent(new Event('pos_minimized_changed'))
+    if (user?.id) {
+      localStorage.setItem(`pos_minimized_${user.id}`, 'true')
+      window.dispatchEvent(new Event('pos_minimized_changed'))
+    }
     const lastPage = sessionStorage.getItem('last_page') || '/'
     navigate(lastPage)
   }

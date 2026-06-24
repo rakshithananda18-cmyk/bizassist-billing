@@ -213,13 +213,18 @@ export default function AppLayout({ children, title }) {
   const [minimizedBill, setMinimizedBill] = React.useState(null)
 
   const checkMinimized = React.useCallback(() => {
-    const isMinimized = localStorage.getItem('pos_minimized') === 'true'
-    const savedTabsStr = localStorage.getItem('pos_minimized_tabs')
+    const uid = user?.id
+    if (!uid) {
+      setMinimizedBill(null)
+      return
+    }
+    const isMinimized = localStorage.getItem(`pos_minimized_${uid}`) === 'true'
+    const savedTabsStr = localStorage.getItem(`pos_minimized_tabs_${uid}`)
     if (isMinimized && savedTabsStr) {
       try {
         const savedTabs = JSON.parse(savedTabsStr)
         if (Array.isArray(savedTabs) && savedTabs.length > 0) {
-          const activeId = localStorage.getItem('pos_minimized_active_id')
+          const activeId = localStorage.getItem(`pos_minimized_active_id_${uid}`)
           const activeTab = savedTabs.find(t => t.id === activeId) || savedTabs[0]
           
           const itemsCount = activeTab.form?.items?.length || 0
@@ -243,7 +248,7 @@ export default function AppLayout({ children, title }) {
       }
     }
     setMinimizedBill(null)
-  }, [])
+  }, [user?.id])
 
   React.useEffect(() => {
     checkMinimized()
@@ -372,7 +377,9 @@ export default function AppLayout({ children, title }) {
               <div
                 className="pos-minimized-card"
                 onClick={() => {
-                  localStorage.removeItem('pos_minimized');
+                  if (user?.id) {
+                    localStorage.removeItem(`pos_minimized_${user.id}`);
+                  }
                   window.dispatchEvent(new Event('pos_minimized_changed'));
                   navigate('/sales');
                 }}
@@ -397,9 +404,11 @@ export default function AppLayout({ children, title }) {
                     onClick={(e) => {
                       e.stopPropagation();
                       if (window.confirm('Discard active draft billing session?')) {
-                        localStorage.removeItem('pos_minimized');
-                        localStorage.removeItem('pos_minimized_tabs');
-                        localStorage.removeItem('pos_minimized_active_id');
+                        if (user?.id) {
+                          localStorage.removeItem(`pos_minimized_${user.id}`);
+                          localStorage.removeItem(`pos_minimized_tabs_${user.id}`);
+                          localStorage.removeItem(`pos_minimized_active_id_${user.id}`);
+                        }
                         window.dispatchEvent(new Event('pos_minimized_changed'));
                       }
                     }}
