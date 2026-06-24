@@ -430,15 +430,21 @@ export default function AppLayout({ children, title }) {
                 <button className="profile-menu-item" onClick={() => { setShowProfileMenu(false); navigate('/staff'); }}>
                   <ContactsIcon size={14} /> Staff & Cashiers
                 </button>
-                {hasLock && (
-                  <button
-                    className="profile-menu-item"
-                    onClick={() => { setShowProfileMenu(false); lock() }}
-                    style={{ color: 'var(--warning, #f59e0b)' }}
-                  >
-                    🔒 Lock Session
-                  </button>
-                )}
+                <button
+                  className="profile-menu-item"
+                  onClick={() => {
+                    setShowProfileMenu(false)
+                    if (hasLock) {
+                      lock()
+                    } else {
+                      // No PIN set yet — take them to Settings to set one up
+                      navigate('/settings')
+                    }
+                  }}
+                  style={{ color: 'var(--warning, #f59e0b)' }}
+                >
+                  🔒 {hasLock ? 'Lock Session' : 'Lock App (Set PIN)'}
+                </button>
                 <button className="profile-menu-item logout" onClick={() => { setShowProfileMenu(false); logout(); navigate('/login'); }}>
                   <LogoutIcon size={14} /> Sign Out
                 </button>
