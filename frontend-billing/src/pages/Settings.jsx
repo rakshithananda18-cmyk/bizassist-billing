@@ -240,9 +240,11 @@ function PasscodeModal({ open, hasLock, onClose, setupPasscode, clearPasscode })
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Settings() {
-  const { authFetch } = useAuth()
+  const { authFetch, user } = useAuth()
   const { config, refreshConfig } = useBusinessConfig()
   const { hasLock, setupPasscode, clearPasscode } = useLock()
+  const isCashier = (user?.role || '').toLowerCase() === 'cashier'
+  const visibleTabs = isCashier ? TABS.filter(t => t.id === 'general') : TABS
   const [showPasscodeModal, setShowPasscodeModal] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
   // Which format the print preview shows (independent of the saved thermal_printer_mode).
@@ -449,7 +451,7 @@ export default function Settings() {
           paddingRight: 36,
           marginBottom: 20,
         }}>
-          {TABS.map(tab => (
+          {visibleTabs.map(tab => (
             <button
               key={tab.id}
               onClick={() => handleTabChange(tab.id)}
@@ -481,21 +483,25 @@ export default function Settings() {
           {/* ═══════════════════════════ GENERAL ══════════════════════════════ */}
           {activeTab === 'general' && (
             <>
-              <SectionHeader title="Business Category" />
-              <SettingRow label="Active Business Type" description="Select your business vertical to automatically configure terminology, layouts, and custom fields.">
-                <select
-                  className="form-input"
-                  style={{ width: 220 }}
-                  value={config?.key || 'general'}
-                  onChange={e => handleUpdateTemplate(e.target.value)}
-                >
-                  {templates.map(t => (
-                    <option key={t.key} value={t.key}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </SettingRow>
+              {!isCashier && (
+                <>
+                  <SectionHeader title="Business Category" />
+                  <SettingRow label="Active Business Type" description="Select your business vertical to automatically configure terminology, layouts, and custom fields.">
+                    <select
+                      className="form-input"
+                      style={{ width: 220 }}
+                      value={config?.key || 'general'}
+                      onChange={e => handleUpdateTemplate(e.target.value)}
+                    >
+                      {templates.map(t => (
+                        <option key={t.key} value={t.key}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  </SettingRow>
+                </>
+              )}
 
               <SectionHeader title="Security" />
               <SettingRow label="Passcode Lock" description="Require a passcode to unlock the app after inactivity or manual lock.">
@@ -534,57 +540,65 @@ export default function Settings() {
                 <Toggle id="privacy_mode" checked={g.privacy_mode} onChange={v => patch('general', 'privacy_mode', v)} />
               </SettingRow>
 
-              <SectionHeader title="Backup" />
-              <SettingRow label="Auto Backup" description="Automatically back up your data on schedule.">
-                <Toggle id="auto_backup" checked={g.auto_backup} onChange={v => patch('general', 'auto_backup', v)} />
-              </SettingRow>
-              {g.auto_backup && (
-                <SettingRow label="Backup Reminder (days)" description="Alert if no backup taken within this many days.">
-                  <input
-                    type="number"
-                    min={1}
-                    max={90}
-                    value={g.backup_reminder_days}
-                    onChange={e => patch('general', 'backup_reminder_days', parseInt(e.target.value) || 7)}
-                    className="form-input"
-                    style={{ width: 80, padding: '6px 10px', textAlign: 'center' }}
-                  />
-                </SettingRow>
+              {!isCashier && (
+                <>
+                  <SectionHeader title="Backup" />
+                  <SettingRow label="Auto Backup" description="Automatically back up your data on schedule.">
+                    <Toggle id="auto_backup" checked={g.auto_backup} onChange={v => patch('general', 'auto_backup', v)} />
+                  </SettingRow>
+                  {g.auto_backup && (
+                    <SettingRow label="Backup Reminder (days)" description="Alert if no backup taken within this many days.">
+                      <input
+                        type="number"
+                        min={1}
+                        max={90}
+                        value={g.backup_reminder_days}
+                        onChange={e => patch('general', 'backup_reminder_days', parseInt(e.target.value) || 7)}
+                        className="form-input"
+                        style={{ width: 80, padding: '6px 10px', textAlign: 'center' }}
+                      />
+                    </SettingRow>
+                  )}
+                </>
               )}
 
-              <SectionHeader title="Number Formats" />
-              <SettingRow label="Date Format" description="How dates are displayed across invoices and reports.">
-                <select
-                  className="form-input"
-                  style={{ width: 180 }}
-                  value={g.date_format}
-                  onChange={e => patch('general', 'date_format', e.target.value)}
-                >
-                  <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                  <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                  <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                </select>
-              </SettingRow>
-              <SettingRow label="Quantity Decimal Places" description="Decimal digits for item quantities (e.g. 2.50 kg).">
-                <select
-                  className="form-input"
-                  style={{ width: 100 }}
-                  value={g.quantity_decimal_places}
-                  onChange={e => patch('general', 'quantity_decimal_places', parseInt(e.target.value))}
-                >
-                  {[0,1,2,3].map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </SettingRow>
-              <SettingRow label="Amount Decimal Places" description="Decimal digits for currency amounts (e.g. ₹ 100.00).">
-                <select
-                  className="form-input"
-                  style={{ width: 100 }}
-                  value={g.amount_decimal_places}
-                  onChange={e => patch('general', 'amount_decimal_places', parseInt(e.target.value))}
-                >
-                  {[0,1,2].map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </SettingRow>
+              {!isCashier && (
+                <>
+                  <SectionHeader title="Number Formats" />
+                  <SettingRow label="Date Format" description="How dates are displayed across invoices and reports.">
+                    <select
+                      className="form-input"
+                      style={{ width: 180 }}
+                      value={g.date_format}
+                      onChange={e => patch('general', 'date_format', e.target.value)}
+                    >
+                      <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                      <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                      <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                    </select>
+                  </SettingRow>
+                  <SettingRow label="Quantity Decimal Places" description="Decimal digits for item quantities (e.g. 2.50 kg).">
+                    <select
+                      className="form-input"
+                      style={{ width: 100 }}
+                      value={g.quantity_decimal_places}
+                      onChange={e => patch('general', 'quantity_decimal_places', parseInt(e.target.value))}
+                    >
+                      {[0,1,2,3].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </SettingRow>
+                  <SettingRow label="Amount Decimal Places" description="Decimal digits for currency amounts (e.g. ₹ 100.00).">
+                    <select
+                      className="form-input"
+                      style={{ width: 100 }}
+                      value={g.amount_decimal_places}
+                      onChange={e => patch('general', 'amount_decimal_places', parseInt(e.target.value))}
+                    >
+                      {[0,1,2].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </SettingRow>
+                </>
+              )}
 
               <SectionHeader title="Appearance" />
               <SettingRow

@@ -104,7 +104,7 @@ export default function AppLayout({ children, title }) {
   // Role gating (defense-in-depth — the backend restrict_cashier guard is the
   // real authority; this just hides owner-only destinations from cashiers).
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
-  const OWNER_ONLY_PATHS = new Set(['/purchases', '/connections', '/orders', '/reports', '/import', '/settings', '/staff'])
+  const OWNER_ONLY_PATHS = new Set(['/purchases', '/connections', '/orders', '/reports', '/import', '/staff'])
   const visibleNav = isCashier
     ? NAV.map(s => ({ ...s, items: s.items.filter(i => !OWNER_ONLY_PATHS.has(i.to)) })).filter(s => s.items.length > 0)
     : NAV
