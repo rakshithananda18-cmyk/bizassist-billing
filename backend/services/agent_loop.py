@@ -43,7 +43,7 @@ def _friendly_error(e: Exception) -> str:
     return "*The advisor hit an error — please try again.*"
 
 _SYSTEM = (
-    "You are BIZASSIST — a sharp business advisor for an Indian distributor/wholesaler, "
+    "You are BIZASSIST — a sharp business advisor for a distributor, wholesaler, or retailer, "
     "answering a complex question that needs real data.\n\n"
     "You have TOOLS that read the owner's live database. Use them to gather exactly the "
     "data the question needs — call several if useful, but don't fetch what's irrelevant. "

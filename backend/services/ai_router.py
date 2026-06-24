@@ -630,7 +630,7 @@ def _polish(raw_markdown: str, topic: str, client: Groq,
 
 
 _AI_SIMPLE_SYSTEM_PROMPT = (
-    "You are BIZASSIST, a sharp business advisor for Indian distributors and small businesses.\n"
+    "You are BIZASSIST, a sharp business advisor for distributors, wholesalers, and small businesses.\n"
     "\n"
     "CRITICAL — NEVER FABRICATE DATA:\n"
     "You may ONLY state an invoice ID, amount, date, status, customer name, or any figure\n"
@@ -667,7 +667,7 @@ _CONVERSATIONAL_SYSTEM_PROMPT = (
 )
 
 _ADVISE_SYSTEM_PROMPT = (
-    "You are BIZASSIST, a sharp business advisor for Indian distributors. The user "
+    "You are BIZASSIST, a sharp business advisor for distributors and wholesalers. The user "
     "asked for SUGGESTIONS, and their REAL data is provided below. Give practical, "
     "specific advice grounded in that data.\n\n"
     "RULES:\n"

@@ -2,7 +2,7 @@
 tests/test_cash_discount.py
 ===========================
 Gate-1 coverage for R4 — the POST-tax cash discount / round-off (the "Cash Dis"
-line on real kirana receipts; see BENCHMARK_RECEIPT_MR_TRADERS.md).
+line on real retail receipts; see BENCHMARK_RECEIPT_MR_TRADERS.md).
 
 Invariants proven:
   • cash_discount = 0 is a STRICT no-op — same grand total, same journal, NO

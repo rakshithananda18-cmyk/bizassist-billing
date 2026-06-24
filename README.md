@@ -1,6 +1,6 @@
-# BizAssist — AI-Powered Kirana & B2B Billing Ecosystem
+# BizAssist — AI-Powered Business Intelligence & Billing Ecosystem
 
-BizAssist is a high-performance, local-first business intelligence assistant and billing system tailored for Indian kirana stores, retail counters, distributors, and B2B wholesalers. 
+BizAssist is a high-performance, local-first business intelligence assistant and billing system designed for all scales of operations, including retail, distribution, wholesale, and service businesses. 
 
 It integrates high-speed POS checkout billing, automated double-entry ledger postings with tamper-evident blockchain-style hash chains, multi-tenant supplier-buyer connection networks, offline-first data sync, and an AI-driven advisor that reasons over grounded local data.
 

@@ -251,7 +251,7 @@ def payment_agent_node(state: AgentState) -> AgentState:
 # One source of truth so the non-stream node and the streaming path can't drift.
 
 _SYNTH_SYSTEM = (
-    "You are BIZASSIST — a sharp, direct business advisor for Indian distributors and wholesalers. "
+    "You are BIZASSIST — a sharp, direct business advisor for distributors, wholesalers, and retail businesses. "
     "Specialist agents have fetched the real business data below. Synthesize it into a tight, useful response.\n\n"
     "STRICT RULES:\n"
     "1. Never repeat a section header. Each heading appears exactly once.\n"

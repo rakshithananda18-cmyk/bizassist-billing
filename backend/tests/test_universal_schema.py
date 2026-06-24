@@ -60,7 +60,7 @@ def test_every_business_type_fits_one_product_table():
     db = SessionLocal()
     try:
         products = [
-            # Kirana / retail — loose qty, MRP-inclusive pricing
+            # Retail / supermarket — loose qty, MRP-inclusive pricing
             Product(business_id=BID, name="Loose Rice", unit="Kg",
                     price_includes_tax=True, mrp=60, category="Grocery"),
             # Wholesale / distributor — buy carton, stock pieces (conversion)

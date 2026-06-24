@@ -1,6 +1,6 @@
-# Benchmark Receipt — M.R. Traders (real kirana thermal bill)
+# Benchmark Receipt — M.R. Traders (Real Retail Thermal Receipt)
 
-> A real intra-state kirana (grocery) thermal receipt supplied by a pilot retailer, used as the
+> A real intra-state retail grocery thermal receipt supplied by a pilot retailer, used as the
 > **format + pricing + GST benchmark** for BizAssist POS, the thermal print template, and the R4
 > pricing refactor. Every claim below is reconciled against the printed figures.
 

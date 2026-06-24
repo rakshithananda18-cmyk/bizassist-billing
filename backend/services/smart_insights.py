@@ -352,7 +352,7 @@ def contextual_insight(user_id: int, handler_key: str, snap: dict = None) -> dic
 # ── Layer 2: grounded advisor (70B) ─────────────────────────────────────────
 
 _ADVISOR_SYSTEM = (
-    "You are a sharp business growth advisor for an Indian distributor / small business. "
+    "You are a sharp business growth advisor for a distributor, wholesaler, or small business. "
     "You are given the owner's REAL business data as JSON. Give a BALANCED read:\n"
     "- 2-3 STRENGTHS (polarity 'positive') — what's working well, worth reinforcing "
     "(e.g. a strong collection rate, a top-selling product, a loyal high-value customer).\n"

@@ -226,7 +226,7 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
     rounded   = _round2(round(raw_total))           # round to nearest rupee
     round_off = _round2(rounded - raw_total)
     # Post-tax cash discount / round-off: reduces the PAYABLE only — never the
-    # taxable value or GST (the "Cash Dis" line on real kirana receipts; see
+    # taxable value or GST (the "Cash Dis" line on real retail receipts; see
     # BENCHMARK_RECEIPT_MR_TRADERS.md). Clamped to [0, rounded]. 0 ⇒ exact no-op,
     # so all existing invoices/tests are unaffected.
     cash_disc = min(max(_round2(cash_discount or 0.0), 0.0), rounded)

@@ -119,8 +119,8 @@ def _build_system_prompt() -> str:
     intent_lines = "\n".join(f"  {k}: {v}" for k, v in INTENTS.items())
     actions = ", ".join(ACTIONS)
     return (
-        "You are the query router for BizAssist, a business assistant for Indian "
-        "distributors. Classify the user's message. Respond with ONLY this JSON:\n"
+        "You are the query router for BizAssist, a business assistant. "
+        "Classify the user's message. Respond with ONLY this JSON:\n"
         '{"mode": "answer|advise|act|analyze|chat", "intent": "<intent or null>", '
         '"action": "<action or null>", "entities": {"customer": null, "invoice_id": null, '
         '"limit": null, "days_range": null, "month": null}, "confidence": 0.0}\n\n'

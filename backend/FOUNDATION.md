@@ -113,7 +113,7 @@ Validated against the 16 GST Rule-46 mandatory fields and ERPNext's item-master 
 
 | Business type | Key fields it uses | Vertical extras (in `attributes`) |
 |---|---|---|
-| **Kirana / retail** | `unit` (Kg/loose), `price_includes_tax` (MRP incl. GST), `mrp` | — |
+| **Retail / supermarket** | `unit` (Kg/loose), `price_includes_tax` (MRP incl. GST), `mrp` | — |
 | **Wholesale / distributor** | `purchase_unit` + `conversion_factor` (carton→pcs), `sku`, price tiers (Phase 3) | — |
 | **Pharmacy** | `Inventory.batch_no`/`expiry_date`, line `batch_no`, `hsn_sac` | `drug_schedule`, `salt`, `manufacturer` |
 | **Garments / footwear** | `variant_of` (+ parent), `brand` | `size`, `colour`, `fabric` |

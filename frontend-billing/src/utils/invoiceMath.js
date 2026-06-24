@@ -79,7 +79,7 @@ export function computeInvoiceTotals(items = [], { isIntrastate = true, billDisc
   const grandTotal = discountedSubtotal + gstAmt
 
   // Single post-tax cash discount: trims the PAYABLE only — never the taxable base
-  // or GST (the "Cash Dis" line on real kirana receipts). Clamped to [0, grandTotal].
+  // or GST (the "Cash Dis" line on real retail receipts). Clamped to [0, grandTotal].
   const cashDisc = Math.min(Math.max(parseFloat(cashDiscount) || 0, 0), grandTotal)
 
   // AUTOMATIC round-off: the grand total is rounded to the nearest rupee (matching
@@ -118,7 +118,7 @@ export function roundOffDiscount(grandTotal) {
 }
 
 /**
- * Per-slab GST breakdown for the receipt's tax table (matches the kirana receipt:
+ * Per-slab GST breakdown for the receipt's tax table (matches the retail receipt:
  * one row per GST rate with taxable value + CGST/SGST/IGST). Tax-exclusive — the
  * line total is the taxable base and GST sits on top, same as computeInvoiceTotals.
  * @returns {Array<{rate,taxable,cgst,sgst,igst,gst}>} sorted by rate ascending
