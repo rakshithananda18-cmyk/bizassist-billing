@@ -107,6 +107,10 @@ export default function AppLayout({ children, title }) {
     ? NAV.map(s => ({ ...s, items: s.items.filter(i => !OWNER_ONLY_PATHS.has(i.to)) })).filter(s => s.items.length > 0)
     : NAV
 
+  const visibleSubnav = isCashier
+    ? SUBNAV.filter(item => !OWNER_ONLY_PATHS.has(item.to))
+    : SUBNAV
+
   // Track collapsed state per section with localStorage persistence
   const [collapsed, setCollapsed] = React.useState(() => {
     try {
@@ -299,18 +303,6 @@ export default function AppLayout({ children, title }) {
                   <div
                     className="nav-section-label"
                     onClick={() => toggleSection(section)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      cursor: 'pointer',
-                      userSelect: 'none',
-                      padding: '8px 10px',
-                      borderRadius: 'var(--radius-sm)',
-                      transition: 'background var(--dur) var(--ease)'
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--accent-dim)'}
-                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                   >
                     <span>{section}</span>
                     <span style={{
@@ -345,33 +337,13 @@ export default function AppLayout({ children, title }) {
           {/* Footer / User */}
           <div className="sidebar-footer">
             {minimizedBill && (
-              <div style={{
-                background: 'var(--accent-dim)',
-                border: '1.5px solid var(--accent)',
-                borderRadius: 'var(--radius-md)',
-                padding: '10px 12px',
-                marginBottom: '12px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-                boxShadow: 'var(--shadow-sm)',
-                cursor: 'pointer',
-                position: 'relative',
-                transition: 'transform var(--dur) var(--ease), border-color var(--dur) var(--ease)'
-              }}
-              onClick={() => {
-                localStorage.removeItem('pos_minimized');
-                window.dispatchEvent(new Event('pos_minimized_changed'));
-                navigate('/sales');
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.borderColor = 'var(--accent-light)';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.borderColor = 'var(--accent)';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
+              <div
+                className="pos-minimized-card"
+                onClick={() => {
+                  localStorage.removeItem('pos_minimized');
+                  window.dispatchEvent(new Event('pos_minimized_changed'));
+                  navigate('/sales');
+                }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.02em' }}>
@@ -452,7 +424,7 @@ export default function AppLayout({ children, title }) {
             <div className="user-chip" title="Settings & Profile" ref={userChipRef} onClick={() => setShowProfileMenu(!showProfileMenu)}>
               <div className="user-avatar">
                 {profile?.logo ? (
-                  <img src={profile.logo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }} />
+                  <img src={profile.logo} alt="Logo" />
                 ) : (
                   initials
                 )}
@@ -470,6 +442,26 @@ export default function AppLayout({ children, title }) {
 
       {/* ── Main area ── */}
       <div className="main-area">
+        {/* Mobile horizontal nav strip */}
+        {!isSalesPage && (
+          <div className="mobile-nav-bar">
+            {visibleSubnav.map(item => {
+              const isActive = location.pathname === item.to;
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.to === '/'}
+                  className={`mobile-nav-link ${isActive ? 'active' : ''}`}
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                </NavLink>
+              );
+            })}
+          </div>
+        )}
+
         {/* ── Page content ── */}
         <main className="page-content">
           {children}

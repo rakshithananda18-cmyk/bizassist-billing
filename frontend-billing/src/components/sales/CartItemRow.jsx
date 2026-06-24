@@ -33,14 +33,7 @@ export default function CartItemRow({
 }) {
   return (
     <tr className="item-row">
-      <td style={{
-        position: 'sticky',
-        left: 0,
-        zIndex: 2,
-        background: 'var(--bg-2)',
-        fontWeight: 600,
-        color: 'var(--text-muted)'
-      }}>{index + 1}</td>
+      <td className="pos-sticky-index">{index + 1}</td>
       {columnOrder.map(col => {
         const isVisible = col === 'sku' ? colVisible.sku :
                           col === 'mrp' ? colVisible.mrp :
@@ -55,25 +48,13 @@ export default function CartItemRow({
         if (!isVisible) return null;
 
         const isSticky = stickyOffsets[col] !== undefined;
-        const style = {
-          zIndex: isSticky ? 2 : undefined,
-          background: 'var(--bg-2)',
-        };
-        if (isSticky) {
-          style.position = 'sticky';
-          style.left = stickyOffsets[col];
-          if (col === 'name') {
-            style.borderRight = '1px solid var(--border)';
-            style.boxShadow = '4px 0 4px -2px rgba(0,0,0,0.1)';
-            style.textAlign = 'left';
-          }
-        }
+        const style = isSticky ? { left: stickyOffsets[col] } : {};
 
         const renderCell = () => {
           if (col === 'sku') {
             return (
-              <td key="sku" style={style}>
-                <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              <td key="sku">
+                <span className="pos-cell-text pos-cell-secondary-text">
                   {item.sku || '—'}
                 </span>
               </td>
@@ -82,11 +63,10 @@ export default function CartItemRow({
 
           if (col === 'name') {
             return (
-              <td key="name" style={style}>
+              <td key="name">
                 {item.is_custom ? (
                   <input
-                    className="pos-cell-input"
-                    style={{ textAlign: 'left' }}
+                    className="pos-cell-input pos-align-left"
                     placeholder="Type item name…"
                     value={item.product}
                     onChange={e => setItem(index, 'product', e.target.value)}
@@ -103,11 +83,11 @@ export default function CartItemRow({
 
           if (col === 'batch') {
             return (
-              <td key="batch" style={{ ...style, textAlign: 'center', padding: '4px 8px' }}>
+              <td key="batch" className="pos-align-center pos-cell-padded">
                 {item.product_id ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
+                  <div className="pos-flex-col-center">
                     <select
-                      style={{ fontSize: '0.72rem', padding: '2px 4px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg-3)', color: 'var(--text-primary)', maxWidth: '130px', textOverflow: 'ellipsis' }}
+                      className="pos-dropdown-select pos-batch-select"
                       value={item.batch_no || ''}
                       onChange={e => {
                         const selectedBatchNo = e.target.value
@@ -133,16 +113,16 @@ export default function CartItemRow({
                         const diffTime = expDate - today
                         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
                         if (diffDays <= 0) {
-                          return <span style={{ fontSize: '0.68rem', color: 'var(--danger)', fontWeight: 600, display: 'block' }}><AlertIcon size={10} style={{ display: 'inline', marginRight: 2, verticalAlign: 'middle' }} />Expired!</span>
+                          return <span className="pos-expiry-alert expired"><AlertIcon size={10} className="pos-icon-inline" />Expired!</span>
                         } else if (diffDays <= 30) {
-                          return <span style={{ fontSize: '0.68rem', color: 'var(--warning)', fontWeight: 600, display: 'block' }}><AlertIcon size={10} style={{ display: 'inline', marginRight: 2, verticalAlign: 'middle' }} />Expiring in {diffDays} days</span>
+                          return <span className="pos-expiry-alert expiring"><AlertIcon size={10} className="pos-icon-inline" />Expiring in {diffDays} days</span>
                         }
-                        return <span style={{ fontSize: '0.68rem', color: 'var(--success)', display: 'block' }}>Expires: {item.expiry_date}</span>
+                        return <span className="pos-expiry-alert valid">Expires: {item.expiry_date}</span>
                       })()
                     )}
                   </div>
                 ) : (
-                  <span style={{ color: 'var(--text-muted)' }}>—</span>
+                  <span className="pos-text-muted">—</span>
                 )}
               </td>
             );
@@ -151,10 +131,10 @@ export default function CartItemRow({
           if (col === 'price_option') {
             const opts = getPriceOptions(item)
             return (
-              <td key="price_option" style={{ ...style, textAlign: 'center', padding: '4px 8px' }}>
+              <td key="price_option" className="pos-align-center pos-cell-padded">
                 {item.product_id ? (
                   <select
-                    style={{ fontSize: '0.72rem', padding: '2px 4px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg-3)', color: 'var(--text-primary)', maxWidth: '145px', textOverflow: 'ellipsis' }}
+                    className="pos-dropdown-select pos-price-select"
                     value={item.selected_price_label || 'Standard Price'}
                     onFocus={async () => {
                       try {
@@ -192,7 +172,7 @@ export default function CartItemRow({
                     )}
                   </select>
                 ) : (
-                  <span style={{ color: 'var(--text-muted)' }}>—</span>
+                  <span className="pos-text-muted">—</span>
                 )}
               </td>
             );
@@ -200,8 +180,8 @@ export default function CartItemRow({
 
           if (col === 'mrp') {
             return (
-              <td key="mrp" style={{ ...style, textAlign: 'right' }}>
-                <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              <td key="mrp" className="pos-align-right">
+                <span className="pos-cell-text pos-cell-secondary-text">
                   {fmt(products.find(p => p.id === item.product_id)?.mrp || item.price)}
                 </span>
               </td>
@@ -210,8 +190,8 @@ export default function CartItemRow({
 
           if (col === 'hsn') {
             return (
-              <td key="hsn" style={{ ...style, textAlign: 'center' }}>
-                <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              <td key="hsn" className="pos-align-center">
+                <span className="pos-cell-text pos-cell-secondary-text">
                   {products.find(p => p.id === item.product_id)?.hsn || '—'}
                 </span>
               </td>
@@ -220,12 +200,12 @@ export default function CartItemRow({
 
           if (col === 'qty') {
             return (
-              <td key="qty" style={style}>
+              <td key="qty">
                 <input
                   type="number"
                   min="0.01"
                   step="any"
-                  className="pos-cell-input qty-input"
+                  className="pos-cell-input qty-input pos-align-center"
                   value={item.qty}
                   onChange={e => onQtyChange(index, e.target.value)}
                   required
@@ -236,7 +216,7 @@ export default function CartItemRow({
 
           if (col === 'unit') {
             return (
-              <td key="unit" style={{ ...style, textAlign: 'center', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+              <td key="unit" className="pos-align-center pos-text-muted" style={{ fontSize: '0.8rem', fontWeight: 600 }}>
                 pcs
               </td>
             );
@@ -245,14 +225,13 @@ export default function CartItemRow({
           if (col === 'rate') {
             const currentRate = parseFloat(item.selected_price) || (parseFloat(item.price) - (parseFloat(item.discount) / (parseFloat(item.qty) || 1)))
             return (
-              <td key="rate" style={style}>
+              <td key="rate">
                 {item.product_id ? (
                   <input
                     type="number"
                     min="0"
                     step="any"
-                    className="pos-cell-input rate-input"
-                    style={{ textAlign: 'right', fontWeight: 600, color: 'var(--primary)' }}
+                    className="pos-cell-input rate-input pos-rate-input"
                     value={isNaN(currentRate) ? '' : parseFloat(currentRate.toFixed(2))}
                     onChange={e => {
                       const newRate = parseFloat(e.target.value) || 0
@@ -263,7 +242,7 @@ export default function CartItemRow({
                     }}
                   />
                 ) : (
-                  <span style={{ color: 'var(--text-muted)' }}>—</span>
+                  <span className="pos-text-muted">—</span>
                 )}
               </td>
             );
@@ -271,8 +250,8 @@ export default function CartItemRow({
 
           if (col === 'price') {
             return (
-              <td key="price" style={{ ...style, textAlign: 'right' }}>
-                <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              <td key="price" className="pos-align-right">
+                <span className="pos-cell-text pos-cell-secondary-text">
                   {item.product ? fmt(lineTotal(item)) : '—'}
                 </span>
               </td>
@@ -281,8 +260,8 @@ export default function CartItemRow({
 
           if (col === 'discount') {
             return (
-              <td key="discount" style={{ ...style, textAlign: 'right' }}>
-                <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              <td key="discount" className="pos-align-right">
+                <span className="pos-cell-text pos-cell-secondary-text">
                   {fmt(parseFloat(item.discount) || 0)}
                 </span>
               </td>
@@ -295,14 +274,13 @@ export default function CartItemRow({
             const igstRate = item.igst_rate ? parseFloat(item.igst_rate) : (cgstRate + sgstRate)
             const totalRate = isIntrastate ? (cgstRate + sgstRate) : igstRate
             return (
-              <td key="tax" style={{ ...style, textAlign: 'center', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              <td key="tax" className="pos-cell-tax">
                 {item.is_custom ? (
                   <input
                     type="number"
                     min="0"
                     max="100"
-                    className="pos-cell-input"
-                    style={{ textAlign: 'center', width: '60px' }}
+                    className="pos-cell-input pos-tax-input"
                     value={totalRate || ''}
                     onChange={e => {
                       const rate = parseFloat(e.target.value) || 0
@@ -334,7 +312,7 @@ export default function CartItemRow({
             const rate = isIntrastate ? (cgstR + sgstR) : igstR
             const totalAfterTax = lineTotal(item) * (1 + rate / 100)
             return (
-              <td key="total" style={{ ...style, textAlign: 'right', fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+              <td key="total" className="pos-cell-total">
                 {item.product ? fmt(totalAfterTax) : '—'}
               </td>
             );
@@ -344,17 +322,23 @@ export default function CartItemRow({
         };
         const cellEl = renderCell();
         if (cellEl) {
-          return React.cloneElement(cellEl, { className: `${cellEl.props.className || ''} col-${col}`.trim() });
+          const extraClasses = `col-${col} ${isSticky ? 'pos-sticky-cell' : ''} ${col === 'name' && isSticky ? 'pos-sticky-cell-name' : ''}`.trim();
+          return React.cloneElement(cellEl, {
+            className: `${cellEl.props.className || ''} ${extraClasses}`.trim(),
+            style: { ...cellEl.props.style, ...style }
+          });
         }
         return null;
       })}
-      <td style={{ textAlign: 'center' }}>
+      <td className="pos-align-center">
         <button
           type="button"
-          className="btn btn-ghost btn-icon btn-sm"
+          className="btn btn-ghost btn-icon btn-sm pos-delete-btn"
           onClick={() => onRemove(index)}
-          style={{ color: 'var(--danger)', padding: 4 }}
-         aria-label="Close"><CloseIcon size={16} /></button>
+          aria-label="Remove item"
+        >
+          <CloseIcon size={16} />
+        </button>
       </td>
     </tr>
   )

@@ -58,7 +58,7 @@ describe('CartItemRow', () => {
   it('fires onRemove when the ✕ button is clicked', () => {
     const onRemove = vi.fn()
     renderRow({ onRemove })
-    fireEvent.click(screen.getByLabelText('Close'))
+    fireEvent.click(screen.getByLabelText('Remove item'))
     expect(onRemove).toHaveBeenCalledWith(0)
   })
 
