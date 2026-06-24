@@ -202,7 +202,7 @@ export default function CartItemRow({
             return (
               <td key="mrp" style={{ ...style, textAlign: 'right' }}>
                 <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  {fmt(item.mrp || products.find(p => p.id === item.product_id)?.mrp || 0)}
+                  {fmt(products.find(p => p.id === item.product_id)?.mrp || item.price)}
                 </span>
               </td>
             );
@@ -243,10 +243,10 @@ export default function CartItemRow({
           }
 
           if (col === 'rate') {
-            const currentRate = parseFloat(item.price) || 0
+            const currentRate = parseFloat(item.selected_price) || (parseFloat(item.price) - (parseFloat(item.discount) / (parseFloat(item.qty) || 1)))
             return (
               <td key="rate" style={style}>
-                {item.product_id || item.is_custom ? (
+                {item.product_id ? (
                   <input
                     type="number"
                     min="0"
@@ -281,23 +281,10 @@ export default function CartItemRow({
 
           if (col === 'discount') {
             return (
-              <td key="discount" style={style}>
-                {item.product_id || item.is_custom ? (
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    className="pos-cell-input discount-input"
-                    style={{ textAlign: 'right', color: 'var(--text-secondary)' }}
-                    value={parseFloat(item.discount) || 0}
-                    onChange={e => {
-                      const newDisc = parseFloat(e.target.value) || 0
-                      setItem(index, 'discount', newDisc)
-                    }}
-                  />
-                ) : (
-                  <span style={{ color: 'var(--text-muted)' }}>—</span>
-                )}
+              <td key="discount" style={{ ...style, textAlign: 'right' }}>
+                <span className="pos-cell-text" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  {fmt(parseFloat(item.discount) || 0)}
+                </span>
               </td>
             );
           }

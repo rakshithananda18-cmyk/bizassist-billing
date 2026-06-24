@@ -176,9 +176,9 @@ describe('buildInvoicePayload (the money contract sent to the backend)', () => {
     expect(p.due_date).toBeNull()
     expect(p.gst_enabled).toBe(true)
   })
-  it('sends explicit price and discount directly', () => {
-    expect(p.items[0].price).toBe(100)
-    expect(p.items[0].discount).toBe(50)
+  it('spreads the line discount into an effective per-unit price', () => {
+    // (2×100 − 50) / 2 = 75
+    expect(p.items[0].price).toBe(75)
     expect(p.items[0].qty).toBe(2)
     expect(p.items[0].product_id).toBe(12)
   })

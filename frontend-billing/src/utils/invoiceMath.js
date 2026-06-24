@@ -236,12 +236,15 @@ export function buildInvoicePayload({ invoiceNo, form, gstEnabled, billDiscount 
     mark_paid: !!markPaid,                           // "Paid & Print" → settle full payable exactly
     notes: form.notes || null,
     items: form.items.map((it) => {
+      const q = parseFloat(it.qty) || 1
+      const p = parseFloat(it.price) || 0
+      const d = parseFloat(it.discount) || 0
+      const effectivePrice = Math.max(0, (q * p - d) / q)
       return {
         product_id: it.product_id ? parseInt(it.product_id) : null,
         product: it.product,
-        qty: parseFloat(it.qty) || 1,
-        price: parseFloat(it.price) || 0,
-        discount: parseFloat(it.discount) || 0,
+        qty: q,
+        price: effectivePrice,
         batch_no: it.batch_no || null,
         expiry_date: it.expiry_date || null,
         cgst_rate: parseFloat(it.cgst_rate) || 0,

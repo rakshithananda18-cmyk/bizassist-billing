@@ -297,10 +297,20 @@ export default function Sales() {
         const items = [...f.items]
         const item = items[priceSelectorIndex]
         if (item) {
+          const p = products.find(prod => prod.id === item.product_id)
+          let newPrice = price
+          let newDiscount = 0
+          const qty = parseFloat(item.qty) || 1
+          
+          if (p && parseFloat(p.mrp) > 0 && price <= parseFloat(p.mrp)) {
+             newPrice = parseFloat(p.mrp)
+             newDiscount = schemeDiscount(p.mrp, price, qty)
+          }
+
           items[priceSelectorIndex] = {
             ...item,
-            price: price,
-            discount: 0,
+            price: newPrice,
+            discount: newDiscount,
             selected_price: price,
             selected_price_label: label || 'Custom Price'
           }
@@ -325,7 +335,21 @@ export default function Sales() {
   // this, or the absolute discount stays at its old-qty value and the line bills
   // toward MRP. No rescale when the cashier typed a custom price (no scheme).
   const withQty = (item, newQty) => {
-    return { ...item, qty: newQty }
+    const updated = { ...item, qty: newQty }
+    if (updated.product_id) {
+      const p = products.find(prod => prod.id === updated.product_id)
+      const mrp = p ? (parseFloat(p.mrp) || 0) : (parseFloat(updated.mrp) || 0)
+      const selPrice = parseFloat(updated.selected_price) || 0
+      
+      if (mrp > 0 && selPrice <= mrp) {
+        updated.price = mrp
+        updated.discount = schemeDiscount(mrp, selPrice, newQty)
+      } else {
+        updated.price = selPrice
+        updated.discount = 0
+      }
+    }
+    return updated
   }
 
   const handleQtyChange = (index, value) => {
@@ -741,8 +765,24 @@ export default function Sales() {
       const updates = typeof kOrUpdates === 'object' ? kOrUpdates : { [kOrUpdates]: v }
       const updatedItem = { ...item, ...updates }
       
-      if ('selected_price' in updates) {
-        updatedItem.price = parseFloat(updatedItem.selected_price) || 0
+      const qty = parseFloat(updatedItem.qty) || 0
+      const mrpFieldVal = parseFloat(updatedItem.price) || 0
+      const selPrice = parseFloat(updatedItem.selected_price) || 0
+      const p = products.find(prod => prod.id === updatedItem.product_id)
+      const mrp = p ? (parseFloat(p.mrp) || 0) : mrpFieldVal
+      
+      if (updatedItem.product_id) {
+        if (mrp > 0 && selPrice <= mrp) {
+          updatedItem.price = mrp
+          updatedItem.discount = schemeDiscount(mrp, selPrice, qty)
+        } else {
+          updatedItem.price = selPrice
+          updatedItem.discount = 0
+        }
+      } else {
+        if ('selected_price' in updates) {
+          updatedItem.price = parseFloat(updatedItem.selected_price) || 0
+        }
       }
       
       items[i] = updatedItem
@@ -924,14 +964,26 @@ export default function Sales() {
           sgst_rate: product.sgst_rate || 0,
           igst_rate: product.igst_rate || 0,
         }
+        const updatedItem = items[existingIdx]
+        const qty = updatedItem.qty
+        const selPrice = parseFloat(updatedItem.selected_price) || 0
+        const mrp = parseFloat(product.mrp) || 0
+        if (mrp > 0 && selPrice <= mrp) {
+          updatedItem.discount = schemeDiscount(mrp, selPrice, qty)
+        }
       } else {
+        let finalPrice = defaultPrice
+        let finalDiscount = 0
+        if (product.mrp && parseFloat(product.mrp) > 0 && defaultPrice <= parseFloat(product.mrp)) {
+          finalPrice = parseFloat(product.mrp)
+          finalDiscount = schemeDiscount(product.mrp, defaultPrice, 1)
+        }
         items.push({
           product_id: product.id,
           product: product.name,
-          price: defaultPrice,
+          price: finalPrice,
           sku: product.sku || product.barcode || '—',
-          discount: 0,
-          mrp: parseFloat(product.mrp) || 0,
+          discount: finalDiscount,
           qty: 1,
           is_custom: false,
           batch_no: '',
