@@ -23,6 +23,12 @@ logger = logging.getLogger("bizassist.core.api.connections")
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
+class PosCartSync(BaseModel):
+    client_id: str
+    tabs: list
+    active_tab_id: str
+
+
 class PolicyRequest(BaseModel):
     price_tier: str = Field(..., description="standard | wholesale | distributor")
     discount_pct: float = Field(0.0, ge=0.0, le=100.0)
@@ -247,3 +253,21 @@ async def sse_realtime_feed(request: Request, current_user: dict = Depends(restr
             "Connection": "keep-alive"
         }
     )
+
+@router.post("/realtime/sync-cart")
+async def pos_cart_sync(
+    req: PosCartSync,
+    current_user: dict = Depends(get_active_user)
+):
+    bid = current_user["id"]
+    await realtime_manager.broadcast(
+        bid,
+        {
+            "type": "pos.cart_sync",
+            "client_id": req.client_id,
+            "tabs": req.tabs,
+            "active_tab_id": req.active_tab_id
+        }
+    )
+    return {"status": "broadcasted"}
+

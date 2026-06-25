@@ -361,6 +361,10 @@ export default function Sales() {
     })
   }
 
+  const clientIdRef = useRef(Math.random().toString(36).substring(7))
+  const clientId = clientIdRef.current
+  const isSyncingRef = useRef(false)
+
   const [tabs, setTabs] = useState(() => {
     const uid = user?.id
     const savedTabsStr = uid ? localStorage.getItem(`pos_minimized_tabs_${uid}`) : null
@@ -405,7 +409,50 @@ export default function Sales() {
     if (!uid) return
     localStorage.setItem(`pos_minimized_tabs_${uid}`, JSON.stringify(tabs))
     localStorage.setItem(`pos_minimized_active_id_${uid}`, activeTabId)
-  }, [tabs, activeTabId, user?.id])
+
+    if (isSyncingRef.current) {
+      isSyncingRef.current = false
+      return
+    }
+
+    const t = setTimeout(async () => {
+      try {
+        await authFetch('/realtime/sync-cart', {
+          method: 'POST',
+          body: JSON.stringify({
+            client_id: clientId,
+            tabs,
+            active_tab_id: activeTabId
+          })
+        })
+      } catch (err) {
+        logger.error('[SALES] Failed to broadcast cart sync:', err)
+      }
+    }, 600)
+
+    return () => clearTimeout(t)
+  }, [tabs, activeTabId, user?.id, authFetch, clientId])
+
+  useEffect(() => {
+    const handleSync = (e) => {
+      const { type, client_id, tabs: remoteTabs, active_tab_id: remoteActiveTabId } = e.detail || {}
+      if (type === 'pos.cart_sync' && client_id !== clientId) {
+        logger.info('[SALES] Received remote cart sync from client:', client_id)
+        isSyncingRef.current = true
+        if (Array.isArray(remoteTabs) && remoteTabs.length > 0) {
+          setTabs(remoteTabs)
+        }
+        if (remoteActiveTabId) {
+          setActiveTabId(remoteActiveTabId)
+        }
+      }
+    }
+    window.addEventListener('sync-event', handleSync)
+    return () => {
+      window.removeEventListener('sync-event', handleSync)
+    }
+  }, [clientId])
+
 
   useEffect(() => {
     setPriceSelectorIndex(null)
