@@ -29,12 +29,10 @@ if DATABASE_URL.startswith("sqlite"):
         }
     )
 else:
+    from sqlalchemy.pool import NullPool
     engine = create_engine(
         DATABASE_URL,
-        pool_size=3,
-        max_overflow=5,
-        pool_recycle=300,
-        pool_pre_ping=True
+        poolclass=NullPool
     )
 
 SessionLocal = sessionmaker(
