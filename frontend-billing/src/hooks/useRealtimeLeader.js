@@ -148,12 +148,18 @@ export function useRealtimeLeader(token, settings, user) {
           connectionError = 'Sync stream interrupted. Reconnecting…'
           emitStatus('error')
           channel.postMessage({ type: 'status_change', status: 'error', error: connectionError })
+          window.dispatchEvent(new CustomEvent('show_toast', {
+            detail: { type: 'error', msg: 'Sync stream interrupted. Reconnecting…' }
+          }))
         }
       } catch (err) {
         logger.error('[REALTIME] EventSource setup failed:', err)
         connectionError = err.message || 'Failed to initialize sync client.'
         emitStatus('error')
         channel.postMessage({ type: 'status_change', status: 'error', error: connectionError })
+        window.dispatchEvent(new CustomEvent('show_toast', {
+          detail: { type: 'error', msg: `Sync connection failed: ${connectionError}` }
+        }))
       }
     }
 
@@ -219,6 +225,19 @@ export function useRealtimeLeader(token, settings, user) {
       } else if (msg.type === 'status_change') {
         if (!isCurrentLeader) {
           emitStatus(msg.status, msg.error)
+          if (msg.status === 'connected') {
+            window.dispatchEvent(new CustomEvent('show_toast', {
+              detail: { type: 'success', msg: 'Cloud real-time sync connected.' }
+            }))
+          } else if (msg.status === 'connecting') {
+            window.dispatchEvent(new CustomEvent('show_toast', {
+              detail: { type: 'info', msg: `Connecting to cloud sync stream (${hostingMode} mode)…` }
+            }))
+          } else if (msg.status === 'error') {
+            window.dispatchEvent(new CustomEvent('show_toast', {
+              detail: { type: 'error', msg: msg.error || 'Sync stream interrupted. Reconnecting…' }
+            }))
+          }
         }
       } else if (msg.type === 'reconnect_request') {
         if (isCurrentLeader) {
