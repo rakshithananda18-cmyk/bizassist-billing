@@ -1128,7 +1128,7 @@ export default function Settings() {
                 </SettingRow>
                 <SettingRow label="Invoice Layout Theme" description="Choose visual theme for regular printing.">
                   <select className="form-input" style={{ width: 140 }} value={pr.invoice_theme || 'classic'} onChange={e => patch('print', 'invoice_theme', e.target.value)}>
-                    <option value="classic">Classic (Vyapar Style)</option>
+                    <option value="classic">Classic (Traditional Style)</option>
                     <option value="modern">Modern Professional</option>
                     <option value="minimal">Minimal Compact</option>
                   </select>

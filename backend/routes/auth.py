@@ -211,7 +211,7 @@ def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(get_a
 
 import json
 
-# Canonical default settings — own naming, no Vyapar prefixes
+# Canonical default settings — own naming, no competitor prefixes
 _DEFAULT_SETTINGS = {
     # ── General ──────────────────────────────────────────────────────────────
     "general": {
