@@ -41,11 +41,20 @@ export function AuthProvider({ children }) {
     setToken(tok)
     setUser(userObj)
     // Store which backend this account lives on (db_mode: 'local' | 'cloud').
-    // getApiBase() reads this first so requests always go to the right DB.
+    // We log a warning if the account's home backend doesn't match the current
+    // platform (e.g. local account opened on web URL) but do NOT redirect —
+    // the URL-based detection in config.js is the authoritative routing rule.
     if (data.db_mode) {
       localStorage.setItem('bizassist_user_home_mode', data.db_mode)
-      updateApiBase(data.db_mode)
-      logger.info(`[AUTH] Account home mode set to: ${data.db_mode} (from db_mode)`)
+      const currentPlatform = IS_LOCAL_APP ? 'local' : 'cloud'
+      if (data.db_mode !== currentPlatform) {
+        logger.warn(
+          `[AUTH] Account home is "${data.db_mode}" but running on "${currentPlatform}" platform. ` +
+          `Data may be on a different backend. Consider switching platforms.`
+        )
+      } else {
+        logger.info(`[AUTH] Account home mode confirmed: ${data.db_mode}`)
+      }
     }
   }, [])
 
