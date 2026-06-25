@@ -67,18 +67,18 @@ function RealtimeSyncListener() {
 
   useEffect(() => {
     if (!token || !user) {
-      window.dispatchEvent(new CustomEvent('sync-status-change', {
-        detail: { status: 'disconnected', error: null, lastSyncTime: null, lastEntity: null, isOnline: navigator.onLine }
-      }))
+      const detail = { status: 'disconnected', error: null, lastSyncTime: null, lastEntity: null, isOnline: navigator.onLine }
+      window.__syncStatus = detail
+      window.dispatchEvent(new CustomEvent('sync-status-change', { detail }))
       return
     }
 
     const hostingMode = settings?.general?.hosting_mode || 'local'
     if (hostingMode === 'local') {
       logger.info('[REALTIME] Hosting mode is Local. Real-time stream disabled.')
-      window.dispatchEvent(new CustomEvent('sync-status-change', {
-        detail: { status: 'disconnected', error: null, lastSyncTime: null, lastEntity: null, isOnline: navigator.onLine }
-      }))
+      const detail = { status: 'disconnected', error: null, lastSyncTime: null, lastEntity: null, isOnline: navigator.onLine }
+      window.__syncStatus = detail
+      window.dispatchEvent(new CustomEvent('sync-status-change', { detail }))
       return
     }
 
@@ -87,15 +87,15 @@ function RealtimeSyncListener() {
     let connectionError = null
 
     const emitStatus = (status, errOverride = null) => {
-      window.dispatchEvent(new CustomEvent('sync-status-change', {
-        detail: {
-          status,
-          error: errOverride || connectionError,
-          lastSyncTime,
-          lastEntity,
-          isOnline: navigator.onLine
-        }
-      }))
+      const detail = {
+        status,
+        error: errOverride || connectionError,
+        lastSyncTime,
+        lastEntity,
+        isOnline: navigator.onLine
+      }
+      window.__syncStatus = detail
+      window.dispatchEvent(new CustomEvent('sync-status-change', { detail }))
     }
 
     // Initial status check
@@ -191,9 +191,16 @@ function RealtimeSyncListener() {
       setReconnectTrigger(prev => prev + 1)
     }
 
+    const handleStatusRequest = () => {
+      logger.info('[REALTIME] Status request received, re-emitting.')
+      const currentStatus = es && es.readyState === EventSource.OPEN ? 'connected' : (navigator.onLine ? 'connecting' : 'error')
+      emitStatus(currentStatus)
+    }
+
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
     window.addEventListener('sync-reconnect-request', handleReconnectRequest)
+    window.addEventListener('sync-status-request', handleStatusRequest)
 
     return () => {
       logger.info('[REALTIME] Cleaning up SSE connection.')
@@ -203,6 +210,7 @@ function RealtimeSyncListener() {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
       window.removeEventListener('sync-reconnect-request', handleReconnectRequest)
+      window.removeEventListener('sync-status-request', handleStatusRequest)
     }
   }, [user, token, settings, reconnectTrigger])
 

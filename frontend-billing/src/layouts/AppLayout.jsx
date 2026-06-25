@@ -76,6 +76,9 @@ export default function AppLayout({ children, title }) {
   const isSyncOn = hostingMode === 'cloud' || hostingMode === 'hybrid'
 
   const [syncHealth, setSyncHealth] = React.useState(() => {
+    if (window.__syncStatus) {
+      return window.__syncStatus
+    }
     const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true
     const userId = user?.id || 'default'
     return {
@@ -96,6 +99,9 @@ export default function AppLayout({ children, title }) {
     }
     window.addEventListener('sync-status-change', handleStatusChange)
 
+    // Request fresh status from active listener on mount
+    window.dispatchEvent(new CustomEvent('sync-status-request'))
+
     // Handle clicks outside the popover to close it
     const handleOutsideClick = (e) => {
       if (
@@ -114,6 +120,7 @@ export default function AppLayout({ children, title }) {
       document.removeEventListener('mousedown', handleOutsideClick)
     }
   }, [])
+
 
 
   React.useEffect(() => {
