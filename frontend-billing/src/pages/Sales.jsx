@@ -363,6 +363,7 @@ export default function Sales() {
 
   const clientIdRef = useRef(Math.random().toString(36).substring(7))
   const clientId = clientIdRef.current
+  const isIncomingSyncRef = useRef(false)
 
   const [tabs, setTabs] = useState(() => {
     const uid = user?.id
@@ -406,10 +407,77 @@ export default function Sales() {
   useEffect(() => {
     const uid = user?.id
     if (!uid) return
+
     // Persist cart state locally — restored on page reload
     localStorage.setItem(`pos_minimized_tabs_${uid}`, JSON.stringify(tabs))
     localStorage.setItem(`pos_minimized_active_id_${uid}`, activeTabId)
-  }, [tabs, activeTabId, user?.id])
+
+    const isSalesSyncEnabled = settings?.general?.realtime_sync_sales !== false
+    if (!isSalesSyncEnabled) return
+
+    // Skip broadcast if this update was triggered by receiving a remote sync event
+    if (isIncomingSyncRef.current) {
+      isIncomingSyncRef.current = false
+      return
+    }
+
+    const now = Date.now()
+    localStorage.setItem(`pos_cart_updated_at_${uid}`, now.toString())
+
+    const t = setTimeout(async () => {
+      try {
+        await authFetch('/realtime/sync-cart', {
+          method: 'POST',
+          body: JSON.stringify({
+            client_id: clientId,
+            tabs,
+            active_tab_id: activeTabId,
+            timestamp: now
+          })
+        })
+      } catch (err) {
+        logger.error('[SALES] Failed to broadcast cart sync:', err)
+      }
+    }, 600)
+
+    return () => clearTimeout(t)
+  }, [tabs, activeTabId, user?.id, authFetch, clientId, settings])
+
+  useEffect(() => {
+    const handleSync = (e) => {
+      const { type, client_id, tabs: remoteTabs, active_tab_id: remoteActiveTabId, timestamp: remoteTimestamp } = e.detail || {}
+      if (type === 'pos.cart_sync' && client_id !== clientId) {
+        const isSalesSyncEnabled = settings?.general?.realtime_sync_sales !== false
+        if (!isSalesSyncEnabled) return
+
+        const uid = user?.id
+        if (!uid) return
+
+        const localTimestamp = parseInt(localStorage.getItem(`pos_cart_updated_at_${uid}`) || '0', 10)
+
+        // Only apply remote state if it represents a newer update
+        if (remoteTimestamp && remoteTimestamp > localTimestamp) {
+          logger.info('[SALES] Applying remote cart sync from client:', client_id, 'timestamp:', remoteTimestamp)
+          
+          isIncomingSyncRef.current = true
+          localStorage.setItem(`pos_cart_updated_at_${uid}`, remoteTimestamp.toString())
+          
+          if (Array.isArray(remoteTabs) && remoteTabs.length > 0) {
+            setTabs(remoteTabs)
+          }
+          if (remoteActiveTabId) {
+            setActiveTabId(remoteActiveTabId)
+          }
+        } else {
+          logger.debug('[SALES] Ignored older/stale remote cart sync. Local TS:', localTimestamp, 'Remote TS:', remoteTimestamp)
+        }
+      }
+    }
+    window.addEventListener('sync-event', handleSync)
+    return () => {
+      window.removeEventListener('sync-event', handleSync)
+    }
+  }, [clientId, settings, user?.id])
 
 
 
