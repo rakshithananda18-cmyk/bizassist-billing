@@ -4,7 +4,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { useLock } from '../contexts/LockContext'
 import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
-import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon } from '../components/Icons'
+import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon } from '../components/Icons'
+
 
 const NAV = [
   {
@@ -66,10 +67,54 @@ const PAGE_TITLES = {
 }
 
 export default function AppLayout({ children, title }) {
-  const { user, logout, profile, token, businessConfig, appReady, setAppReady } = useAuth()
+  const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings } = useAuth()
   const { hasLock, lock, resetInactivityTimer } = useLock()
   const navigate = useNavigate()
   const location = useLocation()
+
+  const hostingMode = settings?.general?.hosting_mode || 'local'
+  const isSyncOn = hostingMode === 'cloud' || hostingMode === 'hybrid'
+
+  const [syncHealth, setSyncHealth] = React.useState(() => {
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true
+    const userId = user?.id || 'default'
+    return {
+      status: isOnline ? 'connecting' : 'error',
+      error: isOnline ? null : 'No internet connection. Client is offline.',
+      lastSyncTime: localStorage.getItem(`sync_last_time_${userId}`),
+      lastEntity: localStorage.getItem(`sync_last_entity_${userId}`),
+      isOnline
+    }
+  })
+  const [showSyncPopover, setShowSyncPopover] = React.useState(false)
+  const syncPopoverRef = React.useRef(null)
+  const syncBtnRef = React.useRef(null)
+
+  React.useEffect(() => {
+    const handleStatusChange = (e) => {
+      setSyncHealth(e.detail)
+    }
+    window.addEventListener('sync-status-change', handleStatusChange)
+
+    // Handle clicks outside the popover to close it
+    const handleOutsideClick = (e) => {
+      if (
+        syncPopoverRef.current &&
+        !syncPopoverRef.current.contains(e.target) &&
+        syncBtnRef.current &&
+        !syncBtnRef.current.contains(e.target)
+      ) {
+        setShowSyncPopover(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+
+    return () => {
+      window.removeEventListener('sync-status-change', handleStatusChange)
+      document.removeEventListener('mousedown', handleOutsideClick)
+    }
+  }, [])
+
 
   React.useEffect(() => {
     if (appReady) return
@@ -356,11 +401,196 @@ export default function AppLayout({ children, title }) {
             )}
             <div>
               <div className="brand-name">{profile?.business_name || user?.business_name || 'BizAssist'}</div>
-              <div className="brand-tag">
-                Auto Sync
-                <span className="sync-pulse" title="Auto Sync Active" />
-              </div>
+              {isSyncOn && (
+                <div
+                  ref={syncBtnRef}
+                  className={`brand-tag sync-health-pill ${syncHealth.status}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowSyncPopover(!showSyncPopover)
+                  }}
+                  style={{
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    fontSize: '0.68rem',
+                    fontWeight: '600',
+                    marginTop: '4px',
+                    width: 'fit-content',
+                    transition: 'all 0.2s ease',
+                    backgroundColor: syncHealth.status === 'connected' ? 'rgba(34, 197, 94, 0.1)' :
+                                     syncHealth.status === 'connecting' ? 'rgba(245, 158, 11, 0.1)' :
+                                     'rgba(239, 68, 68, 0.1)',
+                    color: syncHealth.status === 'connected' ? 'var(--success, #22c55e)' :
+                           syncHealth.status === 'connecting' ? 'var(--warning, #f59e0b)' :
+                           'var(--danger, #ef4444)',
+                    border: '1px solid currentColor',
+                    textTransform: 'none',
+                    letterSpacing: 'normal'
+                  }}
+                  title="Click to view sync health check details"
+                >
+                  {syncHealth.status === 'connected' && (
+                    <>
+                      <CheckIcon size={10} strokeWidth={2.5} />
+                      <span>Sync Live</span>
+                    </>
+                  )}
+                  {syncHealth.status === 'connecting' && (
+                    <>
+                      <span className="sync-spinner-small" />
+                      <span>Connecting...</span>
+                    </>
+                  )}
+                  {syncHealth.status === 'error' && (
+                    <>
+                      <AlertIcon size={10} strokeWidth={2.5} />
+                      <span>Sync Error</span>
+                    </>
+                  )}
+                  {syncHealth.status === 'disconnected' && (
+                    <>
+                      <span>Disconnected</span>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
+            
+            {isSyncOn && showSyncPopover && (
+              <div
+                ref={syncPopoverRef}
+                className="sync-health-popover fade-in"
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: '16px',
+                  right: '16px',
+                  zIndex: 1000,
+                  background: 'var(--bg-3, #fff)',
+                  border: '1px solid var(--border, #e2e8f0)',
+                  borderRadius: 'var(--radius-md, 8px)',
+                  boxShadow: 'var(--shadow-lg, 0 10px 15px -3px rgba(0,0,0,0.1))',
+                  padding: '16px',
+                  marginTop: '8px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-primary)' }}>Sync Health Details</span>
+                  <button
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      padding: '2px',
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}
+                    onClick={(e) => { e.stopPropagation(); setShowSyncPopover(false); }}
+                    aria-label="Close Popover"
+                  >
+                    <CloseIcon size={14} />
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.78rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Hosting Mode</span>
+                    <span style={{ fontWeight: '600', color: 'var(--text-primary)', textTransform: 'capitalize' }}>
+                      {hostingMode}
+                    </span>
+                  </div>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Status</span>
+                    <span style={{
+                      fontWeight: '700',
+                      color: syncHealth.status === 'connected' ? 'var(--success)' :
+                             syncHealth.status === 'connecting' ? 'var(--warning)' : 'var(--danger)'
+                    }}>
+                      {syncHealth.status === 'connected' ? 'Connected' :
+                       syncHealth.status === 'connecting' ? 'Reconnecting...' : 'Error / Offline'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Network State</span>
+                    <span style={{ fontWeight: '600', color: syncHealth.isOnline ? 'var(--success)' : 'var(--danger)' }}>
+                      {syncHealth.isOnline ? 'Online' : 'Offline'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Last Sync Message</span>
+                    <span style={{ fontWeight: '600', color: 'var(--text-primary)', textTransform: 'capitalize' }}>
+                      {syncHealth.lastEntity ? `${syncHealth.lastEntity} updated` : 'None'}
+                    </span>
+                  </div>
+
+                  {syncHealth.lastSyncTime && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderTop: '1px solid var(--border)', paddingTop: '6px' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Last Synced At</span>
+                      <span style={{ fontWeight: '500', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                        {new Date(syncHealth.lastSyncTime).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        {' '}
+                        ({new Date(syncHealth.lastSyncTime).toLocaleDateString()})
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {syncHealth.error && (
+                  <div style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                    borderRadius: 'var(--radius-sm, 4px)',
+                    padding: '8px',
+                    fontSize: '0.75rem',
+                    color: 'var(--danger)',
+                    wordBreak: 'break-word',
+                    lineHeight: '1.3'
+                  }}>
+                    <strong>Diagnostic Log:</strong><br />
+                    {syncHealth.error}
+                  </div>
+                )}
+
+                {(syncHealth.status === 'error' || syncHealth.status === 'connecting') && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      window.dispatchEvent(new CustomEvent('sync-reconnect-request'))
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '6px 12px',
+                      backgroundColor: 'var(--accent, #3b82f6)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 'var(--radius-sm, 4px)',
+                      cursor: 'pointer',
+                      fontWeight: '600',
+                      fontSize: '0.75rem',
+                      transition: 'background-color 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <SyncIcon size={12} /> Force Reconnect
+                  </button>
+                )}
+              </div>
+            )}
+
           </div>
 
           {/* Nav */}

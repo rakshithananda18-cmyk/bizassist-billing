@@ -383,7 +383,20 @@ img { display: block; max-width: 100%; }
   padding: 14px 16px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  position: relative;
 }
+
+.sync-spinner-small {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
 .sidebar-brand .brand-icon {
   width: 32px; height: 32px;
   background: linear-gradient(135deg, #2C2C2E 0%, #000000 100%);
