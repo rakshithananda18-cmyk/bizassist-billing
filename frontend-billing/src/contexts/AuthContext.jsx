@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { API_BASE } from '../config'
+import { API_BASE, updateApiBase } from '../config'
 import { logger } from '../utils/logger'
 
 const AuthContext = createContext(null)
@@ -141,6 +141,9 @@ export function AuthProvider({ children }) {
         const data = await res.json()
         setSettings(data)
         logger.info('Loaded app settings successfully in context')
+        if (data?.general?.hosting_mode) {
+          updateApiBase(data.general.hosting_mode)
+        }
       }
     } catch (err) {
       logger.error('Failed to fetch settings in context:', err)

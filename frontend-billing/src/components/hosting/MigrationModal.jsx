@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { API_BASE } from '../../config'
+import { API_BASE, updateApiBase } from '../../config'
 import { logger } from '../../utils/logger'
 import { CheckIcon, CloseIcon, AlertIcon, SyncIcon, ShieldIcon } from '../Icons'
 
@@ -105,6 +105,11 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
 
   async function run() {
     logger.info(`[MIGRATION] Starting hosting mode migration from ${fromMode} to ${toMode}`)
+    const CLOUD_URL = import.meta.env.VITE_API_URL || 'https://rakshit-dev-bizassist.hf.space'
+    const LOCAL_URL = 'http://localhost:8001'
+    const SOURCE_API_BASE = fromMode === 'cloud' ? CLOUD_URL : LOCAL_URL
+    const DEST_API_BASE = (toMode === 'cloud' || toMode === 'hybrid') ? CLOUD_URL : LOCAL_URL
+
     try {
       // ── Step 0: verify ────────────────────────────────────────────────────
       advanceTo(0)
@@ -116,7 +121,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
       advanceTo(1)
       let countData = {}
       try {
-        const res = await fetch(`${API_BASE}/api/migrate/count`, { headers: headers() })
+        const res = await fetch(`${SOURCE_API_BASE}/api/migrate/count`, { headers: headers() })
         if (!res.ok) throw new Error(`Count failed: HTTP ${res.status}`)
         countData = await res.json()
       } catch (err) {
@@ -133,7 +138,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
 
       // ── Step 2: export ────────────────────────────────────────────────────
       advanceTo(2)
-      const res = await fetch(`${API_BASE}/api/migrate/export`, { headers: headers() })
+      const res = await fetch(`${SOURCE_API_BASE}/api/migrate/export`, { headers: headers() })
       if (!res.ok) throw new Error(`Export failed: HTTP ${res.status}`)
       const exportData = await res.json()
       if (exportData.backup_path) setBackupPath(exportData.backup_path)
@@ -156,7 +161,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
       let uploadRes = null
       try {
         // Kick off the real import
-        const importPromise = fetch(`${API_BASE}/api/migrate/import`, {
+        const importPromise = fetch(`${DEST_API_BASE}/api/migrate/import`, {
           method: 'POST',
           headers: headers(),
           body: JSON.stringify({
@@ -206,7 +211,49 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
 
       // ── Step 5: finalise ──────────────────────────────────────────────────
       advanceTo(5)
-      await new Promise(r => setTimeout(r, 500))
+      if (cancelledRef.current) return
+
+      // Update local storage and dynamic API base first!
+      try {
+        updateApiBase(toMode)
+      } catch (err) {
+        logger.error('Failed to call updateApiBase:', err)
+      }
+
+      // Update settings on source and destination backends
+      try {
+        await fetch(`${SOURCE_API_BASE}/settings`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            general: { hosting_mode: toMode }
+          })
+        })
+      } catch (err) {
+        logger.warn(`Failed to update settings on source backend (${SOURCE_API_BASE}):`, err)
+      }
+
+      try {
+        await fetch(`${DEST_API_BASE}/settings`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            general: { hosting_mode: toMode }
+          })
+        })
+      } catch (err) {
+        logger.warn(`Failed to update settings on destination backend (${DEST_API_BASE}):`, err)
+      }
+
+      // Dispatch event to refresh settings in AuthContext
+      window.dispatchEvent(new CustomEvent('refresh-settings'))
+
       if (cancelledRef.current) return
       setProgress(100)
       markStep(5, 'done')
