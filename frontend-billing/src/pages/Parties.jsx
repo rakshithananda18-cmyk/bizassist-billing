@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
 import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, HandshakeIcon, InventoryIcon, MessageIcon, PlusIcon, PrinterIcon, SearchIcon, SyncIcon, UserIcon, WarehouseIcon } from '../components/Icons'
@@ -16,6 +16,11 @@ const defaultForm = {
 
 export default function Parties() {
   const { authFetch, user, settings } = useAuth()
+
+  const settingsRef = useRef(settings)
+  useEffect(() => {
+    settingsRef.current = settings
+  }, [settings])
 
   const [customers, setCustomers]   = useState([])
   const [vendors, setVendors]       = useState([])
@@ -61,18 +66,21 @@ export default function Parties() {
   useEffect(() => {
     load()
     const handleSync = (e) => {
-      const isPartiesSyncEnabled = settings?.general?.realtime_sync_parties !== false
+      const currentSettings = settingsRef.current
+      const isPartiesSyncEnabled = currentSettings?.general?.realtime_sync_parties !== false
       if (!isPartiesSyncEnabled) return
       logger.debug('[PARTIES] Real-time sync event received:', e.detail)
       if (['party', 'invoice', 'purchase', 'payment'].includes(e.detail.entity)) {
         load()
       }
     }
+    window.addEventListener('focus', load)
     window.addEventListener('sync-event', handleSync)
     return () => {
+      window.removeEventListener('focus', load)
       window.removeEventListener('sync-event', handleSync)
     }
-  }, [load, settings])
+  }, [load])
 
   const getList = () => {
     if (activeTab === 'Customers') return customers;

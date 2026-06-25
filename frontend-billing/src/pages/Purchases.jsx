@@ -9,6 +9,11 @@ const fmt = (n) =>
 export default function Purchases() {
   const { authFetch, settings } = useAuth()
 
+  const settingsRef = useRef(settings)
+  useEffect(() => {
+    settingsRef.current = settings
+  }, [settings])
+
   const [bills, setBills]           = useState([])
   const [debitNotes, setDebitNotes] = useState([])
   const [loading, setLoading]       = useState(true)
@@ -138,18 +143,21 @@ export default function Purchases() {
   useEffect(() => {
     load()
     const handleSync = (e) => {
-      const isPurchasesSyncEnabled = settings?.general?.realtime_sync_purchases !== false
+      const currentSettings = settingsRef.current
+      const isPurchasesSyncEnabled = currentSettings?.general?.realtime_sync_purchases !== false
       if (!isPurchasesSyncEnabled) return
       logger.debug('[PURCHASES] Real-time sync event received:', e.detail)
       if (['purchase', 'payment', 'party'].includes(e.detail.entity)) {
         load()
       }
     }
+    window.addEventListener('focus', load)
     window.addEventListener('sync-event', handleSync)
     return () => {
+      window.removeEventListener('focus', load)
       window.removeEventListener('sync-event', handleSync)
     }
-  }, [load, settings])
+  }, [load])
 
   const getFilteredItems = () => {
     const q = search.toLowerCase()

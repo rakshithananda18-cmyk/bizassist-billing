@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon } from '../components/Icons'
@@ -40,6 +40,11 @@ function getStatus(product) {
 export default function Stock() {
   const { authFetch, settings } = useAuth()
   const { attributesSchema } = useBusinessConfig()
+
+  const settingsRef = useRef(settings)
+  useEffect(() => {
+    settingsRef.current = settings
+  }, [settings])
 
   const [products, setProducts]             = useState([])
   const [godowns, setGodowns]               = useState([])
@@ -90,18 +95,21 @@ export default function Stock() {
   useEffect(() => {
     load()
     const handleSync = (e) => {
-      const isStockSyncEnabled = settings?.general?.realtime_sync_stock !== false
+      const currentSettings = settingsRef.current
+      const isStockSyncEnabled = currentSettings?.general?.realtime_sync_stock !== false
       if (!isStockSyncEnabled) return
       logger.debug('[STOCK] Real-time sync event received:', e.detail)
       if (['product', 'invoice', 'purchase', 'godown'].includes(e.detail.entity)) {
         load()
       }
     }
+    window.addEventListener('focus', load)
     window.addEventListener('sync-event', handleSync)
     return () => {
+      window.removeEventListener('focus', load)
       window.removeEventListener('sync-event', handleSync)
     }
-  }, [load, settings])
+  }, [load])
 
   const categories = [...new Set(products.map(p => p.category).filter(Boolean))]
 

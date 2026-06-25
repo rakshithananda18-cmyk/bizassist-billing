@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
 import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, WarehouseIcon } from '../components/Icons'
@@ -20,7 +20,12 @@ const defaultForm = {
 }
 
 export default function Payments() {
-  const { authFetch } = useAuth()
+  const { authFetch, settings } = useAuth()
+
+  const settingsRef = useRef(settings)
+  useEffect(() => {
+    settingsRef.current = settings
+  }, [settings])
 
   const [payments, setPayments]     = useState([])
   const [expenses, setExpenses]     = useState([])
@@ -59,13 +64,18 @@ export default function Payments() {
   useEffect(() => {
     load()
     const handleSync = (e) => {
+      const currentSettings = settingsRef.current
+      const isRealtimeGlobalEnabled = currentSettings?.general?.realtime_sync_global !== false
+      if (!isRealtimeGlobalEnabled) return
       logger.debug('[PAYMENTS] Real-time sync event received:', e.detail)
       if (['payment', 'invoice', 'purchase'].includes(e.detail.entity)) {
         load()
       }
     }
+    window.addEventListener('focus', load)
     window.addEventListener('sync-event', handleSync)
     return () => {
+      window.removeEventListener('focus', load)
       window.removeEventListener('sync-event', handleSync)
     }
   }, [load])

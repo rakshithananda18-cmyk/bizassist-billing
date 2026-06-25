@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
@@ -28,7 +28,13 @@ function StatCard({ icon, label, value, sub, variant = 'accent', badge, badgeTyp
 }
 
 export default function Dashboard() {
-  const { authFetch, profile } = useAuth()
+  const { authFetch, profile, settings } = useAuth()
+
+  const settingsRef = useRef(settings)
+  useEffect(() => {
+    settingsRef.current = settings
+  }, [settings])
+
   const [stats, setStats]       = useState(null)
   const [payments, setPayments] = useState([])
   const [loading, setLoading]   = useState(true)
@@ -47,11 +53,16 @@ export default function Dashboard() {
   useEffect(() => {
     load()
     const handleSync = (e) => {
+      const currentSettings = settingsRef.current
+      const isRealtimeGlobalEnabled = currentSettings?.general?.realtime_sync_global !== false
+      if (!isRealtimeGlobalEnabled) return
       logger.debug('[DASHBOARD] Real-time sync event received:', e.detail)
       load()
     }
+    window.addEventListener('focus', load)
     window.addEventListener('sync-event', handleSync)
     return () => {
+      window.removeEventListener('focus', load)
       window.removeEventListener('sync-event', handleSync)
     }
   }, [load])

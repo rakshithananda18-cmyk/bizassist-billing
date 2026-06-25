@@ -113,6 +113,7 @@ def _parse_dt(dt_str: Any) -> Optional[datetime]:
 @router.post("/api/sync/push")
 def push_changes(
     payload: PushPayload,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
 ):
@@ -126,6 +127,22 @@ def push_changes(
     # Temporarily disable trigger hooks to prevent queuing writes back on the cloud
     token = sync_disabled_var.set(True)
     processed_count = 0
+    entities_to_broadcast = set()
+
+    entity_map = {
+        "customers": "party",
+        "vendors": "party",
+        "products": "product",
+        "invoices": "invoice",
+        "payments": "payment",
+        "invoice_payments": "payment",
+        "purchase_invoices": "purchase",
+        "godowns": "godown",
+        "purchase_orders": "order",
+        "stock_transfers": "stock",
+        "stock_ledger": "stock",
+        "business_settings": "settings",
+    }
 
     try:
         for change in payload.changes:
@@ -156,6 +173,9 @@ def push_changes(
                 if existing:
                     db.delete(existing)
                     processed_count += 1
+                    ent_name = entity_map.get(change.entity)
+                    if ent_name:
+                        entities_to_broadcast.add(ent_name)
                 continue
 
             # INSERT / UPDATE operations
@@ -197,8 +217,16 @@ def push_changes(
                 db.add(target_obj)
             db.flush()
             processed_count += 1
+            ent_name = entity_map.get(change.entity)
+            if ent_name:
+                entities_to_broadcast.add(ent_name)
 
         db.commit()
+
+        # Broadcast sync triggers to SSE connections in background
+        from services.realtime import realtime_manager
+        for ent in entities_to_broadcast:
+            background_tasks.add_task(realtime_manager.broadcast, business_id, {"type": "sync.trigger", "entity": ent})
 
     except Exception as e:
         db.rollback()

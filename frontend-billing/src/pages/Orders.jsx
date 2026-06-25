@@ -19,7 +19,12 @@ const STATUS_FLOW = {
 }
 
 export default function Orders() {
-  const { authFetch, token, user } = useAuth()
+  const { authFetch, token, user, settings } = useAuth()
+
+  const settingsRef = useRef(settings)
+  useEffect(() => {
+    settingsRef.current = settings
+  }, [settings])
 
   // Layout & List State
   const [activeTab, setActiveTab] = useState('incoming') // 'incoming' (seller) | 'outgoing' (buyer)
@@ -84,13 +89,18 @@ export default function Orders() {
   useEffect(() => {
     loadOrders()
     const handleSync = (e) => {
+      const currentSettings = settingsRef.current
+      const isRealtimeGlobalEnabled = currentSettings?.general?.realtime_sync_global !== false
+      if (!isRealtimeGlobalEnabled) return
       logger.debug('[ORDERS] Real-time sync event received:', e.detail)
       if (['order', 'party', 'product'].includes(e.detail.entity)) {
         loadOrders()
       }
     }
+    window.addEventListener('focus', loadOrders)
     window.addEventListener('sync-event', handleSync)
     return () => {
+      window.removeEventListener('focus', loadOrders)
       window.removeEventListener('sync-event', handleSync)
     }
   }, [loadOrders])

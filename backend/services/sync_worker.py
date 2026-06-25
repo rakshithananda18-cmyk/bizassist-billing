@@ -8,6 +8,7 @@ Runs on SQLite local client to push local mutations to Cloud Postgres and pull c
 import logging
 import os
 import json
+import asyncio
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
@@ -32,6 +33,20 @@ CLOUD_URL = os.environ.get("CLOUD_API_URL") or os.environ.get("VITE_API_URL") or
 
 # Keep track of last execution times in-memory
 _LAST_RUN: Dict[int, datetime] = {}
+
+def _safe_broadcast(business_id: int, event: dict):
+    from services.realtime import realtime_manager
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(realtime_manager.broadcast(business_id, event))
+    except RuntimeError:
+        # No running event loop in this thread, use asyncio.run
+        try:
+            asyncio.run(realtime_manager.broadcast(business_id, event))
+        except Exception as e:
+            logger.warning("[SYNC_WORKER] Failed to broadcast event: %s", e)
+    except Exception as e:
+        logger.warning("[SYNC_WORKER] Failed to broadcast event: %s", e)
 
 # Model mapping to apply updates/inserts locally
 _MODEL_MAP: Dict[str, Any] = {
@@ -299,6 +314,31 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
                             db.add(target_obj)
                 
                 db.commit()
+                
+                # Broadcast local SSE sync triggers to update browser tabs!
+                entities_to_broadcast = set()
+                for table_name, records in pulled.items():
+                    if records:
+                        entity_map = {
+                            "customers": "party",
+                            "vendors": "party",
+                            "products": "product",
+                            "invoices": "invoice",
+                            "payments": "payment",
+                            "invoice_payments": "payment",
+                            "purchase_invoices": "purchase",
+                            "godowns": "godown",
+                            "purchase_orders": "order",
+                            "stock_transfers": "stock",
+                            "stock_ledger": "stock",
+                            "business_settings": "settings",
+                        }
+                        entity_name = entity_map.get(table_name)
+                        if entity_name:
+                            entities_to_broadcast.add(entity_name)
+                
+                for ent in entities_to_broadcast:
+                    _safe_broadcast(business_id, {"type": "sync.trigger", "entity": ent})
             finally:
                 sync_disabled_var.reset(token_var)
                 
