@@ -45,7 +45,7 @@ async function runLocalProbe() {
 async function runCloudProbe() {
   const t0 = Date.now()
   try {
-    const res = await fetchWithTimeout(`${CLOUD_URL}/health`, 2000)
+    const res = await fetchWithTimeout(`${CLOUD_URL}/health`, 6000)
     const ms = Date.now() - t0
     if (!res.ok) return { status: 'offline', ms: null, error: `HTTP ${res.status}` }
     return { status: ms > 1000 ? 'slow' : 'online', ms, error: null }
