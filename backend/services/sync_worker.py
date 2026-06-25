@@ -197,12 +197,11 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
         .all()
     )
 
-    # Sign a JWT locally — requires JWT_SECRET to be THE SAME on both local and cloud.
-    # If you see HTTP 401 errors, ensure both share the same JWT_SECRET env variable.
     token = create_access_token({
         "id": business_id,
         "user_id": user.id,
         "username": user.username,
+        "public_id": user.public_id,
         "business_name": user.business_name or "Local POS",
         "role": user.role or "enterprise"
     })

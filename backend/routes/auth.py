@@ -149,8 +149,7 @@ class ProfileUpdateRequest(BaseModel):
 
 @router.get("/profile")
 def get_profile(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
-    user_id = current_user["id"]
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return {
@@ -171,8 +170,7 @@ def get_profile(current_user: dict = Depends(get_active_user), db: Session = Dep
 
 @router.put("/profile")
 def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
-    user_id = current_user["id"]
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -353,7 +351,7 @@ def _get_user_settings(user: User) -> dict:
 def get_settings(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
     """Return current user's app settings (merged with defaults)."""
     logger.info(f"[SETTINGS] GET /settings requested by user '{current_user.get('username')}' (ID {current_user.get('id')})")
-    user = db.query(User).filter(User.id == current_user["id"]).first()
+    user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
         logger.warning(f"[SETTINGS] User with ID {current_user.get('id')} not found")
         raise HTTPException(status_code=404, detail="User not found")
@@ -376,7 +374,7 @@ def update_settings(
             logger.warning(f"[SETTINGS] Cashier '{current_user.get('username')}' blocked from modifying global settings")
             raise HTTPException(status_code=403, detail="Permission denied: cashier restricted from modifying global settings")
 
-    user = db.query(User).filter(User.id == current_user["id"]).first()
+    user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
         logger.warning(f"[SETTINGS] User with ID {current_user.get('id')} not found during update")
         raise HTTPException(status_code=404, detail="User not found")

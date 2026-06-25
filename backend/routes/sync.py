@@ -106,6 +106,31 @@ def _parse_dt(dt_str: Any) -> Optional[datetime]:
         return None
 
 
+def _resolve_business_id_by_username(user: dict, db: Session) -> int:
+    """
+    Look up the ACTUAL business_id (owner user's ID) in this DB by username.
+    This handles cross-DB JWT tokens where local and cloud auto-assigned different
+    integer IDs to the same user account.
+    """
+    username = user.get("username") or user.get("sub") or ""
+    if username:
+        try:
+            row = db.execute(
+                text('SELECT id, parent_business_id FROM "users" WHERE username = :u'),
+                {"u": username},
+            ).first()
+            if row:
+                parent_id = row[1]
+                if parent_id is not None:
+                    return int(parent_id)
+                return int(row[0])
+        except Exception as exc:
+            logger.debug("_resolve_business_id_by_username: lookup failed — %s", exc)
+    
+    # Fallback: use JWT ID
+    return int(user.get("parent_business_id") or user.get("id"))
+
+
 # ---------------------------------------------------------------------------
 # ROUTES
 # ---------------------------------------------------------------------------
@@ -121,7 +146,7 @@ def push_changes(
     Cloud Endpoint. Receives local changes and applies them to PostgreSQL.
     Enforces multi-tenant scoping and applies Last-Write-Wins (LWW) resolution.
     """
-    business_id = int(current_user.get("parent_business_id") or current_user.get("id"))
+    business_id = _resolve_business_id_by_username(current_user, db)
     logger.info("sync/push: business_id=%s received %s changes", business_id, len(payload.changes))
 
     # Temporarily disable trigger hooks to prevent queuing writes back on the cloud
@@ -248,7 +273,7 @@ def pull_changes(
     Cloud Endpoint. Returns updates scoped to user's business_id that
     occurred after `last_sync_at`.
     """
-    business_id = int(current_user.get("parent_business_id") or current_user.get("id"))
+    business_id = _resolve_business_id_by_username(current_user, db)
     last_sync_dt = _parse_dt(last_sync_at) or datetime(1970, 1, 1)
 
     changes: Dict[str, List[dict]] = {}
@@ -291,7 +316,7 @@ def get_queue_depth(
     """
     Local Endpoint. Returns number of pending queue items and latest execution stats.
     """
-    business_id = int(current_user.get("parent_business_id") or current_user.get("id"))
+    business_id = _resolve_business_id_by_username(current_user, db)
     
     # Query pending counts
     try:
@@ -326,11 +351,12 @@ def get_queue_depth(
 def flush_sync_queue(
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
 ):
     """
     Local Endpoint. Manually schedules immediate execution of the background sync worker.
     """
     from services.sync_worker import trigger_sync_run
-    business_id = int(current_user.get("parent_business_id") or current_user.get("id"))
+    business_id = _resolve_business_id_by_username(current_user, db)
     background_tasks.add_task(trigger_sync_run, business_id)
     return {"status": "triggered", "business_id": business_id}
