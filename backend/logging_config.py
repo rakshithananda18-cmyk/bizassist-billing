@@ -160,8 +160,19 @@ def configure_logging(level: str = None, *, color: bool = None) -> None:
     if log_file:
         try:
             from logging.handlers import RotatingFileHandler
+            
+            class SafeRotatingFileHandler(RotatingFileHandler):
+                def doRollover(self):
+                    try:
+                        super().doRollover()
+                    except PermissionError:
+                        # On Windows, if another process (like the uvicorn dev reloader)
+                        # holds a handle to the log file, renaming it will raise PermissionError.
+                        # We ignore it here so that logging can proceed on the current stream.
+                        pass
+
             os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
-            fh = RotatingFileHandler(log_file, maxBytes=5_000_000, backupCount=3, encoding="utf-8")
+            fh = SafeRotatingFileHandler(log_file, maxBytes=5_000_000, backupCount=3, encoding="utf-8")
             fh.addFilter(_ComponentFilter())
             fh.setFormatter(_Formatter(use_color=False))
             root.addHandler(fh)
