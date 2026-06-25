@@ -363,7 +363,8 @@ export default function Sales() {
 
   const clientIdRef = useRef(Math.random().toString(36).substring(7))
   const clientId = clientIdRef.current
-  const isIncomingSyncRef = useRef(false)
+  const lastIncomingSyncRef = useRef(null)
+  const isSystemLoadingRef = useRef(false)
 
   const [tabs, setTabs] = useState(() => {
     const uid = user?.id
@@ -416,10 +417,21 @@ export default function Sales() {
     if (!isSalesSyncEnabled) return
 
     // Skip broadcast if this update was triggered by receiving a remote sync event
-    if (isIncomingSyncRef.current) {
-      isIncomingSyncRef.current = false
+    const matchesSync = lastIncomingSyncRef.current &&
+      JSON.stringify(tabs) === JSON.stringify(lastIncomingSyncRef.current.tabs) &&
+      activeTabId === lastIncomingSyncRef.current.activeTabId
+
+    if (matchesSync) {
       return
     }
+
+    // Skip broadcast if the system is currently loading background data
+    if (isSystemLoadingRef.current) {
+      return
+    }
+
+    // State has deviated, clear the sync ref
+    lastIncomingSyncRef.current = null
 
     const now = Date.now()
     localStorage.setItem(`pos_cart_updated_at_${uid}`, now.toString())
@@ -459,7 +471,11 @@ export default function Sales() {
         if (remoteTimestamp && remoteTimestamp > localTimestamp) {
           logger.info('[SALES] Applying remote cart sync from client:', client_id, 'timestamp:', remoteTimestamp)
           
-          isIncomingSyncRef.current = true
+          lastIncomingSyncRef.current = {
+            tabs: remoteTabs,
+            activeTabId: remoteActiveTabId,
+            timestamp: remoteTimestamp
+          }
           localStorage.setItem(`pos_cart_updated_at_${uid}`, remoteTimestamp.toString())
           
           if (Array.isArray(remoteTabs) && remoteTabs.length > 0) {
@@ -628,6 +644,7 @@ export default function Sales() {
   }
 
   const load = useCallback(() => {
+    isSystemLoadingRef.current = true
     setLoading(true)
     Promise.all([
       authFetch('/billing/customers').then(r => r.ok ? r.json() : []).catch(() => []),
@@ -659,6 +676,9 @@ export default function Sales() {
     }).finally(() => {
       setLoading(false)
       setTimeout(() => barcodeRef.current?.focus(), 100)
+      setTimeout(() => {
+        isSystemLoadingRef.current = false
+      }, 500)
     })
   }, [authFetch, setForm, getNextInvoiceNo])
 
@@ -691,7 +711,11 @@ export default function Sales() {
           const invs = await authFetch('/billing/invoices').then(r => r.ok ? r.json() : null).catch(() => null)
           if (invs) {
             setDbInvoices(invs)
+            isSystemLoadingRef.current = true
             setTabs(prev => syncTabNames(prev, mergePending(invs)))
+            setTimeout(() => {
+              isSystemLoadingRef.current = false
+            }, 500)
           }
         }
       } finally {
@@ -785,12 +809,17 @@ export default function Sales() {
       }
       setTabs([{ id: newId, name: 'TEMP', form: newForm }])
       setActiveTabId(newId)
+      isSystemLoadingRef.current = true
       authFetch('/billing/invoices').then(r => r.ok ? r.json() : []).then(invs => {
         setDbInvoices(invs)
         setTabs(prev => syncTabNames(prev, mergePending(invs)))
       }).catch(() => {
         // Offline — keep last-known server list + queued bills for numbering.
         setTabs(prev => syncTabNames(prev, mergePending(dbInvoices)))
+      }).finally(() => {
+        setTimeout(() => {
+          isSystemLoadingRef.current = false
+        }, 500)
       })
       setTimeout(() => barcodeRef.current?.focus(), 100)
       return
