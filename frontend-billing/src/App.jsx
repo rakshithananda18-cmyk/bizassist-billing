@@ -129,17 +129,21 @@ function RealtimeSyncListener() {
             logger.debug('[REALTIME] Received SSE event:', data)
             
             lastSyncTime = new Date().toISOString()
-            lastEntity = data.entity
             localStorage.setItem(`sync_last_time_${user.id}`, lastSyncTime)
-            localStorage.setItem(`sync_last_entity_${user.id}`, lastEntity)
+            if (data.entity) {
+              lastEntity = data.entity
+              localStorage.setItem(`sync_last_entity_${user.id}`, lastEntity)
+            }
             connectionError = null
             emitStatus('connected')
 
             // Dispatch window level event
             window.dispatchEvent(new CustomEvent('sync-event', { detail: data }))
-            window.dispatchEvent(new CustomEvent('show_toast', {
-              detail: { type: 'info', msg: `Syncing remote ${data.entity} updates…` }
-            }))
+            if (data.entity) {
+              window.dispatchEvent(new CustomEvent('show_toast', {
+                detail: { type: 'info', msg: `Syncing remote ${data.entity} updates…` }
+              }))
+            }
 
             // Trigger background outbox cursor pull to keep cache fresh
             if (['invoice', 'payment', 'purchase', 'product', 'party', 'order', 'godown'].includes(data.entity)) {
