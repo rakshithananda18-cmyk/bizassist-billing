@@ -8,6 +8,11 @@ import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, InventoryIcon, LockIcon,
 import { logger } from '../utils/logger'
 import { SkylineLoader } from '../components/Logo'
 import { getHeaderLayout, isHeaderLineEnabled, moveItem } from '../utils/printLayout'
+import { useReadinessProbe } from '../hooks/useReadinessProbe'
+import ReadinessPanel from '../components/hosting/ReadinessPanel'
+import PreflightModal from '../components/hosting/PreflightModal'
+import ConsequenceModal from '../components/hosting/ConsequenceModal'
+import MigrationModal from '../components/hosting/MigrationModal'
 
 // Sample content shown for each draggable header line in the live preview.
 const PREVIEW_HEADER_CONTENT = {
@@ -242,9 +247,178 @@ function PasscodeModal({ open, hasLock, onClose, setupPasscode, clearPasscode })
   )
 }
 
+// ─── Hosting Mode Section (card-based mode switcher with modal chain) ─────────
+function HostingModeSection({ currentMode, onModeChange, token }) {
+  const { localProbe, cloudProbe, internetProbe, recheck } = useReadinessProbe()
+  const [preflightTarget,  setPreflightTarget]  = useState(null)  // 'local'|'cloud'|'hybrid'
+  const [consequenceTarget, setConsequenceTarget] = useState(null)
+  const [migrationState,   setMigrationState]   = useState(null)  // { from, to }
+
+  // Compute card state for each mode
+  function cardState(mode) {
+    if (mode === currentMode) return 'active'
+    const needs = {
+      local:  { p1: localProbe },
+      cloud:  { p2: cloudProbe, p3: internetProbe },
+      hybrid: { p1: localProbe, p2: cloudProbe, p3: internetProbe },
+    }[mode] || {}
+    const probes = Object.values(needs)
+    if (probes.some(p => p.status === 'cors'))    return 'locked'
+    if (probes.some(p => p.status === 'offline'))  return 'unavailable'
+    return 'ready'
+  }
+
+  const CARDS = [
+    {
+      mode: 'local',
+      icon: <MonitorIcon size={18} />,
+      title: 'Local Only',
+      desc: 'Sub-second execution. 100% offline uptime. Data stays on your device. AI & cloud backups disabled.',
+      badges: ['⚡ Fast', '📴 No internet needed'],
+    },
+    {
+      mode: 'hybrid',
+      icon: <SyncIcon size={18} />,
+      title: 'Hybrid',
+      desc: 'Fast local POS checkouts. Background sync to cloud. Unlocks cloud backups and AI Advisor.',
+      badges: ['🔄 Sync', '🤖 AI enabled'],
+    },
+    {
+      mode: 'cloud',
+      icon: <CloudIcon size={18} />,
+      title: 'Cloud Only',
+      desc: 'Cloud is the single source of record. Real-time sync across all devices. Requires internet.',
+      badges: ['🌐 Multi-device', '☁️ Always synced'],
+    },
+  ]
+
+  const handleCardClick = (mode) => {
+    const state = cardState(mode)
+    if (state === 'active' || state === 'locked' || state === 'unavailable') return
+    setPreflightTarget(mode)
+  }
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      {/* Readiness panel */}
+      <ReadinessPanel
+        localProbe={localProbe}
+        cloudProbe={cloudProbe}
+        internetProbe={internetProbe}
+        onRecheck={recheck}
+      />
+
+      {/* Mode cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12 }}>
+        {CARDS.map(({ mode, icon, title, desc, badges }) => {
+          const state = cardState(mode)
+          return (
+            <div
+              key={mode}
+              className={`hm-card${state === 'active' ? ' hm-card--active' : ''}${state === 'locked' ? ' hm-card--locked' : ''}${state === 'unavailable' ? ' hm-card--unavailable' : ''}`}
+              onClick={() => handleCardClick(mode)}
+            >
+              {/* Active badge */}
+              {state === 'active' && (
+                <div style={{
+                  position: 'absolute', top: 10, right: 10,
+                  fontSize: 10, background: 'var(--accent)', color: '#fff',
+                  padding: '2px 7px', borderRadius: 4, fontWeight: 700,
+                }}>
+                  Active
+                </div>
+              )}
+              {state === 'locked' && (
+                <div style={{
+                  position: 'absolute', top: 10, right: 10,
+                  fontSize: 10, background: 'rgba(255,255,255,0.12)', color: 'var(--text-muted)',
+                  padding: '2px 7px', borderRadius: 4,
+                }}>
+                  🔒 Locked
+                </div>
+              )}
+              {state === 'unavailable' && (
+                <div style={{
+                  position: 'absolute', top: 10, right: 10,
+                  fontSize: 10, background: 'rgba(239,68,68,0.15)', color: '#ef4444',
+                  padding: '2px 7px', borderRadius: 4,
+                }}>
+                  Offline
+                </div>
+              )}
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, color: 'var(--accent)' }}>
+                {icon}
+                <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{title}</span>
+              </div>
+              <p style={{ fontSize: '0.78rem', margin: '0 0 10px 0', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                {desc}
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {badges.map(b => (
+                  <span key={b} style={{
+                    fontSize: '0.7rem', padding: '2px 8px',
+                    borderRadius: 12, background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    color: 'var(--text-muted)',
+                  }}>{b}</span>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Preflight modal */}
+      {preflightTarget && (
+        <PreflightModal
+          targetMode={preflightTarget}
+          localProbe={localProbe}
+          cloudProbe={cloudProbe}
+          internetProbe={internetProbe}
+          onClose={() => setPreflightTarget(null)}
+          onProceed={() => {
+            setConsequenceTarget(preflightTarget)
+            setPreflightTarget(null)
+          }}
+        />
+      )}
+
+      {/* Consequence modal */}
+      {consequenceTarget && (
+        <ConsequenceModal
+          fromMode={currentMode}
+          toMode={consequenceTarget}
+          onCancel={() => setConsequenceTarget(null)}
+          onConfirm={() => {
+            setMigrationState({ from: currentMode, to: consequenceTarget })
+            setConsequenceTarget(null)
+          }}
+        />
+      )}
+
+      {/* Migration modal */}
+      {migrationState && (
+        <MigrationModal
+          fromMode={migrationState.from}
+          toMode={migrationState.to}
+          token={token}
+          onComplete={() => {
+            onModeChange(migrationState.to)
+            setMigrationState(null)
+          }}
+          onError={() => {
+            setMigrationState(null)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Settings() {
-  const { authFetch, user, fetchSettings } = useAuth()
+  const { authFetch, user, token, fetchSettings } = useAuth()
   const { config, refreshConfig } = useBusinessConfig()
   const { hasLock, setupPasscode, clearPasscode } = useLock()
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
@@ -629,80 +803,11 @@ export default function Settings() {
               {!isCashier && (
                 <>
                   <SectionHeader title="Hosting & Sync Mode" />
-                  <SettingRow label="Selected Mode" description="Choose where your primary database resides and how data is synchronized.">
-                    <select
-                      className="form-input"
-                      style={{ width: 280 }}
-                      value={g.hosting_mode || 'local'}
-                      onChange={e => patch('general', 'hosting_mode', e.target.value)}
-                    >
-                      <option value="local">Local Only (Offline Cache)</option>
-                      <option value="hybrid">Hybrid (Local POS + Cloud Sync)</option>
-                      <option value="cloud">Cloud Only (Universal Real-Time Sync)</option>
-                    </select>
-                  </SettingRow>
-
-                  <div className="hosting-mode-details" style={{
-                    marginTop: 16,
-                    padding: 20,
-                    borderRadius: 8,
-                    background: 'var(--bg-surface, rgba(255,255,255,0.05))',
-                    border: '1px solid var(--border-color, rgba(255,255,255,0.1))',
-                    marginBottom: 24
-                  }}>
-                    <h4 style={{ margin: '0 0 12px 0', fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
-                      Feature Breakdown & Status
-                    </h4>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
-                      <div style={{
-                        padding: 14,
-                        borderRadius: 6,
-                        background: (g.hosting_mode || 'local') === 'local' ? 'rgba(var(--accent-rgb, 99, 102, 241), 0.15)' : 'transparent',
-                        border: `1px solid ${(g.hosting_mode || 'local') === 'local' ? 'var(--accent)' : 'rgba(255,255,255,0.05)'}`
-                      }}>
-                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <MonitorIcon size={16} />
-                          <span>Local Only</span>
-                          {(g.hosting_mode || 'local') === 'local' && <span style={{ fontSize: 10, background: 'var(--accent)', color: '#fff', padding: '1px 6px', borderRadius: 4 }}>Active</span>}
-                        </div>
-                        <p style={{ fontSize: 12, margin: 0, opacity: 0.8, lineHeight: 1.4 }}>
-                          Sub-second execution. 100% offline uptime. Data remains strictly on your device. AI Insights and backups are disabled.
-                        </p>
-                      </div>
-
-                      <div style={{
-                        padding: 14,
-                        borderRadius: 6,
-                        background: g.hosting_mode === 'hybrid' ? 'rgba(var(--accent-rgb, 99, 102, 241), 0.15)' : 'transparent',
-                        border: `1px solid ${g.hosting_mode === 'hybrid' ? 'var(--accent)' : 'rgba(255,255,255,0.05)'}`
-                      }}>
-                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <SyncIcon size={16} />
-                          <span>Hybrid Mode</span>
-                          {g.hosting_mode === 'hybrid' && <span style={{ fontSize: 10, background: 'var(--accent)', color: '#fff', padding: '1px 6px', borderRadius: 4 }}>Active</span>}
-                        </div>
-                        <p style={{ fontSize: 12, margin: 0, opacity: 0.8, lineHeight: 1.4 }}>
-                          Fast local POS checkouts. Background agent pushes transactions to cloud database asynchronously. Unlocks cloud backups and AI Advisor.
-                        </p>
-                      </div>
-
-                      <div style={{
-                        padding: 14,
-                        borderRadius: 6,
-                        background: g.hosting_mode === 'cloud' ? 'rgba(var(--accent-rgb, 99, 102, 241), 0.15)' : 'transparent',
-                        border: `1px solid ${g.hosting_mode === 'cloud' ? 'var(--accent)' : 'rgba(255,255,255,0.05)'}`
-                      }}>
-                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <CloudIcon size={16} />
-                          <span>Cloud Only</span>
-                          {g.hosting_mode === 'cloud' && <span style={{ fontSize: 10, background: 'var(--accent)', color: '#fff', padding: '1px 6px', borderRadius: 4 }}>Active</span>}
-                        </div>
-                        <p style={{ fontSize: 12, margin: 0, opacity: 0.8, lineHeight: 1.4 }}>
-                          Cloud database is single system of record. Real-time synchronization across POS, web, and mobile layouts. Requires active internet.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                  <HostingModeSection
+                    currentMode={g.hosting_mode || 'local'}
+                    onModeChange={(newMode) => patch('general', 'hosting_mode', newMode)}
+                    token={token}
+                  />
 
                   <SectionHeader title="Business Category" />
                   <SettingRow label="Active Business Type" description="Select your business vertical to automatically configure terminology, layouts, and custom fields.">

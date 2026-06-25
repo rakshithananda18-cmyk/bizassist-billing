@@ -28,8 +28,9 @@ from routes.actions import router as actions_router
 from routes.ask import router as ask_router
 from routes.feedback import router as feedback_router
 from routes.smart_insights import router as smart_insights_router
+from routes.migrate import router as migrate_router
 from core.api import core_router          # billing ecosystem — wired from core/
-from database.db import engine
+from database.db import engine, SessionLocal, DATABASE_URL
 from database.models import Base
 from database.migration import run_migrations_and_seed
 from services.scheduler import start_scheduler, stop_scheduler
@@ -139,6 +140,43 @@ async def root():
     return {"status": "ok", "message": "BizAssist API is running"}
 
 
+@app.get("/health")
+def health_check():
+    """
+    Liveness / readiness probe.
+
+    Always returns HTTP 200 — callers must inspect the JSON body to determine
+    whether the DB is reachable.  This lets load-balancer health checks read
+    the response without triggering a 5xx alert on a transient DB hiccup.
+
+    Response shape:
+      {"status": "ok",    "db": "connected",    "db_type": "sqlite|postgresql", "mode": "local|cloud", "version": "1.0.0"}
+      {"status": "error", "db": "disconnected"}
+    """
+    # Determine DB type and hosting mode from DATABASE_URL
+    _db_url = DATABASE_URL or ""
+    db_type = "postgresql" if _db_url.startswith("postgresql") else "sqlite"
+    mode    = "cloud" if db_type == "postgresql" else "local"
+
+    # Probe DB with a cheap round-trip
+    try:
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+            db_status = "connected"
+        finally:
+            db.close()
+        return {
+            "status":  "ok",
+            "db":      db_status,
+            "db_type": db_type,
+            "mode":    mode,
+            "version": "1.0.0",
+        }
+    except Exception:
+        return {"status": "error", "db": "disconnected"}
+
+
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(ask_router)
 app.include_router(auth_router)
@@ -151,4 +189,5 @@ app.include_router(intents_router)
 app.include_router(actions_router)
 app.include_router(feedback_router)
 app.include_router(smart_insights_router)
+app.include_router(migrate_router)        # Phase 1 – hosting-mode data migration
 app.include_router(core_router)           # billing ecosystem (sales + business templates + future)
