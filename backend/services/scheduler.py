@@ -40,6 +40,7 @@ def start_scheduler():
         run_expiry_alerts,
         run_memory_distillation,
     )
+    from services.sync_worker import run_hybrid_sync
 
     _scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
 
@@ -86,6 +87,15 @@ def start_scheduler():
         name="Weekly Memory Distillation",
         replace_existing=True,
         misfire_grace_time=86400,  # tolerate up to 24h (weekly job)
+    )
+
+    _scheduler.add_job(
+        run_hybrid_sync,
+        "interval",
+        seconds=5,
+        id="hybrid_sync",
+        name="Hybrid Sync Engine",
+        replace_existing=True,
     )
 
     _scheduler.start()

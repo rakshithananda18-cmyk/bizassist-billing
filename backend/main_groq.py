@@ -29,6 +29,7 @@ from routes.ask import router as ask_router
 from routes.feedback import router as feedback_router
 from routes.smart_insights import router as smart_insights_router
 from routes.migrate import router as migrate_router
+from routes.sync import router as sync_router
 from core.api import core_router          # billing ecosystem — wired from core/
 from database.db import engine, SessionLocal, DATABASE_URL
 from database.models import Base
@@ -190,4 +191,5 @@ app.include_router(actions_router)
 app.include_router(feedback_router)
 app.include_router(smart_insights_router)
 app.include_router(migrate_router)        # Phase 1 – hosting-mode data migration
+app.include_router(sync_router)           # Phase 2 – hosting-mode synchronization
 app.include_router(core_router)           # billing ecosystem (sales + business templates + future)

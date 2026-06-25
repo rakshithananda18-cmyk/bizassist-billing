@@ -642,3 +642,212 @@ from core.models import (  # noqa: E402,F401
     B2BConnection, ConnectionCode, B2BOrder, B2BOrderLineItem, SharedLedger,
     Expense, Godown, StockTransfer, StockTransferLineItem,
 )
+
+
+# ---------------------------------------------------------------------------
+# SYNC ENGINE MODELS & EVENT HOOKS (Phase 2)
+# ---------------------------------------------------------------------------
+
+class SyncQueue(Base):
+    __tablename__ = "sync_queue"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    business_id = Column(Integer, index=True, nullable=True)
+    entity      = Column(String, index=True, nullable=False)        # table name, e.g. 'invoices'
+    entity_id   = Column(Integer, index=True, nullable=False)       # primary key of target
+    operation   = Column(String, nullable=False)                    # 'INSERT', 'UPDATE', 'DELETE'
+    payload     = Column(Text, nullable=True)                       # JSON serialized columns
+    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    synced_at   = Column(DateTime, nullable=True)
+    error       = Column(Text, nullable=True)
+
+
+class SyncLog(Base):
+    __tablename__ = "sync_logs"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    business_id = Column(Integer, index=True, nullable=True)
+    entity      = Column(String, nullable=True)
+    entity_id   = Column(Integer, nullable=True)
+    operation   = Column(String, nullable=True)
+    synced_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+    status      = Column(String, nullable=False)                    # 'success', 'failed'
+    error       = Column(Text, nullable=True)
+
+
+class ConflictLog(Base):
+    __tablename__ = "conflict_logs"
+
+    id               = Column(Integer, primary_key=True, index=True)
+    business_id      = Column(Integer, index=True, nullable=True)
+    entity           = Column(String, index=True, nullable=False)
+    entity_id        = Column(Integer, index=True, nullable=False)
+    local_updated_at = Column(DateTime, nullable=True)
+    cloud_updated_at = Column(DateTime, nullable=True)
+    local_payload    = Column(Text, nullable=True)
+    cloud_payload    = Column(Text, nullable=True)
+    resolved_at      = Column(DateTime, nullable=True)
+    resolution       = Column(String, nullable=True)                # 'local_won', 'cloud_won', 'merged'
+
+
+_SYNC_TABLES = {
+    "businesses",
+    "users",
+    "customers",
+    "vendors",
+    "products",
+    "invoices",
+    "purchase_invoices",
+    "purchase_orders",
+    "invoice_line_items",
+    "purchase_invoice_line_items",
+    "purchase_order_line_items",
+    "alert_configs",
+    "rate_limit_configs",
+    "business_settings",
+    "payments",
+    "invoice_payments",
+    "inventory",
+    "stock_ledger",
+    "product_barcodes",
+    "godowns",
+    "expenses",
+    "stock_transfers",
+    "stock_transfer_line_items",
+    "shared_ledger",
+}
+
+
+from sqlalchemy import event, text
+from sqlalchemy.orm import Mapper
+import json
+
+def _serialize_orm_obj(obj) -> dict:
+    d = {}
+    for column in obj.__table__.columns:
+        val = getattr(obj, column.name)
+        if isinstance(val, datetime):
+            val = val.isoformat()
+        d[column.name] = val
+    return d
+
+def _get_business_id(obj) -> int | None:
+    bid = getattr(obj, "business_id", None)
+    if bid is not None:
+        try:
+            return int(bid)
+        except (ValueError, TypeError):
+            pass
+    if obj.__tablename__ == "users":
+        return obj.parent_business_id or obj.id
+    return None
+
+def _queue_change(connection, target, operation):
+    from database.db import sync_disabled_var
+    # 1. Skip if sync is disabled (e.g. during pull updates)
+    if sync_disabled_var.get() == True:
+        return
+    # 2. Skip tracking tables
+    tbl = target.__tablename__
+    if tbl in ("sync_queue", "sync_logs", "conflict_logs"):
+        return
+    # 3. Only sync tables in our export/sync set
+    if tbl not in _SYNC_TABLES:
+        return
+    
+    # 4. Only queue if dialect is sqlite (local client)
+    if connection.dialect.name != "sqlite":
+        return
+
+    bid = _get_business_id(target)
+    if bid is None:
+        return
+
+    # Check if hybrid mode is configured for this specific business ID.
+    try:
+        res = connection.execute(
+            text("SELECT parent_business_id, settings FROM users WHERE id = :bid"),
+            {"bid": bid}
+        ).fetchone()
+        
+        if not res:
+            return
+            
+        parent_id, settings_str = res[0], res[1]
+        
+        # If parent_business_id is set, settings are on the parent owner's user record
+        if parent_id is not None:
+            res_parent = connection.execute(
+                text("SELECT settings FROM users WHERE id = :parent_id"),
+                {"parent_id": parent_id}
+            ).fetchone()
+            if res_parent:
+                settings_str = res_parent[0]
+                
+        if not settings_str:
+            return
+            
+        s = json.loads(settings_str)
+        if s.get("general", {}).get("hosting_mode") != "hybrid":
+            return
+    except Exception:
+        # users table might not exist yet during initial DB creation/seeds, or query failed
+        return
+
+    # 5. Extract values and queue it
+    entity_id = getattr(target, "id", None)
+    if entity_id is None:
+        pks = target.__table__.primary_key.columns.keys()
+        if pks:
+            entity_id = getattr(target, pks[0], None)
+
+    if entity_id is None:
+        return
+
+    payload = None
+    if operation != "DELETE":
+        try:
+            payload = json.dumps(_serialize_orm_obj(target), default=str)
+        except Exception:
+            pass
+    else:
+        try:
+            payload = json.dumps({"id": entity_id, "business_id": bid}, default=str)
+        except Exception:
+            pass
+
+    # Insert into sync_queue using connection
+    try:
+        connection.execute(
+            text(
+                "INSERT INTO sync_queue (business_id, entity, entity_id, operation, payload, created_at) "
+                "VALUES (:business_id, :entity, :entity_id, :operation, :payload, :created_at)"
+            ),
+            {
+                "business_id": bid,
+                "entity": tbl,
+                "entity_id": entity_id,
+                "operation": operation,
+                "payload": payload,
+                "created_at": datetime.utcnow()
+            }
+        )
+    except Exception as e:
+        # Fail silently to prevent blocking main database writes
+        pass
+
+
+@event.listens_for(Mapper, "after_insert")
+def handle_after_insert(mapper, connection, target):
+    _queue_change(connection, target, "INSERT")
+
+
+@event.listens_for(Mapper, "after_update")
+def handle_after_update(mapper, connection, target):
+    _queue_change(connection, target, "UPDATE")
+
+
+@event.listens_for(Mapper, "after_delete")
+def handle_after_delete(mapper, connection, target):
+    _queue_change(connection, target, "DELETE")
+

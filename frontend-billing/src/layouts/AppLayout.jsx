@@ -2,6 +2,7 @@ import React from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useLock } from '../contexts/LockContext'
+import { API_BASE } from '../config'
 import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
 import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon } from '../components/Icons'
@@ -74,6 +75,66 @@ export default function AppLayout({ children, title }) {
 
   const hostingMode = settings?.general?.hosting_mode || 'local'
   const isSyncOn = hostingMode === 'cloud' || hostingMode === 'hybrid'
+
+  const [queueDepth, setQueueDepth] = React.useState({
+    pending_count: 0,
+    last_sync_time: null,
+    last_status: 'idle',
+    last_error: null
+  })
+  const [flushing, setFlushing] = React.useState(false)
+
+  const handleSyncFlush = React.useCallback(async () => {
+    if (!token) return
+    setFlushing(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/sync/flush`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.ok) {
+        setTimeout(async () => {
+          try {
+            const r = await fetch(`${API_BASE}/api/sync/queue-depth`, {
+              headers: { Authorization: `Bearer ${token}` }
+            })
+            if (r.ok) {
+              const data = await r.json()
+              setQueueDepth(data)
+            }
+          } catch (e) {}
+          setFlushing(false)
+        }, 1500)
+      } else {
+        setFlushing(false)
+      }
+    } catch (err) {
+      console.error('Failed to trigger manual sync flush:', err)
+      setFlushing(false)
+    }
+  }, [token])
+
+  React.useEffect(() => {
+    if (hostingMode !== 'hybrid' || !token) return
+
+    const fetchQueueDepth = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/sync/queue-depth`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setQueueDepth(data)
+        }
+      } catch (err) {
+        console.error('Failed to fetch sync queue depth:', err)
+      }
+    }
+
+    fetchQueueDepth()
+    const interval = setInterval(fetchQueueDepth, 10000)
+    return () => clearInterval(interval)
+  }, [hostingMode, token])
 
   const [syncHealth, setSyncHealth] = React.useState(() => {
     if (window.__syncStatus) {
@@ -428,39 +489,68 @@ export default function AppLayout({ children, title }) {
                     marginTop: '4px',
                     width: 'fit-content',
                     transition: 'all 0.2s ease',
-                    backgroundColor: syncHealth.status === 'connected' ? 'rgba(34, 197, 94, 0.1)' :
-                                     syncHealth.status === 'connecting' ? 'rgba(245, 158, 11, 0.1)' :
-                                     'rgba(239, 68, 68, 0.1)',
-                    color: syncHealth.status === 'connected' ? 'var(--success, #22c55e)' :
-                           syncHealth.status === 'connecting' ? 'var(--warning, #f59e0b)' :
-                           'var(--danger, #ef4444)',
+                    backgroundColor: hostingMode === 'hybrid'
+                      ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'rgba(239, 68, 68, 0.1)' :
+                         queueDepth.pending_count > 0 ? 'rgba(245, 158, 11, 0.1)' : 'rgba(34, 197, 94, 0.1)')
+                      : (syncHealth.status === 'connected' ? 'rgba(34, 197, 94, 0.1)' :
+                         syncHealth.status === 'connecting' ? 'rgba(245, 158, 11, 0.1)' :
+                         'rgba(239, 68, 68, 0.1)'),
+                    color: hostingMode === 'hybrid'
+                      ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger, #ef4444)' :
+                         queueDepth.pending_count > 0 ? 'var(--warning, #f59e0b)' : 'var(--success, #22c55e)')
+                      : (syncHealth.status === 'connected' ? 'var(--success, #22c55e)' :
+                         syncHealth.status === 'connecting' ? 'var(--warning, #f59e0b)' :
+                         'var(--danger, #ef4444)'),
                     border: '1px solid currentColor',
                     textTransform: 'none',
                     letterSpacing: 'normal'
                   }}
                   title="Click to view sync health check details"
                 >
-                  {syncHealth.status === 'connected' && (
+                  {hostingMode === 'hybrid' ? (
                     <>
-                      <CheckIcon size={10} strokeWidth={2.5} />
-                      <span>Sync Live</span>
+                      {queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? (
+                        <>
+                          <AlertIcon size={10} strokeWidth={2.5} />
+                          <span>Sync Error</span>
+                        </>
+                      ) : queueDepth.pending_count > 0 ? (
+                        <>
+                          <span className="sync-spinner-small" />
+                          <span>{queueDepth.pending_count} pending</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckIcon size={10} strokeWidth={2.5} />
+                          <span>Sync Live</span>
+                        </>
+                      )}
                     </>
-                  )}
-                  {syncHealth.status === 'connecting' && (
+                  ) : (
                     <>
-                      <span className="sync-spinner-small" />
-                      <span>Connecting...</span>
-                    </>
-                  )}
-                  {syncHealth.status === 'error' && (
-                    <>
-                      <AlertIcon size={10} strokeWidth={2.5} />
-                      <span>Sync Error</span>
-                    </>
-                  )}
-                  {syncHealth.status === 'disconnected' && (
-                    <>
-                      <span>Disconnected</span>
+                      {syncHealth.status === 'connected' && (
+                        <>
+                          <CheckIcon size={10} strokeWidth={2.5} />
+                          <span>Sync Live</span>
+                        </>
+                      )}
+                      {syncHealth.status === 'connecting' && (
+                        <>
+                          <span className="sync-spinner-small" />
+                          <span>Connecting...</span>
+                        </>
+                      )}
+                      {syncHealth.status === 'error' && (
+                        <>
+                          <AlertIcon size={10} strokeWidth={2.5} />
+                          <span>Sync Error</span>
+                        </>
+                      )}
+                      {syncHealth.status === 'disconnected' && (
+                        <>
+                          <span>Disconnected</span>
+                        </>
+                      )}
                     </>
                   )}
                 </div>
@@ -519,11 +609,17 @@ export default function AppLayout({ children, title }) {
                     <span style={{ color: 'var(--text-secondary)' }}>Status</span>
                     <span style={{
                       fontWeight: '700',
-                      color: syncHealth.status === 'connected' ? 'var(--success)' :
-                             syncHealth.status === 'connecting' ? 'var(--warning)' : 'var(--danger)'
+                      color: hostingMode === 'hybrid'
+                        ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger)' :
+                           queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)')
+                        : (syncHealth.status === 'connected' ? 'var(--success)' :
+                           syncHealth.status === 'connecting' ? 'var(--warning)' : 'var(--danger)')
                     }}>
-                      {syncHealth.status === 'connected' ? 'Connected' :
-                       syncHealth.status === 'connecting' ? 'Reconnecting...' : 'Error / Offline'}
+                      {hostingMode === 'hybrid'
+                        ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'Sync Error' :
+                           queueDepth.pending_count > 0 ? 'Syncing...' : 'Synced')
+                        : (syncHealth.status === 'connected' ? 'Connected' :
+                           syncHealth.status === 'connecting' ? 'Reconnecting...' : 'Error / Offline')}
                     </span>
                   </div>
 
@@ -534,14 +630,36 @@ export default function AppLayout({ children, title }) {
                     </span>
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Last Sync Message</span>
-                    <span style={{ fontWeight: '600', color: 'var(--text-primary)', textTransform: 'capitalize' }}>
-                      {syncHealth.lastEntity ? `${syncHealth.lastEntity} updated` : 'None'}
-                    </span>
-                  </div>
+                  {hostingMode === 'hybrid' && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Sync Outbox</span>
+                      <span style={{ fontWeight: '600', color: queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)' }}>
+                        {queueDepth.pending_count > 0 ? `${queueDepth.pending_count} pending` : 'Fully Synced'}
+                      </span>
+                    </div>
+                  )}
 
-                  {syncHealth.lastSyncTime && (
+                  {hostingMode !== 'hybrid' && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Last Sync Message</span>
+                      <span style={{ fontWeight: '600', color: 'var(--text-primary)', textTransform: 'capitalize' }}>
+                        {syncHealth.lastEntity ? `${syncHealth.lastEntity} updated` : 'None'}
+                      </span>
+                    </div>
+                  )}
+
+                  {hostingMode === 'hybrid' && queueDepth.last_sync_time && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderTop: '1px solid var(--border)', paddingTop: '6px' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Last Synced At</span>
+                      <span style={{ fontWeight: '500', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                        {new Date(queueDepth.last_sync_time).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        {' '}
+                        ({new Date(queueDepth.last_sync_time).toLocaleDateString()})
+                      </span>
+                    </div>
+                  )}
+
+                  {hostingMode !== 'hybrid' && syncHealth.lastSyncTime && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderTop: '1px solid var(--border)', paddingTop: '6px' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Last Synced At</span>
                       <span style={{ fontWeight: '500', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
@@ -553,7 +671,23 @@ export default function AppLayout({ children, title }) {
                   )}
                 </div>
 
-                {syncHealth.error && (
+                {hostingMode === 'hybrid' && queueDepth.last_error && (
+                  <div style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                    borderRadius: 'var(--radius-sm, 4px)',
+                    padding: '8px',
+                    fontSize: '0.75rem',
+                    color: 'var(--danger)',
+                    wordBreak: 'break-word',
+                    lineHeight: '1.3'
+                  }}>
+                    <strong>Sync Worker Log:</strong><br />
+                    {queueDepth.last_error}
+                  </div>
+                )}
+
+                {hostingMode !== 'hybrid' && syncHealth.error && (
                   <div style={{
                     backgroundColor: 'rgba(239, 68, 68, 0.05)',
                     border: '1px solid rgba(239, 68, 68, 0.2)',
@@ -569,7 +703,36 @@ export default function AppLayout({ children, title }) {
                   </div>
                 )}
 
-                {(syncHealth.status === 'error' || syncHealth.status === 'connecting') && (
+                {hostingMode === 'hybrid' && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleSyncFlush()
+                    }}
+                    disabled={flushing}
+                    style={{
+                      width: '100%',
+                      padding: '6px 12px',
+                      backgroundColor: flushing ? 'rgba(255,255,255,0.08)' : 'var(--accent, #3b82f6)',
+                      color: flushing ? 'var(--text-muted)' : '#fff',
+                      border: 'none',
+                      borderRadius: 'var(--radius-sm, 4px)',
+                      cursor: flushing ? 'not-allowed' : 'pointer',
+                      fontWeight: '600',
+                      fontSize: '0.75rem',
+                      transition: 'background-color 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <SyncIcon size={12} className={flushing ? 'sync-spinner-small' : ''} />
+                    {flushing ? 'Syncing Now...' : 'Sync Now'}
+                  </button>
+                )}
+
+                {hostingMode !== 'hybrid' && (syncHealth.status === 'error' || syncHealth.status === 'connecting') && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation()

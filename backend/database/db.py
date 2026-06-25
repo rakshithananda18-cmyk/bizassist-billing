@@ -66,6 +66,7 @@ import contextvars
 from sqlalchemy import text
 
 current_business_id_var = contextvars.ContextVar("current_business_id", default=None)
+sync_disabled_var = contextvars.ContextVar("sync_disabled", default=False)
 
 def get_db():
     """

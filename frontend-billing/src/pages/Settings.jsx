@@ -1809,6 +1809,21 @@ export default function Settings() {
                 onModeChange={(newMode) => patch('general', 'hosting_mode', newMode)}
                 token={token}
               />
+              {g.hosting_mode === 'hybrid' && (
+                <SettingRow label="Sync Interval" description="How frequently local changes are synced to the cloud.">
+                  <select
+                    className="form-input"
+                    style={{ width: 220 }}
+                    value={g.sync_interval ?? 30}
+                    onChange={e => patch('general', 'sync_interval', parseInt(e.target.value))}
+                  >
+                    <option value={10}>Every 10 Seconds</option>
+                    <option value={30}>Every 30 Seconds</option>
+                    <option value={60}>Every 1 Minute</option>
+                    <option value={300}>Every 5 Minutes</option>
+                  </select>
+                </SettingRow>
+              )}
 
               <SectionHeader title="Data & Backup" />
               <SettingRow label="Auto Backup" description="Periodically request backup files for storage.">

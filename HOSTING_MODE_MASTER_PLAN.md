@@ -1174,15 +1174,15 @@ BizAssist.exe
 |---|---|
 | ✅ Mode selector UI | Already in settings page |
 | ✅ SSE health indicator | Already in sidebar |
-| 🔲 Dynamic API Base URL | Read `apiUrl` from settings instead of hardcoded env var |
-| 🔲 Mode-switch alert modals | Blocking modal per transition (6 variants) with full consequences |
-| 🔲 `GET /api/migrate/export` | Dump entire DB (all tables) as ordered JSON |
-| 🔲 `POST /api/migrate/import` | Accept JSON batches, insert to target DB |
-| 🔲 `GET /api/migrate/status` | SSE stream of migration progress (%) |
-| 🔲 Migration progress UI | Full-screen overlay, non-dismissible, with cancel + rollback |
-| 🔲 Post-migration validation | Compare record counts source vs destination |
-| 🔲 Auto local backup | Before any migration, snapshot `bizassist.db` with timestamp |
-| 🔲 Rollback button | In Settings → restore last backup |
+| ✅ Dynamic API Base URL | Read `apiUrl` from settings instead of hardcoded env var |
+| ✅ Mode-switch alert modals | Blocking modal per transition (6 variants) with full consequences |
+| ✅ `GET /api/migrate/export` | Dump entire DB (all tables) as ordered JSON |
+| ✅ `POST /api/migrate/import` | Accept JSON batches, insert to target DB |
+| ✅ `GET /api/migrate/status` | SSE stream of migration progress (%) |
+| ✅ Migration progress UI | Full-screen overlay, non-dismissible, with cancel + rollback |
+| ✅ Post-migration validation | Compare record counts source vs destination |
+| ✅ Auto local backup | Before any migration, snapshot `bizassist.db` with timestamp |
+| ✅ Rollback button | In Settings → restore last backup |
 
 ---
 
@@ -1191,17 +1191,17 @@ BizAssist.exe
 
 | Task | Description |
 |---|---|
-| 🔲 `sync_queue` table | New table in SQLite: captures every local write |
-| 🔲 `sync_log` table | Audit trail of every sync operation |
-| 🔲 ORM write hooks | After every INSERT/UPDATE/DELETE → push to sync_queue |
-| 🔲 Background sync worker | Python thread: every 30s, flush sync_queue to cloud |
-| 🔲 `POST /api/sync/push` | Cloud endpoint: receive local changes, apply to PostgreSQL |
-| 🔲 `GET /api/sync/pull` | Cloud endpoint: return changes since `last_sync_at` |
-| 🔲 Conflict detection | Compare `updated_at` timestamps on conflict |
-| 🔲 Last-write-wins (v1) | Newer `updated_at` always wins, loser goes to `conflict_log` |
+| ✅ `sync_queue` table | New table in SQLite: captures every local write |
+| ✅ `sync_log` table | Audit trail of every sync operation |
+| ✅ ORM write hooks | After every INSERT/UPDATE/DELETE → push to sync_queue |
+| ✅ Background sync worker | Python thread: every 30s, flush sync_queue to cloud |
+| ✅ `POST /api/sync/push` | Cloud endpoint: receive local changes, apply to PostgreSQL |
+| ✅ `GET /api/sync/pull` | Cloud endpoint: return changes since `last_sync_at` |
+| ✅ Conflict detection | Compare `updated_at` timestamps on conflict |
+| ✅ Last-write-wins (v1) | Newer `updated_at` always wins, loser goes to `conflict_log` |
 | 🔲 Manual merge UI (v2) | Side-by-side diff, user picks winner per field |
-| 🔲 Sync health indicator | Extend sidebar indicator: queue depth, last sync time, conflict count |
-| 🔲 Offline queue persistence | Sync queue survives app restart; resumes on reconnect |
+| ✅ Sync health indicator | Extend sidebar indicator: queue depth, last sync time, conflict count |
+| ✅ Offline queue persistence | Sync queue survives app restart; resumes on reconnect |
 
 ---
 
@@ -1239,16 +1239,17 @@ BizAssist.exe
 
 ---
 
-## 11. Open Questions (To Decide)
+## 11. Open Questions & Decided Architecture
 
-1. **Conflict resolution in Hybrid**: Last-write-wins (simple) or manual merge UI (complex)?
-2. **Who owns cloud DB schema?**: Supabase hosted or self-hosted PostgreSQL?
-3. **Sync interval**: 30 seconds, real-time, or manual-trigger-only?
-4. **Multi-user conflict in Hybrid**: What if two users edit the same invoice simultaneously?
-5. **Electron vs Tauri**: Electron is heavier but more mature; Tauri is lighter (Rust-based)
+1. **Conflict resolution in Hybrid**: **Last-Write-Wins (LWW) Decided for v1**. Discarded items (local timestamp older than cloud) are logged silently to the `conflict_logs` table for tracking and resolution.
+2. **Who owns cloud DB schema?**: Supabase hosted or self-hosted PostgreSQL? (Currently runs Supabase PostgreSQL).
+3. **Sync interval**: **Adjustable in Advanced Settings**. Options: 10s, 30s, 60s, 5m.
+4. **Multi-user conflict in Hybrid**: Resolved via LWW on PostgreSQL `updated_at` column.
+5. **Electron vs Tauri**: Electron is heavier but more mature; Tauri is lighter (Rust-based).
 6. **Offline AI**: Should local mode support AI features via Ollama?
 7. **Data retention on Cloud → Local switch**: How long should cloud data stay active after switching?
 
 ---
 
 *This master plan should be revisited and updated as each phase is completed.*
+
