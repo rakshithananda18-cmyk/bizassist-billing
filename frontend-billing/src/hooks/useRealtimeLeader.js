@@ -8,6 +8,7 @@ export function useRealtimeLeader(token, settings, user) {
   const tabId = tabIdRef.current
   const channelRef = useRef(null)
   const esRef = useRef(null)
+  const reconnectTimeoutRef = useRef(null)
 
   useEffect(() => {
     if (!token || !user) {
@@ -79,11 +80,29 @@ export function useRealtimeLeader(token, settings, user) {
       }
     }
 
+    const scheduleReconnect = () => {
+      if (!isCurrentLeader) return
+      if (reconnectTimeoutRef.current) return
+      
+      logger.info('[REALTIME] Scheduling reconnect in 5 seconds...')
+      reconnectTimeoutRef.current = setTimeout(() => {
+        reconnectTimeoutRef.current = null
+        if (isCurrentLeader) {
+          connectSSE()
+        }
+      }, 5000)
+    }
+
     // Connect to SSE stream (Leader only)
     const connectSSE = async () => {
       if (esRef.current) {
         esRef.current.close()
         esRef.current = null
+      }
+
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
       }
 
       if (!navigator.onLine) {
@@ -145,21 +164,31 @@ export function useRealtimeLeader(token, settings, user) {
 
         es.onerror = (err) => {
           logger.error('[REALTIME] SSE error:', err)
+          if (esRef.current) {
+            esRef.current.close()
+            esRef.current = null
+          }
           connectionError = 'Sync stream interrupted. Reconnecting…'
           emitStatus('error')
           channel.postMessage({ type: 'status_change', status: 'error', error: connectionError })
           window.dispatchEvent(new CustomEvent('show_toast', {
             detail: { type: 'error', msg: 'Sync stream interrupted. Reconnecting…' }
           }))
+          scheduleReconnect()
         }
       } catch (err) {
         logger.error('[REALTIME] EventSource setup failed:', err)
+        if (esRef.current) {
+          esRef.current.close()
+          esRef.current = null
+        }
         connectionError = err.message || 'Failed to initialize sync client.'
         emitStatus('error')
         channel.postMessage({ type: 'status_change', status: 'error', error: connectionError })
         window.dispatchEvent(new CustomEvent('show_toast', {
           detail: { type: 'error', msg: `Sync connection failed: ${connectionError}` }
         }))
+        scheduleReconnect()
       }
     }
 
@@ -187,6 +216,10 @@ export function useRealtimeLeader(token, settings, user) {
             esRef.current.close()
             esRef.current = null
           }
+          if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current)
+            reconnectTimeoutRef.current = null
+          }
         }
       }
     }
@@ -197,6 +230,10 @@ export function useRealtimeLeader(token, settings, user) {
         localStorage.removeItem('realtime_leader_tab')
         localStorage.removeItem('realtime_leader_ts')
         channel.postMessage({ type: 'leader_left', tabId })
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
       }
     }
 
@@ -263,6 +300,10 @@ export function useRealtimeLeader(token, settings, user) {
       logger.info('[REALTIME] Network online detected.')
       connectionError = null
       emitStatus('connecting')
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
       if (isCurrentLeader) {
         connectSSE()
       }
@@ -272,6 +313,10 @@ export function useRealtimeLeader(token, settings, user) {
       logger.warn('[REALTIME] Network offline detected.')
       connectionError = 'No internet connection. Client is offline.'
       emitStatus('error')
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
       if (isCurrentLeader) {
         channel.postMessage({ type: 'status_change', status: 'error', error: connectionError })
       }
@@ -310,6 +355,10 @@ export function useRealtimeLeader(token, settings, user) {
     return () => {
       logger.info(`[REALTIME] Cleaning up realtime listener for Tab ${tabId}.`)
       clearInterval(heartbeatInterval)
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
       releaseLeadership()
       if (esRef.current) {
         esRef.current.close()
