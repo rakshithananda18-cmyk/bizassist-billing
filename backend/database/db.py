@@ -62,6 +62,11 @@ class BusinessOwnedMixin(TimestampMixin):
     business_id = Column(Integer, index=True, nullable=True)
 
 
+import contextvars
+from sqlalchemy import text
+
+current_business_id_var = contextvars.ContextVar("current_business_id", default=None)
+
 def get_db():
     """
     FastAPI dependency that yields a DB session and always closes it — even on
@@ -75,7 +80,21 @@ def get_db():
     using `SessionLocal()` directly.
     """
     db = SessionLocal()
+    business_id = current_business_id_var.get()
+    
+    if business_id is not None and db.bind.dialect.name == "postgresql":
+        try:
+            db.execute(text(f"SET app.current_business_id = '{int(business_id)}'"))
+        except Exception:
+            # We fail silently or log, but do not block request startup unless database is totally down
+            pass
+            
     try:
         yield db
     finally:
+        if business_id is not None and db.bind.dialect.name == "postgresql":
+            try:
+                db.execute(text("RESET app.current_business_id"))
+            except Exception:
+                pass
         db.close()

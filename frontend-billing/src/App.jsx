@@ -1,9 +1,10 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { LockProvider } from './contexts/LockContext'
 import LockScreen from './components/LockScreen'
 import PageLoader from './components/PageLoader'
+import { syncManager } from './sync/syncManager'
 
 // Pages
 import Login     from './pages/Login'
@@ -59,6 +60,11 @@ function AppRoutes() {
 }
 
 export default function App() {
+  useEffect(() => {
+    const unsubscribe = syncManager.start()
+    return unsubscribe
+  }, [])
+
   return (
     <BrowserRouter>
       <AuthProvider>

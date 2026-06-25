@@ -106,12 +106,11 @@ async def _ask_error_handler(_request: Request, exc: AskError):
 # On every request that carries a valid JWT, set the session-local variable
 # `app.current_business_id` so Postgres RLS policies can filter by tenant.
 # No-op on SQLite (dev/test) — the dialect check guards safely.
-from database.db import SessionLocal as _SessionLocal
-import jwt as _jwt
+from database.db import current_business_id_var
 
 @app.middleware("http")
 async def _set_rls_business_id(request: Request, call_next):
-    """Set app.current_business_id for Postgres RLS before each request."""
+    """Set current_business_id_var contextvar for Postgres RLS before each request."""
     business_id: int | None = None
 
     # Extract business_id from Bearer token (best-effort — auth errors are
@@ -119,32 +118,20 @@ async def _set_rls_business_id(request: Request, call_next):
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         try:
+            import jwt
             from services.auth import JWT_SECRET, JWT_ALGORITHM
-            payload = _jwt.decode(
+            payload = jwt.decode(
                 auth_header[7:], JWT_SECRET, algorithms=[JWT_ALGORITHM]
             )
             business_id = payload.get("id")
         except Exception:
             pass  # invalid / expired token — route will 401 later
 
-    if business_id is not None:
-        db = _SessionLocal()
-        try:
-            # Only set for Postgres; SQLite ignores this gracefully
-            if db.bind.dialect.name == "postgresql":
-                db.execute(
-                    text(f"SET LOCAL app.current_business_id = {int(business_id)}")
-                )
-                db.commit()
-                logger.debug(
-                    "[RLS] SET LOCAL app.current_business_id = %s", business_id
-                )
-        except Exception as exc:
-            logger.warning("[RLS] Failed to set RLS variable: %s", exc)
-        finally:
-            db.close()
-
-    return await call_next(request)
+    token = current_business_id_var.set(business_id)
+    try:
+        return await call_next(request)
+    finally:
+        current_business_id_var.reset(token)
 
 
 @app.get("/")
