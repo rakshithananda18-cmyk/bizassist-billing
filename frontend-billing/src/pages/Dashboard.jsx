@@ -47,7 +47,7 @@ export default function Dashboard() {
   useEffect(() => {
     load()
     const handleSync = (e) => {
-      logger.info('[DASHBOARD] Real-time sync event received:', e.detail)
+      logger.debug('[DASHBOARD] Real-time sync event received:', e.detail)
       load()
     }
     window.addEventListener('sync-event', handleSync)

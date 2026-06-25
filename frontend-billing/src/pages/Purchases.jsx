@@ -140,7 +140,7 @@ export default function Purchases() {
     const handleSync = (e) => {
       const isPurchasesSyncEnabled = settings?.general?.realtime_sync_purchases !== false
       if (!isPurchasesSyncEnabled) return
-      logger.info('[PURCHASES] Real-time sync event received:', e.detail)
+      logger.debug('[PURCHASES] Real-time sync event received:', e.detail)
       if (['purchase', 'payment', 'party'].includes(e.detail.entity)) {
         load()
       }

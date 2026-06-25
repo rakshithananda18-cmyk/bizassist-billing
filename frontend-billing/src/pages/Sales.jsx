@@ -667,7 +667,7 @@ export default function Sales() {
     const handleSync = (e) => {
       const isSalesSyncEnabled = settings?.general?.realtime_sync_sales !== false
       if (!isSalesSyncEnabled) return
-      logger.info('[SALES] Real-time sync event received:', e.detail)
+      logger.debug('[SALES] Real-time sync event received:', e.detail)
       if (['invoice', 'product', 'party'].includes(e.detail.entity)) {
         load()
       }

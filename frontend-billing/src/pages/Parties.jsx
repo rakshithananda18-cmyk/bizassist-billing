@@ -63,7 +63,7 @@ export default function Parties() {
     const handleSync = (e) => {
       const isPartiesSyncEnabled = settings?.general?.realtime_sync_parties !== false
       if (!isPartiesSyncEnabled) return
-      logger.info('[PARTIES] Real-time sync event received:', e.detail)
+      logger.debug('[PARTIES] Real-time sync event received:', e.detail)
       if (['party', 'invoice', 'purchase', 'payment'].includes(e.detail.entity)) {
         load()
       }

@@ -84,7 +84,7 @@ export default function Orders() {
   useEffect(() => {
     loadOrders()
     const handleSync = (e) => {
-      logger.info('[ORDERS] Real-time sync event received:', e.detail)
+      logger.debug('[ORDERS] Real-time sync event received:', e.detail)
       if (['order', 'party', 'product'].includes(e.detail.entity)) {
         loadOrders()
       }

@@ -59,7 +59,7 @@ export default function Payments() {
   useEffect(() => {
     load()
     const handleSync = (e) => {
-      logger.info('[PAYMENTS] Real-time sync event received:', e.detail)
+      logger.debug('[PAYMENTS] Real-time sync event received:', e.detail)
       if (['payment', 'invoice', 'purchase'].includes(e.detail.entity)) {
         load()
       }
