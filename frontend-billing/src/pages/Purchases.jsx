@@ -7,7 +7,7 @@ const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
 
 export default function Purchases() {
-  const { authFetch } = useAuth()
+  const { authFetch, settings } = useAuth()
 
   const [bills, setBills]           = useState([])
   const [debitNotes, setDebitNotes] = useState([])
@@ -138,6 +138,8 @@ export default function Purchases() {
   useEffect(() => {
     load()
     const handleSync = (e) => {
+      const isPurchasesSyncEnabled = settings?.general?.realtime_sync_purchases !== false
+      if (!isPurchasesSyncEnabled) return
       logger.info('[PURCHASES] Real-time sync event received:', e.detail)
       if (['purchase', 'payment', 'party'].includes(e.detail.entity)) {
         load()
@@ -147,7 +149,7 @@ export default function Purchases() {
     return () => {
       window.removeEventListener('sync-event', handleSync)
     }
-  }, [load])
+  }, [load, settings])
 
   const getFilteredItems = () => {
     const q = search.toLowerCase()

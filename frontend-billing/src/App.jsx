@@ -74,8 +74,10 @@ function RealtimeSyncListener() {
     }
 
     const hostingMode = settings?.general?.hosting_mode || 'local'
-    if (hostingMode === 'local') {
-      logger.info('[REALTIME] Hosting mode is Local. Real-time stream disabled.')
+    const isRealtimeGlobalEnabled = settings?.general?.realtime_sync_global !== false
+    
+    if (hostingMode === 'local' || !isRealtimeGlobalEnabled) {
+      logger.info(`[REALTIME] Real-time stream disabled. mode=${hostingMode}, global_enabled=${isRealtimeGlobalEnabled}`)
       const detail = { status: 'disconnected', error: null, lastSyncTime: null, lastEntity: null, isOnline: navigator.onLine }
       window.__syncStatus = detail
       window.dispatchEvent(new CustomEvent('sync-status-change', { detail }))

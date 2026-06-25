@@ -38,7 +38,7 @@ function getStatus(product) {
 }
 
 export default function Stock() {
-  const { authFetch } = useAuth()
+  const { authFetch, settings } = useAuth()
   const { attributesSchema } = useBusinessConfig()
 
   const [products, setProducts]             = useState([])
@@ -90,6 +90,8 @@ export default function Stock() {
   useEffect(() => {
     load()
     const handleSync = (e) => {
+      const isStockSyncEnabled = settings?.general?.realtime_sync_stock !== false
+      if (!isStockSyncEnabled) return
       logger.info('[STOCK] Real-time sync event received:', e.detail)
       if (['product', 'invoice', 'purchase', 'godown'].includes(e.detail.entity)) {
         load()
@@ -99,7 +101,7 @@ export default function Stock() {
     return () => {
       window.removeEventListener('sync-event', handleSync)
     }
-  }, [load])
+  }, [load, settings])
 
   const categories = [...new Set(products.map(p => p.category).filter(Boolean))]
 

@@ -410,6 +410,9 @@ export default function Sales() {
     localStorage.setItem(`pos_minimized_tabs_${uid}`, JSON.stringify(tabs))
     localStorage.setItem(`pos_minimized_active_id_${uid}`, activeTabId)
 
+    const isSalesSyncEnabled = settings?.general?.realtime_sync_sales !== false
+    if (!isSalesSyncEnabled) return
+
     if (isSyncingRef.current) {
       isSyncingRef.current = false
       return
@@ -431,12 +434,14 @@ export default function Sales() {
     }, 600)
 
     return () => clearTimeout(t)
-  }, [tabs, activeTabId, user?.id, authFetch, clientId])
+  }, [tabs, activeTabId, user?.id, authFetch, clientId, settings])
 
   useEffect(() => {
     const handleSync = (e) => {
       const { type, client_id, tabs: remoteTabs, active_tab_id: remoteActiveTabId } = e.detail || {}
       if (type === 'pos.cart_sync' && client_id !== clientId) {
+        const isSalesSyncEnabled = settings?.general?.realtime_sync_sales !== false
+        if (!isSalesSyncEnabled) return
         logger.info('[SALES] Received remote cart sync from client:', client_id)
         isSyncingRef.current = true
         if (Array.isArray(remoteTabs) && remoteTabs.length > 0) {
@@ -451,7 +456,7 @@ export default function Sales() {
     return () => {
       window.removeEventListener('sync-event', handleSync)
     }
-  }, [clientId])
+  }, [clientId, settings])
 
 
   useEffect(() => {
@@ -638,6 +643,8 @@ export default function Sales() {
   useEffect(() => {
     load()
     const handleSync = (e) => {
+      const isSalesSyncEnabled = settings?.general?.realtime_sync_sales !== false
+      if (!isSalesSyncEnabled) return
       logger.info('[SALES] Real-time sync event received:', e.detail)
       if (['invoice', 'product', 'party'].includes(e.detail.entity)) {
         load()
@@ -649,7 +656,7 @@ export default function Sales() {
       window.removeEventListener('focus', load)
       window.removeEventListener('sync-event', handleSync)
     }
-  }, [load])
+  }, [load, settings])
 
   // Flush the offline outbox whenever we (re)connect, then refresh the server
   // list + the "unsynced" badge. flushOutbox is a no-op while offline.

@@ -15,7 +15,7 @@ const defaultForm = {
 }
 
 export default function Parties() {
-  const { authFetch, user } = useAuth()
+  const { authFetch, user, settings } = useAuth()
 
   const [customers, setCustomers]   = useState([])
   const [vendors, setVendors]       = useState([])
@@ -61,6 +61,8 @@ export default function Parties() {
   useEffect(() => {
     load()
     const handleSync = (e) => {
+      const isPartiesSyncEnabled = settings?.general?.realtime_sync_parties !== false
+      if (!isPartiesSyncEnabled) return
       logger.info('[PARTIES] Real-time sync event received:', e.detail)
       if (['party', 'invoice', 'purchase', 'payment'].includes(e.detail.entity)) {
         load()
@@ -70,7 +72,7 @@ export default function Parties() {
     return () => {
       window.removeEventListener('sync-event', handleSync)
     }
-  }, [load])
+  }, [load, settings])
 
   const getList = () => {
     if (activeTab === 'Customers') return customers;

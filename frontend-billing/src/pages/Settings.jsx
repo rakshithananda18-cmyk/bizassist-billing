@@ -1838,6 +1838,28 @@ export default function Settings() {
                 </SettingRow>
               )}
 
+              <SectionHeader title="Real-Time Synchronization Settings" />
+              <SettingRow label="Global Real-Time Sync" description="Enable or disable all real-time background updates globally.">
+                <Toggle id="realtime_sync_global" checked={g.realtime_sync_global !== false} onChange={v => patch('general', 'realtime_sync_global', v)} />
+              </SettingRow>
+
+              {g.realtime_sync_global !== false && (
+                <div style={{ marginLeft: 24, paddingLeft: 16, borderLeft: '2px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <SettingRow label="POS Sales Page Sync" description="Enable real-time active cart and sales listing synchronization.">
+                    <Toggle id="realtime_sync_sales" checked={g.realtime_sync_sales !== false} onChange={v => patch('general', 'realtime_sync_sales', v)} />
+                  </SettingRow>
+                  <SettingRow label="Inventory Page Sync" description="Enable real-time product and stock level update synchronization.">
+                    <Toggle id="realtime_sync_stock" checked={g.realtime_sync_stock !== false} onChange={v => patch('general', 'realtime_sync_stock', v)} />
+                  </SettingRow>
+                  <SettingRow label="Customers Page Sync" description="Enable real-time customer and vendor ledger synchronization.">
+                    <Toggle id="realtime_sync_parties" checked={g.realtime_sync_parties !== false} onChange={v => patch('general', 'realtime_sync_parties', v)} />
+                  </SettingRow>
+                  <SettingRow label="Purchases Page Sync" description="Enable real-time purchase bill and debit note synchronization.">
+                    <Toggle id="realtime_sync_purchases" checked={g.realtime_sync_purchases !== false} onChange={v => patch('general', 'realtime_sync_purchases', v)} />
+                  </SettingRow>
+                </div>
+              )}
+
               <SectionHeader title="Data & Backup" />
               <SettingRow label="Auto Backup" description="Periodically request backup files for storage.">
                 <Toggle id="auto_backup" checked={g.auto_backup === true} onChange={v => patch('general', 'auto_backup', v)} />
