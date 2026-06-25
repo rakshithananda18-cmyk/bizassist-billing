@@ -4,7 +4,7 @@ import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { useLock } from '../contexts/LockContext'
 import { API_BASE } from '../config'
-import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon, MonitorIcon, SyncIcon, CloudIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon, MonitorIcon, SyncIcon, CloudIcon, ZapIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import { SkylineLoader } from '../components/Logo'
 import { getHeaderLayout, isHeaderLineEnabled, moveItem } from '../utils/printLayout'
@@ -135,6 +135,7 @@ const TABS = [
   { id: 'print',        label: 'Print & PDF',   icon: <PrinterIcon size={16} /> },
   { id: 'labels',       label: 'Custom Labels', icon: <TagIcon size={16} /> },
   { id: 'lock',         label: 'Lock & Staff',  icon: <ShieldIcon size={16} /> },
+  { id: 'advanced',     label: 'Advanced',      icon: <ZapIcon size={16} /> },
 ]
 
 // ── Global Modal Style Constants ───────────────────────────────────────────
@@ -802,12 +803,30 @@ export default function Settings() {
             <>
               {!isCashier && (
                 <>
-                  <SectionHeader title="Hosting & Sync Mode" />
-                  <HostingModeSection
-                    currentMode={g.hosting_mode || 'local'}
-                    onModeChange={(newMode) => patch('general', 'hosting_mode', newMode)}
-                    token={token}
-                  />
+                  <SectionHeader title="Advanced Sync & Hosting" />
+                  <SettingRow
+                    label="Cloud Sync & Database Hosting"
+                    description="Configure where your data resides (Local Only, Hybrid Sync, or Cloud Only) and manage automated cloud backups."
+                  >
+                    <button
+                      onClick={() => handleTabChange('advanced')}
+                      className="btn btn-primary"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        background: 'linear-gradient(135deg, var(--accent) 0%, #4f46e5 100%)',
+                        border: 'none',
+                        padding: '10px 18px',
+                        borderRadius: 8,
+                        fontWeight: 700,
+                        boxShadow: '0 4px 12px rgba(99, 99, 255, 0.2)',
+                      }}
+                    >
+                      <ZapIcon size={14} />
+                      Manage Hosting & Backups →
+                    </button>
+                  </SettingRow>
 
                   <SectionHeader title="Business Category" />
                   <SettingRow label="Active Business Type" description="Select your business vertical to automatically configure terminology, layouts, and custom fields.">
@@ -910,24 +929,6 @@ export default function Settings() {
                     </select>
                   </SettingRow>
 
-                  <SectionHeader title="Data & Backup" />
-                  <SettingRow label="Auto Backup" description="Periodically request backup files for storage.">
-                    <Toggle id="auto_backup" checked={g.auto_backup === true} onChange={v => patch('general', 'auto_backup', v)} />
-                  </SettingRow>
-                  {g.auto_backup && (
-                    <SettingRow label="Backup Reminder Interval" description="How often to remind for data backups.">
-                      <select
-                        className="form-input"
-                        style={{ width: 220 }}
-                        value={g.backup_reminder_days ?? 7}
-                        onChange={e => patch('general', 'backup_reminder_days', parseInt(e.target.value))}
-                      >
-                        <option value={7}>Every 7 Days</option>
-                        <option value={15}>Every 15 Days</option>
-                        <option value={30}>Every 30 Days</option>
-                      </select>
-                    </SettingRow>
-                  )}
                 </>
               )}
             </>
@@ -1797,6 +1798,37 @@ export default function Settings() {
               </div>
 
             </div>
+          )}
+
+          {/* ═══════════════════════════ ADVANCED ═════════════════════════════ */}
+          {activeTab === 'advanced' && !isCashier && (
+            <>
+              <SectionHeader title="Hosting & Sync Mode" />
+              <HostingModeSection
+                currentMode={g.hosting_mode || 'local'}
+                onModeChange={(newMode) => patch('general', 'hosting_mode', newMode)}
+                token={token}
+              />
+
+              <SectionHeader title="Data & Backup" />
+              <SettingRow label="Auto Backup" description="Periodically request backup files for storage.">
+                <Toggle id="auto_backup" checked={g.auto_backup === true} onChange={v => patch('general', 'auto_backup', v)} />
+              </SettingRow>
+              {g.auto_backup && (
+                <SettingRow label="Backup Reminder Interval" description="How often to remind for data backups.">
+                  <select
+                    className="form-input"
+                    style={{ width: 220 }}
+                    value={g.backup_reminder_days ?? 7}
+                    onChange={e => patch('general', 'backup_reminder_days', parseInt(e.target.value))}
+                  >
+                    <option value={7}>Every 7 Days</option>
+                    <option value={15}>Every 15 Days</option>
+                    <option value={30}>Every 30 Days</option>
+                  </select>
+                </SettingRow>
+              )}
+            </>
           )}
           </div>
         </div>
