@@ -103,72 +103,72 @@ function RealtimeSyncListener() {
     const initialError = navigator.onLine ? null : 'No internet connection. Client is offline.'
     emitStatus(initialStatus, initialError)
 
-    if (!navigator.onLine) {
-      logger.warn('[REALTIME] Offline on mount, deferring EventSource connection.')
-      return
-    }
-
-    logger.info('[REALTIME] Connecting to SSE stream in mode:', hostingMode, 'trigger:', reconnectTrigger)
-    window.dispatchEvent(new CustomEvent('show_toast', {
-      detail: { type: 'info', msg: `Connecting to cloud sync stream (${hostingMode} mode)…` }
-    }))
-    const url = `${API_BASE}/realtime/events?token=${encodeURIComponent(token)}`
-    
     let es = null
-    try {
-      es = new EventSource(url)
+    if (navigator.onLine) {
+      logger.info('[REALTIME] Connecting to SSE stream in mode:', hostingMode, 'trigger:', reconnectTrigger)
+      window.dispatchEvent(new CustomEvent('show_toast', {
+        detail: { type: 'info', msg: `Connecting to cloud sync stream (${hostingMode} mode)…` }
+      }))
+      const url = `${API_BASE}/realtime/events?token=${encodeURIComponent(token)}`
+      
+      try {
+        es = new EventSource(url)
 
-      es.onopen = () => {
-        logger.info('[REALTIME] SSE connection established.')
-        connectionError = null
-        emitStatus('connected')
-        window.dispatchEvent(new CustomEvent('show_toast', {
-          detail: { type: 'success', msg: 'Cloud real-time sync connected.' }
-        }))
-      }
-
-      es.onmessage = async (e) => {
-        try {
-          const data = JSON.parse(e.data)
-          logger.debug('[REALTIME] Received SSE event:', data)
-          
-          lastSyncTime = new Date().toISOString()
-          lastEntity = data.entity
-          localStorage.setItem(`sync_last_time_${user.id}`, lastSyncTime)
-          localStorage.setItem(`sync_last_entity_${user.id}`, lastEntity)
+        es.onopen = () => {
+          logger.info('[REALTIME] SSE connection established.')
           connectionError = null
           emitStatus('connected')
-
-          // Dispatch window level event
-          window.dispatchEvent(new CustomEvent('sync-event', { detail: data }))
           window.dispatchEvent(new CustomEvent('show_toast', {
-            detail: { type: 'info', msg: `Syncing remote ${data.entity} updates…` }
+            detail: { type: 'success', msg: 'Cloud real-time sync connected.' }
           }))
-
-          // Trigger background outbox cursor pull to keep cache fresh
-          if (['invoice', 'payment', 'purchase', 'product', 'party', 'order', 'godown'].includes(data.entity)) {
-            logger.info('[REALTIME] Auto pulling deltas for entity:', data.entity)
-            try {
-              await syncManager.pull()
-            } catch (err) {
-              logger.error('[REALTIME] Auto pull failed:', err)
-            }
-          }
-        } catch (err) {
-          logger.error('[REALTIME] SSE parse error:', err)
         }
-      }
 
-      es.onerror = (err) => {
-        logger.error('[REALTIME] SSE error:', err)
-        connectionError = 'Sync stream interrupted. Reconnecting…'
+        es.onmessage = async (e) => {
+          try {
+            const data = JSON.parse(e.data)
+            logger.debug('[REALTIME] Received SSE event:', data)
+            
+            lastSyncTime = new Date().toISOString()
+            lastEntity = data.entity
+            localStorage.setItem(`sync_last_time_${user.id}`, lastSyncTime)
+            localStorage.setItem(`sync_last_entity_${user.id}`, lastEntity)
+            connectionError = null
+            emitStatus('connected')
+
+            // Dispatch window level event
+            window.dispatchEvent(new CustomEvent('sync-event', { detail: data }))
+            window.dispatchEvent(new CustomEvent('show_toast', {
+              detail: { type: 'info', msg: `Syncing remote ${data.entity} updates…` }
+            }))
+
+            // Trigger background outbox cursor pull to keep cache fresh
+            if (['invoice', 'payment', 'purchase', 'product', 'party', 'order', 'godown'].includes(data.entity)) {
+              logger.info('[REALTIME] Auto pulling deltas for entity:', data.entity)
+              try {
+                await syncManager.pull()
+              } catch (err) {
+                logger.error('[REALTIME] Auto pull failed:', err)
+              }
+            }
+          } catch (err) {
+            logger.error('[REALTIME] SSE parse error:', err)
+          }
+        }
+
+        es.onerror = (err) => {
+          logger.error('[REALTIME] SSE error:', err)
+          connectionError = 'Sync stream interrupted. Reconnecting…'
+          emitStatus('error')
+        }
+      } catch (err) {
+        logger.error('[REALTIME] EventSource instantiation failed:', err)
+        connectionError = err.message || 'Failed to initialize sync client.'
         emitStatus('error')
       }
-    } catch (err) {
-      logger.error('[REALTIME] EventSource instantiation failed:', err)
-      connectionError = err.message || 'Failed to initialize sync client.'
-      emitStatus('error')
+    } else {
+      logger.warn('[REALTIME] Offline, deferring EventSource connection.')
     }
+
 
     const handleOnline = () => {
       logger.info('[REALTIME] Network online detected.')
