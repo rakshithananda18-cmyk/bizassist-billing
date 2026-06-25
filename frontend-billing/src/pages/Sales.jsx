@@ -363,7 +363,6 @@ export default function Sales() {
 
   const clientIdRef = useRef(Math.random().toString(36).substring(7))
   const clientId = clientIdRef.current
-  const isSyncingRef = useRef(false)
 
   const [tabs, setTabs] = useState(() => {
     const uid = user?.id
@@ -413,10 +412,6 @@ export default function Sales() {
     const isSalesSyncEnabled = settings?.general?.realtime_sync_sales !== false
     if (!isSalesSyncEnabled) return
 
-    if (isSyncingRef.current) {
-      isSyncingRef.current = false
-      return
-    }
 
     const t = setTimeout(async () => {
       try {
@@ -438,25 +433,19 @@ export default function Sales() {
 
   useEffect(() => {
     const handleSync = (e) => {
-      const { type, client_id, tabs: remoteTabs, active_tab_id: remoteActiveTabId } = e.detail || {}
+      const { type, client_id } = e.detail || {}
       if (type === 'pos.cart_sync' && client_id !== clientId) {
-        const isSalesSyncEnabled = settings?.general?.realtime_sync_sales !== false
-        if (!isSalesSyncEnabled) return
-        logger.info('[SALES] Received remote cart sync from client:', client_id)
-        isSyncingRef.current = true
-        if (Array.isArray(remoteTabs) && remoteTabs.length > 0) {
-          setTabs(remoteTabs)
-        }
-        if (remoteActiveTabId) {
-          setActiveTabId(remoteActiveTabId)
-        }
+        // Log the presence event but DO NOT overwrite our local cart.
+        // Each terminal keeps its own independent cart. Remote terminals
+        // can see each other's presence via the sync-status indicator.
+        logger.info('[SALES] Remote terminal active:', client_id)
       }
     }
     window.addEventListener('sync-event', handleSync)
     return () => {
       window.removeEventListener('sync-event', handleSync)
     }
-  }, [clientId, settings])
+  }, [clientId])
 
 
   useEffect(() => {

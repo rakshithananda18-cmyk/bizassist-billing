@@ -255,12 +255,14 @@ async def pos_cart_sync(
     current_user: dict = Depends(get_active_user)
 ):
     bid = current_user["id"]
+    # Only broadcast presence (client_id, active_tab_id) — not full tab state.
+    # Each POS terminal maintains its own independent cart; tabs are never
+    # applied from remote peers, so we avoid transmitting cart data over SSE.
     await realtime_manager.broadcast(
         bid,
         {
             "type": "pos.cart_sync",
             "client_id": req.get("client_id"),
-            "tabs": req.get("tabs"),
             "active_tab_id": req.get("active_tab_id")
         }
     )

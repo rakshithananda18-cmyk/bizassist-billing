@@ -1,4 +1,5 @@
 import React from 'react'
+import { createPortal } from 'react-dom'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useLock } from '../contexts/LockContext'
@@ -956,12 +957,13 @@ export default function AppLayout({ children, title }) {
         </main>
       </div>
 
-      {toasts.length > 0 && (
+      {/* Toast portal — rendered at document.body to escape overflow:hidden on .app-shell */}
+      {toasts.length > 0 && createPortal(
         <div style={{
           position: 'fixed',
           bottom: 24,
           right: 24,
-          zIndex: 10000,
+          zIndex: 99999,
           display: 'flex',
           flexDirection: 'column',
           gap: 10,
@@ -980,18 +982,20 @@ export default function AppLayout({ children, title }) {
               }`,
               padding: '12px 16px',
               borderRadius: 'var(--radius-md, 8px)',
-              boxShadow: 'var(--shadow-lg, 0 10px 15px -3px rgba(0,0,0,0.1))',
+              boxShadow: '0 10px 30px -5px rgba(0,0,0,0.25)',
               display: 'flex',
               alignItems: 'center',
               gap: 12,
-              animation: 'slideIn 0.2s ease-out'
+              animation: 'slideIn 0.2s ease-out',
+              minWidth: 240
             }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
                 {toast.type === 'success' ? <CheckIcon size={16} style={{ color: 'var(--success, #22c55e)' }} /> :
                  toast.type === 'error' ? <AlertIcon size={16} style={{ color: 'var(--danger, #ef4444)' }} /> :
+                 toast.type === 'warning' ? <AlertIcon size={16} style={{ color: 'var(--warning, #f59e0b)' }} /> :
                  <SummaryIcon size={16} style={{ color: 'var(--accent, #3b82f6)' }} />}
               </span>
-              <span style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text, #1e293b)', lineHeight: 1.4 }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text, #1e293b)', lineHeight: 1.4, flex: 1 }}>
                 {toast.msg}
               </span>
               <button
@@ -1001,10 +1005,11 @@ export default function AppLayout({ children, title }) {
                   border: 'none',
                   color: 'var(--text-muted, #64748b)',
                   cursor: 'pointer',
-                  marginLeft: 'auto',
+                  marginLeft: 4,
                   display: 'flex',
                   alignItems: 'center',
-                  padding: 0
+                  padding: 0,
+                  flexShrink: 0
                 }}
                 aria-label="Close"
               >
@@ -1012,7 +1017,8 @@ export default function AppLayout({ children, title }) {
               </button>
             </div>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
