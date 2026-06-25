@@ -682,10 +682,16 @@ export default function Sales() {
     })
   }, [authFetch, setForm, getNextInvoiceNo])
 
+  const settingsRef = useRef(settings)
+  useEffect(() => {
+    settingsRef.current = settings
+  }, [settings])
+
   useEffect(() => {
     load()
     const handleSync = (e) => {
-      const isSalesSyncEnabled = settings?.general?.realtime_sync_sales !== false
+      const currentSettings = settingsRef.current
+      const isSalesSyncEnabled = currentSettings?.general?.realtime_sync_sales !== false
       if (!isSalesSyncEnabled) return
       logger.debug('[SALES] Real-time sync event received:', e.detail)
       if (['invoice', 'product', 'party'].includes(e.detail.entity)) {
@@ -698,7 +704,7 @@ export default function Sales() {
       window.removeEventListener('focus', load)
       window.removeEventListener('sync-event', handleSync)
     }
-  }, [load, settings])
+  }, [load])
 
   // Flush the offline outbox whenever we (re)connect, then refresh the server
   // list + the "unsynced" badge. flushOutbox is a no-op while offline.
