@@ -7,7 +7,7 @@ import json
 import asyncio
 import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -210,7 +210,7 @@ def revoke_partnership(id: int, current_user: dict = Depends(restrict_cashier), 
         raise HTTPException(status_code=500, detail="Could not revoke partnership")
 
 @router.get("/realtime/events")
-async def sse_realtime_feed(current_user: dict = Depends(restrict_cashier)):
+async def sse_realtime_feed(request: Request, current_user: dict = Depends(restrict_cashier)):
     """
     Server-Sent Events stream for real-time B2B notifications.
     Streams events scoped to the logged-in business.
@@ -220,10 +220,18 @@ async def sse_realtime_feed(current_user: dict = Depends(restrict_cashier)):
     
     async def event_generator():
         try:
+            # Yield initial retry hint to EventSource
+            yield "retry: 5000\n\n"
             while True:
-                # Wait for broadcast events
-                event = await q.get()
-                yield f"data: {json.dumps(event)}\n\n"
+                if await request.is_disconnected():
+                    logger.info(f"[REALTIME] Client disconnected for Business {bid}")
+                    break
+                try:
+                    event = await asyncio.wait_for(q.get(), timeout=15.0)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    # Periodically yield keep-alive comment to prevent proxy timeouts
+                    yield ": keep-alive\n\n"
         except asyncio.CancelledError:
             # Client disconnected
             pass
