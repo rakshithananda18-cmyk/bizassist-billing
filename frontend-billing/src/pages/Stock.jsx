@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
-import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, ZapIcon } from '../components/Icons'
+import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 
 const fmt = (n) =>
@@ -60,6 +60,18 @@ export default function Stock() {
   
   const [submitting, setSubmitting]         = useState(false)
   const [alert, setAlert]                   = useState(null)
+
+  const formatError = (err, fallback) => {
+    if (!err) return fallback
+    if (typeof err.detail === 'string') return err.detail
+    if (Array.isArray(err.detail)) {
+      return err.detail.map(d => `${d.loc ? d.loc.join('.') : 'error'}: ${d.msg || ''}`).join(', ')
+    }
+    if (err.detail && typeof err.detail === 'object') {
+      return JSON.stringify(err.detail)
+    }
+    return err.message || fallback
+  }
 
   const load = useCallback(() => {
     setLoading(true)
@@ -136,7 +148,7 @@ export default function Stock() {
         load()
       } else {
         const err = await res.json().catch(() => ({}))
-        setAlert({ type: 'danger', msg: err.detail || 'Failed to add product.' })
+        setAlert({ type: 'danger', msg: formatError(err, 'Failed to add product.') })
       }
     } catch {
       setAlert({ type: 'danger', msg: 'Network error.' })
@@ -184,7 +196,7 @@ export default function Stock() {
         load()
       } else {
         const err = await res.json().catch(() => ({}))
-        setAlert({ type: 'danger', msg: err.detail || 'Failed to add godown.' })
+        setAlert({ type: 'danger', msg: formatError(err, 'Failed to add godown.') })
       }
     } catch {
       setAlert({ type: 'danger', msg: 'Network error.' })
@@ -224,7 +236,7 @@ export default function Stock() {
         load()
       } else {
         const err = await res.json().catch(() => ({}))
-        setAlert({ type: 'danger', msg: err.detail || 'Failed to transfer stock.' })
+        setAlert({ type: 'danger', msg: formatError(err, 'Failed to transfer stock.') })
       }
     } catch {
       setAlert({ type: 'danger', msg: 'Network error.' })
