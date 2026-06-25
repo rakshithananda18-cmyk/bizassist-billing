@@ -88,3 +88,55 @@ def restrict_cashier(current_user: dict = Depends(get_active_user)) -> dict:
 
 # Readable alias for owner-only routes.
 require_owner = restrict_cashier
+
+
+# ── SSE Ticket Authentication ────────────────────────────────────────────────
+_sse_tickets = {}
+
+def create_sse_ticket(user_payload: dict, expires_in_seconds: int = 30) -> str:
+    """Generate a single-use random ticket token and save it with a short TTL."""
+    now = datetime.utcnow()
+    # Periodic in-line cleanup of expired tickets
+    for tk, val in list(_sse_tickets.items()):
+        if now > val["expires"]:
+            _sse_tickets.pop(tk, None)
+            
+    ticket = _secrets.token_urlsafe(32)
+    _sse_tickets[ticket] = {
+        "user": user_payload,
+        "expires": now + timedelta(seconds=expires_in_seconds)
+    }
+    return ticket
+
+def get_active_user_or_ticket(
+    authorization: str = Header(None),
+    token: str = Query(None),
+    ticket: str = Query(None)
+) -> dict:
+    """Authenticate via header JWT, query JWT, or short-lived SSE ticket."""
+    if ticket:
+        now = datetime.utcnow()
+        ticket_data = _sse_tickets.get(ticket)
+        if not ticket_data:
+            logger.warning("[AUTH] Ticket not found or already used")
+            raise HTTPException(status_code=401, detail="Invalid or expired ticket")
+        if now > ticket_data["expires"]:
+            _sse_tickets.pop(ticket, None)
+            logger.warning("[AUTH] Ticket expired")
+            raise HTTPException(status_code=401, detail="Invalid or expired ticket")
+        
+        # Pop to enforce single-use
+        _sse_tickets.pop(ticket, None)
+        logger.info("[AUTH] Ticket verified successfully for user %s", ticket_data["user"].get("username"))
+        return ticket_data["user"]
+    
+    return get_active_user(authorization=authorization, token=token)
+
+def restrict_cashier_or_ticket(current_user: dict = Depends(get_active_user_or_ticket)) -> dict:
+    """Block cashiers from accessing routes, supporting ticket authentication."""
+    if (current_user.get("role") or "").lower() == "cashier":
+        logger.info("[AUTH] cashier blocked from owner-only action (user=%s)",
+                    current_user.get("username"))
+        raise HTTPException(status_code=403, detail="Permission denied: cashier restricted")
+    return current_user
+

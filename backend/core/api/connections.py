@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from database.db import get_db
 from database.models import User
 from core.models import B2BConnection, BusinessSettings
-from services.auth import get_active_user, restrict_cashier
+from services.auth import get_active_user, restrict_cashier, restrict_cashier_or_ticket
 from services.realtime import realtime_manager
 from core.connection import service as conn_service
 
@@ -210,8 +210,17 @@ def revoke_partnership(id: int, current_user: dict = Depends(restrict_cashier), 
         logger.error(f"Failed to revoke partnership: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Could not revoke partnership")
 
+@router.post("/realtime/ticket")
+def generate_sse_ticket(current_user: dict = Depends(restrict_cashier)):
+    """
+    Generate a short-lived single-use SSE ticket for authentication.
+    """
+    from services.auth import create_sse_ticket
+    ticket = create_sse_ticket(current_user)
+    return {"ticket": ticket, "expires_in": 30}
+
 @router.get("/realtime/events")
-async def sse_realtime_feed(request: Request, current_user: dict = Depends(restrict_cashier)):
+async def sse_realtime_feed(request: Request, current_user: dict = Depends(restrict_cashier_or_ticket)):
     """
     Server-Sent Events stream for real-time B2B notifications.
     Streams events scoped to the logged-in business.

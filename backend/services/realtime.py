@@ -1,12 +1,7 @@
-"""
-services/realtime.py
-====================
-In-memory Server-Sent Events (SSE) notification broker.
-Routes events (e.g. order updates) to connected merchant sessions.
-"""
 import asyncio
 import logging
 from typing import Dict, Set, Any
+from fastapi import HTTPException
 
 logger = logging.getLogger("bizassist.realtime")
 
@@ -17,6 +12,11 @@ class RealtimeManager:
 
     def subscribe(self, business_id: int) -> asyncio.Queue:
         """Subscribe a new client queue for a business_id."""
+        active_conns = len(self.connections.get(business_id, set()))
+        if active_conns >= 20:
+            logger.warning(f"[REALTIME] Rejecting subscription for Business {business_id}: too many connections ({active_conns})")
+            raise HTTPException(status_code=429, detail="Too many SSE connections for this business")
+
         q = asyncio.Queue(maxsize=100)  # Bound the queue size to prevent leak memory
         if business_id not in self.connections:
             self.connections[business_id] = set()
@@ -42,6 +42,17 @@ class RealtimeManager:
         # Gather active queues to write
         queues = list(self.connections[business_id])
         for q in queues:
+            # Event deduplication / backpressure for rapid duplicate events
+            if event.get("type") == "sync.trigger":
+                duplicate = False
+                for item in list(q._queue):
+                    if isinstance(item, dict) and item.get("type") == "sync.trigger" and item.get("entity") == event.get("entity"):
+                        duplicate = True
+                        break
+                if duplicate:
+                    logger.debug(f"[REALTIME] Skipping duplicate event {event.get('type')} for entity {event.get('entity')} (already queued)")
+                    continue
+
             try:
                 # Add to queue without blocking if space available
                 q.put_nowait(event)
@@ -51,3 +62,4 @@ class RealtimeManager:
                 self.unsubscribe(business_id, q)
 
 realtime_manager = RealtimeManager()
+
