@@ -529,3 +529,11 @@ export function MonitorIcon({ size, strokeWidth }) {
   )
 }
 
+export function CloudIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <path d="M17.5 19A3.5 3.5 0 0 0 21 15.5c0-2.79-2.54-4.5-5-4.5-.42 0-.83.07-1.22.2A6 6 0 0 0 3 11.5c0 3.59 2.91 6.5 6.5 6.5h8z" />
+    </svg>
+  )
+}
+
