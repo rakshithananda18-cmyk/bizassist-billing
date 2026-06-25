@@ -5,7 +5,7 @@ FastAPI routes for B2B Ordering and Supplier Catalogue browsing.
 """
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from database.db import get_db
@@ -124,6 +124,9 @@ async def place_order(req: OrderRequest, current_user: dict = Depends(restrict_c
             "total_amount": order.total_amount
         })
         
+        # Broadcast sync trigger to self's active sessions
+        await realtime_manager.broadcast(current_user["id"], {"type": "sync.trigger", "entity": "order"})
+        
         return _order_out(order, db)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
@@ -187,6 +190,9 @@ async def update_order_status(id: int, req: StatusRequest, current_user: dict = 
                 "order_number": order.order_number,
                 "seller_invoice_id": order.seller_invoice_id
             })
+
+        # Broadcast sync trigger to self's active sessions
+        await realtime_manager.broadcast(current_user["id"], {"type": "sync.trigger", "entity": "order"})
 
         return _order_out(order, db)
     except ValueError as ve:

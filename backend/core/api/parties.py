@@ -21,7 +21,7 @@ all invoices for that customer (read-only, deterministic SQL).
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 from database.db import get_db
 from database.models import Customer, Vendor, Invoice, Payment
 from services.auth import get_active_user
+from services.realtime import realtime_manager
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.parties")
@@ -176,6 +177,7 @@ def list_customers(
 @router.post("/customers", status_code=201)
 def create_customer(
     req: CreateCustomer,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
 ):
@@ -191,6 +193,7 @@ def create_customer(
     )
     db.add(c)
     db.commit()
+    background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "party"})
     db.refresh(c)
     logger.info("[PARTIES] created customer %s (biz=%s)", c.id, bid)
     return _customer_out(c)
@@ -217,6 +220,7 @@ def get_customer(
 def update_customer(
     customer_id: int,
     req: UpdateCustomer,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
 ):
@@ -234,6 +238,7 @@ def update_customer(
             setattr(c, field, val)
 
     db.commit()
+    background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "party"})
     db.refresh(c)
     outstanding = _compute_outstanding(db, bid, customer_id)
     return _customer_out(c, outstanding)
@@ -324,6 +329,7 @@ def list_vendors(
 @router.post("/vendors", status_code=201)
 def create_vendor(
     req: CreateVendor,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
 ):
@@ -338,6 +344,7 @@ def create_vendor(
     )
     db.add(v)
     db.commit()
+    background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "party"})
     db.refresh(v)
     logger.info("[PARTIES] created vendor %s (biz=%s)", v.id, bid)
     return _vendor_out(v)
@@ -363,6 +370,7 @@ def get_vendor(
 def update_vendor(
     vendor_id: int,
     req: UpdateVendor,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
 ):
@@ -380,5 +388,6 @@ def update_vendor(
             setattr(v, field, val)
 
     db.commit()
+    background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "party"})
     db.refresh(v)
     return _vendor_out(v)

@@ -83,6 +83,16 @@ export default function Orders() {
 
   useEffect(() => {
     loadOrders()
+    const handleSync = (e) => {
+      logger.info('[ORDERS] Real-time sync event received:', e.detail)
+      if (['order', 'party', 'product'].includes(e.detail.entity)) {
+        loadOrders()
+      }
+    }
+    window.addEventListener('sync-event', handleSync)
+    return () => {
+      window.removeEventListener('sync-event', handleSync)
+    }
   }, [loadOrders])
 
   // Handle SSE Realtime alerts

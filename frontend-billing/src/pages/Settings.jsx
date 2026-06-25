@@ -244,7 +244,7 @@ function PasscodeModal({ open, hasLock, onClose, setupPasscode, clearPasscode })
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Settings() {
-  const { authFetch, user } = useAuth()
+  const { authFetch, user, fetchSettings } = useAuth()
   const { config, refreshConfig } = useBusinessConfig()
   const { hasLock, setupPasscode, clearPasscode } = useLock()
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
@@ -486,6 +486,9 @@ export default function Settings() {
         const updated = await res.json()
         logger.info('[Settings] Save successful. Updated sections:', Object.keys(updated))
         setSettings(updated)
+        if (fetchSettings) {
+          await fetchSettings()
+        }
         setToast({ type: 'success', msg: 'Settings saved successfully!' })
       } else {
         const err = await res.json().catch(() => ({}))
@@ -760,6 +763,78 @@ export default function Settings() {
                       </select>
                     </SettingRow>
                   )}
+
+                  <SectionHeader title="Hosting & Sync Mode" />
+                  <SettingRow label="Selected Mode" description="Choose where your primary database resides and how data is synchronized.">
+                    <select
+                      className="form-input"
+                      style={{ width: 280 }}
+                      value={g.hosting_mode || 'local'}
+                      onChange={e => patch('general', 'hosting_mode', e.target.value)}
+                    >
+                      <option value="local">Local Only (Offline Cache)</option>
+                      <option value="hybrid">Hybrid (Local POS + Cloud Sync)</option>
+                      <option value="cloud">Cloud Only (Universal Real-Time Sync)</option>
+                    </select>
+                  </SettingRow>
+
+                  <div className="hosting-mode-details" style={{
+                    marginTop: 16,
+                    padding: 20,
+                    borderRadius: 8,
+                    background: 'var(--bg-surface, rgba(255,255,255,0.05))',
+                    border: '1px solid var(--border-color, rgba(255,255,255,0.1))'
+                  }}>
+                    <h4 style={{ margin: '0 0 12px 0', fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
+                      Feature Breakdown & Status
+                    </h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+                      <div style={{
+                        padding: 14,
+                        borderRadius: 6,
+                        background: (g.hosting_mode || 'local') === 'local' ? 'rgba(var(--accent-rgb, 99, 102, 241), 0.15)' : 'transparent',
+                        border: `1px solid ${(g.hosting_mode || 'local') === 'local' ? 'var(--accent)' : 'rgba(255,255,255,0.05)'}`
+                      }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>💻 Local Only</span>
+                          {(g.hosting_mode || 'local') === 'local' && <span style={{ fontSize: 10, background: 'var(--accent)', color: '#fff', padding: '1px 6px', borderRadius: 4 }}>Active</span>}
+                        </div>
+                        <p style={{ fontSize: 12, margin: 0, opacity: 0.8, lineHeight: 1.4 }}>
+                          Sub-second execution. 100% offline uptime. Data remains strictly on your device. AI Insights and backups are disabled.
+                        </p>
+                      </div>
+
+                      <div style={{
+                        padding: 14,
+                        borderRadius: 6,
+                        background: g.hosting_mode === 'hybrid' ? 'rgba(var(--accent-rgb, 99, 102, 241), 0.15)' : 'transparent',
+                        border: `1px solid ${g.hosting_mode === 'hybrid' ? 'var(--accent)' : 'rgba(255,255,255,0.05)'}`
+                      }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>⚡ Hybrid Mode</span>
+                          {g.hosting_mode === 'hybrid' && <span style={{ fontSize: 10, background: 'var(--accent)', color: '#fff', padding: '1px 6px', borderRadius: 4 }}>Active</span>}
+                        </div>
+                        <p style={{ fontSize: 12, margin: 0, opacity: 0.8, lineHeight: 1.4 }}>
+                          Fast local POS checkouts. Background agent pushes transactions to cloud database asynchronously. Unlocks cloud backups and AI Advisor.
+                        </p>
+                      </div>
+
+                      <div style={{
+                        padding: 14,
+                        borderRadius: 6,
+                        background: g.hosting_mode === 'cloud' ? 'rgba(var(--accent-rgb, 99, 102, 241), 0.15)' : 'transparent',
+                        border: `1px solid ${g.hosting_mode === 'cloud' ? 'var(--accent)' : 'rgba(255,255,255,0.05)'}`
+                      }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span>☁️ Cloud Only</span>
+                          {g.hosting_mode === 'cloud' && <span style={{ fontSize: 10, background: 'var(--accent)', color: '#fff', padding: '1px 6px', borderRadius: 4 }}>Active</span>}
+                        </div>
+                        <p style={{ fontSize: 12, margin: 0, opacity: 0.8, lineHeight: 1.4 }}>
+                          Cloud database is single system of record. Real-time synchronization across POS, web, and mobile layouts. Requires active internet.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </>
               )}
             </>

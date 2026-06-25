@@ -9,7 +9,7 @@ Per FOUNDATION.md: routes stay thin. Scoped by business_id.
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,7 @@ from database.models import Invoice, InvoicePayment, Customer, Expense
 from services.auth import get_active_user, restrict_cashier
 from core.billing import commands as billing
 from core.sync.idempotency import ReplayGuard, replay_guard
+from services.realtime import realtime_manager
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.payments")
@@ -171,6 +172,7 @@ def list_payments(
 @router.post("/payments", status_code=201)
 def record_payment(
     req: RecordPaymentRequestFlexible,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
     guard: ReplayGuard = Depends(replay_guard),
@@ -228,6 +230,7 @@ def record_payment(
             note=p_note,
             idempotency_key=req.idempotency_key,
         )
+        background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "payment"})
         return guard.store({
             # Legacy/Test fields
             "id": p.id,
@@ -262,6 +265,7 @@ def record_payment(
 @router.post("/credit-notes", status_code=201)
 def create_credit_note(
     req: CreateCreditNoteRequest,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
@@ -276,6 +280,7 @@ def create_credit_note(
             lines=lines,
             note=req.note,
         )
+        background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "payment"})
         return _invoice_out(cn)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -325,6 +330,7 @@ def list_expenses(
 @router.post("/expenses", status_code=201)
 def create_expense(
     req: CreateExpenseRequest,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db)
 ):
@@ -352,6 +358,7 @@ def create_expense(
         from core.accounting import posting
         posting.post_expense(db, exp)
         db.commit()
+        background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "payment"})
         db.refresh(exp)
         return {
             "id": exp.id,
@@ -377,6 +384,7 @@ def create_expense(
 @router.delete("/expenses/{expense_id}")
 def delete_expense(
     expense_id: int,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db)
 ):
@@ -392,6 +400,7 @@ def delete_expense(
     try:
         db.delete(exp)
         db.commit()
+        background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "payment"})
         return {"success": True, "message": "Expense deleted successfully"}
     except Exception as e:
         db.rollback()

@@ -1,6 +1,6 @@
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,7 @@ from services.purchase_ocr import parse_purchase_file
 from services.purchase_mapper import map_purchase_items_to_catalog
 from core.purchase import commands as purchase_commands
 from core.sync.idempotency import ReplayGuard, replay_guard
+from services.realtime import realtime_manager
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.purchases")
@@ -111,6 +112,7 @@ async def upload_purchase_bill(
 @router.post("/purchases/confirm")
 def confirm_purchase_invoice(
     payload: dict,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
     guard: ReplayGuard = Depends(replay_guard),
@@ -129,6 +131,7 @@ def confirm_purchase_invoice(
 
     try:
         inv = purchase_commands.accept_supplier_invoice(db, bid, payload)
+        background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "purchase"})
         return guard.store(_invoice_out(inv))
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
@@ -214,6 +217,7 @@ class CreateDebitNoteRequest(BaseModel):
 @router.post("/purchases/debit-notes", status_code=201)
 def create_debit_note(
     req: CreateDebitNoteRequest,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db)
 ):
@@ -232,6 +236,7 @@ def create_debit_note(
             note=req.note,
             debit_note_no=req.debit_note_number
         )
+        background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "purchase"})
         return _invoice_out(dn)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

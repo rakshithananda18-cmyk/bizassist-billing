@@ -5,6 +5,8 @@ import { LockProvider } from './contexts/LockContext'
 import LockScreen from './components/LockScreen'
 import PageLoader from './components/PageLoader'
 import { syncManager } from './sync/syncManager'
+import { API_BASE } from './config'
+import { logger } from './utils/logger'
 
 // Pages
 import Login     from './pages/Login'
@@ -59,6 +61,61 @@ function AppRoutes() {
   )
 }
 
+function RealtimeSyncListener() {
+  const { user, token, settings } = useAuth()
+
+  useEffect(() => {
+    if (!token || !user) return
+
+    const hostingMode = settings?.general?.hosting_mode || 'local'
+    if (hostingMode === 'local') {
+      logger.info('[REALTIME] Hosting mode is Local. Real-time stream disabled.')
+      return
+    }
+
+    logger.info('[REALTIME] Connecting to SSE stream in mode:', hostingMode)
+    const url = `${API_BASE}/realtime/events?token=${encodeURIComponent(token)}`
+    const es = new EventSource(url)
+
+    es.onopen = () => {
+      logger.info('[REALTIME] SSE connection established.')
+    }
+
+    es.onmessage = async (e) => {
+      try {
+        const data = JSON.parse(e.data)
+        logger.debug('[REALTIME] Received SSE event:', data)
+        
+        // Dispatch window level event
+        window.dispatchEvent(new CustomEvent('sync-event', { detail: data }))
+
+        // Trigger background outbox cursor pull to keep cache fresh
+        if (['invoice', 'payment', 'purchase', 'product', 'party', 'order', 'godown'].includes(data.entity)) {
+          logger.info('[REALTIME] Auto pulling deltas for entity:', data.entity)
+          try {
+            await syncManager.pull()
+          } catch (err) {
+            logger.error('[REALTIME] Auto pull failed:', err)
+          }
+        }
+      } catch (err) {
+        logger.error('[REALTIME] SSE parse error:', err)
+      }
+    }
+
+    es.onerror = (err) => {
+      logger.error('[REALTIME] SSE error:', err)
+    }
+
+    return () => {
+      logger.info('[REALTIME] Disconnecting SSE stream.')
+      es.close()
+    }
+  }, [user, token, settings])
+
+  return null
+}
+
 export default function App() {
   useEffect(() => {
     const unsubscribe = syncManager.start()
@@ -71,6 +128,7 @@ export default function App() {
         <LockProvider>
           {/* Lock screen intercepts entire UI when session is locked */}
           <LockScreen />
+          <RealtimeSyncListener />
           <AppRoutes />
         </LockProvider>
       </AuthProvider>

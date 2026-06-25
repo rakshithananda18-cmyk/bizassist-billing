@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
+import { logger } from '../utils/logger'
 import {
   SummaryIcon,
   CounterIcon,
@@ -32,7 +33,7 @@ export default function Dashboard() {
   const [payments, setPayments] = useState([])
   const [loading, setLoading]   = useState(true)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     setLoading(true)
     Promise.all([
       authFetch('/dashboard-summary').then(r => r.ok ? r.json() : null).catch(() => null),
@@ -42,6 +43,18 @@ export default function Dashboard() {
       setPayments(Array.isArray(paymentsData) ? paymentsData : (paymentsData?.items ?? []))
     }).finally(() => setLoading(false))
   }, [authFetch])
+
+  useEffect(() => {
+    load()
+    const handleSync = (e) => {
+      logger.info('[DASHBOARD] Real-time sync event received:', e.detail)
+      load()
+    }
+    window.addEventListener('sync-event', handleSync)
+    return () => {
+      window.removeEventListener('sync-event', handleSync)
+    }
+  }, [load])
 
   const s   = stats || {}
   const fmt = n => n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '—'

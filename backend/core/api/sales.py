@@ -17,7 +17,7 @@ directly.
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from database.db import get_db
 from database.models import Product, Invoice, InvoiceLineItem, User, Customer
 from services.auth import get_active_user
+from services.realtime import realtime_manager
 from core.billing import commands as billing
 from core.catalog import barcode as PB
 from core import templates as T
@@ -119,6 +120,7 @@ def _product_out(p: Product) -> dict:
 
 @router.post("/sales")
 def create_sale(req: SaleRequest,
+                background_tasks: BackgroundTasks,
                 current_user: dict = Depends(get_active_user),
                 db: Session = Depends(get_db),
                 guard: ReplayGuard = Depends(replay_guard)):
@@ -155,6 +157,7 @@ def create_sale(req: SaleRequest,
             device_id=req.device_id, godown_id=req.godown_id,
             cash_discount=req.cash_discount, mark_paid=req.mark_paid,
         )
+        background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "invoice"})
         return guard.store(_invoice_out(inv))
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
@@ -809,6 +812,7 @@ def list_invoices(
 @router.post("/invoices", status_code=201)
 def create_sale_invoice_frontend(
     req: FrontendInvoiceRequest,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
     guard: ReplayGuard = Depends(replay_guard),
@@ -864,6 +868,7 @@ def create_sale_invoice_frontend(
             db.commit()
             db.refresh(inv)
 
+        background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "invoice"})
         return guard.store(_invoice_out_for_frontend(inv), status_code=201)
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))

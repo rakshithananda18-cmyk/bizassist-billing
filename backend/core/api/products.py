@@ -16,7 +16,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,7 @@ from services.auth import get_active_user, restrict_cashier
 from core.catalog import barcode as PB
 from core.stock import ledger as SL
 from database.models import Inventory
+from services.realtime import realtime_manager
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.products")
@@ -204,6 +205,7 @@ def list_products(
 @router.post("/products", status_code=201)
 def create_product(
     req: CreateProduct,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
 ):
@@ -266,6 +268,7 @@ def create_product(
             raise HTTPException(status_code=409, detail=str(e))
 
     db.commit()
+    background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "product"})
     db.refresh(p)
     logger.info("[PRODUCTS] created product %s (biz=%s)", p.id, bid)
     barcodes = PB.list_barcodes(db, bid, p.id)
@@ -293,6 +296,7 @@ def get_product(
 def update_product(
     product_id: int,
     req: UpdateProduct,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
 ):
@@ -329,6 +333,7 @@ def update_product(
         p.attributes = json.dumps(attrs)
 
     db.commit()
+    background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "product"})
     db.refresh(p)
     barcodes = PB.list_barcodes(db, bid, p.id)
     return _product_out(p, include_barcodes=True, barcodes=barcodes, db=db)
@@ -338,6 +343,7 @@ def update_product(
 def add_product_barcode(
     product_id: int,
     req: AddBarcodeRequest,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
 ):
@@ -357,6 +363,7 @@ def add_product_barcode(
             source="manual",
         )
         db.commit()
+        background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "product"})
     except PB.BarcodeConflict as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
@@ -428,6 +435,7 @@ def get_product_stock(
 def stock_adjustment(
     product_id: int,
     req: StockAdjustmentRequest,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
@@ -453,6 +461,7 @@ def stock_adjustment(
             note=req.note or "manual adjustment",
         )
         db.commit()
+        background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "product"})
     except Exception as e:
         db.rollback()
         logger.error("stock_adjustment failed: %s", e, exc_info=True)
@@ -464,6 +473,7 @@ def stock_adjustment(
 @router.post("/products/opening-stock", status_code=201)
 def bulk_opening_stock(
     req: OpeningStockRequest,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
@@ -509,6 +519,7 @@ def bulk_opening_stock(
                 "balance_after": movement.balance_after,
             })
         db.commit()
+        background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "product"})
     except HTTPException:
         db.rollback()
         raise
@@ -533,6 +544,7 @@ class FrontendStockAdjustmentRequest(BaseModel):
 @router.post("/stock/adjust", status_code=201)
 def frontend_stock_adjustment(
     req: FrontendStockAdjustmentRequest,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
@@ -574,6 +586,7 @@ def frontend_stock_adjustment(
             note=note,
         )
         db.commit()
+        background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "product"})
     except Exception as e:
         db.rollback()
         logger.error("frontend_stock_adjustment failed: %s", e, exc_info=True)

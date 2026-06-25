@@ -3,6 +3,8 @@ import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
 import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, WarehouseIcon } from '../components/Icons'
 
+import { logger } from '../utils/logger'
+
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '₹0'
 
@@ -54,7 +56,19 @@ export default function Payments() {
       .finally(() => setLoading(false))
   }, [authFetch])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+    const handleSync = (e) => {
+      logger.info('[PAYMENTS] Real-time sync event received:', e.detail)
+      if (['payment', 'invoice', 'purchase'].includes(e.detail.entity)) {
+        load()
+      }
+    }
+    window.addEventListener('sync-event', handleSync)
+    return () => {
+      window.removeEventListener('sync-event', handleSync)
+    }
+  }, [load])
 
   const filtered = payments.filter(p => {
     if (activeTab === 'Received' && p.type !== 'received') return false

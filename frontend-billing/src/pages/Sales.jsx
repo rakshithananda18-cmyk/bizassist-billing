@@ -590,9 +590,17 @@ export default function Sales() {
 
   useEffect(() => {
     load()
+    const handleSync = (e) => {
+      logger.info('[SALES] Real-time sync event received:', e.detail)
+      if (['invoice', 'product', 'party'].includes(e.detail.entity)) {
+        load()
+      }
+    }
     window.addEventListener('focus', load)
+    window.addEventListener('sync-event', handleSync)
     return () => {
       window.removeEventListener('focus', load)
+      window.removeEventListener('sync-event', handleSync)
     }
   }, [load])
 

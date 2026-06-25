@@ -135,7 +135,19 @@ export default function Purchases() {
       .finally(() => setLoading(false))
   }, [authFetch])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+    const handleSync = (e) => {
+      logger.info('[PURCHASES] Real-time sync event received:', e.detail)
+      if (['purchase', 'payment', 'party'].includes(e.detail.entity)) {
+        load()
+      }
+    }
+    window.addEventListener('sync-event', handleSync)
+    return () => {
+      window.removeEventListener('sync-event', handleSync)
+    }
+  }, [load])
 
   const getFilteredItems = () => {
     const q = search.toLowerCase()

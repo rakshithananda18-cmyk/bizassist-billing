@@ -127,6 +127,26 @@ export function AuthProvider({ children }) {
     }
   }, [token])
 
+  const [settings, setSettings] = useState(null)
+
+  const fetchSettings = useCallback(async () => {
+    if (!token) return
+    try {
+      const res = await fetch(`${API_BASE}/settings`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setSettings(data)
+        logger.info('Loaded app settings successfully in context')
+      }
+    } catch (err) {
+      logger.error('Failed to fetch settings in context:', err)
+    }
+  }, [token])
+
   const fetchBusinessConfig = useCallback(async () => {
     if (!token) return
     try {
@@ -150,12 +170,14 @@ export function AuthProvider({ children }) {
     if (token) {
       fetchProfile()
       fetchBusinessConfig()
+      fetchSettings()
     } else {
       setProfile(null)
       setBusinessConfig(null)
+      setSettings(null)
       setAttributesSchema([])
     }
-  }, [token, fetchProfile, fetchBusinessConfig])
+  }, [token, fetchProfile, fetchBusinessConfig, fetchSettings])
 
   // Authenticated fetch helper
   const authFetch = useCallback(async (path, opts = {}) => {
@@ -216,7 +238,8 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       user, token, loading, login, logout, signup, authFetch, profile, fetchProfile, setProfile,
-      businessConfig, attributesSchema, fetchBusinessConfig, appReady, setAppReady
+      businessConfig, attributesSchema, fetchBusinessConfig, appReady, setAppReady,
+      settings, fetchSettings
     }}>
       {children}
     </AuthContext.Provider>

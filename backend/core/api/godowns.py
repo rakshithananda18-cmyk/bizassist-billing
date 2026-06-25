@@ -1,12 +1,13 @@
 import logging
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database.db import get_db
 from core.models import Godown
 from services.auth import get_active_user
+from services.realtime import realtime_manager
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.godowns")
@@ -49,6 +50,7 @@ def list_godowns(
 @router.post("/godowns", status_code=201)
 def create_godown(
     req: CreateGodown,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db)
 ):
@@ -73,6 +75,7 @@ def create_godown(
     )
     db.add(godown)
     db.commit()
+    background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "godown"})
     db.refresh(godown)
     logger.info("[GODOWNS] Created godown %s (biz=%s)", godown.id, bid)
     return _godown_out(godown)

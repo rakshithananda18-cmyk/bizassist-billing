@@ -96,3 +96,20 @@ class sa_text_expr:
         self.text_val = text_val
     def __eq__(self, other):
         return hasattr(other, "text") and other.text == self.text_val
+
+
+def test_get_active_user_query_param():
+    from services.auth import get_active_user
+    with patch("services.auth.decode_access_token") as mock_decode:
+        mock_decode.return_value = {"id": 99, "username": "test"}
+        
+        # Test query parameter token fallback
+        res = get_active_user(authorization=None, token="query-param-token")
+        assert res == {"id": 99, "username": "test"}
+        mock_decode.assert_called_with("query-param-token")
+
+        # Test missing both raises HTTPException
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as exc:
+            get_active_user(authorization=None, token=None)
+        assert exc.value.status_code == 401

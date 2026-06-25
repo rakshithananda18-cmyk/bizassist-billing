@@ -58,7 +58,19 @@ export default function Parties() {
     }).finally(() => setLoading(false))
   }, [authFetch])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+    const handleSync = (e) => {
+      logger.info('[PARTIES] Real-time sync event received:', e.detail)
+      if (['party', 'invoice', 'purchase', 'payment'].includes(e.detail.entity)) {
+        load()
+      }
+    }
+    window.addEventListener('sync-event', handleSync)
+    return () => {
+      window.removeEventListener('sync-event', handleSync)
+    }
+  }, [load])
 
   const getList = () => {
     if (activeTab === 'Customers') return customers;

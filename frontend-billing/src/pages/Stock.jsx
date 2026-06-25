@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, ZapIcon } from '../components/Icons'
+import { logger } from '../utils/logger'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -74,7 +75,19 @@ export default function Stock() {
     }).finally(() => setLoading(false))
   }, [authFetch])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+    const handleSync = (e) => {
+      logger.info('[STOCK] Real-time sync event received:', e.detail)
+      if (['product', 'invoice', 'purchase', 'godown'].includes(e.detail.entity)) {
+        load()
+      }
+    }
+    window.addEventListener('sync-event', handleSync)
+    return () => {
+      window.removeEventListener('sync-event', handleSync)
+    }
+  }, [load])
 
   const categories = [...new Set(products.map(p => p.category).filter(Boolean))]
 

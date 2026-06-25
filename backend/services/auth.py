@@ -3,7 +3,7 @@ import bcrypt
 import jwt
 import logging
 from datetime import datetime, timedelta
-from fastapi import Header, HTTPException, Depends
+from fastapi import Header, HTTPException, Depends, Query
 
 import secrets as _secrets
 
@@ -57,12 +57,17 @@ def decode_access_token(token: str) -> dict:
         logger.warning("[AUTH] Token rejected — invalid token")
         raise HTTPException(status_code=401, detail="Invalid token")
 
-def get_active_user(authorization: str = Header(None)) -> dict:
-    if not authorization or not authorization.startswith("Bearer "):
-        logger.info("[AUTH] Request rejected — missing or malformed Authorization header")
-        raise HTTPException(status_code=401, detail="Bearer authorization token missing or malformed")
-    token = authorization.split(" ")[1]
-    return decode_access_token(token)
+def get_active_user(authorization: str = Header(None), token: str = Query(None)) -> dict:
+    jwt_token = None
+    if authorization and isinstance(authorization, str) and authorization.startswith("Bearer "):
+        jwt_token = authorization.split(" ")[1]
+    elif token and isinstance(token, str):
+        jwt_token = token
+        
+    if not jwt_token:
+        logger.info("[AUTH] Request rejected — missing or malformed Authorization header or query token")
+        raise HTTPException(status_code=401, detail="Bearer authorization token or query token missing")
+    return decode_access_token(jwt_token)
 
 
 # ── Role-based access control (single source of truth) ───────────────────────
