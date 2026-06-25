@@ -34,6 +34,17 @@ CLOUD_URL = os.environ.get("CLOUD_API_URL") or os.environ.get("VITE_API_URL") or
 # Keep track of last execution times in-memory
 _LAST_RUN: Dict[int, datetime] = {}
 
+# IMPORTANT: The local backend and HF Space MUST share the same JWT_SECRET env variable.
+# If they differ, the sync worker's locally-signed tokens will be rejected by the cloud
+# with HTTP 401 "Invalid token". Set JWT_SECRET to the same value in both:
+#   - Local: backend/.env  -> JWT_SECRET=<your_secret>
+#   - Cloud: HF Space -> Settings -> Secrets -> JWT_SECRET=<same_secret>
+
+
+def _invalidate_cloud_token(business_id: int):
+    """No-op placeholder — kept for future refresh logic."""
+    pass
+
 def _safe_broadcast(business_id: int, event: dict):
     from services.realtime import realtime_manager
     try:
@@ -186,6 +197,8 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
         .all()
     )
 
+    # Sign a JWT locally — requires JWT_SECRET to be THE SAME on both local and cloud.
+    # If you see HTTP 401 errors, ensure both share the same JWT_SECRET env variable.
     token = create_access_token({
         "id": business_id,
         "user_id": user.id,
@@ -233,15 +246,19 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
             db.commit()
             logger.info("[SYNC_WORKER] Successfully pushed %s changes for business_id=%s", len(queue_items), business_id)
         except Exception as e:
-            err_msg = f"Push failed: {e}"
+            err_msg = str(e)
             logger.error("[SYNC_WORKER] Push failed for business_id=%s: %s", business_id, e)
             
+            # If 401, invalidate cached token so next run fetches a fresh one
+            if "401" in err_msg:
+                _invalidate_cloud_token(business_id)
+            
             # Store error on the first pending queue item
-            queue_items[0].error = err_msg
+            queue_items[0].error = f"Push failed: {err_msg}"
             log = SyncLog(
                 business_id=business_id,
                 status="failed",
-                error=err_msg,
+                error=f"Push failed: {err_msg}",
                 synced_at=datetime.utcnow()
             )
             db.add(log)
@@ -266,6 +283,9 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
             params["last_sync_at"] = last_sync_str
 
         resp = httpx.get(f"{CLOUD_URL}/api/sync/pull", params=params, headers=headers, timeout=10.0)
+        if resp.status_code == 401:
+            _invalidate_cloud_token(business_id)
+            raise Exception(f"HTTP 401: token rejected by cloud — will refresh next cycle")
         if resp.status_code != 200:
             raise Exception(f"HTTP {resp.status_code}: {resp.text}")
         
