@@ -406,46 +406,11 @@ export default function Sales() {
   useEffect(() => {
     const uid = user?.id
     if (!uid) return
+    // Persist cart state locally — restored on page reload
     localStorage.setItem(`pos_minimized_tabs_${uid}`, JSON.stringify(tabs))
     localStorage.setItem(`pos_minimized_active_id_${uid}`, activeTabId)
+  }, [tabs, activeTabId, user?.id])
 
-    const isSalesSyncEnabled = settings?.general?.realtime_sync_sales !== false
-    if (!isSalesSyncEnabled) return
-
-
-    const t = setTimeout(async () => {
-      try {
-        await authFetch('/realtime/sync-cart', {
-          method: 'POST',
-          body: JSON.stringify({
-            client_id: clientId,
-            tabs,
-            active_tab_id: activeTabId
-          })
-        })
-      } catch (err) {
-        logger.error('[SALES] Failed to broadcast cart sync:', err)
-      }
-    }, 600)
-
-    return () => clearTimeout(t)
-  }, [tabs, activeTabId, user?.id, authFetch, clientId, settings])
-
-  useEffect(() => {
-    const handleSync = (e) => {
-      const { type, client_id } = e.detail || {}
-      if (type === 'pos.cart_sync' && client_id !== clientId) {
-        // Log the presence event but DO NOT overwrite our local cart.
-        // Each terminal keeps its own independent cart. Remote terminals
-        // can see each other's presence via the sync-status indicator.
-        logger.info('[SALES] Remote terminal active:', client_id)
-      }
-    }
-    window.addEventListener('sync-event', handleSync)
-    return () => {
-      window.removeEventListener('sync-event', handleSync)
-    }
-  }, [clientId])
 
 
   useEffect(() => {

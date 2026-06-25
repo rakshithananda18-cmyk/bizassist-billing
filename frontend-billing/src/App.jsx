@@ -198,7 +198,7 @@ function RealtimeSyncListener() {
     }
 
     const handleStatusRequest = () => {
-      logger.info('[REALTIME] Status request received, re-emitting.')
+      logger.debug('[REALTIME] Status request received, re-emitting.')
       const currentStatus = es && es.readyState === EventSource.OPEN ? 'connected' : (navigator.onLine ? 'connecting' : 'error')
       emitStatus(currentStatus)
     }
