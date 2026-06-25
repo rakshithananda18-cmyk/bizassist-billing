@@ -179,6 +179,17 @@ export function AuthProvider({ children }) {
     }
   }, [token, fetchProfile, fetchBusinessConfig, fetchSettings])
 
+  useEffect(() => {
+    const handleRefreshSettings = () => {
+      logger.info('[AuthContext] refresh-settings event triggered. Fetching latest settings…')
+      fetchSettings()
+    }
+    window.addEventListener('refresh-settings', handleRefreshSettings)
+    return () => {
+      window.removeEventListener('refresh-settings', handleRefreshSettings)
+    }
+  }, [fetchSettings])
+
   // Authenticated fetch helper
   const authFetch = useCallback(async (path, opts = {}) => {
     let apiPath = path

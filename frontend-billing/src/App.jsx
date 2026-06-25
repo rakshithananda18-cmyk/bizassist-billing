@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { LockProvider } from './contexts/LockContext'
 import LockScreen from './components/LockScreen'
 import PageLoader from './components/PageLoader'
+import Modal from './components/Modal'
 import { syncManager } from './sync/syncManager'
 import { API_BASE } from './config'
 import { logger } from './utils/logger'
@@ -63,9 +64,66 @@ function AppRoutes() {
 }
 
 function RealtimeSyncListener() {
-  const { user, token, settings } = useAuth()
+  const { user, token, settings, fetchSettings } = useAuth()
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalReason, setModalReason] = useState('')
+
   useRealtimeLeader(token, settings, user)
-  return null
+
+  useEffect(() => {
+    const handleAutoDisabled = (e) => {
+      setModalReason(e.detail?.reason || 'Unknown connection error')
+      setModalOpen(true)
+      fetchSettings()
+    }
+
+    window.addEventListener('realtime-sync-auto-disabled', handleAutoDisabled)
+
+    return () => {
+      window.removeEventListener('realtime-sync-auto-disabled', handleAutoDisabled)
+    }
+  }, [fetchSettings])
+
+  return (
+    <Modal
+      open={modalOpen}
+      title="⚠️ Real-Time Sync Suspended"
+      onClose={() => setModalOpen(false)}
+      footer={
+        <button 
+          className="btn btn-primary" 
+          onClick={() => setModalOpen(false)}
+          style={{ width: '100%' }}
+        >
+          Acknowledge
+        </button>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 0' }}>
+        <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: '1.4', color: 'var(--text-primary)' }}>
+          Real-time sync has been <strong>automatically disabled</strong> due to repeated connection failures.
+        </p>
+        
+        <div style={{ 
+          background: 'rgba(239, 68, 68, 0.1)', 
+          border: '1px solid rgba(239, 68, 68, 0.2)', 
+          borderRadius: 8, 
+          padding: 12,
+          fontSize: '0.82rem',
+          color: 'var(--danger, #ef4444)',
+          fontFamily: 'monospace',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word'
+        }}>
+          Reason: {modalReason}
+        </div>
+
+        <p style={{ margin: 0, fontSize: '0.8rem', lineHeight: '1.4', color: 'var(--text-muted)' }}>
+          To prevent excessive server load, sync has been turned off. You can re-enable it under <strong>Settings &gt; General</strong> once your connection is stable.
+        </p>
+      </div>
+    </Modal>
+  )
 }
 
 export default function App() {

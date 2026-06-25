@@ -250,7 +250,7 @@ function PasscodeModal({ open, hasLock, onClose, setupPasscode, clearPasscode })
 
 // ─── Hosting Mode Section (card-based mode switcher with modal chain) ─────────
 function HostingModeSection({ currentMode, onModeChange, token }) {
-  const { localProbe, cloudProbe, internetProbe, recheck } = useReadinessProbe()
+  const { localProbe, cloudProbe, internetProbe, sseProbe, recheck } = useReadinessProbe()
   const [preflightTarget,  setPreflightTarget]  = useState(null)  // 'local'|'cloud'|'hybrid'
   const [consequenceTarget, setConsequenceTarget] = useState(null)
   const [migrationState,   setMigrationState]   = useState(null)  // { from, to }
@@ -315,6 +315,7 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
         localProbe={localProbe}
         cloudProbe={cloudProbe}
         internetProbe={internetProbe}
+        sseProbe={sseProbe}
         onRecheck={recheck}
       />
 

@@ -76,6 +76,7 @@ export function useReadinessProbe() {
   const [localProbe,    setLocalProbe]    = useState(INIT)
   const [cloudProbe,    setCloudProbe]    = useState(INIT)
   const [internetProbe, setInternetProbe] = useState(INIT)
+  const [sseProbe,      setSseProbe]      = useState(INIT)
 
   const intervalRef = useRef(null)
 
@@ -83,8 +84,13 @@ export function useReadinessProbe() {
     setLocalProbe(INIT)
     setCloudProbe(INIT)
     setInternetProbe(INIT)
+    setSseProbe(INIT)
 
     logger.debug('[PROBE] Initiating readiness probes (local backend, cloud backend, internet connectivity)...')
+    
+    // Request latest SSE status update
+    window.dispatchEvent(new CustomEvent('sync-status-request'))
+
     const [lResult, cResult, iResult] = await Promise.all([
       runLocalProbe(),
       runCloudProbe(),
@@ -111,5 +117,36 @@ export function useReadinessProbe() {
     }
   }, [runAll])
 
-  return { localProbe, cloudProbe, internetProbe, recheck }
+  useEffect(() => {
+    const handleStatusChange = (e) => {
+      const detail = e.detail || {}
+      logger.debug('[PROBE] SSE sync status changed:', detail)
+      let status = 'checking'
+      if (detail.status === 'connected') {
+        status = 'online'
+      } else if (detail.status === 'error' || detail.status === 'disconnected') {
+        status = 'offline'
+      }
+      setSseProbe({
+        status,
+        ms: null,
+        error: detail.error || (detail.status === 'disconnected' ? 'Disconnected' : null)
+      })
+    }
+
+    window.addEventListener('sync-status-change', handleStatusChange)
+    
+    // Initial status request
+    window.dispatchEvent(new CustomEvent('sync-status-request'))
+
+    if (window.__syncStatus) {
+      handleStatusChange({ detail: window.__syncStatus })
+    }
+
+    return () => {
+      window.removeEventListener('sync-status-change', handleStatusChange)
+    }
+  }, [])
+
+  return { localProbe, cloudProbe, internetProbe, sseProbe, recheck }
 }

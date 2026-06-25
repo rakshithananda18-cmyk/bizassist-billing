@@ -73,7 +73,7 @@ function ProbeRow({ label, sublabel, probe }) {
   )
 }
 
-export default function ReadinessPanel({ localProbe, cloudProbe, internetProbe, onRecheck }) {
+export default function ReadinessPanel({ localProbe, cloudProbe, internetProbe, sseProbe, onRecheck }) {
   const now = new Date()
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
@@ -128,6 +128,13 @@ export default function ReadinessPanel({ localProbe, cloudProbe, internetProbe, 
         sublabel={CLOUD_URL}
         probe={cloudProbe}
       />
+      {sseProbe && (
+        <ProbeRow
+          label="Real-time Sync (SSE)"
+          sublabel={sseProbe.error || "Event stream connection"}
+          probe={sseProbe}
+        />
+      )}
 
       {/* Last checked */}
       <div style={{

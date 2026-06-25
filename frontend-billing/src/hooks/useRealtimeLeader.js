@@ -9,6 +9,7 @@ export function useRealtimeLeader(token, settings, user) {
   const channelRef = useRef(null)
   const esRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
+  const consecutiveFailureCountRef = useRef(0)
 
   useEffect(() => {
     if (!token || !user) {
@@ -93,6 +94,55 @@ export function useRealtimeLeader(token, settings, user) {
       }, 5000)
     }
 
+    const handleFailure = async (reason) => {
+      if (!isCurrentLeader) return
+
+      consecutiveFailureCountRef.current += 1
+      logger.warn(`[REALTIME] SSE connection failure count: ${consecutiveFailureCountRef.current}/5. Reason: ${reason}`)
+
+      if (consecutiveFailureCountRef.current >= 5) {
+        logger.error(`[REALTIME] SSE connection failed 5 consecutive times. Automatically disabling real-time sync.`)
+        
+        consecutiveFailureCountRef.current = 0
+
+        try {
+          const updatedSettings = {
+            ...settings,
+            general: {
+              ...(settings?.general || {}),
+              realtime_sync_global: false
+            }
+          }
+
+          const res = await fetch(`${API_BASE}/settings`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(updatedSettings)
+          })
+
+          if (res.ok) {
+            logger.info('[REALTIME] Automatically disabled real-time sync on backend settings.')
+            
+            // Dispatch local event to show modal
+            window.dispatchEvent(new CustomEvent('realtime-sync-auto-disabled', { detail: { reason } }))
+            
+            // Broadcast to follower tabs
+            channel.postMessage({ type: 'settings_updated_auto_disable', reason })
+            
+            // Trigger local settings reload
+            window.dispatchEvent(new CustomEvent('refresh-settings'))
+          } else {
+            logger.error('[REALTIME] Failed to auto-disable real-time sync on backend:', res.status)
+          }
+        } catch (err) {
+          logger.error('[REALTIME] Error auto-disabling real-time sync:', err)
+        }
+      }
+    }
+
     // Connect to SSE stream (Leader only)
     const connectSSE = async () => {
       if (esRef.current) {
@@ -140,6 +190,7 @@ export function useRealtimeLeader(token, settings, user) {
         es.onopen = () => {
           logger.info('[REALTIME] SSE connection established.')
           connectionError = null
+          consecutiveFailureCountRef.current = 0 // Reset failure counter on success
           emitStatus('connected')
           channel.postMessage({ type: 'status_change', status: 'connected', error: null })
           window.dispatchEvent(new CustomEvent('show_toast', {
@@ -174,6 +225,7 @@ export function useRealtimeLeader(token, settings, user) {
           window.dispatchEvent(new CustomEvent('show_toast', {
             detail: { type: 'error', msg: 'Sync stream interrupted. Reconnecting…' }
           }))
+          handleFailure(connectionError)
           scheduleReconnect()
         }
       } catch (err) {
@@ -188,6 +240,7 @@ export function useRealtimeLeader(token, settings, user) {
         window.dispatchEvent(new CustomEvent('show_toast', {
           detail: { type: 'error', msg: `Sync connection failed: ${connectionError}` }
         }))
+        handleFailure(connectionError)
         scheduleReconnect()
       }
     }
@@ -275,6 +328,12 @@ export function useRealtimeLeader(token, settings, user) {
               detail: { type: 'error', msg: msg.error || 'Sync stream interrupted. Reconnecting…' }
             }))
           }
+        }
+      } else if (msg.type === 'settings_updated_auto_disable') {
+        if (!isCurrentLeader) {
+          logger.warn('[REALTIME] Follower notified that settings were auto-disabled due to:', msg.reason)
+          window.dispatchEvent(new CustomEvent('realtime-sync-auto-disabled', { detail: { reason: msg.reason } }))
+          window.dispatchEvent(new CustomEvent('refresh-settings'))
         }
       } else if (msg.type === 'reconnect_request') {
         if (isCurrentLeader) {
