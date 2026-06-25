@@ -40,6 +40,13 @@ export function AuthProvider({ children }) {
     localStorage.setItem('billing_user', JSON.stringify(userObj))
     setToken(tok)
     setUser(userObj)
+    // Store which backend this account lives on (db_mode: 'local' | 'cloud').
+    // getApiBase() reads this first so requests always go to the right DB.
+    if (data.db_mode) {
+      localStorage.setItem('bizassist_user_home_mode', data.db_mode)
+      updateApiBase(data.db_mode)
+      logger.info(`[AUTH] Account home mode set to: ${data.db_mode} (from db_mode)`)
+    }
   }, [])
 
   const login = useCallback(async (username, password) => {
@@ -103,10 +110,50 @@ export function AuthProvider({ children }) {
     logger.info('Logging out user, clearing local session token.')
     localStorage.removeItem('billing_token')
     localStorage.removeItem('billing_user')
+    localStorage.removeItem('bizassist_user_home_mode')  // clear home mode — next user gets their own
     setToken(null)
     setUser(null)
     setAppReady(false)
   }, [])
+
+  /**
+   * switchMode — change hosting mode and force re-login.
+   *
+   * Why logout? Local and cloud databases assign different integer IDs to the
+   * same username (e.g. local id=122, cloud id=7 for 'Rakshith'). The JWT
+   * embeds that id. After switching backends the old JWT references an id that
+   * doesn't exist in the new DB → every request fails with 401.
+   * Logging out clears the stale JWT; the user re-authenticates against the
+   * new backend and gets a fresh, correct JWT.
+   */
+  const switchMode = useCallback(async (newMode) => {
+    logger.info(`[MODE SWITCH] Switching to "${newMode}" mode — will logout to refresh JWT`)
+    // 1. Save the new mode to the CURRENT backend before switching
+    try {
+      await fetch(`${API_BASE}/settings`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ general: { hosting_mode: newMode } }),
+      })
+    } catch (err) {
+      logger.warn('[MODE SWITCH] Could not save mode to backend (continuing anyway):', err)
+    }
+    // 2. Update localStorage so the new API_BASE is effective immediately
+    updateApiBase(newMode)
+    // 3. Force logout — clears stale JWT; user will log in against new backend
+    localStorage.removeItem('billing_token')
+    localStorage.removeItem('billing_user')
+    setToken(null)
+    setUser(null)
+    setAppReady(false)
+    window.dispatchEvent(new CustomEvent('show_toast', {
+      detail: { type: 'info', msg: `Switched to ${newMode} mode. Please log in again.` }
+    }))
+    logger.info(`[MODE SWITCH] Done. API_BASE is now: ${API_BASE}`)
+  }, [token])
 
   const [profile, setProfile] = useState(null)
 
@@ -141,9 +188,10 @@ export function AuthProvider({ children }) {
         const data = await res.json()
         setSettings(data)
         logger.info('Loaded app settings successfully in context')
-        if (data?.general?.hosting_mode) {
-          updateApiBase(data.general.hosting_mode)
-        }
+        // NOTE: We do NOT call updateApiBase here.
+        // The user's home mode (bizassist_user_home_mode) is the source of truth
+        // for which backend to hit. Overriding it from settings would cause
+        // wrong-backend routing after a mode switch + re-login.
       }
     } catch (err) {
       logger.error('Failed to fetch settings in context:', err)
@@ -251,7 +299,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      user, token, loading, login, logout, signup, authFetch, profile, fetchProfile, setProfile,
+      user, token, loading, login, logout, signup, switchMode, authFetch, profile, fetchProfile, setProfile,
       businessConfig, attributesSchema, fetchBusinessConfig, appReady, setAppReady,
       settings, fetchSettings
     }}>

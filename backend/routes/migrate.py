@@ -101,6 +101,29 @@ def _business_id_for(user: dict) -> int:
     return int(user.get("parent_business_id") or user.get("id"))
 
 
+def _resolve_owner_id_by_username(user: dict, db: Session) -> int:
+    """
+    Look up the ACTUAL owner id in this DB by username.
+
+    This is critical for cross-DB migrations where local and cloud auto-assigned
+    different integer IDs to the same user account (e.g., local id=122, cloud id=7).
+    Falls back to the JWT id if the username lookup fails.
+    """
+    username = user.get("username") or user.get("sub") or ""
+    if username:
+        try:
+            row = db.execute(
+                text("SELECT id FROM \"users\" WHERE username = :u AND parent_business_id IS NULL"),
+                {"u": username},
+            ).first()
+            if row:
+                return int(row[0])
+        except Exception as exc:
+            logger.debug("_resolve_owner_id_by_username: lookup failed — %s", exc)
+    # Fallback: use JWT id (same-DB case)
+    return int(user.get("parent_business_id") or user.get("id"))
+
+
 def _existing_tables(db: Session) -> set[str]:
     """Return the set of table names that actually exist in the live DB."""
     return set(inspect(db.bind).get_table_names())
@@ -161,6 +184,109 @@ def _fetch_table(db: Session, table_name: str, business_id: int) -> list[dict]:
     except Exception as exc:
         logger.warning("migrate/export: could not read table %s — %s", table_name, exc)
         return []
+
+
+def _detect_local_owner_id(tables: dict) -> int | None:
+    """
+    Read the owner's id from the exported users table payload.
+    The owner row has parent_business_id = None / null.
+    Returns None if the users table is not in the payload.
+    """
+    for row in tables.get("users", []):
+        if not row.get("parent_business_id"):
+            return int(row["id"])
+    return None
+
+
+def _remap_rows(rows: list[dict], local_id: int, cloud_id: int) -> list[dict]:
+    """
+    Replace local_id → cloud_id in every field that carries a business/owner id.
+    Handles: business_id, parent_business_id, user_id (only when == local_id).
+    Does NOT touch unrelated integer fields.
+    """
+    if local_id == cloud_id:
+        return rows  # already aligned — no remapping needed
+
+    remapped = []
+    for row in rows:
+        r = dict(row)
+        for field in ("business_id", "parent_business_id", "user_id"):
+            if r.get(field) == local_id:
+                r[field] = cloud_id
+        remapped.append(r)
+    return remapped
+
+
+def _upsert_users(db: Session, rows: list[dict], cloud_owner_id: int, existing_tables: set) -> int:
+    """
+    Upsert the users table carefully:
+    - Owner row (parent_business_id IS NULL): UPDATE the existing cloud owner row
+      by username — never insert a duplicate. Only updates non-identity fields
+      (business_name, gstin, phone, email, address, logo, settings, etc.).
+    - Staff rows (parent_business_id IS NOT NULL): upsert by username, remapping
+      parent_business_id → cloud_owner_id.
+    """
+    if "users" not in existing_tables:
+        return 0
+
+    dialect = db.bind.dialect.name
+    count = 0
+
+    for row in rows:
+        r = dict(row)
+        is_owner = not r.get("parent_business_id")
+
+        if is_owner:
+            # Update only non-identity columns on the existing owner row
+            update_fields = [
+                "business_name", "gstin", "phone", "email",
+                "address", "state_code", "pan", "logo", "settings",
+                "public_id",
+            ]
+            set_parts = ", ".join(
+                f'"{f}" = :{f}' for f in update_fields if f in r
+            )
+            if not set_parts:
+                continue
+            params = {f: r[f] for f in update_fields if f in r}
+            params["username"] = r["username"]
+            try:
+                db.execute(
+                    text(f'UPDATE "users" SET {set_parts} WHERE username = :username'),
+                    params,
+                )
+                db.flush()
+                count += 1
+            except Exception as exc:
+                logger.debug("migrate/import: owner user update failed for %s — %s", r.get("username"), exc)
+                db.rollback()
+        else:
+            # Staff: remap parent → cloud owner
+            r["parent_business_id"] = cloud_owner_id
+            # Upsert by username
+            if dialect == "postgresql":
+                cols = [k for k in r if k != "id"]  # let PG assign id for new staff
+                col_str = ", ".join(f'"{c}"' for c in cols)
+                placeholders = ", ".join(f":{c}" for c in cols)
+                update_set = ", ".join(f'"{c}" = EXCLUDED."{c}"' for c in cols if c != "username")
+                sql = text(
+                    f'INSERT INTO "users" ({col_str}) VALUES ({placeholders}) '
+                    f'ON CONFLICT (username) DO UPDATE SET {update_set}'
+                )
+            else:
+                col_list = list(r.keys())
+                col_str = ", ".join(f'"{c}"' for c in col_list)
+                placeholders = ", ".join(f":{c}" for c in col_list)
+                sql = text(f'INSERT OR REPLACE INTO "users" ({col_str}) VALUES ({placeholders})')
+            try:
+                db.execute(sql, r)
+                db.flush()
+                count += 1
+            except Exception as exc:
+                logger.debug("migrate/import: staff user upsert failed for %s — %s", r.get("username"), exc)
+                db.rollback()
+
+    return count
 
 
 # ---------------------------------------------------------------------------
@@ -266,9 +392,8 @@ def export_data(
     """
     Export all tenant data as structured JSON.
 
-    Returns every table that (a) exists in the live DB and (b) has rows
-    belonging to the authenticated user's business, serialised in
-    dependency order so the payload is safe to feed directly into import.
+    Uses username-based ID resolution so the export is correct even if the
+    JWT was issued by a different DB (e.g., cloud JWT used against local DB).
 
     Response shape:
       {
@@ -281,7 +406,12 @@ def export_data(
         }
       }
     """
-    business_id = _business_id_for(current_user)
+    # Always look up by username in THIS DB — handles cross-DB JWT tokens
+    business_id = _resolve_owner_id_by_username(current_user, db)
+    logger.info(
+        "migrate/export: resolved business_id=%s for username=%s (JWT id=%s)",
+        business_id, current_user.get("username"), current_user.get("id")
+    )
     existing = _existing_tables(db)
 
     tables_data: dict[str, list[dict]] = {}
@@ -315,19 +445,41 @@ def import_data(
     """
     Restore tenant data from an export payload.
 
-    Records are upserted (INSERT … ON CONFLICT DO UPDATE / INSERT OR REPLACE)
-    in dependency order.  Original IDs are preserved.  Individual row errors
-    are logged and skipped — the rest of the batch continues.
+    ID Remapping (cross-DB migration)
+    ----------------------------------
+    The exporting DB and the importing DB may have assigned different integer
+    IDs to the same user (e.g., local id=122, cloud id=7 for 'Rakshith').
+
+    This endpoint:
+      1. Resolves the importing user by USERNAME in the destination DB
+         (ignoring the JWT id which may point to a non-existent row here).
+      2. Detects the local owner id from the payload's users table.
+      3. Remaps every business_id / parent_business_id reference from the
+         local id → cloud id before upserting.
+      4. Handles the users table specially (upsert by username, never
+         duplicate the owner).
 
     Response shape:
       {
         "imported": {"invoices": 342, "parties": 55, ...},
-        "total": 397
+        "total": 397,
+        "id_remap": {"from": 122, "to": 7}   # present when remapping occurred
       }
     """
-    business_id = _business_id_for(current_user)
+    # Step 1 — resolve the ACTUAL owner id in THIS (destination) DB by username
+    cloud_owner_id = _resolve_owner_id_by_username(current_user, db)
     existing = _existing_tables(db)
     imported: dict[str, int] = {}
+
+    # Step 2 — detect the local owner id from the exported payload
+    local_owner_id = _detect_local_owner_id(body.tables)
+    if local_owner_id is None:
+        local_owner_id = cloud_owner_id  # same-DB migration, no remap needed
+
+    logger.info(
+        "migrate/import: username=%s local_owner_id=%s cloud_owner_id=%s",
+        current_user.get("username"), local_owner_id, cloud_owner_id,
+    )
 
     # Process in canonical dependency order first, then any extras from payload
     ordered = [t for t in _EXPORT_ORDER if t in body.tables]
@@ -339,7 +491,15 @@ def import_data(
             rows = body.tables.get(table_name, [])
             if not rows:
                 continue
-            n = _upsert_rows(db, table_name, rows, existing)
+
+            if table_name == "users":
+                # Special handling: upsert by username, remap staff parent ids
+                n = _upsert_users(db, rows, cloud_owner_id, existing)
+            else:
+                # Remap business_id references before upsert
+                remapped = _remap_rows(rows, local_owner_id, cloud_owner_id)
+                n = _upsert_rows(db, table_name, remapped, existing)
+
             if n > 0:
                 imported[table_name] = n
 
@@ -351,11 +511,15 @@ def import_data(
         raise HTTPException(status_code=500, detail=f"Import failed: {exc}")
 
     total = sum(imported.values())
+    remap_info = {"from": local_owner_id, "to": cloud_owner_id} if local_owner_id != cloud_owner_id else None
     logger.info(
-        "migrate/import: business_id=%s imported=%s total=%s",
-        business_id, imported, total,
+        "migrate/import: cloud_owner_id=%s imported=%s total=%s remap=%s",
+        cloud_owner_id, imported, total, remap_info,
     )
-    return {"imported": imported, "total": total}
+    result = {"imported": imported, "total": total}
+    if remap_info:
+        result["id_remap"] = remap_info
+    return result
 
 
 @router.get("/api/migrate/count")

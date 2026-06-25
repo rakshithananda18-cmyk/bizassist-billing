@@ -433,7 +433,7 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Settings() {
-  const { authFetch, user, token, fetchSettings } = useAuth()
+  const { authFetch, user, token, fetchSettings, switchMode } = useAuth()
   const { config, refreshConfig } = useBusinessConfig()
   const { hasLock, setupPasscode, clearPasscode } = useLock()
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
@@ -1820,7 +1820,13 @@ export default function Settings() {
               <SectionHeader title="Hosting & Sync Mode" />
               <HostingModeSection
                 currentMode={g.hosting_mode || 'local'}
-                onModeChange={(newMode) => patch('general', 'hosting_mode', newMode)}
+                onModeChange={(newMode) => {
+                  // patch saves to current backend; switchMode then updates
+                  // API_BASE and forces logout so user gets a new JWT from
+                  // the new backend (IDs differ between local and cloud DBs)
+                  patch('general', 'hosting_mode', newMode)
+                  switchMode(newMode)
+                }}
                 token={token}
               />
               {g.hosting_mode === 'hybrid' && (

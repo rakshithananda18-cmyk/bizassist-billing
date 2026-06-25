@@ -11,6 +11,11 @@ from services.rate_limiter import check_ip_rate_limit
 router = APIRouter()
 logger = logging.getLogger("bizassist.auth")
 
+# Auto-detect which type of DB this backend is running on.
+# The frontend stores this as the user's "home mode" so API requests
+# always route back to the correct backend after a mode switch.
+_DB_MODE = "cloud" if ("postgresql" in DATABASE_URL or "postgres" in DATABASE_URL) else "local"
+
 
 class LoginRequest(BaseModel):
     username: str
@@ -63,7 +68,8 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             "user_id": user.id,
             "username": user.username,
             "business_name": business_name,
-            "role": user.role
+            "role": user.role,
+            "db_mode": _DB_MODE,   # 'local' | 'cloud' — tells frontend which backend this account lives on
         }
     except HTTPException:
         raise
@@ -119,7 +125,8 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             "user_id": user.id,
             "username": user.username,
             "business_name": user.business_name,
-            "role": user.role
+            "role": user.role,
+            "db_mode": _DB_MODE,   # 'local' | 'cloud' — tells frontend which backend this account lives on
         }
     except HTTPException:
         raise
