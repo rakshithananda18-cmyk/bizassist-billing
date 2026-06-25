@@ -165,6 +165,21 @@ def health_check():
         try:
             db.execute(text("SELECT 1"))
             db_status = "connected"
+            
+            # If SQLite, check if any user has hybrid mode enabled in settings
+            if db_type == "sqlite":
+                try:
+                    import json
+                    res = db.execute(text("SELECT settings FROM users")).fetchall()
+                    for row in res:
+                        settings_str = row[0]
+                        if settings_str:
+                            s = json.loads(settings_str)
+                            if s.get("general", {}).get("hosting_mode") == "hybrid":
+                                mode = "hybrid"
+                                break
+                except Exception:
+                    pass
         finally:
             db.close()
         return {
