@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from database.db import get_db
+from database.db import get_db, DATABASE_URL
 from database.models import User
 from services.auth import hash_password, verify_password, create_access_token, get_active_user
 from services.rate_limiter import check_ip_rate_limit
@@ -224,6 +224,7 @@ _DEFAULT_SETTINGS = {
         "quantity_decimal_places": 2,
         "amount_decimal_places": 2,
         "app_zoom": 100,                 # UI scale percentage: 80-130
+        "hosting_mode": "cloud" if "postgres" in DATABASE_URL or "postgresql" in DATABASE_URL else "local",         # local | hybrid | cloud
     },
     # ── Transactions ─────────────────────────────────────────────────────────
     "transactions": {

@@ -74,11 +74,17 @@ function RealtimeSyncListener() {
     }
 
     logger.info('[REALTIME] Connecting to SSE stream in mode:', hostingMode)
+    window.dispatchEvent(new CustomEvent('show_toast', {
+      detail: { type: 'info', msg: `Connecting to cloud sync stream (${hostingMode} mode)…` }
+    }))
     const url = `${API_BASE}/realtime/events?token=${encodeURIComponent(token)}`
     const es = new EventSource(url)
 
     es.onopen = () => {
       logger.info('[REALTIME] SSE connection established.')
+      window.dispatchEvent(new CustomEvent('show_toast', {
+        detail: { type: 'success', msg: 'Cloud real-time sync connected.' }
+      }))
     }
 
     es.onmessage = async (e) => {
@@ -88,6 +94,9 @@ function RealtimeSyncListener() {
         
         // Dispatch window level event
         window.dispatchEvent(new CustomEvent('sync-event', { detail: data }))
+        window.dispatchEvent(new CustomEvent('show_toast', {
+          detail: { type: 'info', msg: `Syncing remote ${data.entity} updates…` }
+        }))
 
         // Trigger background outbox cursor pull to keep cache fresh
         if (['invoice', 'payment', 'purchase', 'product', 'party', 'order', 'godown'].includes(data.entity)) {
@@ -105,6 +114,9 @@ function RealtimeSyncListener() {
 
     es.onerror = (err) => {
       logger.error('[REALTIME] SSE error:', err)
+      window.dispatchEvent(new CustomEvent('show_toast', {
+        detail: { type: 'error', msg: 'Sync connection lost. Reconnecting…' }
+      }))
     }
 
     return () => {
