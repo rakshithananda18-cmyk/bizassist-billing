@@ -93,9 +93,9 @@ export function Logo({ size = 24, wordmark = true, className = '' }) {
       <BuildingMark size={size} />
       {wordmark && (
         <span style={{
-          fontFamily: "'DM Sans', sans-serif",
+          fontFamily: "'Crimson Pro', Georgia, serif",
           fontSize: 20,
-          fontWeight: 600,
+          fontWeight: 700,
           letterSpacing: '0.01em',
           color: 'var(--text-primary)',
           lineHeight: 1,

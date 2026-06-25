@@ -65,7 +65,7 @@ export default function Home() {
           </div>
 
           {/* Business Name (in large font place) */}
-          <div className="ces-greeting" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+          <div className="ces-greeting">
             {businessName.toUpperCase()}
           </div>
 

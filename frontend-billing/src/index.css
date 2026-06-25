@@ -410,8 +410,8 @@ img { display: block; max-width: 100%; }
   border: 1px solid rgba(0,0,0,0.15);
 }
 .sidebar-brand .brand-name {
-  font-family: 'DM Sans', sans-serif;
-  font-weight: 500;
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-weight: 700;
   font-size: 19px;
   color: var(--text-primary);
   letter-spacing: 0.05em;
@@ -766,7 +766,7 @@ img { display: block; max-width: 100%; }
 }
 
 .card p {
-  font-family: 'Crimson Pro', Georgia, serif;
+  font-family: 'DM Sans', sans-serif;
   font-size: 28px;
   font-weight: 600;
   color: var(--text-primary);
@@ -912,7 +912,7 @@ img { display: block; max-width: 100%; }
 
 /* === PAGE HEADER === */
 .page-title {
-  font-family: 'Crimson Pro', Georgia, serif;
+  font-family: 'DM Sans', sans-serif;
   font-size: 22px;
   font-weight: 500;
   color: var(--text-primary);
@@ -1188,7 +1188,7 @@ img { display: block; max-width: 100%; }
 .data-table tbody tr:hover { background: var(--accent-glow) !important; }
 .data-table tbody tr:last-child td { border-bottom: none; }
 .data-table .td-primary { color: var(--text-primary); font-weight: 600; }
-.data-table .td-mono { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--text-primary); }
+.data-table .td-mono { font-family: monospace; font-size: 0.78rem; color: var(--text-primary); }
 
 /* === BADGES === */
 .badge {
@@ -1477,7 +1477,7 @@ img { display: block; max-width: 100%; }
 .text-right { text-align: right; }
 .text-center { text-align: center; }
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mono { font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; }
+.mono { font-family: monospace; font-size: 0.82rem; }
 
 /* === LOGIN PAGE === */
 .login-page {
@@ -2227,9 +2227,9 @@ img { display: block; max-width: 100%; }
 }
 
 .ba-wordmark {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Crimson Pro', Georgia, serif;
   font-size: 20px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.01em;
   color: var(--text-primary);
   line-height: 1;
@@ -2716,9 +2716,9 @@ img { display: block; max-width: 100%; }
 }
 
 .ba-wordmark {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Crimson Pro', Georgia, serif;
     font-size: 20px;
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: 0.01em;
     color: var(--text-primary);
     line-height: 1;
@@ -2888,7 +2888,7 @@ img { display: block; max-width: 100%; }
     width: 76mm; /* leaving small margins on 80mm roll */
     margin: 0 auto;
     padding: 2mm 0;
-    font-family: 'Courier New', Courier, monospace;
+    font-family: monospace;
     font-size: 11px;
     color: #000;
     background: #fff;
@@ -3025,9 +3025,9 @@ img { display: block; max-width: 100%; }
 }
 
 .ces-greeting {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Crimson Pro', Georgia, serif;
   font-size: 36px;
-  font-weight: 500;
+  font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.02em;
   line-height: 1.2;

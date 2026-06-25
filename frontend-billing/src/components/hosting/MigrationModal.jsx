@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { API_BASE } from '../../config'
 import { logger } from '../../utils/logger'
+import { CheckIcon, CloseIcon, AlertIcon, SyncIcon, ShieldIcon } from '../Icons'
 
 // ── Step definitions ──────────────────────────────────────────────────────────
 const STEPS = [
@@ -15,9 +16,9 @@ const STEPS = [
 const STEP_WEIGHT = [5, 10, 20, 50, 10, 5] // must sum to 100
 
 function StepIcon({ status }) {
-  if (status === 'done')     return <span style={{ fontSize: 16, color: '#22c55e' }}>✅</span>
+  if (status === 'done')     return <CheckIcon size={16} strokeWidth={2.5} style={{ color: '#22c55e' }} />
   if (status === 'active')   return <span className="mg-spinner" style={{ display: 'inline-block' }} />
-  if (status === 'error')    return <span style={{ fontSize: 16, color: '#ef4444' }}>❌</span>
+  if (status === 'error')    return <CloseIcon size={16} strokeWidth={2.5} style={{ color: '#ef4444' }} />
   return <span style={{ fontSize: 16, color: 'var(--text-muted)', opacity: 0.5 }}>○</span>
 }
 
@@ -257,7 +258,19 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
       }}>
         {/* Title */}
         <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
-          {isComplete ? '🎉 Migration Complete!' : hasError ? '❌ Migration Failed' : `Migrating to ${toMode} mode…`}
+          {isComplete ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <CheckIcon size={18} strokeWidth={2.5} style={{ color: '#22c55e' }} />
+              <span>Migration Complete!</span>
+            </span>
+          ) : hasError ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <CloseIcon size={18} strokeWidth={2.5} style={{ color: '#ef4444' }} />
+              <span>Migration Failed</span>
+            </span>
+          ) : (
+            `Migrating to ${toMode} mode…`
+          )}
         </div>
         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 22 }}>
           {isComplete
@@ -348,7 +361,10 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
                 <strong>Backup saved:</strong> <code style={{ fontSize: '0.74rem', wordBreak: 'break-all' }}>{backupPath}</code>
               </div>
             )}
-            <div>⚠️ Keep your backup file safe — you can roll back within 7 days by contacting support.</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <AlertIcon size={14} strokeWidth={2.5} />
+              <span>Keep your backup file safe — you can roll back within 7 days by contacting support.</span>
+            </div>
           </div>
         )}
 
@@ -374,7 +390,10 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
               borderRadius: 8, padding: '10px 14px',
               fontSize: '0.78rem', color: '#22c55e', marginBottom: 16,
             }}>
-              🛡️ Your original data is safe — no changes were committed to the source database.
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <ShieldIcon size={14} strokeWidth={2} />
+              <span>Your original data is safe — no changes were committed to the source database.</span>
+            </div>
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button
@@ -394,9 +413,10 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
                   flex: 2, padding: '9px', borderRadius: 8,
                   background: 'var(--accent)', color: '#fff', border: 'none',
                   cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700,
+                  display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center',
                 }}
               >
-                ↺ Retry Migration
+                <SyncIcon size={14} /> Retry Migration
               </button>
             </div>
           </>

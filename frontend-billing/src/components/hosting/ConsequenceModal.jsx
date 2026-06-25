@@ -1,10 +1,11 @@
 import React from 'react'
+import { MonitorIcon, CloudIcon, SyncIcon, SettingsIcon, AlertIcon } from '../Icons'
 
 // Consequence definitions for each transition
 const TRANSITIONS = {
   'local→cloud': {
     title: 'Move to Cloud Mode',
-    icon: '☁️',
+    iconType: 'cloud',
     bullets: [
       'Upload all local data to the cloud database',
       'Internet connection will be required for all future access',
@@ -17,7 +18,7 @@ const TRANSITIONS = {
   },
   'cloud→local': {
     title: 'Move to Local Mode',
-    icon: '🖥️',
+    iconType: 'local',
     bullets: [
       'Download a full copy of cloud data to this PC',
       'This device will become the single source of truth',
@@ -30,7 +31,7 @@ const TRANSITIONS = {
   },
   'local→hybrid': {
     title: 'Enable Hybrid Mode',
-    icon: '🔄',
+    iconType: 'hybrid',
     bullets: [
       'Local database remains your primary POS (fast checkouts)',
       'Background sync agent will push transactions to cloud',
@@ -43,7 +44,7 @@ const TRANSITIONS = {
   },
   'cloud→hybrid': {
     title: 'Switch to Hybrid Mode',
-    icon: '🔄',
+    iconType: 'hybrid',
     bullets: [
       'Cloud data will be pulled to a local cache on this PC',
       'Future writes go locally first, then sync to cloud',
@@ -55,7 +56,7 @@ const TRANSITIONS = {
   },
   'hybrid→cloud': {
     title: 'Move to Cloud-Only Mode',
-    icon: '☁️',
+    iconType: 'cloud',
     bullets: [
       'All writes will go directly to the cloud database',
       'Local cache will be cleared after migration',
@@ -68,7 +69,7 @@ const TRANSITIONS = {
   },
   'hybrid→local': {
     title: 'Move to Local-Only Mode',
-    icon: '🖥️',
+    iconType: 'local',
     bullets: [
       'Local database becomes the sole source of truth',
       'Cloud sync will be permanently disabled on this device',
@@ -88,11 +89,20 @@ export default function ConsequenceModal({ fromMode, toMode, onCancel, onConfirm
   const key = `${fromMode}→${toMode}`
   const info = TRANSITIONS[key] || {
     title: `Switch to ${toMode} mode`,
-    icon: '⚙️',
+    iconType: 'default',
     bullets: ['Your hosting mode will be changed.'],
     danger: [],
     confirmLabel: 'Confirm',
     confirmColor: 'var(--accent)',
+  }
+
+  const getIcon = (type) => {
+    switch (type) {
+      case 'cloud':  return <CloudIcon size={24} />
+      case 'local':  return <MonitorIcon size={24} />
+      case 'hybrid': return <SyncIcon size={24} />
+      default:       return <SettingsIcon size={24} />
+    }
   }
 
   return (
@@ -107,7 +117,7 @@ export default function ConsequenceModal({ fromMode, toMode, onCancel, onConfirm
       >
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
-          <span style={{ fontSize: 28 }}>{info.icon}</span>
+          <span style={{ color: 'var(--accent)', display: 'flex', alignItems: 'center' }}>{getIcon(info.iconType)}</span>
           <div>
             <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               {info.title}
@@ -140,7 +150,7 @@ export default function ConsequenceModal({ fromMode, toMode, onCancel, onConfirm
             marginBottom: 16,
           }}>
             <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#ef4444', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-              ⚠️ Warning
+              <AlertIcon size={14} strokeWidth={2.5} /> Warning
             </div>
             <ul style={{ margin: 0, padding: '0 0 0 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
               {info.danger.map((d, i) => (

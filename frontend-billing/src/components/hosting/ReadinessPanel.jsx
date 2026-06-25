@@ -1,4 +1,5 @@
 import React from 'react'
+import { SyncIcon } from '../Icons'
 
 const CLOUD_URL =
   import.meta.env.VITE_API_URL || 'https://rakshit-dev-bizassist.hf.space'
@@ -108,7 +109,7 @@ export default function ReadinessPanel({ localProbe, cloudProbe, internetProbe, 
             display: 'flex', alignItems: 'center', gap: 5,
           }}
         >
-          ↻ Recheck
+          <SyncIcon size={12} /> Recheck
         </button>
       </div>
 

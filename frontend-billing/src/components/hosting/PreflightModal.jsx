@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react'
+import { CheckIcon, CloseIcon, DownloadIcon, SyncIcon } from '../Icons'
 
 // Which probes each mode needs
 const MODE_REQUIREMENTS = {
@@ -39,8 +40,8 @@ function CheckRow({ label, probe, required }) {
       marginBottom: 8,
       transition: 'all 0.2s',
     }}>
-      <div style={{ fontSize: 18, lineHeight: 1, minWidth: 24, textAlign: 'center' }}>
-        {isChecking ? <span className="pf-spinner" /> : isPassed ? '✅' : '❌'}
+      <div style={{ fontSize: 16, lineHeight: 1, minWidth: 24, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        {isChecking ? <span className="pf-spinner" /> : isPassed ? <CheckIcon size={16} strokeWidth={2.5} style={{ color: '#22c55e' }} /> : <CloseIcon size={16} strokeWidth={2.5} style={{ color: '#ef4444' }} />}
       </div>
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -169,9 +170,10 @@ export default function PreflightModal({
                   background: 'var(--accent)', color: '#fff', border: 'none',
                   cursor: 'pointer', fontSize: '0.84rem', fontWeight: 600,
                   textDecoration: 'none',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
                 }}
               >
-                📥 Download Desktop App
+                <DownloadIcon size={14} /> Download Desktop App
               </a>
             </>
           )}
@@ -193,9 +195,10 @@ export default function PreflightModal({
                   padding: '9px 20px', borderRadius: 8,
                   background: 'var(--accent)', color: '#fff', border: 'none',
                   cursor: 'pointer', fontSize: '0.84rem', fontWeight: 600,
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
                 }}
               >
-                ↺ Retry All
+                <SyncIcon size={14} /> Retry All
               </button>
             </>
           )}

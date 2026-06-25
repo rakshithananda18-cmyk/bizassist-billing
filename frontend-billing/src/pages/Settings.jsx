@@ -4,7 +4,7 @@ import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { useLock } from '../contexts/LockContext'
 import { API_BASE } from '../config'
-import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon, MonitorIcon, SyncIcon, CloudIcon, ZapIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon, MonitorIcon, SyncIcon, CloudIcon, ZapIcon, WifiOffIcon, RobotIcon, DevicesIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import { SkylineLoader } from '../components/Logo'
 import { getHeaderLayout, isHeaderLineEnabled, moveItem } from '../utils/printLayout'
@@ -275,21 +275,30 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
       icon: <MonitorIcon size={18} />,
       title: 'Local Only',
       desc: 'Sub-second execution. 100% offline uptime. Data stays on your device. AI & cloud backups disabled.',
-      badges: ['⚡ Fast', '📴 No internet needed'],
+      badges: [
+        { icon: <ZapIcon size={12} />, text: 'Fast' },
+        { icon: <WifiOffIcon size={12} />, text: 'No internet needed' },
+      ],
     },
     {
       mode: 'hybrid',
       icon: <SyncIcon size={18} />,
       title: 'Hybrid',
       desc: 'Fast local POS checkouts. Background sync to cloud. Unlocks cloud backups and AI Advisor.',
-      badges: ['🔄 Sync', '🤖 AI enabled'],
+      badges: [
+        { icon: <SyncIcon size={12} />, text: 'Sync' },
+        { icon: <RobotIcon size={12} />, text: 'AI enabled' },
+      ],
     },
     {
       mode: 'cloud',
       icon: <CloudIcon size={18} />,
       title: 'Cloud Only',
       desc: 'Cloud is the single source of record. Real-time sync across all devices. Requires internet.',
-      badges: ['🌐 Multi-device', '☁️ Always synced'],
+      badges: [
+        { icon: <DevicesIcon size={12} />, text: 'Multi-device' },
+        { icon: <CloudIcon size={12} />, text: 'Always synced' },
+      ],
     },
   ]
 
@@ -334,8 +343,9 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
                   position: 'absolute', top: 10, right: 10,
                   fontSize: 10, background: 'rgba(255,255,255,0.12)', color: 'var(--text-muted)',
                   padding: '2px 7px', borderRadius: 4,
+                  display: 'flex', alignItems: 'center', gap: 3,
                 }}>
-                  🔒 Locked
+                  <LockIcon size={10} /> Locked
                 </div>
               )}
               {state === 'unavailable' && (
@@ -356,13 +366,16 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
                 {desc}
               </p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                {badges.map(b => (
-                  <span key={b} style={{
+                {badges.map((b, idx) => (
+                  <span key={idx} style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
                     fontSize: '0.7rem', padding: '2px 8px',
                     borderRadius: 12, background: 'rgba(255,255,255,0.06)',
                     border: '1px solid rgba(255,255,255,0.1)',
                     color: 'var(--text-muted)',
-                  }}>{b}</span>
+                  }}>{b.icon}<span>{b.text}</span></span>
                 ))}
               </div>
             </div>

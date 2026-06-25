@@ -537,3 +537,37 @@ export function CloudIcon({ size, strokeWidth }) {
   )
 }
 
+export function DevicesIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <rect x="2" y="3" width="12" height="11" rx="1" />
+      <rect x="12" y="8" width="8" height="11" rx="1" />
+      <line x1="8" y1="14" x2="8" y2="17" />
+      <line x1="4" y1="17" x2="12" y2="17" />
+    </svg>
+  )
+}
+
+export function WifiOffIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <line x1="1" y1="1" x2="23" y2="23" />
+      <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.5" />
+      <path d="M5 12.5a10.94 10.94 0 0 1 5.83-2.84" />
+      <path d="M9.31 9.31A15 15 0 0 1 12 9a15 15 0 0 1 8 2.3" />
+      <path d="M12 17.5a1.5 1.5 0 0 1-1.5-1.5" />
+    </svg>
+  )
+}
+
+export function RobotIcon({ size, strokeWidth }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth)}>
+      <rect x="3" y="11" width="18" height="10" rx="2" />
+      <circle cx="8" cy="16" r="1" fill="currentColor" />
+      <circle cx="16" cy="16" r="1" fill="currentColor" />
+      <path d="M9 6v5M15 6v5M9 6h6M12 2v4" />
+    </svg>
+  )
+}
+
