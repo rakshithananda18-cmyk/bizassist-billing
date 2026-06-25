@@ -161,11 +161,21 @@ export default function Stock() {
 
   const handleAdjust = async (e) => {
     e.preventDefault()
+    if (!adjustForm.product_id) {
+      setAlert({ type: 'danger', msg: 'Please select a product.' })
+      return
+    }
     setSubmitting(true)
     try {
       const res = await authFetch('/billing/stock/adjust', {
         method: 'POST',
-        body: JSON.stringify({ ...adjustForm, quantity: parseFloat(adjustForm.quantity) || 0 }),
+        body: JSON.stringify({
+          product_id: parseInt(adjustForm.product_id, 10),
+          movement_type: adjustForm.movement_type,
+          quantity: parseFloat(adjustForm.quantity) || 0,
+          reason: adjustForm.reason || null,
+          reference: adjustForm.reference || null,
+        }),
       })
       if (res.ok) {
         setAlert({ type: 'success', msg: 'Stock adjusted successfully!' })
@@ -173,7 +183,11 @@ export default function Stock() {
         setAdjustForm(defaultAdjust)
         load()
       } else {
-        setAlert({ type: 'danger', msg: 'Failed to adjust stock.' })
+        const err = await res.json().catch(() => ({}))
+        const detail = Array.isArray(err.detail)
+          ? err.detail.map(d => `${d.loc?.slice(-1)[0] ?? 'field'}: ${d.msg}`).join('; ')
+          : (err.detail || 'Failed to adjust stock.')
+        setAlert({ type: 'danger', msg: detail })
       }
     } catch {
       setAlert({ type: 'danger', msg: 'Network error.' })

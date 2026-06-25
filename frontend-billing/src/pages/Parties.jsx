@@ -94,23 +94,51 @@ export default function Parties() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setSubmitting(true)
-    const endpoint = form.party_type === 'customer' ? '/billing/customers' : '/billing/vendors'
+    const isCustomer = form.party_type === 'customer'
+    const endpoint = isCustomer ? '/billing/customers' : '/billing/vendors'
+
+    // Build a schema-clean payload — strip frontend-only fields
+    const payload = isCustomer
+      ? {
+          name: form.name,
+          phone: form.phone || null,
+          email: form.email || null,
+          gstin: form.gstin || null,
+          address: form.address || null,
+          state_code: form.state_code || null,
+          pan: form.pan || null,
+          credit_limit: form.credit_limit ? parseFloat(form.credit_limit) : 0,
+          credit_days: 30,
+          price_tier: 'standard',
+        }
+      : {
+          name: form.name,
+          phone: form.phone || null,
+          email: form.email || null,
+          gstin: form.gstin || null,
+          address: form.address || null,
+          state_code: form.state_code || null,
+          pan: form.pan || null,
+          payment_terms_days: 30,
+        }
+
     try {
       const res = await authFetch(endpoint, {
         method: 'POST',
-        body: JSON.stringify({
-          ...form,
-          credit_limit: form.credit_limit ? parseFloat(form.credit_limit) : null,
-        }),
+        body: JSON.stringify(payload),
       })
       if (res.ok) {
-        setAlert({ type: 'success', msg: `${form.party_type === 'customer' ? 'Customer' : 'Vendor'} added!` })
+        setAlert({ type: 'success', msg: `${isCustomer ? 'Customer' : 'Vendor'} added!` })
         setShowModal(false)
         setForm(defaultForm)
         load()
       } else {
         const err = await res.json().catch(() => ({}))
-        setAlert({ type: 'danger', msg: err.detail || 'Failed to add party.' })
+        // Pydantic 422 returns detail as array — flatten to readable string
+        const detail = Array.isArray(err.detail)
+          ? err.detail.map(d => `${d.loc?.slice(-1)[0] ?? 'field'}: ${d.msg}`).join('; ')
+          : (err.detail || 'Failed to add party.')
+        setAlert({ type: 'danger', msg: detail })
       }
     } catch {
       setAlert({ type: 'danger', msg: 'Network error.' })
