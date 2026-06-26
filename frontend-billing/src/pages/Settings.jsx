@@ -13,6 +13,8 @@ import ReadinessPanel from '../components/hosting/ReadinessPanel'
 import PreflightModal from '../components/hosting/PreflightModal'
 import ConsequenceModal from '../components/hosting/ConsequenceModal'
 import MigrationModal from '../components/hosting/MigrationModal'
+import BackupModal from '../components/hosting/BackupModal'
+import { IS_LOCAL_APP } from '../config'
 
 // Sample content shown for each draggable header line in the live preview.
 const PREVIEW_HEADER_CONTENT = {
@@ -254,6 +256,7 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
   const [preflightTarget,  setPreflightTarget]  = useState(null)  // 'local'|'cloud'|'hybrid'
   const [consequenceTarget, setConsequenceTarget] = useState(null)
   const [migrationState,   setMigrationState]   = useState(null)  // { from, to }
+  const [backupDir,        setBackupDir]        = useState(null)  // null | 'cloud-to-local' | 'local-to-cloud' (data sync, no mode switch)
 
   // Compute card state for each mode
   function cardState(mode) {
@@ -383,6 +386,67 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
           )
         })}
       </div>
+
+      {/* Manual data sync (downloaded app only — needs localhost + network).
+          Non-destructive Last-Write-Wins merge; does NOT switch hosting mode. */}
+      {IS_LOCAL_APP && (() => {
+        const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+        const lastSyncText = (dir) => {
+          try {
+            const iso = localStorage.getItem(`bizassist_last_sync_${dir}`)
+            if (!iso) return 'Never synced'
+            const d = new Date(iso)
+            return `Last synced: ${d.toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+          } catch { return '' }
+        }
+        const btn = (dir, label) => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <button
+              onClick={() => !offline && setBackupDir(dir)}
+              disabled={offline}
+              title={offline ? 'Connect to the internet to sync' : ''}
+              style={{
+                flexShrink: 0, padding: '8px 14px', borderRadius: 8,
+                background: offline ? 'rgba(255,255,255,0.08)' : 'var(--accent)',
+                color: offline ? 'var(--text-muted)' : '#fff', border: 'none',
+                cursor: offline ? 'not-allowed' : 'pointer',
+                fontSize: '0.8rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              <SyncIcon size={14} /> {label}
+            </button>
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', paddingLeft: 2 }}>{lastSyncText(dir)}</span>
+          </div>
+        )
+        return (
+          <div style={{
+            marginTop: 14, padding: '12px 14px', borderRadius: 10,
+            background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
+          }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              Sync data with cloud
+            </div>
+            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 10 }}>
+              Merge data between this device and the cloud (newer wins — nothing is overwritten). Does not change your hosting mode.
+              {offline && <span style={{ color: '#ef4444' }}> You’re offline — connect to sync.</span>}
+            </div>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              {btn('cloud-to-local', 'Cloud → Local Sync')}
+              {btn('local-to-cloud', 'Local → Cloud Sync')}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Sync modal */}
+      {backupDir && (
+        <BackupModal
+          token={token}
+          direction={backupDir}
+          onComplete={() => setBackupDir(null)}
+          onError={() => { /* keep modal open so user can read the error / retry */ }}
+        />
+      )}
 
       {/* Preflight modal */}
       {preflightTarget && (
@@ -1819,7 +1883,11 @@ export default function Settings() {
             <>
               <SectionHeader title="Hosting & Sync Mode" />
               <HostingModeSection
-                currentMode={g.hosting_mode || 'local'}
+                // Effective mode is platform-aware: the web/browser is ALWAYS
+                // cloud (it can't reach a local backend), regardless of the
+                // account's stored hosting_mode. Only the downloaded app honours
+                // the stored Local/Hybrid/Cloud choice.
+                currentMode={IS_LOCAL_APP ? (g.hosting_mode || 'local') : 'cloud'}
                 onModeChange={(newMode) => {
                   // patch saves to current backend; switchMode then updates
                   // API_BASE and forces logout so user gets a new JWT from
@@ -1829,7 +1897,7 @@ export default function Settings() {
                 }}
                 token={token}
               />
-              {g.hosting_mode === 'hybrid' && (
+              {IS_LOCAL_APP && g.hosting_mode === 'hybrid' && (
                 <SettingRow label="Sync Interval" description="How frequently local changes are synced to the cloud.">
                   <select
                     className="form-input"
@@ -1846,26 +1914,35 @@ export default function Settings() {
               )}
 
               <SectionHeader title="Real-Time Synchronization Settings" />
-              <SettingRow label="Global Real-Time Sync" description="Enable or disable all real-time background updates globally.">
-                <Toggle id="realtime_sync_global" checked={g.realtime_sync_global !== false} onChange={v => patch('general', 'realtime_sync_global', v)} />
-              </SettingRow>
-
-              {g.realtime_sync_global !== false && (
-                <div style={{ marginLeft: 24, paddingLeft: 16, borderLeft: '2px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <SettingRow label="POS Sales Page Sync" description="Enable real-time active cart and sales listing synchronization.">
-                    <Toggle id="realtime_sync_sales" checked={g.realtime_sync_sales !== false} onChange={v => patch('general', 'realtime_sync_sales', v)} />
-                  </SettingRow>
-                  <SettingRow label="Inventory Page Sync" description="Enable real-time product and stock level update synchronization.">
-                    <Toggle id="realtime_sync_stock" checked={g.realtime_sync_stock !== false} onChange={v => patch('general', 'realtime_sync_stock', v)} />
-                  </SettingRow>
-                  <SettingRow label="Customers Page Sync" description="Enable real-time customer and vendor ledger synchronization.">
-                    <Toggle id="realtime_sync_parties" checked={g.realtime_sync_parties !== false} onChange={v => patch('general', 'realtime_sync_parties', v)} />
-                  </SettingRow>
-                  <SettingRow label="Purchases Page Sync" description="Enable real-time purchase bill and debit note synchronization.">
-                    <Toggle id="realtime_sync_purchases" checked={g.realtime_sync_purchases !== false} onChange={v => patch('general', 'realtime_sync_purchases', v)} />
-                  </SettingRow>
+              {((g.hosting_mode || 'local') === 'local') && (
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '-2px 0 8px', lineHeight: 1.5 }}>
+                  Real-time sync runs only in <strong>Hybrid</strong> or <strong>Cloud</strong> mode. In Local mode there’s no background sync, so these settings have no effect.
                 </div>
               )}
+              <div style={((g.hosting_mode || 'local') === 'local')
+                ? { opacity: 0.45, pointerEvents: 'none', filter: 'grayscale(0.6)' }
+                : undefined}>
+                <SettingRow label="Global Real-Time Sync" description="Enable or disable all real-time background updates globally.">
+                  <Toggle id="realtime_sync_global" checked={g.realtime_sync_global !== false} onChange={v => patch('general', 'realtime_sync_global', v)} />
+                </SettingRow>
+
+                {g.realtime_sync_global !== false && (
+                  <div style={{ marginLeft: 24, paddingLeft: 16, borderLeft: '2px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 16, marginTop: 16 }}>
+                    <SettingRow label="POS Sales Page Sync" description="Enable real-time active cart and sales listing synchronization.">
+                      <Toggle id="realtime_sync_sales" checked={g.realtime_sync_sales !== false} onChange={v => patch('general', 'realtime_sync_sales', v)} />
+                    </SettingRow>
+                    <SettingRow label="Inventory Page Sync" description="Enable real-time product and stock level update synchronization.">
+                      <Toggle id="realtime_sync_stock" checked={g.realtime_sync_stock !== false} onChange={v => patch('general', 'realtime_sync_stock', v)} />
+                    </SettingRow>
+                    <SettingRow label="Customers Page Sync" description="Enable real-time customer and vendor ledger synchronization.">
+                      <Toggle id="realtime_sync_parties" checked={g.realtime_sync_parties !== false} onChange={v => patch('general', 'realtime_sync_parties', v)} />
+                    </SettingRow>
+                    <SettingRow label="Purchases Page Sync" description="Enable real-time purchase bill and debit note synchronization.">
+                      <Toggle id="realtime_sync_purchases" checked={g.realtime_sync_purchases !== false} onChange={v => patch('general', 'realtime_sync_purchases', v)} />
+                    </SettingRow>
+                  </div>
+                )}
+              </div>
 
               <SectionHeader title="Data & Backup" />
               <SettingRow label="Auto Backup" description="Periodically request backup files for storage.">

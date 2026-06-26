@@ -6,6 +6,7 @@ import { useLock } from '../contexts/LockContext'
 import { API_BASE } from '../config'
 import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
+import SyncNudgeModal from '../components/hosting/SyncNudgeModal'
 import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon } from '../components/Icons'
 
 
@@ -458,6 +459,8 @@ export default function AppLayout({ children, title }) {
   return (
     <div className={`app-shell ${isSalesPage ? 'pos-layout-shell' : ''}`}>
       {!appReady && <PageLoader />}
+      {/* Nudge to sync when the cloud holds data this device doesn't (sensed at login) */}
+      <SyncNudgeModal />
       {/* ── Sidebar ── */}
       {!isSalesPage && (
         <aside className="sidebar">

@@ -34,32 +34,8 @@ from database.models import (
 router = APIRouter()
 logger = logging.getLogger("bizassist.routes.sync")
 
-# Mapping from table name to SQLAlchemy ORM model class
-_MODEL_MAP: Dict[str, Any] = {
-    "users": User,
-    "customers": Customer,
-    "vendors": Vendor,
-    "products": Product,
-    "invoices": Invoice,
-    "invoice_line_items": InvoiceLineItem,
-    "inventory": Inventory,
-    "payments": Payment,
-    "stock_ledger": StockLedger,
-    "product_barcodes": ProductBarcode,
-    "business_settings": BusinessSettings,
-    "invoice_payments": InvoicePayment,
-    "shared_ledger": SharedLedger,
-    "expenses": Expense,
-    "godowns": Godown,
-    "stock_transfers": StockTransfer,
-    "stock_transfer_line_items": StockTransferLineItem,
-    "purchase_invoices": PurchaseInvoice,
-    "purchase_invoice_line_items": PurchaseInvoiceLineItem,
-    "purchase_orders": PurchaseOrder,
-    "purchase_order_line_items": PurchaseOrderLineItem,
-    "alert_configs": AlertConfig,
-    "rate_limit_configs": RateLimitConfig,
-}
+# (R-7) Single shared source — see database/sync_map.py
+from database.sync_map import MODEL_MAP as _MODEL_MAP, ENTITY_BROADCAST_MAP
 
 
 # ---------------------------------------------------------------------------
@@ -108,11 +84,31 @@ def _parse_dt(dt_str: Any) -> Optional[datetime]:
 
 def _resolve_business_id_by_username(user: dict, db: Session) -> int:
     """
-    Look up the ACTUAL business_id (owner user's ID) in this DB by username.
-    This handles cross-DB JWT tokens where local and cloud auto-assigned different
-    integer IDs to the same user account.
+    Resolve the ACTUAL business_id (owner's id) in THIS DB for the token's user.
+
+    Cross-DB tokens carry ids that differ between local and cloud, so we match on
+    the most stable key first (D9):
+      1. BizID (public_id) **confirmed by username** — the identity spine. We
+         require username to agree because BizID is minted per-DB and not yet
+         globally unique; a chance collision with a different business must not
+         mis-route. The username confirmation removes that risk.
+      2. username — fallback for older tokens / first sync.
+      3. JWT id — same-DB fallback.
+    A staff member resolves to their parent (owner) business id.
     """
     username = user.get("username") or user.get("sub") or ""
+    public_id = user.get("public_id")
+    if public_id and username:
+        try:
+            row = db.execute(
+                text('SELECT id, parent_business_id FROM "users" WHERE public_id = :p AND username = :u'),
+                {"p": public_id, "u": username},
+            ).first()
+            if row:
+                return int(row[1]) if row[1] is not None else int(row[0])
+        except Exception as exc:
+            logger.debug("_resolve_business_id: public_id lookup failed — %s", exc)
+
     if username:
         try:
             row = db.execute(
@@ -120,13 +116,10 @@ def _resolve_business_id_by_username(user: dict, db: Session) -> int:
                 {"u": username},
             ).first()
             if row:
-                parent_id = row[1]
-                if parent_id is not None:
-                    return int(parent_id)
-                return int(row[0])
+                return int(row[1]) if row[1] is not None else int(row[0])
         except Exception as exc:
-            logger.debug("_resolve_business_id_by_username: lookup failed — %s", exc)
-    
+            logger.debug("_resolve_business_id: username lookup failed — %s", exc)
+
     # Fallback: use JWT ID
     return int(user.get("parent_business_id") or user.get("id"))
 
@@ -154,20 +147,7 @@ def push_changes(
     processed_count = 0
     entities_to_broadcast = set()
 
-    entity_map = {
-        "customers": "party",
-        "vendors": "party",
-        "products": "product",
-        "invoices": "invoice",
-        "payments": "payment",
-        "invoice_payments": "payment",
-        "purchase_invoices": "purchase",
-        "godowns": "godown",
-        "purchase_orders": "order",
-        "stock_transfers": "stock",
-        "stock_ledger": "stock",
-        "business_settings": "settings",
-    }
+    entity_map = ENTITY_BROADCAST_MAP
 
     try:
         for change in payload.changes:
@@ -208,8 +188,16 @@ def push_changes(
             local_updated_at_str = data.get("updated_at")
             local_updated_at = _parse_dt(local_updated_at_str)
 
-            if existing and hasattr(existing, "updated_at") and existing.updated_at and local_updated_at:
+            if existing and hasattr(existing, "updated_at") and existing.updated_at:
                 cloud_updated_at = _parse_dt(existing.updated_at)
+                # (R-5) An incoming change with no updated_at cannot be proven
+                # newer — keep the existing cloud row rather than blindly clobber.
+                if not local_updated_at:
+                    logger.warning(
+                        "sync/push: %s.id=%s has no updated_at — keeping cloud version (cannot resolve LWW)",
+                        change.entity, change.entity_id,
+                    )
+                    continue
                 if cloud_updated_at and local_updated_at < cloud_updated_at:
                     # LWW conflict: cloud version is newer, discard change and log
                     conflict = ConflictLog(

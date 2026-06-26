@@ -2,6 +2,8 @@
 
 *June 2026 · The single source of truth. Reconciles three independent AI reviews (this assistant, "Codex", "Antigravity") into one plan, makes the contested decisions explicitly, and maps everything to your four goals: **easy to use · secure & unbreakable · addictive · makes money**.*
 
+> **📍 Navigation:** This is the **full, authoritative** plan (large). For a quick map, use the lean **[`MASTER_PLAN_CORE.md`](MASTER_PLAN_CORE.md)** (one-line summaries + links back here). For the latest architecture/security/functionality assessment and open items, see **[`PRODUCT_REVIEW.md`](PRODUCT_REVIEW.md)** (reviewed 2026-06-26). Keep both aligned: edit decisions/status **here**, then refresh the matching one-liner in the core file.
+
 > How to read this: §1 is what all three agreed on (settled). §2 is where they disagreed and the decision we're taking + why (this is the most important section — read it first). §3–§9 are the design. §10 is the build. §11–§13 are pilot, risks, and what needs your sign-off.
 
 ---
@@ -308,7 +310,9 @@ Billing = acquisition (cheap/free). The money is in the **network plan + AI + (l
 
 ---
 
-### 10.0 — BUILD STATUS TRACKER  ·  *last updated 2026-06-22*
+### 10.0 — BUILD STATUS TRACKER  ·  *last updated 2026-06-26*
+
+> 🔎 **2026-06-26 — Architecture/Security/Functionality review** (see [`PRODUCT_REVIEW.md`](PRODUCT_REVIEW.md)): Phases 1–4 confirmed built; accounting depth, RLS, and two-wall idempotency verified present in code. **Open items:** (1) **DoD Gate 1 not closed** — full suite not run this pass (env-blocked); code has **541 test functions** vs the "555/431" cited below — run `run_tests.ps1` and reconcile to one dated number. (2) **Security S-1:** Postgres RLS is *fail-open* when `app.current_business_id` is unset — harden to fail-closed for tenant tables. (3) Offline-sync + hosting-mode switching are built but need live `npm run dev` depth-QA. (4) Tech debt: `Sales.jsx` god-component + duplicated sync `_MODEL_MAP`. Quick map of the whole plan: [`MASTER_PLAN_CORE.md`](MASTER_PLAN_CORE.md).
 
 > Single source of truth for "where are we." Legend: ✅ done · 🟡 partial / needs depth-verification · ⬜ not started.
 > Canonical code lives in **`bizassist-billing/`** (the `bizassist/` copy is retired — fully subsumed). Status below reflects that repo: **555 backend tests green; 78 backend API routes across 13 modules; 16 frontend pages.** Items marked 🟡 exist in code (route/page present) but their *depth* (real print, live filing, security negative-tests) is not yet verified — don't trust a ✅/🟡 as "production-proven" until its test is named below.

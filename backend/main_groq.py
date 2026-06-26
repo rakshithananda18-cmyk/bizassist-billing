@@ -63,6 +63,12 @@ run_migrations_and_seed()
 @asynccontextmanager
 async def lifespan(_app):
     """Startup/shutdown lifecycle handler."""
+    # (R-1) Hand the main event loop to the realtime manager so the background
+    # sync worker (a separate thread) can marshal SSE broadcasts back onto it.
+    import asyncio
+    from services.realtime import realtime_manager
+    realtime_manager.set_loop(asyncio.get_running_loop())
+
     start_scheduler()
     preload_model_async()
     yield

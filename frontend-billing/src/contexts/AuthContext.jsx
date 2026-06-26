@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { API_BASE, updateApiBase } from '../config'
+import { API_BASE, updateApiBase, IS_LOCAL_APP, CLOUD_URL, LOCAL_URL } from '../config'
 import { logger } from '../utils/logger'
+import { reconcileBizIdOnLogin } from '../utils/loginSync'
 
 const AuthContext = createContext(null)
 
@@ -60,60 +61,160 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (username, password) => {
     logger.info('Attempting login for username:', username)
+
+    // 1. Try the platform's primary backend (local on the downloaded app).
     const res = await fetch(`${API_BASE}/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      logger.error('Login request failed with status:', res.status, err.detail)
-      throw new Error(err.detail || 'Invalid credentials')
+    if (res.ok) {
+      const data = await res.json()
+      logger.info('Login successful for user:', data.username, 'role:', data.role)
+      _saveSession(data)
+      // Fire-and-forget: lightweight BizID identity check only (no data pull).
+      reconcileBizIdOnLogin(data.token || data.access_token)
+      return
     }
-    const data = await res.json()
-    logger.info('Login successful for user:', data.username, 'role:', data.role)
-    _saveSession(data)
-  }, [_saveSession])
 
-  const signup = useCallback(async ({ username, password, business_name, template_key }) => {
-    logger.info('Attempting signup for username:', username, 'business:', business_name, 'template:', template_key)
-    const res = await fetch(`${API_BASE}/signup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, business_name }),
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      logger.error('Signup request failed with status:', res.status, err.detail)
-      throw new Error(err.detail || 'Registration failed')
-    }
-    const data = await res.json()
-    logger.info('Signup and session setup successful for user:', data.username)
-
-    // Setup business template before saving session
-    const tok = data.token || data.access_token
-    if (tok && template_key) {
+    // 2. FRESH-DEVICE fallback (downloaded app, online): if there's simply no
+    //    local user yet, authenticate against the CLOUD and create the local
+    //    mirror (identity only — data stays gated, pulled later via "Back up
+    //    now"). We first confirm the local account truly doesn't exist, so a
+    //    wrong password on an existing local account is NEVER masked.
+    if (IS_LOCAL_APP) {
+      // The local identity check works offline (it's localhost).
+      let localExists = true
       try {
-        const setupRes = await fetch(`${API_BASE}/business/setup`, {
+        const c = await fetch(`${LOCAL_URL}/api/identity/check`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${tok}`
-          },
-          body: JSON.stringify({ template_key })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username }),
         })
-        if (!setupRes.ok) {
-          logger.error('Failed to setup business template on signup:', setupRes.status)
-        } else {
-          logger.info('Business template setup succeeded on signup with key:', template_key)
+        if (c.ok) localExists = (await c.json())?.exists === true
+      } catch { /* treat as exists → no fallback */ }
+
+      if (!localExists) {
+        // Fresh device. We need the cloud to set it up — block clearly if offline.
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          throw new Error('This account isn’t set up on this device yet. Connect to the internet once to set it up, then it works offline.')
         }
-      } catch (err) {
-        logger.error('Error during business template setup on signup:', err)
+        const cloudRes = await fetch(`${CLOUD_URL}/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        })
+        if (cloudRes.ok) {
+          const cloudData = await cloudRes.json()
+          // Create the local mirror with the SAME (cloud) BizID — identity only.
+          const mirror = await fetch(`${LOCAL_URL}/signup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username, password,
+              business_name: cloudData.business_name || username,
+              public_id: cloudData.public_id,
+            }),
+          })
+          if (mirror.ok) {
+            const localData = await mirror.json()
+            logger.info(`[LOGIN] Fresh device — local mirror created (BizID ${cloudData.public_id}). Data is gated; use "Cloud → Local Sync" to pull it.`)
+            _saveSession(localData)
+            // Tell the user their data lives in the cloud and how to bring it down.
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('show_toast', { detail: {
+                type: 'info',
+                msg: 'This account is set up on this device, but your data is in the cloud. Open Settings → Hosting and run "Cloud → Local Sync" to bring it here.',
+              }}))
+            }
+            return
+          }
+          logger.error(`[LOGIN] Cloud login ok but local mirror failed: HTTP ${mirror.status}`)
+          throw new Error('Signed in, but could not set up this device. Please try again.')
+        }
+        // Cloud login also failed → fall through to surface the credential error.
       }
     }
 
-    _saveSession(data)
+    // 3. No fallback applied → surface the original error.
+    const err = await res.json().catch(() => ({}))
+    logger.error('Login request failed with status:', res.status, err.detail)
+    throw new Error(err.detail || 'Invalid credentials')
   }, [_saveSession])
+
+  // Apply the chosen business template on a backend (best-effort).
+  const _applyTemplate = useCallback(async (base, tok, template_key) => {
+    if (!tok || !template_key) return
+    try {
+      const r = await fetch(`${base}/business/setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ template_key }),
+      })
+      if (!r.ok) logger.error(`[SIGNUP] template setup on ${base} failed: HTTP ${r.status}`)
+      else logger.info(`[SIGNUP] template setup ok on ${base} (${template_key})`)
+    } catch (err) {
+      logger.error(`[SIGNUP] template setup error on ${base}:`, err)
+    }
+  }, [])
+
+  const _doSignup = useCallback(async (base, body) => {
+    const res = await fetch(`${base}/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      const e = new Error(err.detail || 'Registration failed')
+      e.status = res.status
+      throw e
+    }
+    return res.json()
+  }, [])
+
+  const signup = useCallback(async ({ username, password, business_name, template_key }) => {
+    logger.info('Attempting signup for username:', username, 'business:', business_name, 'template:', template_key)
+
+    // Cloud-authoritative identity (D9): on the downloaded app we register on the
+    // CLOUD first (the single BizID authority), then mirror the account locally
+    // with that BizID so both sides share one identity. Registration therefore
+    // needs a one-time network connection. On the web there is no local backend,
+    // so we just register on the cloud (current behaviour).
+    if (IS_LOCAL_APP) {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        throw new Error('Registration needs an internet connection (your account is created on the cloud once, then works offline).')
+      }
+      // 1. Create the cloud account → mints the BizID.
+      let cloudData
+      try {
+        cloudData = await _doSignup(CLOUD_URL, { username, password, business_name })
+      } catch (err) {
+        if (err.status === 400) {
+          // Username already taken on the cloud — most likely the same person.
+          throw new Error('An account with this username already exists. Please log in instead.')
+        }
+        throw err
+      }
+      const bizId = cloudData.public_id
+
+      // 2. Mirror locally with the SAME BizID, then log in locally (local-first).
+      //    Seed the template ONLY on local (the working copy); the cloud receives
+      //    this data later via backup/push, so seeding it on cloud too would
+      //    create duplicate starter data.
+      const localData = await _doSignup(LOCAL_URL, { username, password, business_name, public_id: bizId })
+      await _applyTemplate(LOCAL_URL, localData.token || localData.access_token, template_key)
+      logger.info(`[SIGNUP] Cloud-issued BizID ${bizId} mirrored to local. Logged in locally.`)
+      _saveSession(localData)
+      return
+    }
+
+    // Web: register on the cloud backend (API_BASE = cloud here).
+    const data = await _doSignup(API_BASE, { username, password, business_name })
+    await _applyTemplate(API_BASE, data.token || data.access_token, template_key)
+    logger.info('Signup successful (web/cloud) for user:', data.username)
+    _saveSession(data)
+  }, [_saveSession, _applyTemplate, _doSignup])
 
   const logout = useCallback(() => {
     logger.info('Logging out user, clearing local session token.')
@@ -137,16 +238,21 @@ export function AuthProvider({ children }) {
    */
   const switchMode = useCallback(async (newMode) => {
     logger.info(`[MODE SWITCH] Switching to "${newMode}" mode — will logout to refresh JWT`)
-    // 1. Save the new mode to the CURRENT backend before switching
+    // 1. Save the new mode to the CURRENT backend before switching.
+    //    Backend exposes PUT /settings (a merge-patch); there is no PATCH route,
+    //    so PATCH returned 405 and the mode was never persisted to the DB —
+    //    which meant the sync worker (reads general.hosting_mode from the DB)
+    //    never engaged hybrid. Use PUT to match the rest of the app.
     try {
-      await fetch(`${API_BASE}/settings`, {
-        method: 'PATCH',
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ general: { hosting_mode: newMode } }),
       })
+      if (!res.ok) logger.warn(`[MODE SWITCH] Save mode returned HTTP ${res.status}`)
     } catch (err) {
       logger.warn('[MODE SWITCH] Could not save mode to backend (continuing anyway):', err)
     }

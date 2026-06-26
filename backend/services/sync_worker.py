@@ -1,8 +1,13 @@
 """
 services/sync_worker.py
 =======================
-Phase 2 Background Sync worker.
-Runs on SQLite local client to push local mutations to Cloud Postgres and pull cloud changes.
+Phase 2 Background Sync worker — runs on the SQLite local client.
+
+PUSH-ONLY by default: it pushes local mutations up to the cloud (backup /
+local→cloud). It does **not** auto-pull cloud data down, because cloud data is
+subscription-gated — a cloud→local data sync is an explicit user action
+("Back up now") or part of a migration. The pull path still exists in
+`sync_business(..., do_pull=True)` for those deliberate, gated cases.
 """
 
 import logging
@@ -34,6 +39,17 @@ CLOUD_URL = os.environ.get("CLOUD_API_URL") or os.environ.get("VITE_API_URL") or
 # Keep track of last execution times in-memory
 _LAST_RUN: Dict[int, datetime] = {}
 
+# (R-2) Per-business pull cursor, expressed in the CLOUD's clock. We seed it from
+# the cloud's own `pulled_at` response so the next `last_sync_at` we send is never
+# compared across two machines' clocks — eliminating the skew that silently
+# dropped freshly-updated cloud rows. In-memory: after a restart the first cycle
+# falls back to the SyncLog-derived timestamp, then re-pins to the cloud clock.
+_PULL_CURSOR: Dict[int, str] = {}
+
+# (H-2) Remember the last logged connectivity state per business so we only write
+# a SyncLog row on a state *change* (online↔offline), not every failed cycle.
+_OFFLINE_STATE: Dict[int, bool] = {}
+
 # IMPORTANT: The local backend and HF Space MUST share the same JWT_SECRET env variable.
 # If they differ, the sync worker's locally-signed tokens will be rejected by the cloud
 # with HTTP 401 "Invalid token". Set JWT_SECRET to the same value in both:
@@ -46,45 +62,24 @@ def _invalidate_cloud_token(business_id: int):
     pass
 
 def _safe_broadcast(business_id: int, event: dict):
+    """Broadcast an SSE event from the sync-worker thread.
+
+    (R-1) This runs in the APScheduler background thread, NOT the server loop.
+    realtime_manager.broadcast_threadsafe marshals the coroutine onto the main
+    loop via run_coroutine_threadsafe; the old asyncio.run() path created a
+    throwaway loop whose events never reached the main-loop SSE consumers, so
+    cloud→local pulls updated the DB but the browser UI never refreshed.
+    """
     from services.realtime import realtime_manager
     try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(realtime_manager.broadcast(business_id, event))
-    except RuntimeError:
-        # No running event loop in this thread, use asyncio.run
-        try:
+        if not realtime_manager.broadcast_threadsafe(business_id, event):
+            # No main loop registered yet — last-resort fallback.
             asyncio.run(realtime_manager.broadcast(business_id, event))
-        except Exception as e:
-            logger.warning("[SYNC_WORKER] Failed to broadcast event: %s", e)
     except Exception as e:
         logger.warning("[SYNC_WORKER] Failed to broadcast event: %s", e)
 
-# Model mapping to apply updates/inserts locally
-_MODEL_MAP: Dict[str, Any] = {
-    "users": User,
-    "customers": Customer,
-    "vendors": Vendor,
-    "products": Product,
-    "invoices": Invoice,
-    "invoice_line_items": InvoiceLineItem,
-    "inventory": Inventory,
-    "payments": Payment,
-    "stock_ledger": StockLedger,
-    "product_barcodes": ProductBarcode,
-    "business_settings": BusinessSettings,
-    "invoice_payments": InvoicePayment,
-    "shared_ledger": SharedLedger,
-    "expenses": Expense,
-    "godowns": Godown,
-    "stock_transfers": StockTransfer,
-    "stock_transfer_line_items": StockTransferLineItem,
-    "purchase_invoices": PurchaseInvoice,
-    "purchase_invoice_line_items": PurchaseInvoiceLineItem,
-    "purchase_orders": PurchaseOrder,
-    "purchase_order_line_items": PurchaseOrderLineItem,
-    "alert_configs": AlertConfig,
-    "rate_limit_configs": RateLimitConfig,
-}
+# (R-7) Single shared source — see database/sync_map.py
+from database.sync_map import MODEL_MAP as _MODEL_MAP, ENTITY_BROADCAST_MAP
 
 
 def _row_to_dict(row) -> dict:
@@ -166,7 +161,7 @@ def trigger_sync_run(business_id: int):
         db.close()
 
 
-def sync_business(db: Session, user: User, interval: int = 30, force: bool = False):
+def sync_business(db: Session, user: User, interval: int = 30, force: bool = False, do_pull: bool = False):
     business_id = user.id
     logger.debug("[SYNC_WORKER] Running sync for business_id=%s", business_id)
 
@@ -177,16 +172,22 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
             raise Exception("Cloud health probe returned non-ok status")
     except Exception as e:
         logger.warning("[SYNC_WORKER] Cloud unreachable for business %s: %s", business_id, e)
-        # Log offline status to sync_logs
-        log = SyncLog(
-            business_id=business_id,
-            status="failed",
-            error=f"Cloud unreachable: {e}",
-            synced_at=datetime.utcnow()
-        )
-        db.add(log)
-        db.commit()
+        # (H-2) Only record a SyncLog row on the online→offline transition, so an
+        # extended outage doesn't append a row every interval (unbounded growth).
+        if not _OFFLINE_STATE.get(business_id, False):
+            log = SyncLog(
+                business_id=business_id,
+                status="failed",
+                error=f"Cloud unreachable: {e}",
+                synced_at=datetime.utcnow()
+            )
+            db.add(log)
+            db.commit()
+            _OFFLINE_STATE[business_id] = True
         return
+
+    # Cloud is reachable — clear the offline flag so the next outage logs once.
+    _OFFLINE_STATE[business_id] = False
 
     # 2. Query next unsynced batch
     queue_items = (
@@ -211,12 +212,27 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
         # Push to cloud
         changes = []
         for item in queue_items:
+            # Skip entities that aren't syncable (e.g. `users` — identity is never
+            # synced as data). They'd be rejected by the cloud as "unknown entity";
+            # mark them done so they drain from the queue instead of recycling.
+            if item.entity not in _MODEL_MAP:
+                item.synced_at = datetime.utcnow()
+                continue
             payload_dict = None
             if item.payload:
                 try:
                     payload_dict = json.loads(item.payload)
-                except Exception:
-                    pass
+                except Exception as e:
+                    # (R-6) A corrupt payload must NOT be pushed as null (the cloud
+                    # would apply an empty/no-op write). Dead-letter the item and
+                    # skip it so the rest of the batch still flows.
+                    logger.warning(
+                        "[SYNC_WORKER] Corrupt payload on queue id=%s (%s.%s) — dead-lettering: %s",
+                        item.id, item.entity, item.entity_id, e,
+                    )
+                    item.error = f"Corrupt payload: {e}"
+                    item.synced_at = datetime.utcnow()  # remove from the pending window
+                    continue
             changes.append({
                 "entity": item.entity,
                 "entity_id": item.entity_id,
@@ -243,7 +259,7 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
             )
             db.add(log)
             db.commit()
-            logger.info("[SYNC_WORKER] Successfully pushed %s changes for business_id=%s", len(queue_items), business_id)
+            logger.info("[SYNC_WORKER] Successfully pushed %s changes for business_id=%s", len(changes), business_id)
         except Exception as e:
             err_msg = str(e)
             logger.error("[SYNC_WORKER] Push failed for business_id=%s: %s", business_id, e)
@@ -265,17 +281,29 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
             # Abort this sync cycle to keep sequence order
             return
 
-    # 3. Pull updates from cloud
+    # The hybrid worker is PUSH-ONLY (local → cloud backup). Cloud data is
+    # subscription-gated, so we never auto-pull it down. A cloud→local data sync
+    # happens only on explicit user action ("Back up now") or during a migration.
+    if not do_pull:
+        return
+
+    # 3. Pull updates from cloud  (only when explicitly requested, do_pull=True)
     try:
-        # Find latest successful sync timestamp before this run
-        last_success = (
-            db.query(SyncLog)
-            .filter(SyncLog.business_id == business_id, SyncLog.status == "success")
-            .order_by(SyncLog.synced_at.desc())
-            .offset(1 if queue_items else 0)
-            .first()
-        )
-        last_sync_str = last_success.synced_at.isoformat() if last_success else None
+        # (R-2) Use the CLOUD-clock cursor captured from the previous pull's
+        # `pulled_at`. Comparing a cloud-issued timestamp against cloud rows'
+        # `updated_at` removes the local-vs-cloud clock skew that previously
+        # caused freshly-updated cloud rows to be silently skipped. On first run
+        # after a restart we fall back to the last successful SyncLog timestamp.
+        last_sync_str = _PULL_CURSOR.get(business_id)
+        if not last_sync_str:
+            last_success = (
+                db.query(SyncLog)
+                .filter(SyncLog.business_id == business_id, SyncLog.status == "success")
+                .order_by(SyncLog.synced_at.desc())
+                .offset(1 if queue_items else 0)
+                .first()
+            )
+            last_sync_str = last_success.synced_at.isoformat() if last_success else None
 
         params = {}
         if last_sync_str:
@@ -287,8 +315,13 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
             raise Exception(f"HTTP 401: token rejected by cloud — will refresh next cycle")
         if resp.status_code != 200:
             raise Exception(f"HTTP {resp.status_code}: {resp.text}")
-        
-        pulled = resp.json().get("changes", {})
+
+        _resp_json = resp.json()
+        pulled = _resp_json.get("changes", {})
+        # Advance the cloud-clock cursor to the server's own pull timestamp.
+        _cloud_cursor = _resp_json.get("pulled_at")
+        if _cloud_cursor:
+            _PULL_CURSOR[business_id] = _cloud_cursor
         total_pulled = sum(len(v) for v in pulled.values())
         
         if total_pulled > 0:
@@ -312,47 +345,51 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
                         
                         # Apply Last-Write-Wins (LWW) locally
                         cloud_updated_at = _parse_dt(record.get("updated_at"))
-                        
-                        if existing and hasattr(existing, "updated_at") and existing.updated_at and cloud_updated_at:
+
+                        if existing and hasattr(existing, "updated_at") and existing.updated_at:
+                            # (R-5) If the cloud row carries no timestamp we cannot
+                            # prove it is newer — do NOT clobber an existing local
+                            # row with a timestamp-less version.
+                            if not cloud_updated_at:
+                                logger.debug(
+                                    "[SYNC_WORKER] Skipping %s id=%s — cloud row has no updated_at, keeping local",
+                                    table_name, rec_id,
+                                )
+                                continue
                             local_updated_at = _parse_dt(existing.updated_at)
                             if local_updated_at and local_updated_at > cloud_updated_at:
                                 # Local version is newer, skip cloud version
                                 continue
                         
-                        # Apply field updates
-                        target_obj = existing if existing else model_cls()
-                        for key, val in record.items():
-                            if key in model_cls.__table__.columns:
-                                col_type = model_cls.__table__.columns[key].type
-                                if hasattr(col_type, "python_type") and col_type.python_type == datetime:
-                                    if val:
-                                        val = _parse_dt(val)
-                                setattr(target_obj, key, val)
-                        
-                        if not existing:
-                            db.add(target_obj)
-                
+                        # Apply field updates inside a per-row SAVEPOINT so a
+                        # single bad row (e.g. a UNIQUE/constraint clash) is
+                        # skipped instead of rolling back the entire pull batch.
+                        try:
+                            with db.begin_nested():
+                                target_obj = existing if existing else model_cls()
+                                for key, val in record.items():
+                                    if key in model_cls.__table__.columns:
+                                        col_type = model_cls.__table__.columns[key].type
+                                        if hasattr(col_type, "python_type") and col_type.python_type == datetime:
+                                            if val:
+                                                val = _parse_dt(val)
+                                        setattr(target_obj, key, val)
+                                if not existing:
+                                    db.add(target_obj)
+                        except Exception as row_err:
+                            orig = getattr(row_err, "orig", row_err)
+                            logger.warning(
+                                "[SYNC_WORKER] Pull skip %s id=%s: %s",
+                                table_name, rec_id, str(orig).strip().splitlines()[0],
+                            )
+
                 db.commit()
                 
                 # Broadcast local SSE sync triggers to update browser tabs!
                 entities_to_broadcast = set()
                 for table_name, records in pulled.items():
                     if records:
-                        entity_map = {
-                            "customers": "party",
-                            "vendors": "party",
-                            "products": "product",
-                            "invoices": "invoice",
-                            "payments": "payment",
-                            "invoice_payments": "payment",
-                            "purchase_invoices": "purchase",
-                            "godowns": "godown",
-                            "purchase_orders": "order",
-                            "stock_transfers": "stock",
-                            "stock_ledger": "stock",
-                            "business_settings": "settings",
-                        }
-                        entity_name = entity_map.get(table_name)
+                        entity_name = ENTITY_BROADCAST_MAP.get(table_name)
                         if entity_name:
                             entities_to_broadcast.add(entity_name)
                 

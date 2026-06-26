@@ -9,6 +9,38 @@ class RealtimeManager:
     def __init__(self):
         # Maps business_id -> Set of asyncio.Queue
         self.connections: Dict[int, Set[asyncio.Queue]] = {}
+        # The main server event loop. Subscriber queues are bound to it, so any
+        # broadcast that originates off-loop (e.g. the APScheduler sync worker
+        # thread) MUST be marshalled back onto this loop — see broadcast_threadsafe.
+        self._loop: "asyncio.AbstractEventLoop | None" = None
+
+    def set_loop(self, loop: "asyncio.AbstractEventLoop") -> None:
+        """Record the main event loop. Called once from the app lifespan startup."""
+        self._loop = loop
+        logger.info("[REALTIME] Main event loop registered for cross-thread broadcasts.")
+
+    def broadcast_threadsafe(self, business_id: int, event: Dict[str, Any]) -> bool:
+        """
+        (R-1) Schedule a broadcast onto the main loop from ANY thread.
+
+        The background sync worker runs in an APScheduler thread; calling
+        asyncio.run() there spins up a *different* loop whose put_nowait never
+        wakes the main-loop SSE consumers, so pull events were silently lost.
+        run_coroutine_threadsafe hands the coroutine to the real loop instead.
+
+        Returns True if the broadcast was scheduled, False if no loop is ready.
+        """
+        loop = self._loop
+        if loop is None or not loop.is_running():
+            logger.warning("[REALTIME] No running main loop — dropping %s broadcast for business %s",
+                           event.get("type"), business_id)
+            return False
+        try:
+            asyncio.run_coroutine_threadsafe(self.broadcast(business_id, event), loop)
+            return True
+        except Exception as e:
+            logger.warning("[REALTIME] threadsafe broadcast failed for business %s: %s", business_id, e)
+            return False
 
     def subscribe(self, business_id: int) -> asyncio.Queue:
         """Subscribe a new client queue for a business_id."""

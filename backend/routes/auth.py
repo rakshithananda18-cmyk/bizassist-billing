@@ -22,10 +22,33 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class IdentityCheckRequest(BaseModel):
+    username: str
+
+
+@router.post("/api/identity/check")
+def identity_check(req: IdentityCheckRequest, db: Session = Depends(get_db)):
+    """
+    Lightweight, PUBLIC existence check for the registration UX.
+
+    Returns ONLY {"exists": bool} — no business name or any other field — so it
+    can't be used to enumerate account details. Lets the signup form branch to
+    "log in & link" vs "create new" before the user fills the whole form.
+    """
+    uname = (req.username or "").strip()
+    exists = bool(uname) and db.query(User).filter(User.username == uname).first() is not None
+    return {"exists": exists}
+
+
 class SignupRequest(BaseModel):
     username: str
     password: str
     business_name: str
+    # Optional cloud-issued BizID. When the downloaded app registers, it creates
+    # the account on the cloud first (the single authority), then mirrors it
+    # locally passing the cloud's public_id here so both sides share one BizID.
+    # When omitted (web signup / standalone), a new BizID is minted.
+    public_id: Optional[str] = None
 
 
 @router.post("/login")
@@ -57,6 +80,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             "id": business_id,
             "user_id": user.id,
             "username": user.username,
+            "public_id": user.public_id,   # BizID — the stable cross-DB identity spine (D9)
             "business_name": business_name,
             "role": user.role
         })
@@ -67,6 +91,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             "id": business_id,
             "user_id": user.id,
             "username": user.username,
+            "public_id": user.public_id,   # BizID — lets the client confirm/unify identity
             "business_name": business_name,
             "role": user.role,
             "db_mode": _DB_MODE,   # 'local' | 'cloud' — tells frontend which backend this account lives on
@@ -99,12 +124,15 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="Username already exists")
         
         from core.connection.utils import generate_bizid
+        # Adopt a cloud-issued BizID when provided (local mirror of a cloud
+        # account); otherwise mint a fresh one (web signup / standalone).
+        bizid = (req.public_id or "").strip() or generate_bizid(db)
         user = User(
             username=req.username,
             password=hash_password(req.password),
             business_name=req.business_name,
             role="enterprise",
-            public_id=generate_bizid(db)
+            public_id=bizid
         )
         db.add(user)
         db.commit()
@@ -114,6 +142,7 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             "id": user.id,
             "user_id": user.id,
             "username": user.username,
+            "public_id": user.public_id,   # BizID — stable cross-DB identity spine (D9)
             "business_name": user.business_name,
             "role": user.role
         })
@@ -124,6 +153,7 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             "id": user.id,
             "user_id": user.id,
             "username": user.username,
+            "public_id": user.public_id,   # BizID — client mirrors this to the local account
             "business_name": user.business_name,
             "role": user.role,
             "db_mode": _DB_MODE,   # 'local' | 'cloud' — tells frontend which backend this account lives on

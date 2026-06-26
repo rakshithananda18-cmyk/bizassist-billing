@@ -72,6 +72,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
 
   const cancelledRef = useRef(false)
   const stepIdxRef = useRef(0)
+  const startedRef = useRef(false)   // guard against React StrictMode double-invoke
 
   const markStep = useCallback((idx, status) => {
     setStepStatuses(prev => prev.map((s, i) => i === idx ? status : s))
@@ -97,6 +98,8 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
 
   // ── Run migration ──────────────────────────────────────────────────────────
   useEffect(() => {
+    if (startedRef.current) return     // fire once, even under StrictMode double-mount
+    startedRef.current = true
     cancelledRef.current = false
     setStartTime(Date.now())
     run()

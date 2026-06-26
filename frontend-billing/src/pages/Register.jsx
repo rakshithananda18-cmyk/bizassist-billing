@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { API_BASE } from '../config'
+import { API_BASE, CLOUD_URL } from '../config'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
@@ -26,6 +26,31 @@ export default function Register() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPasswordCriteria, setShowPasswordCriteria] = useState(false)
+  const [existing, setExisting] = useState(false)   // username already taken on the cloud (the registry)
+
+  // Pre-check a username against the CLOUD (the identity authority) so we can
+  // branch to "log in" instead of failing the whole registration on submit.
+  const checkUsername = async (u) => {
+    u = (u ?? form.username ?? '').trim()
+    if (!u) { setExisting(false); return }
+    try {
+      const r = await fetch(`${CLOUD_URL}/api/identity/check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: u }),
+      })
+      if (r.ok) setExisting((await r.json())?.exists === true)
+    } catch { /* offline / cloud unreachable → skip; signup will surface it on submit */ }
+  }
+
+  // Live (debounced) check as the user types the username.
+  useEffect(() => {
+    const u = (form.username || '').trim()
+    if (!u) { setExisting(false); return }
+    const t = setTimeout(() => checkUsername(u), 450)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.username])
 
   const [templates, setTemplates] = useState([])
   const [selectedTemplate, setSelectedTemplate] = useState('general')
@@ -70,6 +95,10 @@ export default function Register() {
     if (!form.agreeTerms) {
       logger.warn('Registration failed client validation: User did not agree to terms.')
       setError('You must agree to the Terms of Service to create an account.')
+      return
+    }
+    if (existing) {
+      setError('An account with this username already exists. Please log in instead.')
       return
     }
 
@@ -219,6 +248,21 @@ export default function Register() {
                 onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
                 required
               />
+              {existing && (
+                <div style={{
+                  marginTop: 6, fontSize: '0.78rem', color: 'var(--text-muted)',
+                  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                }}>
+                  <span>An account with this username already exists.</span>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/login')}
+                    style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontWeight: 700, padding: 0, textDecoration: 'underline' }}
+                  >
+                    Log in instead
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="form-group" style={{ marginTop: '4px' }}>
