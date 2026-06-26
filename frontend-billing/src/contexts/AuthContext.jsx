@@ -276,6 +276,11 @@ export function AuthProvider({ children }) {
           Authorization: `Bearer ${token}`
         }
       })
+      if (res.status === 404) {
+        logger.warn('[AUTH] Restored session user not found on active backend. Auto-logging out.')
+        logout()
+        return
+      }
       if (res.ok) {
         const data = await res.json()
         setProfile(data)
@@ -283,7 +288,7 @@ export function AuthProvider({ children }) {
     } catch (err) {
       logger.error('Failed to fetch profile:', err)
     }
-  }, [token])
+  }, [token, logout])
 
   const [settings, setSettings] = useState(null)
 
@@ -295,6 +300,11 @@ export function AuthProvider({ children }) {
           Authorization: `Bearer ${token}`
         }
       })
+      if (res.status === 404) {
+        logger.warn('[AUTH] Restored session settings user not found on active backend. Auto-logging out.')
+        logout()
+        return
+      }
       if (res.ok) {
         const data = await res.json()
         setSettings(data)
@@ -307,7 +317,7 @@ export function AuthProvider({ children }) {
     } catch (err) {
       logger.error('Failed to fetch settings in context:', err)
     }
-  }, [token])
+  }, [token, logout])
 
   const fetchBusinessConfig = useCallback(async () => {
     if (!token) return
@@ -317,6 +327,11 @@ export function AuthProvider({ children }) {
           Authorization: `Bearer ${token}`
         }
       })
+      if (res.status === 404) {
+        logger.warn('[AUTH] Restored session business config user not found on active backend. Auto-logging out.')
+        logout()
+        return
+      }
       if (res.ok) {
         const data = await res.json()
         setBusinessConfig(data.config)
@@ -326,7 +341,7 @@ export function AuthProvider({ children }) {
     } catch (err) {
       logger.error('Failed to fetch business config:', err)
     }
-  }, [token])
+  }, [token, logout])
 
   useEffect(() => {
     if (token) {
