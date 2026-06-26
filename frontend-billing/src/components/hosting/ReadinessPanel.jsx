@@ -1,10 +1,6 @@
 import React from 'react'
 import { SyncIcon } from '../Icons'
-
-const CLOUD_URL =
-  import.meta.env.VITE_API_URL || 'https://rakshit-dev-bizassist.hf.space'
-
-const LOCAL_URL = 'http://localhost:8000'
+import { CLOUD_URL, LOCAL_URL } from '../../config'
 
 function StatusDot({ status }) {
   const classMap = {

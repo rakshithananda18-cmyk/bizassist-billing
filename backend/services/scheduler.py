@@ -92,10 +92,13 @@ def start_scheduler():
     _scheduler.add_job(
         run_hybrid_sync,
         "interval",
-        seconds=5,
+        seconds=15,             # tick interval (per-business sync is still gated by sync_interval, default 30s)
         id="hybrid_sync",
         name="Hybrid Sync Engine",
         replace_existing=True,
+        max_instances=1,        # never overlap
+        coalesce=True,          # collapse missed ticks into one instead of logging "skipped"
+        misfire_grace_time=30,  # tolerate a late run rather than warning
     )
 
     _scheduler.start()

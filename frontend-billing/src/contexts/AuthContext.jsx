@@ -120,13 +120,9 @@ export function AuthProvider({ children }) {
             const localData = await mirror.json()
             logger.info(`[LOGIN] Fresh device — local mirror created (BizID ${cloudData.public_id}). Data is gated; use "Cloud → Local Sync" to pull it.`)
             _saveSession(localData)
-            // Tell the user their data lives in the cloud and how to bring it down.
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('show_toast', { detail: {
-                type: 'info',
-                msg: 'This account is set up on this device, but your data is in the cloud. Open Settings → Hosting and run "Cloud → Local Sync" to bring it here.',
-              }}))
-            }
+            // Sense divergence and pop the "Cloud → Local Sync" nudge — on a fresh
+            // device the cloud always has more, so this surfaces the data popup.
+            reconcileBizIdOnLogin(localData.token || localData.access_token)
             return
           }
           logger.error(`[LOGIN] Cloud login ok but local mirror failed: HTTP ${mirror.status}`)
