@@ -1,7 +1,8 @@
 import os
+import uuid
 from datetime import datetime
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, MetaData, Column, Integer, DateTime
+from sqlalchemy import create_engine, MetaData, Column, Integer, DateTime, String
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -62,6 +63,14 @@ class BusinessOwnedMixin(TimestampMixin):
     """Every tenant-scoped table inherits this: id, business_id, timestamps."""
     id          = Column(Integer, primary_key=True, index=True)
     business_id = Column(Integer, index=True, nullable=True)
+    # Step 3 (R-3) — Durable, globally-unique key for cross-DB sync/migration.
+    # `id` is a per-database autoincrement (local id=10 != cloud id=10), so
+    # matching on it causes wrong-row overwrites. Sync/migration match on `uid`
+    # instead (Phase B). Generated ORM-side at row creation; nullable for
+    # backfill (the Phase A migration fills existing rows). No index yet — no
+    # uid lookups happen until Phase B lands, which adds it alongside the
+    # match-key switch. The integer `id` stays for fast local joins/FKs.
+    uid = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
 
 
 import contextvars

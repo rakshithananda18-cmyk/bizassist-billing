@@ -152,6 +152,29 @@ _COLUMN_MIGRATIONS = [
     {"table": "stock_ledger", "column": "godown_id", "ddl": "ALTER TABLE stock_ledger ADD COLUMN godown_id INTEGER"},
     {"table": "stock_ledger", "column": "batch_no", "ddl": "ALTER TABLE stock_ledger ADD COLUMN batch_no TEXT"},
     {"table": "stock_ledger", "column": "expiry_date", "ddl": "ALTER TABLE stock_ledger ADD COLUMN expiry_date TEXT"},
+    # uid — Step 3 (R-3) durable sync key on every BusinessOwnedMixin table.
+    # TEXT is valid on both SQLite and Postgres. Backfilled by _backfill_null_uids.
+    {"table": "customers",         "column": "uid", "ddl": "ALTER TABLE customers ADD COLUMN uid TEXT"},
+    {"table": "vendors",           "column": "uid", "ddl": "ALTER TABLE vendors ADD COLUMN uid TEXT"},
+    {"table": "products",          "column": "uid", "ddl": "ALTER TABLE products ADD COLUMN uid TEXT"},
+    {"table": "invoices",          "column": "uid", "ddl": "ALTER TABLE invoices ADD COLUMN uid TEXT"},
+    {"table": "inventory",         "column": "uid", "ddl": "ALTER TABLE inventory ADD COLUMN uid TEXT"},
+    {"table": "payments",          "column": "uid", "ddl": "ALTER TABLE payments ADD COLUMN uid TEXT"},
+    {"table": "purchase_orders",   "column": "uid", "ddl": "ALTER TABLE purchase_orders ADD COLUMN uid TEXT"},
+    {"table": "purchase_invoices", "column": "uid", "ddl": "ALTER TABLE purchase_invoices ADD COLUMN uid TEXT"},
+    {"table": "expenses",          "column": "uid", "ddl": "ALTER TABLE expenses ADD COLUMN uid TEXT"},
+    {"table": "godowns",           "column": "uid", "ddl": "ALTER TABLE godowns ADD COLUMN uid TEXT"},
+    {"table": "stock_transfers",   "column": "uid", "ddl": "ALTER TABLE stock_transfers ADD COLUMN uid TEXT"},
+    {"table": "journal_entries",   "column": "uid", "ddl": "ALTER TABLE journal_entries ADD COLUMN uid TEXT"},
+    {"table": "period_locks",      "column": "uid", "ddl": "ALTER TABLE period_locks ADD COLUMN uid TEXT"},
+]
+
+
+# Tables that carry a durable `uid` (BusinessOwnedMixin). Used by the uid backfill.
+_UID_TABLES = [
+    "customers", "vendors", "products", "invoices", "inventory", "payments",
+    "purchase_orders", "purchase_invoices", "expenses", "godowns", "stock_transfers",
+    "journal_entries", "period_locks",
 ]
 
 
@@ -206,6 +229,34 @@ def _backfill_null_business_ids(conn):
             conn.execute(text(f"UPDATE {table} SET business_id = 2 WHERE business_id IS NULL"))
         except Exception as e:
             logger.error(f"[Migration] Backfill business_id {table}: {e}")
+    conn.commit()
+
+
+def _backfill_null_uids(conn):
+    """Step 3 (R-3) — fill `uid` on rows that predate the column. New rows get a
+    uid ORM-side (default); existing rows are NULL after ALTER ADD COLUMN. Phase B
+    matches on uid, so every row needs one. Postgres: single fast UPDATE with
+    gen_random_uuid(). SQLite: per-row uuid4 (no SQL UUID function). Idempotent —
+    only touches NULLs."""
+    import uuid as _uuid
+    is_pg = conn.dialect.name == "postgresql"
+    for table in _UID_TABLES:
+        try:
+            if is_pg:
+                conn.execute(text(
+                    f'UPDATE {table} SET uid = gen_random_uuid()::text WHERE uid IS NULL'
+                ))
+            else:
+                rows = conn.execute(
+                    text(f'SELECT id FROM {table} WHERE uid IS NULL')
+                ).fetchall()
+                for (row_id,) in rows:
+                    conn.execute(
+                        text(f'UPDATE {table} SET uid = :u WHERE id = :i'),
+                        {"u": str(_uuid.uuid4()), "i": row_id},
+                    )
+        except Exception as e:
+            logger.error(f"[Migration] Backfill uid {table}: {e}")
     conn.commit()
 
 
@@ -280,6 +331,7 @@ def run_migrations_and_seed():
     # 3. Backfills
     with engine.connect() as conn:
         _backfill_null_business_ids(conn)
+        _backfill_null_uids(conn)
         _migrate_session_nulls(conn)
 
     # 4. Seed users

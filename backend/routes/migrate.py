@@ -483,6 +483,39 @@ _NATURAL_KEYS: dict[str, list[str]] = {
 }
 
 
+def _uid_lookup(db: Session, table: str, col_names: set, business_id: int, filtered: dict):
+    """(Step 3 / R-3) Return an existing destination row id matching this row's
+    durable ``uid``, or None.
+
+    `uid` is a globally-unique key carried by every BusinessOwnedMixin row, so it
+    identifies "the same row across DBs" exactly — immune to the per-DB ``id``
+    divergence that natural keys (phone/name) only approximate. Scoped to
+    business_id (matches RLS) when the column exists. Returns None for tables
+    without a uid column, or rows that predate the column (uid IS NULL) — the
+    caller then falls back to the natural-key match.
+    """
+    if "uid" not in col_names:
+        return None
+    uid = filtered.get("uid")
+    if not uid:
+        return None
+    try:
+        if "business_id" in col_names:
+            row = db.execute(
+                text(f'SELECT id FROM "{table}" WHERE business_id = :b AND uid = :u LIMIT 1'),
+                {"b": business_id, "u": uid},
+            ).first()
+        else:
+            row = db.execute(
+                text(f'SELECT id FROM "{table}" WHERE uid = :u LIMIT 1'),
+                {"u": uid},
+            ).first()
+        return int(row[0]) if row else None
+    except Exception as exc:
+        logger.debug("migrate/import[remap]: uid lookup failed for %s — %s", table, exc)
+        return None
+
+
 def _natural_lookup(db: Session, table: str, col_names: set, business_id: int, filtered: dict):
     """Return an existing destination row id matching this row's natural key, or None.
 
@@ -569,8 +602,14 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
                     filtered[col] = m[filtered[col]]
                 # else leave as-is; a dangling FK will fail and be skipped (logged)
 
-        # idempotent dedup on a natural key
-        existing_id = _natural_lookup(db, table_name, col_names, cloud_owner_id, filtered)
+        # Idempotent dedup. (Step 3 / R-3) Match on the durable `uid` first — it
+        # identifies the same row across DBs exactly. Fall back to the natural key
+        # (phone/name/invoice_id) for rows that predate the uid column. A matched
+        # row is reused (its destination id is recorded so child FKs rewrite to
+        # it), never duplicated or overwritten.
+        existing_id = _uid_lookup(db, table_name, col_names, cloud_owner_id, filtered)
+        if existing_id is None:
+            existing_id = _natural_lookup(db, table_name, col_names, cloud_owner_id, filtered)
         if existing_id is not None:
             if old_id is not None:
                 table_map[old_id] = existing_id

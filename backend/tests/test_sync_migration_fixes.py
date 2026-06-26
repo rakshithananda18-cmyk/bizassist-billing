@@ -263,3 +263,52 @@ def test_merge_lww_keeps_newer_inserts_new():
     finally:
         db.rollback()
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# Step 3 / R-3 Phase B.1 — remap import dedups on durable `uid` FIRST, ahead of
+# the fuzzy natural key. Same uid + a CHANGED natural key must still match the
+# same row (no duplicate); the matched destination id feeds child-FK rewrites.
+# ---------------------------------------------------------------------------
+def test_import_remap_dedups_on_uid_over_natural_key():
+    owner = _signup("UID Dedup Co")
+    bid = owner["bid"]
+    LOCAL_OWNER = 7654321          # source DB used a different owner id
+    UID = str(uuid.uuid4())
+    db = SessionLocal()
+    try:
+        existing = set(inspect(db.bind).get_table_names())
+
+        # First import: product carrying a uid and barcode UID-B1.
+        p1 = [{
+            "id": 555001, "business_id": LOCAL_OWNER, "uid": UID,
+            "name": "UidWidget", "barcode": "UID-B1",
+            "selling_price": 5.0, "track_inventory": True,
+        }]
+        assert _import_with_remap(db, "products", p1, bid, LOCAL_OWNER, existing, {}) == 1
+        dest_id = db.execute(
+            text("SELECT id FROM products WHERE uid = :u AND business_id = :b"),
+            {"u": UID, "b": bid},
+        ).scalar()
+        assert dest_id is not None
+
+        # Second import: SAME uid, but a DIFFERENT barcode (natural key) and a
+        # different source id. Natural-key match would FAIL (new barcode) and
+        # insert a duplicate; uid match must catch it → dedup, no insert.
+        id_maps: dict = {}
+        p2 = [{
+            "id": 555999, "business_id": LOCAL_OWNER, "uid": UID,
+            "name": "UidWidget Renamed", "barcode": "UID-B2-DIFFERENT",
+            "selling_price": 9.0, "track_inventory": True,
+        }]
+        assert _import_with_remap(db, "products", p2, bid, LOCAL_OWNER, existing, id_maps) == 0
+        # The matched destination id is recorded so child FKs rewrite to it.
+        assert id_maps["products"][555999] == dest_id
+        # Still exactly one row despite the changed barcode.
+        assert db.execute(
+            text("SELECT COUNT(*) FROM products WHERE uid = :u AND business_id = :b"),
+            {"u": UID, "b": bid},
+        ).scalar() == 1
+    finally:
+        db.rollback()
+        db.close()
