@@ -19,7 +19,19 @@ The tables in `database/sync_map.py` `MODEL_MAP` (business data), i.e.:
 
 **Not** `users` (identity is never synced as data — already excluded).
 
-## 3. Phase A — schema (additive, safe)
+## 3. Phase A — schema (additive, safe) — ✅ DONE 2026-06-27
+
+**Implemented** (`uid` on `BusinessOwnedMixin` + migration `b9f1c3e7a2d4_add_uid_sync_keys`):
+
+- **Scope this pass:** the **11 `BusinessOwnedMixin` tables** only — `customers, vendors, products, invoices, inventory, payments, purchase_orders, purchase_invoices, expenses, godowns, stock_transfers` (the main entities where id-collisions actually bite). The `TimestampMixin`-only child/aux tables (`*_line_items, stock_ledger, product_barcodes, business_settings, invoice_payments, shared_ledger, stock_transfer_line_items, alert_configs, rate_limit_configs`) are deferred to **Phase A.2** so each model carries `uid` consistently before Phase B touches them.
+- **No `index` / no `UniqueConstraint` yet** — no `uid` lookups happen until Phase B, so the index lands *with* Phase B's match-key switch; the unique constraint lands in Phase C after backfill is confirmed. Keeps this migration minimal/low-risk.
+- **Backfill:** Postgres `gen_random_uuid()::text` (built-in on Supabase/PG13+); SQLite row-by-row `uuid4()` in Python. Idempotent (`_has_column` guard + `WHERE uid IS NULL`).
+- **Tests:** `tests/test_uid_sync_keys.py` — column present on all 11 tables, new rows get distinct non-null uid, backfill fills NULLs.
+- **Verify on deploy:** run `alembic upgrade head` on **both** local SQLite and HF/Supabase, then `run_tests.ps1`. Confirm Supabase has `gen_random_uuid()` (it does by default).
+
+*Original plan below for reference:*
+
+### 3. Phase A — schema (additive, safe)
 
 1. **Model:** add to the shared owned mixin (`database/db.py → BusinessOwnedMixin`) so every business-owned table inherits it:
    ```python
@@ -41,6 +53,23 @@ The tables in `database/sync_map.py` `MODEL_MAP` (business data), i.e.:
 3. **Export** (`routes/migrate.py::_fetch_table`, `_row_to_dict`) already serialises all columns → `uid` flows automatically once the column exists. No change needed.
 
 ## 4. Phase B — match on `uid` (the behaviour change)
+
+> **Phase B is split into two shippable increments.**
+>
+> **B.1 — migration import (✅ DONE 2026-06-27).** The remap import path
+> (`routes/migrate.py::_import_with_remap`) now dedups on the durable `uid` FIRST
+> (`_uid_lookup`), falling back to the fuzzy natural key (phone/name/invoice_id)
+> only for rows that predate the column. This reuses the existing fresh-id +
+> FK-rewrite (`id_maps`) + per-row-savepoint machinery, so a matched row is
+> reused (its destination id feeds child-FK rewrites) and never duplicated — even
+> when its natural key changed. This is the path where the live collision bugs
+> occurred. Test: `test_import_remap_dedups_on_uid_over_natural_key`.
+>
+> **B.2 — sync push/pull + merge button (✅ DONE 2026-06-27).** *Implemented parent `uid` serialization in the outbox trigger layer, uid-based matching in both `push_changes` and `sync_worker` pull-apply, and foreign key resolution via parent `uid` values to prevent wrong-row ID mapping and collisions.*
+>
+> *Original Phase B spec below for reference:*
+
+### 4. Phase B — match on `uid` (the behaviour change)
 
 Switch the match key from `id` → `uid` in the three apply paths. **Fall back to `id`** when a row has no `uid` (older client) so the transition is safe.
 

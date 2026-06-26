@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BizAssist Test Suite Dashboard & Monitor</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['DM Sans', 'sans-serif'],
+            mono: ['monospace'],
+          },
+          colors: {
+            accent: {
+              DEFAULT: '#c15f3c',
+              hover: '#a84e2e',
+              glow: 'rgba(193, 95, 60, 0.15)',
+              light: 'rgba(193, 95, 60, 0.10)'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #0b0f19;
+      color: #f3f4f6;
+    }
+    .glass-card {
+      background: rgba(17, 24, 39, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glow-green {
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.15);
+    }
+    .glow-red {
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.15);
+    }
+    .glow-accent {
+      box-shadow: 0 0 20px rgba(193, 95, 60, 0.15);
+    }
+    .glow-yellow {
+      box-shadow: 0 0 20px rgba(234, 179, 8, 0.15);
+    }
+    /* Pulsing animations */
+    @keyframes pulse-dot {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.2); opacity: 0.6; }
+    }
+    .pulse-dot {
+      animation: pulse-dot 2s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="font-sans antialiased min-h-screen">
+  <!-- Header -->
+  <header class="glass-card sticky top-0 z-50 px-6 py-4 mb-8 border-b">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+      <div class="flex items-center gap-3">
+        <div class="h-10 w-10 bg-accent rounded-xl flex items-center justify-center glow-accent text-white font-bold text-lg">
+          <i class="fa-solid fa-square-poll-vertical"></i>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold tracking-tight text-white">BizAssist AI</h1>
+          <p class="text-xs text-slate-400">Test Execution & Live Sync Ecosystem Monitor</p>
+        </div>
+      </div>
+      
+      <div class="flex items-center gap-4">
+        <div class="text-right hidden md:block">
+          <p class="text-xs text-slate-400">Database Status</p>
+          <div class="flex items-center gap-2 mt-0.5 justify-end">
+            <span class="h-2 w-2 rounded-full bg-emerald-500 pulse-dot"></span>
+            <span class="text-xs font-semibold text-emerald-400" id="db-connection-status">Connecting...</span>
+          </div>
+        </div>
+        <button onclick="refreshData()" class="px-4 py-2 bg-accent hover:bg-accent-hover active:scale-95 transition-transform text-white rounded-lg text-sm font-semibold flex items-center gap-2 shadow-lg shadow-accent/20">
+          <i class="fa-solid fa-arrows-rotate"></i> Refresh View
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-6 pb-12">
+    <!-- Tabs Nav -->
+    <div class="flex border-b border-slate-800 mb-8 gap-6">
+      <button onclick="switchTab('dashboard')" id="tab-btn-dashboard" class="pb-3 text-sm font-semibold border-b-2 border-accent text-accent transition-colors flex items-center gap-2">
+        <i class="fa-solid fa-chart-line"></i> Dashboard Summary
+      </button>
+      <button onclick="switchTab('tests')" id="tab-btn-tests" class="pb-3 text-sm font-semibold border-b-2 border-transparent text-slate-400 hover:text-white transition-colors flex items-center gap-2">
+        <i class="fa-solid fa-list-check"></i> Pytest Results
+      </button>
+      <button onclick="switchTab('ecosystem')" id="tab-btn-ecosystem" class="pb-3 text-sm font-semibold border-b-2 border-transparent text-slate-400 hover:text-white transition-colors flex items-center gap-2">
+        <i class="fa-solid fa-network-wired"></i> Ecosystem Monitor
+      </button>
+    </div>
+
+    <!-- TAB: Dashboard Summary -->
+    <section id="tab-content-dashboard" class="space-y-8">
+      <!-- Summary Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <!-- Total Tests -->
+        <div class="glass-card p-6 rounded-2xl glow-accent">
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="text-sm font-semibold text-slate-400">Total Tests</p>
+              <h3 class="text-3xl font-bold text-white mt-2" id="sum-total">0</h3>
+            </div>
+            <div class="p-3 bg-accent-light text-accent rounded-xl">
+              <i class="fa-solid fa-circle-nodes text-xl"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Passed Tests -->
+        <div class="glass-card p-6 rounded-2xl glow-green">
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="text-sm font-semibold text-slate-400">Passed</p>
+              <h3 class="text-3xl font-bold text-emerald-400 mt-2" id="sum-passed">0</h3>
+            </div>
+            <div class="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl">
+              <i class="fa-solid fa-circle-check text-xl"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Failed Tests -->
+        <div class="glass-card p-6 rounded-2xl glow-red">
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="text-sm font-semibold text-slate-400">Failed</p>
+              <h3 class="text-3xl font-bold text-rose-500 mt-2" id="sum-failed">0</h3>
+            </div>
+            <div class="p-3 bg-rose-500/10 text-rose-500 rounded-xl">
+              <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Execution Time -->
+        <div class="glass-card p-6 rounded-2xl glow-yellow">
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="text-sm font-semibold text-slate-400">Duration</p>
+              <h3 class="text-3xl font-bold text-yellow-400 mt-2" id="sum-duration">0.00s</h3>
+            </div>
+            <div class="p-3 bg-yellow-500/10 text-yellow-400 rounded-xl">
+              <i class="fa-solid fa-stopwatch text-xl"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Progress Bar -->
+      <div id="live-progress-container" class="glass-card p-6 rounded-2xl glow-accent hidden">
+        <div class="flex justify-between items-center mb-3">
+          <div class="flex items-center gap-2">
+            <span class="h-2.5 w-2.5 rounded-full bg-yellow-500 pulse-dot" id="progress-dot"></span>
+            <span class="text-sm font-semibold text-yellow-400" id="progress-status-text">Running tests...</span>
+          </div>
+          <span class="text-sm font-bold font-mono text-accent" id="progress-percent-text">0%</span>
+        </div>
+        <div class="w-full bg-slate-950 rounded-full h-3 border border-slate-800/80 overflow-hidden">
+          <div id="progress-bar-fill" class="bg-accent h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+        <div class="flex justify-between items-center mt-3 text-xs text-slate-500">
+          <span id="progress-detail-text">0 of 0 tests run</span>
+          <span>Live Updates Active</span>
+        </div>
+      </div>
+
+      <!-- Graphic Charts & Details -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Chart -->
+        <div class="glass-card p-6 rounded-2xl lg:col-span-1 flex flex-col justify-between">
+          <h4 class="text-base font-semibold text-white mb-4">Pass Rate Proportion</h4>
+          <div class="h-64 flex items-center justify-center">
+            <canvas id="passRateChart"></canvas>
+          </div>
+          <div class="text-center mt-4">
+            <span class="text-sm font-medium text-slate-400" id="pass-rate-text">0% passed</span>
+          </div>
+        </div>
+
+        <!-- Live Database Status -->
+        <div class="glass-card p-6 rounded-2xl lg:col-span-2 space-y-6">
+          <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+            <h4 class="text-base font-semibold text-white">Ecosystem Sync Overview</h4>
+            <span class="px-2.5 py-1 bg-accent/10 text-accent text-xs font-semibold rounded-full flex items-center gap-1.5">
+              <i class="fa-solid fa-server"></i> Local Database Stats
+            </span>
+          </div>
+          
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4" id="db-highlights">
+            <!-- Loading indicator or stats will be inserted here -->
+            <div class="col-span-4 text-center py-12 text-slate-500">
+              <i class="fa-solid fa-circle-notch fa-spin text-2xl mb-2"></i>
+              <p class="text-xs">Loading local database statistics...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: Pytest Results -->
+    <section id="tab-content-tests" class="space-y-6 hidden">
+      <!-- Filters and Search -->
+      <div class="glass-card p-4 rounded-xl flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div class="flex flex-wrap gap-2 w-full sm:w-auto">
+          <button onclick="filterTests('all')" id="filter-btn-all" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-accent text-white shadow-sm transition-colors">
+            All Tests
+          </button>
+          <button onclick="filterTests('passed')" id="filter-btn-passed" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors">
+            Passed
+          </button>
+          <button onclick="filterTests('failed')" id="filter-btn-failed" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors">
+            Failed
+          </button>
+          <button onclick="filterTests('skipped')" id="filter-btn-skipped" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors">
+            Skipped
+          </button>
+        </div>
+        
+        <div class="relative w-full sm:w-80">
+          <input type="text" id="test-search" oninput="searchTests()" placeholder="Search test name or file..." class="w-full pl-9 pr-4 py-2 bg-slate-900/50 border border-slate-800 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-sm"></i>
+        </div>
+      </div>
+
+      <!-- Test Cases List (Accordions) -->
+      <div id="test-suites-container" class="space-y-4">
+        <!-- Collapsible file-wise test groups will be injected here -->
+      </div>
+    </section>
+
+    <!-- TAB: Ecosystem Monitor -->
+    <section id="tab-content-ecosystem" class="space-y-8 hidden">
+      <!-- Database Synchronisation Tables -->
+      <div class="glass-card p-6 rounded-2xl">
+        <h3 class="text-lg font-bold text-white mb-6 flex items-center gap-2 border-b border-slate-800 pb-3">
+          <i class="fa-solid fa-database text-accent"></i> Local Database Synced Entity Counts
+        </h3>
+        
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" id="db-entity-grid">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Sync log history & Conflict log history -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Sync Logs -->
+        <div class="glass-card p-6 rounded-2xl">
+          <h3 class="text-lg font-bold text-white mb-6 flex items-center gap-2 border-b border-slate-800 pb-3">
+            <i class="fa-solid fa-clock-rotate-left text-emerald-500"></i> Sync Execution History
+          </h3>
+          <div class="overflow-y-auto max-h-96 pr-2">
+            <div id="sync-logs-list" class="space-y-4">
+              <!-- Sync Log items -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Conflict Logs -->
+        <div class="glass-card p-6 rounded-2xl">
+          <h3 class="text-lg font-bold text-white mb-6 flex items-center gap-2 border-b border-slate-800 pb-3">
+            <i class="fa-solid fa-circle-exclamation text-rose-500"></i> Conflict Log & Resolution
+          </h3>
+          <div class="overflow-y-auto max-h-96 pr-2">
+            <div id="conflict-logs-list" class="space-y-4">
+              <!-- Conflict items -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let rawTestData = null;
+    let dbStats = null;
+    let chartInstance = null;
+    let currentFilter = 'all';
+    let collapsedSuites = {}; // tracks which suites are collapsed
+    let pollInterval = null;
+    let lastProcessedCount = -1;
+    let lastSearchQuery = "";
+    let lastFilter = "";
+
+    async function loadResults() {
+      try {
+        const res = await fetch('/api/results');
+        rawTestData = await res.json();
+      } catch (e) {
+        console.error("Failed to load test results", e);
+      }
+    }
+
+    async function loadDbStats() {
+      try {
+        const res = await fetch('/api/db-stats');
+        dbStats = await res.json();
+      } catch (e) {
+        console.error("Failed to load db stats", e);
+      }
+    }
+
+    function updateSummary() {
+      if (!rawTestData) return;
+      const s = rawTestData.summary;
+      
+      document.getElementById('sum-total').innerText = s.total || 0;
+      document.getElementById('sum-passed').innerText = s.passed || 0;
+      document.getElementById('sum-failed').innerText = s.failed || 0;
+      document.getElementById('sum-duration').innerText = `${(s.duration || 0).toFixed(2)}s`;
+
+      const rate = s.total > 0 ? Math.round((s.passed / s.total) * 100) : 0;
+      document.getElementById('pass-rate-text').innerText = `${rate}% of tests passed`;
+
+      // Update Live Progress Bar
+      const progressContainer = document.getElementById('live-progress-container');
+      const progressDot = document.getElementById('progress-dot');
+      const progressStatusText = document.getElementById('progress-status-text');
+      const progressPercentText = document.getElementById('progress-percent-text');
+      const progressBarFill = document.getElementById('progress-bar-fill');
+      const progressDetailText = document.getElementById('progress-detail-text');
+
+      if (s.status === 'running') {
+        progressContainer.classList.remove('hidden');
+        progressDot.className = 'h-2.5 w-2.5 rounded-full bg-yellow-500 pulse-dot';
+        progressStatusText.innerText = 'Running tests...';
+        progressStatusText.className = 'text-sm font-semibold text-yellow-400';
+        
+        const total = s.total || 0;
+        const processed = (s.passed || 0) + (s.failed || 0) + (s.skipped || 0);
+        const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
+        
+        progressPercentText.innerText = `${pct}%`;
+        progressBarFill.style.width = `${pct}%`;
+        progressBarFill.className = 'bg-yellow-500 h-full rounded-full transition-all duration-300';
+        progressDetailText.innerText = `${processed} of ${total} tests completed`;
+      } else if (s.status === 'completed') {
+        progressContainer.classList.remove('hidden');
+        progressDot.className = 'h-2.5 w-2.5 rounded-full bg-emerald-500';
+        progressStatusText.innerText = 'All tests executed';
+        progressStatusText.className = 'text-sm font-semibold text-emerald-400';
+        
+        progressPercentText.innerText = '100%';
+        progressBarFill.style.width = '100%';
+        progressBarFill.className = 'bg-emerald-500 h-full rounded-full transition-all duration-300';
+        
+        const total = s.total || 0;
+        progressDetailText.innerText = `Finished: ${total} tests executed`;
+      } else {
+        progressContainer.classList.add('hidden');
+      }
+
+      // Update Chart (smooth transition)
+      if (!chartInstance) {
+        const ctx = document.getElementById('passRateChart').getContext('2d');
+        chartInstance = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: ['Passed', 'Failed', 'Skipped'],
+            datasets: [{
+              data: [s.passed || 0, s.failed || 0, s.skipped || 0],
+              backgroundColor: ['#10b981', '#f43f5e', '#eab308'],
+              borderWidth: 0,
+            }]
+          },
+          options: {
+            cutout: '75%',
+            plugins: {
+              legend: { display: false }
+            },
+            animation: {
+              duration: 500
+            }
+          }
+        });
+      } else {
+        chartInstance.data.datasets[0].data = [s.passed || 0, s.failed || 0, s.skipped || 0];
+        chartInstance.update();
+      }
+    }
+
+    function updateDbHighlights() {
+      const container = document.getElementById('db-highlights');
+      if (!dbStats || dbStats.error) {
+        container.innerHTML = `
+          <div class="col-span-4 text-center py-6 text-rose-500">
+            <i class="fa-solid fa-triangle-exclamation text-2xl mb-2"></i>
+            <p class="text-xs">Database not found or could not be loaded.</p>
+            <p class="text-[10px] text-slate-500 mt-1">${dbStats?.error || ''}</p>
+          </div>
+        `;
+        document.getElementById('db-connection-status').innerText = 'Offline';
+        document.getElementById('db-connection-status').className = 'text-xs font-semibold text-rose-500';
+        return;
+      }
+
+      const isTestDb = dbStats.error ? false : true;
+      document.getElementById('db-connection-status').innerText = isTestDb ? 'Online (test_bizassist.db)' : 'Online (bizassist.db)';
+      document.getElementById('db-connection-status').className = 'text-xs font-semibold text-emerald-400';
+
+      const invoiceCount = dbStats.tables["invoices"] || 0;
+      const customerCount = dbStats.tables["customers"] || 0;
+      const productCount = dbStats.tables["products"] || 0;
+      const pendingQueue = dbStats["sync_queue_pending"] || 0;
+
+      container.innerHTML = `
+        <div class="p-4 bg-slate-900/40 border border-slate-800/80 rounded-xl">
+          <p class="text-xs text-slate-400">Total Invoices</p>
+          <p class="text-xl font-bold text-white mt-1">${invoiceCount}</p>
+        </div>
+        <div class="p-4 bg-slate-900/40 border border-slate-800/80 rounded-xl">
+          <p class="text-xs text-slate-400">Total Customers</p>
+          <p class="text-xl font-bold text-white mt-1">${customerCount}</p>
+        </div>
+        <div class="p-4 bg-slate-900/40 border border-slate-800/80 rounded-xl">
+          <p class="text-xs text-slate-400">Total Products</p>
+          <p class="text-xl font-bold text-white mt-1">${productCount}</p>
+        </div>
+        <div class="p-4 bg-slate-900/40 border border-slate-800/80 rounded-xl ${pendingQueue > 0 ? 'border-yellow-500/30' : ''}">
+          <p class="text-xs text-slate-400">Unsynced (Queue)</p>
+          <p class="text-xl font-bold ${pendingQueue > 0 ? 'text-yellow-400' : 'text-slate-500'} mt-1">
+            ${pendingQueue} ${pendingQueue > 0 ? '<span class="text-xs font-normal text-yellow-500 pulse-dot">● pending</span>' : ''}
+          </p>
+        </div>
+      `;
+
+      // Update Entity Grid in Ecosystem Tab
+      const entityGrid = document.getElementById('db-entity-grid');
+      entityGrid.innerHTML = '';
+      Object.keys(dbStats.tables).sort().forEach(table => {
+        const count = dbStats.tables[table];
+        entityGrid.innerHTML += `
+          <div class="p-4 bg-slate-900/40 border border-slate-800 rounded-xl flex justify-between items-center">
+            <div>
+              <p class="text-xs font-semibold text-slate-400">${table}</p>
+            </div>
+            <span class="px-2.5 py-1 bg-indigo-500/10 text-indigo-400 rounded-lg text-xs font-bold font-mono">${count}</span>
+          </div>
+        `;
+      });
+
+      // Update Sync Logs List
+      const logsList = document.getElementById('sync-logs-list');
+      logsList.innerHTML = '';
+      if (!dbStats.sync_logs || dbStats.sync_logs.length === 0) {
+        logsList.innerHTML = `<p class="text-xs text-slate-500 text-center py-8">No sync executions logged yet.</p>`;
+      } else {
+        dbStats.sync_logs.forEach(log => {
+          const isSuccess = log.status === 'success';
+          const badgeClass = isSuccess ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400';
+          const borderClass = isSuccess ? 'border-emerald-500/10' : 'border-rose-500/20';
+          
+          logsList.innerHTML += `
+            <div class="p-4 bg-slate-900/30 border ${borderClass} rounded-xl space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${badgeClass}">${log.status}</span>
+                <span class="text-[10px] text-slate-500">${new Date(log.synced_at).toLocaleString()}</span>
+              </div>
+              ${log.error ? `<p class="text-xs text-rose-400 font-mono bg-rose-500/5 p-2 rounded border border-rose-500/10">${log.error}</p>` : `<p class="text-xs text-slate-400">Database synchronization push successfully processed.</p>`}
+            </div>
+          `;
+        });
+      }
+
+      // Update Conflict Logs List
+      const conflictsList = document.getElementById('conflict-logs-list');
+      conflictsList.innerHTML = '';
+      if (!dbStats.conflict_logs || dbStats.conflict_logs.length === 0) {
+        conflictsList.innerHTML = `<p class="text-xs text-slate-500 text-center py-8">No conflict events logged. System is clean.</p>`;
+      } else {
+        dbStats.conflict_logs.forEach(c => {
+          conflictsList.innerHTML += `
+            <div class="p-4 bg-slate-900/30 border border-slate-800 rounded-xl space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="font-semibold text-slate-300 text-xs">${c.entity} <span class="text-slate-500 font-mono">#${c.entity_id}</span></span>
+                <span class="text-[10px] text-slate-500">${new Date(c.resolved_at).toLocaleString()}</span>
+              </div>
+              <div class="flex justify-between items-center text-xs">
+                <span class="text-slate-400">Resolution</span>
+                <span class="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 font-semibold uppercase text-[9px]">${c.resolution}</span>
+              </div>
+            </div>
+          `;
+        });
+      }
+    }
+
+    function renderTestCases() {
+      if (!rawTestData) return;
+      const searchQuery = document.getElementById('test-search').value.toLowerCase();
+      
+      // Determine if anything actually changed to prevent flickering DOM reflows
+      const processedCount = rawTestData.tests.length;
+      if (processedCount === lastProcessedCount && searchQuery === lastSearchQuery && currentFilter === lastFilter) {
+        return; // Skip reflow if data and inputs are identical
+      }
+      lastProcessedCount = processedCount;
+      lastSearchQuery = searchQuery;
+      lastFilter = currentFilter;
+      
+      const container = document.getElementById('test-suites-container');
+      container.innerHTML = '';
+
+      // Group tests by file
+      const suites = {};
+      rawTestData.tests.forEach(test => {
+        const filePath = test.file.replace(/\\/g, '/');
+        // Apply Filters
+        if (currentFilter !== 'all' && test.outcome !== currentFilter) return;
+        
+        // Apply Search
+        if (searchQuery && !test.name.toLowerCase().includes(searchQuery) && !filePath.toLowerCase().includes(searchQuery)) return;
+
+        if (!suites[filePath]) {
+          const parts = filePath.split('/');
+          const fileName = parts[parts.length - 1];
+          suites[filePath] = {
+            name: fileName,
+            path: filePath,
+            tests: [],
+            passed: 0,
+            failed: 0,
+            skipped: 0
+          };
+        }
+        suites[filePath].tests.push(test);
+        if (test.outcome === 'passed') suites[filePath].passed++;
+        else if (test.outcome === 'failed') suites[filePath].failed++;
+        else if (test.outcome === 'skipped') suites[filePath].skipped++;
+      });
+
+      const suitePaths = Object.keys(suites).sort();
+      if (suitePaths.length === 0) {
+        container.innerHTML = `
+          <div class="glass-card p-12 text-center text-slate-500 rounded-xl">
+            <i class="fa-solid fa-folder-open text-3xl mb-3"></i>
+            <p>No tests match the current search or filters.</p>
+          </div>
+        `;
+        return;
+      }
+
+      suitePaths.forEach((suitePath, suiteIdx) => {
+        const suite = suites[suitePath];
+        const isCollapsed = collapsedSuites[suitePath] !== false; // Collapse by default
+        const arrowClass = isCollapsed ? 'fa-chevron-down' : 'fa-chevron-up';
+        const listClass = isCollapsed ? 'hidden' : '';
+        
+        // Badge styles
+        let badgeHtml = '';
+        if (suite.failed > 0) {
+          badgeHtml += `<span class="px-2 py-0.5 bg-rose-500/10 text-rose-400 text-xs font-bold rounded">${suite.failed} failed</span> `;
+        }
+        if (suite.passed > 0) {
+          badgeHtml += `<span class="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 text-xs font-bold rounded">${suite.passed} passed</span> `;
+        }
+        if (suite.skipped > 0) {
+          badgeHtml += `<span class="px-2 py-0.5 bg-yellow-500/10 text-yellow-400 text-xs font-bold rounded">${suite.skipped} skipped</span> `;
+        }
+
+        let testRowsHtml = '';
+        suite.tests.forEach((test, testIdx) => {
+          let testBadgeColor = 'bg-emerald-500/10 text-emerald-400';
+          let testBadgeIcon = 'fa-circle-check';
+          if (test.outcome === 'failed') {
+            testBadgeColor = 'bg-rose-500/10 text-rose-400';
+            testBadgeIcon = 'fa-triangle-exclamation';
+          } else if (test.outcome === 'skipped') {
+            testBadgeColor = 'bg-yellow-500/10 text-yellow-400';
+            testBadgeIcon = 'fa-circle-minus';
+          }
+
+          const uniqueId = `t-${suiteIdx}-${testIdx}`;
+
+          testRowsHtml += `
+            <tr class="hover:bg-slate-900/40 transition-colors">
+              <td class="py-3 px-4 w-28">
+                <span class="px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1.5 w-fit ${testBadgeColor}">
+                  <i class="fa-solid ${testBadgeIcon}"></i> ${test.outcome}
+                </span>
+              </td>
+              <td class="py-3 px-4 font-medium text-slate-200">${test.name}</td>
+              <td class="py-3 px-4 text-slate-400 text-xs font-mono">line ${test.line}</td>
+              <td class="py-3 px-4 text-right font-mono text-xs text-slate-400">${(test.duration || 0).toFixed(3)}s</td>
+              <td class="py-3 px-4 text-right w-12">
+                ${test.outcome === 'failed' ? `
+                  <button onclick="toggleTraceback('${uniqueId}')" class="p-1 text-slate-400 hover:text-white transition-colors">
+                    <i class="fa-solid fa-chevron-down" id="chevron-${uniqueId}"></i>
+                  </button>
+                ` : ''}
+              </td>
+            </tr>
+            ${test.outcome === 'failed' ? `
+              <tr id="traceback-row-${uniqueId}" class="hidden bg-rose-500/[0.02]">
+                <td colspan="5" class="py-4 px-4 border-l-2 border-rose-500">
+                  <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs font-bold text-rose-400 uppercase tracking-wider">Traceback Detail</span>
+                    <button onclick="copyTraceback('${uniqueId}')" class="text-[10px] px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 flex items-center gap-1">
+                      <i class="fa-regular fa-copy"></i> Copy
+                    </button>
+                  </div>
+                  <pre id="traceback-text-${uniqueId}" class="font-mono text-xs text-slate-300 overflow-x-auto max-w-full p-3 bg-slate-950/80 rounded border border-slate-800/80 leading-relaxed">${test.longrepr || test.traceback}</pre>
+                </td>
+              </tr>
+            ` : ''}
+          `;
+        });
+
+        container.innerHTML += `
+          <div class="glass-card rounded-xl overflow-hidden border border-slate-800/80 border-t border-slate-800/50">
+            <!-- Accordion Header -->
+            <div onclick="toggleSuite('${suitePath}')" class="p-4 bg-slate-900/30 hover:bg-slate-900/50 cursor-pointer flex justify-between items-center transition-colors">
+              <div class="flex items-center gap-3">
+                <div class="p-2 rounded bg-accent-light text-accent">
+                  <i class="fa-solid fa-file-code"></i>
+                </div>
+                <div>
+                  <h4 class="text-sm font-bold text-white">${suite.name}</h4>
+                  <p class="text-[10px] text-slate-500 font-mono">${suite.path}</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-4">
+                <div class="flex gap-1.5">
+                  ${badgeHtml}
+                </div>
+                <i class="fa-solid ${arrowClass} text-slate-500"></i>
+              </div>
+            </div>
+            <!-- Accordion Content -->
+            <div id="suite-content-${suiteIdx}" class="${listClass} border-t border-slate-800/50">
+              <table class="w-full text-left border-collapse">
+                <tbody class="text-xs divide-y divide-slate-800/30">
+                  ${testRowsHtml}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    function toggleSuite(suitePath) {
+      collapsedSuites[suitePath] = collapsedSuites[suitePath] === false;
+      renderTestCases();
+    }
+
+    function toggleTraceback(uniqueId) {
+      const row = document.getElementById(`traceback-row-${uniqueId}`);
+      const chevron = document.getElementById(`chevron-${uniqueId}`);
+      if (row.classList.contains('hidden')) {
+        row.classList.remove('hidden');
+        chevron.className = 'fa-solid fa-chevron-up text-accent';
+      } else {
+        row.classList.add('hidden');
+        chevron.className = 'fa-solid fa-chevron-down';
+      }
+    }
+
+    function copyTraceback(uniqueId) {
+      const text = document.getElementById(`traceback-text-${uniqueId}`).innerText;
+      navigator.clipboard.writeText(text);
+      alert('Traceback copied to clipboard!');
+    }
+
+    function filterTests(status) {
+      currentFilter = status;
+      ['all', 'passed', 'failed', 'skipped'].forEach(s => {
+        const btn = document.getElementById(`filter-btn-${s}`);
+        if (s === status) {
+          btn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-accent text-white shadow-sm transition-colors';
+        } else {
+          btn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors';
+        }
+      });
+      renderTestCases();
+    }
+
+    function searchTests() {
+      renderTestCases();
+    }
+
+    function switchTab(tab) {
+      ['dashboard', 'tests', 'ecosystem'].forEach(t => {
+        const btn = document.getElementById(`tab-btn-${t}`);
+        const content = document.getElementById(`tab-content-${t}`);
+        if (t === tab) {
+          btn.className = 'pb-3 text-sm font-semibold border-b-2 border-accent text-accent transition-colors flex items-center gap-2';
+          content.classList.remove('hidden');
+        } else {
+          btn.className = 'pb-3 text-sm font-semibold border-b-2 border-transparent text-slate-400 hover:text-white transition-colors flex items-center gap-2';
+          content.classList.add('hidden');
+        }
+      });
+    }
+
+    async function refreshData() {
+      await loadResults();
+      await loadDbStats();
+      updateSummary();
+      updateDbHighlights();
+      renderTestCases();
+      
+      // Auto-refresh logic based on status
+      const s = rawTestData?.summary;
+      if (s && s.status === 'running') {
+        if (!pollInterval) {
+          pollInterval = setInterval(async () => {
+            await loadResults();
+            updateSummary();
+            renderTestCases();
+          }, 1000); // Poll test results every 1s during runs
+        }
+      } else {
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
+      }
+    }
+
+    // Init
+    window.onload = async () => {
+      await refreshData();
+      
+      // Slow background poll for DB stats every 3s to track live updates
+      setInterval(async () => {
+        if (document.visibilityState === 'visible') {
+          await loadDbStats();
+          updateDbHighlights();
+        }
+      }, 3000);
+    };
+  </script>
+</body>
+</html>

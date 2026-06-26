@@ -13,6 +13,7 @@ SOLID design:
 Backward compatibility: all original columns kept, new columns nullable.
 """
 
+import uuid
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime,
@@ -261,6 +262,7 @@ class InvoiceLineItem(Base, TimestampMixin):
     __tablename__ = "invoice_line_items"
 
     id            = Column(Integer, primary_key=True, index=True)
+    uid           = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     invoice_id    = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
     product_id    = Column(Integer, ForeignKey("products.id"), nullable=True,  index=True)
 
@@ -374,6 +376,7 @@ class PurchaseOrderLineItem(Base, TimestampMixin):
     __tablename__ = "purchase_order_line_items"
 
     id                = Column(Integer, primary_key=True, index=True)
+    uid               = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     purchase_order_id = Column(Integer, ForeignKey("purchase_orders.id"), nullable=False, index=True)
     product_id        = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
 
@@ -431,6 +434,7 @@ class PurchaseInvoiceLineItem(Base, TimestampMixin):
     __tablename__ = "purchase_invoice_line_items"
 
     id                  = Column(Integer, primary_key=True, index=True)
+    uid                 = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     purchase_invoice_id = Column(Integer, ForeignKey("purchase_invoices.id"), nullable=False, index=True)
     product_id          = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
 
@@ -512,6 +516,7 @@ class RateLimitConfig(Base, TimestampMixin):
     __tablename__ = "rate_limit_configs"
 
     id                  = Column(Integer, primary_key=True, index=True)
+    uid                 = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     business_id         = Column(Integer, unique=True, index=True)
     requests_per_minute = Column(Integer, default=10)
     requests_per_day    = Column(Integer, default=500)
@@ -525,6 +530,7 @@ class AlertConfig(Base, TimestampMixin):
     __tablename__ = "alert_configs"
 
     id                    = Column(Integer, primary_key=True, index=True)
+    uid                   = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     business_id           = Column(Integer, unique=True, index=True)
     business_name         = Column(String,  nullable=True)
     email                 = Column(String,  nullable=True)
@@ -714,7 +720,7 @@ _SYNC_TABLES = {
     "expenses",
     "stock_transfers",
     "stock_transfer_line_items",
-    "shared_ledger",
+    "shared_ledgers",
 }
 
 
@@ -722,13 +728,33 @@ from sqlalchemy import event, text
 from sqlalchemy.orm import Mapper
 import json
 
-def _serialize_orm_obj(obj) -> dict:
+def _serialize_orm_obj(obj, connection=None) -> dict:
     d = {}
     for column in obj.__table__.columns:
         val = getattr(obj, column.name)
         if isinstance(val, datetime):
             val = val.isoformat()
         d[column.name] = val
+
+    if connection is not None:
+        for fk in obj.__table__.foreign_keys:
+            parent_col_name = fk.parent.name
+            parent_val = getattr(obj, parent_col_name)
+            if parent_val is not None:
+                parent_table_name = fk.column.table.name
+                try:
+                    row = connection.execute(
+                        text(f'SELECT uid FROM "{parent_table_name}" WHERE "{fk.column.name}" = :id'),
+                        {"id": parent_val}
+                    ).fetchone()
+                    if row and row[0]:
+                        uid_str = str(row[0])
+                        d[f"{parent_col_name}_uid"] = uid_str
+                        if parent_col_name.endswith("_id"):
+                            base_name = parent_col_name[:-3]
+                            d[f"{base_name}_uid"] = uid_str
+                except Exception:
+                    pass
     return d
 
 def _get_business_id(obj) -> int | None:
@@ -807,7 +833,7 @@ def _queue_change(connection, target, operation):
     payload = None
     if operation != "DELETE":
         try:
-            payload = json.dumps(_serialize_orm_obj(target), default=str)
+            payload = json.dumps(_serialize_orm_obj(target, connection), default=str)
         except Exception:
             pass
     else:

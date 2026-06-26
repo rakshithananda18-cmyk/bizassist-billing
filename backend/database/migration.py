@@ -167,14 +167,28 @@ _COLUMN_MIGRATIONS = [
     {"table": "stock_transfers",   "column": "uid", "ddl": "ALTER TABLE stock_transfers ADD COLUMN uid TEXT"},
     {"table": "journal_entries",   "column": "uid", "ddl": "ALTER TABLE journal_entries ADD COLUMN uid TEXT"},
     {"table": "period_locks",      "column": "uid", "ddl": "ALTER TABLE period_locks ADD COLUMN uid TEXT"},
+    {"table": "invoice_line_items",         "column": "uid", "ddl": "ALTER TABLE invoice_line_items ADD COLUMN uid TEXT"},
+    {"table": "purchase_order_line_items",   "column": "uid", "ddl": "ALTER TABLE purchase_order_line_items ADD COLUMN uid TEXT"},
+    {"table": "purchase_invoice_line_items", "column": "uid", "ddl": "ALTER TABLE purchase_invoice_line_items ADD COLUMN uid TEXT"},
+    {"table": "rate_limit_configs",         "column": "uid", "ddl": "ALTER TABLE rate_limit_configs ADD COLUMN uid TEXT"},
+    {"table": "alert_configs",              "column": "uid", "ddl": "ALTER TABLE alert_configs ADD COLUMN uid TEXT"},
+    {"table": "stock_ledger",               "column": "uid", "ddl": "ALTER TABLE stock_ledger ADD COLUMN uid TEXT"},
+    {"table": "product_barcodes",           "column": "uid", "ddl": "ALTER TABLE product_barcodes ADD COLUMN uid TEXT"},
+    {"table": "business_settings",          "column": "uid", "ddl": "ALTER TABLE business_settings ADD COLUMN uid TEXT"},
+    {"table": "invoice_payments",           "column": "uid", "ddl": "ALTER TABLE invoice_payments ADD COLUMN uid TEXT"},
+    {"table": "shared_ledgers",             "column": "uid", "ddl": "ALTER TABLE shared_ledgers ADD COLUMN uid TEXT"},
+    {"table": "stock_transfer_line_items",  "column": "uid", "ddl": "ALTER TABLE stock_transfer_line_items ADD COLUMN uid TEXT"},
 ]
 
 
-# Tables that carry a durable `uid` (BusinessOwnedMixin). Used by the uid backfill.
+# Tables that carry a durable `uid` (BusinessOwnedMixin and synced child/aux tables). Used by the uid backfill.
 _UID_TABLES = [
     "customers", "vendors", "products", "invoices", "inventory", "payments",
     "purchase_orders", "purchase_invoices", "expenses", "godowns", "stock_transfers",
     "journal_entries", "period_locks",
+    "invoice_line_items", "purchase_order_line_items", "purchase_invoice_line_items",
+    "rate_limit_configs", "alert_configs", "stock_ledger", "product_barcodes",
+    "business_settings", "invoice_payments", "shared_ledgers", "stock_transfer_line_items",
 ]
 
 

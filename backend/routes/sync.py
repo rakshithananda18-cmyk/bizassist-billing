@@ -156,8 +156,20 @@ def push_changes(
                 logger.warning("sync/push: unknown entity %s", change.entity)
                 continue
 
+            data = change.payload or {}
+            if "business_id" in data:
+                data["business_id"] = business_id
+
+            existing = None
+            uid_val = data.get("uid")
+            if uid_val and hasattr(model_cls, "uid"):
+                existing = db.query(model_cls).filter(model_cls.uid == uid_val).first()
+                if "id" in data:
+                    del data["id"]
+            else:
+                existing = db.query(model_cls).filter(model_cls.id == change.entity_id).first()
+
             # Scope check the existing record
-            existing = db.query(model_cls).filter(model_cls.id == change.entity_id).first()
             if existing:
                 # Check tenant ownership
                 existing_bid = getattr(existing, "business_id", None)
@@ -168,11 +180,6 @@ def push_changes(
                 elif existing_bid is not None and int(existing_bid) != business_id:
                     logger.warning("sync/push: tenant mismatch for %s.id=%s", change.entity, change.entity_id)
                     continue
-
-            # Enforce business_id in payload
-            data = change.payload or {}
-            if "business_id" in data:
-                data["business_id"] = business_id
 
             if change.operation == "DELETE":
                 if existing:
@@ -215,8 +222,31 @@ def push_changes(
                     logger.info("sync/push: LWW conflict resolved (cloud won) for %s.id=%s", change.entity, change.entity_id)
                     continue
 
+            # Resolve FKs using parent UIDs if provided in data
+            for fk in model_cls.__table__.foreign_keys:
+                fk_col = fk.parent.name
+                parent_table = fk.column.table.name
+                
+                parent_uid_val = None
+                for suffix in [f"{fk_col}_uid", f"{fk_col[:-3]}_uid" if fk_col.endswith("_id") else ""]:
+                    if suffix and suffix in data:
+                        parent_uid_val = data[suffix]
+                        break
+                        
+                if parent_uid_val:
+                    try:
+                        parent_row = db.execute(
+                            text(f'SELECT "{fk.column.name}" FROM "{parent_table}" WHERE uid = :uid'),
+                            {"uid": parent_uid_val}
+                        ).fetchone()
+                        if parent_row:
+                            data[fk_col] = parent_row[0]
+                    except Exception as e:
+                        logger.warning("sync/push: failed to resolve FK %s via uid %s: %s", fk_col, parent_uid_val, e)
+
             # Apply fields to model instance
             target_obj = existing if existing else model_cls()
+
             for key, val in data.items():
                 if key in model_cls.__table__.columns:
                     col_type = model_cls.__table__.columns[key].type

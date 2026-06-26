@@ -336,12 +336,17 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
                         continue
                     
                     for record in records:
+                        rec_uid = record.get("uid")
                         rec_id = record.get("id")
-                        if not rec_id:
+                        if not rec_id and not rec_uid:
                             continue
                         
-                        # Find local matching record
-                        existing = db.query(model_cls).filter(model_cls.id == rec_id).first()
+                        existing = None
+                        if rec_uid and hasattr(model_cls, "uid"):
+                            existing = db.query(model_cls).filter(model_cls.uid == rec_uid).first()
+                        else:
+                            if rec_id:
+                                existing = db.query(model_cls).filter(model_cls.id == rec_id).first()
                         
                         # Apply Last-Write-Wins (LWW) locally
                         cloud_updated_at = _parse_dt(record.get("updated_at"))
@@ -366,8 +371,37 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
                         # skipped instead of rolling back the entire pull batch.
                         try:
                             with db.begin_nested():
+                                data = dict(record)
+                                
+                                # Resolve foreign keys using parent UIDs if provided in data
+                                for fk in model_cls.__table__.foreign_keys:
+                                    fk_col = fk.parent.name
+                                    parent_table = fk.column.table.name
+                                    
+                                    parent_uid_val = None
+                                    for suffix in [f"{fk_col}_uid", f"{fk_col[:-3]}_uid" if fk_col.endswith("_id") else ""]:
+                                        if suffix and suffix in data:
+                                            parent_uid_val = data[suffix]
+                                            break
+                                            
+                                    if parent_uid_val:
+                                        try:
+                                            parent_row = db.execute(
+                                                text(f'SELECT "{fk.column.name}" FROM "{parent_table}" WHERE uid = :uid'),
+                                                {"uid": parent_uid_val}
+                                            ).fetchone()
+                                            if parent_row:
+                                                data[fk_col] = parent_row[0]
+                                        except Exception as e:
+                                            logger.warning("[SYNC_WORKER] failed to resolve FK %s via uid %s: %s", fk_col, parent_uid_val, e)
+                                
                                 target_obj = existing if existing else model_cls()
-                                for key, val in record.items():
+                                
+                                # If UID is present, we never overwrite or force the integer PK ID
+                                if rec_uid and hasattr(model_cls, "uid") and "id" in data:
+                                    del data["id"]
+                                    
+                                for key, val in data.items():
                                     if key in model_cls.__table__.columns:
                                         col_type = model_cls.__table__.columns[key].type
                                         if hasattr(col_type, "python_type") and col_type.python_type == datetime:

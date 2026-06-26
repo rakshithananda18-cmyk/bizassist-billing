@@ -37,7 +37,7 @@ MODEL_MAP: Dict[str, Any] = {
     "product_barcodes": ProductBarcode,
     "business_settings": BusinessSettings,
     "invoice_payments": InvoicePayment,
-    "shared_ledger": SharedLedger,
+    "shared_ledgers": SharedLedger,
     "expenses": Expense,
     "godowns": Godown,
     "stock_transfers": StockTransfer,

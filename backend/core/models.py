@@ -23,6 +23,7 @@ Tables here:
   ProductBarcode    one product → many codes   (Phase 1)
   BusinessSettings  per-vertical template config (Phase 1B)
 """
+import uuid
 from datetime import datetime
 
 from sqlalchemy import (
@@ -67,6 +68,7 @@ class StockLedger(Base, TimestampMixin):
     __tablename__ = "stock_ledger"
 
     id             = Column(Integer, primary_key=True, index=True)
+    uid            = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     business_id    = Column(Integer, index=True, nullable=False)
 
     # Product identity: keep BOTH a FK (app-created products) and a name snapshot
@@ -121,6 +123,7 @@ class ProductBarcode(Base, TimestampMixin):
     )
 
     id          = Column(Integer, primary_key=True, index=True)
+    uid         = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     business_id = Column(Integer, index=True, nullable=False)
     product_id  = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
 
@@ -158,6 +161,7 @@ class BusinessSettings(Base, TimestampMixin):
     )
 
     id           = Column(Integer, primary_key=True, index=True)
+    uid          = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     business_id  = Column(Integer, index=True, nullable=False)
     template_key = Column(String,  nullable=False, default="general")  # the chosen vertical
     overrides    = Column(Text,    nullable=True)                       # JSON: owner's per-setting tweaks
@@ -192,6 +196,7 @@ class InvoicePayment(Base, TimestampMixin):
     )
 
     id              = Column(Integer, primary_key=True, index=True)
+    uid             = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     business_id     = Column(Integer, index=True, nullable=False)
 
     invoice_id      = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
@@ -381,6 +386,7 @@ class SharedLedger(Base, TimestampMixin):
     )
 
     id                 = Column(Integer, primary_key=True, index=True)
+    uid                = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     seller_business_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     buyer_business_id  = Column(Integer, ForeignKey("users.id"), nullable=False)
     
@@ -453,6 +459,7 @@ class StockTransferLineItem(Base, TimestampMixin):
     __tablename__ = "stock_transfer_line_items"
 
     id            = Column(Integer, primary_key=True, index=True)
+    uid           = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     transfer_id   = Column(Integer, ForeignKey("stock_transfers.id"), nullable=False)
     product_id    = Column(Integer, ForeignKey("products.id"), nullable=False)
     

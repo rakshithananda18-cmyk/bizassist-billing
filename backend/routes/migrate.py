@@ -86,7 +86,7 @@ _EXPORT_ORDER: list[str] = [
     "expenses",
     "stock_transfers",
     "stock_transfer_line_items",
-    "shared_ledger",
+    "shared_ledgers",
 ]
 
 

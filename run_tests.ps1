@@ -19,6 +19,44 @@ param(
 $root = $PSScriptRoot
 $backendExit = 0
 $frontendExit = 0
+$srvProcess = $null
+
+# --- Clean up any stale dashboard servers ---
+Get-CimInstance Win32_Process -Filter "CommandLine like '%serve_dashboard.py%'" -ErrorAction SilentlyContinue | ForEach-Object {
+    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+}
+
+# --- Launch the live Web visibility dashboard in the background ---
+$python = Join-Path $root "venv\Scripts\python.exe"
+if (-not (Test-Path $python)) {
+    $python = "python"
+}
+$urlFile = Join-Path $root "dashboard_url.txt"
+if (Test-Path $urlFile) { Remove-Item $urlFile }
+
+Write-Host "Launching live Web visibility dashboard..." -ForegroundColor Green
+$srvScript = Join-Path $root "serve_dashboard.py"
+$srvProcess = Start-Process -FilePath $python -ArgumentList "`"$srvScript`"" -NoNewWindow -PassThru
+
+# Wait for server port allocation handshake
+$dashboardUrl = ""
+for ($i = 0; $i -lt 10; $i++) {
+    if (Test-Path $urlFile) {
+        $dashboardUrl = Get-Content $urlFile -Raw
+        Remove-Item $urlFile
+        break
+    }
+    Start-Sleep -Milliseconds 500
+}
+
+if ($dashboardUrl) {
+    Write-Host "--------------------------------------------------------" -ForegroundColor Green
+    Write-Host "  BIZASSIST LIVE TEST DASHBOARD ACTIVE                  " -ForegroundColor Green
+    Write-Host "  URL: $dashboardUrl" -ForegroundColor Cyan
+    Write-Host "--------------------------------------------------------" -ForegroundColor Green
+} else {
+    Write-Host "Dashboard server started in background." -ForegroundColor Yellow
+}
 
 # Set test fallbacks ONLY if absent, and remember so we can remove them after
 # (prevents the mock GROQ key leaking into start_dev and 401-ing the real server).
@@ -79,8 +117,26 @@ if ($Only -ne "backend") {
     else                     { Write-Host "frontend: FAIL ($frontendExit)" -ForegroundColor Red }
 }
 
+Write-Host ""
 if ($backendExit -ne 0 -or $frontendExit -ne 0) {
     Write-Host "Some tests FAILED." -ForegroundColor Red
+} else {
+    Write-Host "All tests passed." -ForegroundColor Green
+}
+
+# --- Wait for user input to keep server running ---
+Write-Host ""
+Write-Host "========================================================" -ForegroundColor Green
+Write-Host "  Dashboard is running live.                            " -ForegroundColor Green
+Write-Host "  Press Enter in this window to stop server and exit... " -ForegroundColor Green
+Write-Host "========================================================" -ForegroundColor Green
+Read-Host
+
+if ($srvProcess) {
+    Stop-Process -Id $srvProcess.Id -Force -ErrorAction SilentlyContinue
+}
+
+if ($backendExit -ne 0 -or $frontendExit -ne 0) {
     exit 1
 }
-Write-Host "All tests passed." -ForegroundColor Green
+exit 0

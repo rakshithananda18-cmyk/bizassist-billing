@@ -1,0 +1,3053 @@
+{
+  "summary": {
+    "total": 690,
+    "passed": 304,
+    "failed": 0,
+    "skipped": 0,
+    "duration": 126.39957332611084,
+    "timestamp": "2026-06-27T03:56:24.141945",
+    "status": "running"
+  },
+  "tests": [
+    {
+      "nodeid": "tests/test_accounting.py::test_accounting_endpoints_empty",
+      "name": "test_accounting_endpoints_empty",
+      "file": "tests\\test_accounting.py",
+      "line": 84,
+      "outcome": "passed",
+      "duration": 0.026964499999849068,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_accounting.py::test_accounting_cashier_restricted",
+      "name": "test_accounting_cashier_restricted",
+      "file": "tests\\test_accounting.py",
+      "line": 112,
+      "outcome": "passed",
+      "duration": 0.010247100000015053,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_accounting.py::test_accounting_depth_calculations",
+      "name": "test_accounting_depth_calculations",
+      "file": "tests\\test_accounting.py",
+      "line": 121,
+      "outcome": "passed",
+      "duration": 0.2954984999996668,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_accounting.py::test_accounting_tenant_isolation",
+      "name": "test_accounting_tenant_isolation",
+      "file": "tests\\test_accounting.py",
+      "line": 333,
+      "outcome": "passed",
+      "duration": 0.014054299999770592,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_preview_marks_channels_by_contact",
+      "name": "test_preview_marks_channels_by_contact",
+      "file": "tests\\test_actions.py",
+      "line": 75,
+      "outcome": "passed",
+      "duration": 0.005828500000461645,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_preview_honours_selected_customers",
+      "name": "test_preview_honours_selected_customers",
+      "file": "tests\\test_actions.py",
+      "line": 83,
+      "outcome": "passed",
+      "duration": 0.0031594000001859968,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_preview_flags_unconfigured_smtp",
+      "name": "test_preview_flags_unconfigured_smtp",
+      "file": "tests\\test_actions.py",
+      "line": 92,
+      "outcome": "passed",
+      "duration": 0.0028862999997727457,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_execute_sends_and_is_idempotent",
+      "name": "test_execute_sends_and_is_idempotent",
+      "file": "tests\\test_actions.py",
+      "line": 100,
+      "outcome": "passed",
+      "duration": 0.014918100000613777,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_mark_paid_preview_and_execute",
+      "name": "test_mark_paid_preview_and_execute",
+      "file": "tests\\test_actions.py",
+      "line": 114,
+      "outcome": "passed",
+      "duration": 0.01030330000048707,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_mark_paid_is_noop_when_already_paid",
+      "name": "test_mark_paid_is_noop_when_already_paid",
+      "file": "tests\\test_actions.py",
+      "line": 131,
+      "outcome": "passed",
+      "duration": 0.006751299999450566,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_mark_paid_unknown_invoice",
+      "name": "test_mark_paid_unknown_invoice",
+      "file": "tests\\test_actions.py",
+      "line": 138,
+      "outcome": "passed",
+      "duration": 0.000996599999780301,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_digest_previews_to_owner_email",
+      "name": "test_digest_previews_to_owner_email",
+      "file": "tests\\test_actions.py",
+      "line": 145,
+      "outcome": "passed",
+      "duration": 0.00213400000029651,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_digest_not_executable_without_smtp",
+      "name": "test_digest_not_executable_without_smtp",
+      "file": "tests\\test_actions.py",
+      "line": 152,
+      "outcome": "passed",
+      "duration": 0.001630299999305862,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_digest_sends_once_per_day",
+      "name": "test_digest_sends_once_per_day",
+      "file": "tests\\test_actions.py",
+      "line": 158,
+      "outcome": "passed",
+      "duration": 0.00861590000022261,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_escalate_finds_90plus_accounts",
+      "name": "test_escalate_finds_90plus_accounts",
+      "file": "tests\\test_actions.py",
+      "line": 171,
+      "outcome": "passed",
+      "duration": 0.004265999999915948,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_reorder_selects_only_low_stock",
+      "name": "test_reorder_selects_only_low_stock",
+      "file": "tests\\test_actions.py",
+      "line": 182,
+      "outcome": "passed",
+      "duration": 0.0009128000001510372,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_top_debtors_tool_ranks_by_customer_total",
+      "name": "test_top_debtors_tool_ranks_by_customer_total",
+      "file": "tests\\test_actions.py",
+      "line": 190,
+      "outcome": "passed",
+      "duration": 0.0016305999997712206,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_reorder_execute_logs_draft",
+      "name": "test_reorder_execute_logs_draft",
+      "file": "tests\\test_actions.py",
+      "line": 200,
+      "outcome": "passed",
+      "duration": 0.007080299999870476,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_graph_tokens.py::test_no_module_level_run_tokens",
+      "name": "test_no_module_level_run_tokens",
+      "file": "tests\\test_agent_graph_tokens.py",
+      "line": 38,
+      "outcome": "passed",
+      "duration": 0.00014819999978499254,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_graph_tokens.py::test_state_carries_token_fields",
+      "name": "test_state_carries_token_fields",
+      "file": "tests\\test_agent_graph_tokens.py",
+      "line": 43,
+      "outcome": "passed",
+      "duration": 0.0001598999997440842,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_graph_tokens.py::test_planner_tokens_accumulate_in_state_not_global",
+      "name": "test_planner_tokens_accumulate_in_state_not_global",
+      "file": "tests\\test_agent_graph_tokens.py",
+      "line": 48,
+      "outcome": "passed",
+      "duration": 0.06374859999959881,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_graph_tokens.py::test_synthesizer_adds_on_top_of_incoming_tokens",
+      "name": "test_synthesizer_adds_on_top_of_incoming_tokens",
+      "file": "tests\\test_agent_graph_tokens.py",
+      "line": 63,
+      "outcome": "passed",
+      "duration": 0.0012550999999803025,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_graph_tokens.py::test_planner_uses_json_mode",
+      "name": "test_planner_uses_json_mode",
+      "file": "tests\\test_agent_graph_tokens.py",
+      "line": 76,
+      "outcome": "passed",
+      "duration": 0.0034033000001727487,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_graph_tokens.py::test_planner_fallback_by_detected_topic",
+      "name": "test_planner_fallback_by_detected_topic",
+      "file": "tests\\test_agent_graph_tokens.py",
+      "line": 87,
+      "outcome": "passed",
+      "duration": 0.00636690000010276,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_loop.py::test_friendly_error_quota_message",
+      "name": "test_friendly_error_quota_message",
+      "file": "tests\\test_agent_loop.py",
+      "line": 38,
+      "outcome": "passed",
+      "duration": 0.00018739999995887047,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_loop.py::test_friendly_error_generic_message",
+      "name": "test_friendly_error_generic_message",
+      "file": "tests\\test_agent_loop.py",
+      "line": 46,
+      "outcome": "passed",
+      "duration": 0.0001748000004226924,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_loop.py::test_run_agent_loop_quota_returns_friendly_text",
+      "name": "test_run_agent_loop_quota_returns_friendly_text",
+      "file": "tests\\test_agent_loop.py",
+      "line": 51,
+      "outcome": "passed",
+      "duration": 0.003624399999353045,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_loop.py::test_loop_calls_tool_then_answers",
+      "name": "test_loop_calls_tool_then_answers",
+      "file": "tests\\test_agent_loop.py",
+      "line": 59,
+      "outcome": "passed",
+      "duration": 0.0009129000000029919,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_loop.py::test_loop_respects_round_cap_then_finalizes",
+      "name": "test_loop_respects_round_cap_then_finalizes",
+      "file": "tests\\test_agent_loop.py",
+      "line": 73,
+      "outcome": "passed",
+      "duration": 0.0011686999996527447,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_loop.py::test_stream_emits_tokens_and_done",
+      "name": "test_stream_emits_tokens_and_done",
+      "file": "tests\\test_agent_loop.py",
+      "line": 88,
+      "outcome": "passed",
+      "duration": 0.00043960000039078295,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_loop.py::test_execute_tool_coerces_none_args",
+      "name": "test_execute_tool_coerces_none_args",
+      "file": "tests\\test_agent_loop.py",
+      "line": 99,
+      "outcome": "passed",
+      "duration": 0.00199609999981476,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_loop.py::test_dispatch_uses_loop_only_when_flag_set",
+      "name": "test_dispatch_uses_loop_only_when_flag_set",
+      "file": "tests\\test_agent_loop.py",
+      "line": 108,
+      "outcome": "passed",
+      "duration": 0.0003587000001061824,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_audit_journal.py::test_documents_post_balanced_entries_at_transaction_time",
+      "name": "test_documents_post_balanced_entries_at_transaction_time",
+      "file": "tests\\test_audit_journal.py",
+      "line": 99,
+      "outcome": "passed",
+      "duration": 0.3141509999995833,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_audit_journal.py::test_posting_is_idempotent_per_source_document",
+      "name": "test_posting_is_idempotent_per_source_document",
+      "file": "tests\\test_audit_journal.py",
+      "line": 112,
+      "outcome": "passed",
+      "duration": 0.36752419999993435,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_audit_journal.py::test_posted_journal_reconciles_with_derived_general_ledger",
+      "name": "test_posted_journal_reconciles_with_derived_general_ledger",
+      "file": "tests\\test_audit_journal.py",
+      "line": 137,
+      "outcome": "passed",
+      "duration": 0.5893980000000738,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_audit_journal.py::test_audit_journal_cashier_forbidden",
+      "name": "test_audit_journal_cashier_forbidden",
+      "file": "tests\\test_audit_journal.py",
+      "line": 154,
+      "outcome": "passed",
+      "duration": 1.488845500000025,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_audit_journal.py::test_audit_journal_tenant_isolation",
+      "name": "test_audit_journal_tenant_isolation",
+      "file": "tests\\test_audit_journal.py",
+      "line": 160,
+      "outcome": "passed",
+      "duration": 1.2000321999994412,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_auth_logging.py::test_invalid_token_logs_auth_warning",
+      "name": "test_invalid_token_logs_auth_warning",
+      "file": "tests\\test_auth_logging.py",
+      "line": 27,
+      "outcome": "passed",
+      "duration": 0.0017448999997213832,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_auth_logging.py::test_missing_header_logs_auth",
+      "name": "test_missing_header_logs_auth",
+      "file": "tests\\test_auth_logging.py",
+      "line": 36,
+      "outcome": "passed",
+      "duration": 0.001620099999854574,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_auth_logging.py::test_expired_token_logs_auth_warning",
+      "name": "test_expired_token_logs_auth_warning",
+      "file": "tests\\test_auth_logging.py",
+      "line": 45,
+      "outcome": "passed",
+      "duration": 0.0030157999999573804,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_auth_logging.py::test_valid_token_does_not_log_failure",
+      "name": "test_valid_token_does_not_log_failure",
+      "file": "tests\\test_auth_logging.py",
+      "line": 57,
+      "outcome": "passed",
+      "duration": 0.0019003999996130005,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_backend.py::test_query_classification",
+      "name": "test_query_classification",
+      "file": "tests\\test_backend.py",
+      "line": 46,
+      "outcome": "passed",
+      "duration": 0.019553699999960372,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_backend.py::test_password_hashing",
+      "name": "test_password_hashing",
+      "file": "tests\\test_backend.py",
+      "line": 76,
+      "outcome": "passed",
+      "duration": 0.982051799999681,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_backend.py::test_unauthenticated_access",
+      "name": "test_unauthenticated_access",
+      "file": "tests\\test_backend.py",
+      "line": 82,
+      "outcome": "passed",
+      "duration": 0.11880699999983335,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_backend.py::test_auth_flow",
+      "name": "test_auth_flow",
+      "file": "tests\\test_backend.py",
+      "line": 97,
+      "outcome": "passed",
+      "duration": 1.3872520999993867,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_backend.py::test_authorized_endpoints",
+      "name": "test_authorized_endpoints",
+      "file": "tests\\test_backend.py",
+      "line": 136,
+      "outcome": "passed",
+      "duration": 0.42628590000003896,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_backend.py::test_ask_ai_flow",
+      "name": "test_ask_ai_flow",
+      "file": "tests\\test_backend.py",
+      "line": 175,
+      "outcome": "passed",
+      "duration": 40.81617670000014,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_backend.py::test_ask_ai_tool_calling_flow",
+      "name": "test_ask_ai_tool_calling_flow",
+      "file": "tests\\test_backend.py",
+      "line": 204,
+      "outcome": "passed",
+      "duration": 0.3886010999995051,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_backend.py::test_dynamic_numeric_queries_bypass_direct",
+      "name": "test_dynamic_numeric_queries_bypass_direct",
+      "file": "tests\\test_backend.py",
+      "line": 248,
+      "outcome": "passed",
+      "duration": 0.004400700000587676,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_backend.py::test_chat_history_endpoints",
+      "name": "test_chat_history_endpoints",
+      "file": "tests\\test_backend.py",
+      "line": 314,
+      "outcome": "passed",
+      "duration": 0.853292999999212,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_backend.py::test_admin_endpoints",
+      "name": "test_admin_endpoints",
+      "file": "tests\\test_backend.py",
+      "line": 383,
+      "outcome": "passed",
+      "duration": 2.3815011999995477,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_backend.py::test_pdf_upload_flow",
+      "name": "test_pdf_upload_flow",
+      "file": "tests\\test_backend.py",
+      "line": 535,
+      "outcome": "passed",
+      "duration": 0.7704167000001689,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_backend.py::test_password_policy_signup",
+      "name": "test_password_policy_signup",
+      "file": "tests\\test_backend.py",
+      "line": 610,
+      "outcome": "passed",
+      "duration": 0.043292899999869405,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_backend.py::test_login_rate_limiting",
+      "name": "test_login_rate_limiting",
+      "file": "tests\\test_backend.py",
+      "line": 648,
+      "outcome": "passed",
+      "duration": 0.12684340000032535,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_backend.py::test_upload_limits",
+      "name": "test_upload_limits",
+      "file": "tests\\test_backend.py",
+      "line": 671,
+      "outcome": "passed",
+      "duration": 0.5068387999999686,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_backend.py::test_upload_rate_limiting",
+      "name": "test_upload_rate_limiting",
+      "file": "tests\\test_backend.py",
+      "line": 701,
+      "outcome": "passed",
+      "duration": 0.9721439000004466,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_backend.py::test_sanitized_errors",
+      "name": "test_sanitized_errors",
+      "file": "tests\\test_backend.py",
+      "line": 733,
+      "outcome": "passed",
+      "duration": 0.3028948000001037,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_billing.py::test_intra_state_splits_cgst_sgst",
+      "name": "test_intra_state_splits_cgst_sgst",
+      "file": "tests\\test_billing.py",
+      "line": 95,
+      "outcome": "passed",
+      "duration": 0.0431365000004007,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_billing.py::test_inter_state_uses_igst",
+      "name": "test_inter_state_uses_igst",
+      "file": "tests\\test_billing.py",
+      "line": 110,
+      "outcome": "passed",
+      "duration": 0.04251430000022083,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_billing.py::test_tax_inclusive_backcalculates",
+      "name": "test_tax_inclusive_backcalculates",
+      "file": "tests\\test_billing.py",
+      "line": 123,
+      "outcome": "passed",
+      "duration": 0.03910550000000512,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_billing.py::test_bill_discount_apportions_and_taxes_net",
+      "name": "test_bill_discount_apportions_and_taxes_net",
+      "file": "tests\\test_billing.py",
+      "line": 139,
+      "outcome": "passed",
+      "duration": 0.04028799999923649,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_billing.py::test_bill_discount_capped_at_subtotal",
+      "name": "test_bill_discount_capped_at_subtotal",
+      "file": "tests\\test_billing.py",
+      "line": 160,
+      "outcome": "passed",
+      "duration": 0.040469100000336766,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_billing.py::test_sale_deducts_stock_via_ledger",
+      "name": "test_sale_deducts_stock_via_ledger",
+      "file": "tests\\test_billing.py",
+      "line": 177,
+      "outcome": "passed",
+      "duration": 0.04799199999979464,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_billing.py::test_non_stock_item_skips_stock",
+      "name": "test_non_stock_item_skips_stock",
+      "file": "tests\\test_billing.py",
+      "line": 192,
+      "outcome": "passed",
+      "duration": 0.04573600000003353,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_billing.py::test_idempotent_same_invoice_number",
+      "name": "test_idempotent_same_invoice_number",
+      "file": "tests\\test_billing.py",
+      "line": 208,
+      "outcome": "passed",
+      "duration": 0.07772590000058699,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_billing.py::test_status_from_paid_amount",
+      "name": "test_status_from_paid_amount",
+      "file": "tests\\test_billing.py",
+      "line": 226,
+      "outcome": "passed",
+      "duration": 0.0940811999998914,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_billing.py::test_multi_line_totals_and_autonumber",
+      "name": "test_multi_line_totals_and_autonumber",
+      "file": "tests\\test_billing.py",
+      "line": 242,
+      "outcome": "passed",
+      "duration": 0.0906064000000697,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_business_template.py::test_all_templates_load_and_have_shape",
+      "name": "test_all_templates_load_and_have_shape",
+      "file": "tests\\test_business_template.py",
+      "line": 38,
+      "outcome": "passed",
+      "duration": 0.011491100000057486,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_business_template.py::test_unknown_key_falls_back_to_general",
+      "name": "test_unknown_key_falls_back_to_general",
+      "file": "tests\\test_business_template.py",
+      "line": 53,
+      "outcome": "passed",
+      "duration": 0.003575499999897147,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_business_template.py::test_pharmacy_tracks_batch_and_expiry",
+      "name": "test_pharmacy_tracks_batch_and_expiry",
+      "file": "tests\\test_business_template.py",
+      "line": 58,
+      "outcome": "passed",
+      "duration": 0.0020973000000594766,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_business_template.py::test_restaurant_items_are_non_stock_by_default",
+      "name": "test_restaurant_items_are_non_stock_by_default",
+      "file": "tests\\test_business_template.py",
+      "line": 66,
+      "outcome": "passed",
+      "duration": 0.0015483999995922204,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_business_template.py::test_textile_exposes_variant_attributes",
+      "name": "test_textile_exposes_variant_attributes",
+      "file": "tests\\test_business_template.py",
+      "line": 72,
+      "outcome": "passed",
+      "duration": 0.0016368000005968497,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_business_template.py::test_supermarket_is_barcode_first_with_loose_qty",
+      "name": "test_supermarket_is_barcode_first_with_loose_qty",
+      "file": "tests\\test_business_template.py",
+      "line": 79,
+      "outcome": "passed",
+      "duration": 0.0009883000002446352,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_business_template.py::test_validate_overrides_merges_and_guards",
+      "name": "test_validate_overrides_merges_and_guards",
+      "file": "tests\\test_business_template.py",
+      "line": 85,
+      "outcome": "passed",
+      "duration": 0.0019605999996201717,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_business_template.py::test_resolve_for_uses_saved_template_and_overrides",
+      "name": "test_resolve_for_uses_saved_template_and_overrides",
+      "file": "tests\\test_business_template.py",
+      "line": 106,
+      "outcome": "passed",
+      "duration": 0.02070709999952669,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_business_template.py::test_resolve_for_defaults_to_general_when_no_row",
+      "name": "test_resolve_for_defaults_to_general_when_no_row",
+      "file": "tests\\test_business_template.py",
+      "line": 127,
+      "outcome": "passed",
+      "duration": 0.0024413000001004548,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_business_template.py::test_get_templates_endpoint",
+      "name": "test_get_templates_endpoint",
+      "file": "tests\\test_business_template.py",
+      "line": 149,
+      "outcome": "passed",
+      "duration": 0.012011199999506061,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_business_template.py::test_setup_and_get_config_scoped",
+      "name": "test_setup_and_get_config_scoped",
+      "file": "tests\\test_business_template.py",
+      "line": 156,
+      "outcome": "passed",
+      "duration": 0.060406800000237126,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_business_template.py::test_patch_config_override",
+      "name": "test_patch_config_override",
+      "file": "tests\\test_business_template.py",
+      "line": 176,
+      "outcome": "passed",
+      "duration": 0.07403229999999894,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_business_template.py::test_patch_config_rejects_bad_override",
+      "name": "test_patch_config_rejects_bad_override",
+      "file": "tests\\test_business_template.py",
+      "line": 189,
+      "outcome": "passed",
+      "duration": 0.052003400000103284,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_business_template.py::test_unauthenticated_config_blocked",
+      "name": "test_unauthenticated_config_blocked",
+      "file": "tests\\test_business_template.py",
+      "line": 197,
+      "outcome": "passed",
+      "duration": 0.015534600000137289,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_regression.py::test_invoice_count_and_total_revenue_do_not_share_cache",
+      "name": "test_invoice_count_and_total_revenue_do_not_share_cache",
+      "file": "tests\\test_cache_regression.py",
+      "line": 53,
+      "outcome": "passed",
+      "duration": 0.21295120000013412,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_regression.py::test_top_debtors_not_served_overdue_list_cache",
+      "name": "test_top_debtors_not_served_overdue_list_cache",
+      "file": "tests\\test_cache_regression.py",
+      "line": 71,
+      "outcome": "passed",
+      "duration": 0.2069208000002618,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_regression.py::test_debug_decision_log_exposes_matching_cache_disc",
+      "name": "test_debug_decision_log_exposes_matching_cache_disc",
+      "file": "tests\\test_cache_regression.py",
+      "line": 84,
+      "outcome": "passed",
+      "duration": 0.08771290000004228,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_salt.py::test_same_inputs_same_day_is_a_hit",
+      "name": "test_same_inputs_same_day_is_a_hit",
+      "file": "tests\\test_cache_salt.py",
+      "line": 20,
+      "outcome": "passed",
+      "duration": 0.0004969999999957508,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_salt.py::test_different_day_is_a_miss",
+      "name": "test_different_day_is_a_miss",
+      "file": "tests\\test_cache_salt.py",
+      "line": 27,
+      "outcome": "passed",
+      "duration": 0.0005240000000412692,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_salt.py::test_scoped_per_user",
+      "name": "test_scoped_per_user",
+      "file": "tests\\test_cache_salt.py",
+      "line": 33,
+      "outcome": "passed",
+      "duration": 0.0005070999995950842,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_salt.py::test_complex_keys_on_exact_query",
+      "name": "test_complex_keys_on_exact_query",
+      "file": "tests\\test_cache_salt.py",
+      "line": 39,
+      "outcome": "passed",
+      "duration": 0.000498899999911373,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_salt.py::test_defaults_to_today_when_day_omitted",
+      "name": "test_defaults_to_today_when_day_omitted",
+      "file": "tests\\test_cache_salt.py",
+      "line": 46,
+      "outcome": "passed",
+      "duration": 0.0005122000002302229,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_salt.py::test_direct_handlers_with_same_topic_do_not_collide",
+      "name": "test_direct_handlers_with_same_topic_do_not_collide",
+      "file": "tests\\test_cache_salt.py",
+      "line": 55,
+      "outcome": "passed",
+      "duration": 0.0004934999997203704,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_salt.py::test_top_debtors_does_not_collide_with_overdue_list",
+      "name": "test_top_debtors_does_not_collide_with_overdue_list",
+      "file": "tests\\test_cache_salt.py",
+      "line": 65,
+      "outcome": "passed",
+      "duration": 0.0004791000001205248,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_salt.py::test_direct_and_promoted_variant_share_when_same_intent",
+      "name": "test_direct_and_promoted_variant_share_when_same_intent",
+      "file": "tests\\test_cache_salt.py",
+      "line": 75,
+      "outcome": "passed",
+      "duration": 0.0006949999997232226,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_salt.py::test_client_summary_keyed_on_query_per_customer",
+      "name": "test_client_summary_keyed_on_query_per_customer",
+      "file": "tests\\test_cache_salt.py",
+      "line": 84,
+      "outcome": "passed",
+      "duration": 0.0005101999995531514,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_salt.py::test_invoice_handlers_keyed_on_query_per_entity",
+      "name": "test_invoice_handlers_keyed_on_query_per_entity",
+      "file": "tests\\test_cache_salt.py",
+      "line": 96,
+      "outcome": "passed",
+      "duration": 0.0005812000008518226,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_salt.py::test_ai_simple_catchall_topic_does_not_collide",
+      "name": "test_ai_simple_catchall_topic_does_not_collide",
+      "file": "tests\\test_cache_salt.py",
+      "line": 111,
+      "outcome": "passed",
+      "duration": 0.0007653000002392218,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_salt.py::test_ai_simple_real_topic_still_shares",
+      "name": "test_ai_simple_real_topic_still_shares",
+      "file": "tests\\test_cache_salt.py",
+      "line": 120,
+      "outcome": "passed",
+      "duration": 0.0006582999994861893,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_salt.py::test_writing_task_keyed_on_query_not_topic",
+      "name": "test_writing_task_keyed_on_query_not_topic",
+      "file": "tests\\test_cache_salt.py",
+      "line": 127,
+      "outcome": "passed",
+      "duration": 0.0005072000003565336,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_scoping.py::test_invalidate_user_cache_only_clears_that_user",
+      "name": "test_invalidate_user_cache_only_clears_that_user",
+      "file": "tests\\test_cache_scoping.py",
+      "line": 28,
+      "outcome": "passed",
+      "duration": 0.0012713000005533104,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_scoping.py::test_global_invalidate_still_clears_everyone",
+      "name": "test_global_invalidate_still_clears_everyone",
+      "file": "tests\\test_cache_scoping.py",
+      "line": 44,
+      "outcome": "passed",
+      "duration": 0.0010509000003366964,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_scoping.py::test_query_cache_is_bounded_per_user",
+      "name": "test_query_cache_is_bounded_per_user",
+      "file": "tests\\test_cache_scoping.py",
+      "line": 54,
+      "outcome": "passed",
+      "duration": 0.0019386000003578374,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_scoping.py::test_query_cache_is_bounded_globally",
+      "name": "test_query_cache_is_bounded_globally",
+      "file": "tests\\test_cache_scoping.py",
+      "line": 64,
+      "outcome": "passed",
+      "duration": 0.00308119999954215,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cache_scoping.py::test_lru_evicts_oldest_first",
+      "name": "test_lru_evicts_oldest_first",
+      "file": "tests\\test_cache_scoping.py",
+      "line": 74,
+      "outcome": "passed",
+      "duration": 0.002617399999508052,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cash_discount.py::test_zero_cash_discount_is_noop",
+      "name": "test_zero_cash_discount_is_noop",
+      "file": "tests\\test_cash_discount.py",
+      "line": 100,
+      "outcome": "passed",
+      "duration": 0.4044803000006141,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cash_discount.py::test_cash_discount_reduces_payable_not_gst",
+      "name": "test_cash_discount_reduces_payable_not_gst",
+      "file": "tests\\test_cash_discount.py",
+      "line": 119,
+      "outcome": "passed",
+      "duration": 0.44381049999992683,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cash_discount.py::test_cash_discount_clamped_to_total",
+      "name": "test_cash_discount_clamped_to_total",
+      "file": "tests\\test_cash_discount.py",
+      "line": 139,
+      "outcome": "passed",
+      "duration": 0.5005024000001868,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cash_discount.py::test_mark_paid_settles_full_payable_as_paid",
+      "name": "test_mark_paid_settles_full_payable_as_paid",
+      "file": "tests\\test_cash_discount.py",
+      "line": 151,
+      "outcome": "passed",
+      "duration": 0.5489242000003287,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cash_discount.py::test_credit_sale_without_mark_paid_stays_unpaid",
+      "name": "test_credit_sale_without_mark_paid_stays_unpaid",
+      "file": "tests\\test_cash_discount.py",
+      "line": 163,
+      "outcome": "passed",
+      "duration": 0.42479200000070705,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_cash_discount.py::test_posted_chain_still_verifies_with_cash_discount",
+      "name": "test_posted_chain_still_verifies_with_cash_discount",
+      "file": "tests\\test_cash_discount.py",
+      "line": 173,
+      "outcome": "passed",
+      "duration": 0.4545221999997011,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_charts.py::test_build_chart_data_returns_none_if_no_chart_intent",
+      "name": "test_build_chart_data_returns_none_if_no_chart_intent",
+      "file": "tests\\test_charts.py",
+      "line": 62,
+      "outcome": "passed",
+      "duration": 0.0012260000003152527,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_charts.py::test_build_chart_data_line_chart_monthly_trend",
+      "name": "test_build_chart_data_line_chart_monthly_trend",
+      "file": "tests\\test_charts.py",
+      "line": 66,
+      "outcome": "passed",
+      "duration": 0.004647099999601778,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_charts.py::test_build_chart_data_doughnut_chart_by_status",
+      "name": "test_build_chart_data_doughnut_chart_by_status",
+      "file": "tests\\test_charts.py",
+      "line": 77,
+      "outcome": "passed",
+      "duration": 0.0040921999998317915,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_charts.py::test_build_chart_data_bar_chart_top_customers",
+      "name": "test_build_chart_data_bar_chart_top_customers",
+      "file": "tests\\test_charts.py",
+      "line": 87,
+      "outcome": "passed",
+      "duration": 0.003206999999747495,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_charts.py::test_build_chart_data_default_bar_chart",
+      "name": "test_build_chart_data_default_bar_chart",
+      "file": "tests\\test_charts.py",
+      "line": 98,
+      "outcome": "passed",
+      "duration": 0.0016738000003897469,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_compliance.py::test_einvoice_owner_gets_payload_not_applicable_by_default",
+      "name": "test_einvoice_owner_gets_payload_not_applicable_by_default",
+      "file": "tests\\test_compliance.py",
+      "line": 95,
+      "outcome": "passed",
+      "duration": 0.4437479999996867,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_compliance.py::test_einvoice_applicable_when_flag_set",
+      "name": "test_einvoice_applicable_when_flag_set",
+      "file": "tests\\test_compliance.py",
+      "line": 108,
+      "outcome": "passed",
+      "duration": 0.47845330000018294,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_compliance.py::test_compliance_cashier_forbidden",
+      "name": "test_compliance_cashier_forbidden",
+      "file": "tests\\test_compliance.py",
+      "line": 118,
+      "outcome": "passed",
+      "duration": 1.0857920999997077,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_compliance.py::test_compliance_cross_tenant_404",
+      "name": "test_compliance_cross_tenant_404",
+      "file": "tests\\test_compliance.py",
+      "line": 128,
+      "outcome": "passed",
+      "duration": 0.7827397999999448,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_compliance.py::test_eway_required_above_50k",
+      "name": "test_eway_required_above_50k",
+      "file": "tests\\test_compliance.py",
+      "line": 140,
+      "outcome": "passed",
+      "duration": 0.5077534000001833,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_compliance.py::test_record_irn_idempotent_then_conflict",
+      "name": "test_record_irn_idempotent_then_conflict",
+      "file": "tests\\test_compliance.py",
+      "line": 152,
+      "outcome": "passed",
+      "duration": 0.5251412999996319,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections.py::test_signup_bizid_generation",
+      "name": "test_signup_bizid_generation",
+      "file": "tests\\test_connections.py",
+      "line": 52,
+      "outcome": "passed",
+      "duration": 0.3114514999997482,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections.py::test_get_my_bizid",
+      "name": "test_get_my_bizid",
+      "file": "tests\\test_connections.py",
+      "line": 74,
+      "outcome": "passed",
+      "duration": 0.3397417999995014,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections.py::test_lookup_bizid",
+      "name": "test_lookup_bizid",
+      "file": "tests\\test_connections.py",
+      "line": 82,
+      "outcome": "passed",
+      "duration": 1.044358099999954,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections.py::test_connection_code_lifecycle",
+      "name": "test_connection_code_lifecycle",
+      "file": "tests\\test_connections.py",
+      "line": 110,
+      "outcome": "passed",
+      "duration": 0.8883286999998745,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections.py::test_direct_connection_via_bizid",
+      "name": "test_direct_connection_via_bizid",
+      "file": "tests\\test_connections.py",
+      "line": 159,
+      "outcome": "passed",
+      "duration": 0.7296899000002668,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections.py::test_list_connections",
+      "name": "test_list_connections",
+      "file": "tests\\test_connections.py",
+      "line": 194,
+      "outcome": "passed",
+      "duration": 0.31128850000004604,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections.py::test_catalog_visibility_and_policy",
+      "name": "test_catalog_visibility_and_policy",
+      "file": "tests\\test_connections.py",
+      "line": 203,
+      "outcome": "passed",
+      "duration": 0.9586557000002358,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections.py::test_b2b_ordering",
+      "name": "test_b2b_ordering",
+      "file": "tests\\test_connections.py",
+      "line": 302,
+      "outcome": "passed",
+      "duration": 0.9887385000001814,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections.py::test_order_status_transitions",
+      "name": "test_order_status_transitions",
+      "file": "tests\\test_connections.py",
+      "line": 353,
+      "outcome": "passed",
+      "duration": 1.1210740999995323,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections.py::test_connection_revocation_and_scoping",
+      "name": "test_connection_revocation_and_scoping",
+      "file": "tests\\test_connections.py",
+      "line": 398,
+      "outcome": "passed",
+      "duration": 0.9574776999997994,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections_security.py::test_catalog_never_leaks_cost_or_margin",
+      "name": "test_catalog_never_leaks_cost_or_margin",
+      "file": "tests\\test_connections_security.py",
+      "line": 85,
+      "outcome": "passed",
+      "duration": 1.0703401000000667,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections_security.py::test_buyer_cannot_see_seller_customers",
+      "name": "test_buyer_cannot_see_seller_customers",
+      "file": "tests\\test_connections_security.py",
+      "line": 100,
+      "outcome": "passed",
+      "duration": 0.8812045000004218,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections_security.py::test_unconnected_stranger_is_denied_catalog",
+      "name": "test_unconnected_stranger_is_denied_catalog",
+      "file": "tests\\test_connections_security.py",
+      "line": 113,
+      "outcome": "passed",
+      "duration": 1.4128116000001683,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections_security.py::test_hidden_stock_is_not_leaked",
+      "name": "test_hidden_stock_is_not_leaked",
+      "file": "tests\\test_connections_security.py",
+      "line": 122,
+      "outcome": "passed",
+      "duration": 0.8869760999996288,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections_security.py::test_revoke_immediately_closes_the_pipe",
+      "name": "test_revoke_immediately_closes_the_pipe",
+      "file": "tests\\test_connections_security.py",
+      "line": 134,
+      "outcome": "passed",
+      "duration": 0.8953409000005195,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections_security.py::test_bizid_hides_contact_until_connected",
+      "name": "test_bizid_hides_contact_until_connected",
+      "file": "tests\\test_connections_security.py",
+      "line": 154,
+      "outcome": "passed",
+      "duration": 0.7932984999997643,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_connections_security.py::test_bizid_own_lookup_shows_contact",
+      "name": "test_bizid_own_lookup_shows_contact",
+      "file": "tests\\test_connections_security.py",
+      "line": 177,
+      "outcome": "passed",
+      "duration": 0.37633439999990514,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_dates.py::test_parses_known_formats[2026-01-15-expected0]",
+      "name": "test_parses_known_formats[2026-01-15-expected0]",
+      "file": "tests\\test_dates.py",
+      "line": 17,
+      "outcome": "passed",
+      "duration": 0.0013351999996302766,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_dates.py::test_parses_known_formats[15-01-2026-expected1]",
+      "name": "test_parses_known_formats[15-01-2026-expected1]",
+      "file": "tests\\test_dates.py",
+      "line": 17,
+      "outcome": "passed",
+      "duration": 0.0017603000005692593,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_dates.py::test_parses_known_formats[15/01/2026-expected2]",
+      "name": "test_parses_known_formats[15/01/2026-expected2]",
+      "file": "tests\\test_dates.py",
+      "line": 17,
+      "outcome": "passed",
+      "duration": 0.0026465999999345513,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_dates.py::test_parses_known_formats[01/15/2026-expected3]",
+      "name": "test_parses_known_formats[01/15/2026-expected3]",
+      "file": "tests\\test_dates.py",
+      "line": 17,
+      "outcome": "passed",
+      "duration": 0.002321500000107335,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_dates.py::test_parses_known_formats[2026/01/15-expected4]",
+      "name": "test_parses_known_formats[2026/01/15-expected4]",
+      "file": "tests\\test_dates.py",
+      "line": 17,
+      "outcome": "passed",
+      "duration": 0.003990000000158034,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_dates.py::test_strips_time_component",
+      "name": "test_strips_time_component",
+      "file": "tests\\test_dates.py",
+      "line": 28,
+      "outcome": "passed",
+      "duration": 0.0010155999998460175,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_dates.py::test_unparseable_returns_none[None]",
+      "name": "test_unparseable_returns_none[None]",
+      "file": "tests\\test_dates.py",
+      "line": 33,
+      "outcome": "passed",
+      "duration": 0.0010313000002497574,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_dates.py::test_unparseable_returns_none[]",
+      "name": "test_unparseable_returns_none[]",
+      "file": "tests\\test_dates.py",
+      "line": 33,
+      "outcome": "passed",
+      "duration": 0.0008663999997224892,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_dates.py::test_unparseable_returns_none[   ]",
+      "name": "test_unparseable_returns_none[   ]",
+      "file": "tests\\test_dates.py",
+      "line": 33,
+      "outcome": "passed",
+      "duration": 0.000781499999902735,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_dates.py::test_unparseable_returns_none[not-a-date]",
+      "name": "test_unparseable_returns_none[not-a-date]",
+      "file": "tests\\test_dates.py",
+      "line": 33,
+      "outcome": "passed",
+      "duration": 0.0012796000000889762,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_dates.py::test_unparseable_returns_none[2026-13-99]",
+      "name": "test_unparseable_returns_none[2026-13-99]",
+      "file": "tests\\test_dates.py",
+      "line": 33,
+      "outcome": "passed",
+      "duration": 0.0007992999999260064,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_dates.py::test_unparseable_returns_none[garbage]",
+      "name": "test_unparseable_returns_none[garbage]",
+      "file": "tests\\test_dates.py",
+      "line": 33,
+      "outcome": "passed",
+      "duration": 0.0008763999994698679,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_dates.py::test_parse_date_only_returns_date",
+      "name": "test_parse_date_only_returns_date",
+      "file": "tests\\test_dates.py",
+      "line": 38,
+      "outcome": "passed",
+      "duration": 0.001442799999495037,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_dates.py::test_returns_datetime_for_arithmetic",
+      "name": "test_returns_datetime_for_arithmetic",
+      "file": "tests\\test_dates.py",
+      "line": 43,
+      "outcome": "passed",
+      "duration": 0.0005261999995127553,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_einvoice.py::test_einvoice_schema_shape_and_clean",
+      "name": "test_einvoice_schema_shape_and_clean",
+      "file": "tests\\test_einvoice.py",
+      "line": 53,
+      "outcome": "passed",
+      "duration": 0.002437199999803852,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_einvoice.py::test_einvoice_money_reconciles_within_one_rupee",
+      "name": "test_einvoice_money_reconciles_within_one_rupee",
+      "file": "tests\\test_einvoice.py",
+      "line": 66,
+      "outcome": "passed",
+      "duration": 0.0014217999996617436,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_einvoice.py::test_einvoice_intra_state_split",
+      "name": "test_einvoice_intra_state_split",
+      "file": "tests\\test_einvoice.py",
+      "line": 78,
+      "outcome": "passed",
+      "duration": 0.0016695000003892346,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_einvoice.py::test_einvoice_inter_state_split",
+      "name": "test_einvoice_inter_state_split",
+      "file": "tests\\test_einvoice.py",
+      "line": 88,
+      "outcome": "passed",
+      "duration": 0.001738400000249385,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_einvoice.py::test_einvoice_b2c_and_missing_fields_warn",
+      "name": "test_einvoice_b2c_and_missing_fields_warn",
+      "file": "tests\\test_einvoice.py",
+      "line": 99,
+      "outcome": "passed",
+      "duration": 0.0034114000000045053,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_einvoice.py::test_einvoice_reverse_charge_flag",
+      "name": "test_einvoice_reverse_charge_flag",
+      "file": "tests\\test_einvoice.py",
+      "line": 115,
+      "outcome": "passed",
+      "duration": 0.0031503000000157044,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_einvoice.py::test_eway_clean_with_transport",
+      "name": "test_eway_clean_with_transport",
+      "file": "tests\\test_einvoice.py",
+      "line": 124,
+      "outcome": "passed",
+      "duration": 0.0017975999999180203,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_einvoice.py::test_eway_missing_transport_warns",
+      "name": "test_eway_missing_transport_warns",
+      "file": "tests\\test_einvoice.py",
+      "line": 139,
+      "outcome": "passed",
+      "duration": 0.0021438999992824392,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_einvoice.py::test_eway_mode_mapping",
+      "name": "test_eway_mode_mapping",
+      "file": "tests\\test_einvoice.py",
+      "line": 148,
+      "outcome": "passed",
+      "duration": 0.004377799999929266,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_einvoice.py::test_eway_required_threshold",
+      "name": "test_eway_required_threshold",
+      "file": "tests\\test_einvoice.py",
+      "line": 159,
+      "outcome": "passed",
+      "duration": 0.000601499999902444,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_einvoice.py::test_einvoice_applicable_is_flag_gated",
+      "name": "test_einvoice_applicable_is_flag_gated",
+      "file": "tests\\test_einvoice.py",
+      "line": 169,
+      "outcome": "passed",
+      "duration": 0.0007282000005943701,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_exact_substring_match",
+      "name": "test_exact_substring_match",
+      "file": "tests\\test_entity_match.py",
+      "line": 27,
+      "outcome": "passed",
+      "duration": 0.0013810000000376021,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_case_insensitive",
+      "name": "test_case_insensitive",
+      "file": "tests\\test_entity_match.py",
+      "line": 31,
+      "outcome": "passed",
+      "duration": 0.0004998000003979541,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_fuzzy_typos_and_dropped_letters[tell me about nilgris fresh-Nilgiris Fresh]",
+      "name": "test_fuzzy_typos_and_dropped_letters[tell me about nilgris fresh-Nilgiris Fresh]",
+      "file": "tests\\test_entity_match.py",
+      "line": 35,
+      "outcome": "passed",
+      "duration": 0.0020292999997764127,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_fuzzy_typos_and_dropped_letters[what about nilgiri fresh-Nilgiris Fresh]",
+      "name": "test_fuzzy_typos_and_dropped_letters[what about nilgiri fresh-Nilgiris Fresh]",
+      "file": "tests\\test_entity_match.py",
+      "line": 35,
+      "outcome": "passed",
+      "duration": 0.0022836999996798113,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_fuzzy_typos_and_dropped_letters[how is star bazar doing-Star Bazaar]",
+      "name": "test_fuzzy_typos_and_dropped_letters[how is star bazar doing-Star Bazaar]",
+      "file": "tests\\test_entity_match.py",
+      "line": 35,
+      "outcome": "passed",
+      "duration": 0.0016544999998586718,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_fuzzy_typos_and_dropped_letters[do you know amzon-Amazon]",
+      "name": "test_fuzzy_typos_and_dropped_letters[do you know amzon-Amazon]",
+      "file": "tests\\test_entity_match.py",
+      "line": 35,
+      "outcome": "passed",
+      "duration": 0.001114900000175112,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_word_order_independent",
+      "name": "test_word_order_independent",
+      "file": "tests\\test_entity_match.py",
+      "line": 45,
+      "outcome": "passed",
+      "duration": 0.001969699999790464,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_no_false_positive[show me apples and oranges]",
+      "name": "test_no_false_positive[show me apples and oranges]",
+      "file": "tests\\test_entity_match.py",
+      "line": 49,
+      "outcome": "passed",
+      "duration": 0.0012093000004824717,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_no_false_positive[the star performers of the week]",
+      "name": "test_no_false_positive[the star performers of the week]",
+      "file": "tests\\test_entity_match.py",
+      "line": 49,
+      "outcome": "passed",
+      "duration": 0.002538499999900523,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_no_false_positive[]",
+      "name": "test_no_false_positive[]",
+      "file": "tests\\test_entity_match.py",
+      "line": 49,
+      "outcome": "passed",
+      "duration": 0.0010531999996601371,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_empty_name_list",
+      "name": "test_empty_name_list",
+      "file": "tests\\test_entity_match.py",
+      "line": 58,
+      "outcome": "passed",
+      "duration": 0.000637799999822164,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_substring_prefers_longest",
+      "name": "test_substring_prefers_longest",
+      "file": "tests\\test_entity_match.py",
+      "line": 62,
+      "outcome": "passed",
+      "duration": 0.0007908999996288912,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_bare_customer_name_reroutes_to_client_summary",
+      "name": "test_bare_customer_name_reroutes_to_client_summary",
+      "file": "tests\\test_entity_match.py",
+      "line": 69,
+      "outcome": "passed",
+      "duration": 0.0025637999997343286,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_short_non_name_query_is_left_alone",
+      "name": "test_short_non_name_query_is_left_alone",
+      "file": "tests\\test_entity_match.py",
+      "line": 77,
+      "outcome": "passed",
+      "duration": 0.0013147999998182058,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_lookup_phrase_with_typo_still_reroutes",
+      "name": "test_lookup_phrase_with_typo_still_reroutes",
+      "file": "tests\\test_entity_match.py",
+      "line": 83,
+      "outcome": "passed",
+      "duration": 0.002089999999952852,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_customer_scoped_aggregate_reroutes",
+      "name": "test_customer_scoped_aggregate_reroutes",
+      "file": "tests\\test_entity_match.py",
+      "line": 90,
+      "outcome": "passed",
+      "duration": 0.0027530999996088212,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_list_all_phrasing_stays_global",
+      "name": "test_list_all_phrasing_stays_global",
+      "file": "tests\\test_entity_match.py",
+      "line": 99,
+      "outcome": "passed",
+      "duration": 0.0017833000001701294,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_ranking_phrasing_stays_global",
+      "name": "test_ranking_phrasing_stays_global",
+      "file": "tests\\test_entity_match.py",
+      "line": 105,
+      "outcome": "passed",
+      "duration": 0.0008392999998250161,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_invoice_id_routes_to_invoice_detail",
+      "name": "test_invoice_id_routes_to_invoice_detail",
+      "file": "tests\\test_entity_match.py",
+      "line": 111,
+      "outcome": "passed",
+      "duration": 0.001953200000571087,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_customer_invoice_list_routes_to_customer_invoices",
+      "name": "test_customer_invoice_list_routes_to_customer_invoices",
+      "file": "tests\\test_entity_match.py",
+      "line": 119,
+      "outcome": "passed",
+      "duration": 0.003492499999993015,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_plain_client_summary_not_re_extracted",
+      "name": "test_plain_client_summary_not_re_extracted",
+      "file": "tests\\test_entity_match.py",
+      "line": 127,
+      "outcome": "passed",
+      "duration": 0.001354699999865261,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_client_summary_upgrades_to_invoice_table",
+      "name": "test_client_summary_upgrades_to_invoice_table",
+      "file": "tests\\test_entity_match.py",
+      "line": 136,
+      "outcome": "passed",
+      "duration": 0.0013889000001654495,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_writing_task_not_scoped",
+      "name": "test_writing_task_not_scoped",
+      "file": "tests\\test_entity_match.py",
+      "line": 145,
+      "outcome": "passed",
+      "duration": 0.001550100000713428,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_non_aggregate_direct_untouched",
+      "name": "test_non_aggregate_direct_untouched",
+      "file": "tests\\test_entity_match.py",
+      "line": 153,
+      "outcome": "passed",
+      "duration": 0.0007729999997536652,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_general_about_query_is_recognised",
+      "name": "test_general_about_query_is_recognised",
+      "file": "tests\\test_entity_match.py",
+      "line": 163,
+      "outcome": "passed",
+      "duration": 0.001027500000418513,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_named_unknown_customer_is_not_general",
+      "name": "test_named_unknown_customer_is_not_general",
+      "file": "tests\\test_entity_match.py",
+      "line": 168,
+      "outcome": "passed",
+      "duration": 0.0009385999992446159,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_unknown_customer_returns_not_found_not_none",
+      "name": "test_unknown_customer_returns_not_found_not_none",
+      "file": "tests\\test_entity_match.py",
+      "line": 173,
+      "outcome": "passed",
+      "duration": 0.0019075999998676707,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_general_about_query_falls_through_to_ai",
+      "name": "test_general_about_query_falls_through_to_ai",
+      "file": "tests\\test_entity_match.py",
+      "line": 181,
+      "outcome": "passed",
+      "duration": 0.001387100000101782,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_entity_guess_strips_lookup_filler",
+      "name": "test_entity_guess_strips_lookup_filler",
+      "file": "tests\\test_entity_match.py",
+      "line": 194,
+      "outcome": "passed",
+      "duration": 0.0005114999994475511,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_near_miss_returns_candidate",
+      "name": "test_near_miss_returns_candidate",
+      "file": "tests\\test_entity_match.py",
+      "line": 199,
+      "outcome": "passed",
+      "duration": 0.0007682000004933798,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_no_close_name_returns_no_candidates",
+      "name": "test_no_close_name_returns_no_candidates",
+      "file": "tests\\test_entity_match.py",
+      "line": 207,
+      "outcome": "passed",
+      "duration": 0.001756500000738015,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_candidates_are_ranked_best_first",
+      "name": "test_candidates_are_ranked_best_first",
+      "file": "tests\\test_entity_match.py",
+      "line": 211,
+      "outcome": "passed",
+      "duration": 0.001443499999368214,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_entity_match.py::test_invoice_id_regex_extracts",
+      "name": "test_invoice_id_regex_extracts",
+      "file": "tests\\test_entity_match.py",
+      "line": 219,
+      "outcome": "passed",
+      "duration": 0.0007056000004013185,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_error_contract.py::test_ask_rate_limit_returns_real_429",
+      "name": "test_ask_rate_limit_returns_real_429",
+      "file": "tests\\test_error_contract.py",
+      "line": 45,
+      "outcome": "passed",
+      "duration": 0.018247400000291236,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_error_contract.py::test_ask_success_still_returns_200_envelope",
+      "name": "test_ask_success_still_returns_200_envelope",
+      "file": "tests\\test_error_contract.py",
+      "line": 64,
+      "outcome": "passed",
+      "duration": 0.15585850000024948,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_feedback.py::test_normalize_query_lowercases_and_collapses_space",
+      "name": "test_normalize_query_lowercases_and_collapses_space",
+      "file": "tests\\test_feedback.py",
+      "line": 50,
+      "outcome": "passed",
+      "duration": 0.0008526999999958207,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_feedback.py::test_downvote_with_correction_creates_override",
+      "name": "test_downvote_with_correction_creates_override",
+      "file": "tests\\test_feedback.py",
+      "line": 54,
+      "outcome": "passed",
+      "duration": 0.024998399999276444,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_feedback.py::test_upvote_creates_no_override",
+      "name": "test_upvote_creates_no_override",
+      "file": "tests\\test_feedback.py",
+      "line": 64,
+      "outcome": "passed",
+      "duration": 0.015078100000209815,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_feedback.py::test_downvote_without_correction_logs_only",
+      "name": "test_downvote_without_correction_logs_only",
+      "file": "tests\\test_feedback.py",
+      "line": 71,
+      "outcome": "passed",
+      "duration": 0.011658899999929417,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_feedback.py::test_override_is_upserted_not_duplicated",
+      "name": "test_override_is_upserted_not_duplicated",
+      "file": "tests\\test_feedback.py",
+      "line": 78,
+      "outcome": "passed",
+      "duration": 0.04282659999989846,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_feedback.py::test_tier_correction_maps_to_route_without_handler",
+      "name": "test_tier_correction_maps_to_route_without_handler",
+      "file": "tests\\test_feedback.py",
+      "line": 94,
+      "outcome": "passed",
+      "duration": 0.02234909999970114,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_feedback.py::test_invalid_verdict_rejected",
+      "name": "test_invalid_verdict_rejected",
+      "file": "tests\\test_feedback.py",
+      "line": 100,
+      "outcome": "passed",
+      "duration": 0.001246799999535142,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_feedback.py::test_unknown_correction_rejected",
+      "name": "test_unknown_correction_rejected",
+      "file": "tests\\test_feedback.py",
+      "line": 105,
+      "outcome": "passed",
+      "duration": 0.004715799999758019,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_handlers.py::test_invoice_count",
+      "name": "test_invoice_count",
+      "file": "tests\\test_handlers.py",
+      "line": 123,
+      "outcome": "passed",
+      "duration": 0.010455200000251352,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_handlers.py::test_total_revenue",
+      "name": "test_total_revenue",
+      "file": "tests\\test_handlers.py",
+      "line": 131,
+      "outcome": "passed",
+      "duration": 0.007831400000213762,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_handlers.py::test_revenue_summary",
+      "name": "test_revenue_summary",
+      "file": "tests\\test_handlers.py",
+      "line": 140,
+      "outcome": "passed",
+      "duration": 0.0076521999999386026,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_handlers.py::test_overdue_list",
+      "name": "test_overdue_list",
+      "file": "tests\\test_handlers.py",
+      "line": 148,
+      "outcome": "passed",
+      "duration": 0.011023999999451917,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_handlers.py::test_overdue_amount",
+      "name": "test_overdue_amount",
+      "file": "tests\\test_handlers.py",
+      "line": 156,
+      "outcome": "passed",
+      "duration": 0.0049423999998907675,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_handlers.py::test_pending_list",
+      "name": "test_pending_list",
+      "file": "tests\\test_handlers.py",
+      "line": 163,
+      "outcome": "passed",
+      "duration": 0.008735100000194507,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_handlers.py::test_top_debtors_ranks_by_overdue_not_revenue",
+      "name": "test_top_debtors_ranks_by_overdue_not_revenue",
+      "file": "tests\\test_handlers.py",
+      "line": 172,
+      "outcome": "passed",
+      "duration": 0.0062227999997048755,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_handlers.py::test_top_customers_ranks_by_total_revenue",
+      "name": "test_top_customers_ranks_by_total_revenue",
+      "file": "tests\\test_handlers.py",
+      "line": 193,
+      "outcome": "passed",
+      "duration": 0.006712299999890092,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_handlers.py::test_top_debtors_excludes_customers_with_no_overdue",
+      "name": "test_top_debtors_excludes_customers_with_no_overdue",
+      "file": "tests\\test_handlers.py",
+      "line": 204,
+      "outcome": "passed",
+      "duration": 0.007421199999953387,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_handlers.py::test_inventory_count",
+      "name": "test_inventory_count",
+      "file": "tests\\test_handlers.py",
+      "line": 216,
+      "outcome": "passed",
+      "duration": 0.006107100000008359,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_handlers.py::test_low_stock",
+      "name": "test_low_stock",
+      "file": "tests\\test_handlers.py",
+      "line": 222,
+      "outcome": "passed",
+      "duration": 0.0044674999999188,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_handlers.py::test_expiring_soon",
+      "name": "test_expiring_soon",
+      "file": "tests\\test_handlers.py",
+      "line": 231,
+      "outcome": "passed",
+      "duration": 0.006950500000129978,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_handlers.py::test_business_summary",
+      "name": "test_business_summary",
+      "file": "tests\\test_handlers.py",
+      "line": 240,
+      "outcome": "passed",
+      "duration": 0.01626600000054168,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_handlers.py::test_unknown_handler_returns_none",
+      "name": "test_unknown_handler_returns_none",
+      "file": "tests\\test_handlers.py",
+      "line": 248,
+      "outcome": "passed",
+      "duration": 0.0034316999999646214,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_handlers.py::test_client_summary",
+      "name": "test_client_summary",
+      "file": "tests\\test_handlers.py",
+      "line": 255,
+      "outcome": "passed",
+      "duration": 0.010916199999883247,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_hash_chain.py::test_fresh_chain_verifies_clean",
+      "name": "test_fresh_chain_verifies_clean",
+      "file": "tests\\test_hash_chain.py",
+      "line": 98,
+      "outcome": "passed",
+      "duration": 0.7214647999999215,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_hash_chain.py::test_editing_a_posted_entry_breaks_the_chain",
+      "name": "test_editing_a_posted_entry_breaks_the_chain",
+      "file": "tests\\test_hash_chain.py",
+      "line": 109,
+      "outcome": "passed",
+      "duration": 0.6645614999997633,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_hash_chain.py::test_idempotent_repost_preserves_chain",
+      "name": "test_idempotent_repost_preserves_chain",
+      "file": "tests\\test_hash_chain.py",
+      "line": 131,
+      "outcome": "passed",
+      "duration": 0.6767578999997568,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_hash_chain.py::test_verify_chain_cashier_forbidden",
+      "name": "test_verify_chain_cashier_forbidden",
+      "file": "tests\\test_hash_chain.py",
+      "line": 146,
+      "outcome": "passed",
+      "duration": 1.1664405000001352,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_hash_chain.py::test_verify_chain_tenant_isolated",
+      "name": "test_verify_chain_tenant_isolated",
+      "file": "tests\\test_hash_chain.py",
+      "line": 152,
+      "outcome": "passed",
+      "duration": 1.009239200000593,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_import.py::test_import_products_json",
+      "name": "test_import_products_json",
+      "file": "tests\\test_import.py",
+      "line": 97,
+      "outcome": "passed",
+      "duration": 0.11312650000036228,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_import.py::test_import_products_csv",
+      "name": "test_import_products_csv",
+      "file": "tests\\test_import.py",
+      "line": 172,
+      "outcome": "passed",
+      "duration": 0.07196930000009161,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_import.py::test_import_customers_and_vendors",
+      "name": "test_import_customers_and_vendors",
+      "file": "tests\\test_import.py",
+      "line": 207,
+      "outcome": "passed",
+      "duration": 0.06909689999974944,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_import.py::test_import_endpoints_cashier_restricted",
+      "name": "test_import_endpoints_cashier_restricted",
+      "file": "tests\\test_import.py",
+      "line": 265,
+      "outcome": "passed",
+      "duration": 0.031624100000044564,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_import.py::test_import_tenant_isolation",
+      "name": "test_import_tenant_isolation",
+      "file": "tests\\test_import.py",
+      "line": 277,
+      "outcome": "passed",
+      "duration": 0.07481610000013461,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_import.py::test_exports_tenant_scoping",
+      "name": "test_exports_tenant_scoping",
+      "file": "tests\\test_import.py",
+      "line": 301,
+      "outcome": "passed",
+      "duration": 0.1785013999997318,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_intent_router.py::test_nearest_example_maps_to_tier_and_intent",
+      "name": "test_nearest_example_maps_to_tier_and_intent",
+      "file": "tests\\test_intent_router.py",
+      "line": 56,
+      "outcome": "passed",
+      "duration": 0.0022756999997000094,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_intent_router.py::test_conversational_and_complex_buckets",
+      "name": "test_conversational_and_complex_buckets",
+      "file": "tests\\test_intent_router.py",
+      "line": 62,
+      "outcome": "passed",
+      "duration": 0.002577000000201224,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_intent_router.py::test_low_confidence_falls_back_to_ai_simple",
+      "name": "test_low_confidence_falls_back_to_ai_simple",
+      "file": "tests\\test_intent_router.py",
+      "line": 67,
+      "outcome": "passed",
+      "duration": 0.0026370999994469457,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_intent_router.py::test_empty_query_is_ai_simple",
+      "name": "test_empty_query_is_ai_simple",
+      "file": "tests\\test_intent_router.py",
+      "line": 74,
+      "outcome": "passed",
+      "duration": 0.0004343999999036896,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_intent_router.py::test_semantic_router_eval_accuracy",
+      "name": "test_semantic_router_eval_accuracy",
+      "file": "tests\\test_intent_router.py",
+      "line": 300,
+      "outcome": "passed",
+      "duration": 9.066697999999633,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_intents.py::test_all_known_intents_return_envelope",
+      "name": "test_all_known_intents_return_envelope",
+      "file": "tests\\test_intents.py",
+      "line": 88,
+      "outcome": "passed",
+      "duration": 0.10631349999948725,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_intents.py::test_unknown_intent_returns_none",
+      "name": "test_unknown_intent_returns_none",
+      "file": "tests\\test_intents.py",
+      "line": 98,
+      "outcome": "passed",
+      "duration": 0.0007619000007252907,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_intents.py::test_is_intent",
+      "name": "test_is_intent",
+      "file": "tests\\test_intents.py",
+      "line": 102,
+      "outcome": "passed",
+      "duration": 0.0009420999995199963,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_intents.py::test_top_debtors_envelope",
+      "name": "test_top_debtors_envelope",
+      "file": "tests\\test_intents.py",
+      "line": 110,
+      "outcome": "passed",
+      "duration": 0.01231510000070557,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_intents.py::test_top_customers_envelope",
+      "name": "test_top_customers_envelope",
+      "file": "tests\\test_intents.py",
+      "line": 122,
+      "outcome": "passed",
+      "duration": 0.010019800000009127,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_intents.py::test_top_debtors_title",
+      "name": "test_top_debtors_title",
+      "file": "tests\\test_intents.py",
+      "line": 131,
+      "outcome": "passed",
+      "duration": 0.010545400000410154,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_intents.py::test_top_customers_title",
+      "name": "test_top_customers_title",
+      "file": "tests\\test_intents.py",
+      "line": 136,
+      "outcome": "passed",
+      "duration": 0.009719599999698403,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_intents.py::test_suggestions_have_valid_types",
+      "name": "test_suggestions_have_valid_types",
+      "file": "tests\\test_intents.py",
+      "line": 143,
+      "outcome": "passed",
+      "duration": 0.012227600000187522,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_intents.py::test_overdue_list_has_send_reminders",
+      "name": "test_overdue_list_has_send_reminders",
+      "file": "tests\\test_intents.py",
+      "line": 151,
+      "outcome": "passed",
+      "duration": 0.019987800000308198,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_intents.py::test_client_summary_with_params",
+      "name": "test_client_summary_with_params",
+      "file": "tests\\test_intents.py",
+      "line": 159,
+      "outcome": "passed",
+      "duration": 0.018685800000639574,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_intents.py::test_suggestions_capped_at_4",
+      "name": "test_suggestions_capped_at_4",
+      "file": "tests\\test_intents.py",
+      "line": 165,
+      "outcome": "passed",
+      "duration": 0.09214340000016819,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_journal.py::test_every_journal_entry_foots_and_journal_balances",
+      "name": "test_every_journal_entry_foots_and_journal_balances",
+      "file": "tests\\test_journal.py",
+      "line": 98,
+      "outcome": "passed",
+      "duration": 0.6914411999996446,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_journal.py::test_general_ledger_nets_to_zero_with_sales_credit_purchases_debit",
+      "name": "test_general_ledger_nets_to_zero_with_sales_credit_purchases_debit",
+      "file": "tests\\test_journal.py",
+      "line": 110,
+      "outcome": "passed",
+      "duration": 0.5111806000004435,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_journal.py::test_general_ledger_account_filter",
+      "name": "test_general_ledger_account_filter",
+      "file": "tests\\test_journal.py",
+      "line": 124,
+      "outcome": "passed",
+      "duration": 0.47738509999999224,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_journal.py::test_journal_cashier_forbidden",
+      "name": "test_journal_cashier_forbidden",
+      "file": "tests\\test_journal.py",
+      "line": 134,
+      "outcome": "passed",
+      "duration": 1.1354166000000987,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_journal.py::test_journal_tenant_isolation",
+      "name": "test_journal_tenant_isolation",
+      "file": "tests\\test_journal.py",
+      "line": 141,
+      "outcome": "passed",
+      "duration": 1.106016499999896,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_journal.py::test_general_ledger_carries_opening_forward",
+      "name": "test_general_ledger_carries_opening_forward",
+      "file": "tests\\test_journal.py",
+      "line": 175,
+      "outcome": "passed",
+      "duration": 0.590505199999825,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_journal.py::test_general_ledger_boundary_day_counted_once",
+      "name": "test_general_ledger_boundary_day_counted_once",
+      "file": "tests\\test_journal.py",
+      "line": 202,
+      "outcome": "passed",
+      "duration": 0.39827079999940906,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_journal.py::test_general_ledger_opening_only_account_appears",
+      "name": "test_general_ledger_opening_only_account_appears",
+      "file": "tests\\test_journal.py",
+      "line": 214,
+      "outcome": "passed",
+      "duration": 0.4250169000006281,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_answer_with_intent_routes_direct",
+      "name": "test_answer_with_intent_routes_direct",
+      "file": "tests\\test_llm_router.py",
+      "line": 63,
+      "outcome": "passed",
+      "duration": 0.002638199999637436,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_advise_keeps_handler_for_grounding",
+      "name": "test_advise_keeps_handler_for_grounding",
+      "file": "tests\\test_llm_router.py",
+      "line": 69,
+      "outcome": "passed",
+      "duration": 0.002150499999515887,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_act_routes_to_gated_action",
+      "name": "test_act_routes_to_gated_action",
+      "file": "tests\\test_llm_router.py",
+      "line": 76,
+      "outcome": "passed",
+      "duration": 0.0024452999996356084,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_act_with_unknown_action_degrades_to_advise",
+      "name": "test_act_with_unknown_action_degrades_to_advise",
+      "file": "tests\\test_llm_router.py",
+      "line": 84,
+      "outcome": "passed",
+      "duration": 0.001852399999734189,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_chat_and_analyze_tiers",
+      "name": "test_chat_and_analyze_tiers",
+      "file": "tests\\test_llm_router.py",
+      "line": 91,
+      "outcome": "passed",
+      "duration": 0.0032793000000310712,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_answer_without_intent_falls_to_ai_simple",
+      "name": "test_answer_without_intent_falls_to_ai_simple",
+      "file": "tests\\test_llm_router.py",
+      "line": 96,
+      "outcome": "passed",
+      "duration": 0.0017002999993565027,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_unknown_intent_is_dropped_not_trusted",
+      "name": "test_unknown_intent_is_dropped_not_trusted",
+      "file": "tests\\test_llm_router.py",
+      "line": 103,
+      "outcome": "passed",
+      "duration": 0.002494400000614405,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_entity_extraction_passthrough_and_null_filtering",
+      "name": "test_entity_extraction_passthrough_and_null_filtering",
+      "file": "tests\\test_llm_router.py",
+      "line": 108,
+      "outcome": "passed",
+      "duration": 0.002102700000250479,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_malformed_json_returns_none_never_raises",
+      "name": "test_malformed_json_returns_none_never_raises",
+      "file": "tests\\test_llm_router.py",
+      "line": 116,
+      "outcome": "passed",
+      "duration": 0.001879400000689202,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_bad_mode_returns_none",
+      "name": "test_bad_mode_returns_none",
+      "file": "tests\\test_llm_router.py",
+      "line": 120,
+      "outcome": "passed",
+      "duration": 0.0023743000001559267,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_confidence_clamped",
+      "name": "test_confidence_clamped",
+      "file": "tests\\test_llm_router.py",
+      "line": 124,
+      "outcome": "passed",
+      "duration": 0.002104200000758283,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_empty_query_short_circuits_without_calling_model",
+      "name": "test_empty_query_short_circuits_without_calling_model",
+      "file": "tests\\test_llm_router.py",
+      "line": 129,
+      "outcome": "passed",
+      "duration": 0.0005523999998331419,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_route_returns_triple",
+      "name": "test_route_returns_triple",
+      "file": "tests\\test_llm_router.py",
+      "line": 135,
+      "outcome": "passed",
+      "duration": 0.0012454999996407423,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_shadow_agree_on_same_direct_handler",
+      "name": "test_shadow_agree_on_same_direct_handler",
+      "file": "tests\\test_llm_router.py",
+      "line": 150,
+      "outcome": "passed",
+      "duration": 0.0017918000003191992,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_shadow_disagree_on_different_handler",
+      "name": "test_shadow_disagree_on_different_handler",
+      "file": "tests\\test_llm_router.py",
+      "line": 157,
+      "outcome": "passed",
+      "duration": 0.002019500000642438,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_shadow_mode_upgrade_labelled",
+      "name": "test_shadow_mode_upgrade_labelled",
+      "file": "tests\\test_llm_router.py",
+      "line": 164,
+      "outcome": "passed",
+      "duration": 0.0022863000003781053,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_shadow_error_logged_when_llm_unavailable",
+      "name": "test_shadow_error_logged_when_llm_unavailable",
+      "file": "tests\\test_llm_router.py",
+      "line": 172,
+      "outcome": "passed",
+      "duration": 0.0026146000000153435,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_llm_router.py::test_registries_are_nonempty_and_known_shape",
+      "name": "test_registries_are_nonempty_and_known_shape",
+      "file": "tests\\test_llm_router.py",
+      "line": 179,
+      "outcome": "passed",
+      "duration": 0.0009580999994796002,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_logging_config.py::test_get_logger_namespaces_under_bizassist",
+      "name": "test_get_logger_namespaces_under_bizassist",
+      "file": "tests\\test_logging_config.py",
+      "line": 24,
+      "outcome": "passed",
+      "duration": 0.0011838999998872168,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_logging_config.py::test_configure_logging_is_idempotent",
+      "name": "test_configure_logging_is_idempotent",
+      "file": "tests\\test_logging_config.py",
+      "line": 40,
+      "outcome": "passed",
+      "duration": 0.011796799999501673,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_logging_config.py::test_log_file_adds_one_extra_handler",
+      "name": "test_log_file_adds_one_extra_handler",
+      "file": "tests\\test_logging_config.py",
+      "line": 52,
+      "outcome": "passed",
+      "duration": 0.015038999999887892,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_logging_config.py::test_component_filter_strips_prefix",
+      "name": "test_component_filter_strips_prefix",
+      "file": "tests\\test_logging_config.py",
+      "line": 66,
+      "outcome": "passed",
+      "duration": 0.0015137000000322587,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_logging_config.py::test_noisy_libs_pinned_to_warning",
+      "name": "test_noisy_libs_pinned_to_warning",
+      "file": "tests\\test_logging_config.py",
+      "line": 77,
+      "outcome": "passed",
+      "duration": 0.004986800000551739,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_logging_config.py::test_log_level_env_var_honoured",
+      "name": "test_log_level_env_var_honoured",
+      "file": "tests\\test_logging_config.py",
+      "line": 83,
+      "outcome": "passed",
+      "duration": 0.010655000000042492,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_logging_config.py::test_tags_are_unique_and_bracketed",
+      "name": "test_tags_are_unique_and_bracketed",
+      "file": "tests\\test_logging_config.py",
+      "line": 93,
+      "outcome": "passed",
+      "duration": 0.0007344999994529644,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_memory.py::test_distill_memory_writes_facts",
+      "name": "test_distill_memory_writes_facts",
+      "file": "tests\\test_memory.py",
+      "line": 42,
+      "outcome": "passed",
+      "duration": 0.03403890000026877,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_memory.py::test_distill_memory_bad_json",
+      "name": "test_distill_memory_bad_json",
+      "file": "tests\\test_memory.py",
+      "line": 79,
+      "outcome": "passed",
+      "duration": 0.022381400000085705,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_memory.py::test_get_business_facts_returns_bullets",
+      "name": "test_get_business_facts_returns_bullets",
+      "file": "tests\\test_memory.py",
+      "line": 96,
+      "outcome": "passed",
+      "duration": 0.007380600000033155,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_memory.py::test_get_business_facts_empty",
+      "name": "test_get_business_facts_empty",
+      "file": "tests\\test_memory.py",
+      "line": 117,
+      "outcome": "passed",
+      "duration": 0.005213499999626947,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_memory.py::test_snapshot_includes_memory",
+      "name": "test_snapshot_includes_memory",
+      "file": "tests\\test_memory.py",
+      "line": 126,
+      "outcome": "passed",
+      "duration": 0.007911100000455917,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_migrate.py::test_migration_lifecycle",
+      "name": "test_migration_lifecycle",
+      "file": "tests\\test_migrate.py",
+      "line": 26,
+      "outcome": "passed",
+      "duration": 1.2873978999996325,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_normalize.py::test_to_iso_normalizes_dates[2026-01-15-2026-01-15]",
+      "name": "test_to_iso_normalizes_dates[2026-01-15-2026-01-15]",
+      "file": "tests\\test_normalize.py",
+      "line": 17,
+      "outcome": "passed",
+      "duration": 0.0005856000007042894,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_normalize.py::test_to_iso_normalizes_dates[15/01/2026-2026-01-15]",
+      "name": "test_to_iso_normalizes_dates[15/01/2026-2026-01-15]",
+      "file": "tests\\test_normalize.py",
+      "line": 17,
+      "outcome": "passed",
+      "duration": 0.0006892000001244014,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_normalize.py::test_to_iso_normalizes_dates[15-01-2026-2026-01-15]",
+      "name": "test_to_iso_normalizes_dates[15-01-2026-2026-01-15]",
+      "file": "tests\\test_normalize.py",
+      "line": 17,
+      "outcome": "passed",
+      "duration": 0.0024026000000958447,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_normalize.py::test_to_iso_normalizes_dates[01/15/2026-2026-01-15]",
+      "name": "test_to_iso_normalizes_dates[01/15/2026-2026-01-15]",
+      "file": "tests\\test_normalize.py",
+      "line": 17,
+      "outcome": "passed",
+      "duration": 0.0008286000002044602,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_normalize.py::test_to_iso_normalizes_dates[2026-01-15 00:00:00-2026-01-15]",
+      "name": "test_to_iso_normalizes_dates[2026-01-15 00:00:00-2026-01-15]",
+      "file": "tests\\test_normalize.py",
+      "line": 17,
+      "outcome": "passed",
+      "duration": 0.0011196999994353973,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_normalize.py::test_to_iso_passes_through_unparseable",
+      "name": "test_to_iso_passes_through_unparseable",
+      "file": "tests\\test_normalize.py",
+      "line": 28,
+      "outcome": "passed",
+      "duration": 0.0012313000006543007,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_normalize.py::test_normalize_status_canonical_casing[paid-Paid]",
+      "name": "test_normalize_status_canonical_casing[paid-Paid]",
+      "file": "tests\\test_normalize.py",
+      "line": 35,
+      "outcome": "passed",
+      "duration": 0.0013601000000562635,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_normalize.py::test_normalize_status_canonical_casing[PAID-Paid]",
+      "name": "test_normalize_status_canonical_casing[PAID-Paid]",
+      "file": "tests\\test_normalize.py",
+      "line": 35,
+      "outcome": "passed",
+      "duration": 0.0029596000003948575,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_normalize.py::test_normalize_status_canonical_casing[  overdue -Overdue]",
+      "name": "test_normalize_status_canonical_casing[  overdue -Overdue]",
+      "file": "tests\\test_normalize.py",
+      "line": 35,
+      "outcome": "passed",
+      "duration": 0.0023110000001906883,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_normalize.py::test_normalize_status_canonical_casing[Pending-Pending]",
+      "name": "test_normalize_status_canonical_casing[Pending-Pending]",
+      "file": "tests\\test_normalize.py",
+      "line": 35,
+      "outcome": "passed",
+      "duration": 0.0007825000002412708,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_normalize.py::test_normalize_status_canonical_casing[disputed-Disputed]",
+      "name": "test_normalize_status_canonical_casing[disputed-Disputed]",
+      "file": "tests\\test_normalize.py",
+      "line": 35,
+      "outcome": "passed",
+      "duration": 0.0004934999997203704,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_normalize.py::test_normalize_status_passes_unknown_through",
+      "name": "test_normalize_status_passes_unknown_through",
+      "file": "tests\\test_normalize.py",
+      "line": 46,
+      "outcome": "passed",
+      "duration": 0.0004914999999527936,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_party_ledger.py::test_customer_ledger_closing_ties_to_receivables",
+      "name": "test_customer_ledger_closing_ties_to_receivables",
+      "file": "tests\\test_party_ledger.py",
+      "line": 113,
+      "outcome": "passed",
+      "duration": 0.637652700000217,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_party_ledger.py::test_vendor_ledger_closing_ties_to_payables",
+      "name": "test_vendor_ledger_closing_ties_to_payables",
+      "file": "tests\\test_party_ledger.py",
+      "line": 131,
+      "outcome": "passed",
+      "duration": 0.592522299999473,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_party_ledger.py::test_from_window_produces_opening_balance",
+      "name": "test_from_window_produces_opening_balance",
+      "file": "tests\\test_party_ledger.py",
+      "line": 144,
+      "outcome": "passed",
+      "duration": 0.6712299000000712,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_party_ledger.py::test_party_ledger_cashier_forbidden",
+      "name": "test_party_ledger_cashier_forbidden",
+      "file": "tests\\test_party_ledger.py",
+      "line": 160,
+      "outcome": "passed",
+      "duration": 1.4240635000005568,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_party_ledger.py::test_party_ledger_foreign_and_missing_party_404",
+      "name": "test_party_ledger_foreign_and_missing_party_404",
+      "file": "tests\\test_party_ledger.py",
+      "line": 168,
+      "outcome": "passed",
+      "duration": 0.9622931000003518,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_period_lock.py::test_assert_period_open_guard_logic",
+      "name": "test_assert_period_open_guard_logic",
+      "file": "tests\\test_period_lock.py",
+      "line": 103,
+      "outcome": "passed",
+      "duration": 0.03908140000021376,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_period_lock.py::test_sale_in_locked_period_rejected_and_writes_nothing",
+      "name": "test_sale_in_locked_period_rejected_and_writes_nothing",
+      "file": "tests\\test_period_lock.py",
+      "line": 131,
+      "outcome": "passed",
+      "duration": 0.5839901999997892,
+      "traceback": null,
+      "longrepr": null
+    }
+  ]
+}

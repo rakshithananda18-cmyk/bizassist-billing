@@ -123,6 +123,21 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             logger.warning(f"[AUTH] Failed signup: username '{req.username}' already exists.")
             raise HTTPException(status_code=400, detail="Username already exists")
         
+        # Test User Policy (leakage prevention):
+        # 1. Test usernames (starting with legacy prefixes or the new 'biz_test_') are ONLY allowed on test databases.
+        # 2. Test user creation is blocked on production/development databases to prevent pollution.
+        import os
+        is_test_db = "test" in os.environ.get("DATABASE_URL", "")
+        test_prefixes = ("own_", "test_", "idem_", "pull_", "u_", "o_", "biz_test_", "rec_")
+        is_test_username = req.username.startswith(test_prefixes)
+        
+        if is_test_username and not is_test_db:
+            logger.critical(f"[AUTH] Blocked test username '{req.username}' registration attempt on non-test database.")
+            raise HTTPException(
+                status_code=400,
+                detail="Test user registration is not allowed on this database."
+            )
+
         from core.connection.utils import generate_bizid
         # Adopt a cloud-issued BizID when provided (local mirror of a cloud
         # account); otherwise mint a fresh one (web signup / standalone).
