@@ -19,5 +19,6 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/__tests__/setup.js',
     css: false,
+    exclude: ['**/node_modules/**', '**/dist/**', '**/e2e/**', '**/cypress/**', '**/.path/**', '**/.git/**'],
   }
 })
