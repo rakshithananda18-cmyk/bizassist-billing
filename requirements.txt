@@ -38,3 +38,5 @@ apscheduler>=3.10.0
 pytest>=8.0.0                  # backend test suite (run_tests.bat). Install with:
                                #   venv\Scripts\python -m pip install -r requirements.txt
 httpx>=0.27.0                  # FastAPI TestClient dependency
+testcontainers[postgres]>=4.0  # ephemeral Postgres for RLS tests (tests/test_rls_postgres.py); needs Docker. Dev-only — NOT in requirements_hf.txt.
+# Frontend E2E uses Playwright (@playwright/test in frontend-billing/package.json + `npx playwright install`); see TESTING.md.

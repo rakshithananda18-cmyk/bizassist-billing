@@ -1,6 +1,8 @@
-# Manual Test Plan — Login → Local→Cloud Migration → Multi-System Real-Time Sync
+# Manual Test Plan — Login · Migration · Multi-System Sync · Cross-DB uid · Security
 
-*Created 2026-06-26. Run after the sync/migration hardening pass (see [`SYNC_MIGRATION_AUDIT.md`](SYNC_MIGRATION_AUDIT.md)). Goal: prove the flow end-to-end and capture clean Hugging Face + local logs so any issue is traceable.*
+*Created 2026-06-26; expanded 2026-06-27 with the Step 3 uid + cloud-nudge scenarios, Phase C, and security/RLS + production go-live cross-refs. Run after the sync/migration hardening pass (see [`SYNC_MIGRATION_AUDIT.md`](SYNC_MIGRATION_AUDIT.md)). Goal: prove the flow end-to-end and capture clean Hugging Face + local logs so any issue is traceable.*
+
+**Sections:** §0 pre-flight · §1 local→cloud migration · §2 multi-system real-time sync · §2c fresh-device login + cloud nudge · §2d durable-uid no-collision · §3 logs to share · §4 pass/fail checklist · §4b backup button · §5 known limits · **§6 security & RLS (incl. the deferred S-1 plan)** · §7 production go-live.*
 
 > **Trust rule for multi-system use:** for two or more terminals running **at the same time**, put **every terminal in Cloud mode** (all writing directly to the HF Space). The cloud assigns every id, so there is no cross-database id collision, and each write broadcasts a real-time `sync.trigger` to the others. Hybrid mode is for **one** local primary + offline resilience — do not run two offline writers in hybrid yet (that's the deferred R-3 item).
 
@@ -63,7 +65,7 @@ curl -s https://<space>.hf.space/api/migrate/count -H "Authorization: Bearer <CL
 | Where | ✅ Expect | ❌ Red flag |
 |---|---|---|
 | Local log | `migrate/export` activity; clean auth line | — |
-| HF log | `migrate/import: username=… local_owner_id=X cloud_owner_id=Y` then `migrate/import: cloud_owner_id=Y imported={…} total=N remap=…` | `row skip in <table>` (a row failed — now isolated, but tell me which table), `sequence reset skipped`, `HTTP 401`, `fatal error` |
+| HF log | `migrate/import: user=… source_owner_id=X dest_owner_id=Y` then `migrate/import: dest_owner_id=Y imported={…} total=N remap={'from':X,'to':Y}` | `row skip in <table>` (a row failed — now isolated, but tell me which table), `sequence reset skipped`, `HTTP 401`, `fatal error` |
 | Cloud count | `/api/migrate/count` equals what you created | counts lower than local |
 
 **Post-fix behaviour to confirm (the bugs we fixed):**
@@ -100,6 +102,41 @@ curl -s https://<space>.hf.space/api/migrate/count -H "Authorization: Bearer <CL
 8. **Exactly-once check:** the 2 offline bills have **distinct invoice numbers** and appear **once** on the cloud — no duplicates.
 
 ---
+
+## 2c. Scenario C — Fresh-device login + Cloud-data nudge (Step 3, verified 2026-06-27)
+
+*Proves the cross-DB identity + the "Cloud data available" sync nudge that the `/api/migrate/count` scoping fix unblocked.*
+
+1. **On the web (cloud):** register a new owner (e.g. `Rakshith_Dev`) and add **≥1 record** (a customer/invoice). *(An empty cloud account produces no nudge — by design.)*
+2. **On the downloaded local app:** log in as the **same** username/password.
+   - Local log: local `/login` 401 → `[LOGIN] Fresh device — local mirror created (BizID …)`.
+   - The local mirror is created with the **same BizID**; integer ids differ (cloud `business=12`, local `business=127`) — that's expected and the whole point of uid.
+3. Watch the browser console: `[LOGIN-IDENTITY] BizID consistent (BA-…)` then **`[LOGIN-SENSE] Cloud has more data than this device (cloud=N, local=1)`** → the **"Cloud data available"** modal appears.
+   - Modal dismiss is **× only** (no backdrop/accidental close); **Sync now** runs the merge.
+4. Click **Sync now**:
+   - Console: `[SYNC] cloud-to-local complete: N records merged`.
+   - HF log: `migrate/export: resolved business_id=12 for username=… (JWT id=127)`.
+   - Local log: `migrate/import: … remap={'from':12,'to':127}` and `imported={…}`.
+5. Verify the cloud records now appear in the **local** Contacts/Invoices, scoped to the local owner.
+
+| ✅ Expect | ❌ Red flag |
+|---|---|
+| Nudge fires only when cloud > local; merges under the local owner; no dupes | No `[LOGIN-SENSE]` despite cloud having data (→ count scoping / JWT_SECRET), or merged rows land under the wrong owner |
+
+## 2d. Scenario D — Durable uid: cross-DB no-collision + idempotent re-sync (Step 3 / R-3)
+
+*Proves sync/migration match on `uid`, not the per-DB integer `id`, and that re-syncing never duplicates.*
+
+1. After Scenario C, **run "Sync now" a second time** (or re-login → nudge → Sync now).
+   - Expect: it reports the same merge but creates **zero duplicates** — the customer count stays the same. Matches are by `uid` (or natural key for pre-uid rows), not `id`.
+2. **Same-id, different-row check (optional, advanced):** create a record on cloud and a *different* record on local that happen to share an integer `id`; sync. Each must remain its **own** row (no wrong-row overwrite) — they're distinguished by `uid`.
+3. **Child-FK check:** an invoice + its line items synced together must keep the line items attached to the **correct** invoice on the destination (FK resolved via the parent's `uid`; the worker applies parents before children).
+   - Watch for `deferring … parent … not local yet` in logs — acceptable (rare, re-applies next cycle), but the child must **eventually** attach, never orphan.
+4. **Phase C unique indexes (applied 2026-06-27):** attempting to insert a duplicate `(business_id, uid)` must fail at the DB — confirms the uniqueness guarantee is enforced, not just convention.
+
+| ✅ Expect | ❌ Red flag |
+|---|---|
+| Re-sync = no new rows; children attach to right parent; `(business_id, uid)` unique enforced | Duplicate rows after re-sync, orphaned/mis-parented children, or a wrong-row overwrite |
 
 ## 3. What to share from Hugging Face (so I can confirm it went well)
 
@@ -138,6 +175,11 @@ Share that HF window **plus** the matching local window from `backend\logs\bizas
 | 8 | Offline 2 bills → reconnect → pushed, badge clears, tabs refresh | ☐ |
 | 9 | Offline bills have distinct numbers, appear once (exactly-once) | ☐ |
 | 10 | No `401` / `tenant mismatch` / `Corrupt payload` in either log | ☐ |
+| 11 | Fresh-device login builds local mirror; `[LOGIN-SENSE]` fires when cloud has more (Scenario C) | ☐ |
+| 12 | "Cloud data available" nudge appears; × is the only dismiss; **Sync now** merges N records | ☐ |
+| 13 | Re-running Sync now creates **zero duplicates**; children attach to correct parent (Scenario D) | ☐ |
+| 14 | Duplicate `(business_id, uid)` insert is rejected by the DB (Phase C unique index) | ☐ |
+| 15 | RLS cross-tenant negative tests run **against Postgres** and pass (§6) | ☐ |
 
 ---
 
@@ -153,10 +195,26 @@ To test:
 
 Notes: the button only appears on the downloaded app (it must reach `localhost:8001`). One JWT works on both backends (shared `JWT_SECRET`). It uses the **mirror** (id-preserving) import so local is an exact copy; BizID is unified automatically (local owner adopts the cloud BizID).
 
-## 5. Known limits — don't test these paths yet (they're deferred, by design)
+## 5. Known limits & status
 
-- **Two offline writers in Hybrid at once** can collide on integer ids (R-3). For simultaneous multi-writer, use **Cloud mode** on all terminals.
+- **R-3 (durable uid) — NOW LIVE (2026-06-27), soaking.** Sync/migration match on `uid`, not integer `id`; Phase C part-1 unique indexes are applied on both DBs. Two offline Hybrid writers should no longer collide — but **soak this under real two-device use** (Scenarios C/D) before relying on it; Phase C parts 2 (`uid NOT NULL`) and 3 (retire the id/remap fallbacks) are still pending. Until soak passes, **Cloud mode on all terminals** remains the safest multi-writer config.
 - **Posted journal / hash chain is not replicated in Hybrid** (R-4) — `GET /reports/verify-chain` may differ between local and cloud after a hybrid sync. Books on the **cloud** (source of truth) are authoritative.
 - **HF Space must run one worker** — with more, SSE subscribers split across workers and some real-time events are missed.
+
+---
+
+## 6. Security & RLS testing (tenant isolation)
+
+- **Run the existing cross-tenant negative tests against Postgres**, not just SQLite: `tests/test_rls_policies.py`, `tests/test_connections_security.py`, and the per-module isolation tests. SQLite has no RLS, so a SQLite-only green run does **not** prove cloud tenant isolation.
+- **S-1 — RLS is currently FAIL-OPEN** (a connection with no `app.current_business_id` set sees all tenants). The fix (fail-closed) is **deliberately deferred** and has its own dedicated, robust plan:
+
+  > 📄 **See [`RLS_FAIL_CLOSED_TEST_PLAN.md`](RLS_FAIL_CLOSED_TEST_PLAN.md).**
+  > **⚠️ S-1 is held on purpose** — it is a live-Postgres access-control change that **cannot be tested anywhere in the current dev/sandbox** (no Postgres locally; the local app is SQLite, which has no RLS). **If the predicate or the system-context exemption is wrong it can `deny-all` and take the cloud app down.** It must be validated on a **dedicated Postgres staging DB** with every MUST-PASS case green before it touches production. Until then, RLS fail-open is mitigated only by the app-layer `business_id` filters + the per-request GUC.
+
+---
+
+## 7. Production go-live validation (cross-ref)
+
+Before charging real merchants, also run the **MUST** items in `SESSION_HANDOFF.md` §8 (Production Readiness): green test-suite stamp, RLS fail-closed (§6 above), secrets hygiene + **rotate the exposed Supabase password**, backups/PITR on, offline-sync two-device QA (Scenarios B/C/D), and CA-validated GST/e-way. Security gap register: `SESSION_HANDOFF.md` §9.
 
 If any checklist row fails, send me the two log windows (HF + local) for that step and I'll pinpoint it.

@@ -35,7 +35,7 @@ router = APIRouter()
 logger = logging.getLogger("bizassist.routes.sync")
 
 # (R-7) Single shared source — see database/sync_map.py
-from database.sync_map import MODEL_MAP as _MODEL_MAP, ENTITY_BROADCAST_MAP
+from database.sync_map import MODEL_MAP as _MODEL_MAP, ENTITY_BROADCAST_MAP, resolve_parent_fk_uids
 
 
 # ---------------------------------------------------------------------------
@@ -222,43 +222,12 @@ def push_changes(
                     logger.info("sync/push: LWW conflict resolved (cloud won) for %s.id=%s", change.entity, change.entity_id)
                     continue
 
-            # Resolve FKs using parent UIDs if provided in data.
-            # If a parent_uid is present but the parent row isn't in this DB yet
-            # (child arrived before its parent — batches aren't ordered
-            # parent-first), DEFER the child rather than writing the source-DB
-            # integer id, which would point at the wrong row / an orphan. The
-            # change stays in the queue and re-applies on a later sync once the
-            # parent exists.
-            defer_change = False
-            for fk in model_cls.__table__.foreign_keys:
-                fk_col = fk.parent.name
-                parent_table = fk.column.table.name
-
-                parent_uid_val = None
-                for suffix in [f"{fk_col}_uid", f"{fk_col[:-3]}_uid" if fk_col.endswith("_id") else ""]:
-                    if suffix and suffix in data:
-                        parent_uid_val = data[suffix]
-                        break
-
-                if parent_uid_val:
-                    try:
-                        parent_row = db.execute(
-                            text(f'SELECT "{fk.column.name}" FROM "{parent_table}" WHERE uid = :uid'),
-                            {"uid": parent_uid_val}
-                        ).fetchone()
-                        if parent_row:
-                            data[fk_col] = parent_row[0]
-                        else:
-                            defer_change = True
-                            logger.info(
-                                "sync/push: deferring %s.id=%s — parent %s uid=%s not in this DB yet",
-                                change.entity, change.entity_id, parent_table, parent_uid_val,
-                            )
-                            break
-                    except Exception as e:
-                        logger.warning("sync/push: failed to resolve FK %s via uid %s: %s", fk_col, parent_uid_val, e)
-
-            if defer_change:
+            # Resolve FKs via the parent's durable uid (shared helper — same logic
+            # as the pull-apply worker). If a parent_uid is present but the parent
+            # row isn't in this DB yet, the child is DEFERRED rather than written
+            # with the source-DB integer id (wrong-row / orphan); it re-applies on
+            # a later sync once the parent exists.
+            if resolve_parent_fk_uids(db, model_cls, data, log_prefix=f"sync/push[{change.entity}.id={change.entity_id}]"):
                 continue
 
             # Apply fields to model instance

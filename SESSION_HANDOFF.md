@@ -68,7 +68,8 @@
 - **Auth test-user policy escape hatch:** allowed when `is_test_db` OR `ALLOW_TEST_USERS`.
 - **`migrate.py` rename (clarity):** `cloud_owner_id`→`dest_owner_id`, `local_owner_id`→`source_owner_id`, `_detect_local_owner_id`→`_detect_source_owner_id` (direction-neutral; the old names were correct only for local→cloud and read backwards for cloud→local sync). Logic unchanged.
 - **`SyncNudgeModal` UX:** dismiss only via an explicit **×** (no backdrop/accidental close); `Later` removed.
-- **Deployed to HF Space** (`rakshit-dev/BizAssist`) + pushed; GitHub `bizassist-billing` fixes pushed (`e232f81`).
+- **Step 3 Phase C part 1 (uid unique indexes)** ✅ — `alembic a1b2c3d4e5f6`, applied to **local SQLite** (693 tests green) **and cloud Supabase** (stamp `ee9c2223e60a` from `aea3a6d76429` → upgrade; pre-flight found zero NULL/dup uids). Plus 3 of 4 §7 regression tests (`tests/test_uid_cross_db.py`). Phase C parts 2 (NOT NULL) & 3 (retire fallbacks) deferred to post-soak.
+- **Deployed to HF Space** (`rakshit-dev/BizAssist`) + pushed; GitHub `bizassist-billing` pushed through Phase C part 1. **Suite: 693 passed (local, 2026-06-27).**
 
 ### 🔜 PENDING / NOT STARTED
 - **Vercel redeploy** of the web frontends (`frontend-billing`, `frontend-ai`) for the identity/sync UX + the `SyncNudgeModal` × change (the hosted web app still runs the prior bundle).
@@ -90,11 +91,11 @@
 
 ### Step 3 (durable uid) — remaining phases
 - **Phase A** ✅ · **Phase A.2** ✅ · **Phase B.1** ✅ · **Phase B.2** ✅ (all done + verified 2026-06-27 — see §4 COMPLETED).
-- **Phase C** (cleanup, after B soaks — ONLY remaining phase), split into 3 parts:
-  - **Part 1 (DRAFTED, additive + reversible):** `alembic/versions/a1b2c3d4e5f6_phase_c_uid_unique_indexes.py` — unique index on `(business_id, uid)` (or `(uid)` for child tables), pre-flight guarded against NULL/duplicate uids. Uses a unique *index* (not a table constraint) so it applies on SQLite + Postgres with no batch rebuild. **Apply manually** `alembic upgrade head` on both DBs **local-first**; NOT in the startup path. Not yet committed/applied.
-  - **Part 2 (TODO, after soak):** make `uid` NOT NULL.
-  - **Part 3 (TODO, after soak):** retire `?remap_ids` natural-key fallback + the `users`-exclusion + the `_remap_rows`/`_upsert_rows` id-preserving path + the `id`-fallback branches.
-  - §7 regression tests: 3 of 4 added (`tests/test_uid_cross_db.py`); merge-LWW-on-uid via the live sync path still TODO.
+- **Phase C** (cleanup, split into 3 parts):
+  - **Part 1 ✅ DONE & APPLIED (2026-06-27):** `alembic/versions/a1b2c3d4e5f6_phase_c_uid_unique_indexes.py` — unique index on `(business_id, uid)` (or `(uid)` for child tables), pre-flight guarded against NULL/duplicate uids. Unique *index* (not a constraint) → applies on SQLite + Postgres with no batch rebuild. **Applied to BOTH DBs:** local SQLite (`alembic upgrade head`, 693 tests green) **and** cloud Supabase (`alembic stamp ee9c2223e60a` from `aea3a6d76429`, then `upgrade head`; no NULL/dup → indexes live). Committed to both repos.
+  - **Part 2 (TODO, after soak):** make `uid` NOT NULL (alembic migration; verify zero NULLs on both DBs first — pre-flight already confirmed none).
+  - **Part 3 (TODO, after soak):** retire `?remap_ids` natural-key fallback + the `users`-exclusion + the `_remap_rows`/`_upsert_rows` id-preserving path + the `id`-fallback branches in `push_changes`/`sync_worker`/`_import_with_remap`.
+  - §7 regression tests: 3 of 4 added (`tests/test_uid_cross_db.py`); merge-LWW-on-uid via the live `push_changes`/`sync_worker` path still TODO (needs a sync harness).
 
 ### Cross-DB identity hardening (NEW — found 2026-06-27)
 - **PARTIALLY FIXED — BUG: cloud user on local app via restored session → 404 "User not found".** `/settings` (and other regular routes) resolve the user by `username` against the *active* backend; a restored **cloud** session in **local** mode has no local mirror → every core route 404s. **Done (this session):** `AuthContext` now catches `404` on the three restore-time fetches (profile/settings/businessConfig) and calls `logout()` — the 404-loop / stuck state is gone; the user cleanly drops to the login screen (re-login then builds the mirror via the fresh-device path). **Still open (follow-up, not blocking):** (a) the *preferred* path — transparently run the local-mirror create on restore instead of forcing a re-login; (b) backend `409 "needs local mirror"` signal instead of bare `404` so the frontend distinguishes "missing mirror" from a genuine not-found. Trust-critical edges are mitigated; the transparent-restore polish remains.
@@ -106,9 +107,10 @@
 - **Sync FK-via-uid — defer instead of writing a stale id.** `routes/sync.py::push_changes` and `services/sync_worker.py` pull-apply: when a `*_uid` parent key is present but the parent row isn't in the destination DB yet, the child row is now **deferred** (logged, re-applied on a later sync) instead of being written with the source-DB integer FK (which would be a wrong-row / orphan link). The worker also now applies **parent/master tables before child tables** within each pull batch (`_child_last` sort) so same-batch parent+child resolve in order and deferral is only the rare cross-batch safety net.
 
 ### Deploy / ops
-- **Deploy Phase A + B.1 to HF** (this push): `database/db.py`, `database/migration.py`, `routes/migrate.py` → `BizAssist_HF` + HF Space. Verify HF startup log shows `Added <table>.uid` + backfill, and Supabase has `gen_random_uuid()`.
-- **Vercel redeploy** for any pending frontend changes.
-- Keep `JWT_SECRET` identical local↔HF.
+- ✅ **HF Space deployed** (2026-06-27): all Step 3 backend (`db.py`, `migration.py`, `models.py`, `core/models.py`, `sync_map.py`, `routes/{auth,migrate,sync}.py`, `services/sync_worker.py`, both alembic uid revs) pushed to `BizAssist_HF` + Space; runtime migrator added `uid` columns + backfilled on Supabase. Phase C part-1 unique indexes applied to Supabase via manual `alembic`.
+- ✅ **GitHub `bizassist-billing`** pushed through Phase C part 1.
+- 🔜 **Vercel redeploy** of `frontend-billing` + `frontend-ai` for the identity/sync UX + the `SyncNudgeModal` × change (hosted web still on the prior bundle).
+- Keep `JWT_SECRET` identical local↔HF (sync 401s otherwise). Keep the Supabase URL **only** in the HF Space secret, not local `.env`.
 
 ### Quality / validation backlog (from PRODUCT_REVIEW & audits)
 - Execute `MANUAL_TEST_PLAN.md` end-to-end on **two systems** (real-time multi-writer trust test).
@@ -133,8 +135,8 @@
 - **S-1 — make RLS fail-CLOSED** for tenant tables (deny when `app.current_business_id` is unset; explicit allowlist for migration/admin/scheduler). Highest-value security item; latent cross-tenant exposure if any future path forgets the context.
 - **S-3 — token refresh/revocation:** 24h JWTs can't be revoked (e.g., after removing a cashier). Add a short access token + refresh, or a token-version claim checked against the user row.
 
-### C. Sync/code-health debt (now partly worsened by Phase B work)
-- **De-duplicate the sync apply logic.** `PRODUCT_REVIEW` A-2 flagged `_MODEL_MAP` duplicated across `routes/sync.py` + `services/sync_worker.py`; this session ADDED a second copy of the **FK-via-uid resolution + deferral** block in both files. Hoist the shared MODEL_MAP *and* the FK-resolution helper into one module imported by both before it drifts.
+### C. Sync/code-health debt
+- ✅ **DONE (2026-06-27):** the duplicated **FK-via-uid resolution + deferral** block is now a single `resolve_parent_fk_uids()` helper in `database/sync_map.py`, called by both `routes/sync.py::push_changes` and `services/sync_worker.py` pull-apply (MODEL_MAP was already shared there per R-7). *Behavior-preserving; needs `run_tests.ps1` + HF redeploy of `sync_map.py`/`sync.py`/`sync_worker.py`.*
 - **Finish `Sales.jsx` decomposition** (`PRODUCT_REVIEW` A-1, `R5_SALES_DECOMPOSITION_PLAN.md`) — ~3,600-line god-component on the money path; `usePaymentFlow`→`<PaymentPanel>` extraction is already underway.
 
 ### D. Scale-out prerequisites (`PRODUCT_REVIEW` A-4, Phase 5)
@@ -149,3 +151,70 @@
 - **Compliance:** e-way as compliant PDF first, API aggregator later (D7); CA-validate GST/e-way legality.
 - **Customer app** as a PWA share link first, not native (D8).
 - **Validate the network USP manually with the pilot** *before* deep Phase 5/6 spend — the moat (BizID network + shared ledger) rests on retailer behaviour, not tech (top startup risk).
+
+### G. Product / feature-depth gaps (from `VYAPAR_FEATURE_BENCHMARK.md`)
+*Not behind Vyapar on fundamentals; gaps are depth + compliance. (Benchmark is partly stale — accounting reports like Balance Sheet/Day Book/Trial Balance now exist; re-verify before acting.)*
+- **Compliance moat (where Vyapar wins — dedicated workstream, not a form field):** live **e-Invoice (IRN + signed QR)** IRP integration; **e-Way Bill** generation (NIC API); GSTR-1 JSON **GSTN-validated**. Currently fields/stubs, not live filing.
+- **Merchant must-haves — verify depth & finish:** thermal (58/80mm) + A4 print; WhatsApp/PDF share; **UPI QR on invoice**; Estimate/Quotation→Invoice convert; Delivery Challan; Credit/Debit notes that actually **post stock + ledger**; **barcode label printing** (scanning exists, generating doesn't).
+- **Known model limits:** one business per user → **multi-firm / multi-GSTIN** not supported; TCS/TDS, GSTR-2/9 not seen.
+- **Frontend maintainability:** `Sales.jsx`/`Purchases.jsx`/`Settings.jsx` heavy files (see §7.C); add shared primitives (`<DataTable>`, `<Money>`, `<Modal>`, an `api/` service layer) to kill duplicated per-page code.
+
+---
+
+## 8. PRODUCTION READINESS CHECKLIST (go-live gate)
+
+*What must be true before charging real merchants. Ordered must → should → later. Sources: `PRODUCT_REVIEW.md`, `PHASE_COMPLETION_CHECKLIST.md`, `HOSTING_MODE_MASTER_PLAN.md`.*
+
+**MUST (block go-live):**
+- [ ] **Green test-suite stamp** — `run_tests.ps1` all-green, single dated count pinned in the tracker; reconcile the 555/431/~541 drift (DoD Gate 1, the one open gate). *Current: 693 local green as of 2026-06-27.*
+- [ ] **RLS fail-CLOSED** (S-1) before onboarding multiple untrusted tenants on cloud — today policies pass when `app.current_business_id` is unset. App-layer filters cover it now, but one forgetful `SessionLocal()` path = cross-tenant leak.
+- [ ] **Secrets hygiene:** `JWT_SECRET` ≥32 bytes and identical local↔HF; Supabase URL/password **only** in the HF Space secret (not local `.env`); **rotate the Supabase password** (exposed in chat/plaintext this session); confirm `.env` stays gitignored (it is).
+- [ ] **`ALLOW_TEST_USERS` unset in prod** and prod `DATABASE_URL` does **not** contain the substring "test" (the test-user gate keys off both).
+- [ ] **Backups on:** Supabase PITR / automated backups enabled; documented restore drill. Local SQLite backup guidance for downloaded-app users.
+- [ ] **Offline-sync live QA on two real devices** (R7b) — the multi-writer trust test in `MANUAL_TEST_PLAN.md`. Soak the Step 3 uid path here.
+- [ ] **GST / e-way legality CA-validated** before invoices are filed on (compliance/legal risk, not code).
+
+**SHOULD (soon after launch):**
+- [ ] **Observability:** error tracking (e.g. Sentry) on backend + both frontends; HF Space uptime check; alert on sync auto-disable (the 5-consecutive-failure breaker exists — wire it to a notification).
+- [ ] **Token refresh/revocation** (S-3) — short access token + refresh or a `token_version` claim, so removing a cashier takes effect < 24h.
+- [ ] **Rate-limiting confirmed enforced on cloud** (`rate_limit_configs` present) and CORS allowlist set to the real prod origins.
+- [ ] **Reduce sync DEBUG log spam** (`[SYNC_WORKER] Running sync` every 15s → TRACE / only-on-work) so real signal isn't buried.
+
+**LATER (scale / growth):**
+- [ ] **Redis for shared state** (cache / scheduler / rate-limiter) before any multi-worker / multi-instance deploy — single-worker is a hard ceiling (A-4); app warns if `WEB_CONCURRENCY>1`.
+- [ ] **Subscription/trial gating enforced** on cloud data + AI + hosting (Razorpay, manual activation first — D6) before monetisation.
+
+## 9. SECURITY POSTURE & GAP REGISTER
+
+*Strong foundation (per `PRODUCT_REVIEW` Part A: "Security 🟢 Strong, 1 caveat"). What's solid vs the open gaps, each with status + action.*
+
+**Solid (keep):** JWT HS256 (env secret, 24h) · bcrypt passwords · single-use 30s SSE tickets · RBAC owner/cashier (single-source guard, backend-authoritative, `test_roles.py`) · tenant isolation in depth (app-layer `business_id` + Postgres RLS FORCE, per-table policies, cross-tenant negative tests) · money integrity (posted double-entry, SHA-256 hash chain + `verify_chain`, append-only period locks, two-wall idempotency) · no `eval`/`exec`/`shell=True`/`debug=True`, CORS allowlist, no secrets in git.
+
+**Open gaps:**
+| # | Sev | Gap | Status / action |
+|---|---|---|---|
+| S-1 | 🟠 Med | **RLS fail-open** — policies pass when tenant GUC unset | OPEN, **deliberately deferred** (can deny-all if wrong). Test plan: **`RLS_FAIL_CLOSED_TEST_PLAN.md`**; now **automatable** via `backend/tests/test_rls_postgres.py` (pytest + testcontainers Postgres — no prod/Supabase needed; skips without Docker). Make fail-closed + exempt migration/seeder/scheduler before multi-tenant scale. |
+| S-3 | 🟡 Low | **No token refresh/revocation** — 24h JWT can't be revoked early | OPEN. Add refresh or `token_version` claim checked vs user row. |
+| SEC-NEW-1 | 🟠 Med | **Supabase DB password exposed** (plaintext in local `.env` + this chat) | ACTION: rotate in Supabase; keep new value only in HF Space secret. |
+| SEC-NEW-2 | 🟡 Low | **Test-user gate is substring-based** (`"test" in DATABASE_URL`) + broad prefix list | Mitigated by `ALLOW_TEST_USERS` escape hatch; ensure prod `DATABASE_URL` has no "test" substring and `ALLOW_TEST_USERS` unset. |
+| S-2 | 🟡 Low | **SQLite (local) has no RLS** — app-layer only | ACCEPTED for single-merchant local; cloud Postgres is where RLS enforces. Document. |
+| S-4/S-5 | 🔵 Info | JWT decoded twice; middleware swallows decode errors | Info only; S-5 pairs with S-1 (unset context must not mean "see all"). |
+
+**Net:** money path and multi-tenant isolation are genuinely strong; the one item to close before widening the tenant base is **S-1 (fail-closed RLS)**, and operationally **rotate the exposed Supabase password**.
+
+---
+
+## 10. MASTER SEQUENCE TO FOLLOW NEXT (ordered)
+
+*The recommended order across everything open. Each step is shippable; do them roughly in sequence (dependencies noted). Plans referenced: `RLS_FAIL_CLOSED_TEST_PLAN.md`, `REALTIME_SYNC_ROBUSTNESS_PLAN.md`, `TESTING.md`, `STEP3_UID_PLAN.md`.*
+
+1. **Land the loose ends (now).** Commit the uncommitted edits (sync de-dup, test scaffolds, test plans, this handoff); push GitHub + HF; **Vercel redeploy** both frontends. Pin a dated green `run_tests.ps1` count (DoD Gate 1) and reconcile the 555/431/693 drift.
+2. **Wire CI (cheap, compounding).** Add the GitHub Actions from `TESTING.md`: pytest (SQLite) + `test_rls_postgres.py` (service Postgres) + Playwright. Now every change is gated.
+3. **Soak Step 3 (a few days of real two-device use).** Run `MANUAL_TEST_PLAN.md` Scenarios B/C/D; watch logs for `deferring` / `failed to resolve FK`. Confirm idempotent re-sync (no dupes) and unique-index enforcement.
+4. **Step 3 Phase C parts 2 & 3** (after soak): `uid NOT NULL`; retire the `?remap_ids`/`users`-exclusion/`id`-fallback crutches. Tests-first (`STEP3_UID_PLAN.md §7`, incl. the 4th merge-LWW-on-uid test).
+5. **S-1 — RLS fail-closed.** Make `test_rls_postgres.py` green first (it already automates the matrix), implement the fail-closed migration + system-context (BYPASSRLS) exemption per `RLS_FAIL_CLOSED_TEST_PLAN.md`, validate on Postgres staging/CI, then apply to Supabase with the rollback ready. **Gate before widening the tenant base.** Also: rotate the exposed Supabase password.
+6. **Real-time sync robustness** (`REALTIME_SYNC_ROBUSTNESS_PLAN.md`): **Phase 1 (delta push)** → **Phase 2 (ordered change-log + gap recovery)** for Firestore-grade reliability → **Phase 3 (optimistic concurrency + field merge)**. Phases 4 (presence) / 5 (CRDT for collaborative surfaces) later.
+7. **Scale-out prep:** Redis for cache/scheduler/rate-limiter **and** realtime fan-out + change-log catch-up (needed before any multi-worker deploy; ties into sync Phase 2).
+8. **Code-health:** finish `Sales.jsx`/`Purchases.jsx`/`Settings.jsx` decomposition + shared FE primitives (`<DataTable>/<Money>/<Modal>/api layer`).
+9. **Product / compliance depth (revenue-gated):** subscription/trial gating (Razorpay), then the `VYAPAR_FEATURE_BENCHMARK` gaps — e-Invoice IRN, e-Way Bill, UPI QR, credit/debit-note posting — and CA-validate GST/e-way.
+10. **Pilot validation of the network USP** in parallel throughout — the moat rests on retailer behaviour, not tech.

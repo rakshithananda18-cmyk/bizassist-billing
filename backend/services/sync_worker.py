@@ -79,7 +79,7 @@ def _safe_broadcast(business_id: int, event: dict):
         logger.warning("[SYNC_WORKER] Failed to broadcast event: %s", e)
 
 # (R-7) Single shared source — see database/sync_map.py
-from database.sync_map import MODEL_MAP as _MODEL_MAP, ENTITY_BROADCAST_MAP
+from database.sync_map import MODEL_MAP as _MODEL_MAP, ENTITY_BROADCAST_MAP, resolve_parent_fk_uids
 
 
 def _row_to_dict(row) -> dict:
@@ -386,42 +386,13 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
                             with db.begin_nested():
                                 data = dict(record)
                                 
-                                # Resolve foreign keys using parent UIDs if provided in data.
-                                # If a parent_uid is present but its row isn't local
-                                # yet (child pulled before parent), DEFER this record
-                                # instead of writing the source-DB integer id (which
-                                # would be a wrong-row / orphan link). It re-applies on
-                                # a later pull once the parent has landed.
-                                defer_record = False
-                                for fk in model_cls.__table__.foreign_keys:
-                                    fk_col = fk.parent.name
-                                    parent_table = fk.column.table.name
-
-                                    parent_uid_val = None
-                                    for suffix in [f"{fk_col}_uid", f"{fk_col[:-3]}_uid" if fk_col.endswith("_id") else ""]:
-                                        if suffix and suffix in data:
-                                            parent_uid_val = data[suffix]
-                                            break
-
-                                    if parent_uid_val:
-                                        try:
-                                            parent_row = db.execute(
-                                                text(f'SELECT "{fk.column.name}" FROM "{parent_table}" WHERE uid = :uid'),
-                                                {"uid": parent_uid_val}
-                                            ).fetchone()
-                                            if parent_row:
-                                                data[fk_col] = parent_row[0]
-                                            else:
-                                                defer_record = True
-                                                logger.info(
-                                                    "[SYNC_WORKER] deferring %s uid=%s — parent %s uid=%s not local yet",
-                                                    table_name, rec_uid, parent_table, parent_uid_val,
-                                                )
-                                                break
-                                        except Exception as e:
-                                            logger.warning("[SYNC_WORKER] failed to resolve FK %s via uid %s: %s", fk_col, parent_uid_val, e)
-
-                                if defer_record:
+                                # Resolve foreign keys via the parent's durable uid
+                                # (shared helper — same logic as push_changes). If a
+                                # parent_uid is present but its row isn't local yet
+                                # (child pulled before parent), DEFER this record
+                                # instead of writing a stale source-DB integer id
+                                # (wrong-row / orphan); it re-applies on a later pull.
+                                if resolve_parent_fk_uids(db, model_cls, data, log_prefix="[SYNC_WORKER]"):
                                     continue
 
                                 target_obj = existing if existing else model_cls()
