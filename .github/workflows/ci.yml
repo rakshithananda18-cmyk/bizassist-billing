@@ -38,6 +38,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run SQLite Logic Tests
+        env:
+          JWT_SECRET: dev-test-secret-please-change-0123456789abcdef
+          GROQ_API_KEY: mock_groq_api_key
         run: |
           cd backend
           python -m pytest -q --ignore=tests/test_rls_postgres.py
@@ -45,6 +48,8 @@ jobs:
       - name: Run Postgres RLS Tests
         env:
           TEST_PG_URL: postgresql://postgres:pass@localhost:5432/rls_test
+          JWT_SECRET: dev-test-secret-please-change-0123456789abcdef
+          GROQ_API_KEY: mock_groq_api_key
         run: |
           cd backend
           python -m pytest tests/test_rls_postgres.py -v
