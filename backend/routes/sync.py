@@ -222,17 +222,24 @@ def push_changes(
                     logger.info("sync/push: LWW conflict resolved (cloud won) for %s.id=%s", change.entity, change.entity_id)
                     continue
 
-            # Resolve FKs using parent UIDs if provided in data
+            # Resolve FKs using parent UIDs if provided in data.
+            # If a parent_uid is present but the parent row isn't in this DB yet
+            # (child arrived before its parent — batches aren't ordered
+            # parent-first), DEFER the child rather than writing the source-DB
+            # integer id, which would point at the wrong row / an orphan. The
+            # change stays in the queue and re-applies on a later sync once the
+            # parent exists.
+            defer_change = False
             for fk in model_cls.__table__.foreign_keys:
                 fk_col = fk.parent.name
                 parent_table = fk.column.table.name
-                
+
                 parent_uid_val = None
                 for suffix in [f"{fk_col}_uid", f"{fk_col[:-3]}_uid" if fk_col.endswith("_id") else ""]:
                     if suffix and suffix in data:
                         parent_uid_val = data[suffix]
                         break
-                        
+
                 if parent_uid_val:
                     try:
                         parent_row = db.execute(
@@ -241,8 +248,18 @@ def push_changes(
                         ).fetchone()
                         if parent_row:
                             data[fk_col] = parent_row[0]
+                        else:
+                            defer_change = True
+                            logger.info(
+                                "sync/push: deferring %s.id=%s — parent %s uid=%s not in this DB yet",
+                                change.entity, change.entity_id, parent_table, parent_uid_val,
+                            )
+                            break
                     except Exception as e:
                         logger.warning("sync/push: failed to resolve FK %s via uid %s: %s", fk_col, parent_uid_val, e)
+
+            if defer_change:
+                continue
 
             # Apply fields to model instance
             target_obj = existing if existing else model_cls()

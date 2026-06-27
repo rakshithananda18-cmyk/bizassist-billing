@@ -124,14 +124,21 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="Username already exists")
         
         # Test User Policy (leakage prevention):
-        # 1. Test usernames (starting with legacy prefixes or the new 'biz_test_') are ONLY allowed on test databases.
-        # 2. Test user creation is blocked on production/development databases to prevent pollution.
+        # 1. Test usernames (legacy fixture prefixes + 'biz_test_') are ONLY allowed
+        #    on a test database, OR when ALLOW_TEST_USERS is explicitly set.
+        # 2. Otherwise blocked on production/development DBs to prevent pollution.
+        # The ALLOW_TEST_USERS escape hatch exists so a CI/staging run — or a real
+        # user whose name happens to start with one of these prefixes — isn't hard-
+        # blocked: the operator opts in deliberately rather than relying solely on
+        # the fragile "'test' in the DB URL" substring check.
         import os
-        is_test_db = "test" in os.environ.get("DATABASE_URL", "")
+        db_url = os.environ.get("DATABASE_URL", "")
+        allow_test_users = os.environ.get("ALLOW_TEST_USERS", "").lower() in ("1", "true", "yes")
+        is_test_db = "test" in db_url
         test_prefixes = ("own_", "test_", "idem_", "pull_", "u_", "o_", "biz_test_", "rec_")
         is_test_username = req.username.startswith(test_prefixes)
-        
-        if is_test_username and not is_test_db:
+
+        if is_test_username and not (is_test_db or allow_test_users):
             logger.critical(f"[AUTH] Blocked test username '{req.username}' registration attempt on non-test database.")
             raise HTTPException(
                 status_code=400,

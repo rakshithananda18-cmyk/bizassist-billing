@@ -823,7 +823,13 @@ def count_records(
         ...
       }
     """
-    business_id = _business_id_for(current_user)
+    # Resolve the business scope against THIS DB by BizID+username — NOT the raw
+    # JWT id. The count endpoint is called cross-backend by reconcileBizIdOnLogin
+    # (the local token hits the cloud), and the token's integer id is per-DB:
+    # a local id has no meaning on the cloud, so `_business_id_for` would scope
+    # to a non-existent business and report 0 (the divergence-sense nudge then
+    # never fires). `_resolve_owner_id` maps the identity to the correct local id.
+    business_id = _resolve_owner_id(current_user, db)
     existing = _existing_tables(db)
 
     try:

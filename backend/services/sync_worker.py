@@ -330,7 +330,20 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
             # Temporarily disable sync triggers so writes are not re-queued
             token_var = sync_disabled_var.set(True)
             try:
-                for table_name, records in pulled.items():
+                # Apply parent/master tables before child tables so the FK-uid
+                # resolution below always finds the parent within the same batch
+                # (parent and child are typically created and pulled together).
+                # Without this, a child could process first, fail to resolve its
+                # parent, and get deferred unnecessarily. Stable sort keeps the
+                # server's original order within each rank.
+                _child_last = (
+                    "invoice_line_items", "purchase_order_line_items",
+                    "purchase_invoice_line_items", "invoice_payments",
+                    "stock_transfer_line_items", "product_barcodes",
+                    "stock_ledger", "shared_ledgers",
+                )
+                _ordered = sorted(pulled.items(), key=lambda kv: 1 if kv[0] in _child_last else 0)
+                for table_name, records in _ordered:
                     model_cls = _MODEL_MAP.get(table_name)
                     if not model_cls:
                         continue
@@ -373,17 +386,23 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
                             with db.begin_nested():
                                 data = dict(record)
                                 
-                                # Resolve foreign keys using parent UIDs if provided in data
+                                # Resolve foreign keys using parent UIDs if provided in data.
+                                # If a parent_uid is present but its row isn't local
+                                # yet (child pulled before parent), DEFER this record
+                                # instead of writing the source-DB integer id (which
+                                # would be a wrong-row / orphan link). It re-applies on
+                                # a later pull once the parent has landed.
+                                defer_record = False
                                 for fk in model_cls.__table__.foreign_keys:
                                     fk_col = fk.parent.name
                                     parent_table = fk.column.table.name
-                                    
+
                                     parent_uid_val = None
                                     for suffix in [f"{fk_col}_uid", f"{fk_col[:-3]}_uid" if fk_col.endswith("_id") else ""]:
                                         if suffix and suffix in data:
                                             parent_uid_val = data[suffix]
                                             break
-                                            
+
                                     if parent_uid_val:
                                         try:
                                             parent_row = db.execute(
@@ -392,9 +411,19 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
                                             ).fetchone()
                                             if parent_row:
                                                 data[fk_col] = parent_row[0]
+                                            else:
+                                                defer_record = True
+                                                logger.info(
+                                                    "[SYNC_WORKER] deferring %s uid=%s — parent %s uid=%s not local yet",
+                                                    table_name, rec_uid, parent_table, parent_uid_val,
+                                                )
+                                                break
                                         except Exception as e:
                                             logger.warning("[SYNC_WORKER] failed to resolve FK %s via uid %s: %s", fk_col, parent_uid_val, e)
-                                
+
+                                if defer_record:
+                                    continue
+
                                 target_obj = existing if existing else model_cls()
                                 
                                 # If UID is present, we never overwrite or force the integer PK ID
