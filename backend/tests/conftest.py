@@ -32,6 +32,26 @@ except Exception:
 # will NOT overwrite this, so tests ignore whatever the dev's .env says.
 os.environ["LLM_ROUTER"] = "off"
 
+import pytest
+
+@pytest.fixture(scope="module", autouse=True)
+def setup_and_dispose_db():
+    try:
+        from database.db import engine
+        from database.models import Base
+        from database.migration import run_migrations_and_seed
+        engine.dispose()
+        Base.metadata.create_all(bind=engine)
+        run_migrations_and_seed()
+    except Exception:
+        pass
+    yield
+    try:
+        from database.db import engine
+        engine.dispose()
+    except Exception:
+        pass
+
 
 import time
 import json
