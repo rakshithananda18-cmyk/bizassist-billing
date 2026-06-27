@@ -74,7 +74,7 @@
 - **Vercel redeploy** of the web frontends (`frontend-billing`, `frontend-ai`) for the identity/sync UX + the `SyncNudgeModal` × change (the hosted web app still runs the prior bundle).
 - **Commit the loose ends:** `SyncNudgeModal.jsx` (uncommitted) + the `migrate.py` rename; tidy the stray `test_results.json` commit message (`9cb9d14`).
 - **Confirm HF startup log** shows `Added <table>.uid` + backfill on Supabase and **no `_check_schema_integrity` halt** (deployed but not yet eyeballed).
-- **Step 3 Phase C** (after B soaks): `uid` index + `UniqueConstraint(business_id, uid)`; `uid` NOT NULL; retire `?remap_ids` natural-key fallback, the `users`-exclusion, and the `id`-fallback in the apply paths. Add the missing uid tests from `STEP3_UID_PLAN.md §7` (cross-DB no-collision, child-FK-by-parent-uid, merge-LWW-on-uid, id-fallback).
+- **Step 3 Phase C** (after B soaks): `uid` index + `UniqueConstraint(business_id, uid)`; `uid` NOT NULL; retire `?remap_ids` natural-key fallback, the `users`-exclusion, and the `id`-fallback in the apply paths. **uid regression tests (`STEP3_UID_PLAN.md §7`) — 3 of 4 added** in `tests/test_uid_cross_db.py` (cross-DB no-collision, child-FK-by-parent-uid, id-fallback); the 4th (merge-LWW-on-`uid` via the live `push_changes`/`sync_worker` path, vs the id-keyed `_upsert_rows` LWW already covered by `test_merge_lww_keeps_newer_inserts_new`) still TODO. **Run these (user; Windows venv) to confirm green before starting Phase C.**
 
 ## 5. NEXT EXECUTION POINTER
 
@@ -90,7 +90,11 @@
 
 ### Step 3 (durable uid) — remaining phases
 - **Phase A** ✅ · **Phase A.2** ✅ · **Phase B.1** ✅ · **Phase B.2** ✅ (all done + verified 2026-06-27 — see §4 COMPLETED).
-- **Phase C** (cleanup, after B soaks — ONLY remaining phase): add `uid` index + `UniqueConstraint(business_id, uid)`; make `uid` NOT NULL; retire `?remap_ids` natural-key fallback + the `users`-exclusion + the `_remap_rows`/`_upsert_rows` id-preserving path + the `id`-fallback branches where uid now covers it. Land the `STEP3_UID_PLAN.md §7` regression tests first.
+- **Phase C** (cleanup, after B soaks — ONLY remaining phase), split into 3 parts:
+  - **Part 1 (DRAFTED, additive + reversible):** `alembic/versions/a1b2c3d4e5f6_phase_c_uid_unique_indexes.py` — unique index on `(business_id, uid)` (or `(uid)` for child tables), pre-flight guarded against NULL/duplicate uids. Uses a unique *index* (not a table constraint) so it applies on SQLite + Postgres with no batch rebuild. **Apply manually** `alembic upgrade head` on both DBs **local-first**; NOT in the startup path. Not yet committed/applied.
+  - **Part 2 (TODO, after soak):** make `uid` NOT NULL.
+  - **Part 3 (TODO, after soak):** retire `?remap_ids` natural-key fallback + the `users`-exclusion + the `_remap_rows`/`_upsert_rows` id-preserving path + the `id`-fallback branches.
+  - §7 regression tests: 3 of 4 added (`tests/test_uid_cross_db.py`); merge-LWW-on-uid via the live sync path still TODO.
 
 ### Cross-DB identity hardening (NEW — found 2026-06-27)
 - **PARTIALLY FIXED — BUG: cloud user on local app via restored session → 404 "User not found".** `/settings` (and other regular routes) resolve the user by `username` against the *active* backend; a restored **cloud** session in **local** mode has no local mirror → every core route 404s. **Done (this session):** `AuthContext` now catches `404` on the three restore-time fetches (profile/settings/businessConfig) and calls `logout()` — the 404-loop / stuck state is gone; the user cleanly drops to the login screen (re-login then builds the mirror via the fresh-device path). **Still open (follow-up, not blocking):** (a) the *preferred* path — transparently run the local-mirror create on restore instead of forcing a re-login; (b) backend `409 "needs local mirror"` signal instead of bare `404` so the frontend distinguishes "missing mirror" from a genuine not-found. Trust-critical edges are mitigated; the transparent-restore polish remains.
