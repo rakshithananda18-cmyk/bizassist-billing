@@ -126,10 +126,25 @@ def _compute_line(line: dict, product: Optional[Product], *, intra: bool, tax_in
     }
 
 
-def _next_invoice_number(db, business_id: int) -> str:
-    """Simple per-business sequential number when the caller doesn't supply one."""
-    n = db.query(func.count(Invoice.id)).filter(Invoice.business_id == business_id).scalar() or 0
-    return f"INV-{n + 1:04d}"
+def _next_invoice_number(db, business_id: int, counter_prefix: Optional[str] = None) -> str:
+    """Per-business, PER-COUNTER sequential number when the caller doesn't supply one.
+
+    Multi-terminal POS (plan §9.3): each terminal owns its own number series via a
+    distinct ``counter_prefix`` (e.g. ``C1``, ``C2``, ``OW``) so two counters can
+    never mint the same number for different sales. We count only invoices already
+    in THIS prefix's series, so a brand-new counter starts at 1 independently.
+
+    ``counter_prefix`` may arrive with or without a trailing '-'; normalised here.
+    Falls back to the legacy ``INV`` series for single-counter / unspecified callers.
+    """
+    prefix = (counter_prefix or "INV").strip().rstrip("-") or "INV"
+    n = (
+        db.query(func.count(Invoice.id))
+        .filter(Invoice.business_id == business_id, Invoice.invoice_id.like(f"{prefix}-%"))
+        .scalar()
+        or 0
+    )
+    return f"{prefix}-{n + 1:04d}"
 
 
 def create_sale_invoice(db, *, business_id: int, lines: list,
@@ -148,10 +163,22 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
                         godown_id: Optional[int] = None,
                         bill_discount: float = 0.0,
                         cash_discount: float = 0.0,
+                        counter_prefix: Optional[str] = None,
                         mark_paid: bool = False) -> Invoice:
     """
     COMMAND: create one sale invoice atomically (header + lines + stock moves).
-    Commits the transaction. Idempotent on (business_id, invoice_no).
+    Commits the transaction.
+
+    Numbering: the caller's ``invoice_no`` is used verbatim if given; otherwise a
+    per-COUNTER number is allocated from ``counter_prefix`` (multi-terminal POS,
+    plan §9.3 — each terminal owns its own series so two counters never collide).
+
+    Idempotency: the authoritative retry guard is the route-level
+    ``X-Client-Request-Id`` wall (``core.sync.idempotency`` — UNIQUE per business).
+    The ``invoice_no`` match below is a benign SECONDARY wall: with per-counter
+    prefixes a number is unique to one terminal's series, so a match here means a
+    genuine retry of the SAME bill (safe to return), never two different sales
+    merged — the silent-lost-sale failure mode that motivated §9.3.
 
     `lines`: list of dicts, each at least {quantity, unit_price} plus one of
     {product_id, product_name}; optional discount/discount_pct, tax rates
@@ -162,7 +189,7 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
     if not lines:
         raise ValueError("create_sale_invoice needs at least one line")
 
-    number = (invoice_no or "").strip() or _next_invoice_number(db, business_id)
+    number = (invoice_no or "").strip() or _next_invoice_number(db, business_id, counter_prefix)
 
     # ── Idempotency: same number for this business → return the existing one ──
     existing = (

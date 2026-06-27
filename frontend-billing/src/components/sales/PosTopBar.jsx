@@ -6,6 +6,7 @@
 // state; all actions are passed in as callbacks.
 import React from 'react'
 import { CloseIcon, PlusIcon, SettingsIcon } from '../../components/Icons'
+import CounterMenu from './CounterMenu'
 
 export default function PosTopBar({
   tabs,
@@ -17,6 +18,9 @@ export default function PosTopBar({
   onClose,
   onOpenSettings,
   funcKeys = {},
+  counterPrefix,
+  canManageCounters = false,
+  onManageCounters,
 }) {
   return (
     <div className="pos-top-bar">
@@ -90,6 +94,8 @@ export default function PosTopBar({
           </button>
         </div>
 
+        <CounterMenu prefix={counterPrefix} canManage={canManageCounters} onManage={onManageCounters} />
+        <span className="pos-divider">|</span>
         <span className="pos-settings-trigger" onClick={onOpenSettings} title="Settings">
           <SettingsIcon size={16} />
         </span>

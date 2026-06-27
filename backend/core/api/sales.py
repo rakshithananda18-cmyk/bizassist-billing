@@ -69,6 +69,7 @@ class SaleRequest(BaseModel):
     reverse_charge:  bool = False
     tax_inclusive:   Optional[bool] = None   # None → take the business config default
     device_id:       Optional[str] = None
+    counter_prefix:  Optional[str] = None   # per-terminal invoice-number series (multi-counter POS §9.3)
     godown_id:       Optional[int] = None
     cash_discount:   float = 0.0   # POST-tax cash discount / round-off (₹) — reduces payable, not GST (R4)
     mark_paid:       bool = False   # "Paid & Print": settle the full payable exactly (status Paid)
@@ -154,7 +155,7 @@ def create_sale(req: SaleRequest,
             place_of_supply=req.place_of_supply, invoice_type=req.invoice_type,
             payment_mode=req.payment_mode, paid_amount=req.paid_amount,
             reverse_charge=req.reverse_charge, tax_inclusive=tax_inclusive,
-            device_id=req.device_id, godown_id=req.godown_id,
+            device_id=req.device_id, counter_prefix=req.counter_prefix, godown_id=req.godown_id,
             cash_discount=req.cash_discount, mark_paid=req.mark_paid,
         )
         background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "invoice"})
@@ -768,6 +769,7 @@ class FrontendInvoiceRequest(BaseModel):
     gst_enabled: bool = False
     notes: Optional[str] = None
     invoice_no: Optional[str] = None
+    counter_prefix: Optional[str] = None   # per-terminal invoice-number series (multi-counter POS §9.3)
     bill_discount: float = 0.0   # whole-invoice PRE-tax discount (absolute ₹), resolved on the client
     cash_discount: float = 0.0   # POST-tax cash discount / round-off (₹) — reduces payable, not GST (R4)
     paid_amount: float = 0.0     # amount received now → Paid/Partial/Unpaid status (default 0 = unpaid)
@@ -858,6 +860,7 @@ def create_sale_invoice_frontend(
             due_date=req.due_date,
             tax_inclusive=False,
             invoice_no=req.invoice_no,
+            counter_prefix=req.counter_prefix,
             bill_discount=req.bill_discount,
             cash_discount=req.cash_discount,
             paid_amount=req.paid_amount,

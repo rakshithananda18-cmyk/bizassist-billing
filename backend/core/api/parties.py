@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 from database.db import get_db
 from database.models import Customer, Vendor, Invoice, Payment
 from services.auth import get_active_user
-from services.realtime import realtime_manager
+from services.realtime import realtime_manager, delta_event
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.parties")
@@ -193,10 +193,14 @@ def create_customer(
     )
     db.add(c)
     db.commit()
-    background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "party"})
     db.refresh(c)
+    dto = _customer_out(c)
+    background_tasks.add_task(
+        realtime_manager.broadcast, bid,
+        delta_event("party", payload=dto, kind="customer", rid=c.id, uid=getattr(c, "uid", None)),
+    )
     logger.info("[PARTIES] created customer %s (biz=%s)", c.id, bid)
-    return _customer_out(c)
+    return dto
 
 
 @router.get("/customers/{customer_id}")
@@ -238,10 +242,14 @@ def update_customer(
             setattr(c, field, val)
 
     db.commit()
-    background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "party"})
     db.refresh(c)
     outstanding = _compute_outstanding(db, bid, customer_id)
-    return _customer_out(c, outstanding)
+    dto = _customer_out(c, outstanding)
+    background_tasks.add_task(
+        realtime_manager.broadcast, bid,
+        delta_event("party", payload=dto, kind="customer", rid=c.id, uid=getattr(c, "uid", None)),
+    )
+    return dto
 
 
 @router.get("/customers/{customer_id}/ledger")
@@ -344,10 +352,14 @@ def create_vendor(
     )
     db.add(v)
     db.commit()
-    background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "party"})
     db.refresh(v)
+    dto = _vendor_out(v)
+    background_tasks.add_task(
+        realtime_manager.broadcast, bid,
+        delta_event("party", payload=dto, kind="vendor", rid=v.id, uid=getattr(v, "uid", None)),
+    )
     logger.info("[PARTIES] created vendor %s (biz=%s)", v.id, bid)
-    return _vendor_out(v)
+    return dto
 
 
 @router.get("/vendors/{vendor_id}")
@@ -388,6 +400,10 @@ def update_vendor(
             setattr(v, field, val)
 
     db.commit()
-    background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "party"})
     db.refresh(v)
-    return _vendor_out(v)
+    dto = _vendor_out(v)
+    background_tasks.add_task(
+        realtime_manager.broadcast, bid,
+        delta_event("party", payload=dto, kind="vendor", rid=v.id, uid=getattr(v, "uid", None)),
+    )
+    return dto

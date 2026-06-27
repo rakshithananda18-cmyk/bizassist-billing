@@ -94,6 +94,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             "public_id": user.public_id,   # BizID — lets the client confirm/unify identity
             "business_name": business_name,
             "role": user.role,
+            "counter_prefix": user.counter_prefix,   # POS counter series for this login (§9.3a)
             "db_mode": _DB_MODE,   # 'local' | 'cloud' — tells frontend which backend this account lives on
         }
     except HTTPException:
@@ -178,6 +179,7 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             "public_id": user.public_id,   # BizID — client mirrors this to the local account
             "business_name": user.business_name,
             "role": user.role,
+            "counter_prefix": user.counter_prefix,   # POS counter series for this login (§9.3a)
             "db_mode": _DB_MODE,   # 'local' | 'cloud' — tells frontend which backend this account lives on
         }
     except HTTPException:
@@ -197,6 +199,7 @@ class ProfileUpdateRequest(BaseModel):
     state_code: Optional[str] = None
     pan: Optional[str] = None
     logo: Optional[str] = None
+    counter_prefix: Optional[str] = None   # owner sets their OWN POS counter series (§9.3a)
 
 
 @router.get("/profile")
@@ -216,7 +219,8 @@ def get_profile(current_user: dict = Depends(get_active_user), db: Session = Dep
         "address": user.address,
         "state_code": user.state_code,
         "pan": user.pan,
-        "logo": user.logo
+        "logo": user.logo,
+        "counter_prefix": user.counter_prefix,
     }
 
 
@@ -242,7 +246,11 @@ def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(get_a
         user.pan = req.pan
     if req.logo is not None:
         user.logo = req.logo
-        
+    if req.counter_prefix is not None:
+        import re
+        token = re.sub(r"[^A-Za-z0-9_]", "", req.counter_prefix.strip()).rstrip("-")[:8]
+        user.counter_prefix = token or None
+
     db.commit()
     db.refresh(user)
     
@@ -258,7 +266,8 @@ def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(get_a
         "address": user.address,
         "state_code": user.state_code,
         "pan": user.pan,
-        "logo": user.logo
+        "logo": user.logo,
+        "counter_prefix": user.counter_prefix,
     }
 
 

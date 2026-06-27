@@ -105,6 +105,8 @@ _COLUMN_MIGRATIONS = [
     # users — app settings JSON blob
     {"table": "users", "column": "settings", "ddl": "ALTER TABLE users ADD COLUMN settings TEXT"},
     {"table": "users", "column": "logo",     "ddl": "ALTER TABLE users ADD COLUMN logo TEXT"},
+    # users — per-login POS counter prefix (multi-terminal POS §9.3a)
+    {"table": "users", "column": "counter_prefix", "ddl": "ALTER TABLE users ADD COLUMN counter_prefix TEXT"},
     # invoices additions
     {"table": "invoices", "column": "godown_id",        "ddl": "ALTER TABLE invoices ADD COLUMN godown_id INTEGER"},
     {"table": "invoices", "column": "reverse_charge",   "ddl": "ALTER TABLE invoices ADD COLUMN reverse_charge BOOLEAN DEFAULT FALSE"},

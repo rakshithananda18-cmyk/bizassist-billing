@@ -1,11 +1,11 @@
 {
   "summary": {
-    "total": 690,
-    "passed": 690,
+    "total": 703,
+    "passed": 703,
     "failed": 0,
     "skipped": 0,
-    "duration": 163.47916436195374,
-    "timestamp": "2026-06-27T15:47:09.149298",
+    "duration": 276.6244647502899,
+    "timestamp": "2026-06-28T01:09:09.093917",
     "status": "completed"
   },
   "tests": [
@@ -15,7 +15,7 @@
       "file": "tests\\test_accounting.py",
       "line": 84,
       "outcome": "passed",
-      "duration": 0.08118470000044908,
+      "duration": 0.07084970000141766,
       "traceback": null,
       "longrepr": null
     },
@@ -25,7 +25,7 @@
       "file": "tests\\test_accounting.py",
       "line": 112,
       "outcome": "passed",
-      "duration": 0.023656899997149594,
+      "duration": 0.014825799997197464,
       "traceback": null,
       "longrepr": null
     },
@@ -35,7 +35,7 @@
       "file": "tests\\test_accounting.py",
       "line": 121,
       "outcome": "passed",
-      "duration": 0.77958220000437,
+      "duration": 0.580717699995148,
       "traceback": null,
       "longrepr": null
     },
@@ -45,7 +45,7 @@
       "file": "tests\\test_accounting.py",
       "line": 333,
       "outcome": "passed",
-      "duration": 0.055372900002112146,
+      "duration": 0.029211799992481247,
       "traceback": null,
       "longrepr": null
     },
@@ -55,7 +55,7 @@
       "file": "tests\\test_actions.py",
       "line": 75,
       "outcome": "passed",
-      "duration": 0.009856899996520951,
+      "duration": 0.013187000004108995,
       "traceback": null,
       "longrepr": null
     },
@@ -65,7 +65,7 @@
       "file": "tests\\test_actions.py",
       "line": 83,
       "outcome": "passed",
-      "duration": 0.008018500004254747,
+      "duration": 0.0072828999982448295,
       "traceback": null,
       "longrepr": null
     },
@@ -75,7 +75,7 @@
       "file": "tests\\test_actions.py",
       "line": 92,
       "outcome": "passed",
-      "duration": 0.006557200002134778,
+      "duration": 0.004776800007675774,
       "traceback": null,
       "longrepr": null
     },
@@ -85,7 +85,7 @@
       "file": "tests\\test_actions.py",
       "line": 100,
       "outcome": "passed",
-      "duration": 0.02898339999956079,
+      "duration": 0.03561229999468196,
       "traceback": null,
       "longrepr": null
     },
@@ -95,7 +95,7 @@
       "file": "tests\\test_actions.py",
       "line": 114,
       "outcome": "passed",
-      "duration": 0.030512900004396215,
+      "duration": 0.023109999994630925,
       "traceback": null,
       "longrepr": null
     },
@@ -105,7 +105,7 @@
       "file": "tests\\test_actions.py",
       "line": 131,
       "outcome": "passed",
-      "duration": 0.024992899998323992,
+      "duration": 0.015731300009065308,
       "traceback": null,
       "longrepr": null
     },
@@ -115,7 +115,7 @@
       "file": "tests\\test_actions.py",
       "line": 138,
       "outcome": "passed",
-      "duration": 0.0027816000001621433,
+      "duration": 0.001267499988898635,
       "traceback": null,
       "longrepr": null
     },
@@ -125,7 +125,7 @@
       "file": "tests\\test_actions.py",
       "line": 145,
       "outcome": "passed",
-      "duration": 0.005500300001585856,
+      "duration": 0.005102199997054413,
       "traceback": null,
       "longrepr": null
     },
@@ -135,7 +135,7 @@
       "file": "tests\\test_actions.py",
       "line": 152,
       "outcome": "passed",
-      "duration": 0.005482000000483822,
+      "duration": 0.002519600006053224,
       "traceback": null,
       "longrepr": null
     },
@@ -145,7 +145,7 @@
       "file": "tests\\test_actions.py",
       "line": 158,
       "outcome": "passed",
-      "duration": 0.025863599999865983,
+      "duration": 0.017130599997472018,
       "traceback": null,
       "longrepr": null
     },
@@ -155,7 +155,7 @@
       "file": "tests\\test_actions.py",
       "line": 171,
       "outcome": "passed",
-      "duration": 0.012898900000436697,
+      "duration": 0.008574999999837019,
       "traceback": null,
       "longrepr": null
     },
@@ -165,7 +165,7 @@
       "file": "tests\\test_actions.py",
       "line": 182,
       "outcome": "passed",
-      "duration": 0.0015485999974771403,
+      "duration": 0.001594500005012378,
       "traceback": null,
       "longrepr": null
     },
@@ -175,7 +175,7 @@
       "file": "tests\\test_actions.py",
       "line": 190,
       "outcome": "passed",
-      "duration": 0.0070324999978765845,
+      "duration": 0.0036069999914616346,
       "traceback": null,
       "longrepr": null
     },
@@ -185,7 +185,7 @@
       "file": "tests\\test_actions.py",
       "line": 200,
       "outcome": "passed",
-      "duration": 0.03075169999647187,
+      "duration": 0.015531199998804368,
       "traceback": null,
       "longrepr": null
     },
@@ -195,7 +195,7 @@
       "file": "tests\\test_agent_graph_tokens.py",
       "line": 38,
       "outcome": "passed",
-      "duration": 0.0006964999993215315,
+      "duration": 0.0007295999967027456,
       "traceback": null,
       "longrepr": null
     },
@@ -205,7 +205,7 @@
       "file": "tests\\test_agent_graph_tokens.py",
       "line": 43,
       "outcome": "passed",
-      "duration": 0.0013325999971129932,
+      "duration": 0.0005757999897468835,
       "traceback": null,
       "longrepr": null
     },
@@ -215,7 +215,7 @@
       "file": "tests\\test_agent_graph_tokens.py",
       "line": 48,
       "outcome": "passed",
-      "duration": 0.14727190000121482,
+      "duration": 0.16278159999637865,
       "traceback": null,
       "longrepr": null
     },
@@ -225,7 +225,7 @@
       "file": "tests\\test_agent_graph_tokens.py",
       "line": 63,
       "outcome": "passed",
-      "duration": 0.005022000004828442,
+      "duration": 0.0024971999955596402,
       "traceback": null,
       "longrepr": null
     },
@@ -235,7 +235,7 @@
       "file": "tests\\test_agent_graph_tokens.py",
       "line": 76,
       "outcome": "passed",
-      "duration": 0.005687299999408424,
+      "duration": 0.005449300006148405,
       "traceback": null,
       "longrepr": null
     },
@@ -245,7 +245,7 @@
       "file": "tests\\test_agent_graph_tokens.py",
       "line": 87,
       "outcome": "passed",
-      "duration": 0.01216240000212565,
+      "duration": 0.013682200005860068,
       "traceback": null,
       "longrepr": null
     },
@@ -255,7 +255,7 @@
       "file": "tests\\test_agent_loop.py",
       "line": 38,
       "outcome": "passed",
-      "duration": 0.00026220000290777534,
+      "duration": 0.0005090000049676746,
       "traceback": null,
       "longrepr": null
     },
@@ -265,7 +265,7 @@
       "file": "tests\\test_agent_loop.py",
       "line": 46,
       "outcome": "passed",
-      "duration": 0.0003989999968325719,
+      "duration": 0.0003541000041877851,
       "traceback": null,
       "longrepr": null
     },
@@ -275,7 +275,7 @@
       "file": "tests\\test_agent_loop.py",
       "line": 51,
       "outcome": "passed",
-      "duration": 0.09059060000436148,
+      "duration": 0.004859199994825758,
       "traceback": null,
       "longrepr": null
     },
@@ -285,7 +285,7 @@
       "file": "tests\\test_agent_loop.py",
       "line": 59,
       "outcome": "passed",
-      "duration": 0.003139799999189563,
+      "duration": 0.0008791000000201166,
       "traceback": null,
       "longrepr": null
     },
@@ -295,7 +295,7 @@
       "file": "tests\\test_agent_loop.py",
       "line": 73,
       "outcome": "passed",
-      "duration": 0.0035420999993220903,
+      "duration": 0.0010934000019915402,
       "traceback": null,
       "longrepr": null
     },
@@ -305,7 +305,7 @@
       "file": "tests\\test_agent_loop.py",
       "line": 88,
       "outcome": "passed",
-      "duration": 0.0021707999985665083,
+      "duration": 0.0013017000019317493,
       "traceback": null,
       "longrepr": null
     },
@@ -315,7 +315,7 @@
       "file": "tests\\test_agent_loop.py",
       "line": 99,
       "outcome": "passed",
-      "duration": 0.005923799995798618,
+      "duration": 0.003579999989597127,
       "traceback": null,
       "longrepr": null
     },
@@ -325,7 +325,7 @@
       "file": "tests\\test_agent_loop.py",
       "line": 108,
       "outcome": "passed",
-      "duration": 0.001200700004119426,
+      "duration": 0.0009037999989232048,
       "traceback": null,
       "longrepr": null
     },
@@ -335,7 +335,7 @@
       "file": "tests\\test_audit_journal.py",
       "line": 99,
       "outcome": "passed",
-      "duration": 0.7813199999945937,
+      "duration": 0.4808664000011049,
       "traceback": null,
       "longrepr": null
     },
@@ -345,7 +345,7 @@
       "file": "tests\\test_audit_journal.py",
       "line": 112,
       "outcome": "passed",
-      "duration": 0.5872231000030297,
+      "duration": 0.4479520000022603,
       "traceback": null,
       "longrepr": null
     },
@@ -355,7 +355,7 @@
       "file": "tests\\test_audit_journal.py",
       "line": 137,
       "outcome": "passed",
-      "duration": 0.6298976999969454,
+      "duration": 0.4706311000045389,
       "traceback": null,
       "longrepr": null
     },
@@ -365,7 +365,7 @@
       "file": "tests\\test_audit_journal.py",
       "line": 154,
       "outcome": "passed",
-      "duration": 1.0930206999983056,
+      "duration": 0.8995409000053769,
       "traceback": null,
       "longrepr": null
     },
@@ -375,7 +375,7 @@
       "file": "tests\\test_audit_journal.py",
       "line": 160,
       "outcome": "passed",
-      "duration": 0.9175824999983888,
+      "duration": 0.7446844999940367,
       "traceback": null,
       "longrepr": null
     },
@@ -385,7 +385,7 @@
       "file": "tests\\test_auth_logging.py",
       "line": 27,
       "outcome": "passed",
-      "duration": 0.0013972000015201047,
+      "duration": 0.002067900000838563,
       "traceback": null,
       "longrepr": null
     },
@@ -395,7 +395,7 @@
       "file": "tests\\test_auth_logging.py",
       "line": 36,
       "outcome": "passed",
-      "duration": 0.0014058999950066209,
+      "duration": 0.0019519000052241609,
       "traceback": null,
       "longrepr": null
     },
@@ -405,7 +405,7 @@
       "file": "tests\\test_auth_logging.py",
       "line": 45,
       "outcome": "passed",
-      "duration": 0.001141000000643544,
+      "duration": 0.002342699997825548,
       "traceback": null,
       "longrepr": null
     },
@@ -415,7 +415,7 @@
       "file": "tests\\test_auth_logging.py",
       "line": 57,
       "outcome": "passed",
-      "duration": 0.0004883000001427718,
+      "duration": 0.001524099992820993,
       "traceback": null,
       "longrepr": null
     },
@@ -425,7 +425,7 @@
       "file": "tests\\test_backend.py",
       "line": 46,
       "outcome": "passed",
-      "duration": 0.005694800005585421,
+      "duration": 0.011390900006517768,
       "traceback": null,
       "longrepr": null
     },
@@ -435,7 +435,7 @@
       "file": "tests\\test_backend.py",
       "line": 76,
       "outcome": "passed",
-      "duration": 1.1248836999948253,
+      "duration": 0.8871371999994153,
       "traceback": null,
       "longrepr": null
     },
@@ -445,7 +445,7 @@
       "file": "tests\\test_backend.py",
       "line": 82,
       "outcome": "passed",
-      "duration": 0.08926570000039646,
+      "duration": 0.0770046999969054,
       "traceback": null,
       "longrepr": null
     },
@@ -455,7 +455,7 @@
       "file": "tests\\test_backend.py",
       "line": 97,
       "outcome": "passed",
-      "duration": 0.9902694999982486,
+      "duration": 0.9019962999882409,
       "traceback": null,
       "longrepr": null
     },
@@ -465,7 +465,7 @@
       "file": "tests\\test_backend.py",
       "line": 136,
       "outcome": "passed",
-      "duration": 0.4216286999944714,
+      "duration": 0.33540090000315104,
       "traceback": null,
       "longrepr": null
     },
@@ -475,7 +475,7 @@
       "file": "tests\\test_backend.py",
       "line": 175,
       "outcome": "passed",
-      "duration": 30.075218300000415,
+      "duration": 23.96503120000125,
       "traceback": null,
       "longrepr": null
     },
@@ -485,7 +485,7 @@
       "file": "tests\\test_backend.py",
       "line": 204,
       "outcome": "passed",
-      "duration": 0.37434360000042943,
+      "duration": 0.32535520000965334,
       "traceback": null,
       "longrepr": null
     },
@@ -495,7 +495,7 @@
       "file": "tests\\test_backend.py",
       "line": 248,
       "outcome": "passed",
-      "duration": 0.003804599997238256,
+      "duration": 0.004059300001244992,
       "traceback": null,
       "longrepr": null
     },
@@ -505,7 +505,7 @@
       "file": "tests\\test_backend.py",
       "line": 314,
       "outcome": "passed",
-      "duration": 0.7827914000008604,
+      "duration": 0.5874221999984002,
       "traceback": null,
       "longrepr": null
     },
@@ -515,7 +515,7 @@
       "file": "tests\\test_backend.py",
       "line": 383,
       "outcome": "passed",
-      "duration": 1.9367739999943296,
+      "duration": 1.4852410000021337,
       "traceback": null,
       "longrepr": null
     },
@@ -525,7 +525,7 @@
       "file": "tests\\test_backend.py",
       "line": 535,
       "outcome": "passed",
-      "duration": 0.6565279999995255,
+      "duration": 0.4983766000077594,
       "traceback": null,
       "longrepr": null
     },
@@ -535,7 +535,7 @@
       "file": "tests\\test_backend.py",
       "line": 610,
       "outcome": "passed",
-      "duration": 0.053457399997569155,
+      "duration": 0.01838589999533724,
       "traceback": null,
       "longrepr": null
     },
@@ -545,7 +545,7 @@
       "file": "tests\\test_backend.py",
       "line": 648,
       "outcome": "passed",
-      "duration": 0.14680229999794392,
+      "duration": 0.05672279999998864,
       "traceback": null,
       "longrepr": null
     },
@@ -555,7 +555,7 @@
       "file": "tests\\test_backend.py",
       "line": 671,
       "outcome": "passed",
-      "duration": 0.3677310999992187,
+      "duration": 0.27894229999219533,
       "traceback": null,
       "longrepr": null
     },
@@ -565,7 +565,7 @@
       "file": "tests\\test_backend.py",
       "line": 701,
       "outcome": "passed",
-      "duration": 0.8486495000033756,
+      "duration": 0.55431989999488,
       "traceback": null,
       "longrepr": null
     },
@@ -575,7 +575,7 @@
       "file": "tests\\test_backend.py",
       "line": 733,
       "outcome": "passed",
-      "duration": 0.33776669999497244,
+      "duration": 0.2538519000081578,
       "traceback": null,
       "longrepr": null
     },
@@ -585,7 +585,7 @@
       "file": "tests\\test_billing.py",
       "line": 95,
       "outcome": "passed",
-      "duration": 0.056437600003846455,
+      "duration": 0.02471460000379011,
       "traceback": null,
       "longrepr": null
     },
@@ -595,7 +595,7 @@
       "file": "tests\\test_billing.py",
       "line": 110,
       "outcome": "passed",
-      "duration": 0.044227099999261554,
+      "duration": 0.020849599997745827,
       "traceback": null,
       "longrepr": null
     },
@@ -605,7 +605,7 @@
       "file": "tests\\test_billing.py",
       "line": 123,
       "outcome": "passed",
-      "duration": 0.034425100006046705,
+      "duration": 0.018382299997028895,
       "traceback": null,
       "longrepr": null
     },
@@ -615,7 +615,7 @@
       "file": "tests\\test_billing.py",
       "line": 139,
       "outcome": "passed",
-      "duration": 0.0453367999944021,
+      "duration": 0.01846899998781737,
       "traceback": null,
       "longrepr": null
     },
@@ -625,7 +625,7 @@
       "file": "tests\\test_billing.py",
       "line": 160,
       "outcome": "passed",
-      "duration": 0.04511919999640668,
+      "duration": 0.017034000004059635,
       "traceback": null,
       "longrepr": null
     },
@@ -635,7 +635,7 @@
       "file": "tests\\test_billing.py",
       "line": 177,
       "outcome": "passed",
-      "duration": 0.06158619999769144,
+      "duration": 0.018280100004631095,
       "traceback": null,
       "longrepr": null
     },
@@ -645,7 +645,7 @@
       "file": "tests\\test_billing.py",
       "line": 192,
       "outcome": "passed",
-      "duration": 0.04319979999854695,
+      "duration": 0.01735900000494439,
       "traceback": null,
       "longrepr": null
     },
@@ -655,7 +655,7 @@
       "file": "tests\\test_billing.py",
       "line": 208,
       "outcome": "passed",
-      "duration": 0.0798960000029183,
+      "duration": 0.022068100006435998,
       "traceback": null,
       "longrepr": null
     },
@@ -665,7 +665,7 @@
       "file": "tests\\test_billing.py",
       "line": 226,
       "outcome": "passed",
-      "duration": 0.08658070000092266,
+      "duration": 0.0282156000030227,
       "traceback": null,
       "longrepr": null
     },
@@ -675,7 +675,37 @@
       "file": "tests\\test_billing.py",
       "line": 242,
       "outcome": "passed",
-      "duration": 0.09456610000052024,
+      "duration": 0.028348499996354803,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_billing.py::test_counter_prefix_separates_series",
+      "name": "test_counter_prefix_separates_series",
+      "file": "tests\\test_billing.py",
+      "line": 263,
+      "outcome": "passed",
+      "duration": 0.039884099998744205,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_billing.py::test_two_counters_first_sale_no_collision",
+      "name": "test_two_counters_first_sale_no_collision",
+      "file": "tests\\test_billing.py",
+      "line": 286,
+      "outcome": "passed",
+      "duration": 0.030850699986331165,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_billing.py::test_blank_prefix_defaults_to_inv_series",
+      "name": "test_blank_prefix_defaults_to_inv_series",
+      "file": "tests\\test_billing.py",
+      "line": 304,
+      "outcome": "passed",
+      "duration": 0.010068699994008057,
       "traceback": null,
       "longrepr": null
     },
@@ -685,7 +715,7 @@
       "file": "tests\\test_business_template.py",
       "line": 38,
       "outcome": "passed",
-      "duration": 0.1408226999992621,
+      "duration": 0.005212000003666617,
       "traceback": null,
       "longrepr": null
     },
@@ -695,7 +725,7 @@
       "file": "tests\\test_business_template.py",
       "line": 53,
       "outcome": "passed",
-      "duration": 0.003249699999287259,
+      "duration": 0.000662000005831942,
       "traceback": null,
       "longrepr": null
     },
@@ -705,7 +735,7 @@
       "file": "tests\\test_business_template.py",
       "line": 58,
       "outcome": "passed",
-      "duration": 0.001865199999883771,
+      "duration": 0.0003259999939473346,
       "traceback": null,
       "longrepr": null
     },
@@ -715,7 +745,7 @@
       "file": "tests\\test_business_template.py",
       "line": 66,
       "outcome": "passed",
-      "duration": 0.002263700000185054,
+      "duration": 0.0002482999989297241,
       "traceback": null,
       "longrepr": null
     },
@@ -725,7 +755,7 @@
       "file": "tests\\test_business_template.py",
       "line": 72,
       "outcome": "passed",
-      "duration": 0.0016135999976540916,
+      "duration": 0.00031200000375974923,
       "traceback": null,
       "longrepr": null
     },
@@ -735,7 +765,7 @@
       "file": "tests\\test_business_template.py",
       "line": 79,
       "outcome": "passed",
-      "duration": 0.001247000000148546,
+      "duration": 0.0002896999940276146,
       "traceback": null,
       "longrepr": null
     },
@@ -745,7 +775,7 @@
       "file": "tests\\test_business_template.py",
       "line": 85,
       "outcome": "passed",
-      "duration": 0.0014537999959429726,
+      "duration": 0.00043319999531377107,
       "traceback": null,
       "longrepr": null
     },
@@ -755,7 +785,7 @@
       "file": "tests\\test_business_template.py",
       "line": 106,
       "outcome": "passed",
-      "duration": 0.02714910000213422,
+      "duration": 0.010374099991167895,
       "traceback": null,
       "longrepr": null
     },
@@ -765,7 +795,7 @@
       "file": "tests\\test_business_template.py",
       "line": 127,
       "outcome": "passed",
-      "duration": 0.0025037000013981014,
+      "duration": 0.000933699993765913,
       "traceback": null,
       "longrepr": null
     },
@@ -775,7 +805,7 @@
       "file": "tests\\test_business_template.py",
       "line": 149,
       "outcome": "passed",
-      "duration": 0.01729019999766024,
+      "duration": 0.005392499995650724,
       "traceback": null,
       "longrepr": null
     },
@@ -785,7 +815,7 @@
       "file": "tests\\test_business_template.py",
       "line": 156,
       "outcome": "passed",
-      "duration": 0.03972799999610288,
+      "duration": 0.02465449999726843,
       "traceback": null,
       "longrepr": null
     },
@@ -795,7 +825,7 @@
       "file": "tests\\test_business_template.py",
       "line": 176,
       "outcome": "passed",
-      "duration": 0.04598059999989346,
+      "duration": 0.0317259000003105,
       "traceback": null,
       "longrepr": null
     },
@@ -805,7 +835,7 @@
       "file": "tests\\test_business_template.py",
       "line": 189,
       "outcome": "passed",
-      "duration": 0.027436099997430574,
+      "duration": 0.018139700012397952,
       "traceback": null,
       "longrepr": null
     },
@@ -815,7 +845,7 @@
       "file": "tests\\test_business_template.py",
       "line": 197,
       "outcome": "passed",
-      "duration": 0.010535699999309145,
+      "duration": 0.005116999993333593,
       "traceback": null,
       "longrepr": null
     },
@@ -825,7 +855,7 @@
       "file": "tests\\test_cache_regression.py",
       "line": 53,
       "outcome": "passed",
-      "duration": 0.19568430000072112,
+      "duration": 0.13244669999403413,
       "traceback": null,
       "longrepr": null
     },
@@ -835,7 +865,7 @@
       "file": "tests\\test_cache_regression.py",
       "line": 71,
       "outcome": "passed",
-      "duration": 0.16541380000126082,
+      "duration": 0.13634720000845846,
       "traceback": null,
       "longrepr": null
     },
@@ -845,7 +875,7 @@
       "file": "tests\\test_cache_regression.py",
       "line": 84,
       "outcome": "passed",
-      "duration": 0.0824267999996664,
+      "duration": 0.06621380000433419,
       "traceback": null,
       "longrepr": null
     },
@@ -855,7 +885,7 @@
       "file": "tests\\test_cache_salt.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0004972999959136359,
+      "duration": 0.00037900000461377203,
       "traceback": null,
       "longrepr": null
     },
@@ -865,7 +895,7 @@
       "file": "tests\\test_cache_salt.py",
       "line": 27,
       "outcome": "passed",
-      "duration": 0.0005335000023478642,
+      "duration": 0.0005516999954124913,
       "traceback": null,
       "longrepr": null
     },
@@ -875,7 +905,7 @@
       "file": "tests\\test_cache_salt.py",
       "line": 33,
       "outcome": "passed",
-      "duration": 0.000439799994637724,
+      "duration": 0.0002753000007942319,
       "traceback": null,
       "longrepr": null
     },
@@ -885,7 +915,7 @@
       "file": "tests\\test_cache_salt.py",
       "line": 39,
       "outcome": "passed",
-      "duration": 0.00044489999709185213,
+      "duration": 0.00022339999850373715,
       "traceback": null,
       "longrepr": null
     },
@@ -895,7 +925,7 @@
       "file": "tests\\test_cache_salt.py",
       "line": 46,
       "outcome": "passed",
-      "duration": 0.0006562999988091178,
+      "duration": 0.00021719999494962394,
       "traceback": null,
       "longrepr": null
     },
@@ -905,7 +935,7 @@
       "file": "tests\\test_cache_salt.py",
       "line": 55,
       "outcome": "passed",
-      "duration": 0.0006949000016902573,
+      "duration": 0.00023520000104326755,
       "traceback": null,
       "longrepr": null
     },
@@ -915,7 +945,7 @@
       "file": "tests\\test_cache_salt.py",
       "line": 65,
       "outcome": "passed",
-      "duration": 0.0005336000031093135,
+      "duration": 0.00021309999283403158,
       "traceback": null,
       "longrepr": null
     },
@@ -925,7 +955,7 @@
       "file": "tests\\test_cache_salt.py",
       "line": 75,
       "outcome": "passed",
-      "duration": 0.000494200001412537,
+      "duration": 0.000268599993432872,
       "traceback": null,
       "longrepr": null
     },
@@ -935,7 +965,7 @@
       "file": "tests\\test_cache_salt.py",
       "line": 84,
       "outcome": "passed",
-      "duration": 0.0005183999965083785,
+      "duration": 0.0002410000015515834,
       "traceback": null,
       "longrepr": null
     },
@@ -945,7 +975,7 @@
       "file": "tests\\test_cache_salt.py",
       "line": 96,
       "outcome": "passed",
-      "duration": 0.0004761000018334016,
+      "duration": 0.0002604000037536025,
       "traceback": null,
       "longrepr": null
     },
@@ -955,7 +985,7 @@
       "file": "tests\\test_cache_salt.py",
       "line": 111,
       "outcome": "passed",
-      "duration": 0.00042640000174287707,
+      "duration": 0.0002229999954579398,
       "traceback": null,
       "longrepr": null
     },
@@ -965,7 +995,7 @@
       "file": "tests\\test_cache_salt.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.0006446000043069944,
+      "duration": 0.00021719999494962394,
       "traceback": null,
       "longrepr": null
     },
@@ -975,7 +1005,7 @@
       "file": "tests\\test_cache_salt.py",
       "line": 127,
       "outcome": "passed",
-      "duration": 0.0004457000031834468,
+      "duration": 0.0006246999982977286,
       "traceback": null,
       "longrepr": null
     },
@@ -985,7 +1015,7 @@
       "file": "tests\\test_cache_scoping.py",
       "line": 28,
       "outcome": "passed",
-      "duration": 0.0009433000013814308,
+      "duration": 0.0006310000026132911,
       "traceback": null,
       "longrepr": null
     },
@@ -995,7 +1025,7 @@
       "file": "tests\\test_cache_scoping.py",
       "line": 44,
       "outcome": "passed",
-      "duration": 0.0010330000004614703,
+      "duration": 0.001323199991020374,
       "traceback": null,
       "longrepr": null
     },
@@ -1005,7 +1035,7 @@
       "file": "tests\\test_cache_scoping.py",
       "line": 54,
       "outcome": "passed",
-      "duration": 0.0015509000004385598,
+      "duration": 0.0006389000045601279,
       "traceback": null,
       "longrepr": null
     },
@@ -1015,7 +1045,7 @@
       "file": "tests\\test_cache_scoping.py",
       "line": 64,
       "outcome": "passed",
-      "duration": 0.003488499998638872,
+      "duration": 0.0012813999928766862,
       "traceback": null,
       "longrepr": null
     },
@@ -1025,7 +1055,7 @@
       "file": "tests\\test_cache_scoping.py",
       "line": 74,
       "outcome": "passed",
-      "duration": 0.002613800003018696,
+      "duration": 0.003977599990321323,
       "traceback": null,
       "longrepr": null
     },
@@ -1035,7 +1065,7 @@
       "file": "tests\\test_cash_discount.py",
       "line": 100,
       "outcome": "passed",
-      "duration": 0.37750190000224393,
+      "duration": 0.27329210001335014,
       "traceback": null,
       "longrepr": null
     },
@@ -1045,7 +1075,7 @@
       "file": "tests\\test_cash_discount.py",
       "line": 119,
       "outcome": "passed",
-      "duration": 0.4879828999983147,
+      "duration": 0.27461110000149347,
       "traceback": null,
       "longrepr": null
     },
@@ -1055,7 +1085,7 @@
       "file": "tests\\test_cash_discount.py",
       "line": 139,
       "outcome": "passed",
-      "duration": 0.4738733999984106,
+      "duration": 0.27624809999542776,
       "traceback": null,
       "longrepr": null
     },
@@ -1065,7 +1095,7 @@
       "file": "tests\\test_cash_discount.py",
       "line": 151,
       "outcome": "passed",
-      "duration": 0.48255649999919115,
+      "duration": 0.27834550000261515,
       "traceback": null,
       "longrepr": null
     },
@@ -1075,7 +1105,7 @@
       "file": "tests\\test_cash_discount.py",
       "line": 163,
       "outcome": "passed",
-      "duration": 0.47816920000332175,
+      "duration": 0.27077529999951366,
       "traceback": null,
       "longrepr": null
     },
@@ -1085,7 +1115,7 @@
       "file": "tests\\test_cash_discount.py",
       "line": 173,
       "outcome": "passed",
-      "duration": 0.5199625000022934,
+      "duration": 0.28237499999522697,
       "traceback": null,
       "longrepr": null
     },
@@ -1095,7 +1125,7 @@
       "file": "tests\\test_charts.py",
       "line": 62,
       "outcome": "passed",
-      "duration": 0.0012461000005714595,
+      "duration": 0.0004611000040313229,
       "traceback": null,
       "longrepr": null
     },
@@ -1105,7 +1135,7 @@
       "file": "tests\\test_charts.py",
       "line": 66,
       "outcome": "passed",
-      "duration": 0.004154700000071898,
+      "duration": 0.0016084999951999635,
       "traceback": null,
       "longrepr": null
     },
@@ -1115,7 +1145,7 @@
       "file": "tests\\test_charts.py",
       "line": 77,
       "outcome": "passed",
-      "duration": 0.005220099999860395,
+      "duration": 0.0028055000002495944,
       "traceback": null,
       "longrepr": null
     },
@@ -1125,7 +1155,7 @@
       "file": "tests\\test_charts.py",
       "line": 87,
       "outcome": "passed",
-      "duration": 0.003791299997828901,
+      "duration": 0.0016715999954612926,
       "traceback": null,
       "longrepr": null
     },
@@ -1135,7 +1165,7 @@
       "file": "tests\\test_charts.py",
       "line": 98,
       "outcome": "passed",
-      "duration": 0.0027273000014247373,
+      "duration": 0.0009586000087438151,
       "traceback": null,
       "longrepr": null
     },
@@ -1145,7 +1175,7 @@
       "file": "tests\\test_compliance.py",
       "line": 95,
       "outcome": "passed",
-      "duration": 0.6002320000043255,
+      "duration": 0.26992750000499655,
       "traceback": null,
       "longrepr": null
     },
@@ -1155,7 +1185,7 @@
       "file": "tests\\test_compliance.py",
       "line": 108,
       "outcome": "passed",
-      "duration": 0.4934979000026942,
+      "duration": 0.2755114000028698,
       "traceback": null,
       "longrepr": null
     },
@@ -1165,7 +1195,7 @@
       "file": "tests\\test_compliance.py",
       "line": 118,
       "outcome": "passed",
-      "duration": 1.1833331000016187,
+      "duration": 0.7438063000008697,
       "traceback": null,
       "longrepr": null
     },
@@ -1175,7 +1205,7 @@
       "file": "tests\\test_compliance.py",
       "line": 128,
       "outcome": "passed",
-      "duration": 0.8427812000008998,
+      "duration": 0.5379783000098541,
       "traceback": null,
       "longrepr": null
     },
@@ -1185,7 +1215,7 @@
       "file": "tests\\test_compliance.py",
       "line": 140,
       "outcome": "passed",
-      "duration": 0.47615719999885187,
+      "duration": 0.30919949999952223,
       "traceback": null,
       "longrepr": null
     },
@@ -1195,7 +1225,7 @@
       "file": "tests\\test_compliance.py",
       "line": 152,
       "outcome": "passed",
-      "duration": 0.4538791000013589,
+      "duration": 0.3061946999951033,
       "traceback": null,
       "longrepr": null
     },
@@ -1205,7 +1235,7 @@
       "file": "tests\\test_connections.py",
       "line": 52,
       "outcome": "passed",
-      "duration": 0.35059909999836236,
+      "duration": 0.2253913000022294,
       "traceback": null,
       "longrepr": null
     },
@@ -1215,7 +1245,7 @@
       "file": "tests\\test_connections.py",
       "line": 74,
       "outcome": "passed",
-      "duration": 0.4150579999986803,
+      "duration": 0.2382765000074869,
       "traceback": null,
       "longrepr": null
     },
@@ -1225,7 +1255,7 @@
       "file": "tests\\test_connections.py",
       "line": 82,
       "outcome": "passed",
-      "duration": 0.9374129999996512,
+      "duration": 0.7129664999956731,
       "traceback": null,
       "longrepr": null
     },
@@ -1235,7 +1265,7 @@
       "file": "tests\\test_connections.py",
       "line": 110,
       "outcome": "passed",
-      "duration": 0.8265622999970219,
+      "duration": 0.5265202000009594,
       "traceback": null,
       "longrepr": null
     },
@@ -1245,7 +1275,7 @@
       "file": "tests\\test_connections.py",
       "line": 159,
       "outcome": "passed",
-      "duration": 0.7240781000000425,
+      "duration": 0.4988824000029126,
       "traceback": null,
       "longrepr": null
     },
@@ -1255,7 +1285,7 @@
       "file": "tests\\test_connections.py",
       "line": 194,
       "outcome": "passed",
-      "duration": 0.337322999999742,
+      "duration": 0.2540695999923628,
       "traceback": null,
       "longrepr": null
     },
@@ -1265,7 +1295,7 @@
       "file": "tests\\test_connections.py",
       "line": 203,
       "outcome": "passed",
-      "duration": 0.8240694999985863,
+      "duration": 0.533618799992837,
       "traceback": null,
       "longrepr": null
     },
@@ -1275,7 +1305,7 @@
       "file": "tests\\test_connections.py",
       "line": 302,
       "outcome": "passed",
-      "duration": 0.8081712999992305,
+      "duration": 0.49731920000340324,
       "traceback": null,
       "longrepr": null
     },
@@ -1285,7 +1315,7 @@
       "file": "tests\\test_connections.py",
       "line": 353,
       "outcome": "passed",
-      "duration": 0.9057868000018061,
+      "duration": 0.5156597000022884,
       "traceback": null,
       "longrepr": null
     },
@@ -1295,7 +1325,7 @@
       "file": "tests\\test_connections.py",
       "line": 398,
       "outcome": "passed",
-      "duration": 0.7246799999993527,
+      "duration": 0.4855515999952331,
       "traceback": null,
       "longrepr": null
     },
@@ -1305,7 +1335,7 @@
       "file": "tests\\test_connections_security.py",
       "line": 85,
       "outcome": "passed",
-      "duration": 0.6441476999971201,
+      "duration": 0.4897653999942122,
       "traceback": null,
       "longrepr": null
     },
@@ -1315,7 +1345,7 @@
       "file": "tests\\test_connections_security.py",
       "line": 100,
       "outcome": "passed",
-      "duration": 0.7553277000042726,
+      "duration": 0.5022147999989102,
       "traceback": null,
       "longrepr": null
     },
@@ -1325,7 +1355,7 @@
       "file": "tests\\test_connections_security.py",
       "line": 113,
       "outcome": "passed",
-      "duration": 1.0656980999992811,
+      "duration": 0.7537912999978289,
       "traceback": null,
       "longrepr": null
     },
@@ -1335,7 +1365,7 @@
       "file": "tests\\test_connections_security.py",
       "line": 122,
       "outcome": "passed",
-      "duration": 0.7245965999973123,
+      "duration": 0.5180990999942878,
       "traceback": null,
       "longrepr": null
     },
@@ -1345,7 +1375,7 @@
       "file": "tests\\test_connections_security.py",
       "line": 134,
       "outcome": "passed",
-      "duration": 0.8774712000013096,
+      "duration": 0.5794467000087025,
       "traceback": null,
       "longrepr": null
     },
@@ -1355,7 +1385,7 @@
       "file": "tests\\test_connections_security.py",
       "line": 154,
       "outcome": "passed",
-      "duration": 0.749236399999063,
+      "duration": 0.516136500009452,
       "traceback": null,
       "longrepr": null
     },
@@ -1365,7 +1395,7 @@
       "file": "tests\\test_connections_security.py",
       "line": 177,
       "outcome": "passed",
-      "duration": 0.35621569999784697,
+      "duration": 0.24503039999399334,
       "traceback": null,
       "longrepr": null
     },
@@ -1375,7 +1405,7 @@
       "file": "tests\\test_dates.py",
       "line": 17,
       "outcome": "passed",
-      "duration": 0.00046719999954802915,
+      "duration": 0.0004062000080011785,
       "traceback": null,
       "longrepr": null
     },
@@ -1385,7 +1415,7 @@
       "file": "tests\\test_dates.py",
       "line": 17,
       "outcome": "passed",
-      "duration": 0.0008412000024691224,
+      "duration": 0.00048489999608136714,
       "traceback": null,
       "longrepr": null
     },
@@ -1395,7 +1425,7 @@
       "file": "tests\\test_dates.py",
       "line": 17,
       "outcome": "passed",
-      "duration": 0.0009523000044282526,
+      "duration": 0.00041730000521056354,
       "traceback": null,
       "longrepr": null
     },
@@ -1405,7 +1435,7 @@
       "file": "tests\\test_dates.py",
       "line": 17,
       "outcome": "passed",
-      "duration": 0.0007745999973849393,
+      "duration": 0.001559399999678135,
       "traceback": null,
       "longrepr": null
     },
@@ -1415,7 +1445,7 @@
       "file": "tests\\test_dates.py",
       "line": 17,
       "outcome": "passed",
-      "duration": 0.0011457999935373664,
+      "duration": 0.0007382999901892617,
       "traceback": null,
       "longrepr": null
     },
@@ -1425,7 +1455,7 @@
       "file": "tests\\test_dates.py",
       "line": 28,
       "outcome": "passed",
-      "duration": 0.0009347000013804063,
+      "duration": 0.00027210000553168356,
       "traceback": null,
       "longrepr": null
     },
@@ -1435,7 +1465,7 @@
       "file": "tests\\test_dates.py",
       "line": 33,
       "outcome": "passed",
-      "duration": 0.0005920999974478036,
+      "duration": 0.00022590000298805535,
       "traceback": null,
       "longrepr": null
     },
@@ -1445,7 +1475,7 @@
       "file": "tests\\test_dates.py",
       "line": 33,
       "outcome": "passed",
-      "duration": 0.00045340000360738486,
+      "duration": 0.00022729999909643084,
       "traceback": null,
       "longrepr": null
     },
@@ -1455,7 +1485,7 @@
       "file": "tests\\test_dates.py",
       "line": 33,
       "outcome": "passed",
-      "duration": 0.0006974999996600673,
+      "duration": 0.00031230000604409724,
       "traceback": null,
       "longrepr": null
     },
@@ -1465,7 +1495,7 @@
       "file": "tests\\test_dates.py",
       "line": 33,
       "outcome": "passed",
-      "duration": 0.0010301000002073124,
+      "duration": 0.00029350000841077417,
       "traceback": null,
       "longrepr": null
     },
@@ -1475,7 +1505,7 @@
       "file": "tests\\test_dates.py",
       "line": 33,
       "outcome": "passed",
-      "duration": 0.000986600003670901,
+      "duration": 0.00026479999360162765,
       "traceback": null,
       "longrepr": null
     },
@@ -1485,7 +1515,7 @@
       "file": "tests\\test_dates.py",
       "line": 33,
       "outcome": "passed",
-      "duration": 0.0004793999978573993,
+      "duration": 0.00044999999227002263,
       "traceback": null,
       "longrepr": null
     },
@@ -1495,7 +1525,7 @@
       "file": "tests\\test_dates.py",
       "line": 38,
       "outcome": "passed",
-      "duration": 0.0009427000040886924,
+      "duration": 0.00035339999885763973,
       "traceback": null,
       "longrepr": null
     },
@@ -1505,7 +1535,7 @@
       "file": "tests\\test_dates.py",
       "line": 43,
       "outcome": "passed",
-      "duration": 0.000818000000435859,
+      "duration": 0.0003242999955546111,
       "traceback": null,
       "longrepr": null
     },
@@ -1515,7 +1545,7 @@
       "file": "tests\\test_einvoice.py",
       "line": 53,
       "outcome": "passed",
-      "duration": 0.002853300000424497,
+      "duration": 0.0008470000029774383,
       "traceback": null,
       "longrepr": null
     },
@@ -1525,7 +1555,7 @@
       "file": "tests\\test_einvoice.py",
       "line": 66,
       "outcome": "passed",
-      "duration": 0.001617899994016625,
+      "duration": 0.0006961000035516918,
       "traceback": null,
       "longrepr": null
     },
@@ -1535,7 +1565,7 @@
       "file": "tests\\test_einvoice.py",
       "line": 78,
       "outcome": "passed",
-      "duration": 0.004764400000567548,
+      "duration": 0.0007549000001745299,
       "traceback": null,
       "longrepr": null
     },
@@ -1545,7 +1575,7 @@
       "file": "tests\\test_einvoice.py",
       "line": 88,
       "outcome": "passed",
-      "duration": 0.003318200004287064,
+      "duration": 0.0006926999922143295,
       "traceback": null,
       "longrepr": null
     },
@@ -1555,7 +1585,7 @@
       "file": "tests\\test_einvoice.py",
       "line": 99,
       "outcome": "passed",
-      "duration": 0.0034999999988940544,
+      "duration": 0.0006284000119194388,
       "traceback": null,
       "longrepr": null
     },
@@ -1565,7 +1595,7 @@
       "file": "tests\\test_einvoice.py",
       "line": 115,
       "outcome": "passed",
-      "duration": 0.0029429999995045364,
+      "duration": 0.0008433999901171774,
       "traceback": null,
       "longrepr": null
     },
@@ -1575,7 +1605,7 @@
       "file": "tests\\test_einvoice.py",
       "line": 124,
       "outcome": "passed",
-      "duration": 0.002623899999889545,
+      "duration": 0.000987800012808293,
       "traceback": null,
       "longrepr": null
     },
@@ -1585,7 +1615,7 @@
       "file": "tests\\test_einvoice.py",
       "line": 139,
       "outcome": "passed",
-      "duration": 0.0028715000007650815,
+      "duration": 0.0005566000036196783,
       "traceback": null,
       "longrepr": null
     },
@@ -1595,7 +1625,7 @@
       "file": "tests\\test_einvoice.py",
       "line": 148,
       "outcome": "passed",
-      "duration": 0.003715300001204014,
+      "duration": 0.0010100000072270632,
       "traceback": null,
       "longrepr": null
     },
@@ -1605,7 +1635,7 @@
       "file": "tests\\test_einvoice.py",
       "line": 159,
       "outcome": "passed",
-      "duration": 0.0009686999983387068,
+      "duration": 0.0002558000123826787,
       "traceback": null,
       "longrepr": null
     },
@@ -1615,7 +1645,7 @@
       "file": "tests\\test_einvoice.py",
       "line": 169,
       "outcome": "passed",
-      "duration": 0.001217600001837127,
+      "duration": 0.0002443999983370304,
       "traceback": null,
       "longrepr": null
     },
@@ -1625,7 +1655,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 27,
       "outcome": "passed",
-      "duration": 0.0012086999995517544,
+      "duration": 0.0003819999983534217,
       "traceback": null,
       "longrepr": null
     },
@@ -1635,7 +1665,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 31,
       "outcome": "passed",
-      "duration": 0.0011869999943883158,
+      "duration": 0.00047820000327192247,
       "traceback": null,
       "longrepr": null
     },
@@ -1645,7 +1675,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 35,
       "outcome": "passed",
-      "duration": 0.0031350999997812323,
+      "duration": 0.0010752999951364473,
       "traceback": null,
       "longrepr": null
     },
@@ -1655,7 +1685,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 35,
       "outcome": "passed",
-      "duration": 0.0020150999989709817,
+      "duration": 0.00045140000293031335,
       "traceback": null,
       "longrepr": null
     },
@@ -1665,7 +1695,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 35,
       "outcome": "passed",
-      "duration": 0.0026507000002311543,
+      "duration": 0.0005029000021750107,
       "traceback": null,
       "longrepr": null
     },
@@ -1675,7 +1705,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 35,
       "outcome": "passed",
-      "duration": 0.0021503999960259534,
+      "duration": 0.0005518999969353899,
       "traceback": null,
       "longrepr": null
     },
@@ -1685,7 +1715,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 45,
       "outcome": "passed",
-      "duration": 0.0016486000022268854,
+      "duration": 0.00043259999074507505,
       "traceback": null,
       "longrepr": null
     },
@@ -1695,7 +1725,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 49,
       "outcome": "passed",
-      "duration": 0.0020345000011730008,
+      "duration": 0.0005552000075113028,
       "traceback": null,
       "longrepr": null
     },
@@ -1705,7 +1735,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 49,
       "outcome": "passed",
-      "duration": 0.002421700002742,
+      "duration": 0.0008055000071180984,
       "traceback": null,
       "longrepr": null
     },
@@ -1715,7 +1745,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 49,
       "outcome": "passed",
-      "duration": 0.001418500003637746,
+      "duration": 0.00027289999707136303,
       "traceback": null,
       "longrepr": null
     },
@@ -1725,7 +1755,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 58,
       "outcome": "passed",
-      "duration": 0.0009069000007002614,
+      "duration": 0.00021479999122675508,
       "traceback": null,
       "longrepr": null
     },
@@ -1735,7 +1765,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 62,
       "outcome": "passed",
-      "duration": 0.0008895999999367632,
+      "duration": 0.00021850000484846532,
       "traceback": null,
       "longrepr": null
     },
@@ -1745,7 +1775,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 69,
       "outcome": "passed",
-      "duration": 0.002997499999764841,
+      "duration": 0.0022836999996798113,
       "traceback": null,
       "longrepr": null
     },
@@ -1755,7 +1785,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 77,
       "outcome": "passed",
-      "duration": 0.0018934000036097132,
+      "duration": 0.0005862999969394878,
       "traceback": null,
       "longrepr": null
     },
@@ -1765,7 +1795,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 83,
       "outcome": "passed",
-      "duration": 0.003660000002128072,
+      "duration": 0.0007249000045703724,
       "traceback": null,
       "longrepr": null
     },
@@ -1775,7 +1805,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 90,
       "outcome": "passed",
-      "duration": 0.0025826999990385957,
+      "duration": 0.0007255999953486025,
       "traceback": null,
       "longrepr": null
     },
@@ -1785,7 +1815,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 99,
       "outcome": "passed",
-      "duration": 0.0012672000011662021,
+      "duration": 0.0006045999907655641,
       "traceback": null,
       "longrepr": null
     },
@@ -1795,7 +1825,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 105,
       "outcome": "passed",
-      "duration": 0.0013928999978816137,
+      "duration": 0.0004065999964950606,
       "traceback": null,
       "longrepr": null
     },
@@ -1805,7 +1835,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 111,
       "outcome": "passed",
-      "duration": 0.004533400002401322,
+      "duration": 0.0007733000093139708,
       "traceback": null,
       "longrepr": null
     },
@@ -1815,7 +1845,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 119,
       "outcome": "passed",
-      "duration": 0.00458930000604596,
+      "duration": 0.0017614000098546967,
       "traceback": null,
       "longrepr": null
     },
@@ -1825,7 +1855,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 127,
       "outcome": "passed",
-      "duration": 0.001670000005105976,
+      "duration": 0.00041009999404195696,
       "traceback": null,
       "longrepr": null
     },
@@ -1835,7 +1865,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 136,
       "outcome": "passed",
-      "duration": 0.0029280000017024577,
+      "duration": 0.0006971999973757192,
       "traceback": null,
       "longrepr": null
     },
@@ -1845,7 +1875,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 145,
       "outcome": "passed",
-      "duration": 0.0012734000047203153,
+      "duration": 0.0003777000092668459,
       "traceback": null,
       "longrepr": null
     },
@@ -1855,7 +1885,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 153,
       "outcome": "passed",
-      "duration": 0.00152160000288859,
+      "duration": 0.0005129999917699024,
       "traceback": null,
       "longrepr": null
     },
@@ -1865,7 +1895,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 163,
       "outcome": "passed",
-      "duration": 0.0010140000013052486,
+      "duration": 0.0003667999990284443,
       "traceback": null,
       "longrepr": null
     },
@@ -1875,7 +1905,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 168,
       "outcome": "passed",
-      "duration": 0.0016993000026559457,
+      "duration": 0.00021540001034736633,
       "traceback": null,
       "longrepr": null
     },
@@ -1885,7 +1915,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 173,
       "outcome": "passed",
-      "duration": 0.005365800003346521,
+      "duration": 0.0009298000077251345,
       "traceback": null,
       "longrepr": null
     },
@@ -1895,7 +1925,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 181,
       "outcome": "passed",
-      "duration": 0.002340700004424434,
+      "duration": 0.0004800000024260953,
       "traceback": null,
       "longrepr": null
     },
@@ -1905,7 +1935,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 194,
       "outcome": "passed",
-      "duration": 0.001582999997481238,
+      "duration": 0.00024000000848900527,
       "traceback": null,
       "longrepr": null
     },
@@ -1915,7 +1945,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 199,
       "outcome": "passed",
-      "duration": 0.0024389999962295406,
+      "duration": 0.00033229999826289713,
       "traceback": null,
       "longrepr": null
     },
@@ -1925,7 +1955,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 207,
       "outcome": "passed",
-      "duration": 0.0014128000038908795,
+      "duration": 0.0006968999950913712,
       "traceback": null,
       "longrepr": null
     },
@@ -1935,7 +1965,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 211,
       "outcome": "passed",
-      "duration": 0.0007657000023755245,
+      "duration": 0.0003161000058753416,
       "traceback": null,
       "longrepr": null
     },
@@ -1945,7 +1975,7 @@
       "file": "tests\\test_entity_match.py",
       "line": 219,
       "outcome": "passed",
-      "duration": 0.0008582000009482726,
+      "duration": 0.00031540000054519624,
       "traceback": null,
       "longrepr": null
     },
@@ -1955,7 +1985,7 @@
       "file": "tests\\test_error_contract.py",
       "line": 45,
       "outcome": "passed",
-      "duration": 0.021483700002136175,
+      "duration": 0.011487599986139685,
       "traceback": null,
       "longrepr": null
     },
@@ -1965,7 +1995,7 @@
       "file": "tests\\test_error_contract.py",
       "line": 64,
       "outcome": "passed",
-      "duration": 0.10273659999802476,
+      "duration": 0.07036140000855085,
       "traceback": null,
       "longrepr": null
     },
@@ -1975,7 +2005,7 @@
       "file": "tests\\test_feedback.py",
       "line": 50,
       "outcome": "passed",
-      "duration": 0.000538200001756195,
+      "duration": 0.00038690000656060874,
       "traceback": null,
       "longrepr": null
     },
@@ -1985,7 +2015,7 @@
       "file": "tests\\test_feedback.py",
       "line": 54,
       "outcome": "passed",
-      "duration": 0.010582299997622613,
+      "duration": 0.006832899991422892,
       "traceback": null,
       "longrepr": null
     },
@@ -1995,7 +2025,7 @@
       "file": "tests\\test_feedback.py",
       "line": 64,
       "outcome": "passed",
-      "duration": 0.007241599996632431,
+      "duration": 0.005100700000184588,
       "traceback": null,
       "longrepr": null
     },
@@ -2005,7 +2035,7 @@
       "file": "tests\\test_feedback.py",
       "line": 71,
       "outcome": "passed",
-      "duration": 0.0069881999952485785,
+      "duration": 0.003999900000053458,
       "traceback": null,
       "longrepr": null
     },
@@ -2015,7 +2045,7 @@
       "file": "tests\\test_feedback.py",
       "line": 78,
       "outcome": "passed",
-      "duration": 0.01815849999547936,
+      "duration": 0.013057499993010424,
       "traceback": null,
       "longrepr": null
     },
@@ -2025,7 +2055,7 @@
       "file": "tests\\test_feedback.py",
       "line": 94,
       "outcome": "passed",
-      "duration": 0.008909299998776987,
+      "duration": 0.005376300003263168,
       "traceback": null,
       "longrepr": null
     },
@@ -2035,7 +2065,7 @@
       "file": "tests\\test_feedback.py",
       "line": 100,
       "outcome": "passed",
-      "duration": 0.000611600000411272,
+      "duration": 0.0004453000001376495,
       "traceback": null,
       "longrepr": null
     },
@@ -2045,7 +2075,7 @@
       "file": "tests\\test_feedback.py",
       "line": 105,
       "outcome": "passed",
-      "duration": 0.0011752999998861924,
+      "duration": 0.0006342999986372888,
       "traceback": null,
       "longrepr": null
     },
@@ -2055,7 +2085,7 @@
       "file": "tests\\test_handlers.py",
       "line": 123,
       "outcome": "passed",
-      "duration": 0.008512799999152776,
+      "duration": 0.0025547999975970015,
       "traceback": null,
       "longrepr": null
     },
@@ -2065,7 +2095,7 @@
       "file": "tests\\test_handlers.py",
       "line": 131,
       "outcome": "passed",
-      "duration": 0.006023299996741116,
+      "duration": 0.002814599996781908,
       "traceback": null,
       "longrepr": null
     },
@@ -2075,7 +2105,7 @@
       "file": "tests\\test_handlers.py",
       "line": 140,
       "outcome": "passed",
-      "duration": 0.0074977999975089915,
+      "duration": 0.0017190000071423128,
       "traceback": null,
       "longrepr": null
     },
@@ -2085,7 +2115,7 @@
       "file": "tests\\test_handlers.py",
       "line": 148,
       "outcome": "passed",
-      "duration": 0.010386599999037571,
+      "duration": 0.002533199993195012,
       "traceback": null,
       "longrepr": null
     },
@@ -2095,7 +2125,7 @@
       "file": "tests\\test_handlers.py",
       "line": 156,
       "outcome": "passed",
-      "duration": 0.006161400000564754,
+      "duration": 0.0016193000046769157,
       "traceback": null,
       "longrepr": null
     },
@@ -2105,7 +2135,7 @@
       "file": "tests\\test_handlers.py",
       "line": 163,
       "outcome": "passed",
-      "duration": 0.00901750000048196,
+      "duration": 0.0021590999967884272,
       "traceback": null,
       "longrepr": null
     },
@@ -2115,7 +2145,7 @@
       "file": "tests\\test_handlers.py",
       "line": 172,
       "outcome": "passed",
-      "duration": 0.005226699999184348,
+      "duration": 0.002169700004742481,
       "traceback": null,
       "longrepr": null
     },
@@ -2125,7 +2155,7 @@
       "file": "tests\\test_handlers.py",
       "line": 193,
       "outcome": "passed",
-      "duration": 0.005147100004251115,
+      "duration": 0.001723699999274686,
       "traceback": null,
       "longrepr": null
     },
@@ -2135,7 +2165,7 @@
       "file": "tests\\test_handlers.py",
       "line": 204,
       "outcome": "passed",
-      "duration": 0.0016892999992705882,
+      "duration": 0.0009904000035021454,
       "traceback": null,
       "longrepr": null
     },
@@ -2145,7 +2175,7 @@
       "file": "tests\\test_handlers.py",
       "line": 216,
       "outcome": "passed",
-      "duration": 0.004453100002137944,
+      "duration": 0.001892900007078424,
       "traceback": null,
       "longrepr": null
     },
@@ -2155,7 +2185,7 @@
       "file": "tests\\test_handlers.py",
       "line": 222,
       "outcome": "passed",
-      "duration": 0.003616399997554254,
+      "duration": 0.0009865999891189858,
       "traceback": null,
       "longrepr": null
     },
@@ -2165,7 +2195,7 @@
       "file": "tests\\test_handlers.py",
       "line": 231,
       "outcome": "passed",
-      "duration": 0.0027375999998184852,
+      "duration": 0.0008084000000962988,
       "traceback": null,
       "longrepr": null
     },
@@ -2175,7 +2205,7 @@
       "file": "tests\\test_handlers.py",
       "line": 240,
       "outcome": "passed",
-      "duration": 0.013666200000443496,
+      "duration": 0.0060834000032627955,
       "traceback": null,
       "longrepr": null
     },
@@ -2185,7 +2215,7 @@
       "file": "tests\\test_handlers.py",
       "line": 248,
       "outcome": "passed",
-      "duration": 0.0021195000008447096,
+      "duration": 0.0005818000063300133,
       "traceback": null,
       "longrepr": null
     },
@@ -2195,7 +2225,7 @@
       "file": "tests\\test_handlers.py",
       "line": 255,
       "outcome": "passed",
-      "duration": 0.005597600000328384,
+      "duration": 0.0022431000106735155,
       "traceback": null,
       "longrepr": null
     },
@@ -2205,7 +2235,7 @@
       "file": "tests\\test_hash_chain.py",
       "line": 98,
       "outcome": "passed",
-      "duration": 0.6620813999979873,
+      "duration": 0.3023354000033578,
       "traceback": null,
       "longrepr": null
     },
@@ -2215,7 +2245,7 @@
       "file": "tests\\test_hash_chain.py",
       "line": 109,
       "outcome": "passed",
-      "duration": 0.5948090999954729,
+      "duration": 0.32098730000143405,
       "traceback": null,
       "longrepr": null
     },
@@ -2225,7 +2255,7 @@
       "file": "tests\\test_hash_chain.py",
       "line": 131,
       "outcome": "passed",
-      "duration": 0.5953326000017114,
+      "duration": 0.32312590000219643,
       "traceback": null,
       "longrepr": null
     },
@@ -2235,7 +2265,7 @@
       "file": "tests\\test_hash_chain.py",
       "line": 146,
       "outcome": "passed",
-      "duration": 1.0152040000029956,
+      "duration": 0.6994632999994792,
       "traceback": null,
       "longrepr": null
     },
@@ -2245,7 +2275,7 @@
       "file": "tests\\test_hash_chain.py",
       "line": 152,
       "outcome": "passed",
-      "duration": 0.8300678999949014,
+      "duration": 0.5274095999920974,
       "traceback": null,
       "longrepr": null
     },
@@ -2255,7 +2285,7 @@
       "file": "tests\\test_import.py",
       "line": 97,
       "outcome": "passed",
-      "duration": 0.10817369999858784,
+      "duration": 0.0372334999992745,
       "traceback": null,
       "longrepr": null
     },
@@ -2265,7 +2295,7 @@
       "file": "tests\\test_import.py",
       "line": 172,
       "outcome": "passed",
-      "duration": 0.04512560000148369,
+      "duration": 0.02130399999441579,
       "traceback": null,
       "longrepr": null
     },
@@ -2275,7 +2305,7 @@
       "file": "tests\\test_import.py",
       "line": 207,
       "outcome": "passed",
-      "duration": 0.05354839999927208,
+      "duration": 0.02637039999535773,
       "traceback": null,
       "longrepr": null
     },
@@ -2285,7 +2315,7 @@
       "file": "tests\\test_import.py",
       "line": 265,
       "outcome": "passed",
-      "duration": 0.02454520000173943,
+      "duration": 0.016973599995253608,
       "traceback": null,
       "longrepr": null
     },
@@ -2295,7 +2325,7 @@
       "file": "tests\\test_import.py",
       "line": 277,
       "outcome": "passed",
-      "duration": 0.0400249000012991,
+      "duration": 0.021753300010459498,
       "traceback": null,
       "longrepr": null
     },
@@ -2305,7 +2335,7 @@
       "file": "tests\\test_import.py",
       "line": 301,
       "outcome": "passed",
-      "duration": 0.15353139999933774,
+      "duration": 0.047115900000790134,
       "traceback": null,
       "longrepr": null
     },
@@ -2315,7 +2345,7 @@
       "file": "tests\\test_intent_router.py",
       "line": 56,
       "outcome": "passed",
-      "duration": 0.004440200005774386,
+      "duration": 0.0017432000022381544,
       "traceback": null,
       "longrepr": null
     },
@@ -2325,7 +2355,7 @@
       "file": "tests\\test_intent_router.py",
       "line": 62,
       "outcome": "passed",
-      "duration": 0.004054999997606501,
+      "duration": 0.0010597000073175877,
       "traceback": null,
       "longrepr": null
     },
@@ -2335,7 +2365,7 @@
       "file": "tests\\test_intent_router.py",
       "line": 67,
       "outcome": "passed",
-      "duration": 0.0031553999942843802,
+      "duration": 0.0007394999993266538,
       "traceback": null,
       "longrepr": null
     },
@@ -2345,7 +2375,7 @@
       "file": "tests\\test_intent_router.py",
       "line": 74,
       "outcome": "passed",
-      "duration": 0.0009210999996867031,
+      "duration": 0.0002263000060338527,
       "traceback": null,
       "longrepr": null
     },
@@ -2355,7 +2385,7 @@
       "file": "tests\\test_intent_router.py",
       "line": 300,
       "outcome": "passed",
-      "duration": 5.350716300003114,
+      "duration": 4.255011999994167,
       "traceback": null,
       "longrepr": null
     },
@@ -2365,7 +2395,7 @@
       "file": "tests\\test_intents.py",
       "line": 88,
       "outcome": "passed",
-      "duration": 0.06681509999907576,
+      "duration": 0.03612319999956526,
       "traceback": null,
       "longrepr": null
     },
@@ -2375,7 +2405,7 @@
       "file": "tests\\test_intents.py",
       "line": 98,
       "outcome": "passed",
-      "duration": 0.00067299999500392,
+      "duration": 0.000258400003076531,
       "traceback": null,
       "longrepr": null
     },
@@ -2385,7 +2415,7 @@
       "file": "tests\\test_intents.py",
       "line": 102,
       "outcome": "passed",
-      "duration": 0.0008211000022129156,
+      "duration": 0.0002373000024817884,
       "traceback": null,
       "longrepr": null
     },
@@ -2395,7 +2425,7 @@
       "file": "tests\\test_intents.py",
       "line": 110,
       "outcome": "passed",
-      "duration": 0.009987699995690491,
+      "duration": 0.005187400005524978,
       "traceback": null,
       "longrepr": null
     },
@@ -2405,7 +2435,7 @@
       "file": "tests\\test_intents.py",
       "line": 122,
       "outcome": "passed",
-      "duration": 0.007804799999576062,
+      "duration": 0.0028701999981421977,
       "traceback": null,
       "longrepr": null
     },
@@ -2415,7 +2445,7 @@
       "file": "tests\\test_intents.py",
       "line": 131,
       "outcome": "passed",
-      "duration": 0.01071100000262959,
+      "duration": 0.005226900000707246,
       "traceback": null,
       "longrepr": null
     },
@@ -2425,7 +2455,7 @@
       "file": "tests\\test_intents.py",
       "line": 136,
       "outcome": "passed",
-      "duration": 0.004469799998332746,
+      "duration": 0.0030709999991813675,
       "traceback": null,
       "longrepr": null
     },
@@ -2435,7 +2465,7 @@
       "file": "tests\\test_intents.py",
       "line": 143,
       "outcome": "passed",
-      "duration": 0.013162800001737196,
+      "duration": 0.006256299995584413,
       "traceback": null,
       "longrepr": null
     },
@@ -2445,7 +2475,7 @@
       "file": "tests\\test_intents.py",
       "line": 151,
       "outcome": "passed",
-      "duration": 0.013816300001053605,
+      "duration": 0.004000300003099255,
       "traceback": null,
       "longrepr": null
     },
@@ -2455,7 +2485,7 @@
       "file": "tests\\test_intents.py",
       "line": 159,
       "outcome": "passed",
-      "duration": 0.01274600000033388,
+      "duration": 0.004814800005988218,
       "traceback": null,
       "longrepr": null
     },
@@ -2465,7 +2495,7 @@
       "file": "tests\\test_intents.py",
       "line": 165,
       "outcome": "passed",
-      "duration": 0.10250620000442723,
+      "duration": 0.039772999996785074,
       "traceback": null,
       "longrepr": null
     },
@@ -2475,7 +2505,7 @@
       "file": "tests\\test_journal.py",
       "line": 98,
       "outcome": "passed",
-      "duration": 0.5545952000029502,
+      "duration": 0.31293580000055954,
       "traceback": null,
       "longrepr": null
     },
@@ -2485,7 +2515,7 @@
       "file": "tests\\test_journal.py",
       "line": 110,
       "outcome": "passed",
-      "duration": 0.5082381000029272,
+      "duration": 0.30222899999353103,
       "traceback": null,
       "longrepr": null
     },
@@ -2495,7 +2525,7 @@
       "file": "tests\\test_journal.py",
       "line": 124,
       "outcome": "passed",
-      "duration": 0.461100799999258,
+      "duration": 0.312095400004182,
       "traceback": null,
       "longrepr": null
     },
@@ -2505,7 +2535,7 @@
       "file": "tests\\test_journal.py",
       "line": 134,
       "outcome": "passed",
-      "duration": 1.053545499999018,
+      "duration": 0.6989904000074603,
       "traceback": null,
       "longrepr": null
     },
@@ -2515,7 +2545,7 @@
       "file": "tests\\test_journal.py",
       "line": 141,
       "outcome": "passed",
-      "duration": 0.8082426999972085,
+      "duration": 0.5460776999971131,
       "traceback": null,
       "longrepr": null
     },
@@ -2525,7 +2555,7 @@
       "file": "tests\\test_journal.py",
       "line": 175,
       "outcome": "passed",
-      "duration": 0.47933349999948405,
+      "duration": 0.32031530000676867,
       "traceback": null,
       "longrepr": null
     },
@@ -2535,7 +2565,7 @@
       "file": "tests\\test_journal.py",
       "line": 202,
       "outcome": "passed",
-      "duration": 0.3878160000022035,
+      "duration": 0.27245739998761564,
       "traceback": null,
       "longrepr": null
     },
@@ -2545,7 +2575,7 @@
       "file": "tests\\test_journal.py",
       "line": 214,
       "outcome": "passed",
-      "duration": 0.47918380000191974,
+      "duration": 0.29355399998894427,
       "traceback": null,
       "longrepr": null
     },
@@ -2555,7 +2585,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 63,
       "outcome": "passed",
-      "duration": 0.0027380999963497743,
+      "duration": 0.00083710000035353,
       "traceback": null,
       "longrepr": null
     },
@@ -2565,7 +2595,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 69,
       "outcome": "passed",
-      "duration": 0.002521599999454338,
+      "duration": 0.0006809000042267144,
       "traceback": null,
       "longrepr": null
     },
@@ -2575,7 +2605,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 76,
       "outcome": "passed",
-      "duration": 0.0027361000029486604,
+      "duration": 0.0008452000038232654,
       "traceback": null,
       "longrepr": null
     },
@@ -2585,7 +2615,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 84,
       "outcome": "passed",
-      "duration": 0.0016927999968174845,
+      "duration": 0.0006793000065954402,
       "traceback": null,
       "longrepr": null
     },
@@ -2595,7 +2625,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 91,
       "outcome": "passed",
-      "duration": 0.0029756000003544614,
+      "duration": 0.0008171000081347302,
       "traceback": null,
       "longrepr": null
     },
@@ -2605,7 +2635,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 96,
       "outcome": "passed",
-      "duration": 0.002495900000212714,
+      "duration": 0.0008718000026419759,
       "traceback": null,
       "longrepr": null
     },
@@ -2615,7 +2645,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 103,
       "outcome": "passed",
-      "duration": 0.0022838000004412606,
+      "duration": 0.0007108999998308718,
       "traceback": null,
       "longrepr": null
     },
@@ -2625,7 +2655,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 108,
       "outcome": "passed",
-      "duration": 0.002278600004501641,
+      "duration": 0.0010878999892156571,
       "traceback": null,
       "longrepr": null
     },
@@ -2635,7 +2665,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 116,
       "outcome": "passed",
-      "duration": 0.002300299995113164,
+      "duration": 0.0007234999939100817,
       "traceback": null,
       "longrepr": null
     },
@@ -2645,7 +2675,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.0022756999969715253,
+      "duration": 0.0005027000006521121,
       "traceback": null,
       "longrepr": null
     },
@@ -2655,7 +2685,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 124,
       "outcome": "passed",
-      "duration": 0.004924499997287057,
+      "duration": 0.001107799995224923,
       "traceback": null,
       "longrepr": null
     },
@@ -2665,7 +2695,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 129,
       "outcome": "passed",
-      "duration": 0.001738300001306925,
+      "duration": 0.00029409999842755497,
       "traceback": null,
       "longrepr": null
     },
@@ -2675,7 +2705,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 135,
       "outcome": "passed",
-      "duration": 0.0018061000009765849,
+      "duration": 0.0006739999953424558,
       "traceback": null,
       "longrepr": null
     },
@@ -2685,7 +2715,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 150,
       "outcome": "passed",
-      "duration": 0.003082900002482347,
+      "duration": 0.0009522000036668032,
       "traceback": null,
       "longrepr": null
     },
@@ -2695,7 +2725,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 157,
       "outcome": "passed",
-      "duration": 0.0013604000050690956,
+      "duration": 0.0011972000065725297,
       "traceback": null,
       "longrepr": null
     },
@@ -2705,7 +2735,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 164,
       "outcome": "passed",
-      "duration": 0.0031788999986019917,
+      "duration": 0.0007212999917101115,
       "traceback": null,
       "longrepr": null
     },
@@ -2715,7 +2745,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 172,
       "outcome": "passed",
-      "duration": 0.002352999996219296,
+      "duration": 0.0024695000029169023,
       "traceback": null,
       "longrepr": null
     },
@@ -2725,7 +2755,7 @@
       "file": "tests\\test_llm_router.py",
       "line": 179,
       "outcome": "passed",
-      "duration": 0.0008182000019587576,
+      "duration": 0.0002356000040890649,
       "traceback": null,
       "longrepr": null
     },
@@ -2735,7 +2765,7 @@
       "file": "tests\\test_logging_config.py",
       "line": 24,
       "outcome": "passed",
-      "duration": 0.0009244000029866584,
+      "duration": 0.00038050000148359686,
       "traceback": null,
       "longrepr": null
     },
@@ -2745,7 +2775,7 @@
       "file": "tests\\test_logging_config.py",
       "line": 40,
       "outcome": "passed",
-      "duration": 0.00843709999753628,
+      "duration": 0.0025030999968294054,
       "traceback": null,
       "longrepr": null
     },
@@ -2755,7 +2785,7 @@
       "file": "tests\\test_logging_config.py",
       "line": 52,
       "outcome": "passed",
-      "duration": 0.016251299995929003,
+      "duration": 0.004524800009676255,
       "traceback": null,
       "longrepr": null
     },
@@ -2765,7 +2795,7 @@
       "file": "tests\\test_logging_config.py",
       "line": 66,
       "outcome": "passed",
-      "duration": 0.0013427000012598,
+      "duration": 0.0002657000004546717,
       "traceback": null,
       "longrepr": null
     },
@@ -2775,7 +2805,7 @@
       "file": "tests\\test_logging_config.py",
       "line": 77,
       "outcome": "passed",
-      "duration": 0.0050792999973054975,
+      "duration": 0.0028448999946704134,
       "traceback": null,
       "longrepr": null
     },
@@ -2785,7 +2815,7 @@
       "file": "tests\\test_logging_config.py",
       "line": 83,
       "outcome": "passed",
-      "duration": 0.006140299999970011,
+      "duration": 0.0027064000023528934,
       "traceback": null,
       "longrepr": null
     },
@@ -2795,7 +2825,7 @@
       "file": "tests\\test_logging_config.py",
       "line": 93,
       "outcome": "passed",
-      "duration": 0.0008645999987493269,
+      "duration": 0.0002480000111972913,
       "traceback": null,
       "longrepr": null
     },
@@ -2805,7 +2835,7 @@
       "file": "tests\\test_memory.py",
       "line": 42,
       "outcome": "passed",
-      "duration": 0.03724969999893801,
+      "duration": 0.01850150000245776,
       "traceback": null,
       "longrepr": null
     },
@@ -2815,7 +2845,7 @@
       "file": "tests\\test_memory.py",
       "line": 79,
       "outcome": "passed",
-      "duration": 0.012435700002242811,
+      "duration": 0.0040569999982835725,
       "traceback": null,
       "longrepr": null
     },
@@ -2825,7 +2855,7 @@
       "file": "tests\\test_memory.py",
       "line": 96,
       "outcome": "passed",
-      "duration": 0.0046975000004749745,
+      "duration": 0.005951400002231821,
       "traceback": null,
       "longrepr": null
     },
@@ -2835,7 +2865,7 @@
       "file": "tests\\test_memory.py",
       "line": 117,
       "outcome": "passed",
-      "duration": 0.0022295000017038547,
+      "duration": 0.0010983999964082614,
       "traceback": null,
       "longrepr": null
     },
@@ -2845,7 +2875,7 @@
       "file": "tests\\test_memory.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.006277399996179156,
+      "duration": 0.007035699993139133,
       "traceback": null,
       "longrepr": null
     },
@@ -2855,7 +2885,7 @@
       "file": "tests\\test_migrate.py",
       "line": 26,
       "outcome": "passed",
-      "duration": 1.0260953999968478,
+      "duration": 0.8719895999965956,
       "traceback": null,
       "longrepr": null
     },
@@ -2865,7 +2895,7 @@
       "file": "tests\\test_normalize.py",
       "line": 17,
       "outcome": "passed",
-      "duration": 0.0010737999982666224,
+      "duration": 0.0006563000060850754,
       "traceback": null,
       "longrepr": null
     },
@@ -2875,7 +2905,7 @@
       "file": "tests\\test_normalize.py",
       "line": 17,
       "outcome": "passed",
-      "duration": 0.0005515000011655502,
+      "duration": 0.000658300006762147,
       "traceback": null,
       "longrepr": null
     },
@@ -2885,7 +2915,7 @@
       "file": "tests\\test_normalize.py",
       "line": 17,
       "outcome": "passed",
-      "duration": 0.0014195000039762817,
+      "duration": 0.0005399999936344102,
       "traceback": null,
       "longrepr": null
     },
@@ -2895,7 +2925,7 @@
       "file": "tests\\test_normalize.py",
       "line": 17,
       "outcome": "passed",
-      "duration": 0.0012784999998984858,
+      "duration": 0.0009110999963013455,
       "traceback": null,
       "longrepr": null
     },
@@ -2905,7 +2935,7 @@
       "file": "tests\\test_normalize.py",
       "line": 17,
       "outcome": "passed",
-      "duration": 0.0005384000032790937,
+      "duration": 0.0007213999924715608,
       "traceback": null,
       "longrepr": null
     },
@@ -2915,7 +2945,7 @@
       "file": "tests\\test_normalize.py",
       "line": 28,
       "outcome": "passed",
-      "duration": 0.00141530000109924,
+      "duration": 0.0006036999984644353,
       "traceback": null,
       "longrepr": null
     },
@@ -2925,7 +2955,7 @@
       "file": "tests\\test_normalize.py",
       "line": 35,
       "outcome": "passed",
-      "duration": 0.0010639000029186718,
+      "duration": 0.0005219999875407666,
       "traceback": null,
       "longrepr": null
     },
@@ -2935,7 +2965,7 @@
       "file": "tests\\test_normalize.py",
       "line": 35,
       "outcome": "passed",
-      "duration": 0.0010818000009749085,
+      "duration": 0.0004552000027615577,
       "traceback": null,
       "longrepr": null
     },
@@ -2945,7 +2975,7 @@
       "file": "tests\\test_normalize.py",
       "line": 35,
       "outcome": "passed",
-      "duration": 0.0008373999953619204,
+      "duration": 0.00045279999903868884,
       "traceback": null,
       "longrepr": null
     },
@@ -2955,7 +2985,7 @@
       "file": "tests\\test_normalize.py",
       "line": 35,
       "outcome": "passed",
-      "duration": 0.0009916999988490716,
+      "duration": 0.0005368999991333112,
       "traceback": null,
       "longrepr": null
     },
@@ -2965,7 +2995,7 @@
       "file": "tests\\test_normalize.py",
       "line": 35,
       "outcome": "passed",
-      "duration": 0.0013206000003265217,
+      "duration": 0.0004290000069886446,
       "traceback": null,
       "longrepr": null
     },
@@ -2975,7 +3005,7 @@
       "file": "tests\\test_normalize.py",
       "line": 46,
       "outcome": "passed",
-      "duration": 0.0012289000005694106,
+      "duration": 0.00048550000065006316,
       "traceback": null,
       "longrepr": null
     },
@@ -2985,7 +3015,7 @@
       "file": "tests\\test_party_ledger.py",
       "line": 113,
       "outcome": "passed",
-      "duration": 0.8191107000020565,
+      "duration": 0.388753799998085,
       "traceback": null,
       "longrepr": null
     },
@@ -2995,7 +3025,7 @@
       "file": "tests\\test_party_ledger.py",
       "line": 131,
       "outcome": "passed",
-      "duration": 0.5976100999978371,
+      "duration": 0.40635600000678096,
       "traceback": null,
       "longrepr": null
     },
@@ -3005,7 +3035,7 @@
       "file": "tests\\test_party_ledger.py",
       "line": 144,
       "outcome": "passed",
-      "duration": 0.5574443000004976,
+      "duration": 0.37488270000903867,
       "traceback": null,
       "longrepr": null
     },
@@ -3015,7 +3045,7 @@
       "file": "tests\\test_party_ledger.py",
       "line": 160,
       "outcome": "passed",
-      "duration": 0.9076832999999169,
+      "duration": 0.8277041999972425,
       "traceback": null,
       "longrepr": null
     },
@@ -3025,7 +3055,7 @@
       "file": "tests\\test_party_ledger.py",
       "line": 168,
       "outcome": "passed",
-      "duration": 0.7149566999942181,
+      "duration": 0.5521540000045206,
       "traceback": null,
       "longrepr": null
     },
@@ -3035,7 +3065,7 @@
       "file": "tests\\test_period_lock.py",
       "line": 103,
       "outcome": "passed",
-      "duration": 0.032267799993860535,
+      "duration": 0.02549420000286773,
       "traceback": null,
       "longrepr": null
     },
@@ -3045,7 +3075,7 @@
       "file": "tests\\test_period_lock.py",
       "line": 131,
       "outcome": "passed",
-      "duration": 0.5575087000033818,
+      "duration": 0.35411970000131987,
       "traceback": null,
       "longrepr": null
     },
@@ -3055,7 +3085,7 @@
       "file": "tests\\test_period_lock.py",
       "line": 146,
       "outcome": "passed",
-      "duration": 0.36542390000249725,
+      "duration": 0.3026404999982333,
       "traceback": null,
       "longrepr": null
     },
@@ -3065,7 +3095,7 @@
       "file": "tests\\test_period_lock.py",
       "line": 157,
       "outcome": "passed",
-      "duration": 0.4796712999959709,
+      "duration": 0.3686286000011023,
       "traceback": null,
       "longrepr": null
     },
@@ -3075,7 +3105,7 @@
       "file": "tests\\test_period_lock.py",
       "line": 165,
       "outcome": "passed",
-      "duration": 0.4708325999963563,
+      "duration": 0.40355810000619385,
       "traceback": null,
       "longrepr": null
     },
@@ -3085,7 +3115,7 @@
       "file": "tests\\test_period_lock.py",
       "line": 177,
       "outcome": "passed",
-      "duration": 0.46506509999744594,
+      "duration": 0.3713597000023583,
       "traceback": null,
       "longrepr": null
     },
@@ -3095,7 +3125,7 @@
       "file": "tests\\test_period_lock.py",
       "line": 202,
       "outcome": "passed",
-      "duration": 0.39401039999938803,
+      "duration": 0.2957172000024002,
       "traceback": null,
       "longrepr": null
     },
@@ -3105,7 +3135,7 @@
       "file": "tests\\test_period_lock.py",
       "line": 210,
       "outcome": "passed",
-      "duration": 0.4927287999962573,
+      "duration": 0.32080909999785945,
       "traceback": null,
       "longrepr": null
     },
@@ -3115,7 +3145,7 @@
       "file": "tests\\test_period_lock.py",
       "line": 221,
       "outcome": "passed",
-      "duration": 1.1281308000034187,
+      "duration": 0.9833358999894699,
       "traceback": null,
       "longrepr": null
     },
@@ -3125,7 +3155,7 @@
       "file": "tests\\test_period_lock.py",
       "line": 229,
       "outcome": "passed",
-      "duration": 0.8138154000043869,
+      "duration": 0.8063592999969842,
       "traceback": null,
       "longrepr": null
     },
@@ -3135,7 +3165,7 @@
       "file": "tests\\test_phase1b.py",
       "line": 100,
       "outcome": "passed",
-      "duration": 0.09222849999787286,
+      "duration": 0.09890520000772085,
       "traceback": null,
       "longrepr": null
     },
@@ -3145,7 +3175,7 @@
       "file": "tests\\test_phase1b.py",
       "line": 142,
       "outcome": "passed",
-      "duration": 0.0754157000046689,
+      "duration": 0.0725551999930758,
       "traceback": null,
       "longrepr": null
     },
@@ -3155,7 +3185,7 @@
       "file": "tests\\test_phase1b.py",
       "line": 178,
       "outcome": "passed",
-      "duration": 0.0592285999955493,
+      "duration": 0.057468999992124736,
       "traceback": null,
       "longrepr": null
     },
@@ -3165,7 +3195,7 @@
       "file": "tests\\test_phase1b.py",
       "line": 216,
       "outcome": "passed",
-      "duration": 0.1398378000012599,
+      "duration": 0.09842310000385623,
       "traceback": null,
       "longrepr": null
     },
@@ -3175,7 +3205,7 @@
       "file": "tests\\test_phase1b.py",
       "line": 274,
       "outcome": "passed",
-      "duration": 0.12596740000299178,
+      "duration": 0.0813726000051247,
       "traceback": null,
       "longrepr": null
     },
@@ -3185,7 +3215,7 @@
       "file": "tests\\test_phase1b.py",
       "line": 328,
       "outcome": "passed",
-      "duration": 0.4308963000003132,
+      "duration": 0.37718509999103844,
       "traceback": null,
       "longrepr": null
     },
@@ -3195,7 +3225,7 @@
       "file": "tests\\test_phase1b.py",
       "line": 357,
       "outcome": "passed",
-      "duration": 0.07393199999933131,
+      "duration": 0.05999270000029355,
       "traceback": null,
       "longrepr": null
     },
@@ -3205,7 +3235,7 @@
       "file": "tests\\test_phase1b.py",
       "line": 387,
       "outcome": "passed",
-      "duration": 0.01511910000408534,
+      "duration": 0.007783000008203089,
       "traceback": null,
       "longrepr": null
     },
@@ -3215,7 +3245,7 @@
       "file": "tests\\test_phase1b.py",
       "line": 394,
       "outcome": "passed",
-      "duration": 0.03781209999579005,
+      "duration": 0.029215900009148754,
       "traceback": null,
       "longrepr": null
     },
@@ -3225,7 +3255,7 @@
       "file": "tests\\test_phase1b.py",
       "line": 415,
       "outcome": "passed",
-      "duration": 0.04575239999394398,
+      "duration": 0.050519800002803095,
       "traceback": null,
       "longrepr": null
     },
@@ -3235,7 +3265,7 @@
       "file": "tests\\test_phase1b.py",
       "line": 455,
       "outcome": "passed",
-      "duration": 0.05895639999653213,
+      "duration": 0.03695779999543447,
       "traceback": null,
       "longrepr": null
     },
@@ -3245,7 +3275,7 @@
       "file": "tests\\test_phase3.py",
       "line": 49,
       "outcome": "passed",
-      "duration": 0.09057830000529066,
+      "duration": 0.08445999999821652,
       "traceback": null,
       "longrepr": null
     },
@@ -3255,7 +3285,7 @@
       "file": "tests\\test_phase3.py",
       "line": 152,
       "outcome": "passed",
-      "duration": 0.1095839999979944,
+      "duration": 0.10870919999433681,
       "traceback": null,
       "longrepr": null
     },
@@ -3265,7 +3295,7 @@
       "file": "tests\\test_phase3.py",
       "line": 207,
       "outcome": "passed",
-      "duration": 0.0653193000034662,
+      "duration": 0.05220679999911226,
       "traceback": null,
       "longrepr": null
     },
@@ -3275,7 +3305,7 @@
       "file": "tests\\test_phase4.py",
       "line": 45,
       "outcome": "passed",
-      "duration": 0.25427700000000186,
+      "duration": 0.1736531000060495,
       "traceback": null,
       "longrepr": null
     },
@@ -3285,7 +3315,7 @@
       "file": "tests\\test_phase4_sync.py",
       "line": 102,
       "outcome": "passed",
-      "duration": 0.9460413999986486,
+      "duration": 0.739765799997258,
       "traceback": null,
       "longrepr": null
     },
@@ -3295,7 +3325,7 @@
       "file": "tests\\test_phase4_sync.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.9562852000017301,
+      "duration": 0.8252007999981288,
       "traceback": null,
       "longrepr": null
     },
@@ -3305,7 +3335,7 @@
       "file": "tests\\test_product_barcode.py",
       "line": 65,
       "outcome": "passed",
-      "duration": 0.03811090000090189,
+      "duration": 0.027615499988314696,
       "traceback": null,
       "longrepr": null
     },
@@ -3315,7 +3345,7 @@
       "file": "tests\\test_product_barcode.py",
       "line": 78,
       "outcome": "passed",
-      "duration": 0.02834360000269953,
+      "duration": 0.02615200000582263,
       "traceback": null,
       "longrepr": null
     },
@@ -3325,7 +3355,7 @@
       "file": "tests\\test_product_barcode.py",
       "line": 94,
       "outcome": "passed",
-      "duration": 0.04338889999780804,
+      "duration": 0.03164110000943765,
       "traceback": null,
       "longrepr": null
     },
@@ -3335,7 +3365,7 @@
       "file": "tests\\test_product_barcode.py",
       "line": 109,
       "outcome": "passed",
-      "duration": 0.03849669999908656,
+      "duration": 0.03209470000001602,
       "traceback": null,
       "longrepr": null
     },
@@ -3345,7 +3375,7 @@
       "file": "tests\\test_product_barcode.py",
       "line": 123,
       "outcome": "passed",
-      "duration": 0.05085040000267327,
+      "duration": 0.03648700000485405,
       "traceback": null,
       "longrepr": null
     },
@@ -3355,7 +3385,7 @@
       "file": "tests\\test_product_barcode.py",
       "line": 136,
       "outcome": "passed",
-      "duration": 0.05754890000389423,
+      "duration": 0.046509099993272685,
       "traceback": null,
       "longrepr": null
     },
@@ -3365,7 +3395,7 @@
       "file": "tests\\test_product_barcode.py",
       "line": 153,
       "outcome": "passed",
-      "duration": 0.013843299995642155,
+      "duration": 0.018246699997689575,
       "traceback": null,
       "longrepr": null
     },
@@ -3375,7 +3405,7 @@
       "file": "tests\\test_purchase_commit.py",
       "line": 93,
       "outcome": "passed",
-      "duration": 0.063243099997635,
+      "duration": 0.09571129998948891,
       "traceback": null,
       "longrepr": null
     },
@@ -3385,7 +3415,7 @@
       "file": "tests\\test_purchase_commit.py",
       "line": 211,
       "outcome": "passed",
-      "duration": 0.04182600000058301,
+      "duration": 0.04768020000483375,
       "traceback": null,
       "longrepr": null
     },
@@ -3395,7 +3425,7 @@
       "file": "tests\\test_purchase_commit.py",
       "line": 239,
       "outcome": "passed",
-      "duration": 0.10321259999909671,
+      "duration": 0.0586576000059722,
       "traceback": null,
       "longrepr": null
     },
@@ -3405,7 +3435,7 @@
       "file": "tests\\test_purchase_commit.py",
       "line": 266,
       "outcome": "passed",
-      "duration": 0.052678300002298784,
+      "duration": 0.05011660000309348,
       "traceback": null,
       "longrepr": null
     },
@@ -3415,7 +3445,7 @@
       "file": "tests\\test_purchase_commit.py",
       "line": 318,
       "outcome": "passed",
-      "duration": 0.05360060000384692,
+      "duration": 0.05452479999803472,
       "traceback": null,
       "longrepr": null
     },
@@ -3425,7 +3455,7 @@
       "file": "tests\\test_purchase_ocr.py",
       "line": 37,
       "outcome": "passed",
-      "duration": 0.002323599997907877,
+      "duration": 0.002010700001846999,
       "traceback": null,
       "longrepr": null
     },
@@ -3435,7 +3465,7 @@
       "file": "tests\\test_purchase_ocr.py",
       "line": 48,
       "outcome": "passed",
-      "duration": 0.0019862000044668093,
+      "duration": 0.001839699994889088,
       "traceback": null,
       "longrepr": null
     },
@@ -3445,7 +3475,7 @@
       "file": "tests\\test_purchase_ocr.py",
       "line": 53,
       "outcome": "passed",
-      "duration": 0.0016713000004529022,
+      "duration": 0.002268199998070486,
       "traceback": null,
       "longrepr": null
     },
@@ -3455,7 +3485,7 @@
       "file": "tests\\test_purchase_ocr.py",
       "line": 63,
       "outcome": "passed",
-      "duration": 0.002815200001350604,
+      "duration": 0.001942799994139932,
       "traceback": null,
       "longrepr": null
     },
@@ -3465,7 +3495,7 @@
       "file": "tests\\test_purchase_ocr.py",
       "line": 76,
       "outcome": "passed",
-      "duration": 0.004758600000059232,
+      "duration": 0.004365500004496425,
       "traceback": null,
       "longrepr": null
     },
@@ -3475,7 +3505,7 @@
       "file": "tests\\test_purchase_ocr.py",
       "line": 90,
       "outcome": "passed",
-      "duration": 0.00439330000517657,
+      "duration": 0.004386699991300702,
       "traceback": null,
       "longrepr": null
     },
@@ -3485,7 +3515,7 @@
       "file": "tests\\test_purchase_ocr.py",
       "line": 101,
       "outcome": "passed",
-      "duration": 0.0026243000029353425,
+      "duration": 0.002956000011181459,
       "traceback": null,
       "longrepr": null
     },
@@ -3495,7 +3525,7 @@
       "file": "tests\\test_purchase_ocr.py",
       "line": 113,
       "outcome": "passed",
-      "duration": 0.006784099998185411,
+      "duration": 0.011510700001963414,
       "traceback": null,
       "longrepr": null
     },
@@ -3505,7 +3535,7 @@
       "file": "tests\\test_purchase_ocr.py",
       "line": 133,
       "outcome": "passed",
-      "duration": 0.009522300002572592,
+      "duration": 0.009800500003620982,
       "traceback": null,
       "longrepr": null
     },
@@ -3515,7 +3545,7 @@
       "file": "tests\\test_purchase_ocr.py",
       "line": 155,
       "outcome": "passed",
-      "duration": 0.003738400002475828,
+      "duration": 0.004702900012489408,
       "traceback": null,
       "longrepr": null
     },
@@ -3525,7 +3555,7 @@
       "file": "tests\\test_purchase_ocr.py",
       "line": 163,
       "outcome": "passed",
-      "duration": 0.0009364999932586215,
+      "duration": 0.0017009000002872199,
       "traceback": null,
       "longrepr": null
     },
@@ -3535,7 +3565,7 @@
       "file": "tests\\test_purchase_ocr.py",
       "line": 167,
       "outcome": "passed",
-      "duration": 0.001998200001253281,
+      "duration": 0.0027341999957570806,
       "traceback": null,
       "longrepr": null
     },
@@ -3545,7 +3575,7 @@
       "file": "tests\\test_purchase_ocr.py",
       "line": 176,
       "outcome": "passed",
-      "duration": 0.001932300001499243,
+      "duration": 0.002286300004925579,
       "traceback": null,
       "longrepr": null
     },
@@ -3555,7 +3585,7 @@
       "file": "tests\\test_purchases.py",
       "line": 68,
       "outcome": "passed",
-      "duration": 0.013863000000128523,
+      "duration": 0.012719800011836924,
       "traceback": null,
       "longrepr": null
     },
@@ -3565,7 +3595,7 @@
       "file": "tests\\test_purchases.py",
       "line": 97,
       "outcome": "passed",
-      "duration": 0.06766849999985425,
+      "duration": 0.07043530000373721,
       "traceback": null,
       "longrepr": null
     },
@@ -3575,7 +3605,7 @@
       "file": "tests\\test_purchases.py",
       "line": 211,
       "outcome": "passed",
-      "duration": 0.03912060000584461,
+      "duration": 0.04897849999542814,
       "traceback": null,
       "longrepr": null
     },
@@ -3585,7 +3615,7 @@
       "file": "tests\\test_purchases.py",
       "line": 253,
       "outcome": "passed",
-      "duration": 0.055755599998519756,
+      "duration": 0.03819610000937246,
       "traceback": null,
       "longrepr": null
     },
@@ -3595,7 +3625,7 @@
       "file": "tests\\test_purchases.py",
       "line": 295,
       "outcome": "passed",
-      "duration": 0.10186309999699006,
+      "duration": 0.07782289999886416,
       "traceback": null,
       "longrepr": null
     },
@@ -3605,7 +3635,7 @@
       "file": "tests\\test_purchases.py",
       "line": 367,
       "outcome": "passed",
-      "duration": 0.2814470000012079,
+      "duration": 0.335482199996477,
       "traceback": null,
       "longrepr": null
     },
@@ -3615,7 +3645,7 @@
       "file": "tests\\test_rag.py",
       "line": 60,
       "outcome": "passed",
-      "duration": 0.001402800000505522,
+      "duration": 0.0014764999941689894,
       "traceback": null,
       "longrepr": null
     },
@@ -3625,7 +3655,7 @@
       "file": "tests\\test_rag.py",
       "line": 82,
       "outcome": "passed",
-      "duration": 0.1755577000003541,
+      "duration": 0.10034790000645444,
       "traceback": null,
       "longrepr": null
     },
@@ -3635,7 +3665,7 @@
       "file": "tests\\test_rag.py",
       "line": 136,
       "outcome": "passed",
-      "duration": 0.0011269999959040433,
+      "duration": 0.0009868000051937997,
       "traceback": null,
       "longrepr": null
     },
@@ -3645,7 +3675,7 @@
       "file": "tests\\test_rate_limiter.py",
       "line": 76,
       "outcome": "passed",
-      "duration": 0.015176000000792556,
+      "duration": 0.011968899998464622,
       "traceback": null,
       "longrepr": null
     },
@@ -3655,7 +3685,7 @@
       "file": "tests\\test_rate_limiter.py",
       "line": 97,
       "outcome": "passed",
-      "duration": 0.003386999997019302,
+      "duration": 0.003816299999016337,
       "traceback": null,
       "longrepr": null
     },
@@ -3665,7 +3695,7 @@
       "file": "tests\\test_rate_limiter.py",
       "line": 102,
       "outcome": "passed",
-      "duration": 0.014468800000031479,
+      "duration": 0.016285499994410202,
       "traceback": null,
       "longrepr": null
     },
@@ -3675,7 +3705,7 @@
       "file": "tests\\test_rate_limiter.py",
       "line": 127,
       "outcome": "passed",
-      "duration": 0.018273200003022794,
+      "duration": 0.013197499996749684,
       "traceback": null,
       "longrepr": null
     },
@@ -3685,7 +3715,7 @@
       "file": "tests\\test_rate_limiter.py",
       "line": 138,
       "outcome": "passed",
-      "duration": 0.018014599998423364,
+      "duration": 0.018364199990173802,
       "traceback": null,
       "longrepr": null
     },
@@ -3695,7 +3725,47 @@
       "file": "tests\\test_rate_limiter.py",
       "line": 149,
       "outcome": "passed",
-      "duration": 0.022330300002067816,
+      "duration": 0.01838379999389872,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_realtime_delta.py::test_delta_event_shape_backward_compatible",
+      "name": "test_delta_event_shape_backward_compatible",
+      "file": "tests\\test_realtime_delta.py",
+      "line": 25,
+      "outcome": "passed",
+      "duration": 0.0007769999938318506,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_realtime_delta.py::test_delta_event_minimal_is_pure_trigger",
+      "name": "test_delta_event_minimal_is_pure_trigger",
+      "file": "tests\\test_realtime_delta.py",
+      "line": 44,
+      "outcome": "passed",
+      "duration": 0.00040970000554807484,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_realtime_delta.py::test_payloadless_triggers_coalesce[asyncio]",
+      "name": "test_payloadless_triggers_coalesce[asyncio]",
+      "file": "tests\\test_realtime_delta.py",
+      "line": 50,
+      "outcome": "passed",
+      "duration": 0.005451699995319359,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_realtime_delta.py::test_distinct_deltas_are_not_coalesced[asyncio]",
+      "name": "test_distinct_deltas_are_not_coalesced[asyncio]",
+      "file": "tests\\test_realtime_delta.py",
+      "line": 62,
+      "outcome": "passed",
+      "duration": 0.00416399999812711,
       "traceback": null,
       "longrepr": null
     },
@@ -3705,7 +3775,7 @@
       "file": "tests\\test_realtime_sync.py",
       "line": 16,
       "outcome": "passed",
-      "duration": 0.0035110000026179478,
+      "duration": 0.005283599995891564,
       "traceback": null,
       "longrepr": null
     },
@@ -3715,7 +3785,7 @@
       "file": "tests\\test_realtime_sync.py",
       "line": 36,
       "outcome": "passed",
-      "duration": 0.003927700003259815,
+      "duration": 0.005046799997217022,
       "traceback": null,
       "longrepr": null
     },
@@ -3725,7 +3795,7 @@
       "file": "tests\\test_recommendations.py",
       "line": 73,
       "outcome": "passed",
-      "duration": 0.010888999997405335,
+      "duration": 0.006647400005022064,
       "traceback": null,
       "longrepr": null
     },
@@ -3735,7 +3805,7 @@
       "file": "tests\\test_recommendations.py",
       "line": 79,
       "outcome": "passed",
-      "duration": 0.008474399997794535,
+      "duration": 0.00808800000231713,
       "traceback": null,
       "longrepr": null
     },
@@ -3745,7 +3815,7 @@
       "file": "tests\\test_recommendations.py",
       "line": 84,
       "outcome": "passed",
-      "duration": 0.008445599996775854,
+      "duration": 0.004487900005187839,
       "traceback": null,
       "longrepr": null
     },
@@ -3755,7 +3825,7 @@
       "file": "tests\\test_recommendations.py",
       "line": 89,
       "outcome": "passed",
-      "duration": 0.005751999997301027,
+      "duration": 0.005399400004534982,
       "traceback": null,
       "longrepr": null
     },
@@ -3765,7 +3835,7 @@
       "file": "tests\\test_recommendations.py",
       "line": 94,
       "outcome": "passed",
-      "duration": 0.010149100002308842,
+      "duration": 0.007130099998903461,
       "traceback": null,
       "longrepr": null
     },
@@ -3775,7 +3845,7 @@
       "file": "tests\\test_recommendations.py",
       "line": 100,
       "outcome": "passed",
-      "duration": 0.007640499999979511,
+      "duration": 0.005980000001727603,
       "traceback": null,
       "longrepr": null
     },
@@ -3785,7 +3855,7 @@
       "file": "tests\\test_recommendations.py",
       "line": 110,
       "outcome": "passed",
-      "duration": 0.015127200000279117,
+      "duration": 0.028552400006446987,
       "traceback": null,
       "longrepr": null
     },
@@ -3795,7 +3865,7 @@
       "file": "tests\\test_recommendations.py",
       "line": 116,
       "outcome": "passed",
-      "duration": 0.018634499996551313,
+      "duration": 0.018521799996960908,
       "traceback": null,
       "longrepr": null
     },
@@ -3805,7 +3875,7 @@
       "file": "tests\\test_recommendations.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.00794849999510916,
+      "duration": 0.007728500000666827,
       "traceback": null,
       "longrepr": null
     },
@@ -3815,7 +3885,7 @@
       "file": "tests\\test_recommendations.py",
       "line": 133,
       "outcome": "passed",
-      "duration": 0.006933799995749723,
+      "duration": 0.011150999998790212,
       "traceback": null,
       "longrepr": null
     },
@@ -3825,7 +3895,7 @@
       "file": "tests\\test_recommendations.py",
       "line": 144,
       "outcome": "passed",
-      "duration": 0.007993200000782963,
+      "duration": 0.0059745000035036355,
       "traceback": null,
       "longrepr": null
     },
@@ -3835,7 +3905,7 @@
       "file": "tests\\test_recommendations.py",
       "line": 155,
       "outcome": "passed",
-      "duration": 0.007110700003977399,
+      "duration": 0.004401300000608899,
       "traceback": null,
       "longrepr": null
     },
@@ -3845,7 +3915,7 @@
       "file": "tests\\test_recommendations.py",
       "line": 169,
       "outcome": "passed",
-      "duration": 0.03282710000348743,
+      "duration": 0.017542200002935715,
       "traceback": null,
       "longrepr": null
     },
@@ -3855,7 +3925,7 @@
       "file": "tests\\test_rls_policies.py",
       "line": 6,
       "outcome": "passed",
-      "duration": 0.0006447999985539354,
+      "duration": 0.000937399992835708,
       "traceback": null,
       "longrepr": null
     },
@@ -3865,7 +3935,7 @@
       "file": "tests\\test_rls_policies.py",
       "line": 15,
       "outcome": "passed",
-      "duration": 0.00474930000200402,
+      "duration": 0.0028698999958578497,
       "traceback": null,
       "longrepr": null
     },
@@ -3875,7 +3945,7 @@
       "file": "tests\\test_rls_policies.py",
       "line": 34,
       "outcome": "passed",
-      "duration": 0.007382199997664429,
+      "duration": 0.007038199997623451,
       "traceback": null,
       "longrepr": null
     },
@@ -3885,7 +3955,7 @@
       "file": "tests\\test_rls_policies.py",
       "line": 68,
       "outcome": "passed",
-      "duration": 0.003931200000806712,
+      "duration": 0.0013694999943254516,
       "traceback": null,
       "longrepr": null
     },
@@ -3895,7 +3965,7 @@
       "file": "tests\\test_rls_policies.py",
       "line": 100,
       "outcome": "passed",
-      "duration": 0.001557600000523962,
+      "duration": 0.001268399995751679,
       "traceback": null,
       "longrepr": null
     },
@@ -3905,7 +3975,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.013033399998676032,
+      "duration": 0.005498900005477481,
       "traceback": null,
       "longrepr": null
     },
@@ -3915,7 +3985,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.008274899999378249,
+      "duration": 0.006031299999449402,
       "traceback": null,
       "longrepr": null
     },
@@ -3925,7 +3995,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.010434000003442634,
+      "duration": 0.006091599992942065,
       "traceback": null,
       "longrepr": null
     },
@@ -3935,7 +4005,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.011816300000646152,
+      "duration": 0.005593499998212792,
       "traceback": null,
       "longrepr": null
     },
@@ -3945,7 +4015,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.01223770000069635,
+      "duration": 0.006622500004596077,
       "traceback": null,
       "longrepr": null
     },
@@ -3955,7 +4025,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.011067999999795575,
+      "duration": 0.006630299991229549,
       "traceback": null,
       "longrepr": null
     },
@@ -3965,7 +4035,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.009133999999903608,
+      "duration": 0.006127300002845004,
       "traceback": null,
       "longrepr": null
     },
@@ -3975,7 +4045,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.013399499999650288,
+      "duration": 0.007262200000695884,
       "traceback": null,
       "longrepr": null
     },
@@ -3985,7 +4055,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.013927400003012735,
+      "duration": 0.007439000008162111,
       "traceback": null,
       "longrepr": null
     },
@@ -3995,7 +4065,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.012216800001624506,
+      "duration": 0.007545199987362139,
       "traceback": null,
       "longrepr": null
     },
@@ -4005,7 +4075,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.012464599996746983,
+      "duration": 0.0055296999926213175,
       "traceback": null,
       "longrepr": null
     },
@@ -4015,7 +4085,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.01554579999356065,
+      "duration": 0.006299100001342595,
       "traceback": null,
       "longrepr": null
     },
@@ -4025,7 +4095,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.01769120000244584,
+      "duration": 0.007302599988179281,
       "traceback": null,
       "longrepr": null
     },
@@ -4035,7 +4105,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.018955200001073536,
+      "duration": 0.007474800004274584,
       "traceback": null,
       "longrepr": null
     },
@@ -4045,7 +4115,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.025573300001269672,
+      "duration": 0.0061197000031825155,
       "traceback": null,
       "longrepr": null
     },
@@ -4055,7 +4125,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.018652599996130448,
+      "duration": 0.005317600007401779,
       "traceback": null,
       "longrepr": null
     },
@@ -4065,7 +4135,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.011308399996778462,
+      "duration": 0.006279700013692491,
       "traceback": null,
       "longrepr": null
     },
@@ -4075,7 +4145,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.01908739999635145,
+      "duration": 0.006488999992143363,
       "traceback": null,
       "longrepr": null
     },
@@ -4085,7 +4155,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.01645750000170665,
+      "duration": 0.005368900005123578,
       "traceback": null,
       "longrepr": null
     },
@@ -4095,7 +4165,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.015470500002265908,
+      "duration": 0.00609460000123363,
       "traceback": null,
       "longrepr": null
     },
@@ -4105,7 +4175,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.016678500003763475,
+      "duration": 0.007649999999557622,
       "traceback": null,
       "longrepr": null
     },
@@ -4115,7 +4185,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.01500819999637315,
+      "duration": 0.006100200000219047,
       "traceback": null,
       "longrepr": null
     },
@@ -4125,7 +4195,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.018580199997813907,
+      "duration": 0.00635159999364987,
       "traceback": null,
       "longrepr": null
     },
@@ -4135,7 +4205,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.01916930000152206,
+      "duration": 0.006935700002941303,
       "traceback": null,
       "longrepr": null
     },
@@ -4145,7 +4215,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.00888400000258116,
+      "duration": 0.007255100004840642,
       "traceback": null,
       "longrepr": null
     },
@@ -4155,7 +4225,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.017751499995938502,
+      "duration": 0.007302900005015545,
       "traceback": null,
       "longrepr": null
     },
@@ -4165,7 +4235,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.017935199997737072,
+      "duration": 0.005098900001030415,
       "traceback": null,
       "longrepr": null
     },
@@ -4175,7 +4245,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.016063900002336595,
+      "duration": 0.005360399998608045,
       "traceback": null,
       "longrepr": null
     },
@@ -4185,7 +4255,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.013265399997180793,
+      "duration": 0.006332800010568462,
       "traceback": null,
       "longrepr": null
     },
@@ -4195,7 +4265,7 @@
       "file": "tests\\test_roles.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.018050300001050346,
+      "duration": 0.007574100003694184,
       "traceback": null,
       "longrepr": null
     },
@@ -4205,7 +4275,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.01758500000141794,
+      "duration": 0.007100399991031736,
       "traceback": null,
       "longrepr": null
     },
@@ -4215,7 +4285,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.01776120000431547,
+      "duration": 0.005999699991662055,
       "traceback": null,
       "longrepr": null
     },
@@ -4225,7 +4295,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.025483199999143835,
+      "duration": 0.010821999996551313,
       "traceback": null,
       "longrepr": null
     },
@@ -4235,7 +4305,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.013537300001189578,
+      "duration": 0.006187799997860566,
       "traceback": null,
       "longrepr": null
     },
@@ -4245,7 +4315,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.018785799999022856,
+      "duration": 0.012084000001777895,
       "traceback": null,
       "longrepr": null
     },
@@ -4255,7 +4325,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.011795200000051409,
+      "duration": 0.007229900002130307,
       "traceback": null,
       "longrepr": null
     },
@@ -4265,7 +4335,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.012400899999192916,
+      "duration": 0.006365399996866472,
       "traceback": null,
       "longrepr": null
     },
@@ -4275,7 +4345,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.01222280000365572,
+      "duration": 0.005754400001023896,
       "traceback": null,
       "longrepr": null
     },
@@ -4285,7 +4355,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.016012600004614796,
+      "duration": 0.006794500004616566,
       "traceback": null,
       "longrepr": null
     },
@@ -4295,7 +4365,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.015168699996138457,
+      "duration": 0.008704099993337877,
       "traceback": null,
       "longrepr": null
     },
@@ -4305,7 +4375,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.019578900006308686,
+      "duration": 0.007240499995532446,
       "traceback": null,
       "longrepr": null
     },
@@ -4315,7 +4385,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.015933299997413997,
+      "duration": 0.005761699998402037,
       "traceback": null,
       "longrepr": null
     },
@@ -4325,7 +4395,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.02554410000448115,
+      "duration": 0.006977500001084991,
       "traceback": null,
       "longrepr": null
     },
@@ -4335,7 +4405,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.017982699995627627,
+      "duration": 0.007012800007942133,
       "traceback": null,
       "longrepr": null
     },
@@ -4345,7 +4415,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.03041040000243811,
+      "duration": 0.01261450001038611,
       "traceback": null,
       "longrepr": null
     },
@@ -4355,7 +4425,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.020429399999557063,
+      "duration": 0.006816199995228089,
       "traceback": null,
       "longrepr": null
     },
@@ -4365,7 +4435,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.015991699998266995,
+      "duration": 0.007849100002204068,
       "traceback": null,
       "longrepr": null
     },
@@ -4375,7 +4445,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.010831300001882482,
+      "duration": 0.005395400003180839,
       "traceback": null,
       "longrepr": null
     },
@@ -4385,7 +4455,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.008111499999358784,
+      "duration": 0.005514799995580688,
       "traceback": null,
       "longrepr": null
     },
@@ -4395,7 +4465,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.012512699999206234,
+      "duration": 0.0071090999990701675,
       "traceback": null,
       "longrepr": null
     },
@@ -4405,7 +4475,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.009470400000282098,
+      "duration": 0.006359500010148622,
       "traceback": null,
       "longrepr": null
     },
@@ -4415,7 +4485,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.01990529999602586,
+      "duration": 0.00878950000333134,
       "traceback": null,
       "longrepr": null
     },
@@ -4425,7 +4495,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.016160300001502037,
+      "duration": 0.005948599995463155,
       "traceback": null,
       "longrepr": null
     },
@@ -4435,7 +4505,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.01922779999586055,
+      "duration": 0.006120399993960746,
       "traceback": null,
       "longrepr": null
     },
@@ -4445,7 +4515,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.017232599995622877,
+      "duration": 0.007237300000269897,
       "traceback": null,
       "longrepr": null
     },
@@ -4455,7 +4525,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.012939799999003299,
+      "duration": 0.007436300002154894,
       "traceback": null,
       "longrepr": null
     },
@@ -4465,7 +4535,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.013515699996787589,
+      "duration": 0.009511500000371598,
       "traceback": null,
       "longrepr": null
     },
@@ -4475,7 +4545,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.01832789999753004,
+      "duration": 0.00860370000009425,
       "traceback": null,
       "longrepr": null
     },
@@ -4485,7 +4555,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.017167899997730274,
+      "duration": 0.00643829999899026,
       "traceback": null,
       "longrepr": null
     },
@@ -4495,7 +4565,7 @@
       "file": "tests\\test_roles.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.028270299997529946,
+      "duration": 0.006705599997076206,
       "traceback": null,
       "longrepr": null
     },
@@ -4505,7 +4575,7 @@
       "file": "tests\\test_roles.py",
       "line": 132,
       "outcome": "passed",
-      "duration": 0.08896890000323765,
+      "duration": 0.025984699997934513,
       "traceback": null,
       "longrepr": null
     },
@@ -4515,7 +4585,7 @@
       "file": "tests\\test_roles.py",
       "line": 152,
       "outcome": "passed",
-      "duration": 0.06070719999843277,
+      "duration": 0.025428500011912547,
       "traceback": null,
       "longrepr": null
     },
@@ -4525,7 +4595,7 @@
       "file": "tests\\test_roles.py",
       "line": 169,
       "outcome": "passed",
-      "duration": 0.014257000002544373,
+      "duration": 0.005311699991580099,
       "traceback": null,
       "longrepr": null
     },
@@ -4535,7 +4605,7 @@
       "file": "tests\\test_router_fixpack.py",
       "line": 75,
       "outcome": "passed",
-      "duration": 0.0010987999994540587,
+      "duration": 0.0003620000061346218,
       "traceback": null,
       "longrepr": null
     },
@@ -4545,7 +4615,7 @@
       "file": "tests\\test_router_fixpack.py",
       "line": 85,
       "outcome": "passed",
-      "duration": 0.0015838999970583245,
+      "duration": 0.0003274999908171594,
       "traceback": null,
       "longrepr": null
     },
@@ -4555,7 +4625,7 @@
       "file": "tests\\test_router_fixpack.py",
       "line": 94,
       "outcome": "passed",
-      "duration": 0.0012599000037880614,
+      "duration": 0.0003369999903952703,
       "traceback": null,
       "longrepr": null
     },
@@ -4565,7 +4635,7 @@
       "file": "tests\\test_router_fixpack.py",
       "line": 104,
       "outcome": "passed",
-      "duration": 0.0012548000013339333,
+      "duration": 0.000348299989127554,
       "traceback": null,
       "longrepr": null
     },
@@ -4575,7 +4645,7 @@
       "file": "tests\\test_router_fixpack.py",
       "line": 112,
       "outcome": "passed",
-      "duration": 0.0013038000033702701,
+      "duration": 0.00030280000646598637,
       "traceback": null,
       "longrepr": null
     },
@@ -4585,7 +4655,7 @@
       "file": "tests\\test_router_fixpack.py",
       "line": 121,
       "outcome": "passed",
-      "duration": 0.0007428000026266091,
+      "duration": 0.0003637000045273453,
       "traceback": null,
       "longrepr": null
     },
@@ -4595,7 +4665,7 @@
       "file": "tests\\test_router_fixpack.py",
       "line": 132,
       "outcome": "passed",
-      "duration": 0.005707299998903181,
+      "duration": 0.0015093000110937282,
       "traceback": null,
       "longrepr": null
     },
@@ -4605,7 +4675,7 @@
       "file": "tests\\test_router_fixpack.py",
       "line": 139,
       "outcome": "passed",
-      "duration": 0.004337100006523542,
+      "duration": 0.0015218999906210229,
       "traceback": null,
       "longrepr": null
     },
@@ -4615,7 +4685,7 @@
       "file": "tests\\test_router_fixpack.py",
       "line": 147,
       "outcome": "passed",
-      "duration": 0.0027197000017622486,
+      "duration": 0.0015636000025551766,
       "traceback": null,
       "longrepr": null
     },
@@ -4625,7 +4695,7 @@
       "file": "tests\\test_router_fixpack.py",
       "line": 156,
       "outcome": "passed",
-      "duration": 0.0045776999977533706,
+      "duration": 0.0025313000078313053,
       "traceback": null,
       "longrepr": null
     },
@@ -4635,7 +4705,7 @@
       "file": "tests\\test_router_fixpack.py",
       "line": 163,
       "outcome": "passed",
-      "duration": 0.012509600004705135,
+      "duration": 0.0032085999991977587,
       "traceback": null,
       "longrepr": null
     },
@@ -4645,7 +4715,7 @@
       "file": "tests\\test_router_fixpack.py",
       "line": 170,
       "outcome": "passed",
-      "duration": 0.008816900000965688,
+      "duration": 0.002403599995886907,
       "traceback": null,
       "longrepr": null
     },
@@ -4655,7 +4725,7 @@
       "file": "tests\\test_router_fixpack.py",
       "line": 178,
       "outcome": "passed",
-      "duration": 0.0012709000002359971,
+      "duration": 0.00044600000546779484,
       "traceback": null,
       "longrepr": null
     },
@@ -4665,7 +4735,7 @@
       "file": "tests\\test_router_switch.py",
       "line": 66,
       "outcome": "passed",
-      "duration": 0.08400930000061635,
+      "duration": 0.08451109999441542,
       "traceback": null,
       "longrepr": null
     },
@@ -4675,7 +4745,7 @@
       "file": "tests\\test_router_switch.py",
       "line": 80,
       "outcome": "passed",
-      "duration": 0.08647109999583336,
+      "duration": 0.07836319999478292,
       "traceback": null,
       "longrepr": null
     },
@@ -4685,7 +4755,7 @@
       "file": "tests\\test_router_switch.py",
       "line": 101,
       "outcome": "passed",
-      "duration": 0.04217050000443123,
+      "duration": 0.035794000010355376,
       "traceback": null,
       "longrepr": null
     },
@@ -4695,7 +4765,7 @@
       "file": "tests\\test_router_switch.py",
       "line": 125,
       "outcome": "passed",
-      "duration": 0.0790359999955399,
+      "duration": 0.06324160000076517,
       "traceback": null,
       "longrepr": null
     },
@@ -4705,7 +4775,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 133,
       "outcome": "passed",
-      "duration": 0.0035553999987314455,
+      "duration": 0.002113800001097843,
       "traceback": null,
       "longrepr": null
     },
@@ -4715,7 +4785,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 138,
       "outcome": "passed",
-      "duration": 0.04881029999523889,
+      "duration": 0.028857700002845377,
       "traceback": null,
       "longrepr": null
     },
@@ -4725,7 +4795,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 148,
       "outcome": "passed",
-      "duration": 0.0456008999972255,
+      "duration": 0.028984000004129484,
       "traceback": null,
       "longrepr": null
     },
@@ -4735,7 +4805,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 157,
       "outcome": "passed",
-      "duration": 0.04074550000223098,
+      "duration": 0.031631599995307624,
       "traceback": null,
       "longrepr": null
     },
@@ -4745,7 +4815,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 207,
       "outcome": "passed",
-      "duration": 0.006904100002429914,
+      "duration": 0.004935700009809807,
       "traceback": null,
       "longrepr": null
     },
@@ -4755,7 +4825,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 213,
       "outcome": "passed",
-      "duration": 0.0812969000035082,
+      "duration": 0.06343389999528881,
       "traceback": null,
       "longrepr": null
     },
@@ -4765,7 +4835,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 222,
       "outcome": "passed",
-      "duration": 0.087431200001447,
+      "duration": 0.0748289999901317,
       "traceback": null,
       "longrepr": null
     },
@@ -4775,7 +4845,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 230,
       "outcome": "passed",
-      "duration": 0.09064489999582293,
+      "duration": 0.0735257000051206,
       "traceback": null,
       "longrepr": null
     },
@@ -4785,7 +4855,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 238,
       "outcome": "passed",
-      "duration": 0.08847899999818765,
+      "duration": 0.07435860000259709,
       "traceback": null,
       "longrepr": null
     },
@@ -4795,7 +4865,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 271,
       "outcome": "passed",
-      "duration": 0.0035425999958533794,
+      "duration": 0.002827299991622567,
       "traceback": null,
       "longrepr": null
     },
@@ -4805,7 +4875,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 279,
       "outcome": "passed",
-      "duration": 0.44446249999600695,
+      "duration": 0.37465919999522157,
       "traceback": null,
       "longrepr": null
     },
@@ -4815,7 +4885,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 291,
       "outcome": "passed",
-      "duration": 0.08563600000343286,
+      "duration": 0.06707659999665339,
       "traceback": null,
       "longrepr": null
     },
@@ -4825,7 +4895,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 300,
       "outcome": "passed",
-      "duration": 0.0881022000030498,
+      "duration": 0.06764269999985117,
       "traceback": null,
       "longrepr": null
     },
@@ -4835,7 +4905,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 309,
       "outcome": "passed",
-      "duration": 0.08953350000228966,
+      "duration": 0.06319210000219755,
       "traceback": null,
       "longrepr": null
     },
@@ -4845,7 +4915,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 329,
       "outcome": "passed",
-      "duration": 0.27009109999926295,
+      "duration": 0.26679090000106953,
       "traceback": null,
       "longrepr": null
     },
@@ -4855,7 +4925,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 358,
       "outcome": "passed",
-      "duration": 0.1239343999986886,
+      "duration": 0.09993260000192095,
       "traceback": null,
       "longrepr": null
     },
@@ -4865,7 +4935,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 372,
       "outcome": "passed",
-      "duration": 0.25179989999742247,
+      "duration": 0.2146733999979915,
       "traceback": null,
       "longrepr": null
     },
@@ -4875,7 +4945,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 397,
       "outcome": "passed",
-      "duration": 0.12611029999970924,
+      "duration": 0.09784380000201054,
       "traceback": null,
       "longrepr": null
     },
@@ -4885,7 +4955,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 430,
       "outcome": "passed",
-      "duration": 0.0034285000001545995,
+      "duration": 0.0019367000058991835,
       "traceback": null,
       "longrepr": null
     },
@@ -4895,7 +4965,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 436,
       "outcome": "passed",
-      "duration": 0.5308729000025778,
+      "duration": 0.2539375000051223,
       "traceback": null,
       "longrepr": null
     },
@@ -4905,7 +4975,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 446,
       "outcome": "passed",
-      "duration": 0.1115090000021155,
+      "duration": 0.09391189999587368,
       "traceback": null,
       "longrepr": null
     },
@@ -4915,7 +4985,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 457,
       "outcome": "passed",
-      "duration": 0.08724000000074739,
+      "duration": 0.07257570000365376,
       "traceback": null,
       "longrepr": null
     },
@@ -4925,7 +4995,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 473,
       "outcome": "passed",
-      "duration": 0.08963790000416338,
+      "duration": 0.07103969999297988,
       "traceback": null,
       "longrepr": null
     },
@@ -4935,7 +5005,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 484,
       "outcome": "passed",
-      "duration": 0.16167829999903915,
+      "duration": 0.15890230001241434,
       "traceback": null,
       "longrepr": null
     },
@@ -4945,7 +5015,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 519,
       "outcome": "passed",
-      "duration": 0.0032886000044527464,
+      "duration": 0.001876299997093156,
       "traceback": null,
       "longrepr": null
     },
@@ -4955,7 +5025,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 524,
       "outcome": "passed",
-      "duration": 0.08282270000199787,
+      "duration": 0.06833169999299571,
       "traceback": null,
       "longrepr": null
     },
@@ -4965,7 +5035,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 535,
       "outcome": "passed",
-      "duration": 0.08621359999960987,
+      "duration": 0.0653007999935653,
       "traceback": null,
       "longrepr": null
     },
@@ -4975,7 +5045,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 547,
       "outcome": "passed",
-      "duration": 0.12645340000017313,
+      "duration": 0.08939850000024308,
       "traceback": null,
       "longrepr": null
     },
@@ -4985,7 +5055,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 574,
       "outcome": "passed",
-      "duration": 0.08786359999794513,
+      "duration": 0.06749139999737963,
       "traceback": null,
       "longrepr": null
     },
@@ -4995,7 +5065,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 583,
       "outcome": "passed",
-      "duration": 0.08855539999785833,
+      "duration": 0.08632360000046901,
       "traceback": null,
       "longrepr": null
     },
@@ -5005,7 +5075,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 594,
       "outcome": "passed",
-      "duration": 0.0808000000033644,
+      "duration": 0.08826160000171512,
       "traceback": null,
       "longrepr": null
     },
@@ -5015,7 +5085,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 602,
       "outcome": "passed",
-      "duration": 0.042804400000022724,
+      "duration": 0.04858339999918826,
       "traceback": null,
       "longrepr": null
     },
@@ -5025,7 +5095,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 622,
       "outcome": "passed",
-      "duration": 0.002005599999392871,
+      "duration": 0.0017525000002933666,
       "traceback": null,
       "longrepr": null
     },
@@ -5035,7 +5105,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 634,
       "outcome": "passed",
-      "duration": 0.0010561000017332844,
+      "duration": 0.0015156000008573756,
       "traceback": null,
       "longrepr": null
     },
@@ -5045,7 +5115,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 640,
       "outcome": "passed",
-      "duration": 0.0013697000031243078,
+      "duration": 0.0019481999916024506,
       "traceback": null,
       "longrepr": null
     },
@@ -5055,7 +5125,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 646,
       "outcome": "passed",
-      "duration": 0.0012162999992142431,
+      "duration": 0.001932300001499243,
       "traceback": null,
       "longrepr": null
     },
@@ -5065,7 +5135,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 651,
       "outcome": "passed",
-      "duration": 0.17198220000136644,
+      "duration": 0.1945912000082899,
       "traceback": null,
       "longrepr": null
     },
@@ -5075,7 +5145,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 664,
       "outcome": "passed",
-      "duration": 0.09845540000242181,
+      "duration": 0.10941670001193415,
       "traceback": null,
       "longrepr": null
     },
@@ -5085,7 +5155,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 671,
       "outcome": "passed",
-      "duration": 0.0017578999977558851,
+      "duration": 0.001782199993613176,
       "traceback": null,
       "longrepr": null
     },
@@ -5095,7 +5165,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 689,
       "outcome": "passed",
-      "duration": 0.003861299999698531,
+      "duration": 0.0032912999886320904,
       "traceback": null,
       "longrepr": null
     },
@@ -5105,7 +5175,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 696,
       "outcome": "passed",
-      "duration": 0.002747400001680944,
+      "duration": 0.0023271000100066885,
       "traceback": null,
       "longrepr": null
     },
@@ -5115,7 +5185,7 @@
       "file": "tests\\test_routing_tiers.py",
       "line": 711,
       "outcome": "passed",
-      "duration": 0.0018535999988671392,
+      "duration": 0.0014621000009356067,
       "traceback": null,
       "longrepr": null
     },
@@ -5125,7 +5195,7 @@
       "file": "tests\\test_sales_api.py",
       "line": 60,
       "outcome": "passed",
-      "duration": 0.03278879999561468,
+      "duration": 0.01743630001146812,
       "traceback": null,
       "longrepr": null
     },
@@ -5135,7 +5205,7 @@
       "file": "tests\\test_sales_api.py",
       "line": 74,
       "outcome": "passed",
-      "duration": 0.010368700000981335,
+      "duration": 0.006876699990243651,
       "traceback": null,
       "longrepr": null
     },
@@ -5145,7 +5215,7 @@
       "file": "tests\\test_sales_api.py",
       "line": 81,
       "outcome": "passed",
-      "duration": 0.029148100002203137,
+      "duration": 0.013877999997930601,
       "traceback": null,
       "longrepr": null
     },
@@ -5155,7 +5225,7 @@
       "file": "tests\\test_sales_api.py",
       "line": 89,
       "outcome": "passed",
-      "duration": 0.07850019999750657,
+      "duration": 0.03230910000274889,
       "traceback": null,
       "longrepr": null
     },
@@ -5165,7 +5235,7 @@
       "file": "tests\\test_sales_api.py",
       "line": 103,
       "outcome": "passed",
-      "duration": 0.011313800001516938,
+      "duration": 0.005270300011034124,
       "traceback": null,
       "longrepr": null
     },
@@ -5175,7 +5245,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.00151940000068862,
+      "duration": 0.00037349999183788896,
       "traceback": null,
       "longrepr": null
     },
@@ -5185,7 +5255,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0008635000049252994,
+      "duration": 0.00023830001009628177,
       "traceback": null,
       "longrepr": null
     },
@@ -5195,7 +5265,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0006478000068455003,
+      "duration": 0.0004031999997096136,
       "traceback": null,
       "longrepr": null
     },
@@ -5205,7 +5275,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0007909999985713512,
+      "duration": 0.00021880000713281333,
       "traceback": null,
       "longrepr": null
     },
@@ -5215,7 +5285,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0011939999967580661,
+      "duration": 0.00022950000129640102,
       "traceback": null,
       "longrepr": null
     },
@@ -5225,7 +5295,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0004667000030167401,
+      "duration": 0.00025090000417549163,
       "traceback": null,
       "longrepr": null
     },
@@ -5235,7 +5305,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0010676000019884668,
+      "duration": 0.00025270000332966447,
       "traceback": null,
       "longrepr": null
     },
@@ -5245,7 +5315,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0013323000021046028,
+      "duration": 0.00026429998979438096,
       "traceback": null,
       "longrepr": null
     },
@@ -5255,7 +5325,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0013376000060816295,
+      "duration": 0.0002234999992651865,
       "traceback": null,
       "longrepr": null
     },
@@ -5265,7 +5335,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0006289000011747703,
+      "duration": 0.00026420000358484685,
       "traceback": null,
       "longrepr": null
     },
@@ -5275,7 +5345,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0007511000003432855,
+      "duration": 0.00023680001322645694,
       "traceback": null,
       "longrepr": null
     },
@@ -5285,7 +5355,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0009630999993532896,
+      "duration": 0.00021399999968707561,
       "traceback": null,
       "longrepr": null
     },
@@ -5295,7 +5365,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.001036100002238527,
+      "duration": 0.0002595999976620078,
       "traceback": null,
       "longrepr": null
     },
@@ -5305,7 +5375,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0006098999947425909,
+      "duration": 0.00023779999173711985,
       "traceback": null,
       "longrepr": null
     },
@@ -5315,7 +5385,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0013472999999066815,
+      "duration": 0.0002486999874236062,
       "traceback": null,
       "longrepr": null
     },
@@ -5325,7 +5395,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0009048000065376982,
+      "duration": 0.00023839999630581588,
       "traceback": null,
       "longrepr": null
     },
@@ -5335,7 +5405,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0009083000040845945,
+      "duration": 0.0002170000079786405,
       "traceback": null,
       "longrepr": null
     },
@@ -5345,7 +5415,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0009046999985002913,
+      "duration": 0.00047590000031050295,
       "traceback": null,
       "longrepr": null
     },
@@ -5355,7 +5425,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0015604000000166707,
+      "duration": 0.00022629999148193747,
       "traceback": null,
       "longrepr": null
     },
@@ -5365,7 +5435,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0013694000008399598,
+      "duration": 0.0002626999921631068,
       "traceback": null,
       "longrepr": null
     },
@@ -5375,7 +5445,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0015628000037395395,
+      "duration": 0.00024259999918285757,
       "traceback": null,
       "longrepr": null
     },
@@ -5385,7 +5455,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0012766999934683554,
+      "duration": 0.00022770000214222819,
       "traceback": null,
       "longrepr": null
     },
@@ -5395,7 +5465,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0015716999987489544,
+      "duration": 0.00030949999927543104,
       "traceback": null,
       "longrepr": null
     },
@@ -5405,7 +5475,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0013858999955118634,
+      "duration": 0.0002204000047640875,
       "traceback": null,
       "longrepr": null
     },
@@ -5415,7 +5485,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0014908999946783297,
+      "duration": 0.00023520000104326755,
       "traceback": null,
       "longrepr": null
     },
@@ -5425,7 +5495,7 @@
       "file": "tests\\test_session_title.py",
       "line": 20,
       "outcome": "passed",
-      "duration": 0.0006849999990663491,
+      "duration": 0.00023410000721924007,
       "traceback": null,
       "longrepr": null
     },
@@ -5435,7 +5505,7 @@
       "file": "tests\\test_session_title.py",
       "line": 29,
       "outcome": "passed",
-      "duration": 0.0004561000023386441,
+      "duration": 0.0002865999995265156,
       "traceback": null,
       "longrepr": null
     },
@@ -5445,7 +5515,7 @@
       "file": "tests\\test_session_title.py",
       "line": 29,
       "outcome": "passed",
-      "duration": 0.001463000000512693,
+      "duration": 0.0002984999882755801,
       "traceback": null,
       "longrepr": null
     },
@@ -5455,7 +5525,7 @@
       "file": "tests\\test_session_title.py",
       "line": 29,
       "outcome": "passed",
-      "duration": 0.00117790000513196,
+      "duration": 0.0002432000037515536,
       "traceback": null,
       "longrepr": null
     },
@@ -5465,7 +5535,7 @@
       "file": "tests\\test_session_title.py",
       "line": 29,
       "outcome": "passed",
-      "duration": 0.002668100001756102,
+      "duration": 0.00025189999723806977,
       "traceback": null,
       "longrepr": null
     },
@@ -5475,7 +5545,7 @@
       "file": "tests\\test_session_title.py",
       "line": 29,
       "outcome": "passed",
-      "duration": 0.0009232000011252239,
+      "duration": 0.00025260000256821513,
       "traceback": null,
       "longrepr": null
     },
@@ -5485,7 +5555,7 @@
       "file": "tests\\test_session_title.py",
       "line": 29,
       "outcome": "passed",
-      "duration": 0.0010188000014750287,
+      "duration": 0.0002449000021442771,
       "traceback": null,
       "longrepr": null
     },
@@ -5495,7 +5565,7 @@
       "file": "tests\\test_session_title.py",
       "line": 41,
       "outcome": "passed",
-      "duration": 0.0014242000033846125,
+      "duration": 0.00036160000308882445,
       "traceback": null,
       "longrepr": null
     },
@@ -5505,7 +5575,7 @@
       "file": "tests\\test_settings.py",
       "line": 119,
       "outcome": "passed",
-      "duration": 0.017405099999450613,
+      "duration": 0.011093500012066215,
       "traceback": null,
       "longrepr": null
     },
@@ -5515,7 +5585,7 @@
       "file": "tests\\test_settings.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.01574859999527689,
+      "duration": 0.006609899995964952,
       "traceback": null,
       "longrepr": null
     },
@@ -5525,7 +5595,7 @@
       "file": "tests\\test_settings.py",
       "line": 135,
       "outcome": "passed",
-      "duration": 0.015286800000467338,
+      "duration": 0.006200100004207343,
       "traceback": null,
       "longrepr": null
     },
@@ -5535,7 +5605,7 @@
       "file": "tests\\test_settings.py",
       "line": 151,
       "outcome": "passed",
-      "duration": 0.01566129999991972,
+      "duration": 0.005986499993014149,
       "traceback": null,
       "longrepr": null
     },
@@ -5545,7 +5615,7 @@
       "file": "tests\\test_settings.py",
       "line": 160,
       "outcome": "passed",
-      "duration": 0.014311400002043229,
+      "duration": 0.006468999999924563,
       "traceback": null,
       "longrepr": null
     },
@@ -5555,7 +5625,7 @@
       "file": "tests\\test_settings.py",
       "line": 168,
       "outcome": "passed",
-      "duration": 0.0089637000055518,
+      "duration": 0.005795700009912252,
       "traceback": null,
       "longrepr": null
     },
@@ -5565,7 +5635,7 @@
       "file": "tests\\test_settings.py",
       "line": 179,
       "outcome": "passed",
-      "duration": 0.01927360000263434,
+      "duration": 0.0048940999986371025,
       "traceback": null,
       "longrepr": null
     },
@@ -5575,7 +5645,7 @@
       "file": "tests\\test_settings.py",
       "line": 186,
       "outcome": "passed",
-      "duration": 0.04088999999657972,
+      "duration": 0.013146500001312234,
       "traceback": null,
       "longrepr": null
     },
@@ -5585,7 +5655,7 @@
       "file": "tests\\test_settings.py",
       "line": 196,
       "outcome": "passed",
-      "duration": 0.03868099999817787,
+      "duration": 0.011866299988469109,
       "traceback": null,
       "longrepr": null
     },
@@ -5595,7 +5665,7 @@
       "file": "tests\\test_settings.py",
       "line": 210,
       "outcome": "passed",
-      "duration": 0.06418090000079246,
+      "duration": 0.015351900001405738,
       "traceback": null,
       "longrepr": null
     },
@@ -5605,7 +5675,7 @@
       "file": "tests\\test_settings.py",
       "line": 220,
       "outcome": "passed",
-      "duration": 0.09860309999930905,
+      "duration": 0.020411799996509217,
       "traceback": null,
       "longrepr": null
     },
@@ -5615,7 +5685,7 @@
       "file": "tests\\test_settings.py",
       "line": 234,
       "outcome": "passed",
-      "duration": 0.03268579999712529,
+      "duration": 0.010234400004264899,
       "traceback": null,
       "longrepr": null
     },
@@ -5625,7 +5695,7 @@
       "file": "tests\\test_settings.py",
       "line": 251,
       "outcome": "passed",
-      "duration": 0.02970340000319993,
+      "duration": 0.007174399986979552,
       "traceback": null,
       "longrepr": null
     },
@@ -5635,7 +5705,7 @@
       "file": "tests\\test_settings.py",
       "line": 260,
       "outcome": "passed",
-      "duration": 0.0559413000009954,
+      "duration": 0.01549019999220036,
       "traceback": null,
       "longrepr": null
     },
@@ -5645,7 +5715,7 @@
       "file": "tests\\test_settings.py",
       "line": 268,
       "outcome": "passed",
-      "duration": 0.09035439999570372,
+      "duration": 0.02469389999168925,
       "traceback": null,
       "longrepr": null
     },
@@ -5655,7 +5725,7 @@
       "file": "tests\\test_shadow_routing.py",
       "line": 47,
       "outcome": "passed",
-      "duration": 0.06989149999571964,
+      "duration": 0.047011300004669465,
       "traceback": null,
       "longrepr": null
     },
@@ -5665,7 +5735,7 @@
       "file": "tests\\test_shadow_routing.py",
       "line": 67,
       "outcome": "passed",
-      "duration": 0.06426830000418704,
+      "duration": 0.04858289999538101,
       "traceback": null,
       "longrepr": null
     },
@@ -5675,7 +5745,7 @@
       "file": "tests\\test_shadow_routing.py",
       "line": 80,
       "outcome": "passed",
-      "duration": 0.06340700000146171,
+      "duration": 0.05561870000383351,
       "traceback": null,
       "longrepr": null
     },
@@ -5685,7 +5755,7 @@
       "file": "tests\\test_smart_insights.py",
       "line": 72,
       "outcome": "passed",
-      "duration": 0.003758199993171729,
+      "duration": 0.0020380000059958547,
       "traceback": null,
       "longrepr": null
     },
@@ -5695,7 +5765,7 @@
       "file": "tests\\test_smart_insights.py",
       "line": 84,
       "outcome": "passed",
-      "duration": 0.002970699999423232,
+      "duration": 0.004367099987575784,
       "traceback": null,
       "longrepr": null
     },
@@ -5705,7 +5775,7 @@
       "file": "tests\\test_smart_insights.py",
       "line": 93,
       "outcome": "passed",
-      "duration": 0.0032275999983539805,
+      "duration": 0.0018119999876944348,
       "traceback": null,
       "longrepr": null
     },
@@ -5715,7 +5785,7 @@
       "file": "tests\\test_smart_insights.py",
       "line": 101,
       "outcome": "passed",
-      "duration": 0.008583000002545305,
+      "duration": 0.005252000002656132,
       "traceback": null,
       "longrepr": null
     },
@@ -5725,7 +5795,7 @@
       "file": "tests\\test_smart_insights.py",
       "line": 107,
       "outcome": "passed",
-      "duration": 0.0030856000012136064,
+      "duration": 0.002060899991192855,
       "traceback": null,
       "longrepr": null
     },
@@ -5735,7 +5805,7 @@
       "file": "tests\\test_smart_insights.py",
       "line": 115,
       "outcome": "passed",
-      "duration": 0.0030254000012064353,
+      "duration": 0.0020303000055719167,
       "traceback": null,
       "longrepr": null
     },
@@ -5745,7 +5815,7 @@
       "file": "tests\\test_smart_insights.py",
       "line": 127,
       "outcome": "passed",
-      "duration": 0.01563219999661669,
+      "duration": 0.005555000010645017,
       "traceback": null,
       "longrepr": null
     },
@@ -5755,7 +5825,7 @@
       "file": "tests\\test_smart_insights.py",
       "line": 136,
       "outcome": "passed",
-      "duration": 0.006882699999550823,
+      "duration": 0.0020650999940698966,
       "traceback": null,
       "longrepr": null
     },
@@ -5765,7 +5835,7 @@
       "file": "tests\\test_smart_insights.py",
       "line": 143,
       "outcome": "passed",
-      "duration": 0.006558400003996212,
+      "duration": 0.0022410999954445288,
       "traceback": null,
       "longrepr": null
     },
@@ -5775,7 +5845,7 @@
       "file": "tests\\test_smart_insights.py",
       "line": 148,
       "outcome": "passed",
-      "duration": 0.003156200000375975,
+      "duration": 0.002081899991026148,
       "traceback": null,
       "longrepr": null
     },
@@ -5785,7 +5855,7 @@
       "file": "tests\\test_smart_insights.py",
       "line": 153,
       "outcome": "passed",
-      "duration": 0.005640000003040768,
+      "duration": 0.0018643999937921762,
       "traceback": null,
       "longrepr": null
     },
@@ -5795,7 +5865,7 @@
       "file": "tests\\test_smart_insights.py",
       "line": 159,
       "outcome": "passed",
-      "duration": 0.006146400002762675,
+      "duration": 0.0018545000057201833,
       "traceback": null,
       "longrepr": null
     },
@@ -5805,7 +5875,7 @@
       "file": "tests\\test_smart_insights.py",
       "line": 164,
       "outcome": "passed",
-      "duration": 0.006217599999217782,
+      "duration": 0.0018799000099534169,
       "traceback": null,
       "longrepr": null
     },
@@ -5815,7 +5885,7 @@
       "file": "tests\\test_smart_insights.py",
       "line": 169,
       "outcome": "passed",
-      "duration": 0.0015474999963771552,
+      "duration": 0.0004002999921794981,
       "traceback": null,
       "longrepr": null
     },
@@ -5825,7 +5895,7 @@
       "file": "tests\\test_smart_insights.py",
       "line": 176,
       "outcome": "passed",
-      "duration": 0.015182800001639407,
+      "duration": 0.004394599993247539,
       "traceback": null,
       "longrepr": null
     },
@@ -5835,7 +5905,7 @@
       "file": "tests\\test_smart_insights.py",
       "line": 181,
       "outcome": "passed",
-      "duration": 0.07406760000594659,
+      "duration": 0.005223800006206147,
       "traceback": null,
       "longrepr": null
     },
@@ -5845,7 +5915,7 @@
       "file": "tests\\test_sse_hardening.py",
       "line": 24,
       "outcome": "passed",
-      "duration": 0.002769600003375672,
+      "duration": 0.000983500009169802,
       "traceback": null,
       "longrepr": null
     },
@@ -5855,7 +5925,7 @@
       "file": "tests\\test_sse_hardening.py",
       "line": 45,
       "outcome": "passed",
-      "duration": 0.001600499999767635,
+      "duration": 0.0005264000064926222,
       "traceback": null,
       "longrepr": null
     },
@@ -5865,7 +5935,7 @@
       "file": "tests\\test_sse_hardening.py",
       "line": 56,
       "outcome": "passed",
-      "duration": 0.016765499996836297,
+      "duration": 0.004302400004235096,
       "traceback": null,
       "longrepr": null
     },
@@ -5875,7 +5945,7 @@
       "file": "tests\\test_sse_hardening.py",
       "line": 84,
       "outcome": "passed",
-      "duration": 0.007428500000969507,
+      "duration": 0.0023610999924130738,
       "traceback": null,
       "longrepr": null
     },
@@ -5885,7 +5955,7 @@
       "file": "tests\\test_staff.py",
       "line": 43,
       "outcome": "passed",
-      "duration": 1.1035358000008273,
+      "duration": 0.6929153999953996,
       "traceback": null,
       "longrepr": null
     },
@@ -5895,7 +5965,7 @@
       "file": "tests\\test_staff.py",
       "line": 74,
       "outcome": "passed",
-      "duration": 1.1027001999973436,
+      "duration": 0.6910605000011856,
       "traceback": null,
       "longrepr": null
     },
@@ -5905,7 +5975,7 @@
       "file": "tests\\test_staff.py",
       "line": 87,
       "outcome": "passed",
-      "duration": 1.1165177000002586,
+      "duration": 0.7047739999979967,
       "traceback": null,
       "longrepr": null
     },
@@ -5915,7 +5985,27 @@
       "file": "tests\\test_staff.py",
       "line": 102,
       "outcome": "passed",
-      "duration": 0.6434277999942424,
+      "duration": 0.4656583999894792,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_staff.py::test_owner_assigns_staff_counter_prefix_carried_to_login",
+      "name": "test_owner_assigns_staff_counter_prefix_carried_to_login",
+      "file": "tests\\test_staff.py",
+      "line": 119,
+      "outcome": "passed",
+      "duration": 0.6865914999943925,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_staff.py::test_cashier_cannot_change_their_counter_prefix",
+      "name": "test_cashier_cannot_change_their_counter_prefix",
+      "file": "tests\\test_staff.py",
+      "line": 143,
+      "outcome": "passed",
+      "duration": 0.6711740999890026,
       "traceback": null,
       "longrepr": null
     },
@@ -5925,7 +6015,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 69,
       "outcome": "passed",
-      "duration": 0.003301700002339203,
+      "duration": 0.0016125999973155558,
       "traceback": null,
       "longrepr": null
     },
@@ -5935,7 +6025,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 79,
       "outcome": "passed",
-      "duration": 0.0037497000012081116,
+      "duration": 0.0018888000049628317,
       "traceback": null,
       "longrepr": null
     },
@@ -5945,7 +6035,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 91,
       "outcome": "passed",
-      "duration": 0.003956699998525437,
+      "duration": 0.0031414999975822866,
       "traceback": null,
       "longrepr": null
     },
@@ -5955,7 +6045,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 97,
       "outcome": "passed",
-      "duration": 0.002186099998652935,
+      "duration": 0.0022548999986611307,
       "traceback": null,
       "longrepr": null
     },
@@ -5965,7 +6055,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 97,
       "outcome": "passed",
-      "duration": 0.0025300000052084215,
+      "duration": 0.0008063999994192272,
       "traceback": null,
       "longrepr": null
     },
@@ -5975,7 +6065,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 97,
       "outcome": "passed",
-      "duration": 0.0019882999986293726,
+      "duration": 0.0009619000047678128,
       "traceback": null,
       "longrepr": null
     },
@@ -5985,7 +6075,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 97,
       "outcome": "passed",
-      "duration": 0.001977300002181437,
+      "duration": 0.0011895999923581257,
       "traceback": null,
       "longrepr": null
     },
@@ -5995,7 +6085,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 109,
       "outcome": "passed",
-      "duration": 0.0037815000032423995,
+      "duration": 0.0018951999954879284,
       "traceback": null,
       "longrepr": null
     },
@@ -6005,7 +6095,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 119,
       "outcome": "passed",
-      "duration": 0.0025565999967511743,
+      "duration": 0.001195799995912239,
       "traceback": null,
       "longrepr": null
     },
@@ -6015,7 +6105,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 128,
       "outcome": "passed",
-      "duration": 0.009003499995742459,
+      "duration": 0.005440799999632873,
       "traceback": null,
       "longrepr": null
     },
@@ -6025,7 +6115,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 145,
       "outcome": "passed",
-      "duration": 0.008613500001956709,
+      "duration": 0.003550199995515868,
       "traceback": null,
       "longrepr": null
     },
@@ -6035,7 +6125,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 162,
       "outcome": "passed",
-      "duration": 0.004762900003697723,
+      "duration": 0.002213400002801791,
       "traceback": null,
       "longrepr": null
     },
@@ -6045,7 +6135,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 171,
       "outcome": "passed",
-      "duration": 0.0026710000020102598,
+      "duration": 0.0013438999885693192,
       "traceback": null,
       "longrepr": null
     },
@@ -6055,7 +6145,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 171,
       "outcome": "passed",
-      "duration": 0.0020663000032072887,
+      "duration": 0.0008547999896109104,
       "traceback": null,
       "longrepr": null
     },
@@ -6065,7 +6155,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 171,
       "outcome": "passed",
-      "duration": 0.0022690999976475723,
+      "duration": 0.0014922999980626628,
       "traceback": null,
       "longrepr": null
     },
@@ -6075,7 +6165,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 181,
       "outcome": "passed",
-      "duration": 0.0019011000040336512,
+      "duration": 0.0007792999967932701,
       "traceback": null,
       "longrepr": null
     },
@@ -6085,7 +6175,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 188,
       "outcome": "passed",
-      "duration": 0.0025958999976865016,
+      "duration": 0.001883399992948398,
       "traceback": null,
       "longrepr": null
     },
@@ -6095,7 +6185,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 195,
       "outcome": "passed",
-      "duration": 0.003244500003347639,
+      "duration": 0.0013764000032097101,
       "traceback": null,
       "longrepr": null
     },
@@ -6105,7 +6195,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 202,
       "outcome": "passed",
-      "duration": 0.002066400003968738,
+      "duration": 0.001652300008572638,
       "traceback": null,
       "longrepr": null
     },
@@ -6115,7 +6205,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 209,
       "outcome": "passed",
-      "duration": 0.004655800003092736,
+      "duration": 0.001573599991388619,
       "traceback": null,
       "longrepr": null
     },
@@ -6125,7 +6215,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 217,
       "outcome": "passed",
-      "duration": 0.004070199996931478,
+      "duration": 0.0018344999989494681,
       "traceback": null,
       "longrepr": null
     },
@@ -6135,7 +6225,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 224,
       "outcome": "passed",
-      "duration": 0.0021737999995821156,
+      "duration": 0.0008218000002671033,
       "traceback": null,
       "longrepr": null
     },
@@ -6145,7 +6235,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 224,
       "outcome": "passed",
-      "duration": 0.003107199998339638,
+      "duration": 0.0008720000041648746,
       "traceback": null,
       "longrepr": null
     },
@@ -6155,7 +6245,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 224,
       "outcome": "passed",
-      "duration": 0.0023779000039212406,
+      "duration": 0.0011916999937966466,
       "traceback": null,
       "longrepr": null
     },
@@ -6165,7 +6255,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 224,
       "outcome": "passed",
-      "duration": 0.0023380999991786666,
+      "duration": 0.0008556999964639544,
       "traceback": null,
       "longrepr": null
     },
@@ -6175,7 +6265,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 224,
       "outcome": "passed",
-      "duration": 0.0024879000047803856,
+      "duration": 0.0011289999965811148,
       "traceback": null,
       "longrepr": null
     },
@@ -6185,7 +6275,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 224,
       "outcome": "passed",
-      "duration": 0.0027105999979539774,
+      "duration": 0.0015009000053396448,
       "traceback": null,
       "longrepr": null
     },
@@ -6195,7 +6285,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 224,
       "outcome": "passed",
-      "duration": 0.002377899996645283,
+      "duration": 0.0015795999934198335,
       "traceback": null,
       "longrepr": null
     },
@@ -6205,7 +6295,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 224,
       "outcome": "passed",
-      "duration": 0.0020125999944866635,
+      "duration": 0.000945399995543994,
       "traceback": null,
       "longrepr": null
     },
@@ -6215,7 +6305,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 240,
       "outcome": "passed",
-      "duration": 0.02383949999784818,
+      "duration": 0.01538789999904111,
       "traceback": null,
       "longrepr": null
     },
@@ -6225,7 +6315,7 @@
       "file": "tests\\test_standard_tools.py",
       "line": 240,
       "outcome": "passed",
-      "duration": 0.015439100003277417,
+      "duration": 0.008724100000108592,
       "traceback": null,
       "longrepr": null
     },
@@ -6235,7 +6325,7 @@
       "file": "tests\\test_stock_ledger.py",
       "line": 70,
       "outcome": "passed",
-      "duration": 0.022204200002306607,
+      "duration": 0.007982399998581968,
       "traceback": null,
       "longrepr": null
     },
@@ -6245,7 +6335,7 @@
       "file": "tests\\test_stock_ledger.py",
       "line": 86,
       "outcome": "passed",
-      "duration": 0.0165906999973231,
+      "duration": 0.007424499999615364,
       "traceback": null,
       "longrepr": null
     },
@@ -6255,7 +6345,7 @@
       "file": "tests\\test_stock_ledger.py",
       "line": 103,
       "outcome": "passed",
-      "duration": 0.026128400000743568,
+      "duration": 0.01163809999707155,
       "traceback": null,
       "longrepr": null
     },
@@ -6265,7 +6355,7 @@
       "file": "tests\\test_stock_ledger.py",
       "line": 118,
       "outcome": "passed",
-      "duration": 0.03128199999628123,
+      "duration": 0.013964199999463744,
       "traceback": null,
       "longrepr": null
     },
@@ -6275,7 +6365,7 @@
       "file": "tests\\test_stock_ledger.py",
       "line": 140,
       "outcome": "passed",
-      "duration": 0.02907730000151787,
+      "duration": 0.012790699998731725,
       "traceback": null,
       "longrepr": null
     },
@@ -6285,7 +6375,7 @@
       "file": "tests\\test_stock_ledger.py",
       "line": 164,
       "outcome": "passed",
-      "duration": 0.001095500003430061,
+      "duration": 0.00043230000301264226,
       "traceback": null,
       "longrepr": null
     },
@@ -6295,7 +6385,7 @@
       "file": "tests\\test_stock_ledger.py",
       "line": 174,
       "outcome": "passed",
-      "duration": 0.0005571000001509674,
+      "duration": 0.00032619999547023326,
       "traceback": null,
       "longrepr": null
     },
@@ -6305,7 +6395,7 @@
       "file": "tests\\test_stream_usage.py",
       "line": 105,
       "outcome": "passed",
-      "duration": 0.06958410000515869,
+      "duration": 0.04106139999930747,
       "traceback": null,
       "longrepr": null
     },
@@ -6315,7 +6405,7 @@
       "file": "tests\\test_stream_usage.py",
       "line": 125,
       "outcome": "passed",
-      "duration": 0.050362300004053395,
+      "duration": 0.04024139999819454,
       "traceback": null,
       "longrepr": null
     },
@@ -6325,7 +6415,7 @@
       "file": "tests\\test_stream_usage.py",
       "line": 142,
       "outcome": "passed",
-      "duration": 0.13114849999692524,
+      "duration": 0.12959710000723135,
       "traceback": null,
       "longrepr": null
     },
@@ -6335,7 +6425,7 @@
       "file": "tests\\test_stream_usage.py",
       "line": 169,
       "outcome": "passed",
-      "duration": 0.01203700000041863,
+      "duration": 0.014164599997457117,
       "traceback": null,
       "longrepr": null
     },
@@ -6345,7 +6435,7 @@
       "file": "tests\\test_sync.py",
       "line": 29,
       "outcome": "passed",
-      "duration": 0.5086857999995118,
+      "duration": 0.315591200007475,
       "traceback": null,
       "longrepr": null
     },
@@ -6355,7 +6445,7 @@
       "file": "tests\\test_sync_idempotency.py",
       "line": 92,
       "outcome": "passed",
-      "duration": 0.40021770000021206,
+      "duration": 0.2603553000080865,
       "traceback": null,
       "longrepr": null
     },
@@ -6365,7 +6455,7 @@
       "file": "tests\\test_sync_idempotency.py",
       "line": 108,
       "outcome": "passed",
-      "duration": 0.43262549999781186,
+      "duration": 0.26696560000709724,
       "traceback": null,
       "longrepr": null
     },
@@ -6375,7 +6465,7 @@
       "file": "tests\\test_sync_idempotency.py",
       "line": 118,
       "outcome": "passed",
-      "duration": 0.4938564999974915,
+      "duration": 0.27137889999721665,
       "traceback": null,
       "longrepr": null
     },
@@ -6385,7 +6475,7 @@
       "file": "tests\\test_sync_idempotency.py",
       "line": 129,
       "outcome": "passed",
-      "duration": 0.8800736999983201,
+      "duration": 0.5112999999983003,
       "traceback": null,
       "longrepr": null
     },
@@ -6395,7 +6485,7 @@
       "file": "tests\\test_sync_idempotency.py",
       "line": 145,
       "outcome": "passed",
-      "duration": 0.42572229999495903,
+      "duration": 0.27020790000096895,
       "traceback": null,
       "longrepr": null
     },
@@ -6405,7 +6495,7 @@
       "file": "tests\\test_sync_idempotency.py",
       "line": 161,
       "outcome": "passed",
-      "duration": 0.5119831999982125,
+      "duration": 0.33059910000883974,
       "traceback": null,
       "longrepr": null
     },
@@ -6415,7 +6505,7 @@
       "file": "tests\\test_sync_migration_fixes.py",
       "line": 52,
       "outcome": "passed",
-      "duration": 0.02004260000103386,
+      "duration": 0.009153499995591119,
       "traceback": null,
       "longrepr": null
     },
@@ -6425,7 +6515,7 @@
       "file": "tests\\test_sync_migration_fixes.py",
       "line": 94,
       "outcome": "passed",
-      "duration": 0.018413300000247546,
+      "duration": 0.011519000006956048,
       "traceback": null,
       "longrepr": null
     },
@@ -6435,7 +6525,7 @@
       "file": "tests\\test_sync_migration_fixes.py",
       "line": 120,
       "outcome": "passed",
-      "duration": 0.0017256999999517575,
+      "duration": 0.0005604000034509227,
       "traceback": null,
       "longrepr": null
     },
@@ -6445,7 +6535,7 @@
       "file": "tests\\test_sync_migration_fixes.py",
       "line": 126,
       "outcome": "passed",
-      "duration": 0.009079700001166202,
+      "duration": 0.01599739999801386,
       "traceback": null,
       "longrepr": null
     },
@@ -6455,7 +6545,7 @@
       "file": "tests\\test_sync_migration_fixes.py",
       "line": 160,
       "outcome": "passed",
-      "duration": 0.4231050000016694,
+      "duration": 0.222863300004974,
       "traceback": null,
       "longrepr": null
     },
@@ -6465,7 +6555,7 @@
       "file": "tests\\test_sync_migration_fixes.py",
       "line": 187,
       "outcome": "passed",
-      "duration": 0.43166580000252,
+      "duration": 0.22995449999871198,
       "traceback": null,
       "longrepr": null
     },
@@ -6475,7 +6565,7 @@
       "file": "tests\\test_sync_migration_fixes.py",
       "line": 236,
       "outcome": "passed",
-      "duration": 0.02733779999834951,
+      "duration": 0.013459399997373112,
       "traceback": null,
       "longrepr": null
     },
@@ -6485,7 +6575,17 @@
       "file": "tests\\test_sync_migration_fixes.py",
       "line": 272,
       "outcome": "passed",
-      "duration": 0.4112336999969557,
+      "duration": 0.2510906999959843,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_sync_migration_fixes.py::test_import_does_not_merge_different_uid_invoices_sharing_a_number",
+      "name": "test_import_does_not_merge_different_uid_invoices_sharing_a_number",
+      "file": "tests\\test_sync_migration_fixes.py",
+      "line": 316,
+      "outcome": "passed",
+      "duration": 0.22937249999085907,
       "traceback": null,
       "longrepr": null
     },
@@ -6495,7 +6595,7 @@
       "file": "tests\\test_sync_pull.py",
       "line": 82,
       "outcome": "passed",
-      "duration": 0.5457180000012158,
+      "duration": 0.2618734999996377,
       "traceback": null,
       "longrepr": null
     },
@@ -6505,7 +6605,7 @@
       "file": "tests\\test_sync_pull.py",
       "line": 98,
       "outcome": "passed",
-      "duration": 0.5262965000001714,
+      "duration": 0.2866129999893019,
       "traceback": null,
       "longrepr": null
     },
@@ -6515,7 +6615,7 @@
       "file": "tests\\test_sync_pull.py",
       "line": 110,
       "outcome": "passed",
-      "duration": 0.6153123000040068,
+      "duration": 0.30044020000786986,
       "traceback": null,
       "longrepr": null
     },
@@ -6525,7 +6625,7 @@
       "file": "tests\\test_sync_pull.py",
       "line": 128,
       "outcome": "passed",
-      "duration": 0.8261504000038258,
+      "duration": 0.49127679999219254,
       "traceback": null,
       "longrepr": null
     },
@@ -6535,7 +6635,7 @@
       "file": "tests\\test_sync_pull.py",
       "line": 137,
       "outcome": "passed",
-      "duration": 0.43701470000087284,
+      "duration": 0.25818340000114404,
       "traceback": null,
       "longrepr": null
     },
@@ -6545,7 +6645,7 @@
       "file": "tests\\test_tier_pricing.py",
       "line": 83,
       "outcome": "passed",
-      "duration": 0.10890820000349777,
+      "duration": 0.024549499998101965,
       "traceback": null,
       "longrepr": null
     },
@@ -6555,7 +6655,7 @@
       "file": "tests\\test_tier_pricing.py",
       "line": 100,
       "outcome": "passed",
-      "duration": 0.06870020000496879,
+      "duration": 0.023720699988189153,
       "traceback": null,
       "longrepr": null
     },
@@ -6565,7 +6665,7 @@
       "file": "tests\\test_tier_pricing.py",
       "line": 115,
       "outcome": "passed",
-      "duration": 0.06514880000031553,
+      "duration": 0.023946699991938658,
       "traceback": null,
       "longrepr": null
     },
@@ -6575,7 +6675,7 @@
       "file": "tests\\test_tier_pricing.py",
       "line": 130,
       "outcome": "passed",
-      "duration": 0.05149879999953555,
+      "duration": 0.01902439999685157,
       "traceback": null,
       "longrepr": null
     },
@@ -6585,7 +6685,7 @@
       "file": "tests\\test_token_accounting.py",
       "line": 78,
       "outcome": "passed",
-      "duration": 0.10546299999987241,
+      "duration": 0.08454529999289662,
       "traceback": null,
       "longrepr": null
     },
@@ -6595,7 +6695,7 @@
       "file": "tests\\test_token_accounting.py",
       "line": 93,
       "outcome": "passed",
-      "duration": 0.07985689999622991,
+      "duration": 0.0604209000011906,
       "traceback": null,
       "longrepr": null
     },
@@ -6605,7 +6705,7 @@
       "file": "tests\\test_token_accounting.py",
       "line": 111,
       "outcome": "passed",
-      "duration": 0.04348550000577234,
+      "duration": 0.033580700008315034,
       "traceback": null,
       "longrepr": null
     },
@@ -6615,7 +6715,7 @@
       "file": "tests\\test_token_accounting.py",
       "line": 141,
       "outcome": "passed",
-      "duration": 0.08161020000261487,
+      "duration": 0.07272070000180975,
       "traceback": null,
       "longrepr": null
     },
@@ -6625,7 +6725,7 @@
       "file": "tests\\test_token_accounting.py",
       "line": 155,
       "outcome": "passed",
-      "duration": 0.17424819999723695,
+      "duration": 0.14073279999138322,
       "traceback": null,
       "longrepr": null
     },
@@ -6635,7 +6735,7 @@
       "file": "tests\\test_trial_balance.py",
       "line": 107,
       "outcome": "passed",
-      "duration": 0.31103019999864046,
+      "duration": 0.22981129999971017,
       "traceback": null,
       "longrepr": null
     },
@@ -6645,7 +6745,7 @@
       "file": "tests\\test_trial_balance.py",
       "line": 121,
       "outcome": "passed",
-      "duration": 0.513445500000671,
+      "duration": 0.3004860000073677,
       "traceback": null,
       "longrepr": null
     },
@@ -6655,7 +6755,7 @@
       "file": "tests\\test_trial_balance.py",
       "line": 139,
       "outcome": "passed",
-      "duration": 1.0237168999956339,
+      "duration": 0.6596240000071703,
       "traceback": null,
       "longrepr": null
     },
@@ -6665,7 +6765,37 @@
       "file": "tests\\test_trial_balance.py",
       "line": 145,
       "outcome": "passed",
-      "duration": 0.8960083000056329,
+      "duration": 0.5176482999959262,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_uid_cross_db.py::test_uid_no_collision_same_source_id_diff_uid",
+      "name": "test_uid_no_collision_same_source_id_diff_uid",
+      "file": "tests\\test_uid_cross_db.py",
+      "line": 50,
+      "outcome": "passed",
+      "duration": 0.23394370000460185,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_uid_cross_db.py::test_child_fk_resolves_to_uid_deduped_parent",
+      "name": "test_child_fk_resolves_to_uid_deduped_parent",
+      "file": "tests\\test_uid_cross_db.py",
+      "line": 86,
+      "outcome": "passed",
+      "duration": 0.23815540000214241,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_uid_cross_db.py::test_id_fallback_row_without_uid_still_imports_and_dedups",
+      "name": "test_id_fallback_row_without_uid_still_imports_and_dedups",
+      "file": "tests\\test_uid_cross_db.py",
+      "line": 136,
+      "outcome": "passed",
+      "duration": 0.23500349999812897,
       "traceback": null,
       "longrepr": null
     },
@@ -6675,7 +6805,7 @@
       "file": "tests\\test_uid_sync_keys.py",
       "line": 44,
       "outcome": "passed",
-      "duration": 0.009001499995065387,
+      "duration": 0.0039770000003045425,
       "traceback": null,
       "longrepr": null
     },
@@ -6685,7 +6815,7 @@
       "file": "tests\\test_uid_sync_keys.py",
       "line": 53,
       "outcome": "passed",
-      "duration": 0.013001999999687541,
+      "duration": 0.0059554000035859644,
       "traceback": null,
       "longrepr": null
     },
@@ -6695,7 +6825,7 @@
       "file": "tests\\test_uid_sync_keys.py",
       "line": 71,
       "outcome": "passed",
-      "duration": 0.029229100000520702,
+      "duration": 0.01127200000337325,
       "traceback": null,
       "longrepr": null
     },
@@ -6705,7 +6835,7 @@
       "file": "tests\\test_uid_sync_keys.py",
       "line": 106,
       "outcome": "passed",
-      "duration": 0.3672630000000936,
+      "duration": 0.24737979999918025,
       "traceback": null,
       "longrepr": null
     },
@@ -6715,7 +6845,7 @@
       "file": "tests\\test_uid_sync_keys.py",
       "line": 164,
       "outcome": "passed",
-      "duration": 0.40419540000584675,
+      "duration": 0.23673699999926612,
       "traceback": null,
       "longrepr": null
     },
@@ -6725,7 +6855,7 @@
       "file": "tests\\test_uid_sync_keys.py",
       "line": 237,
       "outcome": "passed",
-      "duration": 0.46374820000346517,
+      "duration": 0.24704590000328608,
       "traceback": null,
       "longrepr": null
     },
@@ -6735,7 +6865,7 @@
       "file": "tests\\test_uid_sync_keys.py",
       "line": 313,
       "outcome": "passed",
-      "duration": 0.40424329999950714,
+      "duration": 0.24415869999211282,
       "traceback": null,
       "longrepr": null
     },
@@ -6745,7 +6875,7 @@
       "file": "tests\\test_universal_schema.py",
       "line": 56,
       "outcome": "passed",
-      "duration": 0.027189599997655023,
+      "duration": 0.006675099997664802,
       "traceback": null,
       "longrepr": null
     },
@@ -6755,7 +6885,7 @@
       "file": "tests\\test_universal_schema.py",
       "line": 101,
       "outcome": "passed",
-      "duration": 0.012780000004568137,
+      "duration": 0.005205599998589605,
       "traceback": null,
       "longrepr": null
     },
@@ -6765,7 +6895,7 @@
       "file": "tests\\test_universal_schema.py",
       "line": 124,
       "outcome": "passed",
-      "duration": 0.020116600004257634,
+      "duration": 0.01636220001091715,
       "traceback": null,
       "longrepr": null
     },
@@ -6775,7 +6905,7 @@
       "file": "tests\\test_user_policy.py",
       "line": 14,
       "outcome": "passed",
-      "duration": 0.10795630000211531,
+      "duration": 0.03696269998908974,
       "traceback": null,
       "longrepr": null
     },
@@ -6785,7 +6915,7 @@
       "file": "tests\\test_user_policy.py",
       "line": 32,
       "outcome": "passed",
-      "duration": 0.3990697999979602,
+      "duration": 0.22929540000041015,
       "traceback": null,
       "longrepr": null
     },
@@ -6795,7 +6925,7 @@
       "file": "tests\\test_writing_router.py",
       "line": 21,
       "outcome": "passed",
-      "duration": 0.0005964000010862947,
+      "duration": 0.0003470000083325431,
       "traceback": null,
       "longrepr": null
     },
@@ -6805,7 +6935,7 @@
       "file": "tests\\test_writing_router.py",
       "line": 21,
       "outcome": "passed",
-      "duration": 0.0008633999968878925,
+      "duration": 0.0002275000006193295,
       "traceback": null,
       "longrepr": null
     },
@@ -6815,7 +6945,7 @@
       "file": "tests\\test_writing_router.py",
       "line": 21,
       "outcome": "passed",
-      "duration": 0.000937699995120056,
+      "duration": 0.00022510001144837588,
       "traceback": null,
       "longrepr": null
     },
@@ -6825,7 +6955,7 @@
       "file": "tests\\test_writing_router.py",
       "line": 21,
       "outcome": "passed",
-      "duration": 0.0008372000011149794,
+      "duration": 0.0003212000010535121,
       "traceback": null,
       "longrepr": null
     },
@@ -6835,7 +6965,7 @@
       "file": "tests\\test_writing_router.py",
       "line": 21,
       "outcome": "passed",
-      "duration": 0.0005842000027769245,
+      "duration": 0.00021410000044852495,
       "traceback": null,
       "longrepr": null
     },
@@ -6845,7 +6975,7 @@
       "file": "tests\\test_writing_router.py",
       "line": 21,
       "outcome": "passed",
-      "duration": 0.0007576000061817467,
+      "duration": 0.00023960000544320792,
       "traceback": null,
       "longrepr": null
     },
@@ -6855,7 +6985,7 @@
       "file": "tests\\test_writing_router.py",
       "line": 21,
       "outcome": "passed",
-      "duration": 0.0009415000022272579,
+      "duration": 0.00023860001238062978,
       "traceback": null,
       "longrepr": null
     },
@@ -6865,7 +6995,7 @@
       "file": "tests\\test_writing_router.py",
       "line": 34,
       "outcome": "passed",
-      "duration": 0.0008507000020472333,
+      "duration": 0.00023359998886007816,
       "traceback": null,
       "longrepr": null
     },
@@ -6875,7 +7005,7 @@
       "file": "tests\\test_writing_router.py",
       "line": 34,
       "outcome": "passed",
-      "duration": 0.0008445999992545694,
+      "duration": 0.00025209999876096845,
       "traceback": null,
       "longrepr": null
     },
@@ -6885,7 +7015,7 @@
       "file": "tests\\test_writing_router.py",
       "line": 34,
       "outcome": "passed",
-      "duration": 0.0008522999996785074,
+      "duration": 0.000370699999621138,
       "traceback": null,
       "longrepr": null
     },
@@ -6895,7 +7025,7 @@
       "file": "tests\\test_writing_router.py",
       "line": 34,
       "outcome": "passed",
-      "duration": 0.000407600004109554,
+      "duration": 0.00023720000172033906,
       "traceback": null,
       "longrepr": null
     },
@@ -6905,7 +7035,7 @@
       "file": "tests\\test_writing_router.py",
       "line": 34,
       "outcome": "passed",
-      "duration": 0.0008899000022211112,
+      "duration": 0.0002314999874215573,
       "traceback": null,
       "longrepr": null
     }

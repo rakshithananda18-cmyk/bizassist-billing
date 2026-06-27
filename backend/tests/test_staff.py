@@ -113,3 +113,38 @@ def test_staff_validation():
     assert r.status_code == 201
     assert client.post("/staff", headers=owner["headers"],
                        json={"username": uname, "password": "TestPass123!"}).status_code == 400
+
+
+# ── Staff-assigned POS counter prefix (multi-terminal POS §9.3a) ────────────
+
+def test_owner_assigns_staff_counter_prefix_carried_to_login():
+    owner = _signup("Owner Counter Shop")
+    uname = f"cash_{uuid.uuid4().hex[:8]}"; pwd = "CashPass123!"
+    # Create with a messy prefix → normalised to a bare alnum token.
+    r = client.post("/staff", headers=owner["headers"],
+                    json={"username": uname, "password": pwd, "counter_prefix": " c1- "})
+    assert r.status_code == 201, r.text
+    assert r.json()["counter_prefix"] == "c1"          # trimmed, de-dashed
+
+    # The assigned prefix is returned on the staff's own login (drives numbering).
+    login = client.post("/login", json={"username": uname, "password": pwd})
+    assert login.status_code == 200, login.text
+    assert login.json()["counter_prefix"] == "c1"
+
+    # Owner can change it later via PATCH.
+    sid = r.json()["id"]
+    upd = client.patch(f"/staff/{sid}", headers=owner["headers"], json={"counter_prefix": "C2"})
+    assert upd.status_code == 200, upd.text
+    assert upd.json()["counter_prefix"] == "C2"
+    # …and it shows up in the staff list.
+    lst = client.get("/staff", headers=owner["headers"]).json()
+    assert any(s["id"] == sid and s["counter_prefix"] == "C2" for s in lst)
+
+
+def test_cashier_cannot_change_their_counter_prefix():
+    """A cashier is blocked from /staff entirely, so they can't self-assign a counter."""
+    owner = _signup("Owner Lock Shop")
+    r, uname, pwd = _create_staff(owner)
+    sid = r.json()["id"]
+    staff_headers = {"Authorization": f"Bearer {client.post('/login', json={'username': uname, 'password': pwd}).json()['token']}"}
+    assert client.patch(f"/staff/{sid}", headers=staff_headers, json={"counter_prefix": "C9"}).status_code == 403

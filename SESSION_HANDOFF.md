@@ -71,6 +71,84 @@
 - **Step 3 Phase C part 1 (uid unique indexes)** ✅ — `alembic a1b2c3d4e5f6`, applied to **local SQLite** (693 tests green) **and cloud Supabase** (stamp `ee9c2223e60a` from `aea3a6d76429` → upgrade; pre-flight found zero NULL/dup uids). Plus 3 of 4 §7 regression tests (`tests/test_uid_cross_db.py`). Phase C parts 2 (NOT NULL) & 3 (retire fallbacks) deferred to post-soak.
 - **Deployed to HF Space** (`rakshit-dev/BizAssist`) + pushed; GitHub `bizassist-billing` pushed through Phase C part 1. **Suite: 693 passed (local, 2026-06-27).**
 
+### 🟡 IN PROGRESS — Real-Time Sync Robustness Phase 1 (delta push), Session 2026-06-27
+- **Goal (`REALTIME_SYNC_ROBUSTNESS_PLAN.md` §5 Phase 1, §10 step 6):** stop the full-list refetch on every SSE event; ship the changed record so clients patch their cache.
+- **Backend — DONE:** `services/realtime.py::delta_event()` builds a **backward-compatible** event — still `{type:"sync.trigger", entity}` (un-migrated pages/older bundles keep refetching) **plus** additive `{op, kind, rid, uid, payload}`. `payload` is the **page DTO** (not the raw ORM row) to avoid the ORM↔DTO shape mismatch. **Dedup fix:** `broadcast()` now coalesces only *payload-less* triggers — two distinct deltas on the same entity are never dropped (was a latent data-loss bug for any future delta).
+- **Backend call sites — DONE for parties:** `core/api/parties.py` create/update **customer** + **vendor** (4 sites) now `db.refresh()` then emit `delta_event("party", payload=_*_out(obj), kind=.., rid=obj.id, uid=obj.uid)`. No money path touched.
+- **Frontend — DONE for Parties:** new `src/sync/applyDelta.js` (pure upsert/delete-by-id, uid-aware); `Parties.jsx` patches `customers`/`vendors` **in cloud mode only**, else falls back to `load()`. **Mode gate:** hybrid/local UI reads the local DB the SSE delta hasn't written → those keep refetch-after-pull. Money path untouched.
+- **Tests — `backend/tests/test_realtime_delta.py`** (4): event shape, minimal=pure trigger, payload-less coalesce, distinct deltas NOT coalesced. **User runs `run_tests.ps1` (Windows venv) to confirm green.**
+- **Manual cloud-mode check:** two browsers, same business, Cloud mode → add/edit a customer or vendor in one → the other's Parties list updates **without a full refetch** (Network tab shows no `/billing/customers` call on the receiver). Toggle Settings → real-time parties off → no patch.
+- **Remaining rollout (each independently shippable):** `products` (Stock/Sales), then money entities `invoices`/`payments`/`purchases` — migrate **only with the two-device soak** (`MANUAL_TEST_PLAN.md`), they're the untestable-here money path. `applyDelta` is generic, so each money page auto-upgrades once its backend sites emit a DTO payload.
+
+### 🐞 BUG FOUND + FIXED in 2-device soak (2026-06-27) — POS cart cross-terminal clobber (gap G5)
+- **Symptom:** Cloud mode, two terminals. Added a product to the cart on System 1; opening POS on System 2 (empty) **cleared the cart on both**.
+- **Root cause (`Sales.jsx`):** the live POS cart was synced business-wide via `pos.cart_sync` SSE with blind Last-Write-Wins by timestamp. A freshly-opened POS broadcasts its default empty cart with a newer timestamp; the apply-guard checked `remoteTabs.length > 0` (number of bill *tabs*, =1 for a fresh cart) instead of whether any tab has line items, so the empty cart won and wiped the in-progress bill — then ping-ponged both to empty.
+- **Fix (frontend-only, no backend redeploy):**
+  1. **Anti-clobber guard** — a remote cart with **no line items** can never overwrite a non-empty local cart (and doesn't advance the local clock). `cartHasItems()` + `tabsRef` (stale-closure-free read).
+  2. **Per-terminal carts (decision)** — `POS_CROSS_DEVICE_CART_SYNC = false`: the in-progress cart is now **per terminal**; we neither broadcast it to nor apply it from other clients. Per-device localStorage restore (minimized tabs) is untouched. Committed data (invoices/stock/products/payments) still syncs in real time. Rationale: silently shared live carts across terminals are a clobber bug, not a feature; two cashiers need independent open bills.
+- **The real USP (not the shared cart):** (a) real-time sync of **committed** business data across terminals — the Phase 1 delta work; (b) a **deliberate** cart hand-off (waiter tablet → counter, "send bill to terminal 2") built on **Phase 4 presence + soft-locks** with explicit intent. Tracked as the productised version of G5/Phase 4 in `REALTIME_SYNC_ROBUSTNESS_PLAN.md`.
+
+### 🟢 MONEY-CORRECTNESS — multi-counter invoice-number collision — IMPLEMENTED 2026-06-27 (pending user test)
+- **Was:** HIGH — silent lost sale; blocked multi-counter billing. Full design: `REALTIME_SYNC_ROBUSTNESS_PLAN.md` §9.3.
+- **Bug:** `_next_invoice_number` = `INV-{count+1}` per DB → two terminals both mint `INV-1001` for different sales (local: separate SQLite; cloud: concurrent count). Then `create_sale_invoice` treated *same business + same invoice_no* as a retry → 2nd genuine sale **silently swallowed**.
+- **Fix shipped (no schema change — prefix lives in the `invoice_id` string):**
+  - Backend `core/billing/commands.py`: `_next_invoice_number(db, business_id, counter_prefix)` counts only its own prefix series; `counter_prefix` threaded through `create_sale_invoice` + both routes (`SaleRequest`, `FrontendInvoiceRequest`). Idempotency clarified — `X-Client-Request-Id` outer wall is authoritative; `invoice_no` wall is now benign (per-prefix numbers are unique → no cross-counter merge).
+  - Frontend `Sales.jsx`: `getCounterPrefix()` ← per-device `localStorage['pos_counter_prefix']`; `syncTabNames`/`getNextInvoiceNo` number within this terminal's series (also fixes the old prefix-from-global-max bug). UI: **POS Counter Settings → "Counter / Invoice Number Prefix"** (`PosSettingsModals.jsx`).
+  - Tests: `tests/test_billing.py::{test_counter_prefix_separates_series, test_two_counters_first_sale_no_collision, test_blank_prefix_defaults_to_inv_series}`.
+- **User to verify:** run `run_tests.ps1`; then two terminals with prefixes `C1`/`C2` → bills read `C1-0001` / `C2-0001`, both persist (no swallowed sale). Needs Vercel redeploy for the hosted web client + app rebuild.
+- **Mental model:** per-counter prefix = no collisions; request-id idempotency = safe retries.
+
+### 🟢 IMPLEMENTED — POS counter = STAFF-ASSIGNED / login-bound (2026-06-28, plan §9.3a; pending user test)
+- **Model (FINAL):** the counter is **assigned to a login**, owner-controlled + server-stored. Why not terminal-bound: this is a **browser app with no reliable device ID** → any "this machine is C1" tag is tamperable local state; the **login** is the only server-trusted identity a cashier can't manipulate at the till. (Supersedes the earlier terminal-pick/localStorage dropdown, now retired.)
+- **Backend:** new nullable `users.counter_prefix` (model + `_COLUMN_MIGRATIONS` + alembic `b3c1d5e7f9a2`). Owner sets per staff via `POST/PATCH /staff` (`counter_prefix`, normalised); owner sets own via `PUT /profile` (default `OW`). Returned on `/login` + `/profile`. Cashiers blocked from `/staff` → can't self-assign.
+- **Frontend:** `AuthContext` stores `user.counter_prefix`; `Sales.jsx::getCounterPrefix()` uses it (fallback owner→`OW-`, else `INV-`). POS shows a **read-only** `Counter: C1` badge (`CounterMenu.jsx`) — **clickable for owners → `/staff`**; old dropdown + `PosCounterSettingsModal` prefix field removed. Owner manages in **Staff page** (`Staff.jsx`): defines **named counters** (`settings.transactions.counters`) and assigns each cashier via **dropdown** (add-form + per-row select).
+- **Local↔cloud number namespacing (§9.3b) — IMPLEMENTED 2026-06-28:** two disconnected DBs each minting `C1-0001` for different sales would clash on migrate (importer's `invoice_id` natural-key would merge them → lost bill). Fix: (1) `getCounterPrefix()` prepends **`LCL-`** on local/hybrid (`hosting_mode != cloud`); cloud stays clean → cloud `C1-0001`, local `LCL-C1-0001` (owner `OW-0001`/`LCL-OW-0001`). Distinct series → migrate inserts, never merges. (2) Backstop: `routes/migrate.py::_import_with_remap` skips the natural-key fallback when the incoming row has a `uid` (uid mismatch = different bill → insert). Test: `test_import_does_not_merge_different_uid_invoices_sharing_a_number`. **Numbers are final at issue — never re-numbered (GST-safe); GST gen only consolidates. >1 local machine → give each `LCL1-`/`LCL2-`.**
+- **Pending (next focused build):** owner **Live Counters view** — realtime read-only page; each active POS session publishes a presence snapshot (user, counter, cart total, last activity); owner watches tiles. Needs two-device test. (Plan §9.2 Stage 1.)
+
+### 📦 SESSION 2026-06-28 — CHANGED FILES & DEPLOY CHECKLIST
+*Everything from this session, for the git + HF + Vercel push. Backend files must ALSO be copied into `BizAssist_HF/` (the flat backend copy the HF Space deploys from).*
+
+**Backend (→ commit + copy to `BizAssist_HF/`):**
+- `database/models.py` — `User.counter_prefix`
+- `database/migration.py` — `_COLUMN_MIGRATIONS` entry for `users.counter_prefix`
+- `alembic/versions/b3c1d5e7f9a2_add_user_counter_prefix.py` — **new** (parity; runtime migrator auto-adds on startup)
+- `core/billing/commands.py` — prefix-aware `_next_invoice_number`; `counter_prefix` in `create_sale_invoice`
+- `core/api/sales.py` — `counter_prefix` on `SaleRequest` + `FrontendInvoiceRequest` + both routes
+- `core/api/staff.py` — `counter_prefix` in staff create/update/out (+ `_norm_prefix`)
+- `routes/auth.py` — `counter_prefix` in `/login` (both blocks), `/profile` GET+PUT, `ProfileUpdateRequest`
+- `routes/migrate.py` — §9.3b backstop (skip natural-key merge when row has a `uid`)
+- `services/realtime.py` — `delta_event()` + dedup fix (Phase 1 delta push)
+- `core/api/parties.py` — emit customer/vendor DTO deltas
+- Tests: `tests/test_realtime_delta.py` (new), `test_billing.py` (+3 numbering), `test_staff.py` (+2 counter), `test_sync_migration_fixes.py` (+1 backstop)
+
+**Frontend `frontend-billing/` (→ commit + Vercel redeploy + rebuild desktop app):**
+- `src/pages/Sales.jsx` — POS cart per-terminal fix; `getCounterPrefix()` (login-based + `LCL-` namespace); PosTopBar props
+- `src/pages/Staff.jsx` — named counters manager + dropdown assignment + Counter column
+- `src/pages/Parties.jsx` — delta cache-patch (cloud mode)
+- `src/components/sales/CounterMenu.jsx` — **new** (read-only counter badge, owner→/staff link)
+- `src/components/sales/PosTopBar.jsx` — counter badge wired
+- `src/components/sales/PosSettingsModals.jsx` — removed obsolete per-device prefix field
+- `src/contexts/AuthContext.jsx` — store `user.counter_prefix`
+- `src/sync/applyDelta.js` — **new** (generic delta list patch)
+
+**Deploy order:**
+1. Run `run_tests.ps1` green (Windows venv) — backend was 700 pass; new tests add ~6.
+2. `npm install` in `frontend-billing/` (and `frontend-ai/`) — restores `vite`/`vitest`; then build.
+3. Commit + push `bizassist-billing` (GitHub).
+4. Copy backend files → `BizAssist_HF/`, push HF Space. On boot, runtime migrator adds `users.counter_prefix` to Supabase (confirm log: `Added users.counter_prefix`, no `_check_schema_integrity` halt).
+5. Vercel redeploy `frontend-billing` (+ `frontend-ai`).
+6. Smoke test: assign cashier counters in Staff; bill on cloud (`C1-0001`) and local (`LCL-C1-0001`).
+- **Tests:** `tests/test_staff.py::{test_owner_assigns_staff_counter_prefix_carried_to_login, test_cashier_cannot_change_their_counter_prefix}`.
+- **Caveat:** same account on two machines at once shares one series (rare; server still guards numbers). One account = one counter at a time.
+- **Deploy:** `users.counter_prefix` migration on BOTH DBs (runtime migrator auto-adds on startup; alembic for parity), **HF redeploy + Vercel redeploy**. Owner with no prefix set bills as `OW-`.
+- **Test:** assign cashier A→`C1`, B→`C2` in Staff; each logs in and bills → `C1-0001` / `C2-0001`; cashier has no way to change it.
+
+### 🟢 DECIDED — multi-terminal POS design (2026-06-27, see plan §9)
+- **Live cart = PER-TERMINAL** (shipped, §9.1). Cashiers (and the owner's own POS) never share a live cart.
+- **Owner oversight = separate READ-ONLY "Live Counters" feed** (§9.2 Stage 1) — each POS session publishes a cart snapshot tagged with cashier + counter label; owner watches live tiles; no write-back, no clobber, no concurrency dependency. Owner *edit/take-over* = Stage 2 (needs soft-lock + version). **No global "sync now"/"grant access" button** — only a contextual "Take over".
+- **Concurrency layering (§9.4):** per-terminal carts (done) → `version`/409 optimistic concurrency (Phase 3) → presence + auto soft-lock (Phase 4). Completed posted invoices are immutable (never merged/version-raced).
+- **Agreed sequence (§9.5):** invoice numbering (§9.3) **first** → Live Counters Stage 1 → delta-push to money entities → Phase 3 version concurrency → Phase 4 presence/soft-lock + owner Stage 2.
+
 ### 🔜 PENDING / NOT STARTED
 - **Vercel redeploy** of the web frontends (`frontend-billing`, `frontend-ai`) for the identity/sync UX + the `SyncNudgeModal` × change (the hosted web app still runs the prior bundle).
 - **Commit the loose ends:** `SyncNudgeModal.jsx` (uncommitted) + the `migrate.py` rename; tidy the stray `test_results.json` commit message (`9cb9d14`).
@@ -213,7 +291,10 @@
 3. **Soak Step 3 (a few days of real two-device use).** Run `MANUAL_TEST_PLAN.md` Scenarios B/C/D; watch logs for `deferring` / `failed to resolve FK`. Confirm idempotent re-sync (no dupes) and unique-index enforcement.
 4. **Step 3 Phase C parts 2 & 3** (after soak): `uid NOT NULL`; retire the `?remap_ids`/`users`-exclusion/`id`-fallback crutches. Tests-first (`STEP3_UID_PLAN.md §7`, incl. the 4th merge-LWW-on-uid test).
 5. **S-1 — RLS fail-closed.** Make `test_rls_postgres.py` green first (it already automates the matrix), implement the fail-closed migration + system-context (BYPASSRLS) exemption per `RLS_FAIL_CLOSED_TEST_PLAN.md`, validate on Postgres staging/CI, then apply to Supabase with the rollback ready. **Gate before widening the tenant base.** Also: rotate the exposed Supabase password.
-6. **Real-time sync robustness** (`REALTIME_SYNC_ROBUSTNESS_PLAN.md`): **Phase 1 (delta push)** → **Phase 2 (ordered change-log + gap recovery)** for Firestore-grade reliability → **Phase 3 (optimistic concurrency + field merge)**. Phases 4 (presence) / 5 (CRDT for collaborative surfaces) later.
+6. **Real-time sync robustness** (`REALTIME_SYNC_ROBUSTNESS_PLAN.md`): **Phase 1 (delta push)** 🟡 parties slice landed → **Phase 2 (ordered change-log + gap recovery)** for Firestore-grade reliability → **Phase 3 (optimistic concurrency + field merge)**. Phases 4 (presence) / 5 (CRDT for collaborative surfaces) later.
+   - **6a. 🚨 Multi-counter invoice numbering FIRST** (plan §9.3) — money-correctness, blocks multi-counter billing: per-counter prefix via `device_id` + request-id (not invoice_no) idempotency.
+   - **6b. Owner "Live Counters" read-only feed** (plan §9.2 Stage 1) — high value, low risk, reuses `pos.cart_sync` redirected to owner-only consumers.
+   - Per-terminal carts (plan §9.1) already shipped; owner edit/take-over (§9.2 Stage 2) rides on Phase 3/4.
 7. **Scale-out prep:** Redis for cache/scheduler/rate-limiter **and** realtime fan-out + change-log catch-up (needed before any multi-worker deploy; ties into sync Phase 2).
 8. **Code-health:** finish `Sales.jsx`/`Purchases.jsx`/`Settings.jsx` decomposition + shared FE primitives (`<DataTable>/<Money>/<Modal>/api layer`).
 9. **Product / compliance depth (revenue-gated):** subscription/trial gating (Razorpay), then the `VYAPAR_FEATURE_BENCHMARK` gaps — e-Invoice IRN, e-Way Bill, UPI QR, credit/debit-note posting — and CA-validate GST/e-way.

@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, HandshakeIcon, InventoryIcon, MessageIcon, PlusIcon, PrinterIcon, SearchIcon, SyncIcon, UserIcon, WarehouseIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import { buildUpiUri, buildWhatsAppShareUrl, normalizePhoneIN } from '../utils/share'
+import { applyDelta, hasDelta } from '../sync/applyDelta'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -70,6 +71,21 @@ export default function Parties() {
       const isPartiesSyncEnabled = currentSettings?.general?.realtime_sync_parties !== false
       if (!isPartiesSyncEnabled) return
       logger.debug('[PARTIES] Real-time sync event received:', e.detail)
+
+      // Phase 1 (delta push): in CLOUD mode every client reads the same cloud
+      // DB, so we can splice the changed party row straight into the list and
+      // skip the full refetch. In hybrid/local the UI reads the LOCAL DB (which
+      // the SSE delta hasn't written yet), so we keep the refetch-after-pull path.
+      const hostingMode = currentSettings?.general?.hosting_mode || 'local'
+      if (hostingMode === 'cloud' && e.detail.entity === 'party' && hasDelta(e.detail)) {
+        if (e.detail.kind === 'vendor') {
+          setVendors(prev => applyDelta(prev, e.detail, { kind: 'vendor' }))
+        } else {
+          setCustomers(prev => applyDelta(prev, e.detail, { kind: 'customer' }))
+        }
+        return
+      }
+
       if (['party', 'invoice', 'purchase', 'payment'].includes(e.detail.entity)) {
         load()
       }

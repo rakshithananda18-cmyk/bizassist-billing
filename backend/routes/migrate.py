@@ -604,11 +604,16 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
 
         # Idempotent dedup. (Step 3 / R-3) Match on the durable `uid` first — it
         # identifies the same row across DBs exactly. Fall back to the natural key
-        # (phone/name/invoice_id) for rows that predate the uid column. A matched
-        # row is reused (its destination id is recorded so child FKs rewrite to
-        # it), never duplicated or overwritten.
+        # (phone/name/invoice_id) ONLY for rows that predate the uid column.
+        #
+        # (§9.3b backstop) If the incoming row HAS a uid but no uid match exists,
+        # it is a genuinely DIFFERENT row — even if its natural key (e.g. an
+        # invoice_id like "C1-0001" minted independently in two DBs) collides with
+        # an existing row. We must NOT natural-merge it, or two distinct sales
+        # would silently collapse into one (lost bill). So skip the natural-key
+        # fallback when a uid is present → it inserts as a new row.
         existing_id = _uid_lookup(db, table_name, col_names, dest_owner_id, filtered)
-        if existing_id is None:
+        if existing_id is None and not filtered.get("uid"):
             existing_id = _natural_lookup(db, table_name, col_names, dest_owner_id, filtered)
         if existing_id is not None:
             if old_id is not None:

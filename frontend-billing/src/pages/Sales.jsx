@@ -365,6 +365,21 @@ export default function Sales() {
   const clientId = clientIdRef.current
   const lastIncomingSyncRef = useRef(null)
   const isSystemLoadingRef = useRef(false)
+  const tabsRef = useRef(null) // mirrors `tabs` for stale-closure-free reads in the SSE handler
+
+  // POS cart scope (gap G5). The in-progress cart is PER-TERMINAL: two cashiers
+  // at two terminals must have independent open bills, so we do NOT mirror a
+  // live cart from another client into this one (silent cross-terminal LWW could
+  // erase an in-progress sale — exactly the clobber observed in the 2-device soak).
+  // Real-time sync of COMMITTED data (invoices/stock/products/payments) is
+  // unaffected — that still flows. A deliberate, intentful cart hand-off
+  // (waiter→counter) is Phase 4 (presence + soft-lock), not blind mirroring.
+  // Flip to true only to restore the old shared-cart behavior (single-cashier use).
+  const POS_CROSS_DEVICE_CART_SYNC = false
+
+  // True when any tab in this cart state holds at least one line item.
+  const cartHasItems = (tabsArr) =>
+    Array.isArray(tabsArr) && tabsArr.some(t => (t?.form?.items?.length || 0) > 0)
 
   const [tabs, setTabs] = useState(() => {
     const uid = user?.id
@@ -406,12 +421,16 @@ export default function Sales() {
   }, [activeTabId])
 
   useEffect(() => {
+    tabsRef.current = tabs // keep a fresh handle for the SSE receive guard below
     const uid = user?.id
     if (!uid) return
 
-    // Persist cart state locally — restored on page reload
+    // Persist cart state locally — restored on page reload (per-device, always on)
     localStorage.setItem(`pos_minimized_tabs_${uid}`, JSON.stringify(tabs))
     localStorage.setItem(`pos_minimized_active_id_${uid}`, activeTabId)
+
+    // Per-terminal carts: don't push this cart to other terminals at all.
+    if (!POS_CROSS_DEVICE_CART_SYNC) return
 
     const isSalesSyncEnabled = settings?.general?.realtime_sync_sales !== false
     if (!isSalesSyncEnabled) return
@@ -459,6 +478,13 @@ export default function Sales() {
     const handleSync = (e) => {
       const { type, client_id, tabs: remoteTabs, active_tab_id: remoteActiveTabId, timestamp: remoteTimestamp } = e.detail || {}
       if (type === 'pos.cart_sync' && client_id !== clientId) {
+        // Per-terminal carts: ignore another terminal's live cart entirely.
+        // (Committed sales data still syncs via the entity sync-events path.)
+        if (!POS_CROSS_DEVICE_CART_SYNC) {
+          logger.debug('[SALES] Per-terminal cart scope — ignoring remote cart from client:', client_id)
+          return
+        }
+
         const isSalesSyncEnabled = settings?.general?.realtime_sync_sales !== false
         if (!isSalesSyncEnabled) return
 
@@ -469,8 +495,20 @@ export default function Sales() {
 
         // Only apply remote state if it represents a newer update
         if (remoteTimestamp && remoteTimestamp > localTimestamp) {
+          // Anti-clobber guard (gap G5): never let an EMPTY remote cart wipe a
+          // non-empty local cart. A freshly-opened POS on another device
+          // broadcasts its default empty cart with a fresh (newer) timestamp;
+          // without this guard that empty state wins by LWW and silently clears
+          // an in-progress bill on this device (and then ping-pongs both empty).
+          // We do NOT advance our local clock here, so our own later edits still
+          // propagate normally.
+          if (!cartHasItems(remoteTabs) && cartHasItems(tabsRef.current)) {
+            logger.info('[SALES] Ignoring empty remote cart over a non-empty local cart (anti-clobber). From:', client_id)
+            return
+          }
+
           logger.info('[SALES] Applying remote cart sync from client:', client_id, 'timestamp:', remoteTimestamp)
-          
+
           lastIncomingSyncRef.current = {
             tabs: remoteTabs,
             activeTabId: remoteActiveTabId,
@@ -502,27 +540,44 @@ export default function Sales() {
     setSelectedPriceOptIndex(0)
   }, [activeTabId])
 
-  const syncTabNames = useCallback((currentTabs, existingInvoices) => {
-    let maxDbNum = 0
-    let prefix = 'INV-'
+  // This LOGIN's invoice-number prefix (multi-terminal POS §9.3a/§9.3b).
+  // - Counter token: staff-assigned `user.counter_prefix` (owner defaults 'OW',
+  //   cashier fallback 'INV') — drives the per-login series so two logins differ.
+  // - Mode/instance namespace (§9.3b): CLOUD is the clean source-of-truth series
+  //   (`C1-0001`); a LOCAL/hybrid device tags its series `LCL-` (`LCL-C1-0001`)
+  //   so its numbers can NEVER collide with the cloud series when they migrate /
+  //   sync up. The number is final at issue time — never re-numbered (GST-safe).
+  const getCounterPrefix = useCallback(() => {
+    const raw = (user?.counter_prefix || '').trim()
+    const counter = raw
+      ? (raw.endsWith('-') ? raw.slice(0, -1) : raw)
+      : ((user?.role || '').toLowerCase() !== 'cashier' ? 'OW' : 'INV')
+    const mode = (settings?.general?.hosting_mode || 'local').toLowerCase()
+    const tag = mode === 'cloud' ? '' : 'LCL-'
+    return `${tag}${counter}-`
+  }, [user?.counter_prefix, user?.role, settings])
+
+  // Highest number already used WITHIN this terminal's own prefix series. We
+  // must NOT mix series (the old code derived the prefix from whichever invoice
+  // had the global-max number, which scrambles multi-counter numbering).
+  const maxNumInSeries = (existingInvoices, prefix) => {
+    let maxNum = 0
     existingInvoices.forEach(inv => {
       const invNo = inv.invoice_number || inv.invoice_no || ''
-      if (invNo) {
-        const match = invNo.match(/([a-zA-Z0-9_\-]+?)?(\d+)/)
-        if (match) {
-          const pfx = match[1] || ''
-          const num = parseInt(match[2])
-          if (num > maxDbNum) {
-            maxDbNum = num
-            prefix = pfx
-          }
-        }
+      if (invNo && invNo.startsWith(prefix)) {
+        const m = invNo.slice(prefix.length).match(/(\d+)/)
+        if (m) { const num = parseInt(m[1]); if (num > maxNum) maxNum = num }
       }
     })
-    const nextDbVal = maxDbNum + 1
+    return maxNum
+  }
+
+  const syncTabNames = useCallback((currentTabs, existingInvoices) => {
+    const prefix = getCounterPrefix()
+    const nextDbVal = maxNumInSeries(existingInvoices, prefix) + 1
 
     const usedNumbers = new Set(existingInvoices.map(inv => inv.invoice_number || inv.invoice_no || ''))
-    
+
     let currentNum = nextDbVal
     return currentTabs.map(tab => {
       const hasItems = tab.form?.items?.length > 0
@@ -542,7 +597,7 @@ export default function Sales() {
         return { ...tab, name: candidate }
       }
     })
-  }, [])
+  }, [getCounterPrefix])
 
   const handleToggleColumnSetting = async (key, val) => {
     if (!settings) return
@@ -602,26 +657,10 @@ export default function Sales() {
   }, [form.items.length])
 
   const getNextInvoiceNo = useCallback((existingInvoices) => {
-    let maxNum = 0
-    let prefix = 'INV-'
-    existingInvoices.forEach(inv => {
-      const invNo = inv.invoice_number || inv.invoice_no || ''
-      if (invNo) {
-        const match = invNo.match(/([a-zA-Z0-9_\-]+?)?(\d+)/)
-        if (match) {
-          const pfx = match[1] || ''
-          const num = parseInt(match[2])
-          if (num > maxNum) {
-            maxNum = num
-            prefix = pfx
-          }
-        }
-      }
-    })
-    const nextVal = maxNum > 0 ? maxNum + 1 : 1
-    const padded = String(nextVal).padStart(4, '0')
-    return `${prefix}${padded}`
-  }, [])
+    const prefix = getCounterPrefix()
+    const nextVal = maxNumInSeries(existingInvoices, prefix) + 1
+    return `${prefix}${String(nextVal).padStart(4, '0')}`
+  }, [getCounterPrefix])
 
   /**
    * matchesKey — checks if a keyboard event matches a configurable key descriptor.
@@ -1572,6 +1611,9 @@ export default function Sales() {
             setShowSettingsModal(true)
           }}
           funcKeys={funcKeys}
+          counterPrefix={getCounterPrefix().replace(/-$/, '')}
+          canManageCounters={(user?.role || '').toLowerCase() !== 'cashier'}
+          onManageCounters={() => navigate('/staff')}
         />
 
         {/* Workspace body split */}

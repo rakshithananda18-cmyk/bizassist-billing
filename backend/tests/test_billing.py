@@ -255,3 +255,60 @@ def test_multi_line_totals_and_autonumber():
         assert items == 2
     finally:
         db.close()
+
+
+# ── Multi-terminal POS: per-counter invoice numbering (plan §9.3) ───────────
+# Two counters must mint numbers in SEPARATE series so a second terminal can
+# never collide with — and get silently merged into — another's sale.
+
+def test_counter_prefix_separates_series():
+    pid = _product("Rice", stock=100)
+    db = SessionLocal()
+    try:
+        c1 = billing.create_sale_invoice(
+            db, business_id=BID, place_of_supply="29", counter_prefix="C1",
+            lines=[{"product_id": pid, "quantity": 1, "unit_price": 100}])
+        c2 = billing.create_sale_invoice(
+            db, business_id=BID, place_of_supply="29", counter_prefix="C2",
+            lines=[{"product_id": pid, "quantity": 1, "unit_price": 100}])
+        c1b = billing.create_sale_invoice(
+            db, business_id=BID, place_of_supply="29", counter_prefix="C1",
+            lines=[{"product_id": pid, "quantity": 1, "unit_price": 100}])
+        # each counter has its OWN series, both starting at 0001
+        assert c1.invoice_id == "C1-0001"
+        assert c2.invoice_id == "C2-0001"
+        assert c1b.invoice_id == "C1-0002"        # C1 advances independently of C2
+        # three DISTINCT invoices — nothing merged away
+        assert len({c1.id, c2.id, c1b.id}) == 3
+    finally:
+        db.close()
+
+
+def test_two_counters_first_sale_no_collision():
+    """The exact soak bug: two terminals' first sale must NOT collapse into one."""
+    pid = _product("Rice", stock=100)
+    db = SessionLocal()
+    try:
+        a = billing.create_sale_invoice(
+            db, business_id=BID, place_of_supply="29", counter_prefix="C1",
+            lines=[{"product_id": pid, "quantity": 1, "unit_price": 100}])
+        b = billing.create_sale_invoice(
+            db, business_id=BID, place_of_supply="29", counter_prefix="C2",
+            lines=[{"product_id": pid, "quantity": 1, "unit_price": 100}])
+        assert a.id != b.id and a.invoice_id != b.invoice_id
+        assert db.query(Invoice).filter(Invoice.business_id == BID).count() == 2
+        assert SL.current_stock(db, BID, product_id=pid) == 98.0   # both deducted
+    finally:
+        db.close()
+
+
+def test_blank_prefix_defaults_to_inv_series():
+    pid = _product("Rice")
+    db = SessionLocal()
+    try:
+        assert billing._next_invoice_number(db, BID) == "INV-0001"
+        assert billing._next_invoice_number(db, BID, "C1") == "C1-0001"
+        # trailing '-' is tolerated / normalised
+        assert billing._next_invoice_number(db, BID, "C2-") == "C2-0001"
+    finally:
+        db.close()

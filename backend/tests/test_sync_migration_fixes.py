@@ -312,3 +312,44 @@ def test_import_remap_dedups_on_uid_over_natural_key():
     finally:
         db.rollback()
         db.close()
+
+
+def test_import_does_not_merge_different_uid_invoices_sharing_a_number():
+    """(§9.3b backstop) Two DIFFERENT bills that independently minted the same
+    invoice_id (e.g. local 'C1-0001' and cloud 'C1-0001') must NOT be merged on
+    migrate — uid mismatch means different sales. Skipping the invoice_id natural
+    key when a uid is present keeps both bills (no silent lost sale)."""
+    owner = _signup("Invoice Clash Co")
+    bid = owner["bid"]
+    LOCAL_OWNER = 7651234
+    uid_cloud = str(uuid.uuid4())
+    uid_local = str(uuid.uuid4())
+    db = SessionLocal()
+    try:
+        existing = set(inspect(db.bind).get_table_names())
+
+        # Destination already has a cloud-origin bill numbered C1-0001 (uid_cloud).
+        cloud_row = [{"id": 901001, "business_id": LOCAL_OWNER, "uid": uid_cloud,
+                      "invoice_id": "C1-0001", "amount": 100.0}]
+        assert _import_with_remap(db, "invoices", cloud_row, bid, LOCAL_OWNER, existing, {}) == 1
+
+        # Now import a DIFFERENT bill that also got numbered C1-0001 (uid_local).
+        local_row = [{"id": 901999, "business_id": LOCAL_OWNER, "uid": uid_local,
+                      "invoice_id": "C1-0001", "amount": 250.0}]
+        inserted = _import_with_remap(db, "invoices", local_row, bid, LOCAL_OWNER, existing, {})
+        assert inserted == 1, "the different-uid bill must be INSERTED, not natural-merged away"
+
+        # Both bills survive — two distinct uids under the same number.
+        cnt = db.execute(
+            text("SELECT COUNT(*) FROM invoices WHERE invoice_id = 'C1-0001' AND business_id = :b"),
+            {"b": bid},
+        ).scalar()
+        assert cnt == 2
+        uids = {r[0] for r in db.execute(
+            text("SELECT uid FROM invoices WHERE invoice_id = 'C1-0001' AND business_id = :b"),
+            {"b": bid},
+        ).fetchall()}
+        assert uids == {uid_cloud, uid_local}
+    finally:
+        db.rollback()
+        db.close()

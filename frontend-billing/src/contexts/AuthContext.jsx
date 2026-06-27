@@ -37,6 +37,7 @@ export function AuthProvider({ children }) {
       username: data.username,
       business_name: data.business_name,
       role: data.role,
+      counter_prefix: data.counter_prefix || null,   // POS counter series for this login (§9.3a)
     }
     localStorage.setItem('billing_user', JSON.stringify(userObj))
     setToken(tok)

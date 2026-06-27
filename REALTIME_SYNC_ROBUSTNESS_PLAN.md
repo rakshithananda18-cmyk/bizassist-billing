@@ -55,9 +55,12 @@ This is the Firestore/Linear pattern: an ordered, acknowledged change feed with 
 
 > Prerequisite: Step 3 uid is done (durable cross-DB keys) — the change log keys on `uid`, so this builds directly on it.
 
-**Phase 1 — Delta push (kill the full refetch).** *Biggest efficiency win, low risk.*
-- Extend the SSE event from `{type, entity}` to `{type, entity, uid, op, payload}` (reuse `_serialize_orm_obj`).
-- Frontend: on event, **patch the local cache** (insert/update/delete by `uid`) instead of refetching; fall back to refetch only on a detected gap.
+**Phase 1 — Delta push (kill the full refetch).** *Biggest efficiency win, low risk.* 🟡 **IN PROGRESS (2026-06-27): parties slice landed.**
+- Extend the SSE event from `{type, entity}` to `{type, entity, op, kind, rid, uid, payload}` — **DONE** via `services/realtime.py::delta_event()` (backward compatible: keeps `type:"sync.trigger"` + `entity`, so un-migrated pages and older bundles keep refetching). The `payload` is the **page DTO** (e.g. `_customer_out(c)`), not the raw ORM row, so the client splices in an item identical to what `load()` produces — avoids the ORM-row↔DTO shape mismatch.
+- Frontend: on event, **patch the cache** (`src/sync/applyDelta.js`, upsert/delete by `rid`/`uid`) instead of refetching; fall back to refetch when no payload or a gap is detected. **DONE for Parties** (customers + vendors).
+- **Mode gate (important):** delta-patch the UI **only in cloud mode** — there every client reads the same cloud DB, so the row id is a stable shared key and the cloud delta is authoritative. In **hybrid/local** the UI reads the **local** DB (which the SSE delta hasn't written yet), so those keep the existing refetch-after-`syncManager.pull()` path. This is the low-risk cut that keeps the money path untouched.
+- **Landed so far:** backend `delta_event` + dedup fix (payloaded deltas are never coalesced — `test_realtime_delta.py`); `core/api/parties.py` (4 sites: create/update customer + vendor) emit DTO deltas; `Parties.jsx` patches in cloud mode.
+- **Rollout remaining (per-entity, each independently shippable):** `products` → Stock/Sales product lists; then the **money entities** — `invoices` (sales.py), `payments`, `purchases` — migrated only alongside the two-device soak in `MANUAL_TEST_PLAN.md`, since they're the untestable-here money path. The frontend `applyDelta` path is generic, so each money page auto-upgrades the moment its backend call sites emit a DTO payload.
 - Result: far less bandwidth, no list flicker, sub-second updates. No schema change.
 
 **Phase 2 — Ordered change log + gap recovery.** *Reliability — the core "Google-grade" piece.*
@@ -71,8 +74,9 @@ This is the Firestore/Linear pattern: an ordered, acknowledged change feed with 
 - Replace whole-row `updated_at` LWW with version+field merge where it matters; keep `updated_at` LWW as the default for append-only/transactional rows.
 - Result: a concurrent edit to a *different field* is preserved; true conflicts surface instead of vanishing.
 
-**Phase 4 — Presence & soft-locks.** *UX safety for shared bills.*
+**Phase 4 — Presence & soft-locks.** *UX safety for shared bills + the real cart-handoff USP.*
 - Lightweight presence over the existing realtime channel: broadcast "viewing/editing entity X". Show it in the UI; warn/soft-lock before overwriting an invoice open elsewhere.
+- **Productised cart hand-off (the actual USP):** an *intentful* "send this open bill to terminal 2 / from waiter tablet → counter" action, with presence + soft-lock so a bill open on one terminal can't be silently clobbered by another. This replaces the old blind business-wide `pos.cart_sync` (which caused the G5 cross-terminal clobber found in the 2026-06-27 soak — see `SESSION_HANDOFF.md`). The live POS cart is now **per-terminal** by default (`Sales.jsx::POS_CROSS_DEVICE_CART_SYNC=false`) until this lands; committed-data real-time sync (Phases 1–3) is unaffected.
 
 **Phase 5 (optional, future) — CRDT for genuinely collaborative surfaces only.**
 - If/when collaborative notes, a shared catalog editor, or multi-user order drafts appear, use **Yjs** (`y-websocket`) for *those specific surfaces*. **Do not** retrofit CRDT onto billing rows — Phases 1–3 already give billing the robustness it needs.
@@ -95,6 +99,72 @@ This is the Firestore/Linear pattern: an ordered, acknowledged change feed with 
 
 ---
 
-## 8. Net
+## 9. Multi-terminal POS design (decided 2026-06-27)
+
+*Surfaced during the 2-device cloud soak. Covers what happens when ONE business runs several POS terminals (two cashiers + the owner), and the design we settled on. Companion bug record: `SESSION_HANDOFF.md` (POS cart clobber).*
+
+### 9.1 The live cart is PER-TERMINAL (not shared)
+- Two cashiers ringing up two customers must have independent open bills. A silently-shared live cart can only ever let one terminal erase another's in-progress sale (the clobber observed in the soak — gap **G5**).
+- **Shipped:** `Sales.jsx::POS_CROSS_DEVICE_CART_SYNC = false` — a terminal no longer broadcasts its cart to, nor applies a cart from, any other terminal. Per-device localStorage restore (minimized tabs) is untouched. Backstop: an empty remote cart can never overwrite a non-empty local cart (`cartHasItems` + `tabsRef`).
+- The owner can also run their **own** POS — they're just another session/terminal, same rules apply.
+
+### 9.2 Owner oversight = a SEPARATE, read-only feed (not cart sync)
+The genuinely useful feature isn't cashier↔cashier cart sharing; it's the **owner watching (and occasionally editing) what each counter is doing, from the owner's screen.** Build it as a one-directional read feed so it can't clobber anything:
+
+- **Stage 1 — "Live Counters" (read-only).** Each active POS session publishes a cart *snapshot* tagged with cashier + counter label; the owner (role-gated) subscribes and watches live tiles ("Counter 1 (Asha): 2 items, ₹240"). Nothing the owner's screen does writes back into a cashier's cart → zero clobber risk, no dependency on the concurrency work. Reuses the existing `pos.cart_sync` broadcast, redirected to owner-only consumers. **This alone delivers the requested feature.**
+- **Stage 2 — owner take-over / edit (later).** The moment the owner can *edit* a cashier's open bill you have concurrent edits → needs the soft-lock + version safety (§9.4 / Phases 3–4). A contextual **"Take over"** action (counter goes view-only) is the only button worth having; there is **no** global "sync now"/"grant access" button beside Settings (manual locks rot and a global cart-sync button just re-creates the clobber).
+
+### 9.3 Invoice numbering across counters (MONEY-CORRECTNESS) — 🟢 IMPLEMENTED 2026-06-27 (pending user test)
+**Problem (today).** `core/billing/commands.py::_next_invoice_number` = `INV-{count(existing)+1}` per DB; the number is client-supplied or server-counted. With two terminals this collides:
+- *Local/offline:* each device counts its **own** SQLite → both mint `INV-1001` for different sales.
+- *Cloud:* two near-simultaneous sales both read the same count → both try `INV-1001`.
+
+And `create_sale_invoice` treats *same business + same invoice_no* as a **retry** and returns the existing invoice → the second, genuinely-different sale is **silently swallowed (lost sale)**. Quiet data loss, not a loud error.
+
+**Decided fix (both modes, no coordination needed):**
+1. **Per-counter number space** — give each terminal its own prefix/range (already have `device_id` on the request): Counter 1 → `C1-0001…`, Counter 2 → `C2-0001…`, owner → `OW-0001…`. Unique **by construction**, works offline + online, never collides on sync. A one-time "counter label/prefix" set per terminal in settings.
+2. **Idempotency on request-id, not the human number** — retry-dedupe must key on `X-Client-Request-Id` (the outbox's outer wall already sends it), **not** on `invoice_no`. So "same bill retried" dedupes correctly while "two different bills that clashed on a number" can never be merged.
+
+> Mental model: **per-counter prefix = no collisions; request-id idempotency = safe retries.** This is a prerequisite before enabling real multi-counter billing.
+
+**Landed (2026-06-27):**
+- Backend: `_next_invoice_number(db, business_id, counter_prefix)` is prefix-aware (counts only its own series); `counter_prefix` threaded through `create_sale_invoice` + both routes (`SaleRequest`, `FrontendInvoiceRequest`). The `X-Client-Request-Id` outer wall stays the authoritative retry guard; the `invoice_no` wall is now a benign secondary (per-prefix numbers are unique → no cross-counter merge). **No schema change** (prefix lives in the `invoice_id` string). Tests: `tests/test_billing.py::test_counter_prefix_separates_series`, `::test_two_counters_first_sale_no_collision`, `::test_blank_prefix_defaults_to_inv_series`.
+- Frontend: `Sales.jsx` `getCounterPrefix()` resolves the prefix (now **login-based** — see §9.3a); `syncTabNames`/`getNextInvoiceNo` number **within that series** (also fixes the old bug where the prefix was derived from the global-max-numbered invoice, scrambling multi-counter).
+- **Manual test:** assign cashier A `C1`, cashier B `C2` (Staff page); each bills → `C1-0001`, `C2-0001` (no collision, no swallowed sale). Owner with none set → `OW-` series.
+
+### 9.3a Counter identity — STAFF-ASSIGNED (login-bound) — 🟢 IMPLEMENTED 2026-06-28 (pending user test)
+**Model (FINAL — supersedes the earlier terminal-bound/localStorage attempt):** a *counter* is **assigned to a login**, owner-controlled and server-stored. Rationale: this is a **browser app with no reliable device/terminal ID**, so any "this machine is C1" tag is a local value that can be cleared or edited (tamperable). The **login** is the only identity the server can trust and a cashier cannot manipulate at the till. So the counter follows the *account*, set by the owner in Staff management.
+- **Three layers stay distinct:** **business** (one tenant; owner + staff share `business_id`), **login** (owner vs cashier — *who*), **counter** (the invoice-number series, now = the login's assigned prefix).
+- **Storage:** `users.counter_prefix` column (nullable). Owner-assigned per staff; owner sets their own (default `OW`). Registered in `_COLUMN_MIGRATIONS` + alembic `b3c1d5e7f9a2`. Returned on `/login` + `/profile`.
+- **Who sets it:** owner only — `POST/PATCH /staff` (`counter_prefix`, normalised to a short alnum token) and the owner's own via `PUT /profile`. Cashiers are blocked from `/staff` entirely, so they can't self-assign (no till-side manipulation).
+- **Billing:** `Sales.jsx::getCounterPrefix()` reads `user.counter_prefix` from the auth user (fallback: owner→`OW-`, else `INV-`); `syncTabNames`/`getNextInvoiceNo` number within that series. The POS shows a **read-only** badge (`components/sales/CounterMenu.jsx` → `Counter: C1`) — no picking/adding at the till. The old per-device dropdown + `PosCounterSettingsModal` prefix field were **retired**.
+- **Owner UI:** Staff page (`Staff.jsx`) — owner defines **named counters** (`{name, prefix}`, stored in owner `settings.transactions.counters`, cashier-write-blocked); each cashier is **assigned via a dropdown** (add-form + per-row `<select>`), not free-typed. The POS read-only `Counter:` badge is **clickable for owners** → navigates to `/staff` (counter setup lives in Staff management; no add-at-till).
+- **Tests:** `tests/test_staff.py::test_owner_assigns_staff_counter_prefix_carried_to_login`, `::test_cashier_cannot_change_their_counter_prefix`.
+- **Caveat (documented):** prefix follows the *login*, so the **same account** signed in on two machines at once shares one series (rare; server still guards each number). One account = one counter at a time.
+- **Deploy:** needs the `users.counter_prefix` migration on both DBs (runtime migrator auto-adds on startup; alembic rev for parity), HF redeploy, Vercel redeploy.
+
+### 9.3b Local↔cloud number namespacing (avoids cross-DB clash) — 🟢 IMPLEMENTED 2026-06-28 (pending user test)
+**Problem:** the per-login counter prefix (§9.3a) stops collisions between two *online* logins, but **two disconnected databases** (a local SQLite + the cloud) each independently mint `C1-0001` for *different* sales. On local→cloud migrate, the importer's natural-key fallback (`_NATURAL_KEYS["invoices"]=["invoice_id"]`) would match them by number and **merge two different bills → lost sale**.
+
+**Fix (two parts, GST-safe — number is final at issue, never re-numbered):**
+1. **Mode/instance namespace** — `Sales.jsx::getCounterPrefix()` prepends **`LCL-`** to the series on a **local/hybrid** device (`hosting_mode != 'cloud'`); **cloud stays clean**. So: cloud `C1-0001` / `OW-0001`; local `LCL-C1-0001` / `LCL-OW-0001`. The two series can never share an `invoice_id`, so migrate just inserts — no merge. *(>1 local machine: give each its own tag, e.g. `LCL1-`/`LCL2-`; single local machine uses `LCL-`.)*
+2. **Migrate backstop** — `routes/migrate.py::_import_with_remap` skips the natural-key fallback when the incoming row **carries a `uid`** (uid mismatch = genuinely different row → insert, never natural-merge). Covers the residual case (two local machines, or legacy dup numbers). Test: `tests/test_sync_migration_fixes.py::test_import_does_not_merge_different_uid_invoices_sharing_a_number`.
+
+**GST note (confirm with CA):** multiple invoice series (`C1-…`, `LCL-C1-…`) are allowed if each is unique + consecutive; the number printed on the customer's tax invoice is final and is **never** re-numbered at merge/GST time — GST generation only *consolidates* cloud + local data and lists each series as-is.
+
+### 9.4 How the concurrency layers stack (POS example)
+Two cashiers Asha (T1) / Ravi (T2), same shop, cloud:
+1. **Per-terminal carts (done)** — Asha's 3-item cart and Ravi's cart never touch. Removes the most common collision outright.
+2. **Version / optimistic concurrency (Phase 3)** — for records BOTH can edit (a product's price/stock, a customer, a parked bill): each carries a `version`; first save wins (v7→v8), the stale save is rejected **409**, client reloads + re-applies → both edits survive. Server-authoritative — works even if the UI forgets to lock.
+3. **Presence + auto soft-lock (Phase 4)** — opening a shared bill marks it "open on Terminal 1"; others see view-only + a contextual "Take over". Prevents the collision in the UI; Phase 3 guarantees correctness if it's bypassed.
+
+Boundary: all of the above is for **editable** records (drafts, parked bills, product/customer master). A **completed** sale is an immutable posted invoice (journal + hash chain) — never merged or version-raced, only created.
+
+### 9.5 Sequencing
+Do **§9.3 invoice numbering first** (money-correctness, blocks multi-counter), then **§9.2 Stage 1 Live Counters** (high value, low risk, no concurrency dependency), then the delta-push rollout to money entities, then **Phase 3 version concurrency** → **Phase 4 presence/soft-lock + Stage 2 owner edit**.
+
+---
+
+## 10. Net
 
 Phases 1–2 alone bring us to **Firebase/Firestore-grade** real-time robustness (ordered, acknowledged, self-healing per-field deltas) — efficient *and* reliable — while staying simpler than Google Docs' OT. Phase 3 closes the lost-update gap; Phase 4 adds the presence polish; Phase 5 is only for future collaborative features. Sequence and priority are tracked in `SESSION_HANDOFF.md` §10.

@@ -83,6 +83,10 @@ class User(Base, TimestampMixin):
     logo          = Column(Text,   nullable=True)
     # App configuration blob — JSON-encoded key/value preferences (own naming schema)
     settings      = Column(Text,   nullable=True)
+    # Per-login POS counter prefix (multi-terminal POS, plan §9.3a). Owner-assigned
+    # per staff (owner defaults to "OW"); drives this account's invoice-number
+    # series (C1-0001, C2-0001…) so two logins never collide. Owner-only to set.
+    counter_prefix = Column(String, nullable=True)
 
 
 class UploadedFile(Base, TimestampMixin):

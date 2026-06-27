@@ -31,11 +31,23 @@ class CreateStaff(BaseModel):
     username: str
     password: str
     role: str = "cashier"
+    counter_prefix: Optional[str] = None   # POS counter series for this login (§9.3a)
 
 
 class UpdateStaff(BaseModel):
     role: Optional[str] = None
     password: Optional[str] = None
+    counter_prefix: Optional[str] = None   # set/change this login's POS counter series
+
+
+def _norm_prefix(p: Optional[str]) -> Optional[str]:
+    """Normalise a counter prefix to a short alnum token (no trailing '-').
+    Empty/None → None (falls back to the default 'INV' series at billing time)."""
+    if p is None:
+        return None
+    import re
+    token = re.sub(r"[^A-Za-z0-9_]", "", p.strip()).rstrip("-")[:8]
+    return token or None
 
 
 def _staff_out(u: User) -> dict:
@@ -44,6 +56,7 @@ def _staff_out(u: User) -> dict:
         "username": u.username,
         "role": u.role,
         "business_id": u.parent_business_id,
+        "counter_prefix": getattr(u, "counter_prefix", None),
         "created_at": u.created_at.isoformat() if u.created_at else None,
     }
 
@@ -92,6 +105,7 @@ def create_staff(req: CreateStaff, current_user: dict = Depends(restrict_cashier
         business_name=current_user.get("business_name"),
         role=role,
         parent_business_id=bid,
+        counter_prefix=_norm_prefix(req.counter_prefix),
     )
     db.add(staff)
     db.commit()
@@ -113,6 +127,8 @@ def update_staff(staff_id: int, req: UpdateStaff,
     if req.password is not None:
         _validate_password(req.password)
         staff.password = hash_password(req.password)
+    if req.counter_prefix is not None:
+        staff.counter_prefix = _norm_prefix(req.counter_prefix)
     db.commit()
     db.refresh(staff)
     logger.info("[STAFF] updated %s under business %s", staff_id, bid)

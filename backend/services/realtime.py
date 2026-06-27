@@ -1,9 +1,51 @@
 import asyncio
 import logging
-from typing import Dict, Set, Any
+from typing import Dict, Set, Any, Optional
 from fastapi import HTTPException
 
 logger = logging.getLogger("bizassist.realtime")
+
+
+def delta_event(
+    entity: str,
+    op: str = "upsert",
+    payload: Optional[dict] = None,
+    *,
+    kind: Optional[str] = None,
+    rid: Optional[Any] = None,
+    uid: Optional[str] = None,
+) -> Dict[str, Any]:
+    """(Sync Robustness Phase 1) Build an SSE event that carries the *changed
+    record* so clients can patch their cache instead of refetching the whole list.
+
+    Backward compatible: keeps ``type="sync.trigger"`` + ``entity`` so older
+    frontends and un-migrated pages keep treating it as a plain refetch nudge.
+    The new fields are purely additive:
+
+      - ``op``      "upsert" | "delete"
+      - ``payload`` the record in the SAME shape the page's list uses (a DTO,
+                    not the raw ORM row), so a client can splice it in directly.
+                    Omit it to fall back to a pure trigger (client refetches).
+      - ``kind``    optional sub-type when one ``entity`` channel carries
+                    multiple list kinds (e.g. "party" -> "customer"/"vendor").
+      - ``rid``     the row id (stable within a single DB -> fine for cloud mode,
+                    where every client reads the same cloud DB).
+      - ``uid``     the durable cross-DB key (forward-compat for Phase 2+).
+
+    A client that doesn't understand ``payload`` just refetches as before; one
+    that does patches by ``rid`` (or ``uid``) and skips the network round-trip.
+    """
+    event: Dict[str, Any] = {"type": "sync.trigger", "entity": entity, "op": op}
+    if kind is not None:
+        event["kind"] = kind
+    if rid is not None:
+        event["rid"] = rid
+    if uid is not None:
+        event["uid"] = uid
+    if payload is not None:
+        event["payload"] = payload
+    return event
+
 
 class RealtimeManager:
     def __init__(self):
@@ -74,15 +116,23 @@ class RealtimeManager:
         # Gather active queues to write
         queues = list(self.connections[business_id])
         for q in queues:
-            # Event deduplication / backpressure for rapid duplicate events
-            if event.get("type") == "sync.trigger":
+            # Event deduplication / backpressure for rapid duplicate events.
+            # IMPORTANT (Phase 1): only coalesce *pure* triggers (no payload).
+            # A delta carries the actual changed record, so two deltas on the
+            # same entity are distinct rows — coalescing them would silently drop
+            # a real change. We therefore dedupe a trigger only against another
+            # payload-less trigger for the same entity.
+            if event.get("type") == "sync.trigger" and "payload" not in event:
                 duplicate = False
                 for item in list(q._queue):
-                    if isinstance(item, dict) and item.get("type") == "sync.trigger" and item.get("entity") == event.get("entity"):
+                    if (isinstance(item, dict)
+                            and item.get("type") == "sync.trigger"
+                            and "payload" not in item
+                            and item.get("entity") == event.get("entity")):
                         duplicate = True
                         break
                 if duplicate:
-                    logger.debug(f"[REALTIME] Skipping duplicate event {event.get('type')} for entity {event.get('entity')} (already queued)")
+                    logger.debug(f"[REALTIME] Skipping duplicate trigger for entity {event.get('entity')} (already queued)")
                     continue
 
             try:
