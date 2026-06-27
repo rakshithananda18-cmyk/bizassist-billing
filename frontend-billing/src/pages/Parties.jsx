@@ -29,6 +29,7 @@ export default function Parties() {
   const [purchases, setPurchases]   = useState([])
   const [loading, setLoading]       = useState(true)
   const [activeTab, setActiveTab]   = useState('Customers')
+  const [isFullScreen, setIsFullScreen] = useState(false)
   const [search, setSearch]         = useState('')
   const [showModal, setShowModal]   = useState(false)
   const [form, setForm]             = useState(defaultForm)
@@ -98,20 +99,73 @@ export default function Parties() {
     }
   }, [load])
 
-  const getList = () => {
-    if (activeTab === 'Customers') return customers;
-    if (activeTab === 'Vendors') return vendors;
-    return invoices.filter(i => !i.customer_id);
+  const [balanceFilter, setBalanceFilter] = useState('')
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: '' })
+
+  const handleSort = (key) => {
+    let direction = 'asc'
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc'
+    } else if (sortConfig.key === key && sortConfig.direction === 'desc') {
+      setSortConfig({ key: '', direction: '' })
+      return
+    }
+    setSortConfig({ key, direction })
   }
 
-  const list = getList()
-  const filtered = list.filter(p => {
+  const getList = () => {
+    let items = []
+    if (activeTab === 'Customers') items = [...customers]
+    else if (activeTab === 'Vendors') items = [...vendors]
+    else items = invoices.filter(i => !i.customer_id)
+
+    // Apply Search
     const q = search.toLowerCase()
-    if (activeTab === 'Other Invoices') {
-      return !q || p.invoice_number?.toLowerCase().includes(q) || p.notes?.toLowerCase().includes(q)
+    items = items.filter(p => {
+      if (activeTab === 'Other Invoices') {
+        return !q || p.invoice_number?.toLowerCase().includes(q) || p.notes?.toLowerCase().includes(q)
+      }
+      
+      // Balance filter (Outstanding Dues / Nil)
+      const outstanding = parseFloat(p.outstanding_balance ?? 0)
+      if (balanceFilter === 'due' && outstanding <= 0) return false
+      if (balanceFilter === 'nil' && outstanding > 0) return false
+
+      return !q || p.name?.toLowerCase().includes(q) || p.phone?.includes(q) || p.gstin?.toLowerCase().includes(q)
+    })
+
+    // Apply Sorting
+    if (sortConfig.key && sortConfig.direction) {
+      items.sort((a, b) => {
+        let aVal = a[sortConfig.key]
+        let bVal = b[sortConfig.key]
+
+        if (sortConfig.key === 'outstanding_balance') {
+          aVal = parseFloat(a.outstanding_balance ?? 0)
+          bVal = parseFloat(b.outstanding_balance ?? 0)
+        } else if (sortConfig.key === 'last_date') {
+          aVal = activeTab === 'Customers' ? (a.last_invoice_date || '') : (a.last_purchase_date || '')
+          bVal = activeTab === 'Customers' ? (b.last_invoice_date || '') : (b.last_purchase_date || '')
+        }
+
+        if (aVal === undefined || aVal === null) return 1
+        if (bVal === undefined || bVal === null) return -1
+
+        if (typeof aVal === 'string') {
+          return sortConfig.direction === 'asc'
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal)
+        } else {
+          return sortConfig.direction === 'asc'
+            ? aVal - bVal
+            : bVal - aVal
+        }
+      })
     }
-    return !q || p.name?.toLowerCase().includes(q) || p.phone?.includes(q) || p.gstin?.toLowerCase().includes(q)
-  })
+    return items
+  }
+
+  const filtered = getList()
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -367,9 +421,9 @@ export default function Parties() {
           </div>
         </div>
 
-        {/* Tabs + Search */}
+        {/* Tabs + Search & Filters */}
         <div className="flex items-center justify-between page-subbar" style={{ flexWrap: 'wrap', gap: 12 }}>
-          <div className="tabs">
+          <div className="tabs" style={{ margin: 0 }}>
             <button className={`tab${activeTab === 'Customers' ? ' active' : ''}`} onClick={() => setActiveTab('Customers')}>
               Customers <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({customers.length})</span>
             </button>
@@ -380,166 +434,216 @@ export default function Parties() {
               Casual / Other Invoices <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({invoices.filter(i => !i.customer_id).length})</span>
             </button>
           </div>
-          <div className="search-bar">
-            <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${activeTab.toLowerCase()}…`} />
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div className="search-bar" style={{ width: 180 }}>
+              <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${activeTab.toLowerCase()}…`} />
+            </div>
+            {activeTab !== 'Other Invoices' && (
+              <select
+                value={balanceFilter}
+                onChange={e => setBalanceFilter(e.target.value)}
+                style={{
+                  background: 'var(--bg-2)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--text-primary)',
+                  padding: '6px 12px',
+                  fontSize: '0.82rem',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="">All Balances</option>
+                <option value="due">Outstanding Due</option>
+                <option value="nil">Nil / Zero Balance</option>
+              </select>
+            )}
           </div>
         </div>
 
         {/* Table */}
-        {loading ? (
-          <div className="page-loader"><span className="spinner" /> Loading…</div>
-        ) : (
-          <div className="data-table-wrap">
+        {(() => {
+          const tableContent = (
             <table className="data-table">
               <thead>
                 {activeTab === 'Customers' && (
                   <tr>
-                    <th>Name</th>
+                    <th className="sortable" onClick={() => handleSort('name')}>
+                      Name
+                      <span className={`sort-indicator ${sortConfig.key === 'name' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'name' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
                     <th>Phone</th>
                     <th>Email</th>
                     <th>GSTIN</th>
-                    <th>Outstanding</th>
-                    <th>Last Invoice</th>
+                    <th className="sortable" onClick={() => handleSort('outstanding_balance')}>
+                      Outstanding
+                      <span className={`sort-indicator ${sortConfig.key === 'outstanding_balance' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'outstanding_balance' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('last_date')}>
+                      Last Invoice
+                      <span className={`sort-indicator ${sortConfig.key === 'last_date' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'last_date' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
                     <th>Actions</th>
                   </tr>
                 )}
                 {activeTab === 'Vendors' && (
                   <tr>
-                    <th>Name</th>
+                    <th className="sortable" onClick={() => handleSort('name')}>
+                      Name
+                      <span className={`sort-indicator ${sortConfig.key === 'name' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'name' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
                     <th>Phone</th>
                     <th>GSTIN</th>
-                    <th>Outstanding</th>
-                    <th>Last Purchase</th>
+                    <th className="sortable" onClick={() => handleSort('outstanding_balance')}>
+                      Outstanding
+                      <span className={`sort-indicator ${sortConfig.key === 'outstanding_balance' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'outstanding_balance' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('last_date')}>
+                      Last Purchase
+                      <span className={`sort-indicator ${sortConfig.key === 'last_date' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'last_date' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
                     <th>Actions</th>
                   </tr>
                 )}
                 {activeTab === 'Other Invoices' && (
                   <tr>
-                    <th>Invoice #</th>
-                    <th>Date</th>
+                    <th className="sortable" onClick={() => handleSort('invoice_number')}>
+                      Invoice #
+                      <span className={`sort-indicator ${sortConfig.key === 'invoice_number' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'invoice_number' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('date')}>
+                      Date
+                      <span className={`sort-indicator ${sortConfig.key === 'date' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'date' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
                     <th>Customer</th>
                     <th>Items</th>
-                    <th>Amount</th>
-                    <th>Status</th>
+                    <th className="sortable" onClick={() => handleSort('total_amount')}>
+                      Amount
+                      <span className={`sort-indicator ${sortConfig.key === 'total_amount' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'total_amount' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('status')}>
+                      Status
+                      <span className={`sort-indicator ${sortConfig.key === 'status' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'status' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
                     <th>Actions</th>
                   </tr>
                 )}
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={activeTab === 'Other Invoices' ? 7 : 7}>
+                  <tr><td colSpan={7}>
                     <div className="empty-state">
                       <div className="empty-icon"><ContactsIcon size={24} /></div>
                       <h3>No items found</h3>
-                      <p>{search ? 'Try a different search.' : `No transactions or details available.`}</p>
+                      <p>{search ? 'Try a different search.' : 'No transactions or details available.'}</p>
                     </div>
                   </td></tr>
-                ) : (
-                  filtered.map(p => {
-                    if (activeTab === 'Other Invoices') {
-                      return (
-                        <tr key={p.id}>
-                          <td className="td-mono td-primary">
-                            {p.invoice_number || `#${p.id}`}
-                            {p.invoice_type === 'credit_note' && (
-                              <span style={{ fontSize: '0.65rem', display: 'block', color: 'var(--accent)' }}>
-                                <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> RETURN (CN)
-                              </span>
-                            )}
-                          </td>
-                          <td>{p.date ? new Date(p.date).toLocaleDateString('en-IN') : '—'}</td>
-                          <td style={{ color: 'var(--text-muted)' }}>Casual / Walk-in</td>
-                          <td style={{ color: 'var(--text-muted)' }}>{p.item_count ?? (p.items?.length ?? '—')}</td>
-                          <td style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{fmt(p.total_amount)}</td>
-                          <td>
-                            <span className={`badge ${p.status === 'paid' ? 'badge-success' : 'badge-warning'}`}>
-                              {p.status || 'unpaid'}
-                            </span>
-                          </td>
-                          <td>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                onClick={() => handlePrintInvoice(p.invoice_number || p.invoice_no)}
-                              >
-                                <PrinterIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Print
-                              </button>
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                onClick={() => handleWhatsAppShareInvoice(p)}
-                                title="Share invoice on WhatsApp"
-                              >
-                                <MessageIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Share
-                              </button>
-                              {p.invoice_type !== 'credit_note' && (
-                                <button
-                                  className="btn btn-secondary btn-sm"
-                                  onClick={() => handleOpenReturn(p)}
-                                  title="Record Sales Return / Credit Note"
-                                >
-                                  <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Return
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    }
-
-                    const outstanding = parseFloat(p.outstanding_balance ?? 0)
+                ) : filtered.map(p => {
+                  if (activeTab === 'Other Invoices') {
                     return (
                       <tr key={p.id}>
-                        <td>
-                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</div>
-                          {p.address && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.address}</div>}
-                        </td>
-                        <td>{p.phone || '—'}</td>
-                        {activeTab === 'Customers' && <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{p.email || '—'}</td>}
-                        <td className="td-mono" style={{ fontSize: '0.78rem' }}>{p.gstin || '—'}</td>
-                        <td>
-                          {outstanding > 0
-                            ? <span className="badge badge-danger">{fmt(outstanding)}</span>
-                            : <span className="badge badge-success">Nil</span>
-                          }
-                        </td>
-                        <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                          {activeTab === 'Customers'
-                            ? (p.last_invoice_date ? new Date(p.last_invoice_date).toLocaleDateString('en-IN') : '—')
-                            : (p.last_purchase_date ? new Date(p.last_purchase_date).toLocaleDateString('en-IN') : '—')
-                          }
-                        </td>
-                        <td style={{ display: 'flex', gap: 6 }}>
-                          {activeTab === 'Customers' ? (
-                            <>
-                              <button className="btn btn-secondary btn-sm" onClick={() => handleViewInvoices(p)}>
-                                <BillsIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> View Invoices
-                              </button>
-                              {outstanding > 0 && (
-                                <button
-                                  className="btn btn-sm"
-                                  style={{ backgroundColor: '#166534', color: '#ffffff', border: 'none' }}
-                                  onClick={() => handleWhatsAppReminder(p)}
-                                  title="Send payment reminder on WhatsApp"
-                                >
-                                  <MessageIcon size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> Send Reminder
-                                </button>
-                              )}
-                            </>
-                          ) : (
-                            <button className="btn btn-secondary btn-sm" onClick={() => handleViewPurchases(p)}>
-                              <InventoryIcon size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> View Purchases
-                            </button>
+                        <td className="td-mono td-primary">
+                          {p.invoice_number || `#${p.id}`}
+                          {p.invoice_type === 'credit_note' && (
+                            <span style={{ fontSize: '0.65rem', display: 'block', color: 'var(--accent)' }}>
+                              <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> RETURN (CN)
+                            </span>
                           )}
+                        </td>
+                        <td>{p.date ? new Date(p.date).toLocaleDateString('en-IN') : '—'}</td>
+                        <td style={{ color: 'var(--text-muted)' }}>Casual / Walk-in</td>
+                        <td style={{ color: 'var(--text-muted)' }}>{p.item_count ?? (p.items?.length ?? '—')}</td>
+                        <td style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{fmt(p.total_amount)}</td>
+                        <td><span className={`badge ${p.status === 'paid' ? 'badge-success' : 'badge-warning'}`}>{p.status || 'unpaid'}</span></td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button className="btn btn-secondary btn-sm" onClick={() => handlePrintInvoice(p.invoice_number || p.invoice_no)}><PrinterIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Print</button>
+                            <button className="btn btn-secondary btn-sm" onClick={() => handleWhatsAppShareInvoice(p)} title="Share invoice on WhatsApp"><MessageIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Share</button>
+                            {p.invoice_type !== 'credit_note' && (
+                              <button className="btn btn-secondary btn-sm" onClick={() => handleOpenReturn(p)} title="Record Sales Return / Credit Note"><SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Return</button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )
-                  })
-                )}
+                  }
+                  const outstanding = parseFloat(p.outstanding_balance ?? 0)
+                  return (
+                    <tr key={p.id}>
+                      <td>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</div>
+                        {p.address && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.address}</div>}
+                      </td>
+                      <td>{p.phone || '—'}</td>
+                      {activeTab === 'Customers' && <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{p.email || '—'}</td>}
+                      <td className="td-mono" style={{ fontSize: '0.78rem' }}>{p.gstin || '—'}</td>
+                      <td>{outstanding > 0 ? <span className="badge badge-danger">{fmt(outstanding)}</span> : <span className="badge badge-success">Nil</span>}</td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                        {activeTab === 'Customers'
+                          ? (p.last_invoice_date ? new Date(p.last_invoice_date).toLocaleDateString('en-IN') : '—')
+                          : (p.last_purchase_date ? new Date(p.last_purchase_date).toLocaleDateString('en-IN') : '—')
+                        }
+                      </td>
+                      <td style={{ display: 'flex', gap: 6 }}>
+                        {activeTab === 'Customers' ? (
+                          <>
+                            <button className="btn btn-secondary btn-sm" onClick={() => handleViewInvoices(p)}><BillsIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> View Invoices</button>
+                            {outstanding > 0 && (
+                              <button className="btn btn-sm" style={{ backgroundColor: '#166534', color: '#ffffff', border: 'none' }} onClick={() => handleWhatsAppReminder(p)} title="Send payment reminder on WhatsApp"><MessageIcon size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> Send Reminder</button>
+                            )}
+                          </>
+                        ) : (
+                          <button className="btn btn-secondary btn-sm" onClick={() => handleViewPurchases(p)}><InventoryIcon size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> View Purchases</button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
-          </div>
-        )}
+          )
+          if (loading) return <div className="page-loader"><span className="spinner" /> Loading…</div>
+          if (isFullScreen) return (
+            <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>
+              <div className="table-fullscreen-panel">
+                <div className="table-fullscreen-header">
+                  <h3>Contacts & Dues — {activeTab}</h3>
+                  <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(false)}>✕ Close</button>
+                </div>
+                <div className="data-table-wrap">{tableContent}</div>
+              </div>
+            </div>
+          )
+          return (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(true)}>⛶ Fullscreen</button>
+              </div>
+              <div className="data-table-wrap">{tableContent}</div>
+            </>
+          )
+        })()}
+
       </div>
 
       {/* Add Party Modal */}

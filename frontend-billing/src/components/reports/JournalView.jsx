@@ -12,7 +12,7 @@ export default function JournalView({ reportData, fmt, isAudit }) {
           <LockIcon size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> Posted at transaction time · append-only audit trail
         </div>
       )}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="journal-entries-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {reportData.entries?.map((e, i) => (
           <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: 'var(--bg-3)', fontSize: '0.82rem' }}>

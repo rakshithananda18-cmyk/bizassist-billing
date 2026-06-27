@@ -191,7 +191,7 @@ export default function Dashboard() {
             </div>
 
             {/* Feed & Alerts grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '24px', marginTop: '24px' }}>
+            <div className="dashboard-grid">
 
               {/* Business Day Feed */}
               <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: '400px' }}>

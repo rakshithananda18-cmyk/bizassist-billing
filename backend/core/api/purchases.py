@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from database.db import get_db
 from database.models import PurchaseInvoice, PurchaseInvoiceLineItem, User
-from services.auth import get_active_user, restrict_cashier
+from services.auth import get_active_user, restrict_cashier, restrict_cashier_only
 from services.purchase_ocr import parse_purchase_file
 from services.purchase_mapper import map_purchase_items_to_catalog
 from core.purchase import commands as purchase_commands
@@ -83,7 +83,7 @@ def _invoice_out(inv: PurchaseInvoice) -> dict:
 @router.post("/purchases/upload")
 async def upload_purchase_bill(
     file: UploadFile = File(...),
-    current_user: dict = Depends(restrict_cashier),
+    current_user: dict = Depends(restrict_cashier_only),
     db: Session = Depends(get_db)
 ):
     """Upload a supplier invoice file (PDF/Image) and parse it into a structured JSON draft."""
@@ -113,7 +113,7 @@ async def upload_purchase_bill(
 def confirm_purchase_invoice(
     payload: dict,
     background_tasks: BackgroundTasks,
-    current_user: dict = Depends(restrict_cashier),
+    current_user: dict = Depends(restrict_cashier_only),
     db: Session = Depends(get_db),
     guard: ReplayGuard = Depends(replay_guard),
 ):
@@ -143,7 +143,7 @@ def confirm_purchase_invoice(
 
 @router.get("/purchases")
 def list_purchases(
-    current_user: dict = Depends(restrict_cashier),
+    current_user: dict = Depends(restrict_cashier_only),
     db: Session = Depends(get_db)
 ):
     """List all purchase invoices for the current business."""
@@ -161,7 +161,7 @@ def list_purchases(
 
 @router.get("/purchases/debit-notes")
 def list_debit_notes(
-    current_user: dict = Depends(restrict_cashier),
+    current_user: dict = Depends(restrict_cashier_only),
     db: Session = Depends(get_db)
 ):
     """List all debit notes (purchase returns) for the business."""
@@ -180,7 +180,7 @@ def list_debit_notes(
 @router.get("/purchases/{purchase_id}")
 def get_purchase_detail(
     purchase_id: int,
-    current_user: dict = Depends(restrict_cashier),
+    current_user: dict = Depends(restrict_cashier_only),
     db: Session = Depends(get_db)
 ):
     """Retrieve details for a single purchase invoice."""
@@ -218,7 +218,7 @@ class CreateDebitNoteRequest(BaseModel):
 def create_debit_note(
     req: CreateDebitNoteRequest,
     background_tasks: BackgroundTasks,
-    current_user: dict = Depends(restrict_cashier),
+    current_user: dict = Depends(restrict_cashier_only),
     db: Session = Depends(get_db)
 ):
     """Record a purchase return / debit note against a purchase invoice."""

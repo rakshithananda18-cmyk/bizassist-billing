@@ -136,7 +136,7 @@ const TABS = [
   { id: 'inventory',    label: 'Items & Stock', icon: <InventoryIcon size={16} /> },
   { id: 'print',        label: 'Print & PDF',   icon: <PrinterIcon size={16} /> },
   { id: 'labels',       label: 'Custom Labels', icon: <TagIcon size={16} /> },
-  { id: 'lock',         label: 'Lock & Staff',  icon: <ShieldIcon size={16} /> },
+  { id: 'staff',        label: 'Staff Management',  icon: <ShieldIcon size={16} /> },
   { id: 'advanced',     label: 'Advanced',      icon: <ZapIcon size={16} /> },
 ]
 
@@ -522,7 +522,7 @@ export default function Settings() {
   // ── Staff state (used in Lock & Staff tab) ──────────────────────────────────
   const [staffList,      setStaffList]      = useState([])
   const [staffLoading,   setStaffLoading]   = useState(false)
-  const [staffForm,      setStaffForm]      = useState({ username: '', password: '' })
+  const [staffForm,      setStaffForm]      = useState({ username: '', password: '', role: 'cashier', counter_prefix: '' })
   const [staffSubmit,    setStaffSubmit]    = useState(false)
   const [staffError,     setStaffError]     = useState('')
   const [staffSuccess,   setStaffSuccess]   = useState('')
@@ -532,6 +532,48 @@ export default function Settings() {
   const [resetError,     setResetError]     = useState('')
   // Remove confirmation inline
   const [removeTarget,   setRemoveTarget]   = useState(null)  // { id, username }
+  const [editingPrefixes, setEditingPrefixes] = useState({})
+
+  const getAvailableCounterOptions = useCallback((list) => {
+    const base = ['C1', 'C2', 'C3', 'C4', 'C5']
+    let maxN = 5
+    list.forEach(s => {
+      const p = s.counter_prefix || ''
+      const match = p.match(/^C(\d+)$/i)
+      if (match) {
+        const num = parseInt(match[1], 10)
+        if (num > maxN) {
+          maxN = num
+        }
+      }
+    })
+    const options = []
+    for (let i = 1; i <= maxN + 1; i++) {
+      options.push(`C${i}`)
+    }
+    return options
+  }, [])
+
+  const getFirstUnassignedCounter = useCallback((list, options) => {
+    const assigned = new Set(list.map(s => s.counter_prefix).filter(Boolean))
+    for (const opt of options) {
+      if (!assigned.has(opt)) {
+        return opt
+      }
+    }
+    return `C${assigned.size + 1}`
+  }, [])
+
+  // Auto-select counter prefix for a new Cashier when staffList/options change
+  useEffect(() => {
+    if (staffForm.role === 'cashier' && !staffForm.counter_prefix) {
+      const opts = getAvailableCounterOptions(staffList)
+      const nextCtr = getFirstUnassignedCounter(staffList, opts)
+      setStaffForm(f => ({ ...f, counter_prefix: nextCtr }))
+    }
+  }, [staffList, staffForm.role, staffForm.counter_prefix, getAvailableCounterOptions, getFirstUnassignedCounter])
+
+  const counterOptions = getAvailableCounterOptions(staffList)
 
   const loadStaff = useCallback(async () => {
     setStaffLoading(true)
@@ -543,9 +585,9 @@ export default function Settings() {
     finally   { setStaffLoading(false) }
   }, [authFetch])
 
-  // Load staff when Lock & Staff tab becomes active
+  // Load staff when Staff tab becomes active
   useEffect(() => {
-    if (activeTab === 'lock' && !isCashier) loadStaff()
+    if (activeTab === 'staff' && !isCashier) loadStaff()
   }, [activeTab, isCashier, loadStaff])
 
   const handleAddStaff = async (e) => {
@@ -559,12 +601,21 @@ export default function Settings() {
     try {
       const res = await authFetch('/staff', {
         method: 'POST',
-        body: JSON.stringify({ username: staffForm.username.trim(), password: staffForm.password, role: 'cashier' }),
+        body: JSON.stringify({
+          username: staffForm.username.trim(),
+          password: staffForm.password,
+          role: staffForm.role || 'cashier',
+          counter_prefix: staffForm.counter_prefix.trim() || null
+        }),
       })
       if (res.ok) {
         const created = await res.json()
-        setStaffSuccess(`Cashier "${created.username}" created successfully.`)
-        setStaffForm({ username: '', password: '' })
+        setStaffSuccess(`Staff member "${created.username}" created successfully.`)
+        // Compute the next auto-selected counter for the next cashier
+        const updatedList = [...staffList, created]
+        const opts = getAvailableCounterOptions(updatedList)
+        const nextCtr = staffForm.role === 'cashier' ? getFirstUnassignedCounter(updatedList, opts) : ''
+        setStaffForm({ username: '', password: '', role: 'cashier', counter_prefix: nextCtr })
         loadStaff()
       } else {
         const err = await res.json().catch(() => ({}))
@@ -572,6 +623,53 @@ export default function Settings() {
       }
     } catch { setStaffError('Network error.') }
     finally   { setStaffSubmit(false) }
+  }
+
+  const handleSaveCounterPrefix = async (staffId, newPrefix) => {
+    setStaffError(''); setStaffSuccess('')
+    
+    // Find the staff we are editing (A)
+    const staffA = staffList.find(s => s.id === staffId)
+    const oldPrefix = staffA ? staffA.counter_prefix : null
+
+    // Check if newPrefix is already taken by another staff B
+    const staffB = newPrefix ? staffList.find(s => s.id !== staffId && s.counter_prefix === newPrefix) : null
+
+    try {
+      if (staffB) {
+        // Swap counters: B gets oldPrefix, A gets newPrefix.
+        const p1 = authFetch(`/staff/${staffB.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ counter_prefix: oldPrefix || null })
+        })
+        const p2 = authFetch(`/staff/${staffId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ counter_prefix: newPrefix || null })
+        })
+        const [res1, res2] = await Promise.all([p1, p2])
+        if (res1.ok && res2.ok) {
+          setStaffSuccess(`Swapped counters: "${staffA.username}" gets ${newPrefix}, "${staffB.username}" gets ${oldPrefix || 'None'}.`)
+          loadStaff()
+        } else {
+          setStaffError('Could not swap counters.')
+        }
+      } else {
+        // Normal update for A
+        const res = await authFetch(`/staff/${staffId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ counter_prefix: newPrefix || null })
+        })
+        if (res.ok) {
+          setStaffSuccess(`Updated counter prefix for "${staffA?.username || ''}" to ${newPrefix || 'None'}.`)
+          loadStaff()
+        } else {
+          const err = await res.json().catch(() => ({}))
+          setStaffError(err.detail || 'Could not update counter.')
+        }
+      }
+    } catch {
+      setStaffError('Network error.')
+    }
   }
 
   const handleResetPassword = async () => {
@@ -1005,6 +1103,56 @@ export default function Settings() {
                       <option value={2}>2 decimal places (0.00)</option>
                       <option value={3}>3 decimal places (0.000)</option>
                     </select>
+                  </SettingRow>
+
+                  <SectionHeader title="Passcode & Session Security" />
+                  
+                  <SettingRow 
+                    label="Passcode App Lock" 
+                    description="Require a passcode to unlock the app session after inactivity."
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: hasLock ? 'var(--success)' : 'var(--text-muted)' }}>
+                        {hasLock ? 'Enabled (PIN set)' : 'Disabled'}
+                      </span>
+                      <button 
+                        type="button" 
+                        className={`btn ${hasLock ? 'btn-secondary' : 'btn-primary'}`}
+                        onClick={() => setShowPasscodeModal(true)}
+                        style={{ padding: '6px 14px', fontSize: '0.82rem' }}
+                      >
+                        {hasLock ? 'Manage Lock' : 'Enable Lock'}
+                      </button>
+                    </div>
+                  </SettingRow>
+
+                  <SettingRow 
+                    label="Auto-Lock Timeout" 
+                    description="Lock the session automatically after a period of user inactivity."
+                  >
+                    <select
+                      className="form-input"
+                      style={{ width: 220 }}
+                      value={g.lock_timeout_minutes ?? 60}
+                      onChange={e => patch('general', 'lock_timeout_minutes', parseInt(e.target.value))}
+                    >
+                      <option value={0}>Never Auto-Lock</option>
+                      <option value={15}>15 Minutes</option>
+                      <option value={30}>30 Minutes</option>
+                      <option value={60}>1 Hour</option>
+                      <option value={120}>2 Hours</option>
+                    </select>
+                  </SettingRow>
+
+                  <SettingRow 
+                    label="Privacy Mode" 
+                    description="Hide sensitive business revenue and profit figures on the dashboard."
+                  >
+                    <Toggle 
+                      id="privacy_mode" 
+                      checked={g.privacy_mode === true} 
+                      onChange={v => patch('general', 'privacy_mode', v)} 
+                    />
                   </SettingRow>
 
                 </>
@@ -1687,65 +1835,14 @@ export default function Settings() {
           )}
 
           {/* ═══════════════════════════ LOCK & STAFF ═════════════════════════ */}
-          {activeTab === 'lock' && !isCashier && (
+          {/* ═══════════════════════════ STAFF MANAGEMENT ═════════════════════════ */}
+          {activeTab === 'staff' && !isCashier && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
               
               <div>
-                <SectionHeader title="Passcode & Session Security" />
-                
-                <SettingRow 
-                  label="Passcode App Lock" 
-                  description="Require a passcode to unlock the app session after inactivity."
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: hasLock ? 'var(--success)' : 'var(--text-muted)' }}>
-                      {hasLock ? 'Enabled (PIN set)' : 'Disabled'}
-                    </span>
-                    <button 
-                      type="button" 
-                      className={`btn ${hasLock ? 'btn-secondary' : 'btn-primary'}`}
-                      onClick={() => setShowPasscodeModal(true)}
-                      style={{ padding: '6px 14px', fontSize: '0.82rem' }}
-                    >
-                      {hasLock ? 'Manage Lock' : 'Enable Lock'}
-                    </button>
-                  </div>
-                </SettingRow>
-
-                <SettingRow 
-                  label="Auto-Lock Timeout" 
-                  description="Lock the session automatically after a period of user inactivity."
-                >
-                  <select
-                    className="form-input"
-                    style={{ width: 220 }}
-                    value={g.lock_timeout_minutes ?? 60}
-                    onChange={e => patch('general', 'lock_timeout_minutes', parseInt(e.target.value))}
-                  >
-                    <option value={0}>Never Auto-Lock</option>
-                    <option value={15}>15 Minutes</option>
-                    <option value={30}>30 Minutes</option>
-                    <option value={60}>1 Hour</option>
-                    <option value={120}>2 Hours</option>
-                  </select>
-                </SettingRow>
-
-                <SettingRow 
-                  label="Privacy Mode" 
-                  description="Hide sensitive business revenue and profit figures on the dashboard."
-                >
-                  <Toggle 
-                    id="privacy_mode" 
-                    checked={g.privacy_mode === true} 
-                    onChange={v => patch('general', 'privacy_mode', v)} 
-                  />
-                </SettingRow>
-              </div>
-
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 24 }}>
-                <SectionHeader title="Staff & Cashier Management" />
+                <SectionHeader title="Staff & Role Management" />
                 <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 20, marginTop: 4, lineHeight: 1.5 }}>
-                  Create and manage separate cashier accounts. Cashiers can log in to view stock, ring up sales, and take payments, but cannot see dashboard stats, tax reports, purchase records, or change store settings.
+                  Create and manage staff sub-accounts for your business. Define user roles (Cashier or Supply Adder) and assign custom billing counters.
                 </p>
 
                 {staffError && (
@@ -1782,13 +1879,13 @@ export default function Settings() {
                   </div>
                 )}
 
-                {/* Add Cashier Form */}
+                {/* Add Staff Form */}
                 <form onSubmit={handleAddStaff} className="card" style={{ 
                   background: 'var(--bg-3)', 
                   border: '1px solid var(--border)',
                   padding: 20,
                   display: 'grid', 
-                  gridTemplateColumns: '1fr 1fr auto', 
+                  gridTemplateColumns: '1fr 1fr 1fr 1fr auto', 
                   gap: 16, 
                   alignItems: 'end', 
                   marginBottom: 24,
@@ -1800,7 +1897,7 @@ export default function Settings() {
                       className="form-input"
                       value={staffForm.username} 
                       onChange={e => setStaffForm(f => ({ ...f, username: e.target.value }))}
-                      placeholder="e.g. cashier_john" 
+                      placeholder="e.g. staff_john" 
                       autoComplete="off" 
                       style={{ height: 38 }}
                     />
@@ -1817,12 +1914,44 @@ export default function Settings() {
                       style={{ height: 38 }}
                     />
                   </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600 }}>Role</label>
+                    <select
+                      className="form-input"
+                      value={staffForm.role || 'cashier'}
+                      onChange={e => {
+                        const nextRole = e.target.value
+                        setStaffForm(f => {
+                          const nextCtr = nextRole === 'cashier' ? getFirstUnassignedCounter(staffList, counterOptions) : ''
+                          return { ...f, role: nextRole, counter_prefix: nextCtr }
+                        })
+                      }}
+                      style={{ height: 38 }}
+                    >
+                      <option value="cashier">Cashier</option>
+                      <option value="supply adder">Supply Adder</option>
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600 }}>Counter Prefix</label>
+                    <select
+                      className="form-input"
+                      value={staffForm.counter_prefix || ''}
+                      onChange={e => setStaffForm(f => ({ ...f, counter_prefix: e.target.value }))}
+                      style={{ height: 38 }}
+                    >
+                      <option value="">None</option>
+                      {counterOptions.map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
                   <button type="submit" className="btn btn-primary" disabled={staffSubmit} style={{ height: 38, padding: '0 20px', fontWeight: 600 }}>
-                    {staffSubmit ? 'Adding…' : '+ Add Cashier'}
+                    {staffSubmit ? 'Adding…' : '+ Add Staff'}
                   </button>
                 </form>
 
-                {/* Cashier List */}
+                {/* Staff List */}
                 {staffLoading ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '20px 0', color: 'var(--text-muted)' }}>
                     <span className="spinner" style={{ width: 16, height: 16 }} />
@@ -1830,7 +1959,7 @@ export default function Settings() {
                   </div>
                 ) : staffList.length === 0 ? (
                   <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', border: '1px dashed var(--border)', borderRadius: 'var(--radius-md)' }}>
-                    No cashiers registered yet. Create a cashier login above.
+                    No staff members registered yet. Create a staff login above.
                   </div>
                 ) : (
                   <div className="data-table-wrap" style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
@@ -1839,6 +1968,7 @@ export default function Settings() {
                         <tr>
                           <th>Username</th>
                           <th>Role</th>
+                          <th>Counter Prefix</th>
                           <th style={{ textAlign: 'right' }}>Actions</th>
                         </tr>
                       </thead>
@@ -1848,6 +1978,19 @@ export default function Settings() {
                             <td className="td-primary" style={{ fontWeight: 600 }}>{s.username}</td>
                             <td>
                               <span className="badge badge-muted" style={{ textTransform: 'capitalize' }}>{s.role}</span>
+                            </td>
+                            <td>
+                              <select
+                                className="form-input"
+                                value={s.counter_prefix || ''}
+                                onChange={e => handleSaveCounterPrefix(s.id, e.target.value)}
+                                style={{ width: 100, height: 30, fontSize: '0.78rem', padding: '2px 8px', margin: 0 }}
+                              >
+                                <option value="">None</option>
+                                {counterOptions.map(opt => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
                             </td>
                             <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                               <button 

@@ -31,6 +31,7 @@ export default function Payments() {
   const [expenses, setExpenses]     = useState([])
   const [loading, setLoading]       = useState(true)
   const [activeTab, setActiveTab]   = useState('All')
+  const [isFullScreen, setIsFullScreen] = useState(false)
   const [showModal, setShowModal]   = useState(false)
   const [showExpenseModal, setShowExpenseModal] = useState(false)
   const [form, setForm]             = useState(defaultForm)
@@ -80,11 +81,113 @@ export default function Payments() {
     }
   }, [load])
 
-  const filtered = payments.filter(p => {
-    if (activeTab === 'Received' && p.type !== 'received') return false
-    if (activeTab === 'Made' && p.type !== 'made') return false
-    return true
-  })
+  const [search, setSearch] = useState('')
+  const [modeFilter, setModeFilter] = useState('')
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: '' })
+
+  const handleSort = (key) => {
+    let direction = 'asc'
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc'
+    } else if (sortConfig.key === key && sortConfig.direction === 'desc') {
+      setSortConfig({ key: '', direction: '' })
+      return
+    }
+    setSortConfig({ key, direction })
+  }
+
+  const getFilteredPayments = () => {
+    let items = payments.filter(p => {
+      if (activeTab === 'Received' && p.type !== 'received') return false
+      if (activeTab === 'Made' && p.type !== 'made') return false
+      
+      if (modeFilter && p.method !== modeFilter) return false
+
+      const q = search.toLowerCase()
+      const party = p.party_name || p.customer_name || p.supplier_name || ''
+      return !q || 
+        p.invoice_number?.toLowerCase().includes(q) || 
+        p.invoice_ref?.toLowerCase().includes(q) || 
+        party.toLowerCase().includes(q) || 
+        p.reference?.toLowerCase().includes(q)
+    })
+
+    if (sortConfig.key && sortConfig.direction) {
+      items.sort((a, b) => {
+        let aVal = a[sortConfig.key]
+        let bVal = b[sortConfig.key]
+
+        if (sortConfig.key === 'party_name') {
+          aVal = a.party_name || a.customer_name || a.supplier_name || ''
+          bVal = b.party_name || b.customer_name || b.supplier_name || ''
+        } else if (sortConfig.key === 'amount') {
+          aVal = parseFloat(a.amount ?? 0)
+          bVal = parseFloat(b.amount ?? 0)
+        } else if (sortConfig.key === 'date') {
+          aVal = a.date || ''
+          bVal = b.date || ''
+        }
+
+        if (aVal === undefined || aVal === null) return 1
+        if (bVal === undefined || bVal === null) return -1
+
+        if (typeof aVal === 'string') {
+          return sortConfig.direction === 'asc'
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal)
+        } else {
+          return sortConfig.direction === 'asc'
+            ? aVal - bVal
+            : bVal - aVal
+        }
+      })
+    }
+    return items
+  }
+
+  const getFilteredExpenses = () => {
+    let items = expenses.filter(e => {
+      if (modeFilter && e.payment_mode !== modeFilter) return false
+
+      const q = search.toLowerCase()
+      return !q || 
+        e.category?.toLowerCase().includes(q) || 
+        e.expense_type?.toLowerCase().includes(q) || 
+        e.note?.toLowerCase().includes(q)
+    })
+
+    if (sortConfig.key && sortConfig.direction) {
+      items.sort((a, b) => {
+        let aVal = a[sortConfig.key]
+        let bVal = b[sortConfig.key]
+
+        if (sortConfig.key === 'amount') {
+          aVal = parseFloat(a.amount ?? 0)
+          bVal = parseFloat(b.amount ?? 0)
+        } else if (sortConfig.key === 'expense_date') {
+          aVal = a.expense_date || ''
+          bVal = b.expense_date || ''
+        }
+
+        if (aVal === undefined || aVal === null) return 1
+        if (bVal === undefined || bVal === null) return -1
+
+        if (typeof aVal === 'string') {
+          return sortConfig.direction === 'asc'
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal)
+        } else {
+          return sortConfig.direction === 'asc'
+            ? aVal - bVal
+            : bVal - aVal
+        }
+      })
+    }
+    return items
+  }
+
+  const filtered = getFilteredPayments()
+  const filteredExpenses = getFilteredExpenses()
 
   const totalReceived = payments.filter(p => p.type === 'received').reduce((s, p) => s + (parseFloat(p.amount) || 0), 0)
   const totalMade     = payments.filter(p => p.type === 'made').reduce((s, p) => s + (parseFloat(p.amount) || 0), 0)
@@ -197,25 +300,54 @@ export default function Payments() {
           </div>
         </div>
 
-        {/* Tabs */}
+        {/* Tabs & Search/Filter */}
         <div className="flex items-center justify-between page-subbar" style={{ flexWrap: 'wrap', gap: 12 }}>
-          <div className="tabs">
+          <div className="tabs" style={{ margin: 0 }}>
             {['All', 'Received', 'Made', 'Expenses'].map(t => (
               <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)}>
                 {t}
               </button>
             ))}
           </div>
-          {activeTab !== 'Expenses' ? (
-            <div style={{ display: 'flex', gap: 16, fontSize: '0.82rem' }}>
-              <span style={{ color: 'var(--success)' }}>↑ {fmt(totalReceived)} received</span>
-              <span style={{ color: 'var(--danger)' }}>↓ {fmt(totalMade)} made</span>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div className="search-bar" style={{ width: 180 }}>
+              <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
+              <input 
+                value={search} 
+                onChange={e => setSearch(e.target.value)} 
+                placeholder={activeTab === 'Expenses' ? "Search expenses…" : "Search transactions…"} 
+              />
             </div>
-          ) : (
-            <div style={{ display: 'flex', gap: 16, fontSize: '0.82rem' }}>
-              <span style={{ color: 'var(--accent)' }}>Total: {fmt(expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0))} spent</span>
-            </div>
-          )}
+            <select
+              value={modeFilter}
+              onChange={e => setModeFilter(e.target.value)}
+              style={{
+                background: 'var(--bg-2)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-md)',
+                color: 'var(--text-primary)',
+                padding: '6px 12px',
+                fontSize: '0.82rem',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="">All Modes</option>
+              <option value="UPI">UPI</option>
+              <option value="Cash">Cash</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="Card">Card</option>
+            </select>
+            {activeTab !== 'Expenses' ? (
+              <div style={{ display: 'flex', gap: 16, fontSize: '0.82rem', marginLeft: 8 }}>
+                <span style={{ color: 'var(--success)' }}>↑ {fmt(totalReceived)} received</span>
+                <span style={{ color: 'var(--danger)' }}>↓ {fmt(totalMade)} made</span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 16, fontSize: '0.82rem', marginLeft: 8 }}>
+                <span style={{ color: 'var(--accent)' }}>Total: {fmt(expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0))} spent</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Table & Content */}
@@ -249,103 +381,169 @@ export default function Payments() {
             </div>
 
             {/* Expenses Table */}
-            <div className="data-table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Category</th>
-                    <th>Type</th>
-                    <th>Amount</th>
+            {(() => {
+              const tableContent = (
+                <table className="data-table">
+                  <thead><tr>
+                    <th className="sortable" onClick={() => handleSort('expense_date')}>
+                      Date
+                      <span className={`sort-indicator ${sortConfig.key === 'expense_date' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'expense_date' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('category')}>
+                      Category
+                      <span className={`sort-indicator ${sortConfig.key === 'category' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'category' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('expense_type')}>
+                      Type
+                      <span className={`sort-indicator ${sortConfig.key === 'expense_type' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'expense_type' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('amount')}>
+                      Amount
+                      <span className={`sort-indicator ${sortConfig.key === 'amount' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'amount' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
                     <th>Payment Mode</th>
                     <th>Notes / Reference</th>
                     <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {expenses.length === 0 ? (
-                    <tr><td colSpan={7}>
-                      <div className="empty-state">
-                        <div className="empty-icon"><CashIcon size={24} /></div>
-                        <h3>No expenses logged</h3>
-                        <p>Click "Log Expense" above to record your first operational outflow.</p>
-                      </div>
-                    </td></tr>
-                  ) : expenses.map(e => (
-                    <tr key={e.id}>
-                      <td>{e.expense_date ? new Date(e.expense_date).toLocaleDateString('en-IN') : '—'}</td>
-                      <td className="td-primary">{e.category}</td>
-                      <td>
-                        <span className={`badge ${e.expense_type === 'Direct' ? 'badge-warning' : 'badge-info'}`}>
-                          {e.expense_type}
-                        </span>
-                      </td>
-                      <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{fmt(e.amount)}</td>
-                      <td>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                          <CashIcon size={14} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} /> {e.payment_mode || '—'}
-                        </span>
-                      </td>
-                      <td style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{e.note || '—'}</td>
-                      <td>
-                        <button className="btn btn-secondary btn-sm" style={{ color: 'var(--danger)', borderColor: 'var(--danger-dim)' }} onClick={() => handleExpenseDelete(e.id)}>
-                          ✕ Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </tr></thead>
+                  <tbody>
+                    {filteredExpenses.length === 0 ? (
+                      <tr><td colSpan={7}>
+                        <div className="empty-state">
+                          <div className="empty-icon"><CashIcon size={24} /></div>
+                          <h3>No expenses logged</h3>
+                          <p>Click "Log Expense" above to record your first operational outflow.</p>
+                        </div>
+                      </td></tr>
+                    ) : filteredExpenses.map(e => (
+                      <tr key={e.id}>
+                        <td>{e.expense_date ? new Date(e.expense_date).toLocaleDateString('en-IN') : '—'}</td>
+                        <td className="td-primary">{e.category}</td>
+                        <td><span className={`badge ${e.expense_type === 'Direct' ? 'badge-warning' : 'badge-info'}`}>{e.expense_type}</span></td>
+                        <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{fmt(e.amount)}</td>
+                        <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><CashIcon size={14} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} /> {e.payment_mode || '—'}</span></td>
+                        <td style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{e.note || '—'}</td>
+                        <td><button className="btn btn-secondary btn-sm" style={{ color: 'var(--danger)', borderColor: 'var(--danger-dim)' }} onClick={() => handleExpenseDelete(e.id)}>✕ Delete</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+              if (isFullScreen) return (
+                <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>
+                  <div className="table-fullscreen-panel">
+                    <div className="table-fullscreen-header">
+                      <h3>Expense Ledger</h3>
+                      <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(false)}>✕ Close</button>
+                    </div>
+                    <div className="data-table-wrap">{tableContent}</div>
+                  </div>
+                </div>
+              )
+              return (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                    <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(true)}>⛶ Fullscreen</button>
+                  </div>
+                  <div className="data-table-wrap">{tableContent}</div>
+                </>
+              )
+            })()}
           </div>
         ) : (
           <>
-            <div className="data-table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Invoice #</th>
-                    <th>Customer / Supplier</th>
-                    <th>Type</th>
-                    <th>Amount</th>
-                    <th>Method</th>
+            {(() => {
+              const tableContent = (
+                <table className="data-table">
+                  <thead><tr>
+                    <th className="sortable" onClick={() => handleSort('date')}>
+                      Date
+                      <span className={`sort-indicator ${sortConfig.key === 'date' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'date' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('invoice_number')}>
+                      Invoice #
+                      <span className={`sort-indicator ${sortConfig.key === 'invoice_number' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'invoice_number' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('party_name')}>
+                      Customer / Supplier
+                      <span className={`sort-indicator ${sortConfig.key === 'party_name' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'party_name' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('type')}>
+                      Type
+                      <span className={`sort-indicator ${sortConfig.key === 'type' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'type' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('amount')}>
+                      Amount
+                      <span className={`sort-indicator ${sortConfig.key === 'amount' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'amount' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('method')}>
+                      Method
+                      <span className={`sort-indicator ${sortConfig.key === 'method' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'method' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
                     <th>Reference</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.length === 0 ? (
-                    <tr><td colSpan={7}>
-                      <div className="empty-state">
-                        <div className="empty-icon"><CashIcon size={24} /></div>
-                        <h3>No payments yet</h3>
-                        <p>Record your first payment using the button above.</p>
-                      </div>
-                    </td></tr>
-                  ) : filtered.map(p => (
-                    <tr key={p.id}>
-                      <td>{p.date ? new Date(p.date).toLocaleDateString('en-IN') : '—'}</td>
-                      <td className="td-mono">{p.invoice_number || p.invoice_ref || '—'}</td>
-                      <td className="td-primary">{p.party_name || p.customer_name || p.supplier_name || '—'}</td>
-                      <td>
-                        <span className={`badge ${p.type === 'received' ? 'badge-success' : 'badge-accent'}`}>
-                          {p.type === 'received' ? '↓ Received' : '↑ Made'}
-                        </span>
-                      </td>
-                      <td style={{ fontWeight: 600, color: p.type === 'received' ? 'var(--success)' : 'var(--danger)' }}>
-                        {p.type === 'received' ? '+' : '-'}{fmt(p.amount)}
-                      </td>
-                      <td>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                          <CashIcon size={14} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} /> {p.method || '—'}
-                        </span>
-                      </td>
-                      <td className="td-mono" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{p.reference || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </tr></thead>
+                  <tbody>
+                    {filtered.length === 0 ? (
+                      <tr><td colSpan={7}>
+                        <div className="empty-state">
+                          <div className="empty-icon"><CashIcon size={24} /></div>
+                          <h3>No payments yet</h3>
+                          <p>Record your first payment using the button above.</p>
+                        </div>
+                      </td></tr>
+                    ) : filtered.map(p => (
+                      <tr key={p.id}>
+                        <td>{p.date ? new Date(p.date).toLocaleDateString('en-IN') : '—'}</td>
+                        <td className="td-mono">{p.invoice_number || p.invoice_ref || '—'}</td>
+                        <td className="td-primary">{p.party_name || p.customer_name || p.supplier_name || '—'}</td>
+                        <td><span className={`badge ${p.type === 'received' ? 'badge-success' : 'badge-accent'}`}>{p.type === 'received' ? '↓ Received' : '↑ Made'}</span></td>
+                        <td style={{ fontWeight: 600, color: p.type === 'received' ? 'var(--success)' : 'var(--danger)' }}>{p.type === 'received' ? '+' : '-'}{fmt(p.amount)}</td>
+                        <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><CashIcon size={14} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} /> {p.method || '—'}</span></td>
+                        <td className="td-mono" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{p.reference || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+              if (isFullScreen) return (
+                <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>
+                  <div className="table-fullscreen-panel">
+                    <div className="table-fullscreen-header">
+                      <h3>Cash Book</h3>
+                      <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(false)}>✕ Close</button>
+                    </div>
+                    <div className="data-table-wrap">{tableContent}</div>
+                  </div>
+                </div>
+              )
+              return (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                    <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(true)}>⛶ Fullscreen</button>
+                  </div>
+                  <div className="data-table-wrap">{tableContent}</div>
+                </>
+              )
+            })()}
 
             {/* Running totals bar */}
             <div className="card mt-6">

@@ -4,7 +4,7 @@
 // balance + closing. Extracted VERBATIM from Reports.jsx (R5). Presentational.
 export default function GeneralLedgerView({ reportData, fmt }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="general-ledger-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {reportData.ledgers?.map((g, i) => (
         <div key={i} className="card" style={{ padding: '16px 20px' }}>
           <div className="flex items-center justify-between mb-2">

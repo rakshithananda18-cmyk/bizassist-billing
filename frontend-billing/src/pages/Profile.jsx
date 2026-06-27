@@ -177,7 +177,7 @@ export default function Profile() {
           </div>
 
           {/* Form Fields */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div className="grid grid-2">
             <div className="form-group" style={{ gridColumn: 'span 2' }}>
               <label className="form-label" style={{ fontWeight: '600' }}>Business Name *</label>
               <input

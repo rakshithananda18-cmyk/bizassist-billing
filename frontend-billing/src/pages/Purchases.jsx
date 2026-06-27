@@ -18,6 +18,7 @@ export default function Purchases() {
   const [debitNotes, setDebitNotes] = useState([])
   const [loading, setLoading]       = useState(true)
   const [activeTab, setActiveTab]   = useState('Pending Review')
+  const [isFullScreen, setIsFullScreen] = useState(false)
   const [search, setSearch]         = useState('')
   const [showModal, setShowModal]   = useState(false)
   const [dragOver, setDragOver]     = useState(false)
@@ -42,6 +43,19 @@ export default function Purchases() {
   // Detail Viewer State
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedDetail, setSelectedDetail] = useState(null)
+
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: '' })
+
+  const handleSort = (key) => {
+    let direction = 'asc'
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc'
+    } else if (sortConfig.key === key && sortConfig.direction === 'desc') {
+      setSortConfig({ key: '', direction: '' })
+      return
+    }
+    setSortConfig({ key, direction })
+  }
 
   useEffect(() => {
     if (showModal && step === 'review') {
@@ -161,16 +175,50 @@ export default function Purchases() {
 
   const getFilteredItems = () => {
     const q = search.toLowerCase()
+    let items = []
     if (activeTab === 'Returns (Debit Notes)') {
-      return debitNotes.filter(dn => {
+      items = debitNotes.filter(dn => {
         return !q || dn.invoice_number?.toLowerCase().includes(q) || dn.supplier_name?.toLowerCase().includes(q)
       })
+    } else {
+      items = bills.filter(b => {
+        if (activeTab === 'Pending Review' && b.status !== 'pending') return false
+        if (activeTab === 'Confirmed' && b.status !== 'confirmed') return false
+        return !q || b.invoice_number?.toLowerCase().includes(q) || b.bill_number?.toLowerCase().includes(q) || b.supplier_name?.toLowerCase().includes(q)
+      })
     }
-    return bills.filter(b => {
-      if (activeTab === 'Pending Review' && b.status !== 'pending') return false
-      if (activeTab === 'Confirmed' && b.status !== 'confirmed') return false
-      return !q || b.invoice_number?.toLowerCase().includes(q) || b.bill_number?.toLowerCase().includes(q) || b.supplier_name?.toLowerCase().includes(q)
-    })
+
+    if (sortConfig.key && sortConfig.direction) {
+      items.sort((a, b) => {
+        let aVal = a[sortConfig.key]
+        let bVal = b[sortConfig.key]
+
+        if (sortConfig.key === 'id_number') {
+          aVal = a.invoice_number || a.bill_number || `#${a.id}`
+          bVal = b.invoice_number || b.bill_number || `#${b.id}`
+        } else if (sortConfig.key === 'date') {
+          aVal = a.date || a.invoice_date || ''
+          bVal = b.date || b.invoice_date || ''
+        } else if (sortConfig.key === 'item_count') {
+          aVal = a.item_count ?? a.items?.length ?? a.lines?.length ?? 0
+          bVal = b.item_count ?? b.items?.length ?? b.lines?.length ?? 0
+        }
+
+        if (aVal === undefined || aVal === null) return 1
+        if (bVal === undefined || bVal === null) return -1
+
+        if (typeof aVal === 'string') {
+          return sortConfig.direction === 'asc'
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal)
+        } else {
+          return sortConfig.direction === 'asc'
+            ? aVal - bVal
+            : bVal - aVal
+        }
+      })
+    }
+    return items
   }
 
   const filtered = getFilteredItems()
@@ -377,22 +425,48 @@ export default function Purchases() {
         </div>
 
         {/* Table */}
-        {loading ? (
-          <div className="page-loader"><span className="spinner" /> Loading bills…</div>
-        ) : (
-          <div className="data-table-wrap">
+        {(() => {
+          const tableContent = (
             <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Bill / Return #</th>
-                  <th>Supplier</th>
-                  <th>Date</th>
-                  <th>Items</th>
-                  <th>Total</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
+              <thead><tr>
+                <th className="sortable" onClick={() => handleSort('id_number')}>
+                  Bill / Return #
+                  <span className={`sort-indicator ${sortConfig.key === 'id_number' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'id_number' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" onClick={() => handleSort('supplier_name')}>
+                  Supplier
+                  <span className={`sort-indicator ${sortConfig.key === 'supplier_name' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'supplier_name' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" onClick={() => handleSort('date')}>
+                  Date
+                  <span className={`sort-indicator ${sortConfig.key === 'date' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'date' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" onClick={() => handleSort('item_count')}>
+                  Items
+                  <span className={`sort-indicator ${sortConfig.key === 'item_count' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'item_count' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" onClick={() => handleSort('total_amount')}>
+                  Total
+                  <span className={`sort-indicator ${sortConfig.key === 'total_amount' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'total_amount' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" onClick={() => handleSort('status')}>
+                  Status
+                  <span className={`sort-indicator ${sortConfig.key === 'status' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'status' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th>Actions</th>
+              </tr></thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr><td colSpan={7}>
@@ -413,23 +487,38 @@ export default function Purchases() {
                       {activeTab === 'Returns (Debit Notes)' ? (
                         <span className="badge badge-accent">Returned</span>
                       ) : (
-                        <span className={`badge ${b.status === 'confirmed' ? 'badge-success' : 'badge-warning'}`}>
-                          {b.status || 'pending'}
-                        </span>
+                        <span className={`badge ${b.status === 'confirmed' ? 'badge-success' : 'badge-warning'}`}>{b.status || 'pending'}</span>
                       )}
                     </td>
-                    <td>
-                      <button className="btn btn-secondary btn-sm" onClick={() => handleViewDetail(b)}>
-                        View
-                      </button>
-                    </td>
+                    <td><button className="btn btn-secondary btn-sm" onClick={() => handleViewDetail(b)}>View</button></td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
+          )
+          if (loading) return <div className="page-loader"><span className="spinner" /> Loading bills…</div>
+          if (isFullScreen) return (
+            <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>
+              <div className="table-fullscreen-panel">
+                <div className="table-fullscreen-header">
+                  <h3>Purchase Bills — {activeTab}</h3>
+                  <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(false)}>✕ Close</button>
+                </div>
+                <div className="data-table-wrap">{tableContent}</div>
+              </div>
+            </div>
+          )
+          return (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(true)}>⛶ Fullscreen</button>
+              </div>
+              <div className="data-table-wrap">{tableContent}</div>
+            </>
+          )
+        })()}
       </div>
+
 
       {/* Upload Modal */}
       {showModal && (

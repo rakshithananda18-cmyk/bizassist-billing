@@ -1,10 +1,45 @@
-// components/reports/DayBookView.jsx
-// ==================================
-// The Day Book (Daily Transaction Register) report view extracted VERBATIM from
-// Reports.jsx (R5, Reports decomposition). Pure presentational: summary cards
-// (sales/purchases/opex/receipts/net cash flow) + the transaction table.
-// `fmt` is passed in so the money formatting stays identical to the page's.
+import React, { useState } from 'react'
+
 export default function DayBookView({ reportData, fmt }) {
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: '' })
+
+  const handleSort = (key) => {
+    let direction = 'asc'
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc'
+    } else if (sortConfig.key === key && sortConfig.direction === 'desc') {
+      setSortConfig({ key: '', direction: '' })
+      return
+    }
+    setSortConfig({ key, direction })
+  }
+
+  let sortedTransactions = [...(reportData.transactions || [])]
+  if (sortConfig.key && sortConfig.direction) {
+    sortedTransactions.sort((a, b) => {
+      let aVal = a[sortConfig.key]
+      let bVal = b[sortConfig.key]
+
+      if (sortConfig.key === 'amount') {
+        aVal = parseFloat(a.amount ?? 0)
+        bVal = parseFloat(b.amount ?? 0)
+      }
+
+      if (aVal === undefined || aVal === null) return 1
+      if (bVal === undefined || bVal === null) return -1
+
+      if (typeof aVal === 'string') {
+        return sortConfig.direction === 'asc'
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal)
+      } else {
+        return sortConfig.direction === 'asc'
+          ? aVal - bVal
+          : bVal - aVal
+      }
+    })
+  }
+
   return (
     <div className="card" style={{ padding: '20px 24px' }}>
       {/* Summary Cards */}
@@ -61,17 +96,52 @@ export default function DayBookView({ reportData, fmt }) {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Reference No</th>
-                <th>Entity / Category</th>
-                <th>Payment Mode</th>
-                <th>Status</th>
-                <th style={{ textAlign: 'right' }}>Amount</th>
+                <th className="sortable" onClick={() => handleSort('date')}>
+                  Date
+                  <span className={`sort-indicator ${sortConfig.key === 'date' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'date' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" onClick={() => handleSort('type')}>
+                  Type
+                  <span className={`sort-indicator ${sortConfig.key === 'type' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'type' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" onClick={() => handleSort('ref_no')}>
+                  Reference No
+                  <span className={`sort-indicator ${sortConfig.key === 'ref_no' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'ref_no' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" onClick={() => handleSort('entity_name')}>
+                  Entity / Category
+                  <span className={`sort-indicator ${sortConfig.key === 'entity_name' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'entity_name' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" onClick={() => handleSort('payment_mode')}>
+                  Payment Mode
+                  <span className={`sort-indicator ${sortConfig.key === 'payment_mode' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'payment_mode' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" onClick={() => handleSort('status')}>
+                  Status
+                  <span className={`sort-indicator ${sortConfig.key === 'status' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'status' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" style={{ textAlign: 'right' }} onClick={() => handleSort('amount')}>
+                  Amount
+                  <span className={`sort-indicator ${sortConfig.key === 'amount' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'amount' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {reportData.transactions.map((tx, idx) => {
+              {sortedTransactions.map((tx, idx) => {
                 let badgeColor = 'secondary'
                 if (tx.type === 'Sale' || tx.type === 'Receipt') badgeColor = 'success'
                 if (tx.type === 'Purchase' || tx.type === 'Expense') badgeColor = 'danger'

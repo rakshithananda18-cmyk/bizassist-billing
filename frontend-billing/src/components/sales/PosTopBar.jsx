@@ -21,6 +21,8 @@ export default function PosTopBar({
   counterPrefix,
   canManageCounters = false,
   onManageCounters,
+  availableCounters = [],
+  onSelectCounter,
 }) {
   return (
     <div className="pos-top-bar">
@@ -94,7 +96,13 @@ export default function PosTopBar({
           </button>
         </div>
 
-        <CounterMenu prefix={counterPrefix} canManage={canManageCounters} onManage={onManageCounters} />
+        <CounterMenu
+          prefix={counterPrefix}
+          isOwner={canManageCounters}
+          availableCounters={availableCounters}
+          onSelectCounter={onSelectCounter}
+          onAddCounter={onManageCounters}
+        />
         <span className="pos-divider">|</span>
         <span className="pos-settings-trigger" onClick={onOpenSettings} title="Settings">
           <SettingsIcon size={16} />

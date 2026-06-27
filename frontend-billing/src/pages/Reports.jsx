@@ -218,6 +218,8 @@ export default function Reports() {
 
   const [dateRange, setDateRange] = useState(getThisMonth())
   const [activeReport, setActiveReport] = useState(null)
+  const [isFullScreen, setIsFullScreen] = useState(false)
+  const [isMenuCollapsed, setIsMenuCollapsed] = useState(false)
   const [reportData, setReportData] = useState(null)
   const [generating, setGenerating] = useState(null)
   const [alert, setAlert] = useState(null)
@@ -297,6 +299,7 @@ export default function Reports() {
         const data = await res.json()
         setActiveReport(report)
         pushRecent(report.id)
+        setIsMenuCollapsed(true)
         if (['day-book', 'balance-sheet', 'trial-balance', 'party-ledger', 'journal', 'general-ledger', 'audit-journal'].includes(report.id)) {
           setReportData(data)
         } else {
@@ -352,15 +355,17 @@ export default function Reports() {
         <div className="reports-controls">
           {/* Filters */}
           <div className="reports-filterbar">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>From</span>
-              <input type="date" className="form-input" style={{ width: 155 }} value={dateRange.from} onChange={e => setDate('from', e.target.value)} />
+            <div className="reports-filterbar-dates">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>From</span>
+                <input type="date" className="form-input" style={{ width: 155 }} value={dateRange.from} onChange={e => setDate('from', e.target.value)} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>To</span>
+                <input type="date" className="form-input" style={{ width: 155 }} value={dateRange.to} onChange={e => setDate('to', e.target.value)} />
+              </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>To</span>
-              <input type="date" className="form-input" style={{ width: 155 }} value={dateRange.to} onChange={e => setDate('to', e.target.value)} />
-            </div>
-            <div className="divider" style={{ width: 1, height: 32, margin: 0 }} />
+            <div className="divider filterbar-divider" style={{ width: 1, height: 32, margin: 0 }} />
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {[
                 { label: 'This Month', fn: getThisMonth },
@@ -377,92 +382,16 @@ export default function Reports() {
                 </button>
               ))}
             </div>
-          </div>
-
-          {/* Report selector — group buttons in one row; click to expand one (others close). */}
-          <div className="report-nav-groups" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {/* Row of group tab-buttons */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {REPORT_GROUPS.map(group => {
-                const reports = group.ids.map(id => REPORTS_BY_ID[id]).filter(Boolean)
-                if (!reports.length) return null
-                const isOpen = openGroup === group.label
-                const activeInGroup = reports.some(r => r.id === activeReport?.id)
-                return (
-                  <button
-                    key={group.label}
-                    type="button"
-                    onClick={() => setOpenGroup(o => (o === group.label ? null : group.label))}
-                    aria-expanded={isOpen}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
-                      borderRadius: 'var(--radius-md)', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem',
-                      border: `1px solid ${isOpen ? 'var(--accent)' : 'var(--border)'}`,
-                      background: isOpen ? 'var(--accent)' : 'var(--bg-2)',
-                      color: isOpen ? '#fff' : 'var(--text-primary)',
-                    }}
-                  >
-                    <span>{group.label}</span>
-                    <span style={{
-                      fontSize: '0.66rem', fontWeight: 600, borderRadius: 10, padding: '1px 7px',
-                      color: isOpen ? '#fff' : 'var(--text-muted)',
-                      background: isOpen ? 'rgba(255,255,255,0.22)' : 'var(--bg-3)',
-                    }}>{reports.length}</span>
-                    {activeInGroup && !isOpen && (
-                      <span title="Active report in this group" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)' }} />
-                    )}
-                    <span style={{ display: 'inline-flex', color: isOpen ? '#fff' : 'var(--text-muted)', transition: 'transform .18s ease', transform: isOpen ? 'rotate(180deg)' : 'none' }}>
-                      <ChevronDownIcon size={14} />
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Chips for the currently-open group */}
-            {(() => {
-              const group = REPORT_GROUPS.find(g => g.label === openGroup)
-              if (!group) return null
-              const reports = group.ids.map(id => REPORTS_BY_ID[id]).filter(Boolean)
-              return (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {reports.map(report => (
-                    <button
-                      key={report.id}
-                      className={`report-chip ${activeReport?.id === report.id ? 'active' : ''}`}
-                      disabled={generating === report.id}
-                      onClick={() => selectReport(report)}
-                      title={report.description}
-                    >
-                      <span className="report-chip-icon">{reportIcons[report.id]}</span>
-                      <span>{report.title}</span>
-                      {generating === report.id && (
-                        <span className="spinner" style={{ width: 12, height: 12, borderWidth: 2 }} />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )
-            })()}
-          </div>
-        </div>{/* /reports-controls (container 1) */}
-
-        {/* Container 2 — recently used (left 25%) + report output (right 75%). */}
-        <div className="reports-panel reports-workarea">
-        {/* 25 / 75 working area: left = context + recently used, right = output */}
-        <div className="reports-split">
-          <aside className="reports-aside">
             {activeReport?.needsParty && (
-              <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ fontWeight: 600, fontSize: '0.86rem', color: 'var(--text-primary)' }}>
-                  {activeReport.title}
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
+              <div className="reports-filterbar-party" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <div className="divider filterbar-divider" style={{ width: 1, height: 32, margin: 0 }} />
+                <div style={{ display: 'flex', gap: 4 }}>
                   {['customer', 'vendor'].map(t => (
                     <button
                       key={t}
-                      className={`btn btn-sm ${partyType === t ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ flex: 1, justifyContent: 'center', textTransform: 'capitalize' }}
+                      type="button"
+                      className={`btn btn-xs ${partyType === t ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ textTransform: 'capitalize', padding: '2px 8px', fontSize: '0.72rem' }}
                       onClick={() => { setPartyType(t); loadParties(t) }}
                     >
                       {t}
@@ -473,55 +402,164 @@ export default function Reports() {
                   className="form-input"
                   value={partyId}
                   onChange={e => setPartyId(e.target.value)}
-                  style={{ fontSize: '0.82rem' }}
+                  style={{ fontSize: '0.8rem', height: 32, width: 160 }}
                 >
                   <option value="">
-                    {partiesLoading ? 'Loading…' : (parties.length ? `Select ${partyType}…` : `No ${partyType}s — pick a type above`)}
+                    {partiesLoading ? 'Loading…' : (parties.length ? `Select ${partyType}…` : `No ${partyType}s`)}
                   </option>
                   {parties.map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>
                 <button
-                  className="btn btn-primary btn-sm w-full"
+                  className="btn btn-primary btn-sm"
                   disabled={!partyId || generating === activeReport.id}
                   onClick={() => handleGenerate(activeReport)}
-                  style={{ justifyContent: 'center' }}
                 >
                   {generating === activeReport.id ? 'Generating…' : 'Generate'}
                 </button>
               </div>
             )}
+          </div>
 
-            <div className="card reports-recent">
-              <div className="reports-recent-title">Recently used</div>
-              {recent.length === 0 ? (
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
-                  Generate a report and it'll show here for quick access.
-                </p>
-              ) : (
-                <div className="reports-recent-list">
-                  {recent.map(id => {
-                    const r = reportById(id)
-                    if (!r) return null
-                    return (
+          {/* Report selector — group buttons in one row; click to expand one (others close). */}
+          {!isMenuCollapsed && (
+            <div className="report-nav-groups" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Row of group tab-buttons */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {REPORT_GROUPS.map(group => {
+                  const reports = group.ids.map(id => REPORTS_BY_ID[id]).filter(Boolean)
+                  if (!reports.length) return null
+                  const isOpen = openGroup === group.label
+                  const activeInGroup = reports.some(r => r.id === activeReport?.id)
+                  return (
+                    <button
+                      key={group.label}
+                      type="button"
+                      onClick={() => setOpenGroup(o => (o === group.label ? null : group.label))}
+                      aria-expanded={isOpen}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
+                        borderRadius: 'var(--radius-md)', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem',
+                        border: `1px solid ${isOpen ? 'var(--accent)' : 'var(--border)'}`,
+                        background: isOpen ? 'var(--accent)' : 'var(--bg-2)',
+                        color: isOpen ? '#fff' : 'var(--text-primary)',
+                      }}
+                    >
+                      <span>{group.label}</span>
+                      <span style={{
+                        fontSize: '0.66rem', fontWeight: 600, borderRadius: 10, padding: '1px 7px',
+                        color: isOpen ? '#fff' : 'var(--text-muted)',
+                        background: isOpen ? 'rgba(255,255,255,0.22)' : 'var(--bg-3)',
+                      }}>{reports.length}</span>
+                      {activeInGroup && !isOpen && (
+                        <span title="Active report in this group" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)' }} />
+                      )}
+                      <span style={{ display: 'inline-flex', color: isOpen ? '#fff' : 'var(--text-muted)', transition: 'transform .18s ease', transform: isOpen ? 'rotate(180deg)' : 'none' }}>
+                        <ChevronDownIcon size={14} />
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Chips for the currently-open group */}
+              {(() => {
+                const group = REPORT_GROUPS.find(g => g.label === openGroup)
+                if (!group) return null
+                const reports = group.ids.map(id => REPORTS_BY_ID[id]).filter(Boolean)
+                return (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {reports.map(report => (
                       <button
-                        key={id}
-                        className={`report-recent-item ${activeReport?.id === id ? 'active' : ''}`}
-                        onClick={() => selectReport(r)}
+                        key={report.id}
+                        className={`report-chip ${activeReport?.id === report.id ? 'active' : ''}`}
+                        disabled={generating === report.id}
+                        onClick={() => selectReport(report)}
+                        title={report.description}
                       >
-                        <span className="report-chip-icon">{reportIcons[id]}</span>
-                        <span>{r.title}</span>
+                        <span className="report-chip-icon">{reportIcons[report.id]}</span>
+                        <span>{report.title}</span>
+                        {generating === report.id && (
+                          <span className="spinner" style={{ width: 12, height: 12, borderWidth: 2 }} />
+                        )}
                       </button>
-                    )
-                  })}
+                    ))}
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+
+          {(recent.length > 0 || isMenuCollapsed) && (
+            <div className="reports-recent-strip" style={{ display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+              {recent.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Recently Used:</span>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {recent.map(id => {
+                      const r = reportById(id)
+                      if (!r) return null
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          className={`btn btn-xs ${activeReport?.id === id ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                          onClick={() => selectReport(r)}
+                        >
+                          <span>{reportIcons[id]}</span>
+                          <span>{r.title}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
+              {isMenuCollapsed && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setIsMenuCollapsed(false)}
+                  style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700, padding: '4px 12px' }}
+                >
+                  Show All Reports ▾
+                </button>
+              )}
             </div>
-          </aside>
+          )}
+        </div>{/* /reports-controls (container 1) */}
 
-          {/* Right 75% — the table / output */}
-          <section className="reports-output-col">
+        {/* Container 2 — report output (100% width) */}
+        {isFullScreen ? (
+          <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>
+            <div className="table-fullscreen-panel report-fullscreen-panel">
+              <div className="table-fullscreen-header">
+                <h3>{activeReport?.title || 'Report'}</h3>
+                <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(false)}>✕ Close</button>
+              </div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '16px 20px' }}>
+                {reportData === null ? (
+                  <div className="empty-state card">
+                    <div className="empty-icon"><TaxIcon size={32} /></div>
+                    <h3>Select a report</h3>
+                    <p>Pick a report above and set your date range — the results appear here.</p>
+                  </div>
+                ) : (() => {
+                  const View = {
+                    'day-book': DayBookView, 'balance-sheet': BalanceSheetView, 'trial-balance': TrialBalanceView,
+                    'party-ledger': PartyLedgerView, 'journal': JournalView, 'audit-journal': JournalView, 'general-ledger': GeneralLedgerView,
+                  }[activeReport?.id]
+                  return View
+                    ? <View reportData={reportData} fmt={fmt} isAudit={activeReport?.id === 'audit-journal'} />
+                    : <RegisterView reportData={reportData} colKeys={colKeys} />
+                })()}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="reports-panel reports-workarea">
+            <section className="reports-output-col" style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column', height: '100%' }}>
         {reportData === null ? (
           <div className="empty-state card">
             <div className="empty-icon"><TaxIcon size={32} /></div>
@@ -529,8 +567,8 @@ export default function Reports() {
             <p>Pick a report above and set your date range — the results appear here.</p>
           </div>
         ) : (
-          <div className="slide-up">
-            <div className="flex items-center justify-between mb-4">
+          <div className="slide-up" style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', overflow: 'hidden' }}>
+            <div className="flex items-center justify-between mb-4" style={{ flexShrink: 0 }}>
               <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
                 {reportIcons[activeReport?.id]}
                 <span>{activeReport?.title}</span>
@@ -538,8 +576,17 @@ export default function Reports() {
                   ({dateRange.from} to {dateRange.to})
                 </span>
               </h2>
-              <button
-                className="btn btn-primary btn-sm"
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="table-fullscreen-btn"
+                  onClick={() => setIsFullScreen(true)}
+                >
+                  ⛶ Fullscreen
+                </button>
+
+                <button
+                  className="btn btn-primary btn-sm"
                 onClick={() => {
                   if (activeReport?.id === 'day-book') {
                     downloadCSV(reportData.transactions, `day_book_${dateRange.from}_${dateRange.to}.csv`)
@@ -591,6 +638,7 @@ export default function Reports() {
                 <span>Export CSV</span>
               </button>
             </div>
+          </div>
 
             {(() => {
               // Registry replaces the old 7-branch render ternary: pick the view
@@ -612,7 +660,7 @@ export default function Reports() {
         )}
           </section>
         </div>
-        </div>{/* /reports-panel */}
+        )}
       </div>
     </AppLayout>
   )

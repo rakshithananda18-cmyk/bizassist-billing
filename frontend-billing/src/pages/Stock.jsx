@@ -53,6 +53,7 @@ export default function Stock() {
   const [search, setSearch]                 = useState('')
   const [catFilter, setCatFilter]           = useState('')
   const [activeTab, setActiveTab]           = useState('catalogue') // 'catalogue' | 'godowns'
+  const [isFullScreen, setIsFullScreen] = useState(false)
   const [showAddModal, setShowAddModal]     = useState(false)
   const [showAdjustModal, setShowAdjustModal] = useState(false)
   const [showTransferModal, setShowTransferModal] = useState(false)
@@ -113,11 +114,67 @@ export default function Stock() {
 
   const categories = [...new Set(products.map(p => p.category).filter(Boolean))]
 
-  const filtered = products.filter(p => {
-    if (catFilter && p.category !== catFilter) return false
-    const q = search.toLowerCase()
-    return !q || p.name?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q)
-  })
+  const [stockStatusFilter, setStockStatusFilter] = useState('')
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: '' })
+
+  const handleSort = (key) => {
+    let direction = 'asc'
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc'
+    } else if (sortConfig.key === key && sortConfig.direction === 'desc') {
+      setSortConfig({ key: '', direction: '' })
+      return
+    }
+    setSortConfig({ key, direction })
+  }
+
+  const getFilteredProducts = () => {
+    let items = products.filter(p => {
+      if (catFilter && p.category !== catFilter) return false
+      
+      const status = getStatus(p)
+      if (stockStatusFilter === 'in' && status !== 'In Stock') return false
+      if (stockStatusFilter === 'low' && status !== 'Low') return false
+      if (stockStatusFilter === 'out' && status !== 'Out') return false
+
+      const q = search.toLowerCase()
+      return !q || p.name?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q)
+    })
+
+    if (sortConfig.key && sortConfig.direction) {
+      items.sort((a, b) => {
+        let aVal = a[sortConfig.key]
+        let bVal = b[sortConfig.key]
+
+        if (sortConfig.key === 'stock_qty') {
+          aVal = parseFloat(a.stock_qty ?? a.quantity ?? 0)
+          bVal = parseFloat(b.stock_qty ?? b.quantity ?? 0)
+        } else if (sortConfig.key === 'selling_price' || sortConfig.key === 'wholesale_price' || sortConfig.key === 'distributor_price' || sortConfig.key === 'cost_price') {
+          aVal = parseFloat(a[sortConfig.key] ?? 0)
+          bVal = parseFloat(b[sortConfig.key] ?? 0)
+        } else if (sortConfig.key === 'status') {
+          aVal = getStatus(a)
+          bVal = getStatus(b)
+        }
+
+        if (aVal === undefined || aVal === null) return 1
+        if (bVal === undefined || bVal === null) return -1
+
+        if (typeof aVal === 'string') {
+          return sortConfig.direction === 'asc'
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal)
+        } else {
+          return sortConfig.direction === 'asc'
+            ? aVal - bVal
+            : bVal - aVal
+        }
+      })
+    }
+    return items
+  }
+
+  const filtered = getFilteredProducts()
 
   const totalProducts = products.length
   const lowStock  = products.filter(p => getStatus(p) === 'Low').length
@@ -376,29 +433,81 @@ export default function Stock() {
                 <option value="">All Categories</option>
                 {categories.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
+              <select
+                className="form-select"
+                style={{ width: 'auto', minWidth: 160 }}
+                value={stockStatusFilter}
+                onChange={e => setStockStatusFilter(e.target.value)}
+              >
+                <option value="">All Statuses</option>
+                <option value="in">In Stock</option>
+                <option value="low">Low Stock</option>
+                <option value="out">Out of Stock</option>
+              </select>
             </div>
 
             {/* Table */}
-            {loading ? (
-              <div className="page-loader"><span className="spinner" /> Loading products…</div>
-            ) : (
-              <div className="data-table-wrap">
+            {(() => {
+              const tableContent = (
                 <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Product</th>
-                      <th>SKU / Barcode</th>
-                      <th>Category</th>
-                      <th>Stock Qty</th>
-                      <th>Unit</th>
-                      <th>Min Stock</th>
-                      <th>Selling Price</th>
-                      <th>Wholesale Price</th>
-                      <th>Distributor Price</th>
-                      <th>Cost Price</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
+                  <thead><tr>
+                    <th className="sortable" onClick={() => handleSort('name')}>
+                      Product
+                      <span className={`sort-indicator ${sortConfig.key === 'name' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'name' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('sku')}>
+                      SKU / Barcode
+                      <span className={`sort-indicator ${sortConfig.key === 'sku' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'sku' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('category')}>
+                      Category
+                      <span className={`sort-indicator ${sortConfig.key === 'category' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'category' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('stock_qty')}>
+                      Stock Qty
+                      <span className={`sort-indicator ${sortConfig.key === 'stock_qty' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'stock_qty' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th>Unit</th>
+                    <th>Min Stock</th>
+                    <th className="sortable" onClick={() => handleSort('selling_price')}>
+                      Selling Price
+                      <span className={`sort-indicator ${sortConfig.key === 'selling_price' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'selling_price' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('wholesale_price')}>
+                      Wholesale Price
+                      <span className={`sort-indicator ${sortConfig.key === 'wholesale_price' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'wholesale_price' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('distributor_price')}>
+                      Distributor Price
+                      <span className={`sort-indicator ${sortConfig.key === 'distributor_price' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'distributor_price' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('cost_price')}>
+                      Cost Price
+                      <span className={`sort-indicator ${sortConfig.key === 'cost_price' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'cost_price' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('status')}>
+                      Status
+                      <span className={`sort-indicator ${sortConfig.key === 'status' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'status' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                  </tr></thead>
                   <tbody>
                     {filtered.length === 0 ? (
                       <tr><td colSpan={11}>
@@ -418,32 +527,43 @@ export default function Stock() {
                             <div>{p.sku || '—'}</div>
                             {p.barcode && <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{p.barcode}</div>}
                           </td>
-                          <td>
-                            {p.category
-                              ? <span className="badge badge-muted">{p.category}</span>
-                              : <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                          </td>
-                          <td style={{ fontWeight: 700, color: isLow ? 'var(--danger)' : 'var(--text-primary)' }}>
-                            {p.stock_qty ?? p.quantity ?? 0}
-                          </td>
+                          <td>{p.category ? <span className="badge badge-muted">{p.category}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                          <td style={{ fontWeight: 700, color: isLow ? 'var(--danger)' : 'var(--text-primary)' }}>{p.stock_qty ?? p.quantity ?? 0}</td>
                           <td style={{ color: 'var(--text-muted)' }}>{p.unit || 'pcs'}</td>
                           <td style={{ color: 'var(--text-muted)' }}>{p.min_stock ?? 0}</td>
                           <td>{fmt(p.selling_price)}</td>
                           <td>{fmt(p.wholesale_price)}</td>
                           <td>{fmt(p.distributor_price)}</td>
                           <td>{fmt(p.cost_price)}</td>
-                          <td>
-                            <span className={`badge ${status === 'In Stock' ? 'badge-success' : status === 'Low' ? 'badge-warning' : 'badge-danger'}`}>
-                              {status}
-                            </span>
-                          </td>
+                          <td><span className={`badge ${status === 'In Stock' ? 'badge-success' : status === 'Low' ? 'badge-warning' : 'badge-danger'}`}>{status}</span></td>
                         </tr>
                       )
                     })}
                   </tbody>
                 </table>
-              </div>
-            )}
+              )
+              if (loading) return <div className="page-loader"><span className="spinner" /> Loading products…</div>
+              if (isFullScreen) return (
+                <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>
+                  <div className="table-fullscreen-panel">
+                    <div className="table-fullscreen-header">
+                      <h3>Inventory Catalog</h3>
+                      <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(false)}>✕ Close</button>
+                    </div>
+                    <div className="data-table-wrap">{tableContent}</div>
+                  </div>
+                </div>
+              )
+              return (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                    <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(true)}>⛶ Fullscreen</button>
+                  </div>
+                  <div className="data-table-wrap">{tableContent}</div>
+                </>
+              )
+            })()}
+
           </>
         ) : (
           /* Godowns & Stock Transfers View */

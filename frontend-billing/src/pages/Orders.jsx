@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
-import { AlertIcon, BillsIcon, CheckIcon, CloseIcon, DownloadIcon, ImportIcon, OrderIcon, PackageIcon, PlusIcon, SummaryIcon, TruckIcon, BellIcon } from '../components/Icons'
+import { AlertIcon, BillsIcon, CheckIcon, CloseIcon, DownloadIcon, ImportIcon, OrderIcon, PackageIcon, PlusIcon, SummaryIcon, TruckIcon, BellIcon, SearchIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 
 const fmt = (n) =>
@@ -28,6 +28,7 @@ export default function Orders() {
 
   // Layout & List State
   const [activeTab, setActiveTab] = useState('incoming') // 'incoming' (seller) | 'outgoing' (buyer)
+  const [isFullScreen, setIsFullScreen] = useState(false)
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [alert, setAlert] = useState(null)
@@ -49,6 +50,66 @@ export default function Orders() {
   const [cart, setCart] = useState({}) // { product_id: quantity }
   const [notes, setNotes] = useState('')
   const [placingOrder, setPlacingOrder] = useState(false)
+
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: '' })
+
+  const handleSort = (key) => {
+    let direction = 'asc'
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc'
+    } else if (sortConfig.key === key && sortConfig.direction === 'desc') {
+      setSortConfig({ key: '', direction: '' })
+      return
+    }
+    setSortConfig({ key, direction })
+  }
+
+  const getFilteredOrders = () => {
+    const q = search.toLowerCase()
+    let items = orders.filter(o => {
+      if (statusFilter && o.status !== statusFilter) return false
+      const targetName = activeTab === 'incoming' ? o.buyer_name : o.seller_name
+      const targetBiz = activeTab === 'incoming' ? o.buyer_bizid : o.seller_bizid
+      return !q || 
+        o.order_number?.toLowerCase().includes(q) || 
+        targetName?.toLowerCase().includes(q) || 
+        targetBiz?.toLowerCase().includes(q)
+    })
+
+    if (sortConfig.key && sortConfig.direction) {
+      items.sort((a, b) => {
+        let aVal = a[sortConfig.key]
+        let bVal = b[sortConfig.key]
+
+        if (sortConfig.key === 'party') {
+          aVal = activeTab === 'incoming' ? a.buyer_name : a.seller_name
+          bVal = activeTab === 'incoming' ? b.buyer_name : b.seller_name
+        } else if (sortConfig.key === 'date') {
+          aVal = a.created_at || a.order_date || ''
+          bVal = b.created_at || b.order_date || ''
+        }
+
+        if (aVal === undefined || aVal === null) return 1
+        if (bVal === undefined || bVal === null) return -1
+
+        if (typeof aVal === 'string') {
+          return sortConfig.direction === 'asc'
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal)
+        } else {
+          return sortConfig.direction === 'asc'
+            ? aVal - bVal
+            : bVal - aVal
+        }
+      })
+    }
+    return items
+  }
+
+  const filteredOrders = getFilteredOrders()
+
 
   // SSE Stream Ref to clean up
   const sseAbortControllerRef = useRef(null)
@@ -379,124 +440,170 @@ export default function Orders() {
           )}
         </div>
 
-        {/* Tabs */}
-        <div className="tabs page-subbar">
-          <button className={`tab${activeTab === 'incoming' ? ' active' : ''}`} onClick={() => setActiveTab('incoming')}>
-            <ImportIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Incoming Orders (Sales)
-          </button>
-          <button className={`tab${activeTab === 'outgoing' ? ' active' : ''}`} onClick={() => setActiveTab('outgoing')}>
-            <DownloadIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Outgoing Orders (Purchases)
-          </button>
+        {/* Tabs & Search/Filter */}
+        <div className="flex items-center justify-between page-subbar" style={{ flexWrap: 'wrap', gap: 12 }}>
+          <div className="tabs" style={{ margin: 0 }}>
+            <button className={`tab${activeTab === 'incoming' ? ' active' : ''}`} onClick={() => setActiveTab('incoming')}>
+              <ImportIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Incoming Orders (Sales)
+            </button>
+            <button className={`tab${activeTab === 'outgoing' ? ' active' : ''}`} onClick={() => setActiveTab('outgoing')}>
+              <DownloadIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Outgoing Orders (Purchases)
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div className="search-bar" style={{ width: 180 }}>
+              <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search orders…" />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              style={{
+                background: 'var(--bg-2)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-md)',
+                color: 'var(--text-primary)',
+                padding: '6px 12px',
+                fontSize: '0.82rem',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="accepted">Accepted</option>
+              <option value="packed">Packed</option>
+              <option value="dispatched">Dispatched</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
         </div>
 
         {/* Orders Queue Table */}
-        {loading ? (
-          <div className="page-loader"><span className="spinner" /> Loading order queue…</div>
-        ) : (
-          <div className="data-table-wrap">
+        {(() => {
+          const tableContent = (
             <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Order #</th>
-                  <th>Date</th>
-                  <th>{activeTab === 'incoming' ? 'Buyer / Client' : 'Supplier'}</th>
-                  <th>Subtotal</th>
-                  <th>Taxes</th>
-                  <th>Total Amount</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
+              <thead><tr>
+                <th className="sortable" onClick={() => handleSort('order_number')}>
+                  Order #
+                  <span className={`sort-indicator ${sortConfig.key === 'order_number' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'order_number' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" onClick={() => handleSort('date')}>
+                  Date
+                  <span className={`sort-indicator ${sortConfig.key === 'date' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'date' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" onClick={() => handleSort('party')}>
+                  {activeTab === 'incoming' ? 'Buyer / Client' : 'Supplier'}
+                  <span className={`sort-indicator ${sortConfig.key === 'party' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'party' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" onClick={() => handleSort('subtotal')}>
+                  Subtotal
+                  <span className={`sort-indicator ${sortConfig.key === 'subtotal' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'subtotal' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" onClick={() => handleSort('cgst_total')}>
+                  Taxes
+                  <span className={`sort-indicator ${sortConfig.key === 'cgst_total' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'cgst_total' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" onClick={() => handleSort('total_amount')}>
+                  Total Amount
+                  <span className={`sort-indicator ${sortConfig.key === 'total_amount' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'total_amount' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th className="sortable" onClick={() => handleSort('status')}>
+                  Status
+                  <span className={`sort-indicator ${sortConfig.key === 'status' && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === 'status' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+                <th>Actions</th>
+              </tr></thead>
               <tbody>
-                {orders.length === 0 ? (
-                  <tr>
-                    <td colSpan={8}>
-                      <div className="empty-state">
-                        <div className="empty-icon"><OrderIcon size={24} /></div>
-                        <h3>No orders found</h3>
-                        <p>{activeTab === 'incoming' ? 'No buyers have placed orders with you yet.' : 'Click "Place B2B Order" to browse connected supplier catalogues.'}</p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  orders.map(order => {
-                    const status = STATUS_FLOW[order.status] || { label: order.status, variant: 'secondary' }
-                    return (
-                      <tr key={order.id} style={{ cursor: 'pointer' }} onClick={() => setSelectedOrder(order)}>
-                        <td className="td-mono td-primary">{order.order_number}</td>
-                        <td>{new Date(order.created_at || order.order_date).toLocaleDateString('en-IN')}</td>
-                        <td>
-                          <div style={{ fontWeight: 600 }}>
-                            {activeTab === 'incoming' ? order.buyer_name : order.seller_name}
-                          </div>
-                          <div className="td-mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                            {activeTab === 'incoming' ? order.buyer_bizid : order.seller_bizid}
-                          </div>
-                        </td>
-                        <td>{fmt(order.subtotal)}</td>
-                        <td>{fmt(order.cgst_total + order.sgst_total + order.igst_total)}</td>
-                        <td style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{fmt(order.total_amount)}</td>
-                        <td>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
-                            <span className={`badge badge-${status.variant}`} style={{ textTransform: 'capitalize' }}>
-                              {status.label}
+                {filteredOrders.length === 0 ? (
+                  <tr><td colSpan={8}>
+                    <div className="empty-state">
+                      <div className="empty-icon"><OrderIcon size={24} /></div>
+                      <h3>No orders found</h3>
+                      <p>{activeTab === 'incoming' ? 'No buyers have placed orders with you yet.' : 'Click "Place B2B Order" to browse connected supplier catalogues.'}</p>
+                    </div>
+                  </td></tr>
+                ) : filteredOrders.map(order => {
+                  const status = STATUS_FLOW[order.status] || { label: order.status, variant: 'secondary' }
+                  return (
+                    <tr key={order.id} style={{ cursor: 'pointer' }} onClick={() => setSelectedOrder(order)}>
+                      <td className="td-mono td-primary">{order.order_number}</td>
+                      <td>{new Date(order.created_at || order.order_date).toLocaleDateString('en-IN')}</td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{activeTab === 'incoming' ? order.buyer_name : order.seller_name}</div>
+                        <div className="td-mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{activeTab === 'incoming' ? order.buyer_bizid : order.seller_bizid}</div>
+                      </td>
+                      <td>{fmt(order.subtotal)}</td>
+                      <td>{fmt(order.cgst_total + order.sgst_total + order.igst_total)}</td>
+                      <td style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{fmt(order.total_amount)}</td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                          <span className={`badge badge-${status.variant}`} style={{ textTransform: 'capitalize' }}>{status.label}</span>
+                          {activeTab === 'outgoing' && order.status === 'completed' &&
+                            (order.seller_invoice_id || justInvoiced.has(order.order_number)) && (
+                            <span className="badge badge-success" style={{ fontSize: '0.68rem' }} title="Items were automatically added to your inventory as a PURCHASE">
+                              <ImportIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Stock received
                             </span>
-                            {/* Buyer: stock auto-received on completion (Phase 4 sync) */}
-                            {activeTab === 'outgoing' && order.status === 'completed' &&
-                              (order.seller_invoice_id || justInvoiced.has(order.order_number)) && (
-                              <span className="badge badge-success" style={{ fontSize: '0.68rem' }} title="Items were automatically added to your inventory as a PURCHASE">
-                                <ImportIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Stock received
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td onClick={e => e.stopPropagation()}>
-                          <div className="flex gap-1">
-                            {/* Seller Status Progression Action */}
-                            {activeTab === 'incoming' && status.next && (
-                              <button
-                                className="btn btn-primary btn-sm"
-                                onClick={() => handleStatusChange(order.id, status.next)}
-                              >
-                                {status.nextLabel}
-                              </button>
-                            )}
-
-                            {/* Seller Reject Action */}
-                            {activeTab === 'incoming' && ['pending', 'accepted'].includes(order.status) && (
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                style={{ color: 'var(--danger)' }}
-                                onClick={() => handleStatusChange(order.id, 'rejected')}
-                              >
-                                Reject
-                              </button>
-                            )}
-
-                            {/* Buyer Cancel Action */}
-                            {activeTab === 'outgoing' && ['pending', 'accepted'].includes(order.status) && (
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                style={{ color: 'var(--danger)' }}
-                                onClick={() => handleStatusChange(order.id, 'cancelled')}
-                              >
-                                Cancel
-                              </button>
-                            )}
-                            
-                            <button className="btn btn-secondary btn-sm" onClick={() => setSelectedOrder(order)}>
-                              View
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })
-                )}
+                          )}
+                        </div>
+                      </td>
+                      <td onClick={e => e.stopPropagation()}>
+                        <div className="flex gap-1">
+                          {activeTab === 'incoming' && status.next && (
+                            <button className="btn btn-primary btn-sm" onClick={() => handleStatusChange(order.id, status.next)}>{status.nextLabel}</button>
+                          )}
+                          {activeTab === 'incoming' && ['pending', 'accepted'].includes(order.status) && (
+                            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleStatusChange(order.id, 'rejected')}>Reject</button>
+                          )}
+                          {activeTab === 'outgoing' && ['pending', 'accepted'].includes(order.status) && (
+                            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleStatusChange(order.id, 'cancelled')}>Cancel</button>
+                          )}
+                          <button className="btn btn-secondary btn-sm" onClick={() => setSelectedOrder(order)}>View</button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
-          </div>
-        )}
+          )
+          if (loading) return <div className="page-loader"><span className="spinner" /> Loading order queue…</div>
+          if (isFullScreen) return (
+            <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>
+              <div className="table-fullscreen-panel">
+                <div className="table-fullscreen-header">
+                  <h3>Supplier Orders — {activeTab === 'incoming' ? 'Incoming' : 'Outgoing'}</h3>
+                  <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(false)}>✕ Close</button>
+                </div>
+                <div className="data-table-wrap">{tableContent}</div>
+              </div>
+            </div>
+          )
+          return (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(true)}>⛶ Fullscreen</button>
+              </div>
+              <div className="data-table-wrap">{tableContent}</div>
+            </>
+          )
+        })()}
+
 
         {/* Order Details Modal */}
         {selectedOrder && (

@@ -79,9 +79,19 @@ def get_active_user(authorization: str = Header(None), token: str = Query(None))
 # Guards raise 403 so a forbidden role never reaches the route body.
 
 def restrict_cashier(current_user: dict = Depends(get_active_user)) -> dict:
-    """Block cashiers from owner-only (admin / financial) actions."""
-    if (current_user.get("role") or "").lower() == "cashier":
-        logger.info("[AUTH] cashier blocked from owner-only action (user=%s)",
+    """Block cashiers and supply adders from owner-only (admin / financial) actions."""
+    role_lower = (current_user.get("role") or "").lower()
+    if role_lower in ("cashier", "supply adder"):
+        logger.info("[AUTH] staff blocked from owner-only action (user=%s, role=%s)",
+                    current_user.get("username"), role_lower)
+        raise HTTPException(status_code=403, detail="Permission denied: staff restricted")
+    return current_user
+
+def restrict_cashier_only(current_user: dict = Depends(get_active_user)) -> dict:
+    """Block cashiers but allow supply adders and owners."""
+    role_lower = (current_user.get("role") or "").lower()
+    if role_lower == "cashier":
+        logger.info("[AUTH] cashier blocked from action (user=%s)",
                     current_user.get("username"))
         raise HTTPException(status_code=403, detail="Permission denied: cashier restricted")
     return current_user

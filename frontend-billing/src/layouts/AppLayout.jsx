@@ -1,6 +1,6 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
-import { NavLink, useNavigate, useLocation } from 'react-router-dom'
+import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useLock } from '../contexts/LockContext'
 import { API_BASE } from '../config'
@@ -315,8 +315,13 @@ export default function AppLayout({ children, title }) {
 
   // Profile popover menu
   const [showProfileMenu, setShowProfileMenu] = React.useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
   const profileMenuRef = React.useRef(null)
   const userChipRef = React.useRef(null)
+
+  React.useEffect(() => {
+    setMobileMenuOpen(false)
+  }, [location.pathname])
 
   React.useEffect(() => {
     const handleOutsideClick = (e) => {
@@ -398,17 +403,15 @@ export default function AppLayout({ children, title }) {
     const zoom = businessConfig?.general?.app_zoom
       ?? (stored ? parseInt(stored, 10) : null)
       ?? 100
-    // Apply zoom + compensate minHeight so page always fills the viewport
-    // at zoom < 100%, content shrinks → gap appears; minHeight = 100/zoom × 100%
-    // Apply zoom to html, and simultaneously set --zoom so CSS layout
-    // heights (calc(100vh / var(--zoom))) invert the zoom and panels
-    // always render exactly at viewport height — no gap at low zoom,
-    // no overflow/clipped footer at high zoom.
-    document.documentElement.style.zoom = `${zoom}%`
-    document.documentElement.style.setProperty('--zoom', zoom / 100)
+    // On mobile devices (width <= 768px), force zoom to 100% to prevent fixed container layout offsets and bottom gaps
+    const isMobile = window.innerWidth <= 768
+    const finalZoom = isMobile ? 100 : zoom
+
+    document.documentElement.style.zoom = `${finalZoom}%`
+    document.documentElement.style.setProperty('--zoom', finalZoom / 100)
     // Remove old minHeight hack — the --zoom formula handles this correctly
     document.documentElement.style.minHeight = ''
-    if (stored !== String(zoom)) {
+    if (!isMobile && stored !== String(zoom)) {
       localStorage.setItem('billing_app_zoom', String(zoom))
     }
   }, [businessConfig])
@@ -461,9 +464,26 @@ export default function AppLayout({ children, title }) {
       {!appReady && <PageLoader />}
       {/* Nudge to sync when the cloud holds data this device doesn't (sensed at login) */}
       <SyncNudgeModal />
+
+      {/* Landscape orientation overlay for POS `/sales` page on mobile */}
+      {isSalesPage && (
+        <div className="pos-portrait-overlay">
+          <div className="pos-portrait-content">
+            <div className="rotate-icon-wrapper">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="rotate-device-icon">
+                <rect x="5" y="2" width="14" height="20" rx="2" ry="2" transform="rotate(90 12 12)" />
+                <path d="M12 18h.01" />
+              </svg>
+            </div>
+            <h2>Rotate Your Device</h2>
+            <p>Please rotate your phone to landscape mode to use the Billing Counter.</p>
+          </div>
+        </div>
+      )}
+
       {/* ── Sidebar ── */}
       {!isSalesPage && (
-        <aside className="sidebar">
+        <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`}>
           {/* Brand */}
           <div className="sidebar-brand">
             {profile?.logo ? (
@@ -471,7 +491,7 @@ export default function AppLayout({ children, title }) {
             ) : (
               <BuildingMark size={30} />
             )}
-            <div>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div className="brand-name">{profile?.business_name || user?.business_name || 'BizAssist'}</div>
               {isSyncOn && (
                 <div
@@ -560,6 +580,27 @@ export default function AppLayout({ children, title }) {
                 </div>
               )}
             </div>
+            
+            {/* Close button for mobile drawer */}
+            <button
+              className="mobile-drawer-close"
+              onClick={() => setMobileMenuOpen(false)}
+              aria-label="Close menu"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: '4px',
+                display: 'none',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginLeft: '8px',
+                flexShrink: 0
+              }}
+            >
+              <CloseIcon size={18} />
+            </button>
             
             {isSyncOn && showSyncPopover && (
               <div
@@ -789,11 +830,12 @@ export default function AppLayout({ children, title }) {
                     </span>
                   </div>
 
-                  {!isCollapsed && items.map(({ to, icon, label }) => (
+                   {!isCollapsed && items.map(({ to, icon, label }) => (
                     <NavLink
                       key={to}
                       to={to}
                       end={to === '/'}
+                      onClick={() => setMobileMenuOpen(false)}
                       className={({ isActive }) =>
                         'nav-link' + (isActive ? ' active' : '')
                       }
@@ -863,21 +905,21 @@ export default function AppLayout({ children, title }) {
             )}
             
             {showProfileMenu && (
-              <div className="profile-menu" ref={profileMenuRef}>
+              <div className="profile-menu" ref={profileMenuRef} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                 <div className="profile-menu-header">
                   <div className="profile-menu-biz">{profile?.business_name || user?.username || 'BizAssist User'}</div>
                   <div className="profile-menu-sub">Enterprise Account</div>
                 </div>
                 <div className="profile-menu-sep" />
-                <button className="profile-menu-item" onClick={() => { setShowProfileMenu(false); navigate('/profile'); }}>
+                <Link className="profile-menu-item" to="/profile" onClick={() => setShowProfileMenu(false)}>
                   <UserIcon size={14} /> My Profile
-                </button>
-                <button className="profile-menu-item" onClick={() => { setShowProfileMenu(false); navigate('/settings'); }}>
+                </Link>
+                <Link className="profile-menu-item" to="/settings" onClick={() => setShowProfileMenu(false)}>
                   <SettingsIcon size={14} /> App Settings
-                </button>
-                <button className="profile-menu-item" onClick={() => { setShowProfileMenu(false); navigate('/settings?tab=lock'); }}>
+                </Link>
+                <Link className="profile-menu-item" to="/settings?tab=staff" onClick={() => setShowProfileMenu(false)}>
                   <ContactsIcon size={14} /> Staff & Cashiers
-                </button>
+                </Link>
                 <button
                   className="profile-menu-item"
                   onClick={() => {
@@ -932,27 +974,109 @@ export default function AppLayout({ children, title }) {
         </aside>
       )}
 
+      {/* Mobile Top Header Bar */}
+      {!isSalesPage && (
+        <header className="mobile-header">
+          <button
+            type="button"
+            className="mobile-menu-toggle"
+            onClick={() => setMobileMenuOpen(true)}
+            aria-label="Open menu"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+
+          <div className="mobile-header-brand" onClick={() => navigate('/')}>
+            {profile?.logo ? (
+              <img src={profile.logo} alt="Logo" style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: '4px' }} />
+            ) : (
+              <BuildingMark size={22} />
+            )}
+            <span className="mobile-brand-name">
+              {profile?.business_name || user?.business_name || 'BizAssist'}
+            </span>
+          </div>
+
+          <div className="mobile-user-avatar-wrapper" ref={userChipRef}>
+            <div
+              className="mobile-user-avatar"
+              onClick={() => setShowProfileMenu(!showProfileMenu)}
+            >
+              {profile?.logo ? (
+                <img src={profile.logo} alt="Logo" />
+              ) : (
+                initials
+              )}
+            </div>
+
+            {/* Profile Dropdown positioned below avatar on mobile */}
+            {showProfileMenu && (
+              <div className="profile-menu mobile-dropdown" ref={profileMenuRef} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+                <div className="profile-menu-header">
+                  <div className="profile-menu-biz">{profile?.business_name || user?.username || 'BizAssist User'}</div>
+                  <div className="profile-menu-sub">Enterprise Account</div>
+                </div>
+                <div className="profile-menu-sep" />
+                <Link className="profile-menu-item" to="/profile" onClick={() => setShowProfileMenu(false)}>
+                  <UserIcon size={14} /> My Profile
+                </Link>
+                <Link className="profile-menu-item" to="/settings" onClick={() => setShowProfileMenu(false)}>
+                  <SettingsIcon size={14} /> App Settings
+                </Link>
+                <Link className="profile-menu-item" to="/settings?tab=staff" onClick={() => setShowProfileMenu(false)}>
+                  <ContactsIcon size={14} /> Staff & Cashiers
+                </Link>
+                <button
+                  className="profile-menu-item"
+                  onClick={() => {
+                    setShowProfileMenu(false)
+                    if (hasLock) {
+                      lock()
+                    } else {
+                      navigate('/settings')
+                    }
+                  }}
+                  style={{ color: 'var(--warning, #f59e0b)', display: 'flex', alignItems: 'center', gap: 8 }}
+                >
+                  <LockIcon size={14} /> {hasLock ? 'Lock Session' : 'Lock App (Set PIN)'}
+                </button>
+                <button className="profile-menu-item logout" onClick={() => { setShowProfileMenu(false); logout(); navigate('/login'); }}>
+                  <LogoutIcon size={14} /> Sign Out
+                </button>
+                <div className="profile-menu-theme">
+                  <span className="profile-menu-theme-label">Theme</span>
+                  <div className="profile-theme-toggle">
+                    <button className={`theme-opt-btn ${theme === 'light' ? 'active' : ''}`} onClick={() => setTheme('light')} title="Light Mode">
+                      <SunIcon size={14} />
+                    </button>
+                    <button className={`theme-opt-btn ${theme === 'dark' ? 'active' : ''}`} onClick={() => setTheme('dark')} title="Dark Mode">
+                      <MoonIcon size={14} />
+                    </button>
+                    <button className={`theme-opt-btn ${theme === 'system' ? 'active' : ''}`} onClick={() => setTheme('system')} title="System Mode">
+                      <MonitorIcon size={14} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </header>
+      )}
+
+      {/* Backdrop overlay for mobile drawer */}
+      {mobileMenuOpen && !isSalesPage && (
+        <div
+          className="mobile-drawer-backdrop"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
       {/* ── Main area ── */}
       <div className="main-area">
-        {/* Mobile horizontal nav strip */}
-        {!isSalesPage && (
-          <div className="mobile-nav-bar">
-            {visibleSubnav.map(item => {
-              const isActive = location.pathname === item.to;
-              return (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.to === '/'}
-                  className={`mobile-nav-link ${isActive ? 'active' : ''}`}
-                >
-                  {item.icon}
-                  <span>{item.label}</span>
-                </NavLink>
-              );
-            })}
-          </div>
-        )}
 
         {/* ── Page content ── */}
         <main className="page-content">

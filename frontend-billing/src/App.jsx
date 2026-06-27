@@ -54,7 +54,7 @@ function AppRoutes() {
       <Route path="/orders"      element={<ProtectedRoute><Orders      /></ProtectedRoute>} />
       <Route path="/profile"     element={<ProtectedRoute><Profile     /></ProtectedRoute>} />
       <Route path="/settings"    element={<ProtectedRoute><Settings    /></ProtectedRoute>} />
-      <Route path="/staff"       element={<Navigate to="/settings?tab=lock" replace />} />
+      <Route path="/staff"       element={<Navigate to="/settings?tab=staff" replace />} />
 
 
       {/* Catch-all */}

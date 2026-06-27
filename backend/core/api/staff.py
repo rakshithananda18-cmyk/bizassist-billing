@@ -24,7 +24,7 @@ router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.staff")
 
 # Roles an owner may grant to a staff sub-account today.
-ALLOWED_STAFF_ROLES = {"cashier"}
+ALLOWED_STAFF_ROLES = {"cashier", "supply adder"}
 
 
 class CreateStaff(BaseModel):

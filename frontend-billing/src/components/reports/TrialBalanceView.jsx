@@ -1,22 +1,79 @@
-// components/reports/TrialBalanceView.jsx
-// =======================================
-// The Trial Balance report view (per-account Dr/Cr table + balanced banner +
-// Capital plug memo). Extracted VERBATIM from Reports.jsx (R5). Presentational.
+import React, { useState } from 'react'
+
 export default function TrialBalanceView({ reportData, fmt }) {
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: '' })
+
+  const handleSort = (key) => {
+    let direction = 'asc'
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc'
+    } else if (sortConfig.key === key && sortConfig.direction === 'desc') {
+      setSortConfig({ key: '', direction: '' })
+      return
+    }
+    setSortConfig({ key, direction })
+  }
+
+  let sortedAccounts = [...(reportData.accounts || [])]
+  if (sortConfig.key && sortConfig.direction) {
+    sortedAccounts.sort((a, b) => {
+      let aVal = a[sortConfig.key]
+      let bVal = b[sortConfig.key]
+
+      if (sortConfig.key === 'debit' || sortConfig.key === 'credit') {
+        aVal = parseFloat(aVal ?? 0)
+        bVal = parseFloat(bVal ?? 0)
+      }
+
+      if (aVal === undefined || aVal === null) return 1
+      if (bVal === undefined || bVal === null) return -1
+
+      if (typeof aVal === 'string') {
+        return sortConfig.direction === 'asc'
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal)
+      } else {
+        return sortConfig.direction === 'asc'
+          ? aVal - bVal
+          : bVal - aVal
+      }
+    })
+  }
+
   return (
     <div className="card" style={{ padding: '20px 24px' }}>
       <div className="data-table-wrap">
         <table className="data-table">
           <thead>
             <tr>
-              <th>Account</th>
-              <th>Group</th>
-              <th style={{ textAlign: 'right' }}>Debit (₹)</th>
-              <th style={{ textAlign: 'right' }}>Credit (₹)</th>
+              <th className="sortable" onClick={() => handleSort('account')}>
+                Account
+                <span className={`sort-indicator ${sortConfig.key === 'account' && sortConfig.direction ? 'active' : ''}`}>
+                  {sortConfig.key === 'account' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                </span>
+              </th>
+              <th className="sortable" onClick={() => handleSort('group')}>
+                Group
+                <span className={`sort-indicator ${sortConfig.key === 'group' && sortConfig.direction ? 'active' : ''}`}>
+                  {sortConfig.key === 'group' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                </span>
+              </th>
+              <th className="sortable" style={{ textAlign: 'right' }} onClick={() => handleSort('debit')}>
+                Debit (₹)
+                <span className={`sort-indicator ${sortConfig.key === 'debit' && sortConfig.direction ? 'active' : ''}`}>
+                  {sortConfig.key === 'debit' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                </span>
+              </th>
+              <th className="sortable" style={{ textAlign: 'right' }} onClick={() => handleSort('credit')}>
+                Credit (₹)
+                <span className={`sort-indicator ${sortConfig.key === 'credit' && sortConfig.direction ? 'active' : ''}`}>
+                  {sortConfig.key === 'credit' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                </span>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {reportData.accounts?.map((a, i) => (
+            {sortedAccounts.map((a, i) => (
               <tr key={i}>
                 <td style={{ fontWeight: 500 }}>{a.account}</td>
                 <td style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>{a.group}</td>

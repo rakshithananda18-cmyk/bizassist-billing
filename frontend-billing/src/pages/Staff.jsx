@@ -198,7 +198,7 @@ export default function Staff() {
                 </span>
               ))}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 0.5fr auto', gap: 10, alignItems: 'end' }}>
+            <div className="staff-counter-form">
               <div className="form-group" style={{ margin: 0 }}>
                 <label className="form-label" style={{ fontSize: '0.72rem' }}>Name</label>
                 <input className="form-input" value={newCounter.name} placeholder="e.g. Front Counter"
@@ -214,7 +214,7 @@ export default function Staff() {
           </div>
 
           {/* Add cashier */}
-          <form onSubmit={addStaff} className="card" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.7fr auto', gap: '16px', alignItems: 'end', margin: '20px 0' }}>
+          <form onSubmit={addStaff} className="card staff-add-form">
             <div className="form-group">
               <label className="form-label">Username</label>
               <input

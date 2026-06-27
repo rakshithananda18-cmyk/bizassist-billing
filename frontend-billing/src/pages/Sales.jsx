@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
@@ -77,6 +77,8 @@ export default function Sales() {
   const [bindingAction, setBindingAction] = useState(null)
   const [dbInvoices, setDbInvoices]   = useState([])
   const [showPayConfirmModal, setShowPayConfirmModal] = useState(false)
+  const [selectedCounterOverride, setSelectedCounterOverride] = useState(null)
+  const [staffList, setStaffList] = useState([])
 
   // ── Offline sync (R7b Slice 3c) ───────────────────────────────────────────
   // Bills saved while offline live in the durable outbox until reconnect. We mirror
@@ -548,14 +550,36 @@ export default function Sales() {
   //   so its numbers can NEVER collide with the cloud series when they migrate /
   //   sync up. The number is final at issue time — never re-numbered (GST-safe).
   const getCounterPrefix = useCallback(() => {
-    const raw = (user?.counter_prefix || '').trim()
+    const raw = selectedCounterOverride !== null
+      ? selectedCounterOverride.trim()
+      : (user?.counter_prefix || '').trim()
     const counter = raw
       ? (raw.endsWith('-') ? raw.slice(0, -1) : raw)
       : ((user?.role || '').toLowerCase() !== 'cashier' ? 'OW' : 'INV')
     const mode = (settings?.general?.hosting_mode || 'local').toLowerCase()
     const tag = mode === 'cloud' ? '' : 'LCL-'
     return `${tag}${counter}-`
-  }, [user?.counter_prefix, user?.role, settings])
+  }, [selectedCounterOverride, user?.counter_prefix, user?.role, settings])
+
+  const availableCounters = useMemo(() => {
+    if ((user?.role || '').toLowerCase() === 'cashier') return []
+    const ownerPrefix = (user?.counter_prefix || '').trim() || 'OW'
+    const prefixes = [ownerPrefix]
+    staffList.forEach(s => {
+      if ((s.role || '').toLowerCase() === 'cashier') {
+        const p = (s.counter_prefix || '').trim()
+        if (p && !prefixes.includes(p)) {
+          prefixes.push(p)
+        }
+      }
+    })
+    const mode = (settings?.general?.hosting_mode || 'local').toLowerCase()
+    const tag = mode === 'cloud' ? '' : 'LCL-'
+    return prefixes.map(p => ({
+      label: `${tag}${p}`,
+      value: p
+    }))
+  }, [user?.role, user?.counter_prefix, staffList, settings])
 
   // Highest number already used WITHIN this terminal's own prefix series. We
   // must NOT mix series (the old code derived the prefix from whichever invoice
@@ -691,13 +715,17 @@ export default function Sales() {
       authFetch('/billing/godowns').then(r => r.ok ? r.json() : []).catch(() => []),
       authFetch('/settings').then(r => r.ok ? r.json() : null).catch(() => null),
       authFetch('/billing/invoices').then(r => r.ok ? r.json() : []).catch(() => []),
-    ]).then(([cust, prod, gods, sett, invs]) => {
+      ((user?.role || '').toLowerCase() !== 'cashier')
+        ? authFetch('/staff').then(r => r.ok ? r.json() : []).catch(() => [])
+        : Promise.resolve([]),
+    ]).then(([cust, prod, gods, sett, invs, staff]) => {
       const custItems = Array.isArray(cust) ? cust : (cust && Array.isArray(cust.items) ? cust.items : [])
       const prodItems = prod && Array.isArray(prod.items) ? prod.items : []
       setCustomers(custItems)
       setProducts(prodItems)
       setGodowns(gods)
       setDbInvoices(invs)
+      setStaffList(staff)
       if (sett) {
         setSettings(sett)
       }
@@ -719,7 +747,7 @@ export default function Sales() {
         isSystemLoadingRef.current = false
       }, 500)
     })
-  }, [authFetch, setForm, getNextInvoiceNo])
+  }, [authFetch, setForm, getNextInvoiceNo, user?.role])
 
   const settingsRef = useRef(settings)
   useEffect(() => {
@@ -1614,6 +1642,8 @@ export default function Sales() {
           counterPrefix={getCounterPrefix().replace(/-$/, '')}
           canManageCounters={(user?.role || '').toLowerCase() !== 'cashier'}
           onManageCounters={() => navigate('/staff')}
+          availableCounters={availableCounters}
+          onSelectCounter={setSelectedCounterOverride}
         />
 
         {/* Workspace body split */}

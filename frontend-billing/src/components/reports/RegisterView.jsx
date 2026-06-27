@@ -1,12 +1,20 @@
-// components/reports/RegisterView.jsx
-// ===================================
-// The default tabular report view (sales/purchase register, stock-movement,
-// GSTR tables, etc.) — a generic table over an array `reportData` keyed by
-// `colKeys`, with the no-data empty state. Extracted VERBATIM from Reports.jsx
-// (R5). Presentational.
+import React, { useState } from 'react'
 import { SummaryIcon } from '../Icons'
 
 export default function RegisterView({ reportData, colKeys }) {
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: '' })
+
+  const handleSort = (key) => {
+    let direction = 'asc'
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc'
+    } else if (sortConfig.key === key && sortConfig.direction === 'desc') {
+      setSortConfig({ key: '', direction: '' })
+      return
+    }
+    setSortConfig({ key, direction })
+  }
+
   if (reportData.length === 0) {
     return (
       <div className="empty-state card">
@@ -18,18 +26,45 @@ export default function RegisterView({ reportData, colKeys }) {
       </div>
     )
   }
+
+  let sortedData = [...reportData]
+  if (sortConfig.key && sortConfig.direction) {
+    sortedData.sort((a, b) => {
+      const aVal = a[sortConfig.key]
+      const bVal = b[sortConfig.key]
+
+      if (aVal === undefined || aVal === null) return 1
+      if (bVal === undefined || bVal === null) return -1
+
+      if (typeof aVal === 'string') {
+        return sortConfig.direction === 'asc'
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal)
+      } else {
+        return sortConfig.direction === 'asc'
+          ? aVal - bVal
+          : bVal - aVal
+      }
+    })
+  }
+
   return (
     <div className="data-table-wrap">
       <table className="data-table">
         <thead>
           <tr>
             {colKeys.map(k => (
-              <th key={k}>{k.replace(/_/g, ' ').toUpperCase()}</th>
+              <th key={k} className="sortable" onClick={() => handleSort(k)}>
+                {k.replace(/_/g, ' ').toUpperCase()}
+                <span className={`sort-indicator ${sortConfig.key === k && sortConfig.direction ? 'active' : ''}`}>
+                  {sortConfig.key === k && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                </span>
+              </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {reportData.map((row, i) => (
+          {sortedData.map((row, i) => (
             <tr key={i}>
               {colKeys.map(k => (
                 <td key={k}>

@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from database.db import get_db
 from database.models import Product
 from core.models import StockLedger, ProductBarcode, Godown
-from services.auth import get_active_user, restrict_cashier
+from services.auth import get_active_user, restrict_cashier, restrict_cashier_only
 from core.catalog import barcode as PB
 from core.stock import ledger as SL
 from database.models import Inventory
@@ -436,7 +436,7 @@ def stock_adjustment(
     product_id: int,
     req: StockAdjustmentRequest,
     background_tasks: BackgroundTasks,
-    current_user: dict = Depends(restrict_cashier),
+    current_user: dict = Depends(restrict_cashier_only),
     db: Session = Depends(get_db),
 ):
     """Manual stock correction — writes an 'adjustment' movement (append-only)."""
@@ -474,7 +474,7 @@ def stock_adjustment(
 def bulk_opening_stock(
     req: OpeningStockRequest,
     background_tasks: BackgroundTasks,
-    current_user: dict = Depends(restrict_cashier),
+    current_user: dict = Depends(restrict_cashier_only),
     db: Session = Depends(get_db),
 ):
     """
@@ -545,7 +545,7 @@ class FrontendStockAdjustmentRequest(BaseModel):
 def frontend_stock_adjustment(
     req: FrontendStockAdjustmentRequest,
     background_tasks: BackgroundTasks,
-    current_user: dict = Depends(restrict_cashier),
+    current_user: dict = Depends(restrict_cashier_only),
     db: Session = Depends(get_db),
 ):
     """Stock adjustment endpoint for the billing frontend."""
