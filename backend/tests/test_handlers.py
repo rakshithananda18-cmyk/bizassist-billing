@@ -31,7 +31,7 @@ from services.auth import hash_password
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def setup_db():
     """Create schema and seed controlled test data once for the whole session."""
     Base.metadata.create_all(bind=engine)

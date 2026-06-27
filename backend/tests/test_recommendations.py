@@ -36,7 +36,7 @@ from services.recommendations import signals, recommend
 
 USER_ID = 77
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def setup_db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()

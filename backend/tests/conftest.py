@@ -12,6 +12,37 @@ and TokenUsage row counts. A local `.env` with LLM_ROUTER=on would add an extra
 over this env default, so they are unaffected.
 """
 import os
+import sys
+
+_orig_remove = os.remove
+_orig_unlink = os.unlink
+
+def secure_remove(path):
+    path_str = str(path)
+    if "test_bizassist" in path_str:
+        try:
+            from database.db import engine
+            engine.dispose()
+        except Exception:
+            pass
+        for suffix in ("", "-journal", "-wal", "-shm"):
+            p = path_str + suffix
+            try:
+                _orig_remove(p)
+            except Exception:
+                pass
+    else:
+        _orig_remove(path)
+
+def secure_unlink(path):
+    path_str = str(path)
+    if "test_bizassist" in path_str:
+        secure_remove(path)
+    else:
+        _orig_unlink(path)
+
+os.remove = secure_remove
+os.unlink = secure_unlink
 
 # Force the test suite to run against the test database (test_bizassist.db)
 # so it never writes to or pollutes the development database (bizassist.db).
@@ -41,10 +72,13 @@ def setup_and_dispose_db():
         from database.models import Base
         from database.migration import run_migrations_and_seed
         engine.dispose()
+        Base.metadata.drop_all(bind=engine)
         Base.metadata.create_all(bind=engine)
         run_migrations_and_seed()
-    except Exception:
-        pass
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise e
     yield
     try:
         from database.db import engine

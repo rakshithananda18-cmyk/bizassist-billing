@@ -36,7 +36,7 @@ from services.intents import resolve_intent, is_intent, INTENT_MAP
 
 USER_ID = 88
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def setup_db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
