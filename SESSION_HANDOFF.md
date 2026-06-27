@@ -60,22 +60,27 @@
 - **(Prior, all ✅):** M-1/M-2/M-4 import hardening, R-1/R-2/R-5/R-6/R-7/H-2 sync hardening, BizID resolvers (BizID+username guard), entity-id remap import, `/api/identity/check`, login cloud-fallback + local mirror, sync nudge popup, push-only hybrid, scheduler 15s+coalesce, web=Cloud display, greyed real-time toggles, live username check on Register.
 - **Docs:** `PRODUCT_REVIEW.md`, `MASTER_PLAN_CORE.md`, `SYNC_MIGRATION_AUDIT.md`, `MANUAL_TEST_PLAN.md`, `IDENTITY_AND_SYNC_DESIGN_REVIEW.md`, `STEP3_UID_PLAN.md` (Phase A ✅, B split documented).
 
+### ✅ COMPLETED & VERIFIED — Session 2026-06-27 (continuation)
+- **Step 3 Phase A.2 (child/aux uids):** `uid` added to all 11 `TimestampMixin`-only synced child/aux tables (`*_line_items, stock_ledger, product_barcodes, business_settings, invoice_payments, shared_ledgers, stock_transfer_line_items, alert_configs, rate_limit_configs`); registered in `_COLUMN_MIGRATIONS` + `_UID_TABLES`; alembic `ee9c2223e60a_add_child_uids`. All 24 synced tables now carry `uid`.
+- **Step 3 Phase B.2 (sync match on uid):** outbox trigger serializes parent `uid` (`_serialize_orm_obj` resolves FKs → `{fk}_uid`/`{base}_uid`); `push_changes` + `sync_worker` pull-apply match `existing` by `uid` (id fallback), never force the source `id`, and resolve child FKs via parent `uid`. **Hardening this session:** if a parent `uid` is present but unresolved locally, the child is **deferred** (not written with a stale source id); worker applies parent tables before children (`_child_last` sort).
+- **`shared_ledger` → `shared_ledgers` fix:** the real tablename is `shared_ledgers`; the old key in `_SYNC_TABLES`/`MODEL_MAP`/`_EXPORT_ORDER` silently dropped those rows from sync/broadcast. Renamed.
+- **BUG FIX — cross-DB `/api/migrate/count` scoping** (broke the cloud-data nudge): `count_records` now uses `_resolve_owner_id` (BizID+username, active DB) not the per-DB JWT `id`. **Verified end-to-end:** cloud `Rakshith_Dev` (biz 12) → local mirror (biz 127), login senses `cloud=5 > local=1` → "Cloud data available" nudge → Sync now → `5 records merged`, remap `{from: 12, to: 127}`, no dupes.
+- **Auth test-user policy escape hatch:** allowed when `is_test_db` OR `ALLOW_TEST_USERS`.
+- **`migrate.py` rename (clarity):** `cloud_owner_id`→`dest_owner_id`, `local_owner_id`→`source_owner_id`, `_detect_local_owner_id`→`_detect_source_owner_id` (direction-neutral; the old names were correct only for local→cloud and read backwards for cloud→local sync). Logic unchanged.
+- **`SyncNudgeModal` UX:** dismiss only via an explicit **×** (no backdrop/accidental close); `Later` removed.
+- **Deployed to HF Space** (`rakshit-dev/BizAssist`) + pushed; GitHub `bizassist-billing` fixes pushed (`e232f81`).
+
 ### 🔜 PENDING / NOT STARTED
-- **Deploy B.1 + Phase A to HF:** push `database/db.py`, `database/migration.py`, `routes/migrate.py` (+ `sync_map.py`, `scheduler.py` if not already) to `BizAssist_HF` and HF Space. On HF startup, `run_migrations_and_seed` adds uid + backfills via `gen_random_uuid()`. Confirm Supabase has `gen_random_uuid()` (default yes).
-- **Vercel redeploy** for frontend identity/sync UX changes (if not already pushed).
-- **Step 3 Phase B.2** (the big one) — see Next Pointer.
-- **Phase C** (later): `uid` index + `UniqueConstraint(business_id, uid)`; `uid` NOT NULL; retire `?remap_ids` natural-key fallback + `users`-exclusion hack.
-- **Phase A.2** (small): add `uid` to TimestampMixin-only synced child/aux tables (`*_line_items, stock_ledger, product_barcodes, business_settings, invoice_payments, shared_ledger, stock_transfer_line_items, alert_configs, rate_limit_configs`) before B.2 needs them.
+- **Vercel redeploy** of the web frontends (`frontend-billing`, `frontend-ai`) for the identity/sync UX + the `SyncNudgeModal` × change (the hosted web app still runs the prior bundle).
+- **Commit the loose ends:** `SyncNudgeModal.jsx` (uncommitted) + the `migrate.py` rename; tidy the stray `test_results.json` commit message (`9cb9d14`).
+- **Confirm HF startup log** shows `Added <table>.uid` + backfill on Supabase and **no `_check_schema_integrity` halt** (deployed but not yet eyeballed).
+- **Step 3 Phase C** (after B soaks): `uid` index + `UniqueConstraint(business_id, uid)`; `uid` NOT NULL; retire `?remap_ids` natural-key fallback, the `users`-exclusion, and the `id`-fallback in the apply paths. Add the missing uid tests from `STEP3_UID_PLAN.md §7` (cross-DB no-collision, child-FK-by-parent-uid, merge-LWW-on-uid, id-fallback).
 
 ## 5. NEXT EXECUTION POINTER
 
-**Immediate:** run `& "..\venv\Scripts\python.exe" -m pytest -q` from `backend/` to confirm B.1 green (suite was 683-green before B.1; expect 684). Then **deploy Phase A + B.1 to HF** (files in §4 PENDING).
+**Immediate:** Step 3 Phases A/A.2/B.1/B.2 are DONE, deployed, and verified end-to-end (see §4 COMPLETED). The next concrete moves are the §4 PENDING items: Vercel redeploy, commit the loose ends, eyeball the HF migration log, then **Step 3 Phase C** once B has soaked. After Phase C, the §7 forward backlog (below) is the roadmap.
 
-**Top of stack — Step 3 Phase B.2** (`STEP3_UID_PLAN.md §4`): switch push/pull + merge button from `id`- to `uid`-matching. Requires outbox to carry parent uid. Order:
-1. **Outbox/trigger layer** — when enqueuing a child row into `SyncQueue`, add `{<fk>_uid: <parent.uid>}` to the payload.
-2. **`routes/sync.py::push_changes`** (line ~160) — match `existing` by `payload.uid` (id fallback); on INSERT do **not** force the source `id`; resolve child FKs via the parent `uid` in the payload.
-3. **`services/sync_worker.py`** pull-apply (line ~344) — `existing = db.query(model_cls).filter(model_cls.uid == record["uid"]).first()` (id fallback); insert-if-missing; resolve child FK by parent uid.
-4. **(Optional)** route the merge sync button (`_upsert_rows(merge=True)`) through the uid-aware `_import_with_remap` with LWW-update-on-match, so it stops relying on aligned ids.
+**Top of stack — Step 3 Phase C** (`STEP3_UID_PLAN.md §5`): now that match-on-uid is live and verified, add the `uid` index + `UniqueConstraint(business_id, uid)`, make `uid` NOT NULL (after confirming backfill everywhere), and retire the interim crutches — the `?remap_ids` natural-key fallback, the `users`-exclusion, and the `id`-fallback branches in `push_changes`/`sync_worker`/`_import_with_remap`. Land the missing uid regression tests first (`STEP3_UID_PLAN.md §7`).
 
 **Hard rule for next session:** new persisted columns MUST be added to `_COLUMN_MIGRATIONS` or startup halts. I cannot run `pytest`/`run_tests.ps1` (Windows venv); the user runs them — verification is static + user-run. Do NOT `alembic upgrade head` on an unstamped DB (replays baseline → "table already exists"); use `alembic stamp head`. Bash sandbox mount serves stale partials for freshly-written files — verify via Read, parse via `ast.parse`.
 
@@ -84,9 +89,8 @@
 ## 6. FULL FORWARD ROADMAP & BACKLOG
 
 ### Step 3 (durable uid) — remaining phases
-- **Phase A.2** (small): add `uid` to the `TimestampMixin`-only synced child/aux tables — `invoice_line_items, purchase_invoice_line_items, purchase_order_line_items, stock_ledger, product_barcodes, business_settings, invoice_payments, shared_ledger, stock_transfer_line_items, alert_configs, rate_limit_configs`. Register each in `_COLUMN_MIGRATIONS` + extend backfill. Needed before B.2 can resolve child rows by their own uid.
-- **Phase B.2** (the big one): push/pull + merge button match on `uid`. Requires outbox to carry parent uid. (Steps in §5.)
-- **Phase C** (cleanup, after B soaks): add `uid` index + `UniqueConstraint(business_id, uid)`; make `uid` NOT NULL; retire `?remap_ids` natural-key fallback + the `users`-exclusion + the `_remap_rows`/`_upsert_rows` id-preserving path where uid now covers it.
+- **Phase A** ✅ · **Phase A.2** ✅ · **Phase B.1** ✅ · **Phase B.2** ✅ (all done + verified 2026-06-27 — see §4 COMPLETED).
+- **Phase C** (cleanup, after B soaks — ONLY remaining phase): add `uid` index + `UniqueConstraint(business_id, uid)`; make `uid` NOT NULL; retire `?remap_ids` natural-key fallback + the `users`-exclusion + the `_remap_rows`/`_upsert_rows` id-preserving path + the `id`-fallback branches where uid now covers it. Land the `STEP3_UID_PLAN.md §7` regression tests first.
 
 ### Cross-DB identity hardening (NEW — found 2026-06-27)
 - **PARTIALLY FIXED — BUG: cloud user on local app via restored session → 404 "User not found".** `/settings` (and other regular routes) resolve the user by `username` against the *active* backend; a restored **cloud** session in **local** mode has no local mirror → every core route 404s. **Done (this session):** `AuthContext` now catches `404` on the three restore-time fetches (profile/settings/businessConfig) and calls `logout()` — the 404-loop / stuck state is gone; the user cleanly drops to the login screen (re-login then builds the mirror via the fresh-device path). **Still open (follow-up, not blocking):** (a) the *preferred* path — transparently run the local-mirror create on restore instead of forcing a re-login; (b) backend `409 "needs local mirror"` signal instead of bare `404` so the frontend distinguishes "missing mirror" from a genuine not-found. Trust-critical edges are mitigated; the transparent-restore polish remains.
@@ -110,3 +114,34 @@
 ### Product / future (not yet scoped)
 - Subscription / trial gating of cloud (currently the gate is conceptual; enforce on cloud data + AI + hosting).
 - Plan/billing UI; entitlement checks on sync/pull.
+
+---
+
+## 7. FORWARD RECOMMENDATIONS (next session, from doc review)
+
+*Synthesised from `PRODUCT_REVIEW.md`, `STEP3_UID_PLAN.md`, `MASTER_PLAN_CORE.md`/full plan, and `HOSTING_MODE_MASTER_PLAN.md`. These are the recommended next bodies of work **beyond** the immediate §4 PENDING items. Roughly priority-ordered.*
+
+### A. Close the DoD / quality gate (cheapest, highest trust ROI)
+- **Pin a green test run** (`run_tests.ps1`) with a single dated count, and **reconcile the test-count drift** — docs cite 555/431 while code has ~541 test fns (`PRODUCT_REVIEW` §B4). This is DoD Gate 1, currently the only open gate.
+- **Burn down the 🟡 "built, live-QA pending" items:** offline POS save/replay, print/preview, sticky bars, and the two-system real-time multi-writer test in `MANUAL_TEST_PLAN.md`. These are the gap between "built" and "shippable", not missing features.
+
+### B. Security hardening (`PRODUCT_REVIEW` §B2)
+- **S-1 — make RLS fail-CLOSED** for tenant tables (deny when `app.current_business_id` is unset; explicit allowlist for migration/admin/scheduler). Highest-value security item; latent cross-tenant exposure if any future path forgets the context.
+- **S-3 — token refresh/revocation:** 24h JWTs can't be revoked (e.g., after removing a cashier). Add a short access token + refresh, or a token-version claim checked against the user row.
+
+### C. Sync/code-health debt (now partly worsened by Phase B work)
+- **De-duplicate the sync apply logic.** `PRODUCT_REVIEW` A-2 flagged `_MODEL_MAP` duplicated across `routes/sync.py` + `services/sync_worker.py`; this session ADDED a second copy of the **FK-via-uid resolution + deferral** block in both files. Hoist the shared MODEL_MAP *and* the FK-resolution helper into one module imported by both before it drifts.
+- **Finish `Sales.jsx` decomposition** (`PRODUCT_REVIEW` A-1, `R5_SALES_DECOMPOSITION_PLAN.md`) — ~3,600-line god-component on the money path; `usePaymentFlow`→`<PaymentPanel>` extraction is already underway.
+
+### D. Scale-out prerequisites (`PRODUCT_REVIEW` A-4, Phase 5)
+- Move process-local **cache / scheduler / rate-limiter to Redis** before any multi-instance / multi-store deploy. Single-worker is fine for pilots only; the app warns if `WEB_CONCURRENCY>1`.
+
+### E. Cross-DB identity end-state (ties off Step 3)
+- **Globally-unique BizID** (cloud-authoritative issuance is in; per-DB mint + BizID+username guard is interim). Once global BizID + `uid` NOT NULL land (Phase C), retire the username-confirmation guard and the `users`-exclusion entirely.
+- **Restored-session polish:** transparent local-mirror create on session-restore (vs forcing re-login) + backend `409 "needs local mirror"` signal (the 404→logout mitigation is in).
+
+### F. Product / monetisation + moat validation (Phase 5/6, master plan §12–§16)
+- **Enforce subscription/trial gating** on cloud data + AI + hosting (today conceptual); build plan/billing UI + entitlement checks on sync/pull. Payments = Razorpay, manual activation first (D6).
+- **Compliance:** e-way as compliant PDF first, API aggregator later (D7); CA-validate GST/e-way legality.
+- **Customer app** as a PWA share link first, not native (D8).
+- **Validate the network USP manually with the pilot** *before* deep Phase 5/6 spend — the moat (BizID network + shared ledger) rests on retailer behaviour, not tech (top startup risk).

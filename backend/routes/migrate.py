@@ -210,7 +210,7 @@ def _fetch_table(db: Session, table_name: str, business_id: int) -> list[dict]:
         return []
 
 
-def _detect_local_owner_id(tables: dict) -> int | None:
+def _detect_source_owner_id(tables: dict) -> int | None:
     """
     Read the owner's id from the exported users table payload.
     The owner row has parent_business_id = None / null.
@@ -241,14 +241,14 @@ def _remap_rows(rows: list[dict], local_id: int, cloud_id: int) -> list[dict]:
     return remapped
 
 
-def _upsert_users(db: Session, rows: list[dict], cloud_owner_id: int, existing_tables: set) -> int:
+def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_tables: set) -> int:
     """
     Upsert the users table carefully:
     - Owner row (parent_business_id IS NULL): UPDATE the existing cloud owner row
       by username — never insert a duplicate. Only updates non-identity fields
       (business_name, gstin, phone, email, address, logo, settings, etc.).
     - Staff rows (parent_business_id IS NOT NULL): upsert by username, remapping
-      parent_business_id → cloud_owner_id.
+      parent_business_id → dest_owner_id.
     """
     if "users" not in existing_tables:
         return 0
@@ -285,7 +285,7 @@ def _upsert_users(db: Session, rows: list[dict], cloud_owner_id: int, existing_t
                 logger.warning("migrate/import: owner user update failed for %s — %s", r.get("username"), exc)
         else:
             # Staff: remap parent → cloud owner
-            r["parent_business_id"] = cloud_owner_id
+            r["parent_business_id"] = dest_owner_id
             # Upsert by username
             if dialect == "postgresql":
                 cols = [k for k in r if k != "id"]  # let PG assign id for new staff
@@ -544,7 +544,7 @@ def _natural_lookup(db: Session, table: str, col_names: set, business_id: int, f
 
 
 def _import_with_remap(db: Session, table_name: str, rows: list[dict],
-                       cloud_owner_id: int, local_owner_id: int,
+                       dest_owner_id: int, source_owner_id: int,
                        existing_tables: set[str], id_maps: dict) -> int:
     """
     (R-3) Import rows WITHOUT forcing their source ids. The destination assigns
@@ -586,8 +586,8 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
             continue
         # owner remap (business/owner references)
         for f in ("business_id", "parent_business_id", "user_id"):
-            if f in filtered and filtered[f] == local_owner_id:
-                filtered[f] = cloud_owner_id
+            if f in filtered and filtered[f] == source_owner_id:
+                filtered[f] = dest_owner_id
         # boolean coercion (SQLite int → Postgres BOOLEAN)
         for bc in bool_cols:
             if bc in filtered and filtered[bc] is not None and not isinstance(filtered[bc], bool):
@@ -607,9 +607,9 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
         # (phone/name/invoice_id) for rows that predate the uid column. A matched
         # row is reused (its destination id is recorded so child FKs rewrite to
         # it), never duplicated or overwritten.
-        existing_id = _uid_lookup(db, table_name, col_names, cloud_owner_id, filtered)
+        existing_id = _uid_lookup(db, table_name, col_names, dest_owner_id, filtered)
         if existing_id is None:
-            existing_id = _natural_lookup(db, table_name, col_names, cloud_owner_id, filtered)
+            existing_id = _natural_lookup(db, table_name, col_names, dest_owner_id, filtered)
         if existing_id is not None:
             if old_id is not None:
                 table_map[old_id] = existing_id
@@ -735,18 +735,20 @@ def import_data(
     Response: {"imported": {...}, "total": N, "id_remap": {"from":122,"to":7}}
     """
     # Resolve the ACTUAL owner id in THIS (destination) DB (BizID-first)
-    cloud_owner_id = _resolve_owner_id(current_user, db)
+    dest_owner_id = _resolve_owner_id(current_user, db)
     existing = _existing_tables(db)
     imported: dict[str, int] = {}
 
-    # Detect the local owner id from the exported payload
-    local_owner_id = _detect_local_owner_id(body.tables)
-    if local_owner_id is None:
-        local_owner_id = cloud_owner_id  # same-DB migration, no remap needed
+    # Detect the source owner id embedded in the exported payload. Direction-
+    # neutral: for a local→cloud upload this is the local owner; for a cloud→local
+    # sync ("Sync now") it is the cloud owner. Rows are remapped source→dest.
+    source_owner_id = _detect_source_owner_id(body.tables)
+    if source_owner_id is None:
+        source_owner_id = dest_owner_id  # same-DB migration, no remap needed
 
     logger.info(
-        "migrate/import: user=%s local_owner_id=%s cloud_owner_id=%s mode=%s",
-        current_user.get("username"), local_owner_id, cloud_owner_id,
+        "migrate/import: user=%s source_owner_id=%s dest_owner_id=%s mode=%s",
+        current_user.get("username"), source_owner_id, dest_owner_id,
         "remap" if remap_ids else ("merge-lww" if merge else "mirror"),
     )
 
@@ -767,13 +769,13 @@ def import_data(
             if table_name == "users":
                 # Users are always identity-matched by username (owner/staff),
                 # never id-remapped — they define the business scope itself.
-                n = _upsert_users(db, rows, cloud_owner_id, existing)
+                n = _upsert_users(db, rows, dest_owner_id, existing)
             elif remap_ids:
                 n = _import_with_remap(
-                    db, table_name, rows, cloud_owner_id, local_owner_id, existing, id_maps
+                    db, table_name, rows, dest_owner_id, source_owner_id, existing, id_maps
                 )
             else:
-                remapped = _remap_rows(rows, local_owner_id, cloud_owner_id)
+                remapped = _remap_rows(rows, source_owner_id, dest_owner_id)
                 n = _upsert_rows(db, table_name, remapped, existing, merge=merge)
 
             if n > 0:
@@ -793,10 +795,10 @@ def import_data(
 
     total = sum(imported.values())
     _mode = "remap" if remap_ids else ("merge-lww" if merge else "mirror")
-    remap_info = {"from": local_owner_id, "to": cloud_owner_id} if local_owner_id != cloud_owner_id else None
+    remap_info = {"from": source_owner_id, "to": dest_owner_id} if source_owner_id != dest_owner_id else None
     logger.info(
-        "migrate/import: cloud_owner_id=%s imported=%s total=%s remap=%s mode=%s",
-        cloud_owner_id, imported, total, remap_info, _mode,
+        "migrate/import: dest_owner_id=%s imported=%s total=%s remap=%s mode=%s",
+        dest_owner_id, imported, total, remap_info, _mode,
     )
     result = {"imported": imported, "total": total, "mode": _mode}
     if remap_info:

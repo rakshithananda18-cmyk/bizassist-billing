@@ -41,9 +41,19 @@ export default function SyncNudgeModal() {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: 'var(--bg-2, #1a1a1a)', border: '1px solid var(--border, rgba(255,255,255,0.12))', borderRadius: 16, padding: '26px 30px', width: '100%', maxWidth: 440, boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.08rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
-          <CloudIcon size={18} style={{ color: 'var(--accent)' }} />
-          <span>Cloud data available</span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: '1.08rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <CloudIcon size={18} style={{ color: 'var(--accent)' }} />
+            <span>Cloud data available</span>
+          </span>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => setInfo(null)}
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.4rem', lineHeight: 1, padding: '0 4px', marginLeft: 8 }}
+          >
+            ×
+          </button>
         </div>
         <div style={{ fontSize: '0.84rem', color: 'var(--text-muted)', lineHeight: 1.55, marginBottom: 18 }}>
           Your cloud account has {n > 0 ? <strong>{n} record{n === 1 ? '' : 's'}</strong> : 'data'} that {n === 1 ? "isn't" : "aren't"} on this device yet. They won’t appear here until you sync.
@@ -52,12 +62,6 @@ export default function SyncNudgeModal() {
           </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button
-            onClick={() => setInfo(null)}
-            style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.84rem' }}
-          >
-            Later
-          </button>
           <button
             onClick={() => setSyncing(true)}
             style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}
