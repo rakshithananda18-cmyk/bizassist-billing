@@ -394,11 +394,12 @@ export default function Login() {
                           recent[idx].staffAccounts = liveStaff
                           localStorage.setItem('bizassist_recent_logins', JSON.stringify(recent))
                         }
-                        if (liveStaff.length > 0) {
-                          setView('recent-choose')
-                        } else {
-                          setView('password')
-                        }
+                        setView(prev => {
+                          if (prev === 'recent' || prev === 'recent-choose') {
+                            return liveStaff.length > 0 ? 'recent-choose' : 'password'
+                          }
+                          return prev
+                        })
                       }
                     } catch (err) {
                       logger.error('Failed to fetch live staff list for quick login:', err)
