@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 
 export default function CustomSelect({
   value,
@@ -10,7 +11,8 @@ export default function CustomSelect({
   id = ''
 }) {
   const [isOpen, setIsOpen] = useState(false)
-  const containerRef = useRef(null)
+  const buttonRef = useRef(null)
+  const [dropdownStyle, setDropdownStyle] = useState({})
 
   // Extract options from children (native <option> elements)
   const options = React.Children.map(children, child => {
@@ -27,18 +29,65 @@ export default function CustomSelect({
   const selectedOption = options.find(o => String(o.value) === String(value))
   const displayLabel = selectedOption ? selectedOption.label : (options.length > 0 ? options[0].label : 'Select...')
 
+  // Open/close handler
+  const handleToggle = (e) => {
+    e.preventDefault()
+    if (isOpen) {
+      setIsOpen(false)
+      return
+    }
+    // Calculate dropdown position
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      setDropdownStyle({
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.left + window.scrollX,
+        width: rect.width,
+      })
+    }
+    setIsOpen(true)
+  }
+
   // Close on outside click
   useEffect(() => {
     function handleClickOutside(e) {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
-        setIsOpen(false)
+      // If clicking outside both the button and the dropdown list
+      const dropdownEl = document.getElementById(`custom-dropdown-${id || 'generic'}`)
+      if (
+        (buttonRef.current && buttonRef.current.contains(e.target)) ||
+        (dropdownEl && dropdownEl.contains(e.target))
+      ) {
+        return
       }
+      setIsOpen(false)
     }
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside)
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isOpen, id])
+
+  // Update position on scroll/resize when open
+  useEffect(() => {
+    function updatePosition() {
+      if (isOpen && buttonRef.current) {
+        const rect = buttonRef.current.getBoundingClientRect()
+        setDropdownStyle({
+          top: rect.bottom + window.scrollY + 4,
+          left: rect.left + window.scrollX,
+          width: rect.width,
+        })
+      }
+    }
+    if (isOpen) {
+      window.addEventListener('scroll', updatePosition, true)
+      window.addEventListener('resize', updatePosition)
+    }
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true)
+      window.removeEventListener('resize', updatePosition)
     }
   }, [isOpen])
 
@@ -50,34 +99,36 @@ export default function CustomSelect({
     setIsOpen(false)
   }
 
+  // Base style for the button to ensure it looks good if no styles are provided,
+  // but allows overriding via className and style.
+  const buttonStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    background: 'var(--bg-2, #ffffff)',
+    border: '1px solid var(--border, #e5e7eb)',
+    color: 'var(--text-primary, #1f2937)',
+    padding: '8px 12px',
+    borderRadius: 'var(--radius-md, 6px)',
+    fontSize: '0.875rem',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.6 : 1,
+    outline: 'none',
+    boxShadow: 'var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.05))',
+    width: '100%',
+    ...style
+  }
+
   return (
-    <div
-      ref={containerRef}
-      className={`custom-select-container ${className}`}
-      style={{ position: 'relative', display: 'inline-block', width: '100%', ...style }}
-      id={id}
-    >
+    <>
       <button
+        ref={buttonRef}
         type="button"
+        id={id}
+        className={`custom-select-btn ${className}`}
         disabled={disabled}
-        onClick={(e) => { e.preventDefault(); setIsOpen(!isOpen); }}
-        style={{
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: 'var(--bg-2, #ffffff)',
-          border: '1px solid var(--border, #e5e7eb)',
-          color: 'var(--text-primary, #1f2937)',
-          padding: '8px 12px',
-          borderRadius: 'var(--radius-md, 6px)',
-          fontSize: '0.875rem',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          opacity: disabled ? 0.6 : 1,
-          outline: 'none',
-          boxShadow: 'var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.05))',
-          minHeight: 38
-        }}
+        onClick={handleToggle}
+        style={buttonStyle}
       >
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {displayLabel}
@@ -87,24 +138,26 @@ export default function CustomSelect({
         </svg>
       </button>
 
-      {isOpen && !disabled && (
-        <div style={{
-          position: 'absolute',
-          top: '100%',
-          left: 0,
-          right: 0,
-          marginTop: 4,
-          background: 'var(--bg-2, #ffffff)',
-          border: '1px solid var(--border, #e5e7eb)',
-          borderRadius: 8,
-          boxShadow: '0 4px 14px rgba(0, 0, 0, 0.25)',
-          zIndex: 9999,
-          maxHeight: 250,
-          overflowY: 'auto',
-          padding: '6px 0',
-          display: 'flex',
-          flexDirection: 'column'
-        }}>
+      {isOpen && !disabled && createPortal(
+        <div
+          id={`custom-dropdown-${id || 'generic'}`}
+          style={{
+            position: 'absolute',
+            top: dropdownStyle.top,
+            left: dropdownStyle.left,
+            width: dropdownStyle.width,
+            background: 'var(--bg-2, #ffffff)',
+            border: '1px solid var(--border, #e5e7eb)',
+            borderRadius: 8,
+            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.25)',
+            zIndex: 99999,
+            maxHeight: 250,
+            overflowY: 'auto',
+            padding: '6px 0',
+            display: 'flex',
+            flexDirection: 'column'
+          }}
+        >
           {options.map((opt, idx) => {
             const isCurrent = String(opt.value) === String(value)
             return (
@@ -141,8 +194,9 @@ export default function CustomSelect({
               </button>
             )
           })}
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   )
 }
