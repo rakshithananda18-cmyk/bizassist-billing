@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from database.db import get_db
 from database.models import User
 from core.models import B2BConnection, BusinessSettings
-from services.auth import get_active_user, restrict_cashier, restrict_cashier_or_ticket
+from services.auth import get_active_user, restrict_cashier, restrict_cashier_or_ticket, get_active_user_or_ticket
 from services.realtime import realtime_manager
 from core.connection import service as conn_service
 
@@ -227,10 +227,15 @@ def generate_sse_ticket(current_user: dict = Depends(get_active_user)):
     return {"ticket": ticket, "expires_in": 30}
 
 @router.get("/realtime/events")
-async def sse_realtime_feed(request: Request, current_user: dict = Depends(restrict_cashier_or_ticket)):
+async def sse_realtime_feed(request: Request, current_user: dict = Depends(get_active_user_or_ticket)):
     """
-    Server-Sent Events stream for real-time B2B notifications.
-    Streams events scoped to the logged-in business.
+    Server-Sent Events stream for real-time notifications, scoped to the business.
+
+    Any authenticated user of the business (owner OR cashier), via token or a
+    short-lived SSE ticket, may subscribe — cashiers need the stream to receive
+    sync deltas and to power the owner's Live Counters view. (Was
+    `restrict_cashier_or_ticket`, which authenticates via ticket/token but STILL
+    403'd cashiers — the role block was wrong for realtime.)
     """
     bid = current_user["id"]
     q = realtime_manager.subscribe(bid)

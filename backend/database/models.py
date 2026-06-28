@@ -87,6 +87,12 @@ class User(Base, TimestampMixin):
     # per staff (owner defaults to "OW"); drives this account's invoice-number
     # series (C1-0001, C2-0001…) so two logins never collide. Owner-only to set.
     counter_prefix = Column(String, nullable=True)
+    # Staff display/login name within the owner's business (multi-tenant staff,
+    # §9.5). For a staff row this is the bare name the owner typed (e.g. "counter_1")
+    # — unique only WITHIN parent_business_id, so two businesses can both have a
+    # "counter_1". The global-unique `username` is auto-derived internally; staff
+    # never log in by it directly (they go owner → counter dropdown). NULL for owners.
+    staff_login_name = Column(String, nullable=True)
 
 
 class UploadedFile(Base, TimestampMixin):

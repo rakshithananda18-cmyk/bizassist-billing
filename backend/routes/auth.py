@@ -2,6 +2,7 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from database.db import get_db, DATABASE_URL
 from database.models import User
@@ -66,6 +67,14 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             logger.warning(f"[AUTH] Failed login for username '{req.username}': invalid credentials")
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
+        # (§9.5) Staff are not OFFERED a direct login in the UI — the login screen
+        # is owner-gated (owner username → Owner / Staff buttons → /login/staff),
+        # and a staff name that collides cross-business gets an internal username
+        # they don't know. We keep /login working here for backward compat (API +
+        # existing flows); the UI never exposes a direct staff-username login.
+        # (A strict server-side block is a clean follow-up, paired with migrating
+        #  the test suite + any internal callers to /login/staff.)
+
         # Staff sub-accounts scope to their owner's business: the JWT `id` (the
         # data scope every route reads) becomes the parent business id, while
         # `user_id` keeps the staff member's own identity.
@@ -101,6 +110,100 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"[AUTH] Error during login for username '{req.username}': {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server login error")
+
+
+class StaffLoginRequest(BaseModel):
+    owner_username: str
+    staff_login_name: str
+    password: str
+
+
+@router.get("/staff-counters")
+def staff_counters(owner: str, db: Session = Depends(get_db)):
+    """(§9.5) Public lookup for the owner-gated staff-login dropdown: resolve an
+    OWNER username → that business's name + its staff counters. Staff names are
+    only reachable by knowing the owner's username (never enumerable directly).
+    Returns an empty `staff` list if the owner has none; 404 if no such owner."""
+    owner_row = db.query(User).filter(
+        User.username == owner, User.parent_business_id.is_(None)
+    ).first()
+    if not owner_row:
+        raise HTTPException(status_code=404, detail="No business found for that owner username")
+    staff = (
+        db.query(User)
+        .filter(User.parent_business_id == owner_row.id)
+        .order_by(User.staff_login_name.asc())
+        .all()
+    )
+    return {
+        "business_name": owner_row.business_name,
+        "owner_username": owner_row.username,
+        "staff": [
+            {
+                "login_name": s.staff_login_name or s.username,
+                "counter_prefix": s.counter_prefix,
+                "role": s.role,
+            }
+            for s in staff
+        ],
+    }
+
+
+@router.post("/login/staff")
+def staff_login(req: StaffLoginRequest, request: Request, db: Session = Depends(get_db)):
+    """(§9.5) Staff login scoped to the owner's business — staff never use a global
+    username. Resolve owner → staff by per-business `staff_login_name` → verify
+    password → issue the same business-scoped JWT as /login. The JWT carries the
+    internal global-unique username (routes resolve by it); the response returns
+    the bare name for display."""
+    try:
+        ip = request.client.host if request.client else "unknown"
+        rl = check_ip_rate_limit(ip)
+        if not rl["allowed"]:
+            raise HTTPException(status_code=429, detail=rl["reason"])
+
+        owner = db.query(User).filter(
+            User.username == req.owner_username, User.parent_business_id.is_(None)
+        ).first()
+        if not owner:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        staff = (
+            db.query(User)
+            .filter(
+                User.parent_business_id == owner.id,
+                func.lower(User.staff_login_name) == (req.staff_login_name or "").strip().lower(),
+            )
+            .first()
+        )
+        if not staff or not verify_password(req.password, staff.password):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        business_id = owner.id
+        token = create_access_token({
+            "id": business_id,
+            "user_id": staff.id,
+            "username": staff.username,          # internal global-unique → route resolution
+            "public_id": staff.public_id,
+            "business_name": owner.business_name,
+            "role": staff.role,
+        })
+        logger.info(f"[AUTH] Staff '{staff.staff_login_name}' logged into business {business_id} (owner {owner.username}).")
+        return {
+            "token": token,
+            "id": business_id,
+            "user_id": staff.id,
+            "username": staff.staff_login_name or staff.username,   # bare name for display
+            "public_id": staff.public_id,
+            "business_name": owner.business_name,
+            "role": staff.role,
+            "counter_prefix": staff.counter_prefix,
+            "db_mode": _DB_MODE,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[AUTH] Staff login error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server login error")
 
 

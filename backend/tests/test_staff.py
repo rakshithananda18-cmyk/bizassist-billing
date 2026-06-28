@@ -31,7 +31,7 @@ def _signup(business_name):
     })
     assert r.status_code == 200, r.text
     b = r.json()
-    return {"headers": {"Authorization": f"Bearer {b['token']}"}, "bid": b["id"]}
+    return {"headers": {"Authorization": f"Bearer {b['token']}"}, "bid": b["id"], "username": uname}
 
 
 def _create_staff(owner, username=None, password="CashPass123!", role="cashier"):
@@ -39,6 +39,15 @@ def _create_staff(owner, username=None, password="CashPass123!", role="cashier")
     r = client.post("/staff", headers=owner["headers"],
                     json={"username": username, "password": password, "role": role})
     return r, username, password
+
+
+def _staff_login(owner_username, staff_login_name, password="CashPass123!"):
+    """§9.5: staff authenticate scoped to the owner, never by a global username."""
+    return client.post("/login/staff", json={
+        "owner_username": owner_username,
+        "staff_login_name": staff_login_name,
+        "password": password,
+    })
 
 
 def test_owner_creates_staff_who_shares_business_data():
@@ -56,8 +65,9 @@ def test_owner_creates_staff_who_shares_business_data():
     assert staff["role"] == "cashier"
     assert staff["business_id"] == owner["bid"]
 
-    # Staff logs in → token scoped to the OWNER's business id.
-    login = client.post("/login", json={"username": uname, "password": pwd})
+    # Staff log in scoped to the owner (the UI is owner-gated) → token scoped to
+    # the OWNER's business id.
+    login = _staff_login(owner["username"], uname, pwd)
     assert login.status_code == 200, login.text
     body = login.json()
     assert body["id"] == owner["bid"]          # data scope == owner's business
@@ -76,7 +86,7 @@ def test_staff_is_cashier_and_role_restricted():
     owner = _signup("Owner Shop B")
     r, uname, pwd = _create_staff(owner)
     assert r.status_code == 201
-    body = client.post("/login", json={"username": uname, "password": pwd}).json()
+    body = _staff_login(owner["username"], uname, pwd).json()
     staff_headers = {"Authorization": f"Bearer {body['token']}"}
     # A cashier cannot view reports nor manage staff.
     assert client.get("/reports/day-summary", headers=staff_headers).status_code == 403
@@ -126,8 +136,8 @@ def test_owner_assigns_staff_counter_prefix_carried_to_login():
     assert r.status_code == 201, r.text
     assert r.json()["counter_prefix"] == "c1"          # trimmed, de-dashed
 
-    # The assigned prefix is returned on the staff's own login (drives numbering).
-    login = client.post("/login", json={"username": uname, "password": pwd})
+    # The assigned prefix is returned on the staff's own (owner-scoped) login.
+    login = _staff_login(owner["username"], uname, pwd)
     assert login.status_code == 200, login.text
     assert login.json()["counter_prefix"] == "c1"
 
@@ -146,5 +156,22 @@ def test_cashier_cannot_change_their_counter_prefix():
     owner = _signup("Owner Lock Shop")
     r, uname, pwd = _create_staff(owner)
     sid = r.json()["id"]
-    staff_headers = {"Authorization": f"Bearer {client.post('/login', json={'username': uname, 'password': pwd}).json()['token']}"}
+    staff_headers = {"Authorization": f"Bearer {_staff_login(owner['username'], uname, pwd).json()['token']}"}
     assert client.patch(f"/staff/{sid}", headers=staff_headers, json={"counter_prefix": "C9"}).status_code == 403
+
+
+def test_same_staff_name_allowed_across_businesses():
+    """§9.5: per-business names — two owners can each have a 'counter_1'."""
+    a = _signup("Biz A")
+    b = _signup("Biz B")
+    ra, _, _ = _create_staff(a, username="counter_1")
+    rb, _, _ = _create_staff(b, username="counter_1")
+    assert ra.status_code == 201 and rb.status_code == 201, (ra.text, rb.text)
+    # Each logs in scoped to its OWN owner, lands in its OWN business.
+    la = _staff_login(a["username"], "counter_1").json()
+    lb = _staff_login(b["username"], "counter_1").json()
+    assert la["id"] == a["bid"] and lb["id"] == b["bid"]
+    assert la["id"] != lb["id"]
+    # Same name twice under the SAME owner is rejected.
+    dup = client.post("/staff", headers=a["headers"], json={"username": "counter_1", "password": "CashPass123!"})
+    assert dup.status_code == 400

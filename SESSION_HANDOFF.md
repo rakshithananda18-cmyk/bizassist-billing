@@ -169,10 +169,18 @@
 - **Deploy:** `users.counter_prefix` migration on BOTH DBs (runtime migrator auto-adds on startup; alembic for parity), **HF redeploy + Vercel redeploy**. Owner with no prefix set bills as `OW-`.
 - **Test:** assign cashier A→`C1`, B→`C2` in Staff; each logs in and bills → `C1-0001` / `C2-0001`; cashier has no way to change it.
 
+### 🟢 IMPLEMENTED (2026-06-28) — per-business staff names + owner-gated login (§9.5)
+- **Bug fixed:** staff `username` was GLOBALLY unique → "counter_1 already exists" when a 2nd business added it.
+- **Model:** new `users.staff_login_name` (the bare per-business name, e.g. "counter_1"; unique only within the owner's business). `username` stays global-unique but is now **bare-when-free, else namespaced** `"<bare>__<ownerId>"` (`core/api/staff.py::_internal_staff_username`). Migration: `_COLUMN_MIGRATIONS` + alembic `c4d2e6f8a1b3` + runtime backfill `_backfill_staff_login_name` (existing staff: `staff_login_name = username`). `_staff_out` returns the bare name for display.
+- **Login is OWNER-GATED (frontend):** `Login.jsx` "Other Business" flow → enter **owner username** → **Owner Login** (password → `/login`) or **Staff Login** (counter dropdown from `/staff-counters?owner=` → `/login/staff`). No-staff → goes straight to owner password. Recent-owner staff dropdown now uses `staffLogin`. New `AuthContext.staffLogin()`.
+- **Backend endpoints:** `GET /staff-counters?owner=<username>` (public lookup: owner → business name + counters; staff names only reachable via owner) and `POST /login/staff` (owner + staff_login_name + password → business-scoped JWT; JWT carries internal username, response returns bare name).
+- **Decision — direct staff `/login` NOT hard-blocked:** the strict block rippled into ~10 test files (they create staff + `/login`). Since the real goal is *privacy/owner-gating* (achieved: UI is owner-gated, names per-business, collisions get an unknown internal username), `/login` stays backward-compatible. **Follow-up (optional):** add a server-side block once those tests migrate to `/login/staff`.
+- **Tests:** `test_staff.py` updated (`_staff_login` helper, owner-scoped logins, `test_same_staff_name_allowed_across_businesses`). **Backend → HF redeploy; frontend → Vercel.** Same name across businesses now allowed; same name twice under one owner → 400.
+
 ### 🟢 FIXED (2026-06-28) — cashier 403 on `/realtime/ticket` (realtime never connected for staff)
 - **Symptom:** cashier login → `POST /realtime/ticket` **403** → 5 retries → SSE auto-disabled. Realtime never worked for staff.
 - **Cause:** `core/api/connections.py` ticket endpoint used `Depends(restrict_cashier)` (owner-only) while `/realtime/events` used `restrict_cashier_or_ticket` (allows cashiers) — inconsistent; the ticket prerequisite blocked cashiers.
-- **Fix:** ticket now uses `Depends(get_active_user)` (any authenticated user). **Backend → needs HF redeploy.**
+- **Fix:** BOTH realtime endpoints now allow cashiers — `/realtime/ticket` → `Depends(get_active_user)`; `/realtime/events` → `Depends(get_active_user_or_ticket)` (the old `restrict_cashier_or_ticket` authenticates via ticket/token but STILL 403'd cashiers — role block was wrong for realtime). **Backend → needs HF redeploy.**
 
 ### ▶️ NEXT — prioritized work & recommendations (2026-06-28)
 *Recommended order to pick up from. Each is independently shippable.*

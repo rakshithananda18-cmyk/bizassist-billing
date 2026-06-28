@@ -139,6 +139,27 @@ export function AuthProvider({ children }) {
     throw new Error(err.detail || 'Invalid credentials')
   }, [_saveSession])
 
+  // Staff login (§9.5): staff never use a global username — authenticate scoped to
+  // the business owner (owner username + per-business counter/staff name + password).
+  const staffLogin = useCallback(async (ownerUsername, staffLoginName, password) => {
+    logger.info('Attempting staff login under owner:', ownerUsername, 'as', staffLoginName)
+    const res = await fetch(`${API_BASE}/login/staff`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ owner_username: ownerUsername, staff_login_name: staffLoginName, password }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      logger.info('Staff login successful:', data.username, 'role:', data.role)
+      _saveSession(data)
+      reconcileBizIdOnLogin(data.token || data.access_token)
+      return
+    }
+    const err = await res.json().catch(() => ({}))
+    logger.error('Staff login failed:', res.status, err.detail)
+    throw new Error(err.detail || 'Invalid credentials')
+  }, [_saveSession])
+
   // Apply the chosen business template on a backend (best-effort).
   const _applyTemplate = useCallback(async (base, tok, template_key) => {
     if (!tok || !template_key) return
@@ -448,7 +469,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      user, token, loading, login, logout, signup, switchMode, authFetch, profile, fetchProfile, setProfile,
+      user, token, loading, login, staffLogin, logout, signup, switchMode, authFetch, profile, fetchProfile, setProfile,
       businessConfig, attributesSchema, fetchBusinessConfig, appReady, setAppReady,
       settings, fetchSettings
     }}>

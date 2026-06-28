@@ -107,6 +107,8 @@ _COLUMN_MIGRATIONS = [
     {"table": "users", "column": "logo",     "ddl": "ALTER TABLE users ADD COLUMN logo TEXT"},
     # users — per-login POS counter prefix (multi-terminal POS §9.3a)
     {"table": "users", "column": "counter_prefix", "ddl": "ALTER TABLE users ADD COLUMN counter_prefix TEXT"},
+    # users — per-business staff display/login name (§9.5 multi-tenant staff)
+    {"table": "users", "column": "staff_login_name", "ddl": "ALTER TABLE users ADD COLUMN staff_login_name TEXT"},
     # invoices additions
     {"table": "invoices", "column": "godown_id",        "ddl": "ALTER TABLE invoices ADD COLUMN godown_id INTEGER"},
     {"table": "invoices", "column": "reverse_charge",   "ddl": "ALTER TABLE invoices ADD COLUMN reverse_charge BOOLEAN DEFAULT FALSE"},
@@ -248,6 +250,20 @@ def _backfill_null_business_ids(conn):
     conn.commit()
 
 
+def _backfill_staff_login_name(conn):
+    """(§9.5) Existing staff predate `staff_login_name` — set it to their current
+    `username` so the new owner-scoped staff login keeps resolving them. New staff
+    get a bare `staff_login_name` + an auto-derived unique `username` at creation."""
+    try:
+        conn.execute(text(
+            "UPDATE users SET staff_login_name = username "
+            "WHERE parent_business_id IS NOT NULL AND staff_login_name IS NULL"
+        ))
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"[Migration] staff_login_name backfill skipped: {e}")
+
+
 def _backfill_null_uids(conn):
     """Step 3 (R-3) — fill `uid` on rows that predate the column. New rows get a
     uid ORM-side (default); existing rows are NULL after ALTER ADD COLUMN. Phase B
@@ -348,6 +364,7 @@ def run_migrations_and_seed():
     with engine.connect() as conn:
         _backfill_null_business_ids(conn)
         _backfill_null_uids(conn)
+        _backfill_staff_login_name(conn)
         _migrate_session_nulls(conn)
 
     # 4. Seed users

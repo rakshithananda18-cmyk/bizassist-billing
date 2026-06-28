@@ -14,6 +14,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database.db import get_db
@@ -53,12 +54,31 @@ def _norm_prefix(p: Optional[str]) -> Optional[str]:
 def _staff_out(u: User) -> dict:
     return {
         "id": u.id,
-        "username": u.username,
+        # Display the per-business bare name ("counter_1"), not the internal
+        # global-unique username. Falls back to username for legacy/owner rows.
+        "username": getattr(u, "staff_login_name", None) or u.username,
         "role": u.role,
         "business_id": u.parent_business_id,
         "counter_prefix": getattr(u, "counter_prefix", None),
         "created_at": u.created_at.isoformat() if u.created_at else None,
     }
+
+
+def _internal_staff_username(db: Session, bid: int, bare_name: str) -> str:
+    """Derive a GLOBALLY-unique internal `username` for a staff row (§9.5). Prefer
+    the bare name when it's globally free (keeps simple cases clean + backward
+    compatible); only on a cross-business collision (e.g. a 2nd business adding
+    'counter_1') namespace it as '<bare>__<owner_id>'. Staff log in owner → counter,
+    not by this value."""
+    if db.query(User.id).filter(User.username == bare_name).first() is None:
+        return bare_name
+    base = f"{bare_name}__{bid}"
+    cand = base
+    n = 1
+    while db.query(User.id).filter(User.username == cand).first() is not None:
+        n += 1
+        cand = f"{base}_{n}"
+    return cand
 
 
 def _validate_password(pw: str) -> None:
@@ -92,15 +112,28 @@ def list_staff(current_user: dict = Depends(restrict_cashier), db: Session = Dep
 
 @router.post("/staff", status_code=201)
 def create_staff(req: CreateStaff, current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
-    """Owner creates a staff login (cashier) that shares this business's data."""
+    """Owner creates a staff login that shares this business's data. The name is
+    per-BUSINESS (§9.5): two businesses can both have 'counter_1'. The bare name is
+    stored as `staff_login_name`; the global-unique `username` is auto-derived."""
     bid = current_user["id"]
     role = _validate_role(req.role)
-    if db.query(User).filter(User.username == req.username).first():
-        raise HTTPException(status_code=400, detail="Username already exists")
+    bare_name = (req.username or "").strip()
+    if not bare_name:
+        raise HTTPException(status_code=422, detail="Staff name is required")
+    # Uniqueness is PER-BUSINESS now (not global) — only clash within this owner.
+    dup = (
+        db.query(User.id)
+        .filter(User.parent_business_id == bid,
+                func.lower(User.staff_login_name) == bare_name.lower())
+        .first()
+    )
+    if dup:
+        raise HTTPException(status_code=400, detail="A staff member with this name already exists in your business")
     _validate_password(req.password)
 
     staff = User(
-        username=req.username,
+        username=_internal_staff_username(db, bid, bare_name),
+        staff_login_name=bare_name,
         password=hash_password(req.password),
         business_name=current_user.get("business_name"),
         role=role,
@@ -110,7 +143,8 @@ def create_staff(req: CreateStaff, current_user: dict = Depends(restrict_cashier
     db.add(staff)
     db.commit()
     db.refresh(staff)
-    logger.info("[STAFF] created '%s' (role=%s) under business %s", staff.username, role, bid)
+    logger.info("[STAFF] created '%s' (internal=%s, role=%s) under business %s",
+                bare_name, staff.username, role, bid)
     return _staff_out(staff)
 
 

@@ -6,7 +6,7 @@ import { BuildingMark } from '../components/Logo'
 import { API_BASE } from '../config'
 
 export default function Login() {
-  const { login } = useAuth()
+  const { login, staffLogin } = useAuth()
   const navigate  = useNavigate()
 
   const [username, setUsername] = useState('')
@@ -52,6 +52,12 @@ export default function Login() {
   // Selected owner/business for quick login
   const [selectedOwner, setSelectedOwner] = useState(null)
   const [selectedStaffUser, setSelectedStaffUser] = useState('')
+
+  // Other-Business (standard) flow is OWNER-GATED (§9.5): type the business owner
+  // username → choose Owner Login (password) or Staff Login (counter dropdown +
+  // password). Staff are never logged in by a global username directly.
+  const [standardStep, setStandardStep] = useState('username')  // username | choose | owner | staff
+  const [bizLookup, setBizLookup] = useState(null)              // { business_name, staff:[{login_name, counter_prefix, role}] }
 
   // Handle standard submit (when logging in first-time or other account)
   async function handleSubmitStandard(e) {
@@ -170,6 +176,50 @@ export default function Login() {
     }
   }
 
+  // Other-Business: resolve the typed owner username → business + counters.
+  async function handleOwnerContinue(e) {
+    e.preventDefault()
+    setError('')
+    const owner = username.trim()
+    if (!owner) { setError('Enter the business owner username.'); return }
+    setLoading(true)
+    try {
+      const res = await fetch(`${API_BASE}/staff-counters?owner=${encodeURIComponent(owner)}`)
+      if (res.ok) {
+        const data = await res.json()
+        setBizLookup(data)
+        // If the business has staff, offer the choice; else go straight to owner password.
+        setStandardStep((data.staff && data.staff.length > 0) ? 'choose' : 'owner')
+      } else {
+        // Owner not found via lookup (typo / fresh account) — still allow an owner
+        // password attempt (login() will validate); no staff option.
+        setBizLookup(null)
+        setStandardStep('owner')
+      }
+    } catch {
+      setBizLookup(null)
+      setStandardStep('owner')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Other-Business: staff sign-in (owner username + selected counter + password).
+  async function handleStandardStaffLogin(e) {
+    e.preventDefault()
+    if (!selectedStaffUser) { setError('Select a counter.'); return }
+    setError('')
+    setLoading(true)
+    try {
+      await staffLogin(username.trim(), selectedStaffUser, password)
+      navigate('/', { replace: true })
+    } catch (err) {
+      setError(err.message || 'Invalid password. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Handle staff quick login
   async function handleSubmitStaffQuick(e) {
     e.preventDefault()
@@ -180,7 +230,7 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      await login(selectedStaffUser, password)
+      await staffLogin(selectedOwner.username, selectedStaffUser, password)
       
       // Self-register/persist this staff user in the owner's list in localStorage
       const savedUserStr = localStorage.getItem('billing_user')
@@ -210,6 +260,24 @@ export default function Login() {
       setLoading(false)
     }
   }
+
+  // Reusable show/hide password toggle (same SVGs as the other login views).
+  const pwToggleBtn = (
+    <button type="button" className="password-toggle-btn" onClick={() => setShowPw(v => !v)} aria-label="Toggle password visibility">
+      {showPw ? (
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+          <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+          <line x1="1" y1="1" x2="23" y2="23" />
+        </svg>
+      ) : (
+        <svg className="eye-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+      )}
+    </button>
+  )
 
   return (
     <>
@@ -300,11 +368,35 @@ export default function Login() {
                 <button
                   key={idx}
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     setSelectedOwner(item)
                     setPassword('')
                     setError('')
                     setView('password')
+                    try {
+                      const res = await fetch(`${API_BASE}/staff-counters?owner=${encodeURIComponent(item.username)}`)
+                      if (res.ok) {
+                        const data = await res.json()
+                        const liveStaff = (data.staff || []).map(s => ({
+                          username: s.login_name,
+                          role: s.role
+                        }))
+                        setSelectedOwner(prev => {
+                          if (prev && prev.username === item.username) {
+                            return { ...prev, staffAccounts: liveStaff }
+                          }
+                          return prev
+                        })
+                        const recent = JSON.parse(localStorage.getItem('bizassist_recent_logins') || '[]')
+                        const idx = recent.findIndex(r => r.username === item.username)
+                        if (idx !== -1) {
+                          recent[idx].staffAccounts = liveStaff
+                          localStorage.setItem('bizassist_recent_logins', JSON.stringify(recent))
+                        }
+                      }
+                    } catch (err) {
+                      logger.error('Failed to fetch live staff list for quick login:', err)
+                    }
                   }}
                   style={{
                     display: 'flex',
@@ -677,165 +769,107 @@ export default function Login() {
 
         {/* ── View 4: Standard Form (First-time / Other Login) ── */}
         {view === 'standard' && (
-          <form id="login-form" onSubmit={handleSubmitStandard} style={{ width: '100%', boxSizing: 'border-box' }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              padding: '12px 14px',
-              borderRadius: 12,
-              background: 'var(--bg-3)',
-              border: '1px solid var(--border)',
-              marginBottom: 20,
-              gap: 12,
-              width: '100%',
-              boxSizing: 'border-box'
-            }}>
-              <div style={{
-                width: 34,
-                height: 34,
-                borderRadius: 8,
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--accent)',
-                flexShrink: 0
-              }}>
+          <div style={{ width: '100%', boxSizing: 'border-box' }}>
+            {/* Business header */}
+            <div style={{ display: 'flex', alignItems: 'center', padding: '12px 14px', borderRadius: 12, background: 'var(--bg-3)', border: '1px solid var(--border)', marginBottom: 20, gap: 12, width: '100%', boxSizing: 'border-box' }}>
+              <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', flexShrink: 0 }}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                  <polyline points="9 22 9 12 15 12 15 22"></polyline>
                 </svg>
               </div>
               <div style={{ textAlign: 'left', minWidth: 0 }}>
-                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Credentials Sign In
+                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {standardStep === 'username' ? 'Other Business Login' : (bizLookup?.business_name || 'Business Login')}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 1 }}>
-                  Enter owner or staff login details
+                  {standardStep === 'username' && 'Enter the business owner username'}
+                  {standardStep === 'choose' && 'Choose how to sign in'}
+                  {standardStep === 'owner' && 'Owner Login'}
+                  {standardStep === 'staff' && 'Staff Login'}
                 </div>
               </div>
             </div>
 
-            <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
-              <label htmlFor="username">Username</label>
-              <input
-                type="text"
-                id="username"
-                placeholder="e.g. store"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                required
-                autoComplete="username"
-              />
-            </div>
-
-            <div className="form-group" style={{ marginTop: '14px', width: '100%', boxSizing: 'border-box' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-                <label htmlFor="password" style={{ margin: 0 }}>Password</label>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 500 }}>Contact Admin to reset</span>
-              </div>
-              <div className="password-wrapper">
-                <input
-                  type={showPw ? 'text' : 'password'}
-                  id="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  required
-                  autoComplete="current-password"
-                />
-                <button
-                  type="button"
-                  className="password-toggle-btn"
-                  onClick={() => setShowPw(v => !v)}
-                  aria-label="Toggle password visibility"
-                >
-                  {showPw ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-                      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-                      <line x1="1" y1="1" x2="23" y2="23" />
-                    </svg>
-                  ) : (
-                    <svg className="eye-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                      <circle cx="12" cy="12" r="3"></circle>
-                    </svg>
-                  )}
+            {/* STEP 1 — owner username */}
+            {standardStep === 'username' && (
+              <form onSubmit={handleOwnerContinue} style={{ width: '100%' }}>
+                <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
+                  <label htmlFor="owner-username">Business Owner Username</label>
+                  <input type="text" id="owner-username" placeholder="e.g. store_owner" value={username} onChange={e => setUsername(e.target.value)} required autoFocus autoComplete="username" />
+                </div>
+                {error && <div className="login-error" style={{ marginTop: 14 }}>{error}</div>}
+                <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 14 }}>
+                  {loading ? 'Checking…' : 'Continue'}
                 </button>
-              </div>
-            </div>
+                <div style={{ textAlign: 'center', marginTop: 10 }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 6 }}>Don't have an account?</span>
+                  <button type="button" onClick={() => navigate('/register')} style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}>Register</button>
+                </div>
+              </form>
+            )}
 
-            {/* Remember Me Checkbox */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, userSelect: 'none' }}>
-              <input
-                type="checkbox"
-                id="remember-me"
-                checked={rememberMe}
-                onChange={e => setRememberMe(e.target.checked)}
-                style={{ width: 'auto', margin: 0, cursor: 'pointer' }}
-              />
-              <label htmlFor="remember-me" style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', cursor: 'pointer', margin: 0, textTransform: 'none', fontWeight: 500, letterSpacing: 'normal' }}>
-                Remember me
-              </label>
-            </div>
-
-            {error && (
-              <div id="login-error" className="login-error" style={{ marginTop: '14px' }}>
-                {error}
+            {/* STEP 2 — choose owner vs staff */}
+            {standardStep === 'choose' && (
+              <div style={{ width: '100%' }}>
+                <button type="button" className="login-submit-btn" onClick={() => { setError(''); setPassword(''); setStandardStep('owner') }} style={{ width: '100%' }}>Owner Login</button>
+                <button type="button" className="login-submit-btn" disabled={!(bizLookup?.staff?.length)} onClick={() => { setError(''); setPassword(''); setSelectedStaffUser(bizLookup?.staff?.[0]?.login_name || ''); setStandardStep('staff') }} style={{ width: '100%', marginTop: 10, background: 'var(--bg-2)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Staff Login</button>
+                <button type="button" onClick={() => { setError(''); setStandardStep('username') }} style={{ width: '100%', marginTop: 14, fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer' }}>← Back</button>
               </div>
             )}
 
-            <button
-              type="submit"
-              className="login-submit-btn"
-              id="submit-btn"
-              disabled={loading}
-              style={{ marginTop: 14 }}
-            >
-              {loading ? 'Signing in...' : 'Sign In'}
-            </button>
+            {/* STEP 3 — owner password */}
+            {standardStep === 'owner' && (
+              <form onSubmit={handleSubmitStandard} style={{ width: '100%' }}>
+                <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
+                  <label htmlFor="owner-password">Owner Password</label>
+                  <div className="password-wrapper">
+                    <input type={showPw ? 'text' : 'password'} id="owner-password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required autoFocus autoComplete="current-password" />
+                    {pwToggleBtn}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, userSelect: 'none' }}>
+                  <input type="checkbox" id="remember-me" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} style={{ width: 'auto', margin: 0, cursor: 'pointer' }} />
+                  <label htmlFor="remember-me" style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', cursor: 'pointer', margin: 0, textTransform: 'none', fontWeight: 500, letterSpacing: 'normal' }}>Remember me</label>
+                </div>
+                {error && <div className="login-error" style={{ marginTop: 14 }}>{error}</div>}
+                <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 14 }}>{loading ? 'Signing in…' : 'Sign In as Owner'}</button>
+                <button type="button" onClick={() => { setError(''); setStandardStep(bizLookup?.staff?.length ? 'choose' : 'username') }} style={{ width: '100%', marginTop: 12, fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer' }}>← Back</button>
+              </form>
+            )}
 
-            {/* Compact inline Register link to completely replace large tab bar height */}
-            <div style={{ textAlign: 'center', marginTop: 10 }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 6 }}>
-                Don't have an account?
-              </span>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => navigate('/register')}
-                style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
-              >
-                Register
-              </button>
-            </div>
-            
+            {/* STEP 4 — staff (counter dropdown) */}
+            {standardStep === 'staff' && (
+              <form onSubmit={handleStandardStaffLogin} style={{ width: '100%' }}>
+                <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
+                  <label htmlFor="std-staff-select">Select Counter</label>
+                  <select id="std-staff-select" value={selectedStaffUser} onChange={e => setSelectedStaffUser(e.target.value)}>
+                    {(bizLookup?.staff || []).map((s, idx) => (
+                      <option key={idx} value={s.login_name}>
+                        {s.login_name}{s.counter_prefix ? ` · ${s.counter_prefix}` : ''} ({s.role || 'cashier'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group" style={{ marginTop: 14, width: '100%', boxSizing: 'border-box' }}>
+                  <label htmlFor="std-staff-password">Password</label>
+                  <div className="password-wrapper">
+                    <input type={showPw ? 'text' : 'password'} id="std-staff-password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required autoFocus autoComplete="current-password" />
+                    {pwToggleBtn}
+                  </div>
+                </div>
+                {error && <div className="login-error" style={{ marginTop: 14 }}>{error}</div>}
+                <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 14 }}>{loading ? 'Signing in…' : 'Sign In'}</button>
+                <button type="button" onClick={() => { setError(''); setStandardStep('choose') }} style={{ width: '100%', marginTop: 12, fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer' }}>← Back</button>
+              </form>
+            )}
+
             {recentLogins.length > 0 && (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => {
-                  setError('')
-                  setView('recent')
-                }}
-                style={{
-                  width: '100%',
-                  fontSize: '0.82rem',
-                  fontWeight: 600,
-                  color: 'var(--accent)',
-                  marginTop: 16,
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  border: 'none',
-                  background: 'none'
-                }}
-              >
+              <button type="button" className="btn btn-ghost" onClick={() => { setError(''); setStandardStep('username'); setView('recent') }} style={{ width: '100%', fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', marginTop: 16, textAlign: 'center', cursor: 'pointer', border: 'none', background: 'none' }}>
                 ← Show Recent Logins
               </button>
             )}
-          </form>
+          </div>
         )}
       </div>
     </div>
