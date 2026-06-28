@@ -474,6 +474,7 @@ export default function Sales() {
           method: 'POST',
           body: JSON.stringify({
             client_id: clientId,
+            user_id: user?.user_id || user?.id,
             tabs,
             active_tab_id: activeTabId,
             timestamp: now
@@ -489,8 +490,15 @@ export default function Sales() {
 
   useEffect(() => {
     const handleSync = (e) => {
-      const { type, client_id, tabs: remoteTabs, active_tab_id: remoteActiveTabId, timestamp: remoteTimestamp } = e.detail || {}
+      const { type, client_id, user_id: remoteUserId, tabs: remoteTabs, active_tab_id: remoteActiveTabId, timestamp: remoteTimestamp } = e.detail || {}
       if (type === 'pos.cart_sync' && client_id !== clientId) {
+        // Partition cart sync strictly by logged-in user_id
+        const currentUserId = user?.user_id || user?.id
+        if (remoteUserId && String(remoteUserId) !== String(currentUserId)) {
+          logger.debug('[SALES] Ignoring cart sync from different cashier/user:', remoteUserId)
+          return
+        }
+
         // Per-terminal carts: ignore another terminal's live cart entirely.
         // (Committed sales data still syncs via the entity sync-events path.)
         if (!POS_CROSS_DEVICE_CART_SYNC) {

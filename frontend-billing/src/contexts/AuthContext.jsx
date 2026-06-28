@@ -5,6 +5,20 @@ import { reconcileBizIdOnLogin } from '../utils/loginSync'
 
 const AuthContext = createContext(null)
 
+const decodeToken = (token) => {
+  try {
+    const base64Url = (token || '').split('.')[1]
+    if (!base64Url) return null
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+    }).join(''))
+    return JSON.parse(jsonPayload)
+  } catch (e) {
+    return null
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser]   = useState(null)
   const [token, setToken] = useState(() => localStorage.getItem('billing_token') || null)
@@ -17,8 +31,19 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     try {
       const savedUser = localStorage.getItem('billing_user')
+      const savedToken = localStorage.getItem('billing_token')
       if (savedUser) {
-        setUser(JSON.parse(savedUser))
+        let userObj = JSON.parse(savedUser)
+        // Ensure user_id is populated even for old sessions by decoding token
+        if (savedToken && !userObj.user_id) {
+          const decoded = decodeToken(savedToken)
+          if (decoded && decoded.user_id) {
+            userObj.user_id = decoded.user_id
+            localStorage.setItem('billing_user', JSON.stringify(userObj))
+            logger.info('Auto-healed user session with user_id from JWT payload:', decoded.user_id)
+          }
+        }
+        setUser(userObj)
         logger.info('Session restored successfully for user from localStorage')
       } else {
         logger.debug('No saved session user found in localStorage.')
@@ -32,9 +57,17 @@ export function AuthProvider({ children }) {
   const _saveSession = useCallback((data) => {
     const tok = data.token || data.access_token
     localStorage.setItem('billing_token', tok)
+    
+    // Auto-resolve user_id from token payload if not sent in data response
+    let resolvedUserId = data.user_id
+    if (!resolvedUserId && tok) {
+      const decoded = decodeToken(tok)
+      resolvedUserId = decoded?.user_id
+    }
+
     const userObj = {
       id: data.id,
-      user_id: data.user_id,
+      user_id: resolvedUserId || data.id,
       username: data.username,
       business_name: data.business_name,
       role: data.role,

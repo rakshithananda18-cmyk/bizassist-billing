@@ -281,6 +281,7 @@ async def pos_cart_sync(
         {
             "type": "pos.cart_sync",
             "client_id": req.get("client_id"),
+            "user_id": req.get("user_id") or current_user.get("user_id") or current_user.get("id"),
             "tabs": req.get("tabs"),
             "active_tab_id": req.get("active_tab_id"),
             "timestamp": req.get("timestamp")
