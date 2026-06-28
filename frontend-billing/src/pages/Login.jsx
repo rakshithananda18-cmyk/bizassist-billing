@@ -372,7 +372,8 @@ export default function Login() {
                     setSelectedOwner(item)
                     setPassword('')
                     setError('')
-                    setView('password')
+                    const hasCachedStaff = item.staffAccounts && item.staffAccounts.length > 0
+                    setView(hasCachedStaff ? 'recent-choose' : 'password')
                     try {
                       const res = await fetch(`${API_BASE}/staff-counters?owner=${encodeURIComponent(item.username)}`)
                       if (res.ok) {
@@ -392,6 +393,11 @@ export default function Login() {
                         if (idx !== -1) {
                           recent[idx].staffAccounts = liveStaff
                           localStorage.setItem('bizassist_recent_logins', JSON.stringify(recent))
+                        }
+                        if (liveStaff.length > 0) {
+                          setView('recent-choose')
+                        } else {
+                          setView('password')
                         }
                       }
                     } catch (err) {
@@ -490,6 +496,109 @@ export default function Login() {
             >
               Use another account
             </button>
+          </div>
+        )}
+
+        {/* ── View 1.5: Choose Owner vs Staff for Recent Owner ── */}
+        {view === 'recent-choose' && (
+          <div style={{ width: '100%', boxSizing: 'border-box' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '10px 12px',
+              borderRadius: 12,
+              background: 'var(--bg-3)',
+              border: '1px solid var(--border)',
+              marginBottom: 16,
+              gap: 12,
+              width: '100%',
+              boxSizing: 'border-box'
+            }}>
+              <div style={{
+                width: 34,
+                height: 34,
+                borderRadius: 8,
+                background: 'var(--bg-2)',
+                border: '1px solid var(--border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--accent)',
+                flexShrink: 0
+              }}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                  <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+              </div>
+              <div style={{ textAlign: 'left', minWidth: 0 }}>
+                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {selectedOwner?.businessName}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 1 }}>
+                  Choose how to sign in
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="login-submit-btn"
+              onClick={() => {
+                setError('')
+                setPassword('')
+                setView('password')
+              }}
+              style={{ width: '100%' }}
+            >
+              Owner Login
+            </button>
+            <button
+              type="button"
+              className="login-submit-btn"
+              onClick={() => {
+                setError('')
+                setPassword('')
+                setSelectedStaffUser(selectedOwner?.staffAccounts?.[0]?.username || '')
+                setView('staff')
+              }}
+              style={{
+                width: '100%',
+                marginTop: 10,
+                background: 'var(--bg-2)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border)'
+              }}
+            >
+              Staff Login
+            </button>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setError('')
+                  setView('recent')
+                }}
+                style={{ fontSize: '0.8rem', color: 'var(--text-muted)', cursor: 'pointer', border: 'none', background: 'none', padding: 0 }}
+              >
+                ← Back
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setUsername('')
+                  setPassword('')
+                  setError('')
+                  setView('standard')
+                }}
+                style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, cursor: 'pointer', border: 'none', background: 'none', padding: 0 }}
+              >
+                Other Business Login
+              </button>
+            </div>
           </div>
         )}
 
@@ -603,11 +712,15 @@ export default function Login() {
                 className="btn btn-ghost"
                 onClick={() => {
                   setError('')
-                  setView('recent')
+                  if (selectedOwner?.staffAccounts && selectedOwner.staffAccounts.length > 0) {
+                    setView('recent-choose')
+                  } else {
+                    setView('recent')
+                  }
                 }}
                 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', cursor: 'pointer', border: 'none', background: 'none', padding: 0 }}
               >
-                ← Back to recent logins
+                {selectedOwner?.staffAccounts && selectedOwner.staffAccounts.length > 0 ? '← Back' : '← Back to recent logins'}
               </button>
               <button
                 type="button"
@@ -744,11 +857,11 @@ export default function Login() {
                 className="btn btn-ghost"
                 onClick={() => {
                   setError('')
-                  setView('recent')
+                  setView('recent-choose')
                 }}
                 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', cursor: 'pointer', border: 'none', background: 'none', padding: 0 }}
               >
-                ← Back to recent logins
+                ← Back
               </button>
               <button
                 type="button"
