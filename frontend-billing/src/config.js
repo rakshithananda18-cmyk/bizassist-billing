@@ -17,12 +17,26 @@
  */
 
 // Is this running as the downloaded local app?
+const isLocalHost = (hostname) => {
+  if (!hostname) return false;
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname.endsWith('.local') ||
+    /^192\.168\./.test(hostname) ||
+    /^10\./.test(hostname) ||
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)
+  )
+}
+
 export const IS_LOCAL_APP =
-  typeof window !== 'undefined' &&
-  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  typeof window !== 'undefined' && isLocalHost(window.location.hostname);
 
 export const CLOUD_URL = import.meta.env.VITE_API_URL || 'https://rakshit-dev-bizassist.hf.space';
-export const LOCAL_URL  = 'http://localhost:8001';
+export const LOCAL_URL =
+  typeof window !== 'undefined' && isLocalHost(window.location.hostname)
+    ? `http://${window.location.hostname}:8001`
+    : 'http://localhost:8001';
 
 /**
  * getApiBase() — resolve the correct backend URL.
