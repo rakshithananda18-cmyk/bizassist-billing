@@ -498,6 +498,13 @@ export default function Sales(props = {}) {
   }, [isLiveView, user?.user_id, user?.id])
 
   useEffect(() => {
+    if (props.isLiveViewMode && !liveCounter) {
+      logger.warn('[SALES] Entered live-view without counter ID, redirecting to standalone POS.')
+      navigate('/sales')
+    }
+  }, [props.isLiveViewMode, liveCounter, navigate])
+
+  useEffect(() => {
     if (isLockedByManager) return
 
     const shouldBroadcast = POS_CROSS_DEVICE_CART_SYNC || (isLiveView && editState === 'granted')
@@ -529,13 +536,24 @@ export default function Sales(props = {}) {
     const now = Date.now()
     localStorage.setItem(`pos_cart_updated_at_${uid}`, now.toString())
 
+    // 1. Send instant cart sync broadcast over active SSE stream
+    broadcastMessage({
+      type: 'pos.cart_sync',
+      client_id: clientId,
+      user_id: uid,
+      tabs,
+      active_tab_id: activeTabId,
+      timestamp: now
+    })
+
+    // 2. Debounce database backup sync (600ms)
     const t = setTimeout(async () => {
       try {
         await authFetch('/realtime/sync-cart', {
           method: 'POST',
           body: JSON.stringify({
             client_id: clientId,
-            user_id: user?.user_id || user?.id,
+            user_id: uid,
             tabs,
             active_tab_id: activeTabId,
             timestamp: now
@@ -547,7 +565,7 @@ export default function Sales(props = {}) {
     }, 600)
 
     return () => clearTimeout(t)
-  }, [tabs, activeTabId, user?.user_id, user?.id, authFetch, clientId, settings, isLiveView, editState, isLockedByManager])
+  }, [tabs, activeTabId, user?.user_id, user?.id, authFetch, clientId, settings, isLiveView, editState, isLockedByManager, broadcastMessage])
 
   const broadcastMessage = useCallback(async (msg) => {
     try {
@@ -1057,6 +1075,7 @@ export default function Sales(props = {}) {
   }
 
   const handleNewBill = () => {
+    if (isLiveView && editState !== 'granted') return
     const newId = Date.now().toString()
     const newForm = {
       ...defaultForm,
@@ -1076,6 +1095,7 @@ export default function Sales(props = {}) {
 
   const closeTab = useCallback((tabId, e, forceClose = false) => {
     if (e) e.stopPropagation()
+    if (isLiveView && editState !== 'granted') return
     const tabToClose = tabs.find(t => t.id === tabId)
     if (!forceClose && tabToClose && tabToClose.form.items.length > 0) {
       if (!window.confirm(`Are you sure you want to close ${tabToClose.name}? Unsaved changes will be lost.`)) {
@@ -1967,7 +1987,7 @@ export default function Sales(props = {}) {
           onCloseTab={closeTab}
           onNewBill={handleNewBill}
           onMinimize={handleMinimize}
-          onClose={handleCloseConfirm}
+          onClose={isLiveView ? () => navigate('/sales') : handleCloseConfirm}
           onOpenSettings={() => {
             setSettingsInitialTab('general')
             setShowSettingsModal(true)
@@ -2118,6 +2138,7 @@ export default function Sales(props = {}) {
               selectedIndex={selectedIndex}
               onHoverIndex={setSelectedIndex}
               onPick={addProductToCart}
+              disabled={isLiveView && editState !== 'granted'}
             />
 
             {/* Cart Table list container */}

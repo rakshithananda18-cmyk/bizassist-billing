@@ -960,11 +960,13 @@ export default function AppLayout({ children, title }) {
                 style={{ marginTop: minimizedBill ? 10 : 0, borderLeft: '3px solid var(--accent)' }}
                 onClick={() => {
                   const targetUid = user?.user_id || user?.id
+                  const targetCounter = minimizedLive.counter;
+                  const targetClientId = minimizedLive.clientId;
                   if (targetUid) {
                     localStorage.removeItem(`pos_live_minimized_${targetUid}`);
                   }
                   window.dispatchEvent(new Event('pos_minimized_changed'));
-                  navigate(`/live-view?live_counter=${encodeURIComponent(minimizedLive.counter)}${minimizedLive.clientId ? `&client_id=${encodeURIComponent(minimizedLive.clientId)}` : ''}`);
+                  navigate(`/live-view?live_counter=${encodeURIComponent(targetCounter)}${targetClientId ? `&client_id=${encodeURIComponent(targetClientId)}` : ''}`);
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

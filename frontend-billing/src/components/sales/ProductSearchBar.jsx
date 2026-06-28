@@ -19,6 +19,7 @@ const ProductSearchBar = forwardRef(function ProductSearchBar({
   selectedIndex,
   onHoverIndex,       // setSelectedIndex
   onPick,             // addProductToCart
+  disabled = false,   // block keyboard/clicks in view-only mode
 }, ref) {
   return (
     <div className="pos-search-container" style={{ position: 'relative' }}>
@@ -32,15 +33,16 @@ const ProductSearchBar = forwardRef(function ProductSearchBar({
             onKeyDown={onKeyDown}
             placeholder={placeholder}
             style={{ width: '100%', color: 'var(--text-primary)' }}
+            disabled={disabled}
           />
         </div>
-        <button type="button" className="btn btn-secondary" onClick={onAddCustom} style={{ whiteSpace: 'nowrap', fontSize: '0.8rem', padding: '0 16px' }}>
+        <button type="button" className="btn btn-secondary" onClick={onAddCustom} disabled={disabled} style={{ whiteSpace: 'nowrap', fontSize: '0.8rem', padding: '0 16px' }}>
           <PlusIcon size={14} /> Custom Item
         </button>
       </div>
 
       {/* Autocomplete Overlay */}
-      {filteredProducts.length > 0 && (
+      {!disabled && filteredProducts.length > 0 && (
         <div style={{
           position: 'absolute',
           top: '100%',
