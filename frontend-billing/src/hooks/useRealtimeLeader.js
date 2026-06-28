@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { API_BASE } from '../config'
+import { API_BASE, IS_LOCAL_APP } from '../config'
 import { logger } from '../utils/logger'
 import { syncManager } from '../sync/syncManager'
 
@@ -19,9 +19,18 @@ export function useRealtimeLeader(token, settings, user) {
       return
     }
 
-    const hostingMode = settings?.general?.hosting_mode || 'local'
+    // Use the ACTUAL backend mode (same source as config.js), NOT the account's
+    // saved `settings.general.hosting_mode` — that can be stale (e.g. you switched
+    // a desktop session to 'local', which persisted on the account, then logged
+    // into cloud / opened the web app). Web is ALWAYS cloud; a desktop app uses
+    // its own `bizassist_hosting_mode` choice. Reading the stale setting wrongly
+    // disabled SSE in cloud ("mode=local" while the account home is cloud").
+    const clientMode = (typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_hosting_mode')) || null
+    const hostingMode = !IS_LOCAL_APP
+      ? 'cloud'
+      : (clientMode || settings?.general?.hosting_mode || 'local')
     const isRealtimeGlobalEnabled = settings?.general?.realtime_sync_global !== false
-    
+
     if (hostingMode === 'local' || !isRealtimeGlobalEnabled) {
       logger.info(`[REALTIME] Real-time stream disabled. mode=${hostingMode}, global_enabled=${isRealtimeGlobalEnabled}`)
       const detail = { status: 'disconnected', error: null, lastSyncTime: null, lastEntity: null, isOnline: navigator.onLine }

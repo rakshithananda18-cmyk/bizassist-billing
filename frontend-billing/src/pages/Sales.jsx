@@ -550,16 +550,23 @@ export default function Sales() {
   //   so its numbers can NEVER collide with the cloud series when they migrate /
   //   sync up. The number is final at issue time — never re-numbered (GST-safe).
   const getCounterPrefix = useCallback(() => {
-    const raw = selectedCounterOverride !== null
-      ? selectedCounterOverride.trim()
-      : (user?.counter_prefix || '').trim()
+    // BILLING prefix is ALWAYS this login's OWN counter — never the dropdown
+    // override. The override (`selectedCounterOverride`) is a VIEW context only:
+    // billing as another *active* counter would mint a duplicate number and the
+    // backend's invoice_no wall would merge the two sales → silent lost bill.
+    // Editing another counter's bills is the future Phase 4 request→approve flow.
+    const raw = (user?.counter_prefix || '').trim()
     const counter = raw
       ? (raw.endsWith('-') ? raw.slice(0, -1) : raw)
       : ((user?.role || '').toLowerCase() !== 'cashier' ? 'OW' : 'INV')
     const mode = (settings?.general?.hosting_mode || 'local').toLowerCase()
     const tag = mode === 'cloud' ? '' : 'LCL-'
     return `${tag}${counter}-`
-  }, [selectedCounterOverride, user?.counter_prefix, user?.role, settings])
+    // Depend on the hosting_mode STRING, not the whole `settings` object — `load`
+    // calls setSettings() with a fresh object each run, and depending on the
+    // object identity here recreated getNextInvoiceNo→load→effect→load… (infinite
+    // refetch loop). The string only changes on a real mode switch.
+  }, [user?.counter_prefix, user?.role, settings?.general?.hosting_mode])
 
   const availableCounters = useMemo(() => {
     if ((user?.role || '').toLowerCase() === 'cashier') return []
@@ -579,7 +586,7 @@ export default function Sales() {
       label: `${tag}${p}`,
       value: p
     }))
-  }, [user?.role, user?.counter_prefix, staffList, settings])
+  }, [user?.role, user?.counter_prefix, staffList, settings?.general?.hosting_mode])
 
   // Highest number already used WITHIN this terminal's own prefix series. We
   // must NOT mix series (the old code derived the prefix from whichever invoice

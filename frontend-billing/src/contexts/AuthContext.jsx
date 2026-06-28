@@ -308,7 +308,29 @@ export function AuthProvider({ children }) {
       }
       if (res.ok) {
         const data = await res.json()
-        setSettings(data)
+        // (§9.3a/b) Reconcile the account's saved `general.hosting_mode` to the
+        // REAL mode so it can't drift. A stale value (e.g. 'local' persisted on
+        // the account from an earlier desktop switch) otherwise mis-tags cloud
+        // invoices with `LCL-` (getCounterPrefix reads this) and previously also
+        // disabled realtime. The real mode: web is ALWAYS cloud; a desktop app
+        // uses its own per-device choice (`bizassist_hosting_mode`).
+        const realMode = !IS_LOCAL_APP
+          ? 'cloud'
+          : ((typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_hosting_mode'))
+              || data?.general?.hosting_mode || 'local')
+        if (data?.general && data.general.hosting_mode !== realMode) {
+          logger.info(`[AUTH] Reconciling saved hosting_mode '${data.general.hosting_mode}' → real '${realMode}'`)
+          data.general.hosting_mode = realMode
+          setSettings(data)
+          // Persist the correction (best-effort; general is owner+cashier-writable).
+          fetch(`${API_BASE}/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ general: { hosting_mode: realMode } }),
+          }).catch(err => logger.warn('[AUTH] hosting_mode reconcile PUT failed (non-blocking):', err))
+        } else {
+          setSettings(data)
+        }
         logger.info('Loaded app settings successfully in context')
         // NOTE: We do NOT call updateApiBase here.
         // The user's home mode (bizassist_user_home_mode) is the source of truth

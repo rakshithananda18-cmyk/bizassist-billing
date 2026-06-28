@@ -105,6 +105,16 @@
 - **Local↔cloud number namespacing (§9.3b) — IMPLEMENTED 2026-06-28:** two disconnected DBs each minting `C1-0001` for different sales would clash on migrate (importer's `invoice_id` natural-key would merge them → lost bill). Fix: (1) `getCounterPrefix()` prepends **`LCL-`** on local/hybrid (`hosting_mode != cloud`); cloud stays clean → cloud `C1-0001`, local `LCL-C1-0001` (owner `OW-0001`/`LCL-OW-0001`). Distinct series → migrate inserts, never merges. (2) Backstop: `routes/migrate.py::_import_with_remap` skips the natural-key fallback when the incoming row has a `uid` (uid mismatch = different bill → insert). Test: `test_import_does_not_merge_different_uid_invoices_sharing_a_number`. **Numbers are final at issue — never re-numbered (GST-safe); GST gen only consolidates. >1 local machine → give each `LCL1-`/`LCL2-`.**
 - **Pending (next focused build):** owner **Live Counters view** — realtime read-only page; each active POS session publishes a presence snapshot (user, counter, cart total, last activity); owner watches tiles. Needs two-device test. (Plan §9.2 Stage 1.)
 
+### 🟢 FIXED (review 2026-06-28) — owner counter-switch no longer affects billing
+- **Was:** `getCounterPrefix()` used the `CounterMenu` dropdown's `selectedCounterOverride` as the **billing** prefix → an owner picking a cashier's counter (`C1`) billed `C1-0001…`, colliding with that cashier → backend `invoice_no` merge → silent lost sale.
+- **Fix:** `getCounterPrefix()` now ALWAYS uses this login's own counter (owner ⇒ `OW`); the override is a **view context only**, never billing. The dropdown UI is unchanged.
+- **Planned (future, Phase 4 soft-lock):** the dropdown selection drives a **live view** of that counter; editing another counter's open bill goes through a **request → counter approves → edit** flow (presence + soft-lock), never a silent billing-prefix swap. The Owner Live Counters view (§9.2 Stage 1 / task) is the first half of this.
+
+### 🟢 FIXED (2026-06-28) — POS infinite refetch loop
+- **Symptom:** `Sales` re-fetched `/customers /products /settings /invoices /staff /godowns` continuously (console flood, backend hammering).
+- **Cause:** `getCounterPrefix`/`availableCounters` depended on the whole `settings` OBJECT (added for the `LCL-` mode check). `load()` calls `setSettings()` each run → new object identity → `getCounterPrefix`→`getNextInvoiceNo`→`load` recreated → `useEffect([load])` re-fires `load` → loop.
+- **Fix:** depend on the `settings?.general?.hosting_mode` STRING (stable primitive) instead of the object. **Rebuild before deploy — the loop is present in the last pushed commit.**
+
 ### 📦 SESSION 2026-06-28 — CHANGED FILES & DEPLOY CHECKLIST
 *Everything from this session, for the git + HF + Vercel push. Backend files must ALSO be copied into `BizAssist_HF/` (the flat backend copy the HF Space deploys from).*
 
@@ -122,13 +132,14 @@
 - Tests: `tests/test_realtime_delta.py` (new), `test_billing.py` (+3 numbering), `test_staff.py` (+2 counter), `test_sync_migration_fixes.py` (+1 backstop)
 
 **Frontend `frontend-billing/` (→ commit + Vercel redeploy + rebuild desktop app):**
+- `src/hooks/useRealtimeLeader.js` — **BUG FIX:** realtime read stale `settings.general.hosting_mode` (persisted `local` from an earlier desktop switch) → SSE stayed disabled on cloud/web ("mode=local" while account home=cloud). Now uses the ACTUAL backend mode (web ⇒ always `cloud`; desktop ⇒ `localStorage['bizassist_hosting_mode']`), same source as `config.js`. *Follow-up (optional): also reconcile `settings.general.hosting_mode` to the real mode on cloud login so the saved setting can't drift.*
 - `src/pages/Sales.jsx` — POS cart per-terminal fix; `getCounterPrefix()` (login-based + `LCL-` namespace); PosTopBar props
 - `src/pages/Staff.jsx` — named counters manager + dropdown assignment + Counter column
 - `src/pages/Parties.jsx` — delta cache-patch (cloud mode)
 - `src/components/sales/CounterMenu.jsx` — **new** (read-only counter badge, owner→/staff link)
 - `src/components/sales/PosTopBar.jsx` — counter badge wired
 - `src/components/sales/PosSettingsModals.jsx` — removed obsolete per-device prefix field
-- `src/contexts/AuthContext.jsx` — store `user.counter_prefix`
+- `src/contexts/AuthContext.jsx` — store `user.counter_prefix`; **reconcile `general.hosting_mode` to the real mode in `fetchSettings`** (web⇒cloud, desktop⇒`bizassist_hosting_mode`) so the saved setting can't drift (also corrects `getCounterPrefix`'s `LCL-` tagging, which reads that value)
 - `src/sync/applyDelta.js` — **new** (generic delta list patch)
 
 **Deploy order:**
