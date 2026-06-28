@@ -265,10 +265,16 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
   })
   const [testStatus, setTestStatus] = useState('idle')
   const [testError, setTestError] = useState('')
+  const [verifiedUrl, setVerifiedUrl] = useState('')
+  const [isSaved, setIsSaved] = useState(() => {
+    return typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_use_lan_db') === 'true'
+  })
 
   const handleTestConnection = async () => {
     setTestStatus('testing')
     setTestError('')
+    setVerifiedUrl('')
+    setIsSaved(false)
     let targetUrl = lanServerUrl.trim()
     if (!targetUrl) {
       setTestStatus('error')
@@ -301,11 +307,7 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
       const body = await res.json()
       if (body.status === 'ok' && body.db === 'connected') {
         setTestStatus('success')
-        localStorage.setItem('bizassist_use_lan_db', 'true')
-        localStorage.setItem('bizassist_local_backend_url', targetUrl)
-        updateApiBase('local')
-        window.dispatchEvent(new CustomEvent('lan_status_changed'))
-        recheck()
+        setVerifiedUrl(targetUrl)
       } else {
         throw new Error('Server returned unhealthy state or database disconnected.')
       }
@@ -313,6 +315,19 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
       setTestStatus('error')
       setTestError(err.message || 'Network unreachable or server timeout.')
     }
+  }
+
+  const handleSaveConnection = () => {
+    if (!verifiedUrl) return
+    localStorage.setItem('bizassist_use_lan_db', 'true')
+    localStorage.setItem('bizassist_local_backend_url', verifiedUrl)
+    updateApiBase('local')
+    window.dispatchEvent(new CustomEvent('lan_status_changed'))
+    recheck()
+    setIsSaved(true)
+    window.dispatchEvent(new CustomEvent('show_toast', {
+      detail: { type: 'success', msg: 'Successfully connected and saved LAN database configuration!' }
+    }))
   }
 
   const handleToggleLan = (checked) => {
@@ -324,6 +339,8 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
       window.dispatchEvent(new CustomEvent('lan_status_changed'))
       recheck()
       setTestStatus('idle')
+      setVerifiedUrl('')
+      setIsSaved(false)
     }
   }
 
@@ -493,6 +510,8 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
                   onChange={e => {
                     setLanServerUrl(e.target.value)
                     setTestStatus('idle')
+                    setVerifiedUrl('')
+                    setIsSaved(false)
                   }}
                   className="form-input"
                   style={{
@@ -510,20 +529,42 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
                   disabled={testStatus === 'testing'}
                   style={{
                     padding: '6px 14px', borderRadius: 6,
-                    background: testStatus === 'success' ? '#22c55e' : 'var(--accent)',
+                    background: 'var(--accent)',
                     color: '#fff', border: 'none',
                     cursor: testStatus === 'testing' ? 'wait' : 'pointer',
                     fontSize: '0.8rem', fontWeight: 700,
                   }}
                 >
-                  {testStatus === 'testing' ? 'Testing...' : testStatus === 'success' ? 'Connected ✓' : 'Save & Test Connection'}
+                  {testStatus === 'testing' ? 'Testing...' : 'Test Connection'}
                 </button>
+                {testStatus === 'success' && (
+                  <button
+                    onClick={handleSaveConnection}
+                    disabled={isSaved}
+                    style={{
+                      padding: '6px 14px', borderRadius: 6,
+                      background: isSaved ? '#22c55e' : '#f97316',
+                      color: '#fff', border: 'none',
+                      cursor: isSaved ? 'default' : 'pointer',
+                      fontSize: '0.8rem', fontWeight: 700,
+                    }}
+                  >
+                    {isSaved ? 'Saved ✓' : 'Save & Connect'}
+                  </button>
+                )}
               </div>
 
-              {testStatus === 'success' && (
+              {testStatus === 'success' && !isSaved && (
+                <div style={{ fontSize: '0.72rem', color: '#f97316', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#f97316' }} />
+                  Connection verified! Click "Save & Connect" to save settings and route traffic to {verifiedUrl}.
+                </div>
+              )}
+
+              {testStatus === 'success' && isSaved && (
                 <div style={{ fontSize: '0.72rem', color: '#22c55e', display: 'flex', alignItems: 'center', gap: 4 }}>
                   <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} />
-                  Connected successfully to LAN Master database! All transactions will now sync to {lanServerUrl}.
+                  Connected successfully and saved LAN database configuration! Current server: {lanServerUrl}.
                 </div>
               )}
 
