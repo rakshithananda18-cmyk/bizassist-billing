@@ -84,7 +84,7 @@ export default function Counters() {
                     className="card"
                     onClick={() => {
                       logger.info(`[COUNTERS] Owner clicking tile to view Counter ${s.counter} (client: ${s.client_id})`)
-                      navigate(`/sales?live_counter=${encodeURIComponent(s.counter)}&client_id=${encodeURIComponent(s.client_id)}`)
+                      navigate(`/live-view?live_counter=${encodeURIComponent(s.counter)}&client_id=${encodeURIComponent(s.client_id)}`)
                     }}
                     style={{
                       padding: 16, borderRadius: 10,

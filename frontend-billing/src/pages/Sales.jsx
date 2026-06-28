@@ -69,14 +69,14 @@ function effectiveHostingMode() {
   return m.toLowerCase()
 }
 
-export default function Sales() {
+export default function Sales(props = {}) {
   const { authFetch, profile, user } = useAuth()
   const { config, attributesSchema, t } = useBusinessConfig()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const liveCounter = searchParams.get('live_counter')
   const liveClientId = searchParams.get('client_id')
-  const isLiveView = !!liveCounter
+  const isLiveView = props.isLiveViewMode || !!liveCounter
   const isOwner = (user?.role || '').toLowerCase() !== 'cashier'
 
   // Collaborative live counter states
@@ -88,6 +88,8 @@ export default function Sales() {
   const [showRemoteRequestModal, setShowRemoteRequestModal] = useState(false)
   const [isRemoteCartLoading, setIsRemoteCartLoading] = useState(isLiveView)
   const [connectionStatus, setConnectionStatus] = useState('connecting') // 'connecting' | 'offline' | 'timeout'
+
+  const activeCashierClientId = activeSessions[liveCounter]?.client_id || liveClientId
 
   const [customers, setCustomers]     = useState([])
   const [products, setProducts]       = useState([])
@@ -410,12 +412,23 @@ export default function Sales() {
     Array.isArray(tabsArr) && tabsArr.some(t => (t?.form?.items?.length || 0) > 0)
 
   const [tabs, setTabs] = useState(() => {
+    const uid = user?.user_id || user?.id
     if (isLiveView) {
+      const savedLiveTabsStr = uid ? localStorage.getItem(`pos_live_minimized_tabs_${uid}`) : null
+      if (savedLiveTabsStr) {
+        try {
+          const savedLiveTabs = JSON.parse(savedLiveTabsStr)
+          if (Array.isArray(savedLiveTabs) && savedLiveTabs.length > 0) {
+            return savedLiveTabs
+          }
+        } catch (e) {
+          logger.error('[SALES] failed to parse minimized live tabs', e)
+        }
+      }
       return [
-        { id: '1', name: `Loading Counter ${liveCounter}...`, form: defaultForm }
+        { id: '1', name: `Loading Counter ${liveCounter || ''}...`, form: defaultForm }
       ]
     }
-    const uid = user?.user_id || user?.id
     const savedTabsStr = uid ? localStorage.getItem(`pos_minimized_tabs_${uid}`) : null
     const savedActiveId = uid ? localStorage.getItem(`pos_minimized_active_id_${uid}`) : null
     if (savedTabsStr && savedActiveId) {
@@ -435,6 +448,11 @@ export default function Sales() {
 
   const [activeTabId, setActiveTabId] = useState(() => {
     const uid = user?.user_id || user?.id
+    if (isLiveView) {
+      const savedActiveId = uid ? localStorage.getItem(`pos_live_minimized_active_id_${uid}`) : null
+      if (savedActiveId) return savedActiveId
+      return '1'
+    }
     const savedActiveId = uid ? localStorage.getItem(`pos_minimized_active_id_${uid}`) : null
     if (savedActiveId) return savedActiveId
     return '1'
@@ -464,6 +482,20 @@ export default function Sales() {
     localStorage.setItem(`pos_minimized_tabs_${uid}`, JSON.stringify(tabs))
     localStorage.setItem(`pos_minimized_active_id_${uid}`, activeTabId)
   }, [tabs, activeTabId, user?.user_id, user?.id, isLiveView])
+
+  useEffect(() => {
+    if (isLiveView) {
+      const uid = user?.user_id || user?.id
+      if (uid) {
+        localStorage.removeItem(`pos_live_minimized_${uid}`)
+        localStorage.removeItem(`pos_live_minimized_counter_${uid}`)
+        localStorage.removeItem(`pos_live_minimized_client_id_${uid}`)
+        localStorage.removeItem(`pos_live_minimized_tabs_${uid}`)
+        localStorage.removeItem(`pos_live_minimized_active_id_${uid}`)
+        window.dispatchEvent(new Event('pos_minimized_changed'))
+      }
+    }
+  }, [isLiveView, user?.user_id, user?.id])
 
   useEffect(() => {
     if (isLockedByManager) return
@@ -536,7 +568,7 @@ export default function Sales() {
       // 1. pos.cart_sync handling
       if (type === 'pos.cart_sync' && client_id !== clientId) {
         if (isLiveView) {
-          if (client_id === liveClientId) {
+          if (client_id === activeCashierClientId) {
             setIsRemoteCartLoading(false)
             if (Array.isArray(remoteTabs) && remoteTabs.length > 0) {
               setTabs(remoteTabs)
@@ -631,16 +663,16 @@ export default function Sales() {
 
     window.addEventListener('sync-event', handleSync)
     return () => window.removeEventListener('sync-event', handleSync)
-  }, [clientId, settings, user?.user_id, user?.id, isLiveView, liveClientId, isLockedByManager, managerClientId, activeTabId, broadcastMessage])
+  }, [clientId, settings, user?.user_id, user?.id, isLiveView, activeCashierClientId, isLockedByManager, managerClientId, activeTabId, broadcastMessage])
 
   useEffect(() => {
-    if (isLiveView && liveClientId) {
+    if (isLiveView && activeCashierClientId) {
       setConnectionStatus('connecting')
       const requestCart = () => {
-        logger.info('[SALES] Requesting initial cart state from cashier:', liveClientId)
+        logger.info('[SALES] Requesting initial cart state from cashier:', activeCashierClientId)
         broadcastMessage({
           type: 'pos.request_cart',
-          target_client_id: liveClientId,
+          target_client_id: activeCashierClientId,
           requester_client_id: clientId,
         })
       }
@@ -658,7 +690,7 @@ export default function Sales() {
         clearTimeout(timeoutTimer)
       }
     }
-  }, [isLiveView, liveClientId, clientId, broadcastMessage])
+  }, [isLiveView, activeCashierClientId, clientId, broadcastMessage])
 
   useEffect(() => {
     const handlePresence = (e) => {
@@ -673,13 +705,13 @@ export default function Sales() {
   }, [])
 
   useEffect(() => {
-    if (isLiveView && !liveClientId) {
+    if (isLiveView) {
       const session = activeSessions[liveCounter]
-      if (session) {
-        logger.info(`[SALES] Found client ID for counter ${liveCounter} in active sessions: ${session.client_id}. Updating search params.`)
+      if (session && session.client_id !== liveClientId) {
+        logger.info(`[SALES] Session client ID changed for counter ${liveCounter} to ${session.client_id}. Updating search params.`)
         setSearchParams({ live_counter: liveCounter, client_id: session.client_id })
         setConnectionStatus('connecting')
-      } else {
+      } else if (!session && !liveClientId) {
         setConnectionStatus('offline')
       }
     }
@@ -695,10 +727,10 @@ export default function Sales() {
       const session = activeSessions[val]
       if (session) {
         logger.info(`[SALES] Owner selecting counter ${val} (client: ${session.client_id}) — entering live view`)
-        navigate(`/sales?live_counter=${encodeURIComponent(val)}&client_id=${encodeURIComponent(session.client_id)}`)
+        navigate(`/live-view?live_counter=${encodeURIComponent(val)}&client_id=${encodeURIComponent(session.client_id)}`)
       } else {
         logger.info(`[SALES] Owner selecting counter ${val} (no active session) — entering live view`)
-        navigate(`/sales?live_counter=${encodeURIComponent(val)}`)
+        navigate(`/live-view?live_counter=${encodeURIComponent(val)}`)
       }
     }
   }, [isOwner, user?.counter_prefix, activeSessions, navigate])
@@ -1091,7 +1123,15 @@ export default function Sales() {
   const handleMinimize = () => {
     const targetUid = user?.user_id || user?.id
     if (targetUid) {
-      localStorage.setItem(`pos_minimized_${targetUid}`, 'true')
+      if (isLiveView) {
+        localStorage.setItem(`pos_live_minimized_${targetUid}`, 'true')
+        localStorage.setItem(`pos_live_minimized_counter_${targetUid}`, liveCounter || '')
+        localStorage.setItem(`pos_live_minimized_client_id_${targetUid}`, activeCashierClientId || '')
+        localStorage.setItem(`pos_live_minimized_tabs_${targetUid}`, JSON.stringify(tabs))
+        localStorage.setItem(`pos_live_minimized_active_id_${targetUid}`, activeTabId)
+      } else {
+        localStorage.setItem(`pos_minimized_${targetUid}`, 'true')
+      }
       window.dispatchEvent(new Event('pos_minimized_changed'))
     }
     const lastPage = sessionStorage.getItem('last_page') || '/'

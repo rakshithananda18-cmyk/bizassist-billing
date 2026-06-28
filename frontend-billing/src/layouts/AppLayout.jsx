@@ -340,13 +340,34 @@ export default function AppLayout({ children, title }) {
   }, [])
 
   const [minimizedBill, setMinimizedBill] = React.useState(null)
+  const [minimizedLive, setMinimizedLive] = React.useState(null)
 
   const checkMinimized = React.useCallback(() => {
     const uid = user?.user_id || user?.id
     if (!uid) {
       setMinimizedBill(null)
+      setMinimizedLive(null)
       return
     }
+
+    // Helper to compute items and totals from a tab
+    const getTabStats = (tab) => {
+      const lines = tab?.form?.lines || tab?.form?.items || []
+      const itemsCount = lines.length
+      const totalAmt = lines.reduce((sum, item) => {
+        const q = parseFloat(item.quantity) || parseFloat(item.qty) || 0
+        const p = parseFloat(item.unit_price) || parseFloat(item.price) || 0
+        const d = parseFloat(item.discount) || 0
+        const cgst = parseFloat(item.cgst_rate) || 0
+        const sgst = parseFloat(item.sgst_rate) || 0
+        const base = q * p - d
+        const tax = base * ((cgst + sgst) / 100)
+        return sum + Math.max(0, base + tax)
+      }, 0) || 0
+      return { itemsCount, totalAmt }
+    };
+
+    // 1. Check standard POS minimized
     const isMinimized = localStorage.getItem(`pos_minimized_${uid}`) === 'true'
     const savedTabsStr = localStorage.getItem(`pos_minimized_tabs_${uid}`)
     if (isMinimized && savedTabsStr) {
@@ -355,28 +376,54 @@ export default function AppLayout({ children, title }) {
         if (Array.isArray(savedTabs) && savedTabs.length > 0) {
           const activeId = localStorage.getItem(`pos_minimized_active_id_${uid}`)
           const activeTab = savedTabs.find(t => t.id === activeId) || savedTabs[0]
-          
-          const itemsCount = activeTab.form?.items?.length || 0
-          const totalAmt = activeTab.form?.items?.reduce((sum, item) => {
-            const q = parseFloat(item.qty) || 0
-            const p = parseFloat(item.price) || 0
-            const d = parseFloat(item.discount) || 0
-            return sum + Math.max(0, (q * p) - d)
-          }, 0) || 0
+          const { itemsCount, totalAmt } = getTabStats(activeTab)
 
           setMinimizedBill({
-            name: activeTab.name,
+            name: activeTab.name || 'Invoice Draft',
             itemsCount,
             totalAmt,
             tabsCount: savedTabs.length
           })
-          return
+        } else {
+          setMinimizedBill(null)
         }
       } catch (e) {
-        console.error(e)
+        setMinimizedBill(null)
       }
+    } else {
+      setMinimizedBill(null)
     }
-    setMinimizedBill(null)
+
+    // 2. Check Live View minimized
+    const isLiveMinimized = localStorage.getItem(`pos_live_minimized_${uid}`) === 'true'
+    const savedLiveTabsStr = localStorage.getItem(`pos_live_minimized_tabs_${uid}`)
+    const liveCounter = localStorage.getItem(`pos_live_minimized_counter_${uid}`)
+    const liveClientId = localStorage.getItem(`pos_live_minimized_client_id_${uid}`)
+    if (isLiveMinimized && savedLiveTabsStr && liveCounter) {
+      try {
+        const savedLiveTabs = JSON.parse(savedLiveTabsStr)
+        if (Array.isArray(savedLiveTabs) && savedLiveTabs.length > 0) {
+          const activeId = localStorage.getItem(`pos_live_minimized_active_id_${uid}`)
+          const activeTab = savedLiveTabs.find(t => t.id === activeId) || savedLiveTabs[0]
+          const { itemsCount, totalAmt } = getTabStats(activeTab)
+
+          setMinimizedLive({
+            counter: liveCounter,
+            clientId: liveClientId,
+            name: activeTab.name || `Counter ${liveCounter}`,
+            itemsCount,
+            totalAmt,
+            tabsCount: savedLiveTabs.length
+          })
+        } else {
+          setMinimizedLive(null)
+        }
+      } catch (e) {
+        setMinimizedLive(null)
+      }
+    } else {
+      setMinimizedLive(null)
+    }
   }, [user?.user_id, user?.id])
 
   React.useEffect(() => {
@@ -902,6 +949,64 @@ export default function AppLayout({ children, title }) {
                   <span>{minimizedBill.itemsCount} items</span>
                   <span style={{ fontWeight: 700, color: 'var(--success)' }}>
                     ₹{minimizedBill.totalAmt.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+            )}
+            
+            {minimizedLive && (
+              <div
+                className="pos-minimized-card"
+                style={{ marginTop: minimizedBill ? 10 : 0, borderLeft: '3px solid var(--accent)' }}
+                onClick={() => {
+                  const targetUid = user?.user_id || user?.id
+                  if (targetUid) {
+                    localStorage.removeItem(`pos_live_minimized_${targetUid}`);
+                  }
+                  window.dispatchEvent(new Event('pos_minimized_changed'));
+                  navigate(`/live-view?live_counter=${encodeURIComponent(minimizedLive.counter)}${minimizedLive.clientId ? `&client_id=${encodeURIComponent(minimizedLive.clientId)}` : ''}`);
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.02em' }}>
+                    <ZapIcon size={14} style={{ color: 'var(--accent)', marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Live View: {minimizedLive.counter}
+                  </span>
+                  <button
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      fontSize: '0.75rem',
+                      padding: '2px 4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      lineHeight: 1
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.confirm('Discard active live counter monitoring draft?')) {
+                        const cleanupUid = user?.user_id || user?.id
+                        if (cleanupUid) {
+                          localStorage.removeItem(`pos_live_minimized_${cleanupUid}`);
+                          localStorage.removeItem(`pos_live_minimized_counter_${cleanupUid}`);
+                          localStorage.removeItem(`pos_live_minimized_client_id_${cleanupUid}`);
+                          localStorage.removeItem(`pos_live_minimized_tabs_${cleanupUid}`);
+                          localStorage.removeItem(`pos_live_minimized_active_id_${cleanupUid}`);
+                        }
+                        window.dispatchEvent(new Event('pos_minimized_changed'));
+                      }
+                    }}
+                   aria-label="Close"><CloseIcon size={16} /></button>
+                </div>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {minimizedLive.name}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                  <span>{minimizedLive.itemsCount} items</span>
+                  <span style={{ fontWeight: 700, color: 'var(--success)' }}>
+                    ₹{minimizedLive.totalAmt.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>

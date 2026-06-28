@@ -45,6 +45,7 @@ function AppRoutes() {
       <Route path="/"          element={<ProtectedRoute><Home      /></ProtectedRoute>} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/sales"     element={<ProtectedRoute><Sales     /></ProtectedRoute>} />
+      <Route path="/live-view" element={<ProtectedRoute><Sales isLiveViewMode={true} /></ProtectedRoute>} />
       <Route path="/purchases" element={<ProtectedRoute><Purchases /></ProtectedRoute>} />
       <Route path="/payments"  element={<ProtectedRoute><Payments  /></ProtectedRoute>} />
       <Route path="/stock"    element={<ProtectedRoute><Stock     /></ProtectedRoute>} />
