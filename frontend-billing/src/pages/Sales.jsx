@@ -87,6 +87,7 @@ export default function Sales() {
   const [managerUsername, setManagerUsername] = useState(null)
   const [showRemoteRequestModal, setShowRemoteRequestModal] = useState(false)
   const [isRemoteCartLoading, setIsRemoteCartLoading] = useState(isLiveView)
+  const [connectionStatus, setConnectionStatus] = useState('connecting') // 'connecting' | 'offline' | 'timeout'
 
   const [customers, setCustomers]     = useState([])
   const [products, setProducts]       = useState([])
@@ -634,6 +635,7 @@ export default function Sales() {
 
   useEffect(() => {
     if (isLiveView && liveClientId) {
+      setConnectionStatus('connecting')
       const requestCart = () => {
         logger.info('[SALES] Requesting initial cart state from cashier:', liveClientId)
         broadcastMessage({
@@ -644,8 +646,17 @@ export default function Sales() {
       }
       requestCart()
       // Retry once after 2.5 seconds if no cart received (fallback if network transient)
-      const t = setTimeout(requestCart, 2500)
-      return () => clearTimeout(t)
+      const retryTimer = setTimeout(requestCart, 2500)
+      
+      // Set timeout warning after 8 seconds
+      const timeoutTimer = setTimeout(() => {
+        setConnectionStatus(prev => prev === 'connecting' ? 'timeout' : prev)
+      }, 8000)
+
+      return () => {
+        clearTimeout(retryTimer)
+        clearTimeout(timeoutTimer)
+      }
     }
   }, [isLiveView, liveClientId, clientId, broadcastMessage])
 
@@ -659,8 +670,20 @@ export default function Sales() {
       }))
     }
     window.addEventListener('sync-event', handlePresence)
-    return () => window.removeEventListener('sync-event', handlePresence)
   }, [])
+
+  useEffect(() => {
+    if (isLiveView && !liveClientId) {
+      const session = activeSessions[liveCounter]
+      if (session) {
+        logger.info(`[SALES] Found client ID for counter ${liveCounter} in active sessions: ${session.client_id}. Updating search params.`)
+        setSearchParams({ live_counter: liveCounter, client_id: session.client_id })
+        setConnectionStatus('connecting')
+      } else {
+        setConnectionStatus('offline')
+      }
+    }
+  }, [isLiveView, liveCounter, liveClientId, activeSessions, setSearchParams])
 
   const handleSelectCounter = useCallback((val) => {
     if (!isOwner) return
@@ -1831,23 +1854,67 @@ export default function Sales() {
             zIndex: 1000,
             gap: 16
           }}>
-            <div style={{
-              width: 40, height: 40,
-              border: '3px solid rgba(255,255,255,0.08)',
-              borderTopColor: 'var(--accent)',
-              borderRadius: '50%',
-              animation: 'spin 1s linear infinite'
-            }} />
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              Connecting to Counter <strong>{liveCounter}</strong>... Fetching active cart.
-            </div>
+            {connectionStatus === 'connecting' && (
+              <>
+                <div style={{
+                  width: 40, height: 40,
+                  border: '3px solid rgba(255,255,255,0.08)',
+                  borderTopColor: 'var(--accent)',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite'
+                }} />
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  Connecting to Counter <strong>{liveCounter}</strong>... Fetching active cart.
+                </div>
+              </>
+            )}
+
+            {connectionStatus === 'offline' && (
+              <>
+                <div style={{ fontSize: '2rem' }}>🔌</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#ef4444' }}>
+                  Counter {liveCounter} is Offline
+                </div>
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', maxWidth: 320, textAlign: 'center', lineHeight: 1.4 }}>
+                  This counter does not have an active session. Real-time view is only available when the cashier is online.
+                </div>
+              </>
+            )}
+
+            {connectionStatus === 'timeout' && (
+              <>
+                <div style={{ fontSize: '2rem' }}>⏳</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f59e0b' }}>
+                  Connection Timeout
+                </div>
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', maxWidth: 320, textAlign: 'center', lineHeight: 1.4 }}>
+                  No response from Counter {liveCounter}. The terminal might have closed their tab, or went to sleep/offline.
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setConnectionStatus('connecting')
+                    broadcastMessage({
+                      type: 'pos.request_cart',
+                      target_client_id: liveClientId,
+                      requester_client_id: clientId,
+                    })
+                  }}
+                  style={{ fontSize: '0.78rem', padding: '6px 14px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                >
+                  Retry Connection
+                </button>
+              </>
+            )}
+
             <button
               type="button"
               className="btn btn-secondary"
               onClick={() => navigate('/sales')}
               style={{ fontSize: '0.78rem', padding: '6px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-primary)' }}
             >
-              Cancel & Exit
+              Exit Live View
             </button>
           </div>
         )}

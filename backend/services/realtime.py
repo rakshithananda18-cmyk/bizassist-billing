@@ -111,7 +111,11 @@ class RealtimeManager:
         if business_id not in self.connections:
             return
             
-        logger.info(f"[REALTIME] Broadcasting to Business {business_id}: {event.get('type')}")
+        event_type = event.get('type')
+        if event_type == 'pos.presence':
+            logger.debug(f"[REALTIME] Broadcasting to Business {business_id}: {event_type}")
+        else:
+            logger.info(f"[REALTIME] Broadcasting to Business {business_id}: {event_type}")
         
         # Gather active queues to write
         queues = list(self.connections[business_id])
