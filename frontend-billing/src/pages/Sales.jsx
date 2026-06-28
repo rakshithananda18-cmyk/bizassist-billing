@@ -395,7 +395,7 @@ export default function Sales() {
     Array.isArray(tabsArr) && tabsArr.some(t => (t?.form?.items?.length || 0) > 0)
 
   const [tabs, setTabs] = useState(() => {
-    const uid = user?.id
+    const uid = user?.user_id || user?.id
     const savedTabsStr = uid ? localStorage.getItem(`pos_minimized_tabs_${uid}`) : null
     const savedActiveId = uid ? localStorage.getItem(`pos_minimized_active_id_${uid}`) : null
     if (savedTabsStr && savedActiveId) {
@@ -414,7 +414,7 @@ export default function Sales() {
   })
 
   const [activeTabId, setActiveTabId] = useState(() => {
-    const uid = user?.id
+    const uid = user?.user_id || user?.id
     const savedActiveId = uid ? localStorage.getItem(`pos_minimized_active_id_${uid}`) : null
     if (savedActiveId) return savedActiveId
     return '1'
@@ -435,7 +435,7 @@ export default function Sales() {
 
   useEffect(() => {
     tabsRef.current = tabs // keep a fresh handle for the SSE receive guard below
-    const uid = user?.id
+    const uid = user?.user_id || user?.id
     if (!uid) return
 
     // Persist cart state locally — restored on page reload (per-device, always on)
@@ -485,7 +485,7 @@ export default function Sales() {
     }, 600)
 
     return () => clearTimeout(t)
-  }, [tabs, activeTabId, user?.id, authFetch, clientId, settings])
+  }, [tabs, activeTabId, user?.user_id, user?.id, authFetch, clientId, settings])
 
   useEffect(() => {
     const handleSync = (e) => {
@@ -501,7 +501,7 @@ export default function Sales() {
         const isSalesSyncEnabled = settings?.general?.realtime_sync_sales !== false
         if (!isSalesSyncEnabled) return
 
-        const uid = user?.id
+        const uid = user?.user_id || user?.id
         if (!uid) return
 
         const localTimestamp = parseInt(localStorage.getItem(`pos_cart_updated_at_${uid}`) || '0', 10)
@@ -544,7 +544,7 @@ export default function Sales() {
     return () => {
       window.removeEventListener('sync-event', handleSync)
     }
-  }, [clientId, settings, user?.id])
+  }, [clientId, settings, user?.user_id, user?.id])
 
 
 
@@ -663,11 +663,12 @@ export default function Sales() {
 
 
   useEffect(() => {
-    if (user?.id) {
-      localStorage.removeItem(`pos_minimized_${user.id}`)
+    const targetUid = user?.user_id || user?.id
+    if (targetUid) {
+      localStorage.removeItem(`pos_minimized_${targetUid}`)
       window.dispatchEvent(new Event('pos_minimized_changed'))
     }
-  }, [user?.id])
+  }, [user?.user_id, user?.id])
   
   const [productBatches, setProductBatches] = useState({})
   
@@ -924,8 +925,9 @@ export default function Sales() {
   }, [tabs, activeTabId, godowns, authFetch, syncTabNames, mergePending, dbInvoices])
 
   const handleMinimize = () => {
-    if (user?.id) {
-      localStorage.setItem(`pos_minimized_${user.id}`, 'true')
+    const targetUid = user?.user_id || user?.id
+    if (targetUid) {
+      localStorage.setItem(`pos_minimized_${targetUid}`, 'true')
       window.dispatchEvent(new Event('pos_minimized_changed'))
     }
     const lastPage = sessionStorage.getItem('last_page') || '/'

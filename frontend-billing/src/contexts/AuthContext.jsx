@@ -34,6 +34,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('billing_token', tok)
     const userObj = {
       id: data.id,
+      user_id: data.user_id,
       username: data.username,
       business_name: data.business_name,
       role: data.role,

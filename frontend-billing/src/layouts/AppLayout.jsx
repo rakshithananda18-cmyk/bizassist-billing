@@ -342,7 +342,7 @@ export default function AppLayout({ children, title }) {
   const [minimizedBill, setMinimizedBill] = React.useState(null)
 
   const checkMinimized = React.useCallback(() => {
-    const uid = user?.id
+    const uid = user?.user_id || user?.id
     if (!uid) {
       setMinimizedBill(null)
       return
@@ -377,7 +377,7 @@ export default function AppLayout({ children, title }) {
       }
     }
     setMinimizedBill(null)
-  }, [user?.id])
+  }, [user?.user_id, user?.id])
 
   React.useEffect(() => {
     checkMinimized()
@@ -856,8 +856,9 @@ export default function AppLayout({ children, title }) {
               <div
                 className="pos-minimized-card"
                 onClick={() => {
-                  if (user?.id) {
-                    localStorage.removeItem(`pos_minimized_${user.id}`);
+                  const targetUid = user?.user_id || user?.id
+                  if (targetUid) {
+                    localStorage.removeItem(`pos_minimized_${targetUid}`);
                   }
                   window.dispatchEvent(new Event('pos_minimized_changed'));
                   navigate('/sales');
@@ -883,10 +884,11 @@ export default function AppLayout({ children, title }) {
                     onClick={(e) => {
                       e.stopPropagation();
                       if (window.confirm('Discard active draft billing session?')) {
-                        if (user?.id) {
-                          localStorage.removeItem(`pos_minimized_${user.id}`);
-                          localStorage.removeItem(`pos_minimized_tabs_${user.id}`);
-                          localStorage.removeItem(`pos_minimized_active_id_${user.id}`);
+                        const cleanupUid = user?.user_id || user?.id
+                        if (cleanupUid) {
+                          localStorage.removeItem(`pos_minimized_${cleanupUid}`);
+                          localStorage.removeItem(`pos_minimized_tabs_${cleanupUid}`);
+                          localStorage.removeItem(`pos_minimized_active_id_${cleanupUid}`);
                         }
                         window.dispatchEvent(new Event('pos_minimized_changed'));
                       }
