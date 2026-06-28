@@ -582,7 +582,6 @@ export default function Login() {
                 id="staff-user-select"
                 value={selectedStaffUser}
                 onChange={e => setSelectedStaffUser(e.target.value)}
-                style={{ height: 36 }}
               >
                 {selectedOwner?.staffAccounts?.map((s, idx) => (
                   <option key={idx} value={s.username}>
