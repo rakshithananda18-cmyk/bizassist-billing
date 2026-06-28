@@ -86,6 +86,7 @@ export default function Sales() {
   const [managerClientId, setManagerClientId] = useState(null)
   const [managerUsername, setManagerUsername] = useState(null)
   const [showRemoteRequestModal, setShowRemoteRequestModal] = useState(false)
+  const [isRemoteCartLoading, setIsRemoteCartLoading] = useState(isLiveView)
 
   const [customers, setCustomers]     = useState([])
   const [products, setProducts]       = useState([])
@@ -535,6 +536,7 @@ export default function Sales() {
       if (type === 'pos.cart_sync' && client_id !== clientId) {
         if (isLiveView) {
           if (client_id === liveClientId) {
+            setIsRemoteCartLoading(false)
             if (Array.isArray(remoteTabs) && remoteTabs.length > 0) {
               setTabs(remoteTabs)
             }
@@ -711,6 +713,14 @@ export default function Sales() {
   const availableCounters = useMemo(() => {
     if ((user?.role || '').toLowerCase() === 'cashier') return []
     const ownerPrefix = (user?.counter_prefix || '').trim() || 'OW'
+    const tag = effectiveHostingMode() === 'cloud' ? '' : 'LCL-'
+    const mode = effectiveHostingMode()
+    if (mode !== 'cloud') {
+      return [{
+        label: `${tag}${ownerPrefix}`,
+        value: ownerPrefix
+      }]
+    }
     const prefixes = [ownerPrefix]
     staffList.forEach(s => {
       if ((s.role || '').toLowerCase() === 'cashier') {
@@ -720,7 +730,6 @@ export default function Sales() {
         }
       }
     })
-    const tag = effectiveHostingMode() === 'cloud' ? '' : 'LCL-'
     return prefixes.map(p => ({
       label: `${tag}${p}`,
       value: p
@@ -1804,8 +1813,41 @@ export default function Sales() {
 
   return (
     <AppLayout title="POS Counter">
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
         
+        {isLiveView && isRemoteCartLoading && (
+          <div style={{
+            position: 'absolute',
+            top: 44, // below the PosTopBar
+            left: 0, right: 0, bottom: 0,
+            background: 'var(--bg-1)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            gap: 16
+          }}>
+            <div style={{
+              width: 40, height: 40,
+              border: '3px solid rgba(255,255,255,0.08)',
+              borderTopColor: 'var(--accent)',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite'
+            }} />
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+              Connecting to Counter <strong>{liveCounter}</strong>... Fetching active cart.
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate('/sales')}
+              style={{ fontSize: '0.78rem', padding: '6px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-primary)' }}
+            >
+              Cancel & Exit
+            </button>
+          </div>
+        )}
 
         {/* Tab-Style Bar */}
         <PosTopBar
