@@ -519,7 +519,10 @@ export default function Sales(props = {}) {
   useEffect(() => {
     if (isLockedByManager) return
 
-    const shouldBroadcast = POS_CROSS_DEVICE_CART_SYNC || (isLiveView && editState === 'granted')
+    const shouldBroadcast =
+      POS_CROSS_DEVICE_CART_SYNC ||
+      (isLiveView && editState === 'granted') ||
+      (!isLiveView && effectiveHostingMode() === 'cloud')
     if (!shouldBroadcast) return
 
     const uid = user?.user_id || user?.id
