@@ -17,7 +17,7 @@
  */
 
 // Is this running as the downloaded local app?
-const isLocalHost = (hostname) => {
+export const isLocalHost = (hostname) => {
   if (!hostname) return false;
   return (
     hostname === 'localhost' ||
@@ -50,11 +50,18 @@ export const LOCAL_URL =
 export function getApiBase() {
   if (typeof window === 'undefined') return '';
 
-  // Hard rule: downloaded app (localhost) = local backend
+  // Hard rule: downloaded app (localhost/LAN) = local backend
   if (IS_LOCAL_APP) {
     // Local app can optionally point to cloud (user explicitly chose cloud-only mode)
     const savedMode = localStorage.getItem('bizassist_hosting_mode');
     if (savedMode === 'cloud') return CLOUD_URL;
+
+    // Connect to configured LAN master server if checked
+    const useLanDb = localStorage.getItem('bizassist_use_lan_db') === 'true';
+    const savedLocalUrl = localStorage.getItem('bizassist_local_backend_url');
+    if (useLanDb && savedLocalUrl) {
+      return savedLocalUrl;
+    }
     return LOCAL_URL;
   }
 

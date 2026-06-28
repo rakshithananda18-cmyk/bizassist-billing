@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { useLock } from '../contexts/LockContext'
-import { API_BASE } from '../config'
+import { API_BASE, IS_LOCAL_APP, updateApiBase } from '../config'
 import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon, MonitorIcon, SyncIcon, CloudIcon, ZapIcon, WifiOffIcon, RobotIcon, DevicesIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import { SkylineLoader } from '../components/Logo'
@@ -14,7 +14,6 @@ import PreflightModal from '../components/hosting/PreflightModal'
 import ConsequenceModal from '../components/hosting/ConsequenceModal'
 import MigrationModal from '../components/hosting/MigrationModal'
 import BackupModal from '../components/hosting/BackupModal'
-import { IS_LOCAL_APP } from '../config'
 
 // Sample content shown for each draggable header line in the live preview.
 const PREVIEW_HEADER_CONTENT = {
@@ -258,6 +257,76 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
   const [migrationState,   setMigrationState]   = useState(null)  // { from, to }
   const [backupDir,        setBackupDir]        = useState(null)  // null | 'cloud-to-local' | 'local-to-cloud' (data sync, no mode switch)
 
+  const [useLanDb, setUseLanDb] = useState(() => {
+    return typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_use_lan_db') === 'true'
+  })
+  const [lanServerUrl, setLanServerUrl] = useState(() => {
+    return (typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_local_backend_url')) || 'http://localhost:8001'
+  })
+  const [testStatus, setTestStatus] = useState('idle')
+  const [testError, setTestError] = useState('')
+
+  const handleTestConnection = async () => {
+    setTestStatus('testing')
+    setTestError('')
+    let targetUrl = lanServerUrl.trim()
+    if (!targetUrl) {
+      setTestStatus('error')
+      setTestError('Server URL/IP cannot be empty.')
+      return
+    }
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+      targetUrl = `http://${targetUrl}`
+    }
+    try {
+      const urlObj = new URL(targetUrl)
+      if (!urlObj.port) {
+        targetUrl = `${targetUrl.replace(/\/$/, '')}:8001`
+      }
+    } catch {
+      targetUrl = `${targetUrl.replace(/\/$/, '')}:8001`
+    }
+
+    try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 2000)
+      const res = await fetch(`${targetUrl.replace(/\/$/, '')}/health`, {
+        signal: controller.signal,
+        mode: 'cors'
+      })
+      clearTimeout(timeoutId)
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+      }
+      const body = await res.json()
+      if (body.status === 'ok' && body.db === 'connected') {
+        setTestStatus('success')
+        localStorage.setItem('bizassist_use_lan_db', 'true')
+        localStorage.setItem('bizassist_local_backend_url', targetUrl)
+        updateApiBase('local')
+        window.dispatchEvent(new CustomEvent('lan_status_changed'))
+        recheck()
+      } else {
+        throw new Error('Server returned unhealthy state or database disconnected.')
+      }
+    } catch (err) {
+      setTestStatus('error')
+      setTestError(err.message || 'Network unreachable or server timeout.')
+    }
+  }
+
+  const handleToggleLan = (checked) => {
+    setUseLanDb(checked)
+    if (!checked) {
+      localStorage.setItem('bizassist_use_lan_db', 'false')
+      localStorage.removeItem('bizassist_local_backend_url')
+      updateApiBase('local')
+      window.dispatchEvent(new CustomEvent('lan_status_changed'))
+      recheck()
+      setTestStatus('idle')
+    }
+  }
+
   // Compute card state for each mode
   function cardState(mode) {
     if (mode === currentMode) return 'active'
@@ -386,6 +455,88 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
           )
         })}
       </div>
+
+      {/* Local LAN Database Settings (only shown if local/hybrid is active and platform is local/LAN-connected) */}
+      {IS_LOCAL_APP && (currentMode === 'local' || currentMode === 'hybrid') && (
+        <div style={{
+          marginTop: 14, padding: '12px 14px', borderRadius: 10,
+          background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              Local LAN Master/Client Connection
+            </div>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              <input
+                type="checkbox"
+                checked={useLanDb}
+                onChange={e => handleToggleLan(e.target.checked)}
+                style={{ width: 14, height: 14, accentColor: 'var(--accent)' }}
+              />
+              Connect to a remote LAN Master PC
+            </label>
+          </div>
+          
+          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: useLanDb ? 12 : 0 }}>
+            {useLanDb 
+              ? 'Enter the IP address or host URL of the master PC. Both devices will share the same database.' 
+              : 'Running in Standalone mode. The database is stored locally on this machine only.'}
+          </div>
+
+          {useLanDb && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="e.g. 192.168.1.100 or localhost"
+                  value={lanServerUrl}
+                  onChange={e => {
+                    setLanServerUrl(e.target.value)
+                    setTestStatus('idle')
+                  }}
+                  className="form-input"
+                  style={{
+                    flex: 1,
+                    fontSize: '0.8rem',
+                    padding: '6px 10px',
+                    borderRadius: 6,
+                    background: 'rgba(0,0,0,0.15)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+                <button
+                  onClick={handleTestConnection}
+                  disabled={testStatus === 'testing'}
+                  style={{
+                    padding: '6px 14px', borderRadius: 6,
+                    background: testStatus === 'success' ? '#22c55e' : 'var(--accent)',
+                    color: '#fff', border: 'none',
+                    cursor: testStatus === 'testing' ? 'wait' : 'pointer',
+                    fontSize: '0.8rem', fontWeight: 700,
+                  }}
+                >
+                  {testStatus === 'testing' ? 'Testing...' : testStatus === 'success' ? 'Connected ✓' : 'Save & Test Connection'}
+                </button>
+              </div>
+
+              {testStatus === 'success' && (
+                <div style={{ fontSize: '0.72rem', color: '#22c55e', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} />
+                  Connected successfully to LAN Master database! All transactions will now sync to {lanServerUrl}.
+                </div>
+              )}
+
+              {testStatus === 'error' && (
+                <div style={{ fontSize: '0.72rem', color: '#ef4444', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#ef4444' }} />
+                  {testError || 'Connection failed: Server is unreachable.'}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Manual data sync (downloaded app only — needs localhost + network).
           Non-destructive Last-Write-Wins merge; does NOT switch hosting mode. */}

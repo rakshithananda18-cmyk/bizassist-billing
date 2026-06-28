@@ -4,9 +4,10 @@
 // the window controls (settings / minimize / close) on the right. Extracted
 // VERBATIM from Sales.jsx (R5 decomposition) — purely presentational, owns no
 // state; all actions are passed in as callbacks.
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { CloseIcon, PlusIcon, SettingsIcon } from '../../components/Icons'
 import CounterMenu from './CounterMenu'
+import { IS_LOCAL_APP } from '../../config'
 
 export default function PosTopBar({
   tabs,
@@ -24,6 +25,42 @@ export default function PosTopBar({
   availableCounters = [],
   onSelectCounter,
 }) {
+  const [lanStatus, setLanStatus] = useState(() => {
+    const useLanDb = typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_use_lan_db') === 'true'
+    let host = ''
+    if (useLanDb) {
+      const url = localStorage.getItem('bizassist_local_backend_url')
+      if (url) {
+        try {
+          host = new URL(url).hostname
+        } catch {
+          host = url.replace('http://', '').split(':')[0]
+        }
+      }
+    }
+    return { useLanDb, host }
+  })
+
+  useEffect(() => {
+    const updateLan = () => {
+      const useLanDb = typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_use_lan_db') === 'true'
+      let host = ''
+      if (useLanDb) {
+        const url = localStorage.getItem('bizassist_local_backend_url')
+        if (url) {
+          try {
+            host = new URL(url).hostname
+          } catch {
+            host = url.replace('http://', '').split(':')[0]
+          }
+        }
+      }
+      setLanStatus({ useLanDb, host })
+    }
+    window.addEventListener('lan_status_changed', updateLan)
+    return () => window.removeEventListener('lan_status_changed', updateLan)
+  }, [])
+
   return (
     <div className="pos-top-bar">
       <div className="pos-top-bar-left">
@@ -95,6 +132,25 @@ export default function PosTopBar({
             ?
           </button>
         </div>
+
+        {IS_LOCAL_APP && (
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: '0.74rem',
+            fontWeight: 600,
+            padding: '2px 7px',
+            borderRadius: 6,
+            background: lanStatus.useLanDb ? 'rgba(34, 197, 94, 0.15)' : 'rgba(255, 255, 255, 0.08)',
+            border: lanStatus.useLanDb ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(255, 255, 255, 0.12)',
+            color: lanStatus.useLanDb ? '#22c55e' : 'var(--text-muted)',
+            marginRight: 6,
+          }} title={lanStatus.useLanDb ? `Connected to Master PC at ${localStorage.getItem('bizassist_local_backend_url')}` : 'Running on this device locally'}>
+            <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: lanStatus.useLanDb ? '#22c55e' : 'var(--text-muted)' }} />
+            {lanStatus.useLanDb ? `LAN: ${lanStatus.host}` : 'Standalone'}
+          </div>
+        )}
 
         <CounterMenu
           prefix={counterPrefix}

@@ -1,10 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { logger } from '../utils/logger'
-
-const CLOUD_URL =
-  import.meta.env.VITE_API_URL || 'https://rakshit-dev-bizassist.hf.space'
-
-const LOCAL_URL = 'http://localhost:8001'
+import { LOCAL_URL, CLOUD_URL, IS_LOCAL_APP } from '../config'
 
 const INTERVAL_MS = 30_000
 
@@ -20,7 +16,9 @@ function fetchWithTimeout(url, timeout, opts = {}) {
 async function runLocalProbe() {
   const t0 = Date.now()
   try {
-    const res = await fetchWithTimeout(`${LOCAL_URL}/health`, 500, { mode: 'cors' })
+    const savedLocalUrl = typeof localStorage !== 'undefined' ? localStorage.getItem('bizassist_local_backend_url') : null
+    const targetLocal = savedLocalUrl || LOCAL_URL
+    const res = await fetchWithTimeout(`${targetLocal}/health`, 500, { mode: 'cors' })
     const ms = Date.now() - t0
     if (!res.ok) return { status: 'offline', ms: null, error: `HTTP ${res.status}` }
     return { status: ms > 1000 ? 'slow' : 'online', ms, error: null }
@@ -33,9 +31,7 @@ async function runLocalProbe() {
       (msg.includes('fetch') || msg.includes('network') || msg.includes('CORS') ||
         msg.includes('Failed to fetch') || msg.includes('NetworkError'))
     ) {
-      const onLocalhost =
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1'
+      const onLocalhost = IS_LOCAL_APP
       if (!onLocalhost) return { status: 'cors', ms: null, error: 'Mixed-content / CORS blocked' }
     }
     return { status: 'offline', ms: null, error: msg || 'Network error' }
