@@ -152,6 +152,7 @@
 - `src/components/sales/PosSettingsModals.jsx` — removed obsolete per-device prefix field
 - `src/hooks/usePaymentFlow.js` — print/display the **server-returned** invoice number (server may re-number on a concurrent collision, §9.3b)
 - `src/pages/Counters.jsx` — **new** owner Live Counters page; `src/App.jsx` + `src/layouts/AppLayout.jsx` — route + owner-only nav link
+- `src/pages/Login.jsx` — removed hardcoded `height:36` on the staff-user `<select>` so it aligns with the password input (login dropdown alignment fix)
 - `backend/core/api/connections.py` — **new** `POST /realtime/presence` (Live Counters publish)
 - `src/contexts/AuthContext.jsx` — store `user.counter_prefix`; **reconcile `general.hosting_mode` to the real mode in `fetchSettings`** (web⇒cloud, desktop⇒`bizassist_hosting_mode`) so the saved setting can't drift (also corrects `getCounterPrefix`'s `LCL-` tagging, which reads that value)
 - `src/sync/applyDelta.js` — **new** (generic delta list patch)
@@ -167,6 +168,24 @@
 - **Caveat:** same account on two machines at once shares one series (rare; server still guards numbers). One account = one counter at a time.
 - **Deploy:** `users.counter_prefix` migration on BOTH DBs (runtime migrator auto-adds on startup; alembic for parity), **HF redeploy + Vercel redeploy**. Owner with no prefix set bills as `OW-`.
 - **Test:** assign cashier A→`C1`, B→`C2` in Staff; each logs in and bills → `C1-0001` / `C2-0001`; cashier has no way to change it.
+
+### 🟢 FIXED (2026-06-28) — cashier 403 on `/realtime/ticket` (realtime never connected for staff)
+- **Symptom:** cashier login → `POST /realtime/ticket` **403** → 5 retries → SSE auto-disabled. Realtime never worked for staff.
+- **Cause:** `core/api/connections.py` ticket endpoint used `Depends(restrict_cashier)` (owner-only) while `/realtime/events` used `restrict_cashier_or_ticket` (allows cashiers) — inconsistent; the ticket prerequisite blocked cashiers.
+- **Fix:** ticket now uses `Depends(get_active_user)` (any authenticated user). **Backend → needs HF redeploy.**
+
+### ▶️ NEXT — prioritized work & recommendations (2026-06-28)
+*Recommended order to pick up from. Each is independently shippable.*
+
+1. **Deploy + two-device soak (do first).** Push the latest (GitHub + HF + Vercel), then verify on two real devices: cart isolation, per-counter/`LCL` numbering, realtime SSE connects on cloud, **Live Counters** tiles update, no refetch loop, no `LCL-` flash. This gates everything else.
+2. **Confirm CI is green.** GitHub Actions already exist (pytest + RLS Postgres + vitest/Playwright — see `TESTING.md`). Pin a dated green run.
+3. **🔒 RLS fail-closed (S-1).** Highest-value security item before onboarding multiple untrusted cloud tenants — make Postgres RLS deny when `app.current_business_id` is unset (exempt migration/seeder/scheduler). Plan: `RLS_FAIL_CLOSED_TEST_PLAN.md`; automatable via `tests/test_rls_postgres.py`. **Also rotate the exposed Supabase password.**
+4. **Phase 4 — request-to-edit + presence soft-lock** (the owner's "edit a counter" flow, builds on Live Counters): owner requests → cashier approves → soft-lock → edit. This is the productized end of the counter dropdown. (Plan §9.2 Stage 2 / §9.4.)
+5. **Server-authoritative invoice numbering at commit** — the end state for online numbering (replaces the §9.3b re-number-on-conflict interim). Online: server assigns the number atomically on Pay; offline keeps the `LCL-{device}` series.
+6. **Login: staff-login for "Other Business"** — **DECISION (2026-06-28):** do NOT build a public staff-by-business lookup (staff/username **enumeration risk**). Safe paths: (A) staff type their own username+password in Other Business Login — *already works*, the login authenticates staff accounts; (B) owner logs in once on the device → staff dropdown appears (current recent-login behavior, caches `/staff`). Only build a public endpoint with rate-limiting if truly required.
+7. **Ops:** keep the **HF Space warm** (free-tier cold start makes the SSE breaker trip → realtime shows Disconnected; use a keep-alive ping or paid tier). Reduce `[SYNC_WORKER] Running sync` DEBUG spam (every 15s → only-on-work).
+8. **Delta-push rollout** to money entities (`invoices`/`payments`/`purchases`) — Phase 1 currently covers `parties` only; migrate each backend broadcast to carry the DTO so those pages patch instead of refetch.
+9. **Later (revenue/compliance/code-health):** subscription/trial gating (Razorpay); e-Invoice (IRN) + e-Way Bill; `Sales.jsx` decomposition (god-component on the money path).
 
 ### 🟢 DECIDED — multi-terminal POS design (2026-06-27, see plan §9)
 - **Live cart = PER-TERMINAL** (shipped, §9.1). Cashiers (and the owner's own POS) never share a live cart.

@@ -211,9 +211,16 @@ def revoke_partnership(id: int, current_user: dict = Depends(restrict_cashier), 
         raise HTTPException(status_code=500, detail="Could not revoke partnership")
 
 @router.post("/realtime/ticket")
-def generate_sse_ticket(current_user: dict = Depends(restrict_cashier)):
+def generate_sse_ticket(current_user: dict = Depends(get_active_user)):
     """
     Generate a short-lived single-use SSE ticket for authentication.
+
+    Any authenticated user (owner OR cashier) may open the realtime stream —
+    cashiers need it to receive sync deltas and to power the owner's Live Counters
+    view. (Previously this required owner-only `restrict_cashier`, which 403'd
+    cashiers and tripped the SSE auto-disable breaker — `/realtime/events` already
+    allows cashiers via `restrict_cashier_or_ticket`, so the ticket gate was the
+    inconsistent one.)
     """
     from services.auth import create_sse_ticket
     ticket = create_sse_ticket(current_user)
