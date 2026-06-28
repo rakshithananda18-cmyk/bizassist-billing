@@ -110,10 +110,17 @@ export function useRealtimeLeader(token, settings, user) {
       logger.warn(`[REALTIME] SSE connection failure count: ${consecutiveFailureCountRef.current}/5. Reason: ${reason}`)
 
       if (consecutiveFailureCountRef.current >= 5) {
-        logger.error(`[REALTIME] SSE connection failed 5 consecutive times. Automatically disabling real-time sync.`)
-        
+        logger.error(`[REALTIME] SSE connection failed 5 consecutive times.`)
         consecutiveFailureCountRef.current = 0
 
+        const isCashier = (user?.role || '').toLowerCase() === 'cashier'
+        if (isCashier) {
+          logger.info('[REALTIME] Cashier account: skipping server-side auto-disable.')
+          window.dispatchEvent(new CustomEvent('realtime-sync-auto-disabled', { detail: { reason } }))
+          return
+        }
+
+        logger.info(`[REALTIME] Automatically disabling real-time sync on server for owner.`)
         try {
           const updatedSettings = {
             ...settings,

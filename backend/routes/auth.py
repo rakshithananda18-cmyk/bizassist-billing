@@ -492,11 +492,26 @@ class SettingsUpdateRequest(BaseModel):
     labels: Optional[dict] = None
 
 
-def _get_user_settings(user: User) -> dict:
+def _get_user_settings(user: User, db: Session = None) -> dict:
     """Return merged settings: defaults overridden by what's saved on the user."""
     import copy
     logger.debug(f"[SETTINGS] Merging settings for user '{user.username}' (ID {user.id})")
     base = copy.deepcopy(_DEFAULT_SETTINGS)
+
+    # 1. Start with the owner settings if this is a staff user
+    if user.parent_business_id and db:
+        owner = db.query(User).filter(User.id == user.parent_business_id).first()
+        if owner and owner.settings:
+            try:
+                owner_saved = json.loads(owner.settings)
+                for section, values in owner_saved.items():
+                    if section in base and isinstance(values, dict):
+                        base[section].update(values)
+                logger.debug(f"[SETTINGS] Merged settings from owner '{owner.username}' as base config")
+            except Exception as e:
+                logger.warning(f"[SETTINGS] Failed to parse owner settings: {str(e)}")
+
+    # 2. Merge user's own settings on top (covers cashier-specific preferences)
     if user.settings:
         try:
             saved = json.loads(user.settings)
@@ -507,7 +522,7 @@ def _get_user_settings(user: User) -> dict:
         except Exception as e:
             logger.warning(f"[SETTINGS] Failed to parse settings for user '{user.username}': {user.settings}, error: {str(e)}", exc_info=True)
     else:
-        logger.debug(f"[SETTINGS] User '{user.username}' has no custom settings, using defaults")
+        logger.debug(f"[SETTINGS] User '{user.username}' has no custom settings, using base/defaults")
     return base
 
 
@@ -519,7 +534,7 @@ def get_settings(current_user: dict = Depends(get_active_user), db: Session = De
     if not user:
         logger.warning(f"[SETTINGS] User with ID {current_user.get('id')} not found")
         raise HTTPException(status_code=404, detail="User not found")
-    return _get_user_settings(user)
+    return _get_user_settings(user, db)
 
 
 @router.put("/settings")
@@ -537,13 +552,18 @@ def update_settings(
         if req.transactions is not None or req.inventory is not None or req.print is not None or req.labels is not None:
             logger.warning(f"[SETTINGS] Cashier '{current_user.get('username')}' blocked from modifying global settings")
             raise HTTPException(status_code=403, detail="Permission denied: cashier restricted from modifying global settings")
+        if req.general is not None:
+            blocked_keys = ("realtime_sync_global", "hosting_mode")
+            if any(k in req.general for k in blocked_keys):
+                logger.warning(f"[SETTINGS] Cashier '{current_user.get('username')}' blocked from modifying global general configurations")
+                raise HTTPException(status_code=403, detail="Permission denied: cashier restricted from modifying global configurations")
 
     user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
         logger.warning(f"[SETTINGS] User with ID {current_user.get('id')} not found during update")
         raise HTTPException(status_code=404, detail="User not found")
 
-    current = _get_user_settings(user)
+    current = _get_user_settings(user, db)
 
     # Merge each provided section
     for section in ("general", "transactions", "inventory", "print", "labels"):

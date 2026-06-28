@@ -149,6 +149,13 @@ def test_cashier_settings_modification(cashier, owner):
     })
     assert resp.status_code == 200
 
+    # Cashier attempts to update global fields inside general section -> 403
+    resp_fail = client.put("/settings", headers=cashier["headers"], json={
+        "general": {"realtime_sync_global": False}
+    })
+    assert resp_fail.status_code == 403
+    assert "Permission denied" in resp_fail.json()["detail"]
+
 
 def test_cashier_can_ring_up_a_sale(cashier):
     """Cashiers CAN do their core job — create a sale invoice."""
