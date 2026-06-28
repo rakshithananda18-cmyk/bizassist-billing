@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
 import { BuildingMark } from '../components/Logo'
 import { API_BASE } from '../config'
+import CustomSelect from '../components/common/CustomSelect'
 
 export default function Login() {
   const { login, staffLogin } = useAuth()
@@ -784,7 +785,7 @@ export default function Login() {
 
             <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
               <label htmlFor="staff-user-select" style={{ fontSize: '10.5px' }}>Select Staff User</label>
-              <select
+              <CustomSelect
                 id="staff-user-select"
                 value={selectedStaffUser}
                 onChange={e => setSelectedStaffUser(e.target.value)}
@@ -794,7 +795,7 @@ export default function Login() {
                     {s.username} ({s.role || 'cashier'})
                   </option>
                 ))}
-              </select>
+              </CustomSelect>
             </div>
 
             <div className="form-group" style={{ marginTop: '10px', width: '100%', boxSizing: 'border-box' }}>
@@ -957,13 +958,13 @@ export default function Login() {
               <form onSubmit={handleStandardStaffLogin} style={{ width: '100%' }}>
                 <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
                   <label htmlFor="std-staff-select">Select Counter</label>
-                  <select id="std-staff-select" value={selectedStaffUser} onChange={e => setSelectedStaffUser(e.target.value)}>
+                  <CustomSelect id="std-staff-select" value={selectedStaffUser} onChange={e => setSelectedStaffUser(e.target.value)}>
                     {(bizLookup?.staff || []).map((s, idx) => (
                       <option key={idx} value={s.login_name}>
                         {s.login_name}{s.counter_prefix ? ` · ${s.counter_prefix}` : ''} ({s.role || 'cashier'})
                       </option>
                     ))}
-                  </select>
+                  </CustomSelect>
                 </div>
                 <div className="form-group" style={{ marginTop: 14, width: '100%', boxSizing: 'border-box' }}>
                   <label htmlFor="std-staff-password">Password</label>

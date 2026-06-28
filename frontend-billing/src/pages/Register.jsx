@@ -10,6 +10,7 @@ import {
   ReportsIcon
 } from '../components/Icons'
 import { BuildingMark } from '../components/Logo'
+import CustomSelect from '../components/common/CustomSelect'
 
 export default function Register() {
   const { signup } = useAuth()
@@ -215,7 +216,7 @@ export default function Register() {
 
             <div className="form-group" style={{ marginTop: '4px' }}>
               <label htmlFor="businessTemplate">Business Category</label>
-              <select
+              <CustomSelect
                 id="businessTemplate"
                 value={selectedTemplate}
                 onChange={e => setSelectedTemplate(e.target.value)}
@@ -235,7 +236,7 @@ export default function Register() {
                     {t.label}
                   </option>
                 ))}
-              </select>
+              </CustomSelect>
             </div>
 
             <div className="form-group" style={{ marginTop: '4px' }}>
@@ -298,7 +299,7 @@ export default function Register() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: '4px' }}>
               <div className="form-group">
                 <label htmlFor="country">Country</label>
-                <select
+                <CustomSelect
                   id="country"
                   value={form.country}
                   onChange={e => setForm(f => ({ ...f, country: e.target.value }))}
@@ -318,7 +319,7 @@ export default function Register() {
                   <option value="United Kingdom">United Kingdom</option>
                   <option value="Singapore">Singapore</option>
                   <option value="UAE">UAE</option>
-                </select>
+                </CustomSelect>
               </div>
 
               <div className="form-group">

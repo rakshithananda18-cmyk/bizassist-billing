@@ -3,6 +3,7 @@ import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
 import { ContactsIcon, CheckIcon, CloseIcon } from '../components/Icons'
+import CustomSelect from '../components/common/CustomSelect'
 
 // Staff management — owner creates/removes cashier logins that share this
 // business's data. The backend (/staff) is owner-only and tenant-scoped.
@@ -238,7 +239,7 @@ export default function Staff() {
             </div>
             <div className="form-group">
               <label className="form-label">Counter</label>
-              <select
+              <CustomSelect
                 className="form-input"
                 value={form.counter_prefix}
                 onChange={e => setForm(f => ({ ...f, counter_prefix: e.target.value }))}
@@ -246,7 +247,7 @@ export default function Staff() {
               >
                 <option value="">— none —</option>
                 {counters.map(c => <option key={c.prefix} value={c.prefix}>{c.name} ({c.prefix})</option>)}
-              </select>
+              </CustomSelect>
             </div>
             <button type="submit" className="btn btn-primary" disabled={submitting} style={{ height: '38px' }}>
               {submitting ? 'Adding…' : '+ Add Cashier'}
@@ -277,7 +278,7 @@ export default function Staff() {
                         <span className="badge badge-muted">{s.role}</span>
                       </td>
                       <td>
-                        <select
+                        <CustomSelect
                           className="form-input"
                           style={{ height: 32, fontSize: '0.82rem', padding: '2px 6px', maxWidth: 200 }}
                           value={counters.some(c => c.prefix === s.counter_prefix) ? s.counter_prefix : (s.counter_prefix || '')}
@@ -289,7 +290,7 @@ export default function Staff() {
                             <option value={s.counter_prefix}>{s.counter_prefix} (unlisted)</option>
                           )}
                           {counters.map(c => <option key={c.prefix} value={c.prefix}>{c.name} ({c.prefix})</option>)}
-                        </select>
+                        </CustomSelect>
                       </td>
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => resetPassword(s)} style={{ marginRight: 6 }}>Reset password</button>

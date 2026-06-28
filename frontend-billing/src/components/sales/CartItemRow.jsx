@@ -12,6 +12,7 @@ import React from 'react'
 import { AlertIcon, CloseIcon } from '../../components/Icons'
 import { fmt } from '../../utils/format'
 import { lineTotal } from '../../utils/invoiceMath'
+import CustomSelect from '../../components/common/CustomSelect'
 
 export default function CartItemRow({
   item,
@@ -86,7 +87,7 @@ export default function CartItemRow({
               <td key="batch" className="pos-align-center pos-cell-padded">
                 {item.product_id ? (
                   <div className="pos-flex-col-center">
-                    <select
+                    <CustomSelect
                       className="pos-dropdown-select pos-batch-select"
                       value={item.batch_no || ''}
                       onChange={e => {
@@ -105,7 +106,7 @@ export default function CartItemRow({
                           {b.batch_no || 'No Batch'} ({b.godown_name || 'Main'}) - Stock: {b.stock} {b.expiry_date ? `(Exp: ${b.expiry_date})` : ''}
                         </option>
                       ))}
-                    </select>
+                    </CustomSelect>
                     {item.expiry_date && (
                       (() => {
                         const today = new Date()
@@ -133,7 +134,7 @@ export default function CartItemRow({
             return (
               <td key="price_option" className="pos-align-center pos-cell-padded">
                 {item.product_id ? (
-                  <select
+                  <CustomSelect
                     className="pos-dropdown-select pos-price-select"
                     value={item.selected_price_label || 'Standard Price'}
                     onFocus={async () => {
@@ -170,7 +171,7 @@ export default function CartItemRow({
                     {item.selected_price_label === 'Custom Price' && (
                       <option value="Custom Price">Custom Price (₹{parseFloat(item.selected_price || item.price).toFixed(2)})</option>
                     )}
-                  </select>
+                  </CustomSelect>
                 ) : (
                   <span className="pos-text-muted">—</span>
                 )}

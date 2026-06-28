@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, WarehouseIcon } from '../components/Icons'
 
 import { logger } from '../utils/logger'
+import CustomSelect from '../components/common/CustomSelect'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '₹0'
@@ -318,7 +319,7 @@ export default function Payments() {
                 placeholder={activeTab === 'Expenses' ? "Search expenses…" : "Search transactions…"} 
               />
             </div>
-            <select
+            <CustomSelect
               value={modeFilter}
               onChange={e => setModeFilter(e.target.value)}
               style={{
@@ -336,7 +337,7 @@ export default function Payments() {
               <option value="Cash">Cash</option>
               <option value="Bank Transfer">Bank Transfer</option>
               <option value="Card">Card</option>
-            </select>
+            </CustomSelect>
             {activeTab !== 'Expenses' ? (
               <div style={{ display: 'flex', gap: 16, fontSize: '0.82rem', marginLeft: 8 }}>
                 <span style={{ color: 'var(--success)' }}>↑ {fmt(totalReceived)} received</span>
@@ -594,10 +595,10 @@ export default function Payments() {
                 <div className="grid grid-2 gap-3 mb-4">
                   <div className="form-group">
                     <label className="form-label">Payment Type</label>
-                    <select className="form-select" value={form.type} onChange={e => setField('type', e.target.value)}>
+                    <CustomSelect className="form-select" value={form.type} onChange={e => setField('type', e.target.value)}>
                       <option value="received">Received (from customer)</option>
                       <option value="made">Made (to supplier)</option>
-                    </select>
+                    </CustomSelect>
                   </div>
                   <div className="form-group">
                     <label className="form-label">Date</label>
@@ -615,12 +616,12 @@ export default function Payments() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Payment Method</label>
-                    <select className="form-select" value={form.method} onChange={e => setField('method', e.target.value)}>
+                    <CustomSelect className="form-select" value={form.method} onChange={e => setField('method', e.target.value)}>
                       <option value="Cash"><CashIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Cash</option>
                       <option value="UPI"><PhoneIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> UPI</option>
                       <option value="Bank"><WarehouseIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Bank Transfer</option>
                       <option value="Cheque"><BillsIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Cheque</option>
-                    </select>
+                    </CustomSelect>
                   </div>
                 </div>
                 <div className="form-group">
@@ -656,7 +657,7 @@ export default function Payments() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Expense Category</label>
-                    <select className="form-select" value={expenseForm.category} onChange={e => setExpenseField('category', e.target.value)}>
+                    <CustomSelect className="form-select" value={expenseForm.category} onChange={e => setExpenseField('category', e.target.value)}>
                       <option value="Rent">Rent</option>
                       <option value="Utilities">Utilities (Power, Water, Net)</option>
                       <option value="Salaries & Wages">Salaries & Wages</option>
@@ -665,25 +666,25 @@ export default function Payments() {
                       <option value="Travel & Conveyance">Travel & Conveyance</option>
                       <option value="Repair & Maintenance">Repair & Maintenance</option>
                       <option value="Others">Others</option>
-                    </select>
+                    </CustomSelect>
                   </div>
                 </div>
 
                 <div className="grid grid-2 gap-3 mb-4">
                   <div className="form-group">
                     <label className="form-label">Expense Type</label>
-                    <select className="form-select" value={expenseForm.expense_type} onChange={e => setExpenseField('expense_type', e.target.value)}>
+                    <CustomSelect className="form-select" value={expenseForm.expense_type} onChange={e => setExpenseField('expense_type', e.target.value)}>
                       <option value="Indirect">Indirect (Operating/Office Overhead)</option>
                       <option value="Direct">Direct (Cost of Production/Goods)</option>
-                    </select>
+                    </CustomSelect>
                   </div>
                   <div className="form-group">
                     <label className="form-label">Payment Mode</label>
-                    <select className="form-select" value={expenseForm.payment_mode} onChange={e => setExpenseField('payment_mode', e.target.value)}>
+                    <CustomSelect className="form-select" value={expenseForm.payment_mode} onChange={e => setExpenseField('payment_mode', e.target.value)}>
                       <option value="Cash"><CashIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Cash</option>
                       <option value="UPI"><PhoneIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> UPI</option>
                       <option value="Bank"><WarehouseIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Bank Transfer</option>
-                    </select>
+                    </CustomSelect>
                   </div>
                 </div>
 

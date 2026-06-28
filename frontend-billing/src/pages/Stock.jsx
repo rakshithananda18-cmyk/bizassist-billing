@@ -3,6 +3,7 @@ import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
+import CustomSelect from '../components/common/CustomSelect'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -424,7 +425,7 @@ export default function Stock() {
                 <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search products…" />
               </div>
-              <select
+              <CustomSelect
                 className="form-select"
                 style={{ width: 'auto', minWidth: 160 }}
                 value={catFilter}
@@ -432,8 +433,8 @@ export default function Stock() {
               >
                 <option value="">All Categories</option>
                 {categories.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <select
+              </CustomSelect>
+              <CustomSelect
                 className="form-select"
                 style={{ width: 'auto', minWidth: 160 }}
                 value={stockStatusFilter}
@@ -443,7 +444,7 @@ export default function Stock() {
                 <option value="in">In Stock</option>
                 <option value="low">Low Stock</option>
                 <option value="out">Out of Stock</option>
-              </select>
+              </CustomSelect>
             </div>
 
             {/* Table */}
@@ -686,7 +687,7 @@ export default function Stock() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Unit</label>
-                    <select className="form-select" value={form.unit} onChange={e => setField('unit', e.target.value)}>
+                    <CustomSelect className="form-select" value={form.unit} onChange={e => setField('unit', e.target.value)}>
                       <option value="pcs">Pieces</option>
                       <option value="kg">Kilograms</option>
                       <option value="g">Grams</option>
@@ -695,7 +696,7 @@ export default function Stock() {
                       <option value="box">Box</option>
                       <option value="set">Set</option>
                       <option value="pair">Pair</option>
-                    </select>
+                    </CustomSelect>
                   </div>
                   <div className="form-group">
                     <label className="form-label">Minimum Stock Level</label>
@@ -717,7 +718,7 @@ export default function Stock() {
                     <div className="form-group" key={field.attr}>
                       <label className="form-label">{field.label}{field.required ? ' *' : ''}</label>
                       {field.type === 'enum' ? (
-                        <select
+                        <CustomSelect
                           className="form-select"
                           value={form.attributes?.[field.attr] || ''}
                           onChange={e => setAttributeField(field.attr, e.target.value)}
@@ -726,7 +727,7 @@ export default function Stock() {
                           {field.options && field.options.map(opt => (
                             <option key={opt} value={opt}>{opt || 'Select Option'}</option>
                           ))}
-                        </select>
+                        </CustomSelect>
                       ) : (
                         <input
                           type={field.type === 'number' ? 'number' : 'text'}
@@ -764,21 +765,21 @@ export default function Stock() {
               <div className="modal-body">
                 <div className="form-group mb-4">
                   <label className="form-label">Select Product *</label>
-                  <select className="form-select" value={adjustForm.product_id} onChange={e => setAdjField('product_id', e.target.value)} required>
+                  <CustomSelect className="form-select" value={adjustForm.product_id} onChange={e => setAdjField('product_id', e.target.value)} required>
                     <option value="">Choose a product…</option>
                     {products.map(p => (
                       <option key={p.id} value={p.id}>{p.name} (Stock: {p.stock_qty ?? p.quantity ?? 0} {p.unit || ''})</option>
                     ))}
-                  </select>
+                  </CustomSelect>
                 </div>
                 <div className="grid grid-2 gap-3 mb-4">
                   <div className="form-group">
                     <label className="form-label">Movement Type</label>
-                    <select className="form-select" value={adjustForm.movement_type} onChange={e => setAdjField('movement_type', e.target.value)}>
+                    <CustomSelect className="form-select" value={adjustForm.movement_type} onChange={e => setAdjField('movement_type', e.target.value)}>
                       <option value="stock_in"><DownloadIcon size={32} style={{ color: 'var(--accent)' }} /> Stock In</option>
                       <option value="stock_out"><UploadIcon size={32} style={{ color: 'var(--accent)' }} /> Stock Out</option>
                       <option value="adjustment"><EditIcon size={14} /> Adjustment</option>
-                    </select>
+                    </CustomSelect>
                   </div>
                   <div className="form-group">
                     <label className="form-label">Quantity</label>
@@ -820,31 +821,31 @@ export default function Stock() {
               <div className="modal-body">
                 <div className="form-group mb-4">
                   <label className="form-label">Select Product *</label>
-                  <select className="form-select" value={transferForm.product_id} onChange={e => setTrsfField('product_id', e.target.value)} required>
+                  <CustomSelect className="form-select" value={transferForm.product_id} onChange={e => setTrsfField('product_id', e.target.value)} required>
                     <option value="">Choose a product…</option>
                     {products.map(p => (
                       <option key={p.id} value={p.id}>{p.name} (Total Stock: {p.stock_qty ?? p.quantity ?? 0} {p.unit || ''})</option>
                     ))}
-                  </select>
+                  </CustomSelect>
                 </div>
                 <div className="grid grid-2 gap-3 mb-4">
                   <div className="form-group">
                     <label className="form-label">From Godown *</label>
-                    <select className="form-select" value={transferForm.from_godown_id} onChange={e => setTrsfField('from_godown_id', e.target.value)} required>
+                    <CustomSelect className="form-select" value={transferForm.from_godown_id} onChange={e => setTrsfField('from_godown_id', e.target.value)} required>
                       <option value="">Select source…</option>
                       {godowns.map(g => (
                         <option key={g.id} value={g.id}>{g.name}</option>
                       ))}
-                    </select>
+                    </CustomSelect>
                   </div>
                   <div className="form-group">
                     <label className="form-label">To Godown *</label>
-                    <select className="form-select" value={transferForm.to_godown_id} onChange={e => setTrsfField('to_godown_id', e.target.value)} required>
+                    <CustomSelect className="form-select" value={transferForm.to_godown_id} onChange={e => setTrsfField('to_godown_id', e.target.value)} required>
                       <option value="">Select destination…</option>
                       {godowns.map(g => (
                         <option key={g.id} value={g.id}>{g.name}</option>
                       ))}
-                    </select>
+                    </CustomSelect>
                   </div>
                 </div>
                 <div className="form-group mb-4">

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
 import { BillsIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIcon, ImportIcon, InfoIcon, SearchIcon, SyncIcon, UploadIcon } from '../components/Icons'
+import CustomSelect from '../components/common/CustomSelect'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -652,7 +653,7 @@ export default function Purchases() {
                                   </div>
                                 </td>
                                 <td>
-                                  <select
+                                  <CustomSelect
                                     className="form-select"
                                     style={{ fontSize: '0.8rem', padding: '5px 8px', width: 150 }}
                                     value={item.product_id || 'new'}
@@ -676,7 +677,7 @@ export default function Purchases() {
                                     {catalogProducts.map(p => (
                                       <option key={p.id} value={p.id}>{p.name}</option>
                                     ))}
-                                  </select>
+                                  </CustomSelect>
                                 </td>
                                 <td>
                                   <input
@@ -820,7 +821,7 @@ export default function Purchases() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <div className="form-group">
                     <label className="form-label" style={{ fontWeight: 600 }}>1. Select Supplier</label>
-                    <select
+                    <CustomSelect
                       className="form-input"
                       value={returnSupplier}
                       onChange={e => {
@@ -832,13 +833,13 @@ export default function Purchases() {
                       {Array.from(new Set(bills.filter(b => b.status === 'confirmed').map(b => b.supplier_name))).map(sup => (
                         <option key={sup} value={sup}>{sup}</option>
                       ))}
-                    </select>
+                    </CustomSelect>
                   </div>
 
                   {returnSupplier && (
                     <div className="form-group">
                       <label className="form-label" style={{ fontWeight: 600 }}>2. Select Confirmed Bill</label>
-                      <select
+                      <CustomSelect
                         className="form-input"
                         value={returnBillId}
                         onChange={e => setReturnBillId(e.target.value)}
@@ -851,7 +852,7 @@ export default function Purchases() {
                               {b.invoice_number || b.bill_number || `#${b.id}`} ({new Date(b.date || b.invoice_date).toLocaleDateString('en-IN')}) - Total: {fmt(b.total_amount)}
                             </option>
                           ))}
-                      </select>
+                      </CustomSelect>
                     </div>
                   )}
                 </div>
@@ -910,7 +911,7 @@ export default function Purchases() {
                               />
                             </td>
                             <td>
-                              <select
+                              <CustomSelect
                                 className="form-input"
                                 style={{ padding: '4px 6px', fontSize: '0.8rem' }}
                                 value={line.reason}
@@ -928,7 +929,7 @@ export default function Purchases() {
                                 <option value="Incorrect Item">Incorrect Item</option>
                                 <option value="Shortage">Shortage</option>
                                 <option value="Expired">Expired</option>
-                              </select>
+                              </CustomSelect>
                             </td>
                             <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(line.unit_price)}</td>
                           </tr>

@@ -9,6 +9,7 @@ import PartyLedgerView from '../components/reports/PartyLedgerView'
 import JournalView from '../components/reports/JournalView'
 import GeneralLedgerView from '../components/reports/GeneralLedgerView'
 import RegisterView from '../components/reports/RegisterView'
+import CustomSelect from '../components/common/CustomSelect'
 
 const REPORTS = [
   {
@@ -398,7 +399,7 @@ export default function Reports() {
                     </button>
                   ))}
                 </div>
-                <select
+                <CustomSelect
                   className="form-input"
                   value={partyId}
                   onChange={e => setPartyId(e.target.value)}
@@ -410,7 +411,7 @@ export default function Reports() {
                   {parties.map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
-                </select>
+                </CustomSelect>
                 <button
                   className="btn btn-primary btn-sm"
                   disabled={!partyId || generating === activeReport.id}

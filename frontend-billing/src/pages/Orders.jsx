@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
 import { AlertIcon, BillsIcon, CheckIcon, CloseIcon, DownloadIcon, ImportIcon, OrderIcon, PackageIcon, PlusIcon, SummaryIcon, TruckIcon, BellIcon, SearchIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
+import CustomSelect from '../components/common/CustomSelect'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -455,7 +456,7 @@ export default function Orders() {
               <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search orders…" />
             </div>
-            <select
+            <CustomSelect
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
               style={{
@@ -476,7 +477,7 @@ export default function Orders() {
               <option value="completed">Completed</option>
               <option value="cancelled">Cancelled</option>
               <option value="rejected">Rejected</option>
-            </select>
+            </CustomSelect>
           </div>
         </div>
 

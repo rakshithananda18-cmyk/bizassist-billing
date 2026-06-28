@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
 import { AlertIcon, BillsIcon, CartIcon, CheckIcon, CloseIcon, ConnectionIcon, SettingsIcon, ShieldIcon, SparkleIcon } from '../components/Icons'
+import CustomSelect from '../components/common/CustomSelect'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -257,7 +258,7 @@ export default function Connections() {
                   onChange={e => setConnectBizId(e.target.value)}
                   required
                 />
-                <select
+                <CustomSelect
                   className="form-select"
                   value={connectAs}
                   onChange={e => setConnectAs(e.target.value)}
@@ -265,7 +266,7 @@ export default function Connections() {
                 >
                   <option value="buyer">Connect as Buyer</option>
                   <option value="seller">Connect as Seller</option>
-                </select>
+                </CustomSelect>
               </div>
               <button type="submit" className="btn btn-primary" disabled={connecting} style={{ width: '100%' }}>
                 {connecting ? 'Establishing Connection...' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ConnectionIcon size={16} /> Connect Business</span>}
@@ -439,7 +440,7 @@ export default function Connections() {
                 <div className="modal-body">
                   <div className="form-group mb-3">
                     <label className="form-label">Price Tier</label>
-                    <select
+                    <CustomSelect
                       className="form-select"
                       value={policyForm.price_tier}
                       onChange={e => setPolicyForm({ ...policyForm, price_tier: e.target.value })}
@@ -447,7 +448,7 @@ export default function Connections() {
                       <option value="standard">Standard Retail Price</option>
                       <option value="wholesale">Wholesale Price</option>
                       <option value="distributor">Distributor Price</option>
-                    </select>
+                    </CustomSelect>
                     <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginTop: 4 }}>
                       Select which catalog price tier applies to this customer.
                     </small>
@@ -481,7 +482,7 @@ export default function Connections() {
 
                   <div className="form-group mb-3">
                     <label className="form-label">Stock Count Visibility</label>
-                    <select
+                    <CustomSelect
                       className="form-select"
                       value={policyForm.stock_visibility}
                       onChange={e => setPolicyForm({ ...policyForm, stock_visibility: e.target.value })}
@@ -489,7 +490,7 @@ export default function Connections() {
                       <option value="exact">Exact (show exact stock, e.g., "43 units")</option>
                       <option value="band">Band (show "In Stock" / "Low Stock" / "Out of Stock")</option>
                       <option value="hidden">Hidden (completely hide stock counts)</option>
-                    </select>
+                    </CustomSelect>
                   </div>
 
                   <div className="form-group">

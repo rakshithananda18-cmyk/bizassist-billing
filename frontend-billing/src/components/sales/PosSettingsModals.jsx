@@ -1,3 +1,4 @@
+import CustomSelect from '../../components/common/CustomSelect';
 import React, { useState, useEffect } from 'react'
 import { 
   CartIcon, 
@@ -96,7 +97,7 @@ export function PosCounterSettingsModal({
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Merchant GST State Code</label>
-                  <select
+                  <CustomSelect
                     className="pos-form-select"
                     style={{ height: 35, fontSize: '0.85rem', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg-3)', color: 'var(--text-primary)' }}
                     value={merchantState}
@@ -112,7 +113,7 @@ export function PosCounterSettingsModal({
                     <option value="07">07 - Delhi (DL)</option>
                     <option value="09">09 - Uttar Pradesh (UP)</option>
                     <option value="19">19 - West Bengal (WB)</option>
-                  </select>
+                  </CustomSelect>
                 </div>
               </div>
             )}
@@ -226,7 +227,7 @@ export function PosCounterSettingsModal({
                   ].map(item => (
                     <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{item.label}</span>
-                      <select
+                      <CustomSelect
                         className="pos-form-select"
                         style={{ width: '120px', height: '26px', padding: '2px 4px', fontSize: '0.75rem', borderColor: 'var(--border)' }}
                         value={funcKeys[item.key] || ''}
@@ -239,7 +240,7 @@ export function PosCounterSettingsModal({
                         {item.options.map(k => (
                           <option key={k} value={k}>{k}</option>
                         ))}
-                      </select>
+                      </CustomSelect>
                     </div>
                   ))}
                 </div>
@@ -263,7 +264,7 @@ export function PosCounterSettingsModal({
                   ].map(item => (
                     <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-3)', padding: '6px 10px', borderRadius: '4px', border: '1px solid var(--border)' }}>
                       <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{item.label}</span>
-                      <select
+                      <CustomSelect
                         className="pos-form-select"
                         style={{ width: '110px', height: '26px', padding: '2px 4px', fontSize: '0.75rem' }}
                         value={funcKeys[item.key] || ''}
@@ -276,7 +277,7 @@ export function PosCounterSettingsModal({
                         {['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12', 'Enter', 'Escape'].map(k => (
                           <option key={k} value={k}>{k}</option>
                         ))}
-                      </select>
+                      </CustomSelect>
                     </div>
                   ))}
                 </div>

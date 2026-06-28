@@ -5,6 +5,7 @@ import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, HandshakeIcon, Inventory
 import { logger } from '../utils/logger'
 import { buildUpiUri, buildWhatsAppShareUrl, normalizePhoneIN } from '../utils/share'
 import { applyDelta, hasDelta } from '../sync/applyDelta'
+import CustomSelect from '../components/common/CustomSelect'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -440,7 +441,7 @@ export default function Parties() {
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${activeTab.toLowerCase()}…`} />
             </div>
             {activeTab !== 'Other Invoices' && (
-              <select
+              <CustomSelect
                 value={balanceFilter}
                 onChange={e => setBalanceFilter(e.target.value)}
                 style={{
@@ -456,7 +457,7 @@ export default function Parties() {
                 <option value="">All Balances</option>
                 <option value="due">Outstanding Due</option>
                 <option value="nil">Nil / Zero Balance</option>
-              </select>
+              </CustomSelect>
             )}
           </div>
         </div>
@@ -691,14 +692,14 @@ export default function Parties() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Payment Terms</label>
-                    <select className="form-select" value={form.payment_terms} onChange={e => setField('payment_terms', e.target.value)}>
+                    <CustomSelect className="form-select" value={form.payment_terms} onChange={e => setField('payment_terms', e.target.value)}>
                       <option value="immediate">Immediate</option>
                       <option value="net7">Net 7 days</option>
                       <option value="net15">Net 15 days</option>
                       <option value="net30">Net 30 days</option>
                       <option value="net45">Net 45 days</option>
                       <option value="net60">Net 60 days</option>
-                    </select>
+                    </CustomSelect>
                   </div>
                 </div>
                 <div className="form-group">

@@ -14,6 +14,7 @@ import PreflightModal from '../components/hosting/PreflightModal'
 import ConsequenceModal from '../components/hosting/ConsequenceModal'
 import MigrationModal from '../components/hosting/MigrationModal'
 import BackupModal from '../components/hosting/BackupModal'
+import CustomSelect from '../components/common/CustomSelect'
 
 // Sample content shown for each draggable header line in the live preview.
 const PREVIEW_HEADER_CONTENT = {
@@ -1203,7 +1204,7 @@ export default function Settings() {
 
                   <SectionHeader title="Business Category" />
                   <SettingRow label="Active Business Type" description="Select your business vertical to automatically configure terminology, layouts, and custom fields.">
-                    <select
+                    <CustomSelect
                       className="form-input"
                       style={{ width: 220 }}
                       value={config?.key || 'general'}
@@ -1214,7 +1215,7 @@ export default function Settings() {
                           {t.label}
                         </option>
                       ))}
-                    </select>
+                    </CustomSelect>
                   </SettingRow>
                 </>
               )}
@@ -1265,7 +1266,7 @@ export default function Settings() {
                 <>
                   <SectionHeader title="Localization & Formats" />
                   <SettingRow label="Date Format" description="Set the display format for dates throughout the app.">
-                    <select
+                    <CustomSelect
                       className="form-input"
                       style={{ width: 220 }}
                       value={g.date_format || 'DD/MM/YYYY'}
@@ -1274,11 +1275,11 @@ export default function Settings() {
                       <option value="DD/MM/YYYY">DD/MM/YYYY</option>
                       <option value="MM/DD/YYYY">MM/DD/YYYY</option>
                       <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                    </select>
+                    </CustomSelect>
                   </SettingRow>
 
                   <SettingRow label="Quantity Decimals" description="Number of decimal places shown for quantities.">
-                    <select
+                    <CustomSelect
                       className="form-input"
                       style={{ width: 220 }}
                       value={g.quantity_decimal_places ?? 2}
@@ -1287,11 +1288,11 @@ export default function Settings() {
                       <option value={1}>1 decimal place (0.0)</option>
                       <option value={2}>2 decimal places (0.00)</option>
                       <option value={3}>3 decimal places (0.000)</option>
-                    </select>
+                    </CustomSelect>
                   </SettingRow>
 
                   <SettingRow label="Amount Decimals" description="Number of decimal places shown for rates and amounts.">
-                    <select
+                    <CustomSelect
                       className="form-input"
                       style={{ width: 220 }}
                       value={g.amount_decimal_places ?? 2}
@@ -1299,7 +1300,7 @@ export default function Settings() {
                     >
                       <option value={2}>2 decimal places (0.00)</option>
                       <option value={3}>3 decimal places (0.000)</option>
-                    </select>
+                    </CustomSelect>
                   </SettingRow>
 
                   <SectionHeader title="Passcode & Session Security" />
@@ -1327,7 +1328,7 @@ export default function Settings() {
                     label="Auto-Lock Timeout" 
                     description="Lock the session automatically after a period of user inactivity."
                   >
-                    <select
+                    <CustomSelect
                       className="form-input"
                       style={{ width: 220 }}
                       value={g.lock_timeout_minutes ?? 60}
@@ -1338,7 +1339,7 @@ export default function Settings() {
                       <option value={30}>30 Minutes</option>
                       <option value={60}>1 Hour</option>
                       <option value={120}>2 Hours</option>
-                    </select>
+                    </CustomSelect>
                   </SettingRow>
 
                   <SettingRow 
@@ -1430,7 +1431,7 @@ export default function Settings() {
               </SettingRow>
               {t.round_off_enabled && (
                 <SettingRow label="Rounding Method">
-                  <select
+                  <CustomSelect
                     className="form-input"
                     style={{ width: 160 }}
                     value={t.round_off_type}
@@ -1439,7 +1440,7 @@ export default function Settings() {
                     <option value="nearest">Nearest Rupee</option>
                     <option value="ceil">Round Up</option>
                     <option value="floor">Round Down</option>
-                  </select>
+                  </CustomSelect>
                 </SettingRow>
               )}
 
@@ -1537,32 +1538,32 @@ export default function Settings() {
                   </div>
                 </SettingRow>
                 <SettingRow label="Invoice Layout Theme" description="Choose visual theme for regular printing.">
-                  <select className="form-input" style={{ width: 140 }} value={pr.invoice_theme || 'classic'} onChange={e => patch('print', 'invoice_theme', e.target.value)}>
+                  <CustomSelect className="form-input" style={{ width: 140 }} value={pr.invoice_theme || 'classic'} onChange={e => patch('print', 'invoice_theme', e.target.value)}>
                     <option value="classic">Classic (Traditional Style)</option>
                     <option value="modern">Modern Professional</option>
                     <option value="minimal">Minimal Compact</option>
-                  </select>
+                  </CustomSelect>
                 </SettingRow>
                 <SettingRow label="Page Size">
-                  <select className="form-input" style={{ width: 140 }} value={pr.page_size} onChange={e => patch('print', 'page_size', e.target.value)}>
+                  <CustomSelect className="form-input" style={{ width: 140 }} value={pr.page_size} onChange={e => patch('print', 'page_size', e.target.value)}>
                     <option value="A4">A4</option>
                     <option value="A5">A5</option>
                     <option value="Letter">Letter</option>
-                  </select>
+                  </CustomSelect>
                 </SettingRow>
                 <SettingRow label="Page Orientation">
-                  <select className="form-input" style={{ width: 140 }} value={pr.print_orientation || 'portrait'} onChange={e => patch('print', 'print_orientation', e.target.value)}>
+                  <CustomSelect className="form-input" style={{ width: 140 }} value={pr.print_orientation || 'portrait'} onChange={e => patch('print', 'print_orientation', e.target.value)}>
                     <option value="portrait">Portrait</option>
                     <option value="landscape">Landscape</option>
-                  </select>
+                  </CustomSelect>
                 </SettingRow>
                 </>)}
                 <SettingRow id="set-text_size" label="Text Size">
-                  <select className="form-input" style={{ width: 140 }} value={pr.text_size} onChange={e => patch('print', 'text_size', e.target.value)}>
+                  <CustomSelect className="form-input" style={{ width: 140 }} value={pr.text_size} onChange={e => patch('print', 'text_size', e.target.value)}>
                     <option value="small">Small</option>
                     <option value="medium">Medium</option>
                     <option value="large">Large</option>
-                  </select>
+                  </CustomSelect>
                 </SettingRow>
                 <SettingRow label="Print Copies" description="Number of copies to print automatically per invoice.">
                   <input type="number" min={1} max={5} value={pr.copy_count}
@@ -1575,16 +1576,16 @@ export default function Settings() {
                 {previewMode === 'thermal' && (
                   <>
                     <SettingRow label="Thermal Paper Size" description="Choose width of your receipt paper roll.">
-                      <select className="form-input" style={{ width: 140 }} value={pr.thermal_page_size || '3inch'} onChange={e => patch('print', 'thermal_page_size', e.target.value)}>
+                      <CustomSelect className="form-input" style={{ width: 140 }} value={pr.thermal_page_size || '3inch'} onChange={e => patch('print', 'thermal_page_size', e.target.value)}>
                         <option value="3inch">3 Inch (80mm)</option>
                         <option value="2inch">2 Inch (58mm)</option>
-                      </select>
+                      </CustomSelect>
                     </SettingRow>
                     <SettingRow label="Thermal Theme">
-                      <select className="form-input" style={{ width: 140 }} value={pr.thermal_theme || 'theme_standard'} onChange={e => patch('print', 'thermal_theme', e.target.value)}>
+                      <CustomSelect className="form-input" style={{ width: 140 }} value={pr.thermal_theme || 'theme_standard'} onChange={e => patch('print', 'thermal_theme', e.target.value)}>
                         <option value="theme_standard">Standard Thermal</option>
                         <option value="theme_compact">Compact Thermal</option>
-                      </select>
+                      </CustomSelect>
                     </SettingRow>
                   </>
                 )}
@@ -2113,7 +2114,7 @@ export default function Settings() {
                   </div>
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600 }}>Role</label>
-                    <select
+                    <CustomSelect
                       className="form-input"
                       value={staffForm.role || 'cashier'}
                       onChange={e => {
@@ -2127,11 +2128,11 @@ export default function Settings() {
                     >
                       <option value="cashier">Cashier</option>
                       <option value="supply adder">Supply Adder</option>
-                    </select>
+                    </CustomSelect>
                   </div>
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600 }}>Counter Prefix</label>
-                    <select
+                    <CustomSelect
                       className="form-input"
                       value={staffForm.counter_prefix || ''}
                       onChange={e => setStaffForm(f => ({ ...f, counter_prefix: e.target.value }))}
@@ -2141,7 +2142,7 @@ export default function Settings() {
                       {counterOptions.map(opt => (
                         <option key={opt} value={opt}>{opt}</option>
                       ))}
-                    </select>
+                    </CustomSelect>
                   </div>
                   <button type="submit" className="btn btn-primary" disabled={staffSubmit} style={{ height: 38, padding: '0 20px', fontWeight: 600 }}>
                     {staffSubmit ? 'Adding…' : '+ Add Staff'}
@@ -2177,7 +2178,7 @@ export default function Settings() {
                               <span className="badge badge-muted" style={{ textTransform: 'capitalize' }}>{s.role}</span>
                             </td>
                             <td>
-                              <select
+                              <CustomSelect
                                 className="form-input"
                                 value={s.counter_prefix || ''}
                                 onChange={e => handleSaveCounterPrefix(s.id, e.target.value)}
@@ -2187,7 +2188,7 @@ export default function Settings() {
                                 {counterOptions.map(opt => (
                                   <option key={opt} value={opt}>{opt}</option>
                                 ))}
-                              </select>
+                              </CustomSelect>
                             </td>
                             <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                               <button 
@@ -2239,7 +2240,7 @@ export default function Settings() {
               />
               {IS_LOCAL_APP && g.hosting_mode === 'hybrid' && (
                 <SettingRow label="Sync Interval" description="How frequently local changes are synced to the cloud.">
-                  <select
+                  <CustomSelect
                     className="form-input"
                     style={{ width: 220 }}
                     value={g.sync_interval ?? 30}
@@ -2249,7 +2250,7 @@ export default function Settings() {
                     <option value={30}>Every 30 Seconds</option>
                     <option value={60}>Every 1 Minute</option>
                     <option value={300}>Every 5 Minutes</option>
-                  </select>
+                  </CustomSelect>
                 </SettingRow>
               )}
 
@@ -2290,7 +2291,7 @@ export default function Settings() {
               </SettingRow>
               {g.auto_backup && (
                 <SettingRow label="Backup Reminder Interval" description="How often to remind for data backups.">
-                  <select
+                  <CustomSelect
                     className="form-input"
                     style={{ width: 220 }}
                     value={g.backup_reminder_days ?? 7}
@@ -2299,7 +2300,7 @@ export default function Settings() {
                     <option value={7}>Every 7 Days</option>
                     <option value={15}>Every 15 Days</option>
                     <option value={30}>Every 30 Days</option>
-                  </select>
+                  </CustomSelect>
                 </SettingRow>
               )}
             </>

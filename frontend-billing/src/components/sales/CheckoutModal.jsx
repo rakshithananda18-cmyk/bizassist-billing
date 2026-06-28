@@ -5,6 +5,7 @@ import TenderChips from './TenderChips'
 import { changeDue, paymentBalance } from '../../utils/invoiceMath'
 import { buildUpiUri, qrImageUrl } from '../../utils/share'
 import { logger } from '../../utils/logger'
+import CustomSelect from '../../components/common/CustomSelect'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -696,7 +697,7 @@ export default function CheckoutModal({
               <div style={{ display: 'flex', gap: '12px' }}>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Godown</label>
-                  <select
+                  <CustomSelect
                     ref={godownRef}
                     className="pos-form-select"
                     style={{
@@ -729,7 +730,7 @@ export default function CheckoutModal({
                         {g.name}
                       </option>
                     ))}
-                  </select>
+                  </CustomSelect>
                 </div>
 
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1181,7 +1182,7 @@ export default function CheckoutModal({
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Price Tier</label>
-                  <select
+                  <CustomSelect
                     className="pos-form-select"
                     value={custModalFields.price_tier}
                     onChange={e => setCustModalFields(prev => ({ ...prev, price_tier: e.target.value }))}
@@ -1189,7 +1190,7 @@ export default function CheckoutModal({
                     <option value="standard">Standard Pricing</option>
                     <option value="wholesale">Wholesale Pricing</option>
                     <option value="distributor">Distributor Pricing</option>
-                  </select>
+                  </CustomSelect>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
