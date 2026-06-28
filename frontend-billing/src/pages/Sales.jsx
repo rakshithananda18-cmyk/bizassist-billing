@@ -551,14 +551,20 @@ export default function Sales(props = {}) {
     const now = Date.now()
     localStorage.setItem(`pos_cart_updated_at_${uid}`, now.toString())
 
+    const currentCounter = isLiveView
+      ? liveCounter
+      : ((user?.counter_prefix || '').trim().replace(/-$/, '') || ((user?.role || '').toLowerCase() !== 'cashier' ? 'OW' : 'INV'))
+
     // 1. Send instant cart sync broadcast over active SSE stream
-    logger.info('[SALES] Broadcasting cart sync to SSE:', { clientId, tabsCount: tabs?.length, activeTabId, tabs })
+    logger.info('[SALES] Broadcasting cart sync to SSE:', { clientId, tabsCount: tabs?.length, activeTabId, counter: currentCounter, isLiveView })
     broadcastMessage({
       type: 'pos.cart_sync',
       client_id: clientId,
       user_id: uid,
       tabs,
       active_tab_id: activeTabId,
+      counter: currentCounter,
+      is_live_view: isLiveView,
       timestamp: now
     })
 
@@ -572,6 +578,8 @@ export default function Sales(props = {}) {
             user_id: uid,
             tabs,
             active_tab_id: activeTabId,
+            counter: currentCounter,
+            is_live_view: isLiveView,
             timestamp: now
           })
         })
@@ -581,7 +589,7 @@ export default function Sales(props = {}) {
     }, 600)
 
     return () => clearTimeout(t)
-  }, [tabs, activeTabId, user?.user_id, user?.id, authFetch, clientId, settings, isLiveView, editState, isLockedByManager, broadcastMessage])
+  }, [tabs, activeTabId, user?.user_id, user?.id, authFetch, clientId, settings, isLiveView, editState, isLockedByManager, broadcastMessage, liveCounter])
 
   useEffect(() => {
     const handleSync = (e) => {
@@ -590,9 +598,10 @@ export default function Sales(props = {}) {
 
       // 1. pos.cart_sync handling
       if (type === 'pos.cart_sync' && client_id !== clientId) {
-        logger.info('[SALES] Received cart sync event:', { client_id, isLiveView, activeCashierClientId, tabs: remoteTabs })
+        logger.info('[SALES] Received cart sync event:', { client_id, isLiveView, activeCashierClientId, counter: d.counter, is_live_view: d.is_live_view, tabs: remoteTabs })
         if (isLiveView) {
-          if (client_id === activeCashierClientId) {
+          const isTargetCounter = (client_id === activeCashierClientId) || (d.counter && d.counter === liveCounter)
+          if (isTargetCounter) {
             setIsRemoteCartLoading(false)
             if (Array.isArray(remoteTabs) && remoteTabs.length > 0) {
               setTabs(remoteTabs)
@@ -604,7 +613,7 @@ export default function Sales(props = {}) {
           return
         }
 
-        if (isLockedByManager && client_id === managerClientId) {
+        if (isLockedByManager && (client_id === managerClientId || d.is_live_view)) {
           if (Array.isArray(remoteTabs) && remoteTabs.length > 0) {
             setTabs(remoteTabs)
           }
