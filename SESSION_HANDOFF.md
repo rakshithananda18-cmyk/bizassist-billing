@@ -47,6 +47,12 @@
 
 ## 4. CODEBASE DIFF & STATUS
 
+### ✅ COMPLETED & VERIFIED — Session 2026-06-29 (Consented Sync, Database Pooling, and Transparent Mode)
+* *Implemented Database Connection Pooling: Configured pg_db_engine in [db.py](file:///d:/Dev%20Workspace/ai_agent_lab/bizassist-billing/backend/database/db.py) with poolclass=QueuePool, pool_size=3, max_overflow=2, pool_recycle=1800, and pool_pre_ping=True. This optimizes database performance and enforces a strict connection ceiling to avoid exceeding Supabase's 15-connection session mode limit.*
+* *Resolved SSE 401 Unauthorized errors: Reverted the Hugging Face Dockerfile to a single worker process (removing --workers 2) to eliminate the split-brain state where in-memory SSE tickets and presence data were disconnected between separate uvicorn worker processes.*
+* *Designed transparent cashier lock screen: Replaced the full-screen blurred locking cover on the Cashier Counter terminal in [Sales.jsx](file:///d:/Dev%20Workspace/ai_agent_lab/bizassist-billing/frontend-billing/src/pages/Sales.jsx) with a fully transparent overlay (backdropFilter: 'none', background: 'rgba(0,0,0,0.06)') and a pulsing top floating pill badge (🔒 Managed Mode Active — Controlled by Owner). Clicks and inputs remain safely blocked, but the cashier can now see the owner's edits in real-time.*
+* *Created robust self-healing real-time sync matching: Modified the cart sync broadcast payloads in [Sales.jsx](file:///d:/Dev%20Workspace/ai_agent_lab/bizassist-billing/frontend-billing/src/pages/Sales.jsx) to include counter name (e.g. C1) and is_live_view. The owner matches updates by counter name and the cashier accepts edits from any manager-flagged client, making the connection fully immune to browser refreshes, reconnects, or client ID mismatches.*
+
 ### ✅ FINALIZED & VERIFIED THIS SESSION (suite green: 683 passed)
 - **Step 3 Phase A (durable `uid`):**
   - `database/db.py` — `uid` on `BusinessOwnedMixin` (no index/unique yet — deferred to B/C).
