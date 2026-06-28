@@ -2104,9 +2104,8 @@ export default function Sales(props = {}) {
         <div
           className="pos-workspace"
           style={{
-            pointerEvents: (isLiveView && editState !== 'granted') ? 'none' : 'auto',
             userSelect: (isLiveView && editState !== 'granted') ? 'none' : 'auto',
-            opacity: (isLiveView && editState !== 'granted') ? 0.85 : 1,
+            opacity: (isLiveView && editState !== 'granted') ? 0.95 : 1,
           }}
         >
           
@@ -2154,7 +2153,7 @@ export default function Sales(props = {}) {
             {/* Cart Table list container */}
             <div className="pos-cart-wrapper" style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
               <div ref={tableContainerRef} className="pos-cart-container" style={{ flex: 1, overflow: 'auto' }}>
-                <table className="pos-cart-table">
+                <table className="pos-cart-table" style={{ pointerEvents: (isLiveView && editState !== 'granted') ? 'none' : 'auto' }}>
                   <CartTableHeader
                     columnOrder={columnOrder}
                     colVisible={colVisible}
@@ -2290,12 +2289,14 @@ export default function Sales(props = {}) {
 
             {/* Bottom Sticky Totals Bar — extracted to components/sales/PosTotalBar */}
             {!showPaymentPopup && (
-              <PosTotalBar
-                subtotal={subtotal}
-                gstAmt={gstAmt}
-                grandTotal={grandTotal}
-                onPay={openPaymentFlow}
-              />
+              <div style={{ pointerEvents: (isLiveView && editState !== 'granted') ? 'none' : 'auto' }}>
+                <PosTotalBar
+                  subtotal={subtotal}
+                  gstAmt={gstAmt}
+                  grandTotal={grandTotal}
+                  onPay={openPaymentFlow}
+                />
+              </div>
             )}
 
           </div>
