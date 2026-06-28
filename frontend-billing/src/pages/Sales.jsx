@@ -501,7 +501,7 @@ export default function Sales(props = {}) {
   useEffect(() => {
     if (props.isLiveViewMode && !liveCounter) {
       logger.warn('[SALES] Entered live-view without counter ID, redirecting to Live Counters list.')
-      navigate('/connections')
+      navigate('/counters')
     }
   }, [props.isLiveViewMode, liveCounter, navigate])
 
@@ -1981,7 +1981,7 @@ export default function Sales(props = {}) {
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => navigate('/connections')}
+              onClick={() => navigate('/counters')}
               style={{ fontSize: '0.78rem', padding: '6px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-primary)' }}
             >
               Exit Live View
@@ -1997,7 +1997,7 @@ export default function Sales(props = {}) {
           onCloseTab={closeTab}
           onNewBill={handleNewBill}
           onMinimize={handleMinimize}
-          onClose={isLiveView ? () => navigate('/connections') : handleCloseConfirm}
+          onClose={isLiveView ? () => navigate('/counters') : handleCloseConfirm}
           onOpenSettings={() => {
             setSettingsInitialTab('general')
             setShowSettingsModal(true)
@@ -2091,7 +2091,7 @@ export default function Sales(props = {}) {
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => navigate('/connections')}
+                onClick={() => navigate('/counters')}
                 style={{ fontSize: '0.78rem', padding: '4px 10px', background: 'rgba(255,255,255,0.08)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
               >
                 Exit Live View

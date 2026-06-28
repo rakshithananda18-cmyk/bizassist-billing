@@ -237,7 +237,7 @@ async def sse_realtime_feed(request: Request, current_user: dict = Depends(get_a
     `restrict_cashier_or_ticket`, which authenticates via ticket/token but STILL
     403'd cashiers — the role block was wrong for realtime.)
     """
-    bid = current_user["id"]
+    bid = current_user.get("parent_business_id") or current_user.get("id")
     q = realtime_manager.subscribe(bid)
     
     async def event_generator():
@@ -275,7 +275,7 @@ async def pos_cart_sync(
     req: dict,
     current_user: dict = Depends(get_active_user)
 ):
-    bid = current_user["id"]
+    bid = current_user.get("parent_business_id") or current_user.get("id")
     await realtime_manager.broadcast(
         bid,
         {
@@ -300,7 +300,7 @@ async def pos_presence(
     so the owner's Live Counters view can watch each till live. This is NOT cart
     sync (no cart contents applied anywhere): just presence/metrics, broadcast to
     the business. Cashiers publish; the owner consumes."""
-    bid = current_user["id"]
+    bid = current_user.get("parent_business_id") or current_user.get("id")
     await realtime_manager.broadcast(
         bid,
         {
@@ -326,7 +326,7 @@ async def broadcast_message(
     current_user: dict = Depends(get_active_user)
 ):
     """Broadcast any generic realtime synchronization or handshake message to all active sessions of this business."""
-    bid = current_user["id"]
+    bid = current_user.get("parent_business_id") or current_user.get("id")
     msg_type = req.get("type", "unknown")
     logger.info(f"[REALTIME] Broadcast message received for business {bid}, type: {msg_type}")
     await realtime_manager.broadcast(bid, req)
