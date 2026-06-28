@@ -552,6 +552,7 @@ export default function Sales(props = {}) {
     localStorage.setItem(`pos_cart_updated_at_${uid}`, now.toString())
 
     // 1. Send instant cart sync broadcast over active SSE stream
+    logger.info('[SALES] Broadcasting cart sync to SSE:', { clientId, tabsCount: tabs?.length, activeTabId, tabs })
     broadcastMessage({
       type: 'pos.cart_sync',
       client_id: clientId,
@@ -589,6 +590,7 @@ export default function Sales(props = {}) {
 
       // 1. pos.cart_sync handling
       if (type === 'pos.cart_sync' && client_id !== clientId) {
+        logger.info('[SALES] Received cart sync event:', { client_id, isLiveView, activeCashierClientId, tabs: remoteTabs })
         if (isLiveView) {
           if (client_id === activeCashierClientId) {
             setIsRemoteCartLoading(false)
@@ -2550,33 +2552,31 @@ export default function Sales(props = {}) {
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          backdropFilter: 'blur(8px)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
+          background: 'rgba(0,0,0,0.06)',
           zIndex: 1999,
-          textAlign: 'center',
-          padding: 24,
+          pointerEvents: 'auto',
           userSelect: 'none'
         }}>
           <div style={{
-            animation: 'pulse 2s infinite',
-            width: 64, height: 64, borderRadius: '50%',
-            background: 'rgba(249, 115, 22, 0.15)',
-            border: '2px dashed var(--accent)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            marginBottom: 16
+            position: 'absolute',
+            top: 20,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'var(--accent, #f97316)',
+            color: '#fff',
+            padding: '8px 18px',
+            borderRadius: 20,
+            fontSize: '0.82rem',
+            fontWeight: 700,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            animation: 'pulse 2s infinite'
           }}>
-            <span style={{ fontSize: '1.5rem' }}>🔒</span>
+            <span>🔒</span>
+            <span>Managed Mode Active — Controlled by Owner</span>
           </div>
-          <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', marginBottom: 8 }}>
-            Managed Mode Active
-          </h3>
-          <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', maxWidth: 360, lineHeight: 1.5 }}>
-            This terminal is currently being controlled and edited remotely by the manager. Control will return automatically when finished.
-          </p>
         </div>
       )}
     </AppLayout>
