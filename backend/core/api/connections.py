@@ -327,6 +327,8 @@ async def broadcast_message(
 ):
     """Broadcast any generic realtime synchronization or handshake message to all active sessions of this business."""
     bid = current_user["id"]
+    msg_type = req.get("type", "unknown")
+    logger.info(f"[REALTIME] Broadcast message received for business {bid}, type: {msg_type}")
     await realtime_manager.broadcast(bid, req)
     return {"status": "broadcasted"}
 

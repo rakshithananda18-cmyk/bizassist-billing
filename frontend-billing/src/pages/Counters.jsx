@@ -9,6 +9,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
+import { logger } from '../utils/logger'
 
 const STALE_MS = 45000   // no heartbeat for this long → mark the counter idle
 
@@ -81,7 +82,10 @@ export default function Counters() {
                   <div
                     key={s.client_id}
                     className="card"
-                    onClick={() => navigate(`/sales?live_counter=${encodeURIComponent(s.counter)}&client_id=${encodeURIComponent(s.client_id)}`)}
+                    onClick={() => {
+                      logger.info(`[COUNTERS] Owner clicking tile to view Counter ${s.counter} (client: ${s.client_id})`)
+                      navigate(`/sales?live_counter=${encodeURIComponent(s.counter)}&client_id=${encodeURIComponent(s.client_id)}`)
+                    }}
                     style={{
                       padding: 16, borderRadius: 10,
                       border: highlight ? '2px solid var(--primary, #c0612a)' : '1px solid var(--border)',

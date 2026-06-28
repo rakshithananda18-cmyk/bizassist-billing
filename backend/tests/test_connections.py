@@ -432,3 +432,15 @@ def test_connection_revocation_and_scoping():
     }, headers=headers_buyer)
     assert order_fail.status_code == 403
     assert "No active connection" in order_fail.json()["detail"]
+
+
+def test_realtime_broadcast():
+    headers = get_auth_headers("seller_test_1", "SellerPassword123")
+    resp = client.post(
+        "/realtime/broadcast",
+        json={"type": "pos.test_event", "payload": {"test": "ok"}},
+        headers=headers
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "broadcasted"}
+

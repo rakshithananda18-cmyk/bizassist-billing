@@ -666,12 +666,15 @@ export default function Sales() {
     if (!isOwner) return
     const ownerPrefix = (user?.counter_prefix || '').trim() || 'OW'
     if (val === ownerPrefix) {
+      logger.info('[SALES] Owner switching back to own counter (exiting live counter view)')
       navigate('/sales')
     } else {
       const session = activeSessions[val]
       if (session) {
+        logger.info(`[SALES] Owner selecting counter ${val} (client: ${session.client_id}) — entering live view`)
         navigate(`/sales?live_counter=${encodeURIComponent(val)}&client_id=${encodeURIComponent(session.client_id)}`)
       } else {
+        logger.info(`[SALES] Owner selecting counter ${val} (no active session) — entering live view`)
         navigate(`/sales?live_counter=${encodeURIComponent(val)}`)
       }
     }

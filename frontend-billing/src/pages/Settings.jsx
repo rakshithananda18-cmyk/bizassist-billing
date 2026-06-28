@@ -271,12 +271,14 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
   })
 
   const handleTestConnection = async () => {
+    logger.info('[SETTINGS] Initiating LAN server connection test for:', lanServerUrl)
     setTestStatus('testing')
     setTestError('')
     setVerifiedUrl('')
     setIsSaved(false)
     let targetUrl = lanServerUrl.trim()
     if (!targetUrl) {
+      logger.warn('[SETTINGS] Connection test aborted: Server URL is empty.')
       setTestStatus('error')
       setTestError('Server URL/IP cannot be empty.')
       return
@@ -306,12 +308,14 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
       }
       const body = await res.json()
       if (body.status === 'ok' && body.db === 'connected') {
+        logger.info('[SETTINGS] LAN connection test successful! URL verified:', targetUrl)
         setTestStatus('success')
         setVerifiedUrl(targetUrl)
       } else {
         throw new Error('Server returned unhealthy state or database disconnected.')
       }
     } catch (err) {
+      logger.error('[SETTINGS] LAN connection test failed:', err)
       setTestStatus('error')
       setTestError(err.message || 'Network unreachable or server timeout.')
     }
@@ -319,6 +323,7 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
 
   const handleSaveConnection = () => {
     if (!verifiedUrl) return
+    logger.info('[SETTINGS] Saving verified LAN connection configuration. URL:', verifiedUrl)
     localStorage.setItem('bizassist_use_lan_db', 'true')
     localStorage.setItem('bizassist_local_backend_url', verifiedUrl)
     updateApiBase('local')
