@@ -505,6 +505,17 @@ export default function Sales(props = {}) {
     }
   }, [props.isLiveViewMode, liveCounter, navigate])
 
+  const broadcastMessage = useCallback(async (msg) => {
+    try {
+      await authFetch('/realtime/broadcast', {
+        method: 'POST',
+        body: JSON.stringify(msg)
+      })
+    } catch (err) {
+      logger.error('[SALES] Failed to broadcast realtime message:', err)
+    }
+  }, [authFetch])
+
   useEffect(() => {
     if (isLockedByManager) return
 
@@ -567,17 +578,6 @@ export default function Sales(props = {}) {
 
     return () => clearTimeout(t)
   }, [tabs, activeTabId, user?.user_id, user?.id, authFetch, clientId, settings, isLiveView, editState, isLockedByManager, broadcastMessage])
-
-  const broadcastMessage = useCallback(async (msg) => {
-    try {
-      await authFetch('/realtime/broadcast', {
-        method: 'POST',
-        body: JSON.stringify(msg)
-      })
-    } catch (err) {
-      logger.error('[SALES] Failed to broadcast realtime message:', err)
-    }
-  }, [authFetch])
 
   useEffect(() => {
     const handleSync = (e) => {
