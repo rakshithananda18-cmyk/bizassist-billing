@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { IS_LOCAL_APP } from '../config'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
@@ -73,6 +73,19 @@ export default function Sales() {
   const { authFetch, profile, user } = useAuth()
   const { config, attributesSchema, t } = useBusinessConfig()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const liveCounter = searchParams.get('live_counter')
+  const liveClientId = searchParams.get('client_id')
+  const isLiveView = !!liveCounter
+  const isOwner = (user?.role || '').toLowerCase() !== 'cashier'
+
+  // Collaborative live counter states
+  const [editState, setEditState] = useState('idle') // 'idle' | 'requesting' | 'granted' | 'denied'
+  const [activeSessions, setActiveSessions] = useState({}) // counter -> { client_id, username }
+  const [isLockedByManager, setIsLockedByManager] = useState(false)
+  const [managerClientId, setManagerClientId] = useState(null)
+  const [managerUsername, setManagerUsername] = useState(null)
+  const [showRemoteRequestModal, setShowRemoteRequestModal] = useState(false)
 
   const [customers, setCustomers]     = useState([])
   const [products, setProducts]       = useState([])
@@ -395,6 +408,11 @@ export default function Sales() {
     Array.isArray(tabsArr) && tabsArr.some(t => (t?.form?.items?.length || 0) > 0)
 
   const [tabs, setTabs] = useState(() => {
+    if (isLiveView) {
+      return [
+        { id: '1', name: `Loading Counter ${liveCounter}...`, form: defaultForm }
+      ]
+    }
     const uid = user?.user_id || user?.id
     const savedTabsStr = uid ? localStorage.getItem(`pos_minimized_tabs_${uid}`) : null
     const savedActiveId = uid ? localStorage.getItem(`pos_minimized_active_id_${uid}`) : null
@@ -435,15 +453,24 @@ export default function Sales() {
 
   useEffect(() => {
     tabsRef.current = tabs // keep a fresh handle for the SSE receive guard below
+    if (isLiveView) return // do NOT persist live counter view tabs to local storage!
+
     const uid = user?.user_id || user?.id
     if (!uid) return
 
     // Persist cart state locally — restored on page reload (per-device, always on)
     localStorage.setItem(`pos_minimized_tabs_${uid}`, JSON.stringify(tabs))
     localStorage.setItem(`pos_minimized_active_id_${uid}`, activeTabId)
+  }, [tabs, activeTabId, user?.user_id, user?.id, isLiveView])
 
-    // Per-terminal carts: don't push this cart to other terminals at all.
-    if (!POS_CROSS_DEVICE_CART_SYNC) return
+  useEffect(() => {
+    if (isLockedByManager) return
+
+    const shouldBroadcast = POS_CROSS_DEVICE_CART_SYNC || (isLiveView && editState === 'granted')
+    if (!shouldBroadcast) return
+
+    const uid = user?.user_id || user?.id
+    if (!uid) return
 
     const isSalesSyncEnabled = settings?.general?.realtime_sync_sales !== false
     if (!isSalesSyncEnabled) return
@@ -486,25 +513,55 @@ export default function Sales() {
     }, 600)
 
     return () => clearTimeout(t)
-  }, [tabs, activeTabId, user?.user_id, user?.id, authFetch, clientId, settings])
+  }, [tabs, activeTabId, user?.user_id, user?.id, authFetch, clientId, settings, isLiveView, editState, isLockedByManager])
+
+  const broadcastMessage = useCallback(async (msg) => {
+    try {
+      await authFetch('/realtime/broadcast', {
+        method: 'POST',
+        body: JSON.stringify(msg)
+      })
+    } catch (err) {
+      logger.error('[SALES] Failed to broadcast realtime message:', err)
+    }
+  }, [authFetch])
 
   useEffect(() => {
     const handleSync = (e) => {
-      const { type, client_id, user_id: remoteUserId, tabs: remoteTabs, active_tab_id: remoteActiveTabId, timestamp: remoteTimestamp } = e.detail || {}
+      const d = e.detail || {}
+      const { type, client_id, user_id: remoteUserId, tabs: remoteTabs, active_tab_id: remoteActiveTabId, timestamp: remoteTimestamp } = d
+
+      // 1. pos.cart_sync handling
       if (type === 'pos.cart_sync' && client_id !== clientId) {
-        // Partition cart sync strictly by logged-in user_id
-        const currentUserId = user?.user_id || user?.id
-        if (remoteUserId && String(remoteUserId) !== String(currentUserId)) {
-          logger.debug('[SALES] Ignoring cart sync from different cashier/user:', remoteUserId)
+        if (isLiveView) {
+          if (client_id === liveClientId) {
+            if (Array.isArray(remoteTabs) && remoteTabs.length > 0) {
+              setTabs(remoteTabs)
+            }
+            if (remoteActiveTabId) {
+              setActiveTabId(remoteActiveTabId)
+            }
+          }
           return
         }
 
-        // Per-terminal carts: ignore another terminal's live cart entirely.
-        // (Committed sales data still syncs via the entity sync-events path.)
-        if (!POS_CROSS_DEVICE_CART_SYNC) {
-          logger.debug('[SALES] Per-terminal cart scope — ignoring remote cart from client:', client_id)
+        if (isLockedByManager && client_id === managerClientId) {
+          if (Array.isArray(remoteTabs) && remoteTabs.length > 0) {
+            setTabs(remoteTabs)
+          }
+          if (remoteActiveTabId) {
+            setActiveTabId(remoteActiveTabId)
+          }
           return
         }
+
+        // Standard cashier-to-cashier sync check
+        const currentUserId = user?.user_id || user?.id
+        if (remoteUserId && String(remoteUserId) !== String(currentUserId)) {
+          return
+        }
+
+        if (!POS_CROSS_DEVICE_CART_SYNC) return
 
         const isSalesSyncEnabled = settings?.general?.realtime_sync_sales !== false
         if (!isSalesSyncEnabled) return
@@ -513,22 +570,8 @@ export default function Sales() {
         if (!uid) return
 
         const localTimestamp = parseInt(localStorage.getItem(`pos_cart_updated_at_${uid}`) || '0', 10)
-
-        // Only apply remote state if it represents a newer update
         if (remoteTimestamp && remoteTimestamp > localTimestamp) {
-          // Anti-clobber guard (gap G5): never let an EMPTY remote cart wipe a
-          // non-empty local cart. A freshly-opened POS on another device
-          // broadcasts its default empty cart with a fresh (newer) timestamp;
-          // without this guard that empty state wins by LWW and silently clears
-          // an in-progress bill on this device (and then ping-pongs both empty).
-          // We do NOT advance our local clock here, so our own later edits still
-          // propagate normally.
-          if (!cartHasItems(remoteTabs) && cartHasItems(tabsRef.current)) {
-            logger.info('[SALES] Ignoring empty remote cart over a non-empty local cart (anti-clobber). From:', client_id)
-            return
-          }
-
-          logger.info('[SALES] Applying remote cart sync from client:', client_id, 'timestamp:', remoteTimestamp)
+          if (!cartHasItems(remoteTabs) && cartHasItems(tabsRef.current)) return
 
           lastIncomingSyncRef.current = {
             tabs: remoteTabs,
@@ -543,16 +586,94 @@ export default function Sales() {
           if (remoteActiveTabId) {
             setActiveTabId(remoteActiveTabId)
           }
-        } else {
-          logger.debug('[SALES] Ignored older/stale remote cart sync. Local TS:', localTimestamp, 'Remote TS:', remoteTimestamp)
         }
       }
+
+      // 2. Remote control handshake logic
+      if (type === 'pos.request_cart' && d.target_client_id === clientId) {
+        logger.info('[SALES] Received initial cart request from manager:', d.requester_client_id)
+        broadcastMessage({
+          type: 'pos.cart_sync',
+          client_id: clientId,
+          user_id: user?.user_id || user?.id,
+          tabs: tabsRef.current || tabs,
+          active_tab_id: activeTabId,
+          timestamp: Date.now()
+        })
+      }
+
+      if (type === 'pos.request_edit' && d.target_client_id === clientId) {
+        logger.info('[SALES] Manager requesting edit access:', d.requester_username)
+        setManagerClientId(d.requester_client_id)
+        setManagerUsername(d.requester_username)
+        setShowRemoteRequestModal(true)
+      }
+
+      if (type === 'pos.grant_edit' && d.target_client_id === clientId) {
+        logger.info('[SALES] Edit access granted by cashier!')
+        setEditState('granted')
+      }
+
+      if (type === 'pos.deny_edit' && d.target_client_id === clientId) {
+        logger.info('[SALES] Edit access denied by cashier.')
+        setEditState('denied')
+      }
+
+      if (type === 'pos.release_edit' && d.target_client_id === clientId) {
+        logger.info('[SALES] Manager released edit access.')
+        setIsLockedByManager(false)
+        setAlert({ type: 'success', message: 'Manager released control of this terminal.' })
+      }
     }
+
     window.addEventListener('sync-event', handleSync)
-    return () => {
-      window.removeEventListener('sync-event', handleSync)
+    return () => window.removeEventListener('sync-event', handleSync)
+  }, [clientId, settings, user?.user_id, user?.id, isLiveView, liveClientId, isLockedByManager, managerClientId, activeTabId, broadcastMessage])
+
+  useEffect(() => {
+    if (isLiveView && liveClientId) {
+      const requestCart = () => {
+        logger.info('[SALES] Requesting initial cart state from cashier:', liveClientId)
+        broadcastMessage({
+          type: 'pos.request_cart',
+          target_client_id: liveClientId,
+          requester_client_id: clientId,
+        })
+      }
+      requestCart()
+      // Retry once after 2.5 seconds if no cart received (fallback if network transient)
+      const t = setTimeout(requestCart, 2500)
+      return () => clearTimeout(t)
     }
-  }, [clientId, settings, user?.user_id, user?.id])
+  }, [isLiveView, liveClientId, clientId, broadcastMessage])
+
+  useEffect(() => {
+    const handlePresence = (e) => {
+      const d = e.detail
+      if (!d || d.type !== 'pos.presence' || !d.client_id || !d.counter) return
+      setActiveSessions(prev => ({
+        ...prev,
+        [d.counter]: { client_id: d.client_id, username: d.username }
+      }))
+    }
+    window.addEventListener('sync-event', handlePresence)
+    return () => window.removeEventListener('sync-event', handlePresence)
+  }, [])
+
+  const handleSelectCounter = useCallback((val) => {
+    if (!isOwner) return
+    const ownerPrefix = (user?.counter_prefix || '').trim() || 'OW'
+    if (val === ownerPrefix) {
+      navigate('/sales')
+    } else {
+      const session = activeSessions[val]
+      if (session) {
+        navigate(`/sales?live_counter=${encodeURIComponent(val)}&client_id=${encodeURIComponent(session.client_id)}`)
+      } else {
+        navigate(`/sales?live_counter=${encodeURIComponent(val)}`)
+      }
+    }
+  }, [isOwner, user?.counter_prefix, activeSessions, navigate])
 
 
 
@@ -1478,6 +1599,11 @@ export default function Sales() {
   // Keyboard POS Shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
+      if ((isLiveView && editState !== 'granted') || isLockedByManager) {
+        if (e.key !== 'Escape') {
+          return
+        }
+      }
       // If we are currently binding a key, capture the key press
       if (bindingAction) {
         e.preventDefault()
@@ -1695,15 +1821,112 @@ export default function Sales() {
             setShowSettingsModal(true)
           }}
           funcKeys={funcKeys}
-          counterPrefix={getCounterPrefix().replace(/-$/, '')}
+          counterPrefix={isLiveView ? liveCounter : getCounterPrefix().replace(/-$/, '')}
           canManageCounters={(user?.role || '').toLowerCase() !== 'cashier'}
           onManageCounters={() => navigate('/staff')}
           availableCounters={availableCounters}
-          onSelectCounter={(val) => navigate(`/counters?counter=${encodeURIComponent(val || '')}`)}
+          onSelectCounter={handleSelectCounter}
+          liveModeStatus={isLiveView ? { counter: liveCounter, isEditing: editState === 'granted' } : null}
         />
 
+        {isLiveView && (
+          <div style={{
+            background: 'var(--bg-3)',
+            borderBottom: '1px solid var(--border)',
+            padding: '8px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '0.82rem',
+            color: 'var(--text-primary)',
+            zIndex: 99
+          }}>
+            <div>
+              <span>Viewing Counter: <strong>{liveCounter}</strong></span>
+              {editState === 'granted' && <span style={{ color: '#22c55e', marginLeft: 12, fontWeight: 700 }}>● Editing Active</span>}
+              {editState === 'requesting' && <span style={{ color: '#f59e0b', marginLeft: 12, fontWeight: 700 }}>● Requesting Access...</span>}
+              {editState === 'denied' && <span style={{ color: '#ef4444', marginLeft: 12, fontWeight: 700 }}>● Request Denied</span>}
+              {editState === 'idle' && <span style={{ color: 'var(--text-muted)', marginLeft: 12 }}>● View Only</span>}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {editState === 'idle' && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setEditState('requesting')
+                    broadcastMessage({
+                      type: 'pos.request_edit',
+                      target_client_id: liveClientId,
+                      requester_client_id: clientId,
+                      requester_username: user?.username || 'Owner'
+                    })
+                  }}
+                  style={{ fontSize: '0.78rem', padding: '4px 10px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                >
+                  Request Edit Access
+                </button>
+              )}
+              {editState === 'requesting' && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setEditState('idle')
+                  }}
+                  style={{ fontSize: '0.78rem', padding: '4px 10px', background: 'rgba(255,255,255,0.08)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
+                >
+                  Cancel Request
+                </button>
+              )}
+              {editState === 'granted' && (
+                <button
+                  type="button"
+                  className="btn btn-success"
+                  onClick={() => {
+                    setEditState('idle')
+                    broadcastMessage({
+                      type: 'pos.release_edit',
+                      target_client_id: liveClientId,
+                      requester_client_id: clientId
+                    })
+                  }}
+                  style={{ fontSize: '0.78rem', padding: '4px 10px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                >
+                  Release Edit & Save
+                </button>
+              )}
+              {editState === 'denied' && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setEditState('idle')}
+                  style={{ fontSize: '0.78rem', padding: '4px 10px', background: 'rgba(255,255,255,0.08)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
+                >
+                  Reset
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => navigate('/sales')}
+                style={{ fontSize: '0.78rem', padding: '4px 10px', background: 'rgba(255,255,255,0.08)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
+              >
+                Exit Live View
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Workspace body split */}
-        <div className="pos-workspace">
+        <div
+          className="pos-workspace"
+          style={{
+            pointerEvents: (isLiveView && editState !== 'granted') ? 'none' : 'auto',
+            userSelect: (isLiveView && editState !== 'granted') ? 'none' : 'auto',
+            opacity: (isLiveView && editState !== 'granted') ? 0.85 : 1,
+          }}
+        >
           
           {/* Left Pane (72% width) */}
           <div className="pos-left-pane">
@@ -2067,6 +2290,108 @@ export default function Sales() {
         changeToReturn={changeToReturn}
         colFooter={colFooter}
       />
+
+      {showRemoteRequestModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000
+        }}>
+          <div className="card shadow-lg animate-fade-in" style={{
+            width: '100%',
+            maxWidth: 420,
+            padding: 24,
+            borderRadius: 12,
+            background: 'var(--bg-surface, #ffffff)',
+            border: '1px solid var(--border)',
+            textAlign: 'center'
+          }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12 }}>
+              Remote Edit Request
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 20 }}>
+              Manager <strong>{managerUsername}</strong> is requesting temporary access to view and edit your active bill. Allow?
+            </p>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+              <button
+                onClick={() => {
+                  setShowRemoteRequestModal(false)
+                  setIsLockedByManager(true)
+                  broadcastMessage({
+                    type: 'pos.grant_edit',
+                    target_client_id: managerClientId,
+                    grantor_client_id: clientId,
+                  })
+                }}
+                style={{
+                  padding: '8px 20px', borderRadius: 6,
+                  background: '#22c55e', color: '#fff', border: 'none',
+                  fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer'
+                }}
+              >
+                Allow
+              </button>
+              <button
+                onClick={() => {
+                  setShowRemoteRequestModal(false)
+                  broadcastMessage({
+                    type: 'pos.deny_edit',
+                    target_client_id: managerClientId,
+                    grantor_client_id: clientId,
+                  })
+                }}
+                style={{
+                  padding: '8px 20px', borderRadius: 6,
+                  background: 'rgba(255,255,255,0.08)', color: 'var(--text-primary)',
+                  border: '1px solid var(--border)',
+                  fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer'
+                }}
+              >
+                Deny
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isLockedByManager && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1999,
+          textAlign: 'center',
+          padding: 24,
+          userSelect: 'none'
+        }}>
+          <div style={{
+            animation: 'pulse 2s infinite',
+            width: 64, height: 64, borderRadius: '50%',
+            background: 'rgba(249, 115, 22, 0.15)',
+            border: '2px dashed var(--accent)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            marginBottom: 16
+          }}>
+            <span style={{ fontSize: '1.5rem' }}>🔒</span>
+          </div>
+          <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', marginBottom: 8 }}>
+            Managed Mode Active
+          </h3>
+          <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', maxWidth: 360, lineHeight: 1.5 }}>
+            This terminal is currently being controlled and edited remotely by the manager. Control will return automatically when finished.
+          </p>
+        </div>
+      )}
     </AppLayout>
   )
 }

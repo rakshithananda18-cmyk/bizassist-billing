@@ -6,7 +6,7 @@
 // Nothing here writes back to a cashier's cart; it's pure observation. The
 // edit-a-counter flow (request → approve → soft-lock) is the future Phase 4 step.
 import React, { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -30,6 +30,7 @@ export default function Counters() {
   const focusCounter = params.get('counter')
   const [sessions, setSessions] = useState({})   // client_id -> latest snapshot
   const [, tick] = useState(0)
+  const navigate = useNavigate()
 
   useEffect(() => {
     const onSync = (e) => {
@@ -56,7 +57,7 @@ export default function Counters() {
           <div className="page-header-left">
             <h1 className="page-title">Live Counters</h1>
             <p className="page-subtitle">
-              Watch each till in real time — current cart, totals, and who's billing. View-only.
+              Watch each till in real time — click any counter to view its live cart or edit items.
             </p>
           </div>
         </div>
@@ -77,11 +78,26 @@ export default function Counters() {
               {tiles.map(s => {
                 const highlight = focusCounter && String(s.counter) === String(focusCounter)
                 return (
-                  <div key={s.client_id} className="card" style={{
-                    padding: 16, borderRadius: 10,
-                    border: highlight ? '2px solid var(--primary, #c0612a)' : '1px solid var(--border)',
-                    opacity: s.idle ? 0.6 : 1,
-                  }}>
+                  <div
+                    key={s.client_id}
+                    className="card"
+                    onClick={() => navigate(`/sales?live_counter=${encodeURIComponent(s.counter)}&client_id=${encodeURIComponent(s.client_id)}`)}
+                    style={{
+                      padding: 16, borderRadius: 10,
+                      border: highlight ? '2px solid var(--primary, #c0612a)' : '1px solid var(--border)',
+                      opacity: s.idle ? 0.6 : 1,
+                      cursor: 'pointer',
+                      transition: 'transform 0.2s, border-color 0.2s',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'scale(1.02)'
+                      e.currentTarget.style.borderColor = 'var(--accent)'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'scale(1)'
+                      e.currentTarget.style.borderColor = highlight ? 'var(--primary, #c0612a)' : 'var(--border)'
+                    }}
+                  >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                       <span className="badge badge-muted" style={{ fontSize: '0.8rem', fontWeight: 700 }}>
                         {s.counter || '—'}

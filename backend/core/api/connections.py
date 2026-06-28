@@ -320,3 +320,15 @@ async def pos_presence(
     return {"status": "broadcasted"}
 
 
+@router.post("/realtime/broadcast")
+async def broadcast_message(
+    req: dict,
+    current_user: dict = Depends(get_active_user)
+):
+    """Broadcast any generic realtime synchronization or handshake message to all active sessions of this business."""
+    bid = current_user["id"]
+    await realtime_manager.broadcast(bid, req)
+    return {"status": "broadcasted"}
+
+
+

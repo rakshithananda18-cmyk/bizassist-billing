@@ -24,6 +24,7 @@ export default function PosTopBar({
   onManageCounters,
   availableCounters = [],
   onSelectCounter,
+  liveModeStatus = null,
 }) {
   const [lanStatus, setLanStatus] = useState(() => {
     const useLanDb = typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_use_lan_db') === 'true'
@@ -62,7 +63,42 @@ export default function PosTopBar({
   }, [])
 
   return (
-    <div className="pos-top-bar">
+    <div className="pos-top-bar" style={{ position: 'relative' }}>
+      {liveModeStatus && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'absolute',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          height: '100%',
+          pointerEvents: 'none',
+          zIndex: 100
+        }}>
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: '0.78rem',
+            fontWeight: 800,
+            padding: '4px 12px',
+            borderRadius: 20,
+            background: liveModeStatus.isEditing ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+            border: liveModeStatus.isEditing ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(245, 158, 11, 0.4)',
+            color: liveModeStatus.isEditing ? '#ef4444' : '#f59e0b',
+            pointerEvents: 'auto',
+            letterSpacing: '0.5px'
+          }}>
+            <span className="live-dot-pulsing" style={{
+              width: 7, height: 7, borderRadius: '50%',
+              background: liveModeStatus.isEditing ? '#ef4444' : '#f59e0b',
+              display: 'inline-block'
+            }} />
+            {liveModeStatus.isEditing ? `EDITING: COUNTER ${liveModeStatus.counter}` : `VIEW ONLY: COUNTER ${liveModeStatus.counter}`}
+          </div>
+        </div>
+      )}
       <div className="pos-top-bar-left">
         <div className="pos-tabs-row">
           {tabs.map(tab => {
