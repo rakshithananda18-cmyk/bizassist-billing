@@ -79,10 +79,10 @@ export default function CounterMenu({
           top: '100%',
           right: 0,
           marginTop: 6,
-          background: 'var(--bg-surface, #ffffff)',
+          background: 'var(--bg-2, #ffffff)',
           border: '1px solid var(--border, #e5e7eb)',
           borderRadius: 8,
-          boxShadow: '0 4px 14px rgba(0, 0, 0, 0.16)',
+          boxShadow: '0 4px 14px rgba(0, 0, 0, 0.25)',
           zIndex: 1000,
           minWidth: 160,
           padding: '6px 0',
@@ -97,9 +97,9 @@ export default function CounterMenu({
                 key={idx}
                 onClick={() => handleSelect(c.value)}
                 style={{
-                  background: isCurrent ? 'var(--bg-3, rgba(0,0,0,0.04))' : 'transparent',
+                  background: isCurrent ? 'var(--bg-4, rgba(0,0,0,0.06))' : 'transparent',
                   border: 'none',
-                  color: isCurrent ? 'var(--accent, #3b82f6)' : 'var(--text-primary, #374151)',
+                  color: isCurrent ? 'var(--accent, #f97316)' : 'var(--text-primary, #374151)',
                   padding: '8px 12px',
                   fontSize: '0.78rem',
                   fontWeight: isCurrent ? 600 : 500,
@@ -112,7 +112,7 @@ export default function CounterMenu({
                   width: '100%'
                 }}
                 onMouseEnter={(e) => {
-                  if (!isCurrent) e.currentTarget.style.background = 'var(--bg-2, rgba(0,0,0,0.02))'
+                  if (!isCurrent) e.currentTarget.style.background = 'var(--bg-3, rgba(0,0,0,0.03))'
                 }}
                 onMouseLeave={(e) => {
                   if (!isCurrent) e.currentTarget.style.background = 'transparent'
@@ -131,7 +131,7 @@ export default function CounterMenu({
             style={{
               background: 'transparent',
               border: 'none',
-              color: 'var(--accent, #3b82f6)',
+              color: 'var(--accent, #f97316)',
               padding: '8px 12px',
               fontSize: '0.78rem',
               fontWeight: 600,
@@ -140,7 +140,7 @@ export default function CounterMenu({
               outline: 'none',
               width: '100%'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-2, rgba(0,0,0,0.02))'}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-3, rgba(0,0,0,0.03))'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
             + Add Counter
