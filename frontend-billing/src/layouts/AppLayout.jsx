@@ -31,6 +31,7 @@ const NAV = [
     section: 'Sales & Operations',
     items: [
       { to: '/sales',    icon: <CounterIcon size={16} />,   label: 'Billing Counter' },
+      { to: '/counters', icon: <MonitorIcon size={16} />,   label: 'Live Counters' },
       { to: '/payments', icon: <CashIcon size={16} />,      label: 'Cash Book' },
       { to: '/parties',  icon: <ContactsIcon size={16} />,  label: 'Contacts & Dues' },
       { to: '/stock',    icon: <InventoryIcon size={16} />, label: 'Inventory' },
@@ -220,7 +221,7 @@ export default function AppLayout({ children, title }) {
   // Role gating (defense-in-depth — the backend restrict_cashier guard is the
   // real authority; this just hides owner-only destinations from cashiers).
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
-  const OWNER_ONLY_PATHS = React.useMemo(() => new Set(['/purchases', '/connections', '/orders', '/reports', '/import', '/staff', '/dashboard']), [])
+  const OWNER_ONLY_PATHS = React.useMemo(() => new Set(['/purchases', '/connections', '/orders', '/reports', '/import', '/staff', '/dashboard', '/counters']), [])
 
   React.useEffect(() => {
     if (isCashier && OWNER_ONLY_PATHS.has(location.pathname)) {

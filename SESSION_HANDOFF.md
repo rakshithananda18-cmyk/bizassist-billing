@@ -103,7 +103,13 @@
 - **Backend:** new nullable `users.counter_prefix` (model + `_COLUMN_MIGRATIONS` + alembic `b3c1d5e7f9a2`). Owner sets per staff via `POST/PATCH /staff` (`counter_prefix`, normalised); owner sets own via `PUT /profile` (default `OW`). Returned on `/login` + `/profile`. Cashiers blocked from `/staff` → can't self-assign.
 - **Frontend:** `AuthContext` stores `user.counter_prefix`; `Sales.jsx::getCounterPrefix()` uses it (fallback owner→`OW-`, else `INV-`). POS shows a **read-only** `Counter: C1` badge (`CounterMenu.jsx`) — **clickable for owners → `/staff`**; old dropdown + `PosCounterSettingsModal` prefix field removed. Owner manages in **Staff page** (`Staff.jsx`): defines **named counters** (`settings.transactions.counters`) and assigns each cashier via **dropdown** (add-form + per-row select).
 - **Local↔cloud number namespacing (§9.3b) — IMPLEMENTED 2026-06-28:** two disconnected DBs each minting `C1-0001` for different sales would clash on migrate (importer's `invoice_id` natural-key would merge them → lost bill). Fix: (1) `getCounterPrefix()` prepends **`LCL-`** on local/hybrid (`hosting_mode != cloud`); cloud stays clean → cloud `C1-0001`, local `LCL-C1-0001` (owner `OW-0001`/`LCL-OW-0001`). Distinct series → migrate inserts, never merges. (2) Backstop: `routes/migrate.py::_import_with_remap` skips the natural-key fallback when the incoming row has a `uid` (uid mismatch = different bill → insert). Test: `test_import_does_not_merge_different_uid_invoices_sharing_a_number`. **Numbers are final at issue — never re-numbered (GST-safe); GST gen only consolidates. >1 local machine → give each `LCL1-`/`LCL2-`.**
-- **Pending (next focused build):** owner **Live Counters view** — realtime read-only page; each active POS session publishes a presence snapshot (user, counter, cart total, last activity); owner watches tiles. Needs two-device test. (Plan §9.2 Stage 1.)
+### 🟢 BUILT (2026-06-28) — owner Live Counters view (plan §9.2 Stage 1; pending two-device test)
+- **Backend:** `POST /realtime/presence` (`core/api/connections.py`) broadcasts a `pos.presence` snapshot to the business (counter, username, role, item_count, cart_total, active_bill, status, ts). Read-only — NOT cart sync.
+- **POS publisher:** `Sales.jsx` posts presence (cloud only) — debounced on cart edits + 20s heartbeat.
+- **Owner page:** new `pages/Counters.jsx` at `/counters` (owner-only via `OWNER_ONLY_PATHS`) — listens to `sync-event`/`pos.presence`, renders a live tile per session (counter, who, items, total, current bill, Active/Idle by heartbeat staleness >45s). Nav link "Live Counters" added (`AppLayout`).
+- **Dropdown hook:** the POS counter dropdown's select → `navigate('/counters?counter=X')` (the "live view"); selection no longer touches billing.
+- **Future (Phase 4):** request→approve soft-lock so the owner can EDIT a counter's open bill from here.
+- **Test:** owner opens Live Counters on one device; a cashier billing on another shows up as a live tile (items/total update as they add); goes Idle when they stop.
 
 ### 🟢 FIXED (review 2026-06-28) — owner counter-switch no longer affects billing
 - **Was:** `getCounterPrefix()` used the `CounterMenu` dropdown's `selectedCounterOverride` as the **billing** prefix → an owner picking a cashier's counter (`C1`) billed `C1-0001…`, colliding with that cashier → backend `invoice_no` merge → silent lost sale.
@@ -114,6 +120,11 @@
 - **Symptom:** `Sales` re-fetched `/customers /products /settings /invoices /staff /godowns` continuously (console flood, backend hammering).
 - **Cause:** `getCounterPrefix`/`availableCounters` depended on the whole `settings` OBJECT (added for the `LCL-` mode check). `load()` calls `setSettings()` each run → new object identity → `getCounterPrefix`→`getNextInvoiceNo`→`load` recreated → `useEffect([load])` re-fires `load` → loop.
 - **Fix:** depend on the `settings?.general?.hosting_mode` STRING (stable primitive) instead of the object. **Rebuild before deploy — the loop is present in the last pushed commit.**
+
+### 🟢 FIXED (2026-06-28) — `LCL-` flash on web/cloud invoices
+- **Symptom:** on the web app, the counter/invoice briefly showed `LCL-OW-0001` then settled to `OW-0001`; tabs created during the flash kept the wrong `LCL-` number while the badge showed `OW`.
+- **Cause:** `getCounterPrefix` read `settings.general.hosting_mode`, which is `null` until the (slow) `/settings` fetch → defaulted to `local` → `LCL-` on cloud.
+- **Fix:** new `effectiveHostingMode()` in `Sales.jsx` (web ⇒ always `cloud`; desktop ⇒ `bizassist_hosting_mode`), same source as `config.js`/realtime. `getCounterPrefix` + `availableCounters` use it and **no longer depend on `settings`** (also removes residual loop risk). Stale `LCL-` empty tabs renumber to `OW-` on reload.
 
 ### 📦 SESSION 2026-06-28 — CHANGED FILES & DEPLOY CHECKLIST
 *Everything from this session, for the git + HF + Vercel push. Backend files must ALSO be copied into `BizAssist_HF/` (the flat backend copy the HF Space deploys from).*
@@ -139,6 +150,9 @@
 - `src/components/sales/CounterMenu.jsx` — **new** (read-only counter badge, owner→/staff link)
 - `src/components/sales/PosTopBar.jsx` — counter badge wired
 - `src/components/sales/PosSettingsModals.jsx` — removed obsolete per-device prefix field
+- `src/hooks/usePaymentFlow.js` — print/display the **server-returned** invoice number (server may re-number on a concurrent collision, §9.3b)
+- `src/pages/Counters.jsx` — **new** owner Live Counters page; `src/App.jsx` + `src/layouts/AppLayout.jsx` — route + owner-only nav link
+- `backend/core/api/connections.py` — **new** `POST /realtime/presence` (Live Counters publish)
 - `src/contexts/AuthContext.jsx` — store `user.counter_prefix`; **reconcile `general.hosting_mode` to the real mode in `fetchSettings`** (web⇒cloud, desktop⇒`bizassist_hosting_mode`) so the saved setting can't drift (also corrects `getCounterPrefix`'s `LCL-` tagging, which reads that value)
 - `src/sync/applyDelta.js` — **new** (generic delta list patch)
 

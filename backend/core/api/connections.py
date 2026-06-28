@@ -277,3 +277,33 @@ async def pos_cart_sync(
     return {"status": "broadcasted"}
 
 
+@router.post("/realtime/presence")
+async def pos_presence(
+    req: dict,
+    current_user: dict = Depends(get_active_user)
+):
+    """(Live Counters, plan §9.2 Stage 1) A POS session publishes a lightweight
+    READ-ONLY snapshot of its activity — which counter, who, current cart total —
+    so the owner's Live Counters view can watch each till live. This is NOT cart
+    sync (no cart contents applied anywhere): just presence/metrics, broadcast to
+    the business. Cashiers publish; the owner consumes."""
+    bid = current_user["id"]
+    await realtime_manager.broadcast(
+        bid,
+        {
+            "type": "pos.presence",
+            "client_id": req.get("client_id"),
+            "counter": req.get("counter"),                 # e.g. "C1" / "OW"
+            "username": current_user.get("username"),
+            "role": current_user.get("role"),
+            "user_id": current_user.get("user_id") or current_user.get("id"),
+            "item_count": req.get("item_count"),
+            "cart_total": req.get("cart_total"),
+            "active_bill": req.get("active_bill"),         # current invoice no on screen
+            "status": req.get("status", "active"),         # "active" | "idle" | "closed"
+            "timestamp": req.get("timestamp"),
+        }
+    )
+    return {"status": "broadcasted"}
+
+

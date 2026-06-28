@@ -26,6 +26,7 @@ import Connections from './pages/Connections'
 import Orders      from './pages/Orders'
 import Profile     from './pages/Profile'
 import Settings    from './pages/Settings'
+import Counters    from './pages/Counters'
 
 
 function ProtectedRoute({ children }) {
@@ -54,6 +55,7 @@ function AppRoutes() {
       <Route path="/orders"      element={<ProtectedRoute><Orders      /></ProtectedRoute>} />
       <Route path="/profile"     element={<ProtectedRoute><Profile     /></ProtectedRoute>} />
       <Route path="/settings"    element={<ProtectedRoute><Settings    /></ProtectedRoute>} />
+      <Route path="/counters"    element={<ProtectedRoute><Counters    /></ProtectedRoute>} />
       <Route path="/staff"       element={<Navigate to="/settings?tab=staff" replace />} />
 
 

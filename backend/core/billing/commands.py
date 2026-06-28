@@ -147,6 +147,33 @@ def _next_invoice_number(db, business_id: int, counter_prefix: Optional[str] = N
     return f"{prefix}-{n + 1:04d}"
 
 
+def _invoice_number_taken(db, business_id: int, number: str) -> bool:
+    return (
+        db.query(Invoice.id)
+        .filter(Invoice.business_id == business_id, Invoice.invoice_id == number)
+        .first()
+        is not None
+    )
+
+
+def _free_invoice_number(db, business_id: int, taken: str) -> str:
+    """Next FREE number in the SAME series as ``taken`` (keeps its exact prefix,
+    incl. any ``LCL-`` tag). Used when a concurrent sale already grabbed the
+    requested number — we re-number rather than silently merge two distinct bills
+    (§9.3b). Bumps the trailing digits, preserving zero-pad width."""
+    import re
+    m = re.match(r"^(.*?)(\d+)$", taken or "")
+    if not m:
+        base, n, width = f"{taken}-", 2, 1
+    else:
+        base, n, width = m.group(1), int(m.group(2)) + 1, len(m.group(2))
+    cand = f"{base}{str(n).zfill(width)}"
+    while _invoice_number_taken(db, business_id, cand):
+        n += 1
+        cand = f"{base}{str(n).zfill(width)}"
+    return cand
+
+
 def create_sale_invoice(db, *, business_id: int, lines: list,
                         customer: Optional[str] = None,
                         customer_id: Optional[int] = None,
@@ -164,6 +191,7 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
                         bill_discount: float = 0.0,
                         cash_discount: float = 0.0,
                         counter_prefix: Optional[str] = None,
+                        renumber_on_conflict: bool = False,
                         mark_paid: bool = False) -> Invoice:
     """
     COMMAND: create one sale invoice atomically (header + lines + stock moves).
@@ -191,16 +219,29 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
 
     number = (invoice_no or "").strip() or _next_invoice_number(db, business_id, counter_prefix)
 
-    # ── Idempotency: same number for this business → return the existing one ──
+    # ── Idempotency vs collision ─────────────────────────────────────────────
     existing = (
         db.query(Invoice)
         .filter(Invoice.business_id == business_id, Invoice.invoice_id == number)
         .first()
     )
     if existing is not None:
-        logger.info("[BILLING] idempotent hit — invoice %s already exists for biz %s",
-                    number, business_id)
-        return existing
+        if renumber_on_conflict:
+            # A genuine retry of the SAME bill is caught upstream by the
+            # X-Client-Request-Id wall, so reaching here with a taken number means
+            # a DIFFERENT sale grabbed it concurrently (rare: same login/series on
+            # two devices). Re-number into the next free slot in the same series
+            # instead of returning the existing row → never merge two distinct
+            # sales into one (silent lost bill, §9.3b). The caller prints/returns
+            # this reassigned number.
+            new_number = _free_invoice_number(db, business_id, number)
+            logger.warning("[BILLING] invoice number %s already taken for biz %s — reassigned to %s",
+                           number, business_id, new_number)
+            number = new_number
+        else:
+            logger.info("[BILLING] idempotent hit — invoice %s already exists for biz %s",
+                        number, business_id)
+            return existing
 
     # ── State: intra vs inter (from business state + place of supply) ────────
     biz = db.query(User).filter(User.id == business_id).first()

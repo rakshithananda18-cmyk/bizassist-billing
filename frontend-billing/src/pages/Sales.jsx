@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { IS_LOCAL_APP } from '../config'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { AlertIcon, BillsIcon, CheckIcon, ChevronRightIcon, CloseIcon, TagIcon } from '../components/Icons'
@@ -57,6 +58,17 @@ const defaultForm = {
   cash_discount: '',              // POST-tax cash discount / round-off (₹) — reduces payable, not GST (R4)
 }
 
+// Effective hosting mode for invoice-number tagging — the SAME source config.js
+// uses to pick the backend (and useRealtimeLeader uses for SSE). Web is ALWAYS
+// cloud; a desktop app uses its own per-device `bizassist_hosting_mode`. We must
+// NOT read settings.general.hosting_mode (null until the slow /settings fetch
+// returns → an `LCL-` flash on cloud bills, §9.3b).
+function effectiveHostingMode() {
+  if (!IS_LOCAL_APP) return 'cloud'
+  const m = (typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_hosting_mode')) || 'local'
+  return m.toLowerCase()
+}
+
 export default function Sales() {
   const { authFetch, profile, user } = useAuth()
   const { config, attributesSchema, t } = useBusinessConfig()
@@ -77,7 +89,6 @@ export default function Sales() {
   const [bindingAction, setBindingAction] = useState(null)
   const [dbInvoices, setDbInvoices]   = useState([])
   const [showPayConfirmModal, setShowPayConfirmModal] = useState(false)
-  const [selectedCounterOverride, setSelectedCounterOverride] = useState(null)
   const [staffList, setStaffList] = useState([])
 
   // ── Offline sync (R7b Slice 3c) ───────────────────────────────────────────
@@ -550,23 +561,23 @@ export default function Sales() {
   //   so its numbers can NEVER collide with the cloud series when they migrate /
   //   sync up. The number is final at issue time — never re-numbered (GST-safe).
   const getCounterPrefix = useCallback(() => {
-    // BILLING prefix is ALWAYS this login's OWN counter — never the dropdown
-    // override. The override (`selectedCounterOverride`) is a VIEW context only:
-    // billing as another *active* counter would mint a duplicate number and the
-    // backend's invoice_no wall would merge the two sales → silent lost bill.
-    // Editing another counter's bills is the future Phase 4 request→approve flow.
+    // BILLING prefix is ALWAYS this login's OWN counter. The owner's counter
+    // dropdown is VIEW-only — picking a counter opens the Live Counters page
+    // (read-only), it never changes the billing series. Billing as another active
+    // counter would mint a duplicate number; editing another counter's bills is
+    // the future Phase 4 request→approve (soft-lock) flow.
     const raw = (user?.counter_prefix || '').trim()
     const counter = raw
       ? (raw.endsWith('-') ? raw.slice(0, -1) : raw)
       : ((user?.role || '').toLowerCase() !== 'cashier' ? 'OW' : 'INV')
-    const mode = (settings?.general?.hosting_mode || 'local').toLowerCase()
+    // Use the EFFECTIVE mode (same source as config.js / realtime), NOT
+    // settings.general.hosting_mode. That setting is null until the (slow) /settings
+    // fetch returns, so on web/cloud it briefly defaulted to 'local' → an `LCL-`
+    // FLASH on cloud bills. Web is ALWAYS cloud; desktop uses its own mode choice.
+    const mode = effectiveHostingMode()
     const tag = mode === 'cloud' ? '' : 'LCL-'
     return `${tag}${counter}-`
-    // Depend on the hosting_mode STRING, not the whole `settings` object — `load`
-    // calls setSettings() with a fresh object each run, and depending on the
-    // object identity here recreated getNextInvoiceNo→load→effect→load… (infinite
-    // refetch loop). The string only changes on a real mode switch.
-  }, [user?.counter_prefix, user?.role, settings?.general?.hosting_mode])
+  }, [user?.counter_prefix, user?.role])
 
   const availableCounters = useMemo(() => {
     if ((user?.role || '').toLowerCase() === 'cashier') return []
@@ -580,13 +591,12 @@ export default function Sales() {
         }
       }
     })
-    const mode = (settings?.general?.hosting_mode || 'local').toLowerCase()
-    const tag = mode === 'cloud' ? '' : 'LCL-'
+    const tag = effectiveHostingMode() === 'cloud' ? '' : 'LCL-'
     return prefixes.map(p => ({
       label: `${tag}${p}`,
       value: p
     }))
-  }, [user?.role, user?.counter_prefix, staffList, settings?.general?.hosting_mode])
+  }, [user?.role, user?.counter_prefix, staffList])
 
   // Highest number already used WITHIN this terminal's own prefix series. We
   // must NOT mix series (the old code derived the prefix from whichever invoice
@@ -1070,6 +1080,35 @@ export default function Sales() {
     barcodeRef,
     enqueueOffline,
   })
+
+  // Live Counters presence (plan §9.2 Stage 1): publish a lightweight READ-ONLY
+  // snapshot (counter, item count, cart total, current bill) so the owner's Live
+  // Counters view can watch this till live. Cloud only; this is NOT cart sync —
+  // no cart contents are applied anywhere, just metrics. Debounced on cart edits,
+  // plus a heartbeat; the consumer marks a counter idle when the heartbeat stops.
+  useEffect(() => {
+    if (effectiveHostingMode() !== 'cloud') return
+    if (settingsRef.current?.general?.realtime_sync_sales === false) return
+    const counter = getCounterPrefix().replace(/-$/, '')
+    const items = (form?.items || []).filter(it => it.product)
+    const publish = () => {
+      authFetch('/realtime/presence', {
+        method: 'POST',
+        body: JSON.stringify({
+          client_id: clientId,
+          counter,
+          item_count: items.length,
+          cart_total: grandTotal || 0,
+          active_bill: activeTab?.name || null,
+          status: 'active',
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {})
+    }
+    const t = setTimeout(publish, 600)        // debounce rapid cart edits
+    const hb = setInterval(publish, 20000)    // heartbeat while idle
+    return () => { clearTimeout(t); clearInterval(hb) }
+  }, [form?.items, grandTotal, activeTab?.name, clientId, getCounterPrefix, authFetch])
 
   const entryMode = config?.billing?.entry_mode || 'search'
   const groupedProducts = products.reduce((acc, p) => {
@@ -1650,7 +1689,7 @@ export default function Sales() {
           canManageCounters={(user?.role || '').toLowerCase() !== 'cashier'}
           onManageCounters={() => navigate('/staff')}
           availableCounters={availableCounters}
-          onSelectCounter={setSelectedCounterOverride}
+          onSelectCounter={(val) => navigate(`/counters?counter=${encodeURIComponent(val || '')}`)}
         />
 
         {/* Workspace body split */}

@@ -312,3 +312,61 @@ def test_blank_prefix_defaults_to_inv_series():
         assert billing._next_invoice_number(db, BID, "C2-") == "C2-0001"
     finally:
         db.close()
+
+
+# ── Re-number on concurrent collision (§9.3b) — never silently merge ─────────
+
+def test_renumber_on_conflict_creates_distinct_bill():
+    pid = _product("Rice", stock=100)
+    db = SessionLocal()
+    try:
+        a = billing.create_sale_invoice(
+            db, business_id=BID, invoice_no="C1-0005", place_of_supply="29",
+            lines=[{"product_id": pid, "quantity": 1, "unit_price": 100}])
+        # A DIFFERENT sale asks for the same number with renumber_on_conflict set
+        # (the request-id wall already absorbs true retries) → reassign, don't merge.
+        b = billing.create_sale_invoice(
+            db, business_id=BID, invoice_no="C1-0005", place_of_supply="29",
+            renumber_on_conflict=True,
+            lines=[{"product_id": pid, "quantity": 2, "unit_price": 100}])
+        assert a.invoice_id == "C1-0005"
+        assert b.invoice_id != "C1-0005"          # reassigned
+        assert b.invoice_id.startswith("C1-")     # same series, next free slot
+        assert a.id != b.id                        # two distinct bills — none lost
+        assert SL.current_stock(db, BID, product_id=pid) == 97.0   # 1 + 2 deducted
+    finally:
+        db.close()
+
+
+def test_renumber_preserves_lcl_series_prefix():
+    pid = _product("Rice", stock=100)
+    db = SessionLocal()
+    try:
+        billing.create_sale_invoice(
+            db, business_id=BID, invoice_no="LCL-C1-0005", place_of_supply="29",
+            lines=[{"product_id": pid, "quantity": 1, "unit_price": 100}])
+        b = billing.create_sale_invoice(
+            db, business_id=BID, invoice_no="LCL-C1-0005", place_of_supply="29",
+            renumber_on_conflict=True,
+            lines=[{"product_id": pid, "quantity": 1, "unit_price": 100}])
+        assert b.invoice_id.startswith("LCL-C1-") and b.invoice_id != "LCL-C1-0005"
+    finally:
+        db.close()
+
+
+def test_default_still_idempotent_on_duplicate_number():
+    pid = _product("Rice", stock=100)
+    db = SessionLocal()
+    try:
+        a = billing.create_sale_invoice(
+            db, business_id=BID, invoice_no="C1-0009", place_of_supply="29",
+            lines=[{"product_id": pid, "quantity": 1, "unit_price": 100}])
+        # No renumber flag (legacy / no request-id) → idempotent return, as before.
+        b = billing.create_sale_invoice(
+            db, business_id=BID, invoice_no="C1-0009", place_of_supply="29",
+            lines=[{"product_id": pid, "quantity": 1, "unit_price": 100}])
+        assert a.id == b.id
+        assert db.query(Invoice).filter(
+            Invoice.business_id == BID, Invoice.invoice_id == "C1-0009").count() == 1
+    finally:
+        db.close()

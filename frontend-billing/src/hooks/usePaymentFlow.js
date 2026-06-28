@@ -115,7 +115,16 @@ export default function usePaymentFlow({
       })
       if (res.ok) {
         reqIdRef.current.delete(reqKey)  // settled — next save is a fresh intent
-        logger.info('[SALES] invoice saved', activeTab.name, printAfterSave ? '(print)' : '')
+        // The server may RE-NUMBER on a concurrent collision (§9.3b: a different
+        // sale grabbed this number first). Always trust the number it returns for
+        // the receipt/print — not the locally-computed tab name.
+        const saved = await res.json().catch(() => null)
+        const serverInvoiceNo = saved?.invoice_no || saved?.invoice_number || activeTab.name
+        if (serverInvoiceNo !== activeTab.name) {
+          logger.warn('[SALES] server reassigned invoice number', activeTab.name, '→', serverInvoiceNo)
+          setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, name: serverInvoiceNo } : t))
+        }
+        logger.info('[SALES] invoice saved', serverInvoiceNo, printAfterSave ? '(print)' : '')
         setAlert({ type: 'success', msg: printAfterSave ? 'Invoice created and print triggered!' : 'Invoice created successfully!' })
         
         const finishReset = () => {
@@ -128,7 +137,7 @@ export default function usePaymentFlow({
         }
 
         if (printAfterSave) {
-          const invoiceNo = activeTab.name
+          const invoiceNo = serverInvoiceNo
           const isThermal = settings?.print?.thermal_printer_mode === true
           if (isThermal) {
             setTimeout(() => {

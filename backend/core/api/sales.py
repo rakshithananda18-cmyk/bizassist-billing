@@ -156,6 +156,7 @@ def create_sale(req: SaleRequest,
             payment_mode=req.payment_mode, paid_amount=req.paid_amount,
             reverse_charge=req.reverse_charge, tax_inclusive=tax_inclusive,
             device_id=req.device_id, counter_prefix=req.counter_prefix, godown_id=req.godown_id,
+            renumber_on_conflict=guard.active,
             cash_discount=req.cash_discount, mark_paid=req.mark_paid,
         )
         background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "invoice"})
@@ -861,6 +862,7 @@ def create_sale_invoice_frontend(
             tax_inclusive=False,
             invoice_no=req.invoice_no,
             counter_prefix=req.counter_prefix,
+            renumber_on_conflict=guard.active,
             bill_discount=req.bill_discount,
             cash_discount=req.cash_discount,
             paid_amount=req.paid_amount,
