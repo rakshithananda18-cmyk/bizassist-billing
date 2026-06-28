@@ -383,6 +383,7 @@ export default function Sales(props = {}) {
   }
 
   const handleQtyChange = (index, value) => {
+    if (isLiveView && editState !== 'granted') return
     setForm(f => {
       const items = [...f.items]
       if (!items[index]) return f
@@ -499,8 +500,8 @@ export default function Sales(props = {}) {
 
   useEffect(() => {
     if (props.isLiveViewMode && !liveCounter) {
-      logger.warn('[SALES] Entered live-view without counter ID, redirecting to standalone POS.')
-      navigate('/sales')
+      logger.warn('[SALES] Entered live-view without counter ID, redirecting to Live Counters list.')
+      navigate('/connections')
     }
   }, [props.isLiveViewMode, liveCounter, navigate])
 
@@ -1193,41 +1194,48 @@ export default function Sales(props = {}) {
     }
   }, [form.customer_id, customers, products])
 
-  const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const setField = (k, v) => {
+    if (isLiveView && editState !== 'granted') return
+    setForm(f => ({ ...f, [k]: v }))
+  }
   
-  const setItem = (i, kOrUpdates, v) => setForm(f => {
-    const items = [...f.items]
-    const item = items[i]
-    if (item) {
-      const updates = typeof kOrUpdates === 'object' ? kOrUpdates : { [kOrUpdates]: v }
-      const updatedItem = { ...item, ...updates }
-      
-      const qty = parseFloat(updatedItem.qty) || 0
-      const mrpFieldVal = parseFloat(updatedItem.price) || 0
-      const selPrice = parseFloat(updatedItem.selected_price) || 0
-      const p = products.find(prod => prod.id === updatedItem.product_id)
-      const mrp = p ? (parseFloat(p.mrp) || 0) : mrpFieldVal
-      
-      if (updatedItem.product_id) {
-        if (mrp > 0 && selPrice <= mrp) {
-          updatedItem.price = mrp
-          updatedItem.discount = schemeDiscount(mrp, selPrice, qty)
+  const setItem = (i, kOrUpdates, v) => {
+    if (isLiveView && editState !== 'granted') return
+    setForm(f => {
+      const items = [...f.items]
+      const item = items[i]
+      if (item) {
+        const updates = typeof kOrUpdates === 'object' ? kOrUpdates : { [kOrUpdates]: v }
+        const updatedItem = { ...item, ...updates }
+        
+        const qty = parseFloat(updatedItem.qty) || 0
+        const mrpFieldVal = parseFloat(updatedItem.price) || 0
+        const selPrice = parseFloat(updatedItem.selected_price) || 0
+        const p = products.find(prod => prod.id === updatedItem.product_id)
+        const mrp = p ? (parseFloat(p.mrp) || 0) : mrpFieldVal
+        
+        if (updatedItem.product_id) {
+          if (mrp > 0 && selPrice <= mrp) {
+            updatedItem.price = mrp
+            updatedItem.discount = schemeDiscount(mrp, selPrice, qty)
+          } else {
+            updatedItem.price = selPrice
+            updatedItem.discount = 0
+          }
         } else {
-          updatedItem.price = selPrice
-          updatedItem.discount = 0
+          if ('selected_price' in updates) {
+            updatedItem.price = parseFloat(updatedItem.selected_price) || 0
+          }
         }
-      } else {
-        if ('selected_price' in updates) {
-          updatedItem.price = parseFloat(updatedItem.selected_price) || 0
-        }
+        
+        items[i] = updatedItem
       }
-      
-      items[i] = updatedItem
-    }
-    return { ...f, items }
-  })
+      return { ...f, items }
+    })
+  }
   
   const addCustomItemToCart = useCallback(() => {
+    if (isLiveView && editState !== 'granted') return
     setForm(f => {
       let items = [...f.items]
       items.push({
@@ -1247,9 +1255,10 @@ export default function Sales(props = {}) {
     })
     setSearchQuery('')
     setSelectedIndex(-1)
-  }, [])
+  }, [isLiveView, editState])
 
   const removeItem = (i) => {
+    if (isLiveView && editState !== 'granted') return
     setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }))
     setPriceSelectorIndex(null)
     setSelectedPriceOptIndex(0)
@@ -1361,6 +1370,7 @@ export default function Sales(props = {}) {
   }, [authFetch, productBatches])
 
   const addProductToCart = useCallback(async (product) => {
+    if (isLiveView && editState !== 'granted') return
     // 1. Fetch batches to get the latest stock/price options
     let batches = null
     if (product.id) {
@@ -1971,7 +1981,7 @@ export default function Sales(props = {}) {
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => navigate('/sales')}
+              onClick={() => navigate('/connections')}
               style={{ fontSize: '0.78rem', padding: '6px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-primary)' }}
             >
               Exit Live View
@@ -1987,7 +1997,7 @@ export default function Sales(props = {}) {
           onCloseTab={closeTab}
           onNewBill={handleNewBill}
           onMinimize={handleMinimize}
-          onClose={isLiveView ? () => navigate('/sales') : handleCloseConfirm}
+          onClose={isLiveView ? () => navigate('/connections') : handleCloseConfirm}
           onOpenSettings={() => {
             setSettingsInitialTab('general')
             setShowSettingsModal(true)
@@ -2081,7 +2091,7 @@ export default function Sales(props = {}) {
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => navigate('/sales')}
+                onClick={() => navigate('/connections')}
                 style={{ fontSize: '0.78rem', padding: '4px 10px', background: 'rgba(255,255,255,0.08)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
               >
                 Exit Live View
