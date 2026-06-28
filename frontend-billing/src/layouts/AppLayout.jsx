@@ -433,7 +433,7 @@ export default function AppLayout({ children, title }) {
   }, [checkMinimized])
 
   React.useEffect(() => {
-    if (location.pathname !== '/sales') {
+    if (location.pathname !== '/sales' && location.pathname !== '/live-view') {
       sessionStorage.setItem('last_page', location.pathname)
     }
   }, [location.pathname])
