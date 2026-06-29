@@ -407,3 +407,71 @@ def delete_expense(
         logger.error("delete_expense failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Could not delete expense")
 
+
+# ── Credit Notes ──────────────────────────────────────────────────────────────
+
+@router.get("/credit-notes")
+def list_credit_notes(
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db)
+):
+    """Return all credit notes (return/reversal invoices) for the business."""
+    bid = current_user["id"]
+    cns = db.query(Invoice).filter(
+        Invoice.business_id == bid,
+        Invoice.invoice_type == "credit_note"
+    ).order_by(Invoice.invoice_date.desc(), Invoice.id.desc()).all()
+
+    return [
+        {
+            "id": cn.id,
+            "invoice_id": cn.invoice_id,
+            "date": cn.invoice_date,
+            "customer": cn.customer,
+            "amount": cn.total_amount or cn.amount or 0,
+            "status": cn.status,
+            "reference_invoice": cn.reference_id,
+            "note": cn.notes,
+        }
+        for cn in cns
+    ]
+
+
+# ── Pending / Overdue Invoices ─────────────────────────────────────────────────
+
+@router.get("/pending-invoices")
+def list_pending_invoices(
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db)
+):
+    """Return all pending and overdue customer invoices (money owed to the business)."""
+    from datetime import date as _date
+    bid = current_user["id"]
+    today = _date.today().isoformat()
+    invoices = db.query(Invoice).filter(
+        Invoice.business_id == bid,
+        Invoice.invoice_type != "credit_note",
+        Invoice.status.in_(["Pending", "Overdue", "partial"])
+    ).order_by(Invoice.due_date.asc(), Invoice.id.desc()).all()
+
+    result = []
+    for inv in invoices:
+        due = inv.due_date or ""
+        paid = inv.paid_amount or 0
+        total = inv.total_amount or inv.amount or 0
+        balance = max(total - paid, 0)
+        is_overdue = due and due < today and inv.status != "Paid"
+        result.append({
+            "id": inv.id,
+            "invoice_id": inv.invoice_id,
+            "customer": inv.customer,
+            "total_amount": total,
+            "paid_amount": paid,
+            "balance_due": balance,
+            "due_date": due,
+            "status": "Overdue" if is_overdue else inv.status,
+            "invoice_date": inv.invoice_date,
+        })
+    return result
+
+

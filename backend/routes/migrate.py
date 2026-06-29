@@ -516,32 +516,6 @@ def _uid_lookup(db: Session, table: str, col_names: set, business_id: int, filte
         return None
 
 
-def _natural_lookup(db: Session, table: str, col_names: set, business_id: int, filtered: dict):
-    """Return an existing destination row id matching this row's natural key, or None.
-
-    Returns None (→ always insert) for tables not listed in _NATURAL_KEYS.
-    """
-    candidates = _NATURAL_KEYS.get(table)
-    if candidates is None:
-        return None
-    try:
-        if candidates == []:   # singleton-per-business (e.g. business_settings)
-            row = db.execute(
-                text(f'SELECT id FROM "{table}" WHERE business_id = :b LIMIT 1'),
-                {"b": business_id},
-            ).first()
-            return int(row[0]) if row else None
-        for col in candidates:
-            if col in col_names and filtered.get(col) not in (None, ""):
-                row = db.execute(
-                    text(f'SELECT id FROM "{table}" WHERE business_id = :b AND "{col}" = :v LIMIT 1'),
-                    {"b": business_id, "v": filtered[col]},
-                ).first()
-                return int(row[0]) if row else None
-    except Exception as exc:
-        logger.debug("migrate/import[remap]: natural lookup failed for %s — %s", table, exc)
-    return None
-
 
 def _import_with_remap(db: Session, table_name: str, rows: list[dict],
                        dest_owner_id: int, source_owner_id: int,
@@ -602,19 +576,15 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
                     filtered[col] = m[filtered[col]]
                 # else leave as-is; a dangling FK will fail and be skipped (logged)
 
-        # Idempotent dedup. (Step 3 / R-3) Match on the durable `uid` first — it
-        # identifies the same row across DBs exactly. Fall back to the natural key
-        # (phone/name/invoice_id) ONLY for rows that predate the uid column.
-        #
-        # (§9.3b backstop) If the incoming row HAS a uid but no uid match exists,
-        # it is a genuinely DIFFERENT row — even if its natural key (e.g. an
-        # invoice_id like "C1-0001" minted independently in two DBs) collides with
-        # an existing row. We must NOT natural-merge it, or two distinct sales
-        # would silently collapse into one (lost bill). So skip the natural-key
-        # fallback when a uid is present → it inserts as a new row.
+        # Idempotent dedup. (Phase C) Match strictly on the durable `uid`.
         existing_id = _uid_lookup(db, table_name, col_names, dest_owner_id, filtered)
-        if existing_id is None and not filtered.get("uid"):
-            existing_id = _natural_lookup(db, table_name, col_names, dest_owner_id, filtered)
+        
+        # (Phase C) Stop processing if no uid is present. We require all incoming sync/migration records
+        # to have a uid to guarantee consistency without ID fallbacks.
+        if not filtered.get("uid"):
+            logger.warning("migrate/import[remap]: rejecting row without uid for %s", table_name)
+            continue
+            
         if existing_id is not None:
             if old_id is not None:
                 table_map[old_id] = existing_id

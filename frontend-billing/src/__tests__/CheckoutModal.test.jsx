@@ -95,4 +95,28 @@ describe('CheckoutModal', () => {
     expect(await screen.findByText(/Pending due:/)).toBeInTheDocument()
     expect(screen.getByText(/INV-0009/)).toBeInTheDocument()
   })
+
+  it('syncs amount_received with pay when pay changes', () => {
+    const props = baseProps()
+    const { rerender } = render(<CheckoutModal {...props} />)
+    expect(props.setForm).toHaveBeenCalled()
+    props.setForm.mockClear()
+
+    // Rerender with different payable (which computes to different pay)
+    rerender(<CheckoutModal {...props} payable={350} />)
+    expect(props.setForm).toHaveBeenCalled()
+    const updater = props.setForm.mock.calls[0][0]
+    const updatedForm = updater({ payment_mode: 'cash', amount_received: '399' })
+    expect(updatedForm.amount_received).toBe('350.00')
+  })
+
+  it('syncs amount_received to 0 in credit mode', () => {
+    const props = baseProps()
+    props.form.payment_mode = 'credit'
+    render(<CheckoutModal {...props} />)
+    expect(props.setForm).toHaveBeenCalled()
+    const updater = props.setForm.mock.calls[0][0]
+    const updatedForm = updater({ payment_mode: 'credit', amount_received: '399' })
+    expect(updatedForm.amount_received).toBe('0')
+  })
 })

@@ -162,7 +162,12 @@ def push_changes(
 
             existing = None
             uid_val = data.get("uid")
-            if uid_val and hasattr(model_cls, "uid"):
+            
+            # (Phase C) Strict uid matching for all synced models. No integer-id fallback.
+            if hasattr(model_cls, "uid"):
+                if not uid_val:
+                    logger.warning("sync/push: rejecting payload without uid for %s", change.entity)
+                    continue
                 existing = db.query(model_cls).filter(model_cls.uid == uid_val).first()
                 if "id" in data:
                     del data["id"]

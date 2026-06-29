@@ -6,7 +6,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
-import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon } from '../components/Icons'
+import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon, ExpandIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import CustomSelect from '../components/common/CustomSelect'
 
@@ -567,12 +567,12 @@ export default function Stock() {
                 </div>
               )
               return (
-                <>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-                    <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(true)}>⛶ Fullscreen</button>
-                  </div>
+                <div style={{ position: 'relative' }}>
+                  <button type="button" onClick={() => setIsFullScreen(true)} style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }} title="Full Screen">
+                    <ExpandIcon size={14} />
+                  </button>
                   <div className="data-table-wrap">{tableContent}</div>
-                </>
+                </div>
               )
             })()}
 

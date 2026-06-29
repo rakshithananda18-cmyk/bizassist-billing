@@ -7,7 +7,7 @@
 import React, { useState } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
-import { AlertIcon, BillsIcon, CashIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, CounterIcon, DownloadIcon, InventoryIcon, SummaryIcon, TaxIcon } from '../components/Icons'
+import { AlertIcon, BillsIcon, CashIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, CounterIcon, DownloadIcon, InventoryIcon, SummaryIcon, TaxIcon, ExpandIcon } from '../components/Icons'
 import DayBookView from '../components/reports/DayBookView'
 import BalanceSheetView from '../components/reports/BalanceSheetView'
 import TrialBalanceView from '../components/reports/TrialBalanceView'
@@ -586,10 +586,11 @@ export default function Reports() {
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button
                   type="button"
-                  className="table-fullscreen-btn"
                   onClick={() => setIsFullScreen(true)}
+                  style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 6, cursor: 'pointer', color: 'var(--text-secondary)' }}
+                  title="Full Screen"
                 >
-                  ⛶ Fullscreen
+                  <ExpandIcon size={14} />
                 </button>
 
                 <button

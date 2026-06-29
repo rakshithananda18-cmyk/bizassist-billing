@@ -361,7 +361,13 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
                             continue
                         
                         existing = None
-                        if rec_uid and hasattr(model_cls, "uid"):
+                        if hasattr(model_cls, "uid"):
+                            if not rec_uid:
+                                logger.warning(
+                                    "[SYNC_WORKER] Skipping %s id=%s — no uid present (Phase C strict enforcement)",
+                                    table_name, rec_id
+                                )
+                                continue
                             existing = db.query(model_cls).filter(model_cls.uid == rec_uid).first()
                         else:
                             if rec_id:

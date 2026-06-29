@@ -6,7 +6,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
-import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, WarehouseIcon, SearchIcon } from '../components/Icons'
+import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, WarehouseIcon, SearchIcon, ExpandIcon, SummaryIcon, SparkleIcon, InfoIcon, AlertIcon } from '../components/Icons'
 
 import { logger } from '../utils/logger'
 import CustomSelect from '../components/common/CustomSelect'
@@ -35,11 +35,16 @@ export default function Payments() {
 
   const [payments, setPayments]     = useState([])
   const [expenses, setExpenses]     = useState([])
+  const [pendingDues, setPendingDues] = useState([])
+  const [creditNotes, setCreditNotes] = useState([])
+  const [selectedInvoice, setSelectedInvoice] = useState(null)
+  const [loadingInvoice, setLoadingInvoice] = useState(false)
   const [loading, setLoading]       = useState(true)
   const [activeTab, setActiveTab]   = useState('All')
   const [isFullScreen, setIsFullScreen] = useState(false)
   const [showModal, setShowModal]   = useState(false)
   const [showExpenseModal, setShowExpenseModal] = useState(false)
+  const [showOverview, setShowOverview] = useState(false)
   const [form, setForm]             = useState(defaultForm)
   
   const defaultExpenseForm = {
@@ -54,15 +59,38 @@ export default function Payments() {
   const [submitting, setSubmitting] = useState(false)
   const [alert, setAlert]           = useState(null)
 
+  const handleViewInvoice = async (invNo) => {
+    if (!invNo) return
+    const idStr = String(invNo).replace(/^#/, '')
+    setLoadingInvoice(true)
+    try {
+      const res = await authFetch(`/billing/sales/${idStr}`)
+      if (res.ok) {
+        const data = await res.json()
+        setSelectedInvoice(data)
+      } else {
+        setAlert({ type: 'error', message: 'Invoice not found or deleted.' })
+      }
+    } catch (e) {
+      setAlert({ type: 'error', message: 'Failed to fetch invoice details.' })
+    } finally {
+      setLoadingInvoice(false)
+    }
+  }
+
   const load = useCallback(() => {
     setLoading(true)
     Promise.all([
       authFetch('/billing/payments').then(r => r.ok ? r.json() : []),
-      authFetch('/billing/expenses').then(r => r.ok ? r.json() : [])
+      authFetch('/billing/expenses').then(r => r.ok ? r.json() : []),
+      authFetch('/billing/pending-invoices').then(r => r.ok ? r.json() : []),
+      authFetch('/billing/credit-notes').then(r => r.ok ? r.json() : [])
     ])
-      .then(([payData, expData]) => {
+      .then(([payData, expData, duesData, cnData]) => {
         setPayments(Array.isArray(payData) ? payData : [])
         setExpenses(Array.isArray(expData) ? expData : [])
+        setPendingDues(Array.isArray(duesData) ? duesData : [])
+        setCreditNotes(Array.isArray(cnData) ? cnData : [])
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -103,10 +131,61 @@ export default function Payments() {
   }
 
   const getFilteredPayments = () => {
-    let items = payments.filter(p => {
-      if (activeTab === 'Received' && p.type !== 'received') return false
-      if (activeTab === 'Made' && p.type !== 'made') return false
+    let baseItems = []
+    
+    if (activeTab === 'All') {
+      const mappedPayments = payments.map(p => ({ ...p, _sortDate: p.date }))
+      const mappedExpenses = expenses.map(e => ({
+        id: `exp-${e.id}`,
+        date: e.expense_date,
+        party_name: e.category,
+        type: 'expense',
+        amount: e.amount,
+        method: e.payment_mode,
+        reference: e.note,
+        _sortDate: e.expense_date
+      }))
+      const mappedDues = pendingDues.map(d => ({
+        id: `due-${d.id}`,
+        date: d.invoice_date || d.due_date,
+        invoice_number: d.invoice_id,
+        party_name: d.customer,
+        type: 'pending_due',
+        amount: d.balance_due,
+        method: '—',
+        reference: `Pending Balance (Due: ${d.due_date ? new Date(d.due_date).toLocaleDateString('en-IN') : '—'})`,
+        _sortDate: d.invoice_date || d.due_date
+      }))
+      const mappedCreditNotes = creditNotes.map(cn => ({
+        id: `cn-${cn.id}`,
+        date: cn.date,
+        invoice_number: cn.invoice_id,
+        party_name: cn.customer,
+        type: 'credit_note',
+        amount: cn.amount,
+        method: '—',
+        reference: cn.note ? `Credit Note: ${cn.note}` : `Credit Note for ${cn.reference_invoice || '—'}`,
+        _sortDate: cn.date
+      }))
+      baseItems = [...mappedPayments, ...mappedExpenses, ...mappedDues, ...mappedCreditNotes]
       
+      // Sort by date descending by default
+      if (!sortConfig.key) {
+        baseItems.sort((a, b) => {
+          const da = new Date(a._sortDate || 0)
+          const db = new Date(b._sortDate || 0)
+          return db - da
+        })
+      }
+    } else {
+      baseItems = payments.filter(p => {
+        if (activeTab === 'Received' && p.type !== 'received') return false
+        if (activeTab === 'Made' && p.type !== 'made') return false
+        return true
+      }).map(p => ({ ...p, _sortDate: p.date }))
+    }
+
+    let items = baseItems.filter(p => {
       if (modeFilter && p.method !== modeFilter) return false
 
       const q = search.toLowerCase()
@@ -192,8 +271,161 @@ export default function Payments() {
     return items
   }
 
+  const getFilteredPendingDues = () => {
+    let items = pendingDues.filter(d => {
+      const q = search.toLowerCase()
+      const party = d.customer || ''
+      return !q || 
+        d.invoice_id?.toLowerCase().includes(q) || 
+        party.toLowerCase().includes(q)
+    })
+    if (sortConfig.key && sortConfig.direction) {
+      items.sort((a, b) => {
+        let aVal = a[sortConfig.key]
+        let bVal = b[sortConfig.key]
+        if (sortConfig.key === 'customer') {
+          aVal = a.customer || ''
+          bVal = b.customer || ''
+        } else if (sortConfig.key === 'balance_due') {
+          aVal = parseFloat(a.balance_due ?? 0)
+          bVal = parseFloat(b.balance_due ?? 0)
+        } else if (sortConfig.key === 'due_date') {
+          aVal = a.due_date || ''
+          bVal = b.due_date || ''
+        }
+        if (aVal === undefined || aVal === null) return 1
+        if (bVal === undefined || bVal === null) return -1
+        if (typeof aVal === 'string') {
+          return sortConfig.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal)
+        } else {
+          return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal
+        }
+      })
+    }
+    return items
+  }
+
+  const getFilteredCreditNotes = () => {
+    let items = creditNotes.filter(cn => {
+      const q = search.toLowerCase()
+      const party = cn.customer || ''
+      return !q || 
+        cn.invoice_id?.toLowerCase().includes(q) || 
+        cn.reference_invoice?.toLowerCase().includes(q) || 
+        party.toLowerCase().includes(q) || 
+        cn.note?.toLowerCase().includes(q)
+    })
+    if (sortConfig.key && sortConfig.direction) {
+      items.sort((a, b) => {
+        let aVal = a[sortConfig.key]
+        let bVal = b[sortConfig.key]
+        if (sortConfig.key === 'customer') {
+          aVal = a.customer || ''
+          bVal = b.customer || ''
+        } else if (sortConfig.key === 'amount') {
+          aVal = parseFloat(a.amount ?? 0)
+          bVal = parseFloat(b.amount ?? 0)
+        } else if (sortConfig.key === 'date') {
+          aVal = a.date || ''
+          bVal = b.date || ''
+        }
+        if (aVal === undefined || aVal === null) return 1
+        if (bVal === undefined || bVal === null) return -1
+        if (typeof aVal === 'string') {
+          return sortConfig.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal)
+        } else {
+          return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal
+        }
+      })
+    }
+    return items
+  }
+
+  const generateCashFlowInsights = () => {
+    const insights = []
+    
+    // 1. UPI vs Cash Collections
+    const receivedPayments = payments.filter(p => p.type === 'received')
+    const totalRecv = receivedPayments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0)
+    
+    if (totalRecv > 0) {
+      const upiRecv = receivedPayments.filter(p => p.method === 'UPI').reduce((s, p) => s + (parseFloat(p.amount) || 0), 0)
+      const upiPct = Math.round((upiRecv / totalRecv) * 100)
+      if (upiPct > 50) {
+        insights.push({
+          type: 'info',
+          title: 'Digital Inflows',
+          text: `UPI is your primary collections method, accounting for ${upiPct}% of total received payments.`,
+        })
+      }
+    }
+    
+    // 2. Overdue Receivables Risk
+    const overdueList = pendingDues.filter(d => d.status === 'Overdue')
+    const totalOverdue = overdueList.reduce((s, d) => s + parseFloat(d.balance_due || 0), 0)
+    if (totalOverdue > 0) {
+      insights.push({
+        type: 'warning',
+        title: 'Outstanding Receivables',
+        text: `${fmt(totalOverdue)} is currently overdue across ${overdueList.length} outstanding invoices. Consider sending reminders.`,
+      })
+    }
+    
+    // 3. Expense Breakdown
+    const totalExp = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0)
+    if (totalExp > 0) {
+      const categories = {}
+      expenses.forEach(e => {
+        categories[e.category] = (categories[e.category] || 0) + (parseFloat(e.amount) || 0)
+      })
+      let topCat = ''
+      let maxAmt = 0
+      Object.entries(categories).forEach(([cat, amt]) => {
+        if (amt > maxAmt) {
+          maxAmt = amt
+          topCat = cat
+        }
+      })
+      if (topCat) {
+        const catPct = Math.round((maxAmt / totalExp) * 100)
+        insights.push({
+          type: 'expense',
+          title: 'Overhead Focus',
+          text: `Your highest expense category is "${topCat}" at ${fmt(maxAmt)} (${catPct}% of total overheads).`,
+        })
+      }
+    }
+    
+    // 4. Burn Rate / Runway
+    if (totalRecv > 0 && totalExp > totalRecv) {
+      insights.push({
+        type: 'danger',
+        title: 'Cash Deficit',
+        text: `Your business expenses (${fmt(totalExp)}) exceed your recorded payments received (${fmt(totalRecv)}) during this period.`,
+      })
+    } else if (totalRecv > 0 && totalExp > 0) {
+      insights.push({
+        type: 'success',
+        title: 'Healthy Margin',
+        text: `Operating margins are positive. General overheads eat up ${Math.round((totalExp / totalRecv) * 100)}% of sales inflows.`,
+      })
+    }
+    
+    if (insights.length === 0) {
+      insights.push({
+        type: 'info',
+        title: 'Operational Baseline',
+        text: 'Insufficient transaction history to construct advanced analytics. Record more payments and log expenses to populate insights.',
+      })
+    }
+    
+    return insights
+  }
+
   const filtered = getFilteredPayments()
   const filteredExpenses = getFilteredExpenses()
+  const filteredPendingDues = getFilteredPendingDues()
+  const filteredCreditNotes = getFilteredCreditNotes()
 
   const totalReceived = payments.filter(p => p.type === 'received').reduce((s, p) => s + (parseFloat(p.amount) || 0), 0)
   const totalMade     = payments.filter(p => p.type === 'made').reduce((s, p) => s + (parseFloat(p.amount) || 0), 0)
@@ -293,7 +525,10 @@ export default function Payments() {
                 : 'Track all money received and payments made'}
             </p>
           </div>
-          <div className="page-actions">
+          <div className="page-actions" style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary" onClick={() => setShowOverview(true)}>
+              Overview
+            </button>
             {activeTab === 'Expenses' ? (
               <button className="btn btn-primary" onClick={() => { setExpenseForm(defaultExpenseForm); setShowExpenseModal(true) }}>
                 <PlusIcon size={14} /> Log Expense
@@ -307,16 +542,48 @@ export default function Payments() {
         </div>
 
         {/* Tabs & Search/Filter */}
-        <div className="flex items-center justify-between page-subbar" style={{ flexWrap: 'wrap', gap: 12 }}>
-          <div className="tabs" style={{ margin: 0 }}>
-            {['All', 'Received', 'Made', 'Expenses'].map(t => (
-              <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)}>
-                {t}
-              </button>
-            ))}
+        <div className="flex items-center justify-between page-subbar" style={{ display: 'flex', flexFlow: 'row wrap', gap: 12, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* General / Day-to-Day Operations Container */}
+            <div style={{
+              background: 'var(--bg-3)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '3px 6px',
+              display: 'flex',
+              gap: 4,
+              alignItems: 'center',
+              boxShadow: 'var(--shadow-sm)'
+            }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', padding: '0 8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>General Operations</span>
+              {['All', 'Received', 'Pending Dues', 'Credit Notes'].map(t => (
+                <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)} style={{ margin: 0, padding: '4px 10px', fontSize: '0.8rem' }}>
+                  {t}
+                </button>
+              ))}
+            </div>
+
+            {/* Purchases & Expenses Container */}
+            <div style={{
+              background: 'var(--bg-3)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '3px 6px',
+              display: 'flex',
+              gap: 4,
+              alignItems: 'center',
+              boxShadow: 'var(--shadow-sm)'
+            }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', padding: '0 8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Expenses & Purchases</span>
+              {['Made', 'Expenses'].map(t => (
+                <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)} style={{ margin: 0, padding: '4px 10px', fontSize: '0.8rem' }}>
+                  {t}
+                </button>
+              ))}
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <div className="search-bar" style={{ width: 180 }}>
+            <div className="search-bar" style={{ width: 180, margin: 0 }}>
               <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
               <input 
                 value={search} 
@@ -343,16 +610,6 @@ export default function Payments() {
               <option value="Bank Transfer">Bank Transfer</option>
               <option value="Card">Card</option>
             </CustomSelect>
-            {activeTab !== 'Expenses' ? (
-              <div style={{ display: 'flex', gap: 16, fontSize: '0.82rem', marginLeft: 8 }}>
-                <span style={{ color: 'var(--success)' }}>↑ {fmt(totalReceived)} received</span>
-                <span style={{ color: 'var(--danger)' }}>↓ {fmt(totalMade)} made</span>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: 16, fontSize: '0.82rem', marginLeft: 8 }}>
-                <span style={{ color: 'var(--accent)' }}>Total: {fmt(expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0))} spent</span>
-              </div>
-            )}
           </div>
         </div>
 
@@ -454,12 +711,227 @@ export default function Payments() {
                 </div>
               )
               return (
-                <>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-                    <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(true)}>⛶ Fullscreen</button>
-                  </div>
+                <div style={{ position: 'relative' }}>
+                  <button 
+                    type="button" 
+                    onClick={() => setIsFullScreen(true)} 
+                    style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }} 
+                    title="Full Screen"
+                  >
+                    <ExpandIcon size={14} />
+                  </button>
                   <div className="data-table-wrap">{tableContent}</div>
-                </>
+                </div>
+              )
+            })()}
+          </div>
+        ) : activeTab === 'Pending Dues' ? (
+          <div className="slide-up">
+            <div className="grid grid-3 mb-6">
+              <div className="card">
+                <div className="stat-label">Total Overdue</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--danger)' }}>
+                  {fmt(pendingDues.filter(d => d.status === 'Overdue').reduce((s, d) => s + parseFloat(d.balance_due || 0), 0))}
+                </div>
+              </div>
+              <div className="card">
+                <div className="stat-label">Total Pending</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--accent)' }}>
+                  {fmt(pendingDues.filter(d => d.status === 'Pending').reduce((s, d) => s + parseFloat(d.balance_due || 0), 0))}
+                </div>
+              </div>
+              <div className="card">
+                <div className="stat-label">Total Outstanding</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                  {fmt(pendingDues.reduce((s, d) => s + parseFloat(d.balance_due || 0), 0))}
+                </div>
+              </div>
+            </div>
+            {(() => {
+              const tableContent = (
+                <table className="data-table">
+                  <thead><tr>
+                    <th className="sortable" onClick={() => handleSort('due_date')}>
+                      Due Date
+                      <span className={`sort-indicator ${sortConfig.key === 'due_date' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'due_date' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th>Invoice #</th>
+                    <th className="sortable" onClick={() => handleSort('customer')}>
+                      Customer
+                      <span className={`sort-indicator ${sortConfig.key === 'customer' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'customer' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th>Total</th>
+                    <th>Paid</th>
+                    <th className="sortable" onClick={() => handleSort('balance_due')}>
+                      Balance
+                      <span className={`sort-indicator ${sortConfig.key === 'balance_due' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'balance_due' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th>Status</th>
+                  </tr></thead>
+                  <tbody>
+                    {filteredPendingDues.length === 0 ? (
+                      <tr><td colSpan={7}>
+                        <div className="empty-state">
+                          <div className="empty-icon"><CashIcon size={24} /></div>
+                          <h3>No pending dues</h3>
+                          <p>All invoices are fully paid.</p>
+                        </div>
+                      </td></tr>
+                    ) : filteredPendingDues.map(d => (
+                      <tr key={d.id}>
+                        <td>{d.due_date ? new Date(d.due_date).toLocaleDateString('en-IN') : '—'}</td>
+                        <td className="td-mono">
+                          {d.invoice_id ? (
+                            <span 
+                              className="link" 
+                              onClick={(e) => { e.stopPropagation(); handleViewInvoice(d.invoice_id) }}
+                              style={{ cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline' }}
+                            >
+                              {d.invoice_id}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="td-primary">{d.customer || '—'}</td>
+                        <td style={{ color: 'var(--text-primary)' }}>{fmt(d.total_amount)}</td>
+                        <td style={{ color: 'var(--success)' }}>{fmt(d.paid_amount)}</td>
+                        <td style={{ fontWeight: 600, color: d.status === 'Overdue' ? 'var(--danger)' : 'var(--accent)' }}>{fmt(d.balance_due)}</td>
+                        <td>
+                          <span className={`badge ${d.status === 'Overdue' ? 'badge-danger' : d.status === 'Paid' ? 'badge-success' : d.status === 'partial' ? 'badge-warning' : 'badge-info'}`}>
+                            {d.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+              if (isFullScreen) return (
+                <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>
+                  <div className="table-fullscreen-panel">
+                    <div className="table-fullscreen-header">
+                      <h3>Pending Dues</h3>
+                      <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(false)}>✕ Close</button>
+                    </div>
+                    <div className="data-table-wrap">{tableContent}</div>
+                  </div>
+                </div>
+              )
+              return (
+                <div style={{ position: 'relative' }}>
+                  <button 
+                    type="button" 
+                    onClick={() => setIsFullScreen(true)} 
+                    style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }} 
+                    title="Full Screen"
+                  >
+                    <ExpandIcon size={14} />
+                  </button>
+                  <div className="data-table-wrap">{tableContent}</div>
+                </div>
+              )
+            })()}
+          </div>
+        ) : activeTab === 'Credit Notes' ? (
+          <div className="slide-up">
+            {(() => {
+              const tableContent = (
+                <table className="data-table">
+                  <thead><tr>
+                    <th className="sortable" onClick={() => handleSort('date')}>
+                      Date
+                      <span className={`sort-indicator ${sortConfig.key === 'date' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'date' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th>Credit Note #</th>
+                    <th>Ref Invoice</th>
+                    <th className="sortable" onClick={() => handleSort('customer')}>
+                      Customer
+                      <span className={`sort-indicator ${sortConfig.key === 'customer' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'customer' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th className="sortable" onClick={() => handleSort('amount')}>
+                      Amount
+                      <span className={`sort-indicator ${sortConfig.key === 'amount' && sortConfig.direction ? 'active' : ''}`}>
+                        {sortConfig.key === 'amount' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                      </span>
+                    </th>
+                    <th>Status</th>
+                    <th>Notes</th>
+                  </tr></thead>
+                  <tbody>
+                    {filteredCreditNotes.length === 0 ? (
+                      <tr><td colSpan={7}>
+                        <div className="empty-state">
+                          <div className="empty-icon"><CashIcon size={24} /></div>
+                          <h3>No credit notes</h3>
+                          <p>You haven't issued any credit notes or returns yet.</p>
+                        </div>
+                      </td></tr>
+                    ) : filteredCreditNotes.map(cn => (
+                      <tr key={cn.id}>
+                        <td>{cn.date ? new Date(cn.date).toLocaleDateString('en-IN') : '—'}</td>
+                        <td className="td-mono">
+                          {cn.invoice_id ? (
+                            <span 
+                              className="link" 
+                              onClick={(e) => { e.stopPropagation(); handleViewInvoice(cn.invoice_id) }}
+                              style={{ cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline' }}
+                            >
+                              {cn.invoice_id}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="td-mono">
+                          {cn.reference_invoice ? (
+                            <span 
+                              className="link" 
+                              onClick={(e) => { e.stopPropagation(); handleViewInvoice(cn.reference_invoice) }}
+                              style={{ cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline' }}
+                            >
+                              {cn.reference_invoice}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="td-primary">{cn.customer || '—'}</td>
+                        <td style={{ fontWeight: 600, color: 'var(--danger)' }}>{fmt(cn.amount)}</td>
+                        <td><span className="badge badge-info">{cn.status || 'Issued'}</span></td>
+                        <td style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{cn.note || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+              if (isFullScreen) return (
+                <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>
+                  <div className="table-fullscreen-panel">
+                    <div className="table-fullscreen-header">
+                      <h3>Credit Notes</h3>
+                      <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(false)}>✕ Close</button>
+                    </div>
+                    <div className="data-table-wrap">{tableContent}</div>
+                  </div>
+                </div>
+              )
+              return (
+                <div style={{ position: 'relative' }}>
+                  <button 
+                    type="button" 
+                    onClick={() => setIsFullScreen(true)} 
+                    style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }} 
+                    title="Full Screen"
+                  >
+                    <ExpandIcon size={14} />
+                  </button>
+                  <div className="data-table-wrap">{tableContent}</div>
+                </div>
               )
             })()}
           </div>
@@ -519,10 +991,26 @@ export default function Payments() {
                     ) : filtered.map(p => (
                       <tr key={p.id}>
                         <td>{p.date ? new Date(p.date).toLocaleDateString('en-IN') : '—'}</td>
-                        <td className="td-mono">{p.invoice_number || p.invoice_ref || '—'}</td>
+                        <td className="td-mono">
+                          {(p.invoice_number || p.invoice_ref) ? (
+                            <span 
+                              className="link" 
+                              onClick={(e) => { e.stopPropagation(); handleViewInvoice(p.invoice_number || p.invoice_ref) }}
+                              style={{ cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline' }}
+                            >
+                              {p.invoice_number || p.invoice_ref}
+                            </span>
+                          ) : '—'}
+                        </td>
                         <td className="td-primary">{p.party_name || p.customer_name || p.supplier_name || '—'}</td>
-                        <td><span className={`badge ${p.type === 'received' ? 'badge-success' : 'badge-accent'}`}>{p.type === 'received' ? '↓ Received' : '↑ Made'}</span></td>
-                        <td style={{ fontWeight: 600, color: p.type === 'received' ? 'var(--success)' : 'var(--danger)' }}>{p.type === 'received' ? '+' : '-'}{fmt(p.amount)}</td>
+                        <td>
+                          <span className={`badge ${p.type === 'received' ? 'badge-success' : (p.type === 'expense' ? 'badge-warning' : p.type === 'pending_due' ? 'badge-danger' : p.type === 'credit_note' ? 'badge-info' : 'badge-accent')}`}>
+                            {p.type === 'received' ? '↓ Received' : (p.type === 'expense' ? '↑ Expense' : p.type === 'pending_due' ? '⚠ Pending' : p.type === 'credit_note' ? '⟲ Credit Note' : '↑ Made')}
+                          </span>
+                        </td>
+                        <td style={{ fontWeight: 600, color: p.type === 'received' ? 'var(--success)' : (p.type === 'pending_due' ? 'var(--warning)' : (p.type === 'credit_note' ? 'var(--info)' : 'var(--danger)')) }}>
+                          {(p.type === 'received' || p.type === 'pending_due') ? '+' : '−'}{fmt(p.amount)}
+                        </td>
                         <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><CashIcon size={14} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} /> {p.method || '—'}</span></td>
                         <td className="td-mono" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{p.reference || '—'}</td>
                       </tr>
@@ -542,47 +1030,19 @@ export default function Payments() {
                 </div>
               )
               return (
-                <>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-                    <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(true)}>⛶ Fullscreen</button>
-                  </div>
+                <div style={{ position: 'relative' }}>
+                  <button 
+                    type="button" 
+                    onClick={() => setIsFullScreen(true)} 
+                    style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }} 
+                    title="Full Screen"
+                  >
+                    <ExpandIcon size={14} />
+                  </button>
                   <div className="data-table-wrap">{tableContent}</div>
-                </>
+                </div>
               )
             })()}
-
-            {/* Running totals bar */}
-            <div className="card mt-6">
-              <div className="flex items-center justify-between" style={{ flexWrap: 'wrap', gap: 16 }}>
-                <div style={{ display: 'flex', gap: 32 }}>
-                  <div>
-                    <div className="stat-label">Total Received</div>
-                    <div style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--success)' }}>{fmt(totalReceived)}</div>
-                  </div>
-                  <div>
-                    <div className="stat-label">Total Made</div>
-                    <div style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--danger)' }}>{fmt(totalMade)}</div>
-                  </div>
-                  <div>
-                    <div className="stat-label">Net Balance</div>
-                    <div style={{ fontSize: '1.3rem', fontWeight: 700, color: net >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                      {net >= 0 ? '+' : ''}{fmt(Math.abs(net))}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ flex: 1, maxWidth: 300 }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 6 }}>
-                    Received vs Made
-                  </div>
-                  <div className="progress" style={{ height: 8 }}>
-                    <div
-                      className="progress-bar success"
-                      style={{ width: `${totalReceived + totalMade > 0 ? (totalReceived / (totalReceived + totalMade)) * 100 : 0}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
           </>
         )}
       </div>
@@ -710,6 +1170,229 @@ export default function Payments() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Smart Cash Flow Overview Modal */}
+      {showOverview && (
+        <div className="modal-overlay" onClick={() => setShowOverview(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <SummaryIcon size={18} />
+                <span>Cash Flow Overview</span>
+              </span>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowOverview(false)} aria-label="Close">
+                <CloseIcon size={16} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {/* Stats Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: 16 }}>
+                  <div className="stat-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Received</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--success)', marginTop: 4 }}>{fmt(totalReceived)}</div>
+                </div>
+                <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: 16 }}>
+                  <div className="stat-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Made</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--danger)', marginTop: 4 }}>{fmt(totalMade)}</div>
+                </div>
+              </div>
+
+              {/* Net Balance Card */}
+              <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div className="stat-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Net Balance</div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: net >= 0 ? 'var(--success)' : 'var(--danger)', marginTop: 4 }}>
+                    {net >= 0 ? '+' : ''}{fmt(Math.abs(net))}
+                  </div>
+                </div>
+                <div style={{ textTransform: 'uppercase', fontSize: '0.65rem', fontWeight: 700, padding: '4px 8px', borderRadius: '4px', background: net >= 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: net >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                  {net >= 0 ? 'Surplus' : 'Deficit'}
+                </div>
+              </div>
+
+              {/* Inflow vs Outflow Ratio */}
+              <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: 16 }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Inflow vs Outflow Ratio</span>
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {totalReceived + totalMade > 0 ? Math.round((totalReceived / (totalReceived + totalMade)) * 100) : 0}% Received
+                  </span>
+                </div>
+                <div className="progress" style={{ height: 10, background: 'var(--bg-3)', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div
+                    className="progress-bar success"
+                    style={{ width: `${totalReceived + totalMade > 0 ? (totalReceived / (totalReceived + totalMade)) * 100 : 0}%` }}
+                  />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 8 }}>
+                  <span>Received ({fmt(totalReceived)})</span>
+                  <span>Made ({fmt(totalMade)})</span>
+                </div>
+              </div>
+
+              {/* Smart Insights Section */}
+              <div style={{ marginTop: 8 }}>
+                <h3 style={{ fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <SparkleIcon size={16} />
+                  <span>Smart Insights</span>
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {generateCashFlowInsights().map((insight, idx) => {
+                    const iconColor = insight.type === 'danger' ? 'var(--danger)' : insight.type === 'warning' ? 'var(--warning)' : insight.type === 'success' ? 'var(--success)' : 'var(--accent)'
+                    const iconMap = {
+                      danger: <AlertIcon size={16} style={{ color: iconColor }} />,
+                      warning: <AlertIcon size={16} style={{ color: iconColor }} />,
+                      success: <CheckIcon size={16} style={{ color: iconColor }} />,
+                      info: <InfoIcon size={16} style={{ color: iconColor }} />,
+                      expense: <BillsIcon size={16} style={{ color: iconColor }} />
+                    }
+                    return (
+                      <div key={idx} style={{ display: 'flex', gap: 12, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: 12, alignItems: 'flex-start' }}>
+                        <div style={{ marginTop: 2, flexShrink: 0 }}>
+                          {iconMap[insight.type] || <InfoIcon size={16} style={{ color: iconColor }} />}
+                        </div>
+                        <div style={{ textAlign: 'left' }}>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>{insight.title}</div>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2, lineHeight: 1.4 }}>{insight.text}</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setShowOverview(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Details Modal */}
+      {selectedInvoice && (
+        <div className="modal-overlay" onClick={() => setSelectedInvoice(null)}>
+          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">
+                {selectedInvoice.invoice_type === 'credit_note' ? '⟲ Credit Note Details' : '📄 Invoice Details'}
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 400, marginLeft: 10 }}>
+                  ({selectedInvoice.invoice_no} • {selectedInvoice.invoice_date ? new Date(selectedInvoice.invoice_date).toLocaleDateString('en-IN') : ''})
+                </span>
+              </span>
+              <button className="btn btn-ghost btn-icon" onClick={() => setSelectedInvoice(null)} aria-label="Close">
+                <CloseIcon size={16} />
+              </button>
+            </div>
+            <div className="modal-body">
+              {/* Split Column Layout */}
+              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+                
+                {/* Left Column: Details & Items */}
+                <div style={{ flex: 1, minWidth: '320px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div>
+                    <h3 style={{ fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: '8px' }}>Billing Information</h3>
+                    <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '12px' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedInvoice.customer || 'Walk-in Customer'}</div>
+                      {selectedInvoice.place_of_supply && <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '4px' }}>Place of Supply: {selectedInvoice.place_of_supply}</div>}
+                      {selectedInvoice.payment_mode && <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '2px' }}>Default Payment Mode: {selectedInvoice.payment_mode}</div>}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 style={{ fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: '8px' }}>Items</h3>
+                    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                      <table className="data-table" style={{ margin: 0, width: '100%', fontSize: '0.85rem' }}>
+                        <thead style={{ background: 'var(--bg-1)' }}>
+                          <tr>
+                            <th>Item Name</th>
+                            <th className="text-right">Qty</th>
+                            <th className="text-right">Price</th>
+                            <th className="text-right">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(selectedInvoice.lines || []).map((line, i) => (
+                            <tr key={i}>
+                              <td>{line.product_name}</td>
+                              <td className="text-right">{line.quantity} {line.unit || 'Nos'}</td>
+                              <td className="text-right">₹{fmt(line.unit_price)}</td>
+                              <td className="text-right" style={{ fontWeight: 600 }}>₹{fmt(line.line_total)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Invoice Breakdown Card & Payment status */}
+                <div style={{ width: '300px', display: 'flex', flexDirection: 'column', gap: '16px', flexShrink: 0 }}>
+                  <h3 style={{ fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: '4px' }}>Invoice Summary</h3>
+                  
+                  {/* Breakdown Card */}
+                  <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      <span>Subtotal:</span>
+                      <span>₹{fmt(selectedInvoice.subtotal)}</span>
+                    </div>
+                    {selectedInvoice.discount_total > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--success)' }}>
+                        <span>Discount:</span>
+                        <span>-₹{fmt(selectedInvoice.discount_total)}</span>
+                      </div>
+                    )}
+                    {selectedInvoice.cgst_total > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                        <span>CGST:</span>
+                        <span>₹{fmt(selectedInvoice.cgst_total)}</span>
+                      </div>
+                    )}
+                    {selectedInvoice.sgst_total > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                        <span>SGST:</span>
+                        <span>₹{fmt(selectedInvoice.sgst_total)}</span>
+                      </div>
+                    )}
+                    {selectedInvoice.igst_total > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                        <span>IGST:</span>
+                        <span>₹{fmt(selectedInvoice.igst_total)}</span>
+                      </div>
+                    )}
+                    {selectedInvoice.round_off !== 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                        <span>Round Off:</span>
+                        <span>{selectedInvoice.round_off > 0 ? '+' : ''}₹{fmt(selectedInvoice.round_off)}</span>
+                      </div>
+                    )}
+                    <div style={{ height: '1px', borderTop: '1px dashed var(--border)', margin: '4px 0' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem', fontWeight: 800, color: 'var(--accent)' }}>
+                      <span>Grand Total:</span>
+                      <span>₹{fmt(selectedInvoice.total_amount)}</span>
+                    </div>
+                  </div>
+
+                  {/* Paid & Balance Card */}
+                  <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--success)', fontWeight: 600 }}>
+                      <span>Amount Paid:</span>
+                      <span>₹{fmt(selectedInvoice.paid_amount || 0)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: (selectedInvoice.total_amount - (selectedInvoice.paid_amount || 0)) > 0 ? 'var(--danger)' : 'var(--text-secondary)', fontWeight: 700 }}>
+                      <span>Balance Due:</span>
+                      <span>₹{fmt(Math.max(0, selectedInvoice.total_amount - (selectedInvoice.paid_amount || 0)))}</span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setSelectedInvoice(null)}>Close</button>
+            </div>
           </div>
         </div>
       )}

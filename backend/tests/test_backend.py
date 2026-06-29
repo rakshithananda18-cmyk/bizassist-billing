@@ -165,8 +165,7 @@ def test_authorized_endpoints():
     response = client.get("/payments", headers=headers)
     assert response.status_code == 200
     payments = response.json()
-    assert "payments" in payments
-    assert "invoice_dues" in payments
+    assert isinstance(payments, list)
 
     response = client.get("/clients", headers=headers)
     assert response.status_code == 200

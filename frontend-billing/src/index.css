@@ -346,6 +346,7 @@ img { display: block; max-width: 100%; }
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 0 36px 20px; /* No top padding — page-header starts flush */
   background: var(--bg);
 }
@@ -1230,8 +1231,11 @@ img { display: block; max-width: 100%; }
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: 65vh;
   -webkit-overflow-scrolling: touch;
   box-shadow: var(--shadow-sm);
+  position: relative;
 }
 .data-table {
   width: 100%;
@@ -3777,6 +3781,7 @@ input[type="checkbox"] {
   .page-content {
     flex: 1 !important;
     overflow-y: auto !important;
+    overflow-x: hidden !important;
     padding: 16px !important;
   }
 

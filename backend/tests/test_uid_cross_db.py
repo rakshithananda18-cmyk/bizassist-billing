@@ -115,7 +115,8 @@ def test_child_fk_resolves_to_uid_deduped_parent():
 
         # Child inventory references the NEW source parent id (770999) → its FK
         # must be rewritten to the existing destination parent id.
-        inv = [{"id": 770500, "business_id": SRC_OWNER, "product_id": 770999,
+        inv_uid = str(uuid.uuid4())
+        inv = [{"id": 770500, "business_id": SRC_OWNER, "product_id": 770999, "uid": inv_uid,
                 "product_name": "ParentProd", "stock": 7}]
         assert _import_with_remap(db, "inventory", inv, bid, SRC_OWNER, existing, id_maps) == 1
         fk = db.execute(
@@ -130,11 +131,10 @@ def test_child_fk_resolves_to_uid_deduped_parent():
 
 
 # ---------------------------------------------------------------------------
-# id fallback — a pre-uid row (no `uid` key) still imports via the natural key
-# and dedups on re-import. Guards the transition window before Phase C makes
-# `uid` mandatory.
+# id fallback REMOVED — a pre-uid row (no `uid` key) is now REJECTED.
+# Phase C makes `uid` mandatory.
 # ---------------------------------------------------------------------------
-def test_id_fallback_row_without_uid_still_imports_and_dedups():
+def test_id_fallback_row_without_uid_is_rejected():
     owner = _signup("IdFallback Co")
     bid = owner["bid"]
     SRC_OWNER = 8800
@@ -142,19 +142,19 @@ def test_id_fallback_row_without_uid_still_imports_and_dedups():
     try:
         existing = set(inspect(db.bind).get_table_names())
 
-        # No `uid` key at all (pre-Step-3 row).
+        # No `uid` key at all.
         p = [{"id": 880001, "business_id": SRC_OWNER,
               "name": "NoUidProd", "barcode": "IDF-1",
               "selling_price": 4.0, "track_inventory": True}]
-        assert _import_with_remap(db, "products", p, bid, SRC_OWNER, existing, {}) == 1
-
-        # Re-import the same (still no uid) → natural-key dedup, no duplicate.
+        
+        # Phase C strictly rejects rows without a uid.
         assert _import_with_remap(db, "products", p, bid, SRC_OWNER, existing, {}) == 0
+        
         cnt = db.execute(
             text("SELECT COUNT(*) FROM products WHERE barcode = 'IDF-1' AND business_id = :b"),
             {"b": bid},
         ).scalar()
-        assert cnt == 1
+        assert cnt == 0
     finally:
         db.rollback()
         db.close()

@@ -83,15 +83,6 @@ def top_customers(authorization: str = Header(None), db: Session = Depends(get_d
         raise HTTPException(status_code=500, detail="Failed to fetch top customers")
 
 
-@router.get("/payments")
-def get_payments(authorization: str = Header(None), db: Session = Depends(get_db)):
-    uid = _user_id(authorization)
-    try:
-        return svc.payments_view(uid, db)
-    except Exception as e:
-        logger.error("payments error uid=%s: %s", uid, e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to fetch payments")
-
 
 @router.get("/clients")
 def get_clients(authorization: str = Header(None), db: Session = Depends(get_db)):

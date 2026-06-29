@@ -4,14 +4,33 @@ REM  BizAssist — Dev Launcher (All-in-One)
 REM  Backend:          http://127.0.0.1:8001
 REM  AI Dashboard:     http://127.0.0.1:5173
 REM  Billing Frontend: http://127.0.0.1:5174
+REM
+REM  Kills any stale process on each port first so you never
+REM  end up with a zombie backend that ignores code changes.
 REM ============================================================
 setlocal
 
 set ROOT=%~dp0
 
-REM --- Backend ---
+REM --- Kill any stale process already using our ports ---
+echo Cleaning up stale processes on ports 8001, 5173, 5174...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8001 " ^| findstr "LISTENING" 2^>nul') do (
+    taskkill /PID %%a /F >nul 2>&1
+)
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5173 " ^| findstr "LISTENING" 2^>nul') do (
+    taskkill /PID %%a /F >nul 2>&1
+)
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5174 " ^| findstr "LISTENING" 2^>nul') do (
+    taskkill /PID %%a /F >nul 2>&1
+)
+timeout /t 1 /nobreak >nul
+
+REM --- Backend (with --reload so code changes are picked up instantly) ---
 start "BizAssist Backend" powershell -ExecutionPolicy Bypass -NoExit -Command ^
-  "cd '%ROOT%backend'; & '%ROOT%venv\Scripts\Activate.ps1'; Write-Host 'Backend → http://127.0.0.1:8001' -ForegroundColor Green; uvicorn main_groq:app --reload --port 8001"
+  "cd '%ROOT%backend'; & '%ROOT%venv\Scripts\Activate.ps1'; $env:PYTHONPATH='.'; Write-Host 'Backend → http://127.0.0.1:8001' -ForegroundColor Green; uvicorn main_groq:app --reload --port 8001"
+
+REM Give the backend a moment to bind the port before frontends start
+timeout /t 3 /nobreak >nul
 
 REM --- AI Dashboard Frontend ---
 start "BizAssist AI Dashboard" powershell -ExecutionPolicy Bypass -NoExit -Command ^
@@ -23,7 +42,7 @@ start "BizAssist Billing" powershell -ExecutionPolicy Bypass -NoExit -Command ^
 
 echo.
 echo  Started:
-echo   - Backend on :8001
+echo   - Backend on :8001  (with --reload)
 echo   - AI Dashboard on :5173
 echo   - Billing App on :5174
 echo  Close the opened windows to stop.
