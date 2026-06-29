@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
 import { createPortal } from 'react-dom'
 
-export default function CustomSelect({
+const CustomSelect = forwardRef(function CustomSelect({
   value,
   onChange,
   children,
@@ -9,10 +9,12 @@ export default function CustomSelect({
   style = {},
   disabled = false,
   id = ''
-}) {
+}, ref) {
   const [isOpen, setIsOpen] = useState(false)
   const buttonRef = useRef(null)
   const [dropdownStyle, setDropdownStyle] = useState({})
+
+  useImperativeHandle(ref, () => buttonRef.current)
 
   // Extract options from children (native <option> elements)
   const options = React.Children.map(children, child => {
@@ -199,4 +201,7 @@ export default function CustomSelect({
       )}
     </>
   )
-}
+})
+
+export default CustomSelect
+
