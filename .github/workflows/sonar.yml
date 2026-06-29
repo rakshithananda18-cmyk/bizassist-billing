@@ -33,6 +33,7 @@ jobs:
           pytest --cov=backend --cov-report=xml
         env:
           DATABASE_URL: "sqlite:///:memory:"
+          JWT_SECRET: "dev-test-secret-please-change-0123456789abcdef"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
