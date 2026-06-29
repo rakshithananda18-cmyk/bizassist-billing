@@ -35,7 +35,9 @@ router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.sales")
 
 
-# ── Schemas ──────────────────────────────────────────────────────────────────
+# ============================================================================
+# ── SCHEMAS & REQUEST/RESPONSE MODELS ──
+# ============================================================================
 
 class SaleLine(BaseModel):
     product_id:   Optional[int] = None
@@ -117,7 +119,9 @@ def _product_out(p: Product) -> dict:
     }
 
 
-# ── Routes ───────────────────────────────────────────────────────────────────
+# ============================================================================
+# ── ENDPOINT ROUTE HANDLERS ──
+# ============================================================================
 
 @router.post("/sales")
 def create_sale(req: SaleRequest,
@@ -874,6 +878,7 @@ def create_sale_invoice_frontend(
             db.refresh(inv)
 
         background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "invoice"})
+        background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "payment"})
         return guard.store(_invoice_out_for_frontend(inv), status_code=201)
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))

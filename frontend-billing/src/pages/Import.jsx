@@ -1,3 +1,8 @@
+// ============================================================================
+// Page: Import.jsx
+// Description: Bulk data manager. Handles uploading Excel templates for products,
+//              customers, and vendors, and handles exporting billing ledgers.
+// ============================================================================
 import React, { useRef, useState } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'

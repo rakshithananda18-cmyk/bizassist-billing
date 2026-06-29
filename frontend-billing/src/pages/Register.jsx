@@ -1,3 +1,8 @@
+// ============================================================================
+// Page: Register.jsx
+// Description: Merchant sign-up page. Handles creating new business owner accounts
+//              and configuring baseline settings.
+// ============================================================================
 import React, { useState, useEffect } from 'react'
 import { API_BASE, CLOUD_URL } from '../config'
 import { useNavigate } from 'react-router-dom'

@@ -330,6 +330,19 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
     db.add(inv)
     db.flush()                              # get inv.id for the line FKs + stock refs
 
+    # Record the initial payment in InvoicePayment if the invoice is paid/partial at creation
+    if paid > 0:
+        pay_row = InvoicePayment(
+            business_id=business_id,
+            invoice_id=inv.id,
+            customer_id=inv.customer_id,
+            amount_paid=paid,
+            payment_mode=payment_mode or "Cash",
+            payment_date=inv.invoice_date,
+            note=f"Initial payment for invoice {number}",
+        )
+        db.add(pay_row)
+
     # ── Write line items + stock movements (atomic) ──────────────────────────
     for c, product, raw in computed:
         db.add(InvoiceLineItem(invoice_id=inv.id, **c))

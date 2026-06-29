@@ -1,3 +1,9 @@
+// ============================================================================
+// Page: Orders.jsx
+// Description: B2B Order Management module. Implements purchase order creation,
+//              status transition tracking (draft, confirmed, shipped, received),
+//              and digital supplier/buyer dispatch operations.
+// ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
@@ -19,6 +25,9 @@ const STATUS_FLOW = {
   rejected: { label: 'Rejected', variant: 'danger' }
 }
 
+// ============================================================================
+// ── 2. STATE INITIALIZATION (ORDERS & TABS) ──
+// ============================================================================
 export default function Orders() {
   const { authFetch, token, user, settings } = useAuth()
 
@@ -148,6 +157,9 @@ export default function Orders() {
     }
   }, [authFetch])
 
+  // ============================================================================
+  // ── 3. B2B NETWORK SYNC & SSE EFFECTS ──
+  // ============================================================================
   useEffect(() => {
     loadOrders()
     const handleSync = (e) => {
@@ -356,6 +368,9 @@ export default function Orders() {
     }
   }
 
+  // ============================================================================
+  // ── 4. ORDER DISPATCH & CONFIRMATION ACTIONS ──
+  // ============================================================================
   // Handle status transitions
   const handleStatusChange = async (orderId, newStatus) => {
     try {
@@ -390,6 +405,9 @@ export default function Orders() {
 
   const { subtotal: cartSub, cgst: cartCgst, sgst: cartSgst, igst: cartIgst, total: cartTotal, items: cartItems } = getCartTotals()
 
+  // ============================================================================
+  // ── 5. RENDER ORDERS CATALOG LAYOUT (JSX) ──
+  // ============================================================================
   return (
     <AppLayout title="B2B Orders">
       <div className="slide-up">

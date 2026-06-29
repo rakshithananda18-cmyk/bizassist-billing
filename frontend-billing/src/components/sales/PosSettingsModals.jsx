@@ -1,5 +1,5 @@
 import CustomSelect from '../../components/common/CustomSelect';
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { 
   CartIcon, 
   CashIcon, 
@@ -22,15 +22,70 @@ export function PosCounterSettingsModal({
   initialTab = 'general',
 }) {
   const [activeTab, setActiveTab] = useState(initialTab)
+  const [bindingKey, setBindingKey] = useState(null)
+  const modalRef = useRef(null)
+
+  // Focus trap for settings modal
+  useEffect(() => {
+    const focusable = modalRef.current?.querySelectorAll('input, select, button, textarea')
+    if (focusable && focusable.length > 0) {
+      focusable[0].focus()
+    }
+
+    const handleFocusIn = (e) => {
+      if (modalRef.current && !modalRef.current.contains(e.target)) {
+        e.preventDefault()
+        e.stopPropagation()
+        const focusable = modalRef.current?.querySelectorAll('input, select, button, textarea')
+        if (focusable && focusable.length > 0) {
+          focusable[0].focus()
+        }
+      }
+    }
+
+    document.addEventListener('focusin', handleFocusIn)
+    return () => document.removeEventListener('focusin', handleFocusIn)
+  }, [])
 
   // Sync activeTab when initialTab prop updates
   useEffect(() => {
     setActiveTab(initialTab)
   }, [initialTab])
 
+  // Listen to keyboard press to record new shortcut bindings
+  useEffect(() => {
+    if (!bindingKey) return
+
+    const handleRecordKey = (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+
+      let pressedKey = e.key
+      // Build modifier prefix if needed (e.g. Shift+Enter)
+      const modifiers = []
+      if (e.ctrlKey && pressedKey !== 'Control') modifiers.push('Ctrl')
+      if (e.shiftKey && pressedKey !== 'Shift') modifiers.push('Shift')
+      if (e.altKey && pressedKey !== 'Alt') modifiers.push('Alt')
+
+      if (pressedKey.length === 1) {
+        pressedKey = pressedKey.toUpperCase()
+      }
+
+      const fullKeyName = [...modifiers, pressedKey].join('+')
+
+      const nextKeys = { ...funcKeys, [bindingKey.action]: fullKeyName }
+      setFuncKeys(nextKeys)
+      localStorage.setItem('pos_func_keys', JSON.stringify(nextKeys))
+      setBindingKey(null)
+    }
+
+    window.addEventListener('keydown', handleRecordKey, true)
+    return () => window.removeEventListener('keydown', handleRecordKey, true)
+  }, [bindingKey, funcKeys, setFuncKeys])
+
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 480, width: '100%' }}>
+      <div ref={modalRef} className="modal" style={{ maxWidth: 480, width: '100%' }}>
         <div className="modal-header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
           <span className="modal-title" style={{ color: 'var(--text-primary)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <SettingsIcon size={18} /> POS Counter Settings
@@ -221,65 +276,147 @@ export function PosCounterSettingsModal({
                     <KeyboardIcon size={12} /> Payment Flow Navigation
                   </div>
                   {[
-                    { label: 'Proceed to Payment / Go to Customer', key: 'proceedToPayment', options: ['Escape', 'F5', 'F6', 'F7', 'F10', 'Enter'] },
-                    { label: 'Move FORWARD (field by field)', key: 'flowForward', options: ['Enter', 'Shift+Enter', 'Tab', 'F5', 'F6', 'F7'] },
-                    { label: 'Move BACK (go back one field)', key: 'flowBack', options: ['Shift+Enter', 'Enter', 'Tab', 'F5', 'F6', 'F7'] },
-                  ].map(item => (
-                    <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{item.label}</span>
-                      <CustomSelect
-                        className="pos-form-select"
-                        style={{ width: '120px', height: '26px', padding: '2px 4px', fontSize: '0.75rem', borderColor: 'var(--border)' }}
-                        value={funcKeys[item.key] || ''}
-                        onChange={e => {
-                          const nextKeys = { ...funcKeys, [item.key]: e.target.value }
-                          setFuncKeys(nextKeys)
-                          localStorage.setItem('pos_func_keys', JSON.stringify(nextKeys))
-                        }}
-                      >
-                        {item.options.map(k => (
-                          <option key={k} value={k}>{k}</option>
-                        ))}
-                      </CustomSelect>
-                    </div>
-                  ))}
+                    { label: 'Proceed to Payment / Go to Customer', key: 'proceedToPayment' },
+                    { label: 'Move FORWARD (field by field)', key: 'flowForward' },
+                    { label: 'Move BACK (go back one field)', key: 'flowBack' },
+                  ].map(item => {
+                    const isBinding = bindingKey && bindingKey.action === item.key
+                    const currentVal = funcKeys[item.key] || 'Not set'
+                    return (
+                      <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{item.label}</span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          style={{
+                            width: '120px',
+                            height: '28px',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            background: isBinding ? 'var(--accent)' : 'var(--bg-2)',
+                            color: isBinding ? '#ffffff' : 'var(--text-primary)',
+                            border: isBinding ? '1px solid var(--accent)' : '1px solid var(--border)',
+                            borderRadius: 'var(--radius-md)',
+                            cursor: 'pointer',
+                            textAlign: 'center',
+                            outline: 'none',
+                            boxShadow: 'var(--shadow-sm)'
+                          }}
+                          onClick={() => {
+                            if (isBinding) {
+                              setBindingKey(null)
+                            } else {
+                              setBindingKey({ action: item.key })
+                            }
+                          }}
+                        >
+                          {isBinding ? 'Press key...' : currentVal}
+                        </button>
+                      </div>
+                    )
+                  })}
                 </div>
 
                 {/* Function hotkeys section */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>
                     F-Key / Action Mappings
                   </div>
-                  {[
-                    { label: 'Change Quantity', key: 'qtyFocus' },
-                    { label: 'Item Discount', key: 'discountFocus' },
-                    { label: 'Remove Item', key: 'removeItem' },
-                    { label: 'Receive Amount / Pay', key: 'amountReceivedFocus' },
-                    { label: 'Search Item / Barcode', key: 'barcodeFocus' },
-                    { label: 'Select Customer', key: 'customerFocus' },
-                    { label: 'Remarks / Notes', key: 'remarksFocus' },
-                    { label: 'Configure Shortcuts Trigger', key: 'configureShortcuts' },
-                    { label: 'Proceed Payment / Save', key: 'paymentProceed' },
-                    { label: 'Cancel Payment / Close', key: 'paymentCancel' }
-                  ].map(item => (
-                    <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-3)', padding: '6px 10px', borderRadius: '4px', border: '1px solid var(--border)' }}>
-                      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{item.label}</span>
-                      <CustomSelect
-                        className="pos-form-select"
-                        style={{ width: '110px', height: '26px', padding: '2px 4px', fontSize: '0.75rem' }}
-                        value={funcKeys[item.key] || ''}
-                        onChange={e => {
-                          const nextKeys = { ...funcKeys, [item.key]: e.target.value }
-                          setFuncKeys(nextKeys)
-                          localStorage.setItem('pos_func_keys', JSON.stringify(nextKeys))
-                        }}
-                      >
-                        {['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12', 'Enter', 'Escape'].map(k => (
-                          <option key={k} value={k}>{k}</option>
-                        ))}
-                      </CustomSelect>
+
+                  {/* POS Screen Hotkeys container */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: 'var(--bg-3)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+                      POS Screen Hotkeys
                     </div>
-                  ))}
+                    {[
+                      { label: 'Change Quantity', key: 'qtyFocus' },
+                      { label: 'Remove Item', key: 'removeItem' },
+                      { label: 'Search Item / Barcode', key: 'barcodeFocus' },
+                      { label: 'Open Checkout / Pay', key: 'amountReceivedFocus' }
+                    ].map(item => {
+                      const isBinding = bindingKey && bindingKey.action === item.key
+                      const currentVal = funcKeys[item.key] || 'Not set'
+                      return (
+                        <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px' }}>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{item.label}</span>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{
+                              width: '120px',
+                              height: '28px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              background: isBinding ? 'var(--accent)' : 'var(--bg-2)',
+                              color: isBinding ? '#ffffff' : 'var(--text-primary)',
+                              border: isBinding ? '1px solid var(--accent)' : '1px solid var(--border)',
+                              borderRadius: 'var(--radius-md)',
+                              cursor: 'pointer',
+                              textAlign: 'center',
+                              outline: 'none',
+                              boxShadow: 'var(--shadow-sm)'
+                            }}
+                            onClick={() => {
+                              if (isBinding) {
+                                      setBindingKey(null)
+                              } else {
+                                      setBindingKey({ action: item.key })
+                              }
+                            }}
+                          >
+                            {isBinding ? 'Press key...' : currentVal}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Checkout Modal Hotkeys container */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: 'var(--bg-3)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+                      Checkout Modal Hotkeys
+                    </div>
+                    {[
+                      { label: 'Select Customer', key: 'customerFocus' },
+                      { label: 'Bill Discount (Checkout)', key: 'checkoutDiscountFocus' },
+                      { label: 'Remarks / Notes', key: 'remarksFocus' }
+                    ].map(item => {
+                      const isBinding = bindingKey && bindingKey.action === item.key
+                      const currentVal = funcKeys[item.key] || 'Not set'
+                      return (
+                        <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px' }}>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{item.label}</span>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{
+                              width: '120px',
+                              height: '28px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              background: isBinding ? 'var(--accent)' : 'var(--bg-2)',
+                              color: isBinding ? '#ffffff' : 'var(--text-primary)',
+                              border: isBinding ? '1px solid var(--accent)' : '1px solid var(--border)',
+                              borderRadius: 'var(--radius-md)',
+                              cursor: 'pointer',
+                              textAlign: 'center',
+                              outline: 'none',
+                              boxShadow: 'var(--shadow-sm)'
+                            }}
+                            onClick={() => {
+                              if (isBinding) {
+                                      setBindingKey(null)
+                              } else {
+                                      setBindingKey({ action: item.key })
+                              }
+                            }}
+                          >
+                            {isBinding ? 'Press key...' : currentVal}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
 
                 {/* Standard Fixed Controls section */}

@@ -1,3 +1,9 @@
+// ============================================================================
+// Page: Parties.jsx
+// Description: Customer and Vendor Directory. Handles listing business contacts,
+//              tracking outstanding balances, viewing ledger histories, and sharing
+//              payment reminders/UPI payment links via WhatsApp.
+// ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'

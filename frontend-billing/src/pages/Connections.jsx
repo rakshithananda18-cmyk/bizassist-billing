@@ -1,3 +1,9 @@
+// ============================================================================
+// Page: Connections.jsx
+// Description: B2B vendor/buyer connection requests, rules, policy setups,
+//              and connection codes. Enables merchants to request, establish,
+//              and revoke secure sync pipes between businesses.
+// ============================================================================
 import React, { useEffect, useState, useCallback } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'

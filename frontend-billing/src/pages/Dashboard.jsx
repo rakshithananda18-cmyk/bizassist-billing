@@ -1,3 +1,9 @@
+// ============================================================================
+// Page: Dashboard.jsx
+// Description: Main Business Owner Dashboard. Renders high-level overview metrics,
+//              sales performance charts, stock alerts, overdue invoice tracking,
+//              and automated smart business insights.
+// ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'

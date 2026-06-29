@@ -136,7 +136,7 @@ export default function App() {
   }, [])
 
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
         <LockProvider>
           {/* Lock screen intercepts entire UI when session is locked */}

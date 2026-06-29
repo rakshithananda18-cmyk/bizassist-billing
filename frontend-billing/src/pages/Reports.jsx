@@ -1,3 +1,9 @@
+// ============================================================================
+// Page: Reports.jsx
+// Description: Financial & Operations Report Hub. Hosts and renders general P&L,
+//              GST slab breakdowns (GSTR-1, GSTR-3B), and bookkeeping summaries
+//              (Day Book, Trial Balance, General Ledger, Balance Sheet).
+// ============================================================================
 import React, { useState } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'

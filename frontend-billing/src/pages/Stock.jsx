@@ -1,3 +1,8 @@
+// ============================================================================
+// Page: Stock.jsx
+// Description: Inventory & Catalog Manager. Handles product item catalog creation,
+//              stock adjustments, barcode bindings, and stock transfers between godowns.
+// ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
@@ -298,7 +303,13 @@ export default function Stock() {
       const res = await authFetch('/billing/stock-transfers', {
         method: 'POST',
         body: JSON.stringify({
-          transfer_date: new Date().toISOString().split('T')[0],
+          transfer_date: (() => {
+            const d = new Date()
+            const year = d.getFullYear()
+            const month = String(d.getMonth() + 1).padStart(2, '0')
+            const day = String(d.getDate()).padStart(2, '0')
+            return `${year}-${month}-${day}`
+          })(),
           from_godown_id: parseInt(transferForm.from_godown_id),
           to_godown_id: parseInt(transferForm.to_godown_id),
           notes: transferForm.notes || null,

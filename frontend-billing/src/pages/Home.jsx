@@ -1,3 +1,8 @@
+// ============================================================================
+// Page: Home.jsx
+// Description: Cashier landing portal. Provides quick nav cards to the POS counter,
+//              inventory, and reports. Scopes features based on staff credentials.
+// ============================================================================
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'

@@ -4,7 +4,7 @@
 // presentation: it receives the already-computed amounts and renders the
 // subtotal / GST split / grand total / change / UPI QR. No business logic here.
 // First step of decomposing the Sales god-component — behaviour is identical.
-import React from 'react'
+import React, { useRef, useEffect } from 'react'
 import { CloseIcon, SummaryIcon } from '../../components/Icons'
 import { fmt } from '../../utils/format'
 import { buildUpiUri, qrImageUrl } from '../../utils/share'
@@ -24,6 +24,32 @@ export default function TotalBreakupModal({
   paymentMode,
   upiVpa,
 }) {
+  const modalRef = useRef(null)
+
+  // Focus trap to keep browser focus inside modal and avoid leakage to background POS
+  useEffect(() => {
+    if (!open) return
+
+    const focusable = modalRef.current?.querySelectorAll('input, select, button, textarea')
+    if (focusable && focusable.length > 0) {
+      focusable[0].focus()
+    }
+
+    const handleFocusIn = (e) => {
+      if (modalRef.current && !modalRef.current.contains(e.target)) {
+        e.preventDefault()
+        e.stopPropagation()
+        const focusable = modalRef.current?.querySelectorAll('input, select, button, textarea')
+        if (focusable && focusable.length > 0) {
+          focusable[0].focus()
+        }
+      }
+    }
+
+    document.addEventListener('focusin', handleFocusIn)
+    return () => document.removeEventListener('focusin', handleFocusIn)
+  }, [open])
+
   if (!open) return null
 
   const businessName = localStorage.getItem('billing_user')
@@ -32,7 +58,7 @@ export default function TotalBreakupModal({
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 400 }}>
+      <div ref={modalRef} className="modal" style={{ maxWidth: 400 }}>
         <div className="modal-header">
           <span className="modal-title" style={{ color: 'var(--text-primary)', fontWeight: 700 }}><SummaryIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Total Breakup Details</span>
           <button className="btn btn-ghost btn-icon" onClick={onClose} style={{ color: 'var(--text-muted)' }} aria-label="Close"><CloseIcon size={16} /></button>

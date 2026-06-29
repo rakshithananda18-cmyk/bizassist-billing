@@ -105,6 +105,9 @@ def _parse_dt(dt_str) -> Optional[datetime]:
         return None
 
 
+# ============================================================================
+# ── SCHEDULER RECURRING SYNC JOB ──
+# ============================================================================
 def run_hybrid_sync():
     """APScheduler recurring job. Runs every 5s on SQLite local backend."""
     if engine.dialect.name != "sqlite":
@@ -161,6 +164,9 @@ def trigger_sync_run(business_id: int):
         db.close()
 
 
+# ============================================================================
+# ── SYNC BUSINESS TRANSACTION LOGIC ──
+# ============================================================================
 def sync_business(db: Session, user: User, interval: int = 30, force: bool = False, do_pull: bool = False):
     business_id = user.id
     logger.debug("[SYNC_WORKER] Running sync for business_id=%s", business_id)

@@ -214,7 +214,7 @@ export default function usePaymentFlow({
     const pay = (payable ?? grandTotal)
     setForm(f => ({
       ...f,
-      amount_received: f.payment_mode === 'credit' ? '0' : (f.amount_received || pay.toFixed(2))
+      amount_received: f.payment_mode === 'credit' ? '0' : pay.toFixed(2)
     }))
     setPaymentFocusTarget(focusTarget)
     setShowPaymentPopup(true)

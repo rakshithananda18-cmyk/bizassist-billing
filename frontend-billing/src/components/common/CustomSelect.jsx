@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 const CustomSelect = forwardRef(function CustomSelect({
   value,
   onChange,
+  onKeyDown,
   children,
   className = '',
   style = {},
@@ -31,6 +32,33 @@ const CustomSelect = forwardRef(function CustomSelect({
   const selectedOption = options.find(o => String(o.value) === String(value))
   const displayLabel = selectedOption ? selectedOption.label : (options.length > 0 ? options[0].label : 'Select...')
 
+  // Calculate position of the dropdown menu dynamically to handle viewport boundaries and screen height
+  const getDropdownPosition = () => {
+    if (!buttonRef.current) return {}
+    const rect = buttonRef.current.getBoundingClientRect()
+    const defaultMaxHeight = 250
+    const spaceBelow = window.innerHeight - rect.bottom - 20
+    const spaceAbove = rect.top - 20
+
+    let top = rect.bottom + window.scrollY + 4
+    let maxHeight = defaultMaxHeight
+    if (spaceBelow < defaultMaxHeight && spaceAbove > spaceBelow) {
+      // Not enough space below: open upward and clamp height to available space above
+      maxHeight = Math.min(defaultMaxHeight, Math.max(80, spaceAbove))
+      top = rect.top + window.scrollY - maxHeight - 4
+    } else {
+      // Open downward and clamp height to available space below
+      maxHeight = Math.min(defaultMaxHeight, Math.max(80, spaceBelow))
+    }
+
+    return {
+      top,
+      left: rect.left + window.scrollX,
+      width: rect.width,
+      maxHeight,
+    }
+  }
+
   // Open/close handler
   const handleToggle = (e) => {
     e.preventDefault()
@@ -38,15 +66,7 @@ const CustomSelect = forwardRef(function CustomSelect({
       setIsOpen(false)
       return
     }
-    // Calculate dropdown position
-    if (buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect()
-      setDropdownStyle({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
-        width: rect.width,
-      })
-    }
+    setDropdownStyle(getDropdownPosition())
     setIsOpen(true)
   }
 
@@ -75,12 +95,7 @@ const CustomSelect = forwardRef(function CustomSelect({
   useEffect(() => {
     function updatePosition() {
       if (isOpen && buttonRef.current) {
-        const rect = buttonRef.current.getBoundingClientRect()
-        setDropdownStyle({
-          top: rect.bottom + window.scrollY + 4,
-          left: rect.left + window.scrollX,
-          width: rect.width,
-        })
+        setDropdownStyle(getDropdownPosition())
       }
     }
     if (isOpen) {
@@ -130,6 +145,7 @@ const CustomSelect = forwardRef(function CustomSelect({
         className={`custom-select-btn ${className}`}
         disabled={disabled}
         onClick={handleToggle}
+        onKeyDown={onKeyDown}
         style={buttonStyle}
       >
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -153,7 +169,7 @@ const CustomSelect = forwardRef(function CustomSelect({
             borderRadius: 8,
             boxShadow: '0 4px 14px rgba(0, 0, 0, 0.25)',
             zIndex: 99999,
-            maxHeight: 250,
+            maxHeight: dropdownStyle.maxHeight || 250,
             overflowY: 'auto',
             padding: '6px 0',
             display: 'flex',

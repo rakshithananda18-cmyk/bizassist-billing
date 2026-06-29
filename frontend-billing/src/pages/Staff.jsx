@@ -1,10 +1,14 @@
+// ============================================================================
+// Page: Staff.jsx
+// Description: Cashier & Staff Account Manager. Enables store owners to create,
+//              list, and remove cashier logins and configure their access PINs.
+// ============================================================================
 import React, { useState, useEffect, useCallback } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
 import { ContactsIcon, CheckIcon, CloseIcon } from '../components/Icons'
 import CustomSelect from '../components/common/CustomSelect'
-
 // Staff management — owner creates/removes cashier logins that share this
 // business's data. The backend (/staff) is owner-only and tenant-scoped.
 export default function Staff() {

@@ -1,10 +1,9 @@
-// pages/Counters.jsx — Owner Live Counters (plan §9.2 Stage 1).
-// =============================================================
-// Read-only view: each active POS session publishes a presence snapshot
-// (`POST /realtime/presence` → SSE `pos.presence`), and the owner watches each
-// till live here — who's on it, their counter, current cart total, last bill.
-// Nothing here writes back to a cashier's cart; it's pure observation. The
-// edit-a-counter flow (request → approve → soft-lock) is the Phase 4 step.
+// ============================================================================
+// Page: Counters.jsx
+// Description: Owner Live Counters view. Shows active POS cashier sessions,
+//              their active cart status, and live connection tracking.
+//              Enables counter control and monitoring for store owners.
+// ============================================================================
 import React, { useEffect, useMemo, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'

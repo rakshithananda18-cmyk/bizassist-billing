@@ -1,3 +1,9 @@
+// ============================================================================
+// Page: Sales.jsx
+// Description: POS Counter Orchestrator. Manages multi-tab active carts, product
+//              scanning, pricing tier selection, payment flow, and receipt printing.
+//              Integrated with offline outbox sync and collaborative SSE sessions.
+// ============================================================================
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { IS_LOCAL_APP } from '../config'
@@ -26,6 +32,9 @@ import usePaymentFlow from '../hooks/usePaymentFlow'
 import { syncManager } from '../sync/syncManager'
 import { pendingInvoiceRows } from '../sync/pendingInvoices'
 
+// ============================================================================
+// ── 2. GLOBAL DEFAULTS & VALUE SCHEMAS ──
+// ============================================================================
 const colLabels = {
   sku: 'Item Code',
   name: 'Item Name',
@@ -69,6 +78,9 @@ function effectiveHostingMode() {
   return m.toLowerCase()
 }
 
+// ============================================================================
+// ── 3. STATE INITIALIZATION (COUNTER & DB DATA) ──
+// ============================================================================
 export default function Sales(props = {}) {
   const { authFetch, profile, user } = useAuth()
   const { config, attributesSchema, t } = useBusinessConfig()
@@ -108,6 +120,9 @@ export default function Sales(props = {}) {
   const [showPayConfirmModal, setShowPayConfirmModal] = useState(false)
   const [staffList, setStaffList] = useState([])
 
+  // ============================================================================
+  // ── 4. OFFLINE SYNC OUTBOX BINDINGS ──
+  // ============================================================================
   // ── Offline sync (R7b Slice 3c) ───────────────────────────────────────────
   // Bills saved while offline live in the durable outbox until reconnect. We mirror
   // the pending list into state (for the "N unsynced" badge) AND a ref (so number
@@ -134,9 +149,13 @@ export default function Sales(props = {}) {
     [],
   )
 
+  // ============================================================================
+  // ── 5. FUNCTION KEYS & COLUMN ORDER PERSISTENCE ──
+  // ============================================================================
   const defaultFuncKeys = {
     qtyFocus: 'F2',
     discountFocus: 'F3',
+    checkoutDiscountFocus: 'F7',
     removeItem: 'F4',
     amountReceivedFocus: 'F8',
     barcodeFocus: 'F9',
@@ -256,6 +275,9 @@ export default function Sales(props = {}) {
     return offsets
   }
 
+  // ============================================================================
+  // ── 6. BATCHES & PRICE SELECTOR RESOLVERS ──
+  // ============================================================================
   const getPriceOptions = (item) => {
     if (!item || item.is_custom || !item.product_id) return []
     const p = products.find(prod => prod.id === item.product_id)
@@ -447,6 +469,9 @@ export default function Sales(props = {}) {
     ]
   })
 
+  // ============================================================================
+  // ── 7. POS TAB & CART STATE MACHINE ──
+  // ============================================================================
   const [activeTabId, setActiveTabId] = useState(() => {
     const uid = user?.user_id || user?.id
     if (isLiveView) {
@@ -484,6 +509,9 @@ export default function Sales(props = {}) {
     localStorage.setItem(`pos_minimized_active_id_${uid}`, activeTabId)
   }, [tabs, activeTabId, user?.user_id, user?.id, isLiveView])
 
+  // ============================================================================
+  // ── 8. COLLABORATIVE LIVE COUNTER (SSE) ──
+  // ============================================================================
   useEffect(() => {
     if (isLiveView) {
       const uid = user?.user_id || user?.id
@@ -953,6 +981,9 @@ export default function Sales(props = {}) {
     )
   }
 
+  // ============================================================================
+  // ── 9. ON-MOUNT DATA INITIALIZERS ──
+  // ============================================================================
   const load = useCallback(() => {
     isSystemLoadingRef.current = true
     setLoading(true)
@@ -1108,6 +1139,9 @@ export default function Sales(props = {}) {
     setTimeout(() => barcodeRef.current?.focus(), 100)
   }
 
+  // ============================================================================
+  // ── 10. TABS & CARTS MUTATORS ──
+  // ============================================================================
   const closeTab = useCallback((tabId, e, forceClose = false) => {
     if (e) e.stopPropagation()
     if (isLiveView && editState !== 'granted') return
@@ -1715,6 +1749,9 @@ export default function Sales(props = {}) {
     el?.focus()
   }
 
+  // ============================================================================
+  // ── 11. KEYBOARD SHORTCUTS & SCANNER LISTENERS ──
+  // ============================================================================
   // Keyboard POS Shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -1911,6 +1948,13 @@ export default function Sales(props = {}) {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [showSettingsModal, showBreakupModal, settingsInitialTab, showPayConfirmModal, searchQuery, handleSaveInvoice, activeTabId, closeTab, handleNewBill, funcKeys, bindingAction, priceSelectorIndex, selectedPriceOptIndex, form.items, matchesKey, showPaymentPopup, openPaymentFlow, executeSaveInvoice])
 
+  // Auto refocus barcode input when modals close
+  useEffect(() => {
+    if (!showPaymentPopup && !showSettingsModal && !showBreakupModal) {
+      setTimeout(() => barcodeRef.current?.focus(), 100)
+    }
+  }, [showPaymentPopup, showSettingsModal, showBreakupModal])
+
   const stickyOffsets = getStickyLeftOffsets(columnOrder, colVisible)
 
   const filteredProducts = searchQuery.trim()
@@ -1921,6 +1965,9 @@ export default function Sales(props = {}) {
       ).slice(0, 8)
     : []
 
+  // ============================================================================
+  // ── 12. POS COUNTER RENDER (JSX) ──
+  // ============================================================================
   return (
     <AppLayout title="POS Counter">
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>

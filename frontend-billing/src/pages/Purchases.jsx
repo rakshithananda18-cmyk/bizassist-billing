@@ -1,3 +1,9 @@
+// ============================================================================
+// Page: Purchases.jsx
+// Description: Purchase Ledger & OCR Bill Processing. Registers vendor purchase
+//              bills, supports parsing scanned PDFs via Claude/Groq OCR, creates
+//              new batches, and records debit note purchase returns.
+// ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
@@ -7,6 +13,9 @@ import CustomSelect from '../components/common/CustomSelect'
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
 
+// ============================================================================
+// ── 2. STATE INITIALIZATION (BILLS & MODALS) ──
+// ============================================================================
 export default function Purchases() {
   const { authFetch, settings } = useAuth()
 
@@ -141,6 +150,9 @@ export default function Purchases() {
     })
   }
 
+  // ============================================================================
+  // ── 3. DATA LOADERS & INITIAL EFFECTS ──
+  // ============================================================================
   const load = useCallback(() => {
     setLoading(true)
     Promise.all([
@@ -231,6 +243,9 @@ export default function Purchases() {
     if (dropped) setFile(dropped)
   }
 
+  // ============================================================================
+  // ── 4. BILL UPLOAD & AI OCR EXTRACTOR ──
+  // ============================================================================
   const handleUpload = async () => {
     if (!file) return
     setUploading(true)
@@ -376,6 +391,9 @@ export default function Purchases() {
     setShowDetailModal(true)
   }
 
+  // ============================================================================
+  // ── 5. RENDER BILLS CATALOG LAYOUT (JSX) ──
+  // ============================================================================
   return (
     <AppLayout title="Purchases">
       <div className="slide-up">

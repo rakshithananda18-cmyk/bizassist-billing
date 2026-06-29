@@ -8,8 +8,14 @@
 export const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
 
-/** Today as an ISO date string "YYYY-MM-DD" (local). */
-export const getTodayDateStr = () => new Date().toISOString().split('T')[0]
+/** Today as local date string "YYYY-MM-DD". */
+export const getTodayDateStr = () => {
+  const d = new Date()
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
 /**
  * Amount → Indian-numbering words for invoice footers, e.g.

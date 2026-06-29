@@ -1,3 +1,9 @@
+// ============================================================================
+// Page: Profile.jsx
+// Description: User Account & Business Profile. Displays currently logged-in
+//              account properties, registration credentials, and allows editing
+//              business address, GSTIN details, and contact numbers.
+// ============================================================================
 import React, { useState, useEffect } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'

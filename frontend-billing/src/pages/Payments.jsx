@@ -1,7 +1,12 @@
+// ============================================================================
+// Page: Payments.jsx
+// Description: Payment Journals and Expense Tracker. Registers cash/bank inflows
+//              and outflows, records general expenses, and tracks credit note returns.
+// ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
-import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, WarehouseIcon } from '../components/Icons'
+import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, WarehouseIcon, SearchIcon } from '../components/Icons'
 
 import { logger } from '../utils/logger'
 import CustomSelect from '../components/common/CustomSelect'

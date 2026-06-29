@@ -1,3 +1,9 @@
+// ============================================================================
+// Page: Settings.jsx
+// Description: Application Settings Orchestrator. Manages store configurations,
+//              tax settings, print headers, cashier PIN permissions, and triggers
+//              hosting mode transitions (Local/Cloud/Hybrid data migrations).
+// ============================================================================
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
@@ -25,6 +31,9 @@ const PREVIEW_HEADER_CONTENT = {
   gstin:           { node: 'GSTIN: 29AAAAA1111A1Z1', style: { fontSize: '0.62rem', color: '#64748b', fontWeight: 'bold' } },
 }
 
+// ============================================================================
+// ── 2. LAYOUT SUBCOMPONENTS & MODALS ──
+// ============================================================================
 // ─── Brand Loading Animation (matches PageLoader / frontend-ai style) ─────────
 function BrandLoader({ message = 'Loading settings…' }) {
   return (
@@ -694,6 +703,9 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
+// ============================================================================
+// ── 3. MAIN SETTINGS STATE INITIALIZATION ──
+// ============================================================================
 export default function Settings() {
   const { authFetch, user, token, fetchSettings, switchMode } = useAuth()
   const { config, refreshConfig } = useBusinessConfig()
@@ -954,6 +966,9 @@ export default function Settings() {
     }
   }
 
+  // ============================================================================
+  // ── 4. DATA LOADERS & SAVE ROUTINES ──
+  // ============================================================================
   // ── Load settings ──────────────────────────────────────────────────────────
   const loadSettings = useCallback(async () => {
     logger.debug('[Settings] Fetching app settings from backend…')
@@ -1076,6 +1091,9 @@ export default function Settings() {
 
   logger.debug('[Settings] Rendering with activeTab:', activeTab)
 
+  // ============================================================================
+  // ── 5. RENDER SETTINGS LAYOUT (JSX) ──
+  // ============================================================================
   return (
     <AppLayout title="App Settings">
       <div className="slide-up" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%', minHeight: 0 }}>

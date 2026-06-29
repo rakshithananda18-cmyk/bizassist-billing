@@ -1,3 +1,8 @@
+// ============================================================================
+// Page: Login.jsx
+// Description: User session authentication page. Supports merchant owner credentials
+//              as well as cashier staff login credentials, storing tokens in localStorage.
+// ============================================================================
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
