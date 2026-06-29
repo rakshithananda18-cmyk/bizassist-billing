@@ -30,15 +30,18 @@ jobs:
 
       - name: Run Backend Tests with Coverage
         run: |
-          pytest --cov=backend --cov-report=xml
+          cd backend
+          python -m pytest -q --ignore=tests/test_rls_postgres.py --cov=backend --cov-report=xml
         env:
-          DATABASE_URL: "sqlite:///:memory:"
+          DATABASE_URL: "sqlite:///./test_bizassist.db"
           JWT_SECRET: "dev-test-secret-please-change-0123456789abcdef"
+          GROQ_API_KEY: "mock_groq_api_key"
+          ALLOW_TEST_USERS: "1"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
           cache-dependency-path: frontend-billing/package-lock.json
 

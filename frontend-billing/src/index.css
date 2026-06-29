@@ -347,7 +347,7 @@ img { display: block; max-width: 100%; }
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 36px 20px; /* No top padding — page-header starts flush */
+  padding: 0 16px 10px; /* No top padding — page-header starts flush */
   background: var(--bg);
 }
 
