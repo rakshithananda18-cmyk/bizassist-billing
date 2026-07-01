@@ -196,3 +196,18 @@ def test_production_rls_migration_does_not_fail_open():
     sql = migration.read_text(encoding="utf-8")
     assert "nullif(current_setting('app.current_business_id', true), '') IS NULL" not in sql
     assert "WITH CHECK" in sql
+
+
+def test_optimized_rls_migration_uses_init_plan_wrapper():
+    """Supabase's advisor expects policy helper calls to be wrapped in a scalar
+    SELECT so they are initialized once per statement."""
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "alembic"
+        / "versions"
+        / "3b7d5e0a9c1f_optimize_rls_init_plan.py"
+    )
+    sql = migration.read_text(encoding="utf-8")
+    assert "(select nullif(current_setting('app.current_business_id', true), '')::integer)" in sql
+    assert "BID = \"nullif(current_setting" not in sql
+    assert "USING (true)" not in sql

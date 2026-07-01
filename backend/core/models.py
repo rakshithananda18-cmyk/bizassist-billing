@@ -426,10 +426,6 @@ class Godown(Base, BusinessOwnedMixin):
     address   = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
 
-    __table_args__ = (
-        Index("ix_godowns_business", "business_id"),
-    )
-
 
 class StockTransfer(Base, BusinessOwnedMixin):
     """
@@ -445,10 +441,6 @@ class StockTransfer(Base, BusinessOwnedMixin):
     line_items = relationship(
         "StockTransferLineItem", back_populates="transfer",
         cascade="all, delete-orphan", lazy="selectin"
-    )
-
-    __table_args__ = (
-        Index("ix_stock_transfers_business", "business_id"),
     )
 
 
