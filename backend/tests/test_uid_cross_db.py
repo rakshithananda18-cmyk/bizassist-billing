@@ -9,8 +9,9 @@ before it retires the id-fallback / `?remap_ids` natural-key crutches.
     the wrong row (the match is on `uid`, not the per-DB autoincrement `id`).
   - child FK by parent uid : a parent matched/deduped by `uid` feeds the child-FK
     rewrite, so a child row lands on the correct destination parent id.
-  - id fallback           : a row with NO `uid` still imports (natural-key match)
-    and dedups on re-import — safe during the transition window.
+  - natural-key fallback  : a row with NO `uid` still imports via a natural-key
+    match (e.g. barcode) and deduplicates on re-import — safe during the
+    transition window while legacy local records catch up to uid issuance.
 """
 import os
 import sys
@@ -131,30 +132,42 @@ def test_child_fk_resolves_to_uid_deduped_parent():
 
 
 # ---------------------------------------------------------------------------
-# id fallback REMOVED — a pre-uid row (no `uid` key) is now REJECTED.
-# Phase C makes `uid` mandatory.
+# natural-key fallback — a pre-uid row (no `uid` key) imports via natural key
+# (barcode for products) and deduplicates on re-import.  Phase C restored this
+# fallback so legacy local records that predate uid issuance are not silently
+# dropped during migration; the strict-reject phase was too aggressive.
 # ---------------------------------------------------------------------------
-def test_id_fallback_row_without_uid_is_rejected():
-    owner = _signup("IdFallback Co")
+def test_no_uid_row_imports_via_natural_key_and_deduplicates():
+    owner = _signup("NaturalKey Co")
     bid = owner["bid"]
     SRC_OWNER = 8800
     db = SessionLocal()
     try:
         existing = set(inspect(db.bind).get_table_names())
 
-        # No `uid` key at all.
+        # No `uid` key at all — should import via barcode natural-key fallback.
         p = [{"id": 880001, "business_id": SRC_OWNER,
               "name": "NoUidProd", "barcode": "IDF-1",
               "selling_price": 4.0, "track_inventory": True}]
-        
-        # Phase C strictly rejects rows without a uid.
-        assert _import_with_remap(db, "products", p, bid, SRC_OWNER, existing, {}) == 0
-        
+
+        # First import: row has no uid → natural-key lookup; not found → INSERT.
+        assert _import_with_remap(db, "products", p, bid, SRC_OWNER, existing, {}) == 1
+
         cnt = db.execute(
             text("SELECT COUNT(*) FROM products WHERE barcode = 'IDF-1' AND business_id = :b"),
             {"b": bid},
         ).scalar()
-        assert cnt == 0
+        assert cnt == 1, "row should have been inserted via natural-key fallback"
+
+        # Second import of the SAME row: natural-key finds the existing row → UPDATE (dedup).
+        id_maps: dict = {}
+        assert _import_with_remap(db, "products", p, bid, SRC_OWNER, existing, id_maps) == 0
+
+        cnt2 = db.execute(
+            text("SELECT COUNT(*) FROM products WHERE barcode = 'IDF-1' AND business_id = :b"),
+            {"b": bid},
+        ).scalar()
+        assert cnt2 == 1, "re-import must dedup, not create a duplicate row"
     finally:
         db.rollback()
         db.close()
