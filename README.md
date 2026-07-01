@@ -1,3 +1,12 @@
+---
+title: BizAssist
+emoji: 💎
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
+
 # BizAssist — AI-Powered Business Intelligence & Billing Ecosystem
 
 BizAssist is a high-performance, local-first business intelligence assistant and billing system designed for all scales of operations, including retail, distribution, wholesale, and service businesses. 
