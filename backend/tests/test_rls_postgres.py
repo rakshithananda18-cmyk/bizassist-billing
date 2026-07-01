@@ -22,6 +22,7 @@ also mirrors the real-world requirement that the app's DB role must not bypass.
 """
 import os
 import contextlib
+from pathlib import Path
 import pytest
 
 psycopg2 = pytest.importorskip("psycopg2", reason="psycopg2 not installed")
@@ -181,3 +182,17 @@ def test_T6_fail_closed_cross_tenant_update_affects_zero(schema):
     with _as_app(app_dsn, 1) as cur:
         cur.execute("UPDATE customers SET name='hacked' WHERE business_id = 2;")
         assert cur.rowcount == 0
+
+
+def test_production_rls_migration_does_not_fail_open():
+    """The production Alembic policy must not reintroduce the old
+    `setting IS NULL OR tenant_match` fail-open predicate."""
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "alembic"
+        / "versions"
+        / "d7e3a9c6f8b1_create_rls_policies.py"
+    )
+    sql = migration.read_text(encoding="utf-8")
+    assert "nullif(current_setting('app.current_business_id', true), '') IS NULL" not in sql
+    assert "WITH CHECK" in sql

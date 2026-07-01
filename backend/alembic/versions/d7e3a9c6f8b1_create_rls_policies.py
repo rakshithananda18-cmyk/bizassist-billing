@@ -33,8 +33,10 @@ def upgrade() -> None:
             op.execute(f"""
                 CREATE POLICY tenant_isolation ON public.{table}
                 USING (
-                    nullif(current_setting('app.current_business_id', true), '') IS NULL
-                    OR business_id = nullif(current_setting('app.current_business_id', true), '')::integer
+                    business_id = nullif(current_setting('app.current_business_id', true), '')::integer
+                )
+                WITH CHECK (
+                    business_id = nullif(current_setting('app.current_business_id', true), '')::integer
                 );
             """)
 
@@ -44,8 +46,11 @@ def upgrade() -> None:
         op.execute("""
             CREATE POLICY users_tenant_isolation ON public.users
             USING (
-                nullif(current_setting('app.current_business_id', true), '') IS NULL
-                OR id = nullif(current_setting('app.current_business_id', true), '')::integer
+                id = nullif(current_setting('app.current_business_id', true), '')::integer
+                OR parent_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
+            )
+            WITH CHECK (
+                id = nullif(current_setting('app.current_business_id', true), '')::integer
                 OR parent_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
             );
         """)
@@ -56,8 +61,11 @@ def upgrade() -> None:
         op.execute("""
             CREATE POLICY b2b_connections_tenant_isolation ON public.b2b_connections
             USING (
-                nullif(current_setting('app.current_business_id', true), '') IS NULL
-                OR buyer_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
+                buyer_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
+                OR seller_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
+            )
+            WITH CHECK (
+                buyer_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
                 OR seller_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
             );
         """)
@@ -69,8 +77,7 @@ def upgrade() -> None:
             CREATE POLICY connection_codes_tenant_isolation ON public.connection_codes
             USING (true)
             WITH CHECK (
-                nullif(current_setting('app.current_business_id', true), '') IS NULL
-                OR seller_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
+                seller_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
             );
         """)
 
@@ -80,8 +87,11 @@ def upgrade() -> None:
         op.execute("""
             CREATE POLICY b2b_orders_tenant_isolation ON public.b2b_orders
             USING (
-                nullif(current_setting('app.current_business_id', true), '') IS NULL
-                OR buyer_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
+                buyer_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
+                OR seller_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
+            )
+            WITH CHECK (
+                buyer_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
                 OR seller_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
             );
         """)
@@ -92,8 +102,11 @@ def upgrade() -> None:
         op.execute("""
             CREATE POLICY shared_ledgers_tenant_isolation ON public.shared_ledgers
             USING (
-                nullif(current_setting('app.current_business_id', true), '') IS NULL
-                OR buyer_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
+                buyer_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
+                OR seller_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
+            )
+            WITH CHECK (
+                buyer_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
                 OR seller_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
             );
         """)
@@ -105,8 +118,7 @@ def upgrade() -> None:
         op.execute("""
             CREATE POLICY invoice_line_items_tenant_isolation ON public.invoice_line_items
             USING (
-                nullif(current_setting('app.current_business_id', true), '') IS NULL
-                OR EXISTS (
+                EXISTS (
                     SELECT 1 FROM public.invoices i 
                     WHERE i.id = invoice_line_items.invoice_id 
                     AND i.business_id = nullif(current_setting('app.current_business_id', true), '')::integer
@@ -120,8 +132,7 @@ def upgrade() -> None:
         op.execute("""
             CREATE POLICY purchase_order_line_items_tenant_isolation ON public.purchase_order_line_items
             USING (
-                nullif(current_setting('app.current_business_id', true), '') IS NULL
-                OR EXISTS (
+                EXISTS (
                     SELECT 1 FROM public.purchase_orders po 
                     WHERE po.id = purchase_order_line_items.purchase_order_id 
                     AND po.business_id = nullif(current_setting('app.current_business_id', true), '')::integer
@@ -135,8 +146,7 @@ def upgrade() -> None:
         op.execute("""
             CREATE POLICY purchase_invoice_line_items_tenant_isolation ON public.purchase_invoice_line_items
             USING (
-                nullif(current_setting('app.current_business_id', true), '') IS NULL
-                OR EXISTS (
+                EXISTS (
                     SELECT 1 FROM public.purchase_invoices pi 
                     WHERE pi.id = purchase_invoice_line_items.purchase_invoice_id 
                     AND pi.business_id = nullif(current_setting('app.current_business_id', true), '')::integer
@@ -150,8 +160,7 @@ def upgrade() -> None:
         op.execute("""
             CREATE POLICY stock_transfer_line_items_tenant_isolation ON public.stock_transfer_line_items
             USING (
-                nullif(current_setting('app.current_business_id', true), '') IS NULL
-                OR EXISTS (
+                EXISTS (
                     SELECT 1 FROM public.stock_transfers st 
                     WHERE st.id = stock_transfer_line_items.stock_transfer_id 
                     AND st.business_id = nullif(current_setting('app.current_business_id', true), '')::integer
@@ -165,8 +174,7 @@ def upgrade() -> None:
         op.execute("""
             CREATE POLICY journal_lines_tenant_isolation ON public.journal_lines
             USING (
-                nullif(current_setting('app.current_business_id', true), '') IS NULL
-                OR EXISTS (
+                EXISTS (
                     SELECT 1 FROM public.journal_entries je 
                     WHERE je.id = journal_lines.journal_entry_id 
                     AND je.business_id = nullif(current_setting('app.current_business_id', true), '')::integer
@@ -180,8 +188,7 @@ def upgrade() -> None:
         op.execute("""
             CREATE POLICY b2b_order_line_items_tenant_isolation ON public.b2b_order_line_items
             USING (
-                nullif(current_setting('app.current_business_id', true), '') IS NULL
-                OR EXISTS (
+                EXISTS (
                     SELECT 1 FROM public.b2b_orders o 
                     WHERE o.id = b2b_order_line_items.b2b_order_id 
                     AND (
@@ -198,8 +205,7 @@ def upgrade() -> None:
         op.execute("""
             CREATE POLICY invoice_payments_tenant_isolation ON public.invoice_payments
             USING (
-                nullif(current_setting('app.current_business_id', true), '') IS NULL
-                OR EXISTS (
+                EXISTS (
                     SELECT 1 FROM public.invoices i 
                     WHERE i.id = invoice_payments.invoice_id 
                     AND i.business_id = nullif(current_setting('app.current_business_id', true), '')::integer
@@ -218,8 +224,7 @@ def upgrade() -> None:
         op.execute("""
             CREATE POLICY product_barcodes_tenant_isolation ON public.product_barcodes
             USING (
-                nullif(current_setting('app.current_business_id', true), '') IS NULL
-                OR EXISTS (
+                EXISTS (
                     SELECT 1 FROM public.products p 
                     WHERE p.id = product_barcodes.product_id 
                     AND p.business_id = nullif(current_setting('app.current_business_id', true), '')::integer

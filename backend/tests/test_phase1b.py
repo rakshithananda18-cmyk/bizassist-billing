@@ -46,7 +46,7 @@ def cleanup_test_db():
                 pass
 
 from database.db import SessionLocal
-from database.models import User, Product, Customer, Invoice, InvoicePayment
+from database.models import User, Product, Customer, Invoice, InvoicePayment, Expense
 from core.stock import ledger as SL
 
 client = TestClient(app)
@@ -268,6 +268,35 @@ def test_payments_api(auth_owner):
     assert ledger.status_code == 200
     assert ledger.json()["entries"][0]["paid_amount"] == 50.0
     assert ledger.json()["entries"][0]["outstanding"] == 68.0 # 118.0 - 50.0
+
+
+def test_expense_delete_is_blocked_append_only(auth_owner):
+    """Expenses feed the books, so DELETE must not physically remove them."""
+    headers = auth_owner["headers"]
+    bid = auth_owner["bid"]
+
+    created = client.post("/expenses", headers=headers, json={
+        "expense_date": "2026-07-02",
+        "category": "Rent",
+        "expense_type": "Indirect",
+        "amount": 1200.0,
+        "payment_mode": "Cash",
+        "note": "monthly shop rent",
+    })
+    assert created.status_code == 201, created.text
+    expense_id = created.json()["id"]
+
+    deleted = client.delete(f"/expenses/{expense_id}", headers=headers)
+    assert deleted.status_code == 405
+    assert "append-only" in deleted.json()["detail"].lower()
+
+    db = SessionLocal()
+    try:
+        exp = db.query(Expense).filter(Expense.id == expense_id, Expense.business_id == bid).first()
+        assert exp is not None
+        assert exp.amount == 1200.0
+    finally:
+        db.close()
 
 
 # ─── 5. Credit Notes API ───────────────────────────────────────────────────────

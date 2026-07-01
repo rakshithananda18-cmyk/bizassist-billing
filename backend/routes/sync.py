@@ -38,6 +38,23 @@ logger = logging.getLogger("bizassist.routes.sync")
 from database.sync_map import MODEL_MAP as _MODEL_MAP, ENTITY_BROADCAST_MAP, resolve_parent_fk_uids
 
 
+APPEND_ONLY_DELETE_BLOCKLIST = frozenset({
+    # Money/audit documents and their lines.
+    "invoices",
+    "invoice_line_items",
+    "payments",
+    "invoice_payments",
+    "purchase_invoices",
+    "purchase_invoice_line_items",
+    "purchase_orders",
+    "purchase_order_line_items",
+    "expenses",
+    # Stock/accounting ledgers are historical truth, not mutable state.
+    "stock_ledger",
+    "b2b_ledgers",
+})
+
+
 # ---------------------------------------------------------------------------
 # PYDANTIC SCHEMAS
 # ---------------------------------------------------------------------------
@@ -141,6 +158,25 @@ def push_changes(
     """
     business_id = _resolve_business_id_by_username(current_user, db)
     logger.info("sync/push: business_id=%s received %s changes", business_id, len(payload.changes))
+
+    blocked_delete_entities = sorted({
+        change.entity
+        for change in payload.changes
+        if change.operation.upper() == "DELETE" and change.entity in APPEND_ONLY_DELETE_BLOCKLIST
+    })
+    if blocked_delete_entities:
+        logger.warning(
+            "sync/push: rejected append-only delete(s) for biz=%s entities=%s",
+            business_id,
+            blocked_delete_entities,
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "DELETE is not allowed for append-only financial entities: "
+                + ", ".join(blocked_delete_entities)
+            ),
+        )
 
     # Temporarily disable trigger hooks to prevent queuing writes back on the cloud
     token = sync_disabled_var.set(True)

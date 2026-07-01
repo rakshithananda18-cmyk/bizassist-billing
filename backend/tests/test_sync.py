@@ -13,7 +13,7 @@ sys.path.insert(0, backend_path)
 from fastapi.testclient import TestClient
 from main_groq import app
 from database.db import SessionLocal
-from database.models import Customer, Product, SyncQueue, SyncLog, ConflictLog, User
+from database.models import Customer, Product, Invoice, SyncQueue, SyncLog, ConflictLog, User
 from services.sync_worker import run_hybrid_sync, trigger_sync_run
 
 client = TestClient(app)
@@ -200,3 +200,49 @@ def test_sync_lifecycle():
     assert "customers" in pull_data["changes"]
     assert len(pull_data["changes"]["customers"]) == 1
     assert pull_data["changes"]["customers"][0]["phone"] == "1111111111"
+
+
+def test_sync_push_rejects_append_only_delete():
+    owner = _signup("Append Only Sync Shop")
+    db = SessionLocal()
+    try:
+        inv = Invoice(
+            business_id=owner["bid"],
+            invoice_id=f"SYNC-DEL-{uuid.uuid4().hex[:6]}",
+            customer="Blocked Delete Customer",
+            invoice_date="2026-07-02",
+            amount=100.0,
+            total_amount=100.0,
+            status="Pending",
+        )
+        db.add(inv)
+        db.commit()
+        invoice_id = inv.id
+    finally:
+        db.close()
+
+    delete_body = {
+        "changes": [{
+            "entity": "invoices",
+            "entity_id": invoice_id,
+            "operation": "DELETE",
+            "payload": {"id": invoice_id, "business_id": owner["bid"]},
+            "created_at": datetime.utcnow().isoformat(),
+        }]
+    }
+
+    resp = client.post("/api/sync/push", headers=owner["headers"], json=delete_body)
+    assert resp.status_code == 422, resp.text
+    assert "append-only" in resp.json()["detail"].lower()
+
+    db = SessionLocal()
+    try:
+        still_there = (
+            db.query(Invoice)
+            .filter(Invoice.id == invoice_id, Invoice.business_id == owner["bid"])
+            .first()
+        )
+        assert still_there is not None
+        assert still_there.invoice_id.startswith("SYNC-DEL-")
+    finally:
+        db.close()

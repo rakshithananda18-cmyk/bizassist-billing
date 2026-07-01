@@ -116,10 +116,21 @@ Since the backend application does not automatically run Alembic migrations on s
 
 ### Step 1: Get the Production Database URL
 Retrieve the connection string from your Supabase Dashboard or the Hugging Face Space secrets. The URL looks like:
-`postgresql://postgres.[username]:[password]@aws-1-ap-south-1.pooler.supabase.com:5432/postgres`
+`postgresql://postgres.<project-ref>:<password>@<region>.pooler.supabase.com:5432/postgres`
+
+Do not commit the real URL, paste it into docs, or keep it in the local repo.
+For production, store it only in the Hugging Face Space secrets as
+`DATABASE_URL`. Local development should keep using SQLite, for example:
+
+```env
+DATABASE_URL=sqlite:///./bizassist.db
+```
 
 ### Step 2: Run the Migration command
-Navigate to the `backend` directory, activate the Python virtual environment, set the `DATABASE_URL` environment variable, and execute the upgrade command:
+Navigate to the `backend` directory, activate the Python virtual environment,
+temporarily set the `DATABASE_URL` environment variable from your secrets
+manager, and execute the upgrade command. Do this only for a deliberate
+production migration session.
 
 #### On Windows (PowerShell):
 ```powershell
@@ -127,7 +138,7 @@ Navigate to the `backend` directory, activate the Python virtual environment, se
 cd backend
 
 # Set environment variable (temporary for this session)
-$env:DATABASE_URL="postgresql://postgres.[username]:[password]@aws-1-ap-south-1.pooler.supabase.com:5432/postgres"
+$env:DATABASE_URL="<SUPABASE_DATABASE_URL_FROM_SECRET>"
 
 # Execute migration to head
 & ..\venv\Scripts\python -m alembic upgrade head
@@ -139,7 +150,7 @@ $env:DATABASE_URL="postgresql://postgres.[username]:[password]@aws-1-ap-south-1.
 cd backend
 
 # Run migration
-DATABASE_URL="postgresql://postgres.[username]:[password]@aws-1-ap-south-1.pooler.supabase.com:5432/postgres" python -m alembic upgrade head
+DATABASE_URL="<SUPABASE_DATABASE_URL_FROM_SECRET>" python -m alembic upgrade head
 ```
 
 ### Step 3: Rolling Back Migrations
@@ -152,7 +163,7 @@ If you need to undo a migration, use the `downgrade` command:
 
 #### On Linux / macOS / Bash:
 ```bash
-DATABASE_URL="postgresql://..." python -m alembic downgrade -1
+DATABASE_URL="<SUPABASE_DATABASE_URL_FROM_SECRET>" python -m alembic downgrade -1
 ```
 
 ### Step 4: Verification

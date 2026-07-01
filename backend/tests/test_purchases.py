@@ -406,22 +406,22 @@ def test_expenses_and_debit_notes_api(api_auth):
     assert metrics_before.get("Indirect Expenses (OPEX)") == 1500.0
     assert metrics_before.get("Total Expenses (OPEX)") == 1500.0
 
-    # 4. Test deleting expense
+    # 4. Expenses are append-only financial records; DELETE is blocked.
     del_resp = client.delete(
         f"/expenses/{expense_data['id']}",
         headers=api_auth["owner_headers"]
     )
-    assert del_resp.status_code == 200
-    assert del_resp.json()["success"] is True
+    assert del_resp.status_code == 405
+    assert "append-only" in del_resp.json()["detail"].lower()
 
-    # 5. Verify expense is deleted in P&L
+    # 5. Verify the expense still feeds P&L after the blocked delete.
     pnl_resp_after = client.get(
         "/reports/profit-loss",
         headers=api_auth["owner_headers"]
     )
     metrics_after = {m["metric"]: m["amount"] for m in pnl_resp_after.json()}
-    assert metrics_after.get("Indirect Expenses (OPEX)") == 0.0
-    assert metrics_after.get("Total Expenses (OPEX)") == 0.0
+    assert metrics_after.get("Indirect Expenses (OPEX)") == 1500.0
+    assert metrics_after.get("Total Expenses (OPEX)") == 1500.0
 
     # 6. Test Debit Notes via API
     # 6a. First we need a product

@@ -388,7 +388,7 @@ def delete_expense(
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db)
 ):
-    """Delete an expense record."""
+    """Expenses are append-only financial records; use a reversal/void command."""
     bid = current_user["id"]
     exp = db.query(Expense).filter(
         Expense.id == expense_id,
@@ -397,15 +397,15 @@ def delete_expense(
     if not exp:
         raise HTTPException(status_code=404, detail="Expense not found")
 
-    try:
-        db.delete(exp)
-        db.commit()
-        background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "payment"})
-        return {"success": True, "message": "Expense deleted successfully"}
-    except Exception as e:
-        db.rollback()
-        logger.error("delete_expense failed: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Could not delete expense")
+    logger.warning(
+        "delete_expense blocked for append-only financial record expense_id=%s biz=%s",
+        expense_id,
+        bid,
+    )
+    raise HTTPException(
+        status_code=405,
+        detail="Expenses are append-only financial records. Create a reversal/void entry instead.",
+    )
 
 
 # ── Credit Notes ──────────────────────────────────────────────────────────────
