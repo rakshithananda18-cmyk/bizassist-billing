@@ -15,6 +15,7 @@ client = TestClient(app)
 def test_signup_policy_blocks_test_prefixes_on_non_test_db(monkeypatch):
     # Simulate running on a production/development database (without "test" in the URL)
     monkeypatch.setenv("DATABASE_URL", "sqlite:///./prod_bizassist.db")
+    monkeypatch.delenv("ALLOW_TEST_USERS", raising=False)
     
     # Try to signup with test prefixes
     test_prefixes = ["own_", "test_", "idem_", "pull_", "u_", "o_", "biz_test_", "rec_"]

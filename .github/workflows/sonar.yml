@@ -31,7 +31,7 @@ jobs:
       - name: Run Backend Tests with Coverage
         run: |
           cd backend
-          python -m pytest -q --ignore=tests/test_rls_postgres.py --cov=backend --cov-report=xml
+          python -m pytest -q --ignore=tests/test_rls_postgres.py --cov=. --cov-report=xml
         env:
           DATABASE_URL: "sqlite:///./test_bizassist.db"
           JWT_SECRET: "dev-test-secret-please-change-0123456789abcdef"
