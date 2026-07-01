@@ -304,6 +304,18 @@ def _migrate_session_nulls(conn):
         logger.warning(f"[Migration] Session backfill skipped: {e}")
 
 
+def _backfill_biz_ids(db):
+    from database.models import User
+    from core.connection.utils import generate_bizid
+    users_missing = db.query(User).filter(User.public_id == None).all()
+    if users_missing:
+        for u in users_missing:
+            u.public_id = generate_bizid(db)
+            db.add(u)
+        db.commit()
+        logger.info(f"[Migration] Backfilled BizID for {len(users_missing)} legacy users.")
+
+
 def _seed_users(db):
     is_test = "test" in os.environ.get("DATABASE_URL", "")
 
@@ -370,6 +382,7 @@ def run_migrations_and_seed():
     # 4. Seed users
     db = SessionLocal()
     try:
+        _backfill_biz_ids(db)
         _seed_users(db)
     except Exception as e:
         logger.error(f"[Migration] Seed error: {e}", exc_info=True)
