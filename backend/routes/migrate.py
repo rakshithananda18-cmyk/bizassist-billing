@@ -472,21 +472,24 @@ def _reset_sequences(db: Session, table_names: list[str]) -> None:
 _NATURAL_KEYS: dict[str, list[str]] = {
     # Tables where the natural key reliably identifies ONE row per business.
     # Only include tables where the key is genuinely unique per business.
-    "customers": ["phone", "name"],
-    "vendors": ["phone", "name"],
-    "products": ["barcode", "sku", "name"],
-    "invoices": ["invoice_id"],
-    "purchase_invoices": ["invoice_id", "bill_no"],
-    "purchase_orders": ["order_no"],
-    "godowns": ["name"],
-    "product_barcodes": ["barcode"],
+    "customers":         ["phone", "name"],
+    "vendors":           ["phone", "name"],
+    "products":          ["barcode", "sku", "name"],
+    "invoices":          ["invoice_id"],
+    "purchase_invoices": ["invoice_number"],   # was "bill_no" (wrong col name)
+    "purchase_orders":   ["po_number"],         # was "order_no" (wrong col name)
+    "godowns":           ["name"],
+    "product_barcodes":  ["barcode"],
     "business_settings": [],  # one row per business → match on business_id alone
-    # NOTE: `inventory` intentionally excluded.
-    # A product can have MULTIPLE inventory rows (different batches, godowns,
-    # suppliers). Matching on product_id alone would clobber the wrong batch.
-    # Inventory rows without a uid are inserted fresh (safe) rather than
-    # matched via a lossy LIMIT 1 query. Once uid is enforced (Phase C-3)
-    # this fallback is retired entirely.
+    # --- Intentionally NO entry (INSERT FRESH when uid is absent) ---
+    # inventory           : same product → many rows (batches, godowns, suppliers)
+    # stock_ledger        : append-only by design, never update an old movement
+    # payments            : multiple payments per invoice, no unique field
+    # invoice_payments    : idempotency_key may be NULL in pre-uid rows
+    # shared_ledgers      : append-only ledger, multiple entries per pair
+    # expenses            : multiple expenses per date/category
+    # stock_transfers     : multiple transfers between same godown pair
+    # *_line_items        : multiple lines per parent document
 }
 
 
