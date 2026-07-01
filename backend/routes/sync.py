@@ -162,13 +162,19 @@ def push_changes(
 
             existing = None
             uid_val = data.get("uid")
-            
-            # (Phase C) Strict uid matching for all synced models. No integer-id fallback.
+
+            # (Phase C) Prefer uid lookup for synced models, but support legacy
+            # local updates when an id-only payload is received.
             if hasattr(model_cls, "uid"):
-                if not uid_val:
-                    logger.warning("sync/push: rejecting payload without uid for %s", change.entity)
-                    continue
-                existing = db.query(model_cls).filter(model_cls.uid == uid_val).first()
+                if uid_val:
+                    existing = db.query(model_cls).filter(model_cls.uid == uid_val).first()
+                elif data.get("id") is not None:
+                    existing = db.query(model_cls).filter(model_cls.id == change.entity_id).first()
+                    if existing is None:
+                        logger.warning(
+                            "sync/push: payload without uid for %s will be applied as insert or id-fallback if matched",
+                            change.entity,
+                        )
                 if "id" in data:
                     del data["id"]
             else:

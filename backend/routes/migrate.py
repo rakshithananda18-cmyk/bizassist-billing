@@ -578,13 +578,33 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
 
         # Idempotent dedup. (Phase C) Match strictly on the durable `uid`.
         existing_id = _uid_lookup(db, table_name, col_names, dest_owner_id, filtered)
-        
-        # (Phase C) Stop processing if no uid is present. We require all incoming sync/migration records
-        # to have a uid to guarantee consistency without ID fallbacks.
-        if not filtered.get("uid"):
-            logger.warning("migrate/import[remap]: rejecting row without uid for %s", table_name)
-            continue
-            
+
+        # Rows without a durable uid may still be imported successfully.
+        # Fall back to a table-specific natural-key lookup when uid is absent.
+        if existing_id is None and not filtered.get("uid"):
+            logger.debug("migrate/import[remap]: attempting natural-key lookup for %s", table_name)
+            keys = _NATURAL_KEYS.get(table_name, [])
+            for key in keys:
+                if key in col_names and filtered.get(key) is not None:
+                    try:
+                        if "business_id" in col_names:
+                            row = db.execute(
+                                text(f'SELECT id FROM "{table_name}" WHERE business_id = :b AND "{key}" = :v LIMIT 1'),
+                                {"b": dest_owner_id, "v": filtered[key]},
+                            ).first()
+                        else:
+                            row = db.execute(
+                                text(f'SELECT id FROM "{table_name}" WHERE "{key}" = :v LIMIT 1'),
+                                {"v": filtered[key]},
+                            ).first()
+                        if row:
+                            existing_id = int(row[0])
+                            logger.debug("migrate/import[remap]: natural-key matched %s on %s", table_name, key)
+                            break
+                    except Exception:
+                        # ignore and try next key
+                        continue
+
         if existing_id is not None:
             if old_id is not None:
                 table_map[old_id] = existing_id

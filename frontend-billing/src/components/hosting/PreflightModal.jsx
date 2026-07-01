@@ -162,7 +162,7 @@ export default function PreflightModal({
                 Close
               </button>
               <a
-                href="https://github.com/rakshithananda18/bizassist/releases"
+                href="https://github.com/rakshithananda18-cmyk/bizassist-billing/releases"
                 target="_blank"
                 rel="noreferrer"
                 style={{
