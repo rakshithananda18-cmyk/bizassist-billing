@@ -53,7 +53,7 @@ export default function B2BNetwork() {
     setLoading(true)
     try {
       const [bizidRes, connRes] = await Promise.all([
-        authFetch('/connections/bizid').then(r => r.ok ? r.json() : null),
+        authFetch('/bizid').then(r => r.ok ? r.json() : null),
         authFetch('/connections/connections').then(r => r.ok ? r.json() : { as_seller: [], as_buyer: [] })
       ])
       
