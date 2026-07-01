@@ -49,7 +49,7 @@ jobs:
         working-directory: frontend-billing
         run: |
           npm ci
-          npm install -D @vitest/coverage-v8
+          npm install -D @vitest/coverage-v8@^1.6.0
 
       - name: Run Frontend Tests with Coverage
         working-directory: frontend-billing

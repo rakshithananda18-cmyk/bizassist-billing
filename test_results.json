@@ -1,12 +1,12 @@
 {
   "summary": {
-    "total": 713,
-    "passed": 665,
+    "total": 708,
+    "passed": 708,
     "failed": 0,
     "skipped": 0,
-    "duration": 495.7786931991577,
+    "duration": 543.9672486782074,
     "timestamp": "2026-07-02T00:45:05.690811",
-    "status": "running"
+    "status": "completed"
   },
   "tests": [
     {
@@ -6656,6 +6656,436 @@
       "line": 98,
       "outcome": "passed",
       "duration": 0.8060500000137836,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_sync_pull.py::test_has_more_paging",
+      "name": "test_has_more_paging",
+      "file": "tests\\test_sync_pull.py",
+      "line": 110,
+      "outcome": "passed",
+      "duration": 0.8914093999774195,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_sync_pull.py::test_pull_is_tenant_scoped",
+      "name": "test_pull_is_tenant_scoped",
+      "file": "tests\\test_sync_pull.py",
+      "line": 128,
+      "outcome": "passed",
+      "duration": 1.251360599999316,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_sync_pull.py::test_bad_cursor_is_safe_backfill",
+      "name": "test_bad_cursor_is_safe_backfill",
+      "file": "tests\\test_sync_pull.py",
+      "line": 137,
+      "outcome": "passed",
+      "duration": 0.7294018999673426,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_tier_pricing.py::test_order_uses_wholesale_tier_then_discount",
+      "name": "test_order_uses_wholesale_tier_then_discount",
+      "file": "tests\\test_tier_pricing.py",
+      "line": 83,
+      "outcome": "passed",
+      "duration": 0.12573240004712716,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_tier_pricing.py::test_order_uses_distributor_tier_then_discount",
+      "name": "test_order_uses_distributor_tier_then_discount",
+      "file": "tests\\test_tier_pricing.py",
+      "line": 100,
+      "outcome": "passed",
+      "duration": 0.08037669997429475,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_tier_pricing.py::test_order_tier_falls_back_to_selling_when_tier_price_zero",
+      "name": "test_order_tier_falls_back_to_selling_when_tier_price_zero",
+      "file": "tests\\test_tier_pricing.py",
+      "line": 115,
+      "outcome": "passed",
+      "duration": 0.08855420001782477,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_tier_pricing.py::test_catalog_distributor_falls_back_to_wholesale_when_distributor_zero",
+      "name": "test_catalog_distributor_falls_back_to_wholesale_when_distributor_zero",
+      "file": "tests\\test_tier_pricing.py",
+      "line": 130,
+      "outcome": "passed",
+      "duration": 0.07324609998613596,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_token_accounting.py::test_ai_simple_reports_real_tokens",
+      "name": "test_ai_simple_reports_real_tokens",
+      "file": "tests\\test_token_accounting.py",
+      "line": 78,
+      "outcome": "passed",
+      "duration": 1.5689457000116818,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_token_accounting.py::test_direct_answer_makes_no_llm_call",
+      "name": "test_direct_answer_makes_no_llm_call",
+      "file": "tests\\test_token_accounting.py",
+      "line": 93,
+      "outcome": "passed",
+      "duration": 0.31194220000179484,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_token_accounting.py::test_conversational_logs_token_usage",
+      "name": "test_conversational_logs_token_usage",
+      "file": "tests\\test_token_accounting.py",
+      "line": 111,
+      "outcome": "passed",
+      "duration": 0.09756730002118275,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_token_accounting.py::test_ai_complex_surfaces_real_tokens",
+      "name": "test_ai_complex_surfaces_real_tokens",
+      "file": "tests\\test_token_accounting.py",
+      "line": 141,
+      "outcome": "passed",
+      "duration": 0.4126124999602325,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_token_accounting.py::test_ask_and_stream_agree_on_direct_source",
+      "name": "test_ask_and_stream_agree_on_direct_source",
+      "file": "tests\\test_token_accounting.py",
+      "line": 155,
+      "outcome": "passed",
+      "duration": 0.7530541000305675,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_trial_balance.py::test_trial_balance_empty_foots_to_zero",
+      "name": "test_trial_balance_empty_foots_to_zero",
+      "file": "tests\\test_trial_balance.py",
+      "line": 107,
+      "outcome": "passed",
+      "duration": 0.5810317000141367,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_trial_balance.py::test_trial_balance_always_foots_after_transactions",
+      "name": "test_trial_balance_always_foots_after_transactions",
+      "file": "tests\\test_trial_balance.py",
+      "line": 121,
+      "outcome": "passed",
+      "duration": 0.7492640999844298,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_trial_balance.py::test_trial_balance_cashier_forbidden",
+      "name": "test_trial_balance_cashier_forbidden",
+      "file": "tests\\test_trial_balance.py",
+      "line": 139,
+      "outcome": "passed",
+      "duration": 1.4732046000426635,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_trial_balance.py::test_trial_balance_tenant_isolation",
+      "name": "test_trial_balance_tenant_isolation",
+      "file": "tests\\test_trial_balance.py",
+      "line": 145,
+      "outcome": "passed",
+      "duration": 1.2787128000054508,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_uid_cross_db.py::test_uid_no_collision_same_source_id_diff_uid",
+      "name": "test_uid_no_collision_same_source_id_diff_uid",
+      "file": "tests\\test_uid_cross_db.py",
+      "line": 51,
+      "outcome": "passed",
+      "duration": 0.9704129000310786,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_uid_cross_db.py::test_child_fk_resolves_to_uid_deduped_parent",
+      "name": "test_child_fk_resolves_to_uid_deduped_parent",
+      "file": "tests\\test_uid_cross_db.py",
+      "line": 87,
+      "outcome": "passed",
+      "duration": 0.44335590000264347,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_uid_cross_db.py::test_no_uid_row_imports_via_natural_key_and_deduplicates",
+      "name": "test_no_uid_row_imports_via_natural_key_and_deduplicates",
+      "file": "tests\\test_uid_cross_db.py",
+      "line": 139,
+      "outcome": "passed",
+      "duration": 0.3843227000324987,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_uid_sync_keys.py::test_uid_column_present_on_all_owned_tables",
+      "name": "test_uid_column_present_on_all_owned_tables",
+      "file": "tests\\test_uid_sync_keys.py",
+      "line": 44,
+      "outcome": "passed",
+      "duration": 0.016495499992743134,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_uid_sync_keys.py::test_new_rows_get_distinct_non_null_uid",
+      "name": "test_new_rows_get_distinct_non_null_uid",
+      "file": "tests\\test_uid_sync_keys.py",
+      "line": 53,
+      "outcome": "passed",
+      "duration": 0.025655100005678833,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_uid_sync_keys.py::test_backfill_fills_null_uid",
+      "name": "test_backfill_fills_null_uid",
+      "file": "tests\\test_uid_sync_keys.py",
+      "line": 71,
+      "outcome": "passed",
+      "duration": 0.044561400020029396,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_uid_sync_keys.py::test_sync_cross_db_no_collision",
+      "name": "test_sync_cross_db_no_collision",
+      "file": "tests\\test_uid_sync_keys.py",
+      "line": 106,
+      "outcome": "passed",
+      "duration": 0.38589029997820035,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_uid_sync_keys.py::test_sync_child_fk_by_parent_uid",
+      "name": "test_sync_child_fk_by_parent_uid",
+      "file": "tests\\test_uid_sync_keys.py",
+      "line": 164,
+      "outcome": "passed",
+      "duration": 0.4865898999851197,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_uid_sync_keys.py::test_sync_merge_lww_uid",
+      "name": "test_sync_merge_lww_uid",
+      "file": "tests\\test_uid_sync_keys.py",
+      "line": 237,
+      "outcome": "passed",
+      "duration": 0.4999356000334956,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_uid_sync_keys.py::test_sync_id_fallback",
+      "name": "test_sync_id_fallback",
+      "file": "tests\\test_uid_sync_keys.py",
+      "line": 313,
+      "outcome": "passed",
+      "duration": 0.4467816000105813,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_universal_schema.py::test_every_business_type_fits_one_product_table",
+      "name": "test_every_business_type_fits_one_product_table",
+      "file": "tests\\test_universal_schema.py",
+      "line": 56,
+      "outcome": "passed",
+      "duration": 0.0487608999828808,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_universal_schema.py::test_invoice_has_gst_reverse_charge_and_universal_fields",
+      "name": "test_invoice_has_gst_reverse_charge_and_universal_fields",
+      "file": "tests\\test_universal_schema.py",
+      "line": 101,
+      "outcome": "passed",
+      "duration": 0.013810799981001765,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_universal_schema.py::test_line_item_supports_batch_and_serial",
+      "name": "test_line_item_supports_batch_and_serial",
+      "file": "tests\\test_universal_schema.py",
+      "line": 124,
+      "outcome": "passed",
+      "duration": 0.03857089998200536,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_user_policy.py::test_signup_policy_blocks_test_prefixes_on_non_test_db",
+      "name": "test_signup_policy_blocks_test_prefixes_on_non_test_db",
+      "file": "tests\\test_user_policy.py",
+      "line": 14,
+      "outcome": "passed",
+      "duration": 0.1499277999973856,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_user_policy.py::test_signup_policy_allows_test_prefixes_on_test_db",
+      "name": "test_signup_policy_allows_test_prefixes_on_test_db",
+      "file": "tests\\test_user_policy.py",
+      "line": 32,
+      "outcome": "passed",
+      "duration": 0.46409299998776987,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_writing_router.py::test_writing_tasks_are_detected[Draft a polite, professional follow-up to this customer about their outstanding invoices]",
+      "name": "test_writing_tasks_are_detected[Draft a polite, professional follow-up to this customer about their outstanding invoices]",
+      "file": "tests\\test_writing_router.py",
+      "line": 21,
+      "outcome": "passed",
+      "duration": 0.0014201000449247658,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_writing_router.py::test_writing_tasks_are_detected[draft a payment reminder for my overdue customers]",
+      "name": "test_writing_tasks_are_detected[draft a payment reminder for my overdue customers]",
+      "file": "tests\\test_writing_router.py",
+      "line": 21,
+      "outcome": "passed",
+      "duration": 0.0009213999728672206,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_writing_router.py::test_writing_tasks_are_detected[write a follow up message]",
+      "name": "test_writing_tasks_are_detected[write a follow up message]",
+      "file": "tests\\test_writing_router.py",
+      "line": 21,
+      "outcome": "passed",
+      "duration": 0.0011022999533452094,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_writing_router.py::test_writing_tasks_are_detected[compose an email to a client]",
+      "name": "test_writing_tasks_are_detected[compose an email to a client]",
+      "file": "tests\\test_writing_router.py",
+      "line": 21,
+      "outcome": "passed",
+      "duration": 0.0009322999976575375,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_writing_router.py::test_writing_tasks_are_detected[send a whatsapp reminder]",
+      "name": "test_writing_tasks_are_detected[send a whatsapp reminder]",
+      "file": "tests\\test_writing_router.py",
+      "line": 21,
+      "outcome": "passed",
+      "duration": 0.0004192999913357198,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_writing_router.py::test_writing_tasks_are_detected[reply to this customer's message]",
+      "name": "test_writing_tasks_are_detected[reply to this customer's message]",
+      "file": "tests\\test_writing_router.py",
+      "line": 21,
+      "outcome": "passed",
+      "duration": 0.0008399999933317304,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_writing_router.py::test_writing_tasks_are_detected[prepare a statement for this account]",
+      "name": "test_writing_tasks_are_detected[prepare a statement for this account]",
+      "file": "tests\\test_writing_router.py",
+      "line": 21,
+      "outcome": "passed",
+      "duration": 0.00045870000030845404,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_writing_router.py::test_data_and_lookup_queries_are_not_writing[show overdue invoices]",
+      "name": "test_data_and_lookup_queries_are_not_writing[show overdue invoices]",
+      "file": "tests\\test_writing_router.py",
+      "line": 34,
+      "outcome": "passed",
+      "duration": 0.0010568000143393874,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_writing_router.py::test_data_and_lookup_queries_are_not_writing[total revenue]",
+      "name": "test_data_and_lookup_queries_are_not_writing[total revenue]",
+      "file": "tests\\test_writing_router.py",
+      "line": 34,
+      "outcome": "passed",
+      "duration": 0.0008573000086471438,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_writing_router.py::test_data_and_lookup_queries_are_not_writing[who owes me the most]",
+      "name": "test_data_and_lookup_queries_are_not_writing[who owes me the most]",
+      "file": "tests\\test_writing_router.py",
+      "line": 34,
+      "outcome": "passed",
+      "duration": 0.0013132999883964658,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_writing_router.py::test_data_and_lookup_queries_are_not_writing[how many invoices do I have]",
+      "name": "test_data_and_lookup_queries_are_not_writing[how many invoices do I have]",
+      "file": "tests\\test_writing_router.py",
+      "line": 34,
+      "outcome": "passed",
+      "duration": 0.0007788999937474728,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_writing_router.py::test_data_and_lookup_queries_are_not_writing[tell me about Rahul Traders]",
+      "name": "test_data_and_lookup_queries_are_not_writing[tell me about Rahul Traders]",
+      "file": "tests\\test_writing_router.py",
+      "line": 34,
+      "outcome": "passed",
+      "duration": 0.000694099988322705,
       "traceback": null,
       "longrepr": null
     }
