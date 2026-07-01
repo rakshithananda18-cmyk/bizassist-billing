@@ -23,6 +23,13 @@ DIRECT_SCOPED_TABLES = [
 ]
 
 
+B2B_PAIR_SCOPED_TABLES = [
+    "b2b_connections",
+    "b2b_orders",
+    "b2b_ledgers",
+]
+
+
 BID = "nullif(current_setting('app.current_business_id', true), '')::integer"
 
 
@@ -48,37 +55,22 @@ def upgrade() -> None:
         WITH CHECK (id = {BID} OR parent_business_id = {BID});
     """)
 
-    # op.execute("ALTER TABLE public.b2b_connections FORCE ROW LEVEL SECURITY;")
-    # op.execute("DROP POLICY IF EXISTS b2b_connections_tenant_isolation ON public.b2b_connections;")
-    # op.execute(f"""
-    #     CREATE POLICY b2b_connections_tenant_isolation ON public.b2b_connections
-    #     USING (buyer_business_id = {BID} OR seller_business_id = {BID})
-    #     WITH CHECK (buyer_business_id = {BID} OR seller_business_id = {BID});
-    # """)
+    for table in B2B_PAIR_SCOPED_TABLES:
+        op.execute(f"ALTER TABLE public.{table} FORCE ROW LEVEL SECURITY;")
+        op.execute(f"DROP POLICY IF EXISTS {table}_tenant_isolation ON public.{table};")
+        op.execute(f"""
+            CREATE POLICY {table}_tenant_isolation ON public.{table}
+            USING (buyer_business_id = {BID} OR seller_business_id = {BID})
+            WITH CHECK (buyer_business_id = {BID} OR seller_business_id = {BID});
+        """)
 
-    # op.execute("ALTER TABLE public.connection_codes FORCE ROW LEVEL SECURITY;")
-    # op.execute("DROP POLICY IF EXISTS connection_codes_tenant_isolation ON public.connection_codes;")
-    # op.execute(f"""
-    #     CREATE POLICY connection_codes_tenant_isolation ON public.connection_codes
-    #     USING (true)
-    #     WITH CHECK (seller_business_id = {BID});
-    # """)
-
-    # op.execute("ALTER TABLE public.b2b_orders FORCE ROW LEVEL SECURITY;")
-    # op.execute("DROP POLICY IF EXISTS b2b_orders_tenant_isolation ON public.b2b_orders;")
-    # op.execute(f"""
-    #     CREATE POLICY b2b_orders_tenant_isolation ON public.b2b_orders
-    #     USING (buyer_business_id = {BID} OR seller_business_id = {BID})
-    #     WITH CHECK (buyer_business_id = {BID} OR seller_business_id = {BID});
-    # """)
-
-    # op.execute("ALTER TABLE public.shared_ledgers FORCE ROW LEVEL SECURITY;")
-    # op.execute("DROP POLICY IF EXISTS shared_ledgers_tenant_isolation ON public.shared_ledgers;")
-    # op.execute(f"""
-    #     CREATE POLICY shared_ledgers_tenant_isolation ON public.shared_ledgers
-    #     USING (buyer_business_id = {BID} OR seller_business_id = {BID})
-    #     WITH CHECK (buyer_business_id = {BID} OR seller_business_id = {BID});
-    # """)
+    op.execute("ALTER TABLE public.b2b_invite_codes FORCE ROW LEVEL SECURITY;")
+    op.execute("DROP POLICY IF EXISTS b2b_invite_codes_tenant_isolation ON public.b2b_invite_codes;")
+    op.execute(f"""
+        CREATE POLICY b2b_invite_codes_tenant_isolation ON public.b2b_invite_codes
+        USING (true)
+        WITH CHECK (seller_business_id = {BID});
+    """)
 
     child_policies = {
         "invoice_line_items": (
@@ -135,4 +127,4 @@ def downgrade() -> None:
 
     # Downgrade keeps RLS enabled and scoped rather than restoring the historical
     # fail-open predicate. Use a database backup for emergency rollback.
-    upgrade()
+    pass

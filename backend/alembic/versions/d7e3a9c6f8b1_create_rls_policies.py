@@ -162,7 +162,7 @@ def upgrade() -> None:
             USING (
                 EXISTS (
                     SELECT 1 FROM public.stock_transfers st 
-                    WHERE st.id = stock_transfer_line_items.stock_transfer_id 
+                    WHERE st.id = stock_transfer_line_items.transfer_id 
                     AND st.business_id = nullif(current_setting('app.current_business_id', true), '')::integer
                 )
             );
@@ -176,7 +176,7 @@ def upgrade() -> None:
             USING (
                 EXISTS (
                     SELECT 1 FROM public.journal_entries je 
-                    WHERE je.id = journal_lines.journal_entry_id 
+                    WHERE je.id = journal_lines.entry_id 
                     AND je.business_id = nullif(current_setting('app.current_business_id', true), '')::integer
                 )
             );
@@ -190,7 +190,7 @@ def upgrade() -> None:
             USING (
                 EXISTS (
                     SELECT 1 FROM public.b2b_orders o 
-                    WHERE o.id = b2b_order_line_items.b2b_order_id 
+                    WHERE o.id = b2b_order_line_items.order_id 
                     AND (
                         o.buyer_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
                         OR o.seller_business_id = nullif(current_setting('app.current_business_id', true), '')::integer
@@ -205,16 +205,7 @@ def upgrade() -> None:
         op.execute("""
             CREATE POLICY invoice_payments_tenant_isolation ON public.invoice_payments
             USING (
-                EXISTS (
-                    SELECT 1 FROM public.invoices i 
-                    WHERE i.id = invoice_payments.invoice_id 
-                    AND i.business_id = nullif(current_setting('app.current_business_id', true), '')::integer
-                )
-                OR EXISTS (
-                    SELECT 1 FROM public.payments p 
-                    WHERE p.id = invoice_payments.payment_id 
-                    AND p.business_id = nullif(current_setting('app.current_business_id', true), '')::integer
-                )
+                business_id = nullif(current_setting('app.current_business_id', true), '')::integer
             );
         """)
 
