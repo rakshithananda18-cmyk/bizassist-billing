@@ -11,8 +11,8 @@ from database.models import User
 from core.models import B2BConnection, BusinessSettings
 from services.auth import restrict_cashier
 
-router = APIRouter(tags=["identity"])
-logger = logging.getLogger("bizassist.core.api.identity")
+router = APIRouter(tags=["biz_id"])
+logger = logging.getLogger("bizassist.core.api.biz_id")
 
 
 @router.get("/bizid")

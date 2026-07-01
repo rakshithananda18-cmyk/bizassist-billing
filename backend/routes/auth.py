@@ -27,8 +27,8 @@ class IdentityCheckRequest(BaseModel):
     username: str
 
 
-@router.post("/api/identity/check")
-def identity_check(req: IdentityCheckRequest, db: Session = Depends(get_db)):
+@router.post("/api/biz_id/check")
+def biz_id_check(req: IdentityCheckRequest, db: Session = Depends(get_db)):
     """
     Lightweight, PUBLIC existence check for the registration UX.
 

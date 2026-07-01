@@ -121,7 +121,7 @@ export function AuthProvider({ children }) {
       // The local identity check works offline (it's localhost).
       let localExists = true
       try {
-        const c = await fetch(`${LOCAL_URL}/api/identity/check`, {
+        const c = await fetch(`${LOCAL_URL}/api/biz_id/check`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username }),

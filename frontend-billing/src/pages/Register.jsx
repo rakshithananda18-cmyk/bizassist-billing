@@ -40,7 +40,7 @@ export default function Register() {
     u = (u ?? form.username ?? '').trim()
     if (!u) { setExisting(false); return }
     try {
-      const r = await fetch(`${CLOUD_URL}/api/identity/check`, {
+      const r = await fetch(`${CLOUD_URL}/api/biz_id/check`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: u }),
