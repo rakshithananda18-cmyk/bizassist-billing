@@ -7,7 +7,7 @@ Routes call these functions and return the result directly.
 import logging
 from datetime import datetime
 from sqlalchemy.orm import Session
-from database.models import Invoice, Inventory, Payment, UploadedFile, DocumentEmbedding, ChatMessage
+from database.models import Invoice, Inventory, LegacyPayment, UploadedFile, DocumentEmbedding, ChatMessage
 
 logger = logging.getLogger("bizassist.insights_service")
 
@@ -145,7 +145,7 @@ def database_view(user_id: int, db: Session) -> dict:
     invoices  = db.query(Invoice).filter(Invoice.business_id == user_id).all()
     inventory = db.query(Inventory).filter(Inventory.business_id == user_id).all()
     uploads   = db.query(UploadedFile).filter(UploadedFile.business_id == user_id).all()
-    payments  = db.query(Payment).filter(Payment.business_id == user_id).all()
+    payments  = db.query(LegacyPayment).filter(LegacyPayment.business_id == user_id).all()
     msgs      = db.query(ChatMessage).filter(ChatMessage.business_id == user_id).order_by(ChatMessage.timestamp.desc()).all()
 
     return {
@@ -189,7 +189,7 @@ def wipe_database(user_id: int, db: Session) -> dict:
 
     db.query(Invoice).filter(Invoice.business_id == user_id).delete()
     db.query(Inventory).filter(Inventory.business_id == user_id).delete()
-    db.query(Payment).filter(Payment.business_id == user_id).delete()
+    db.query(LegacyPayment).filter(LegacyPayment.business_id == user_id).delete()
     db.query(UploadedFile).filter(UploadedFile.business_id == user_id).delete()
     db.query(DocumentEmbedding).filter(DocumentEmbedding.business_id == user_id).delete()
     db.commit()
@@ -211,7 +211,7 @@ def top_customers(user_id: int, db: Session, limit: int = 5) -> list:
 
 
 def payments_view(user_id: int, db: Session) -> dict:
-    payments = db.query(Payment).filter(Payment.business_id == user_id).all()
+    payments = db.query(LegacyPayment).filter(LegacyPayment.business_id == user_id).all()
     invoices = db.query(Invoice).filter(
         Invoice.business_id == user_id, Invoice.status.in_(["Overdue", "Pending"])
     ).all()
@@ -253,7 +253,7 @@ def delete_upload(user_id: int, upload_id: int, db: Session) -> dict:
     elif ft == "inventory":
         db.query(Inventory).filter(Inventory.file_id == upload_id, Inventory.business_id == user_id).delete()
     elif ft == "payment":
-        db.query(Payment).filter(Payment.file_id == upload_id, Payment.business_id == user_id).delete()
+        db.query(LegacyPayment).filter(LegacyPayment.file_id == upload_id, LegacyPayment.business_id == user_id).delete()
 
     db.delete(upload)
     db.commit()

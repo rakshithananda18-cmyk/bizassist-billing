@@ -40,14 +40,14 @@ def test_migration_lifecycle():
         db.close()
 
     # 3. Call count endpoint
-    r_count = client.get("/api/migrate/count", headers=owner["headers"])
+    r_count = client.get("/api/data-transfer/count", headers=owner["headers"])
     assert r_count.status_code == 200, r_count.text
     counts = r_count.json()
     assert counts.get("customers") == 1
     assert counts.get("products") == 1
 
     # 4. Call export endpoint
-    r_export = client.get("/api/migrate/export", headers=owner["headers"])
+    r_export = client.get("/api/data-transfer/export", headers=owner["headers"])
     assert r_export.status_code == 200, r_export.text
     export_data = r_export.json()
     assert "tables" in export_data
@@ -60,7 +60,7 @@ def test_migration_lifecycle():
     owner_clean = _signup("Clean Migration Destination")
 
     # 6. Call count on clean business before import (should be 0)
-    r_count_clean = client.get("/api/migrate/count", headers=owner_clean["headers"])
+    r_count_clean = client.get("/api/data-transfer/count", headers=owner_clean["headers"])
     assert r_count_clean.status_code == 200
     counts_clean = r_count_clean.json()
     assert counts_clean.get("customers", 0) == 0
@@ -81,13 +81,13 @@ def test_migration_lifecycle():
         imported_tables[table_name] = clean_rows
 
     # 8. Post to import endpoint on clean business
-    r_import = client.post("/api/migrate/import", headers=owner_clean["headers"], json={"tables": imported_tables})
+    r_import = client.post("/api/data-transfer/import", headers=owner_clean["headers"], json={"tables": imported_tables})
     assert r_import.status_code == 200, r_import.text
     import_res = r_import.json()
     assert import_res["total"] > 0
 
     # 9. Verify counts are updated on the clean business
-    r_count_after = client.get("/api/migrate/count", headers=owner_clean["headers"])
+    r_count_after = client.get("/api/data-transfer/count", headers=owner_clean["headers"])
     assert r_count_after.status_code == 200
     counts_after = r_count_after.json()
     assert counts_after.get("customers") == 1

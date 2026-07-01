@@ -1,5 +1,5 @@
 // ============================================================================
-// Page: Counters.jsx
+// Page: POSLiveCounter.jsx
 // Description: Owner Live Counters view. Shows active POS cashier sessions,
 //              their active cart status, and live connection tracking.
 //              Enables counter control and monitoring for store owners.
@@ -24,7 +24,7 @@ function relTime(ts) {
   return m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`
 }
 
-export default function Counters() {
+export default function POSLiveCounter() {
   const { user, authFetch, settings } = useAuth()
   const isOwner = (user?.role || '').toLowerCase() !== 'cashier'
   const [params] = useSearchParams()
@@ -126,11 +126,11 @@ export default function Counters() {
   }, [sessions, staffList])
 
   return (
-    <AppLayout title="Live Counters">
+    <AppLayout title="POS Counters">
       <div className="slide-up">
         <div className="page-header">
           <div className="page-header-left">
-            <h1 className="page-title">Live Counters</h1>
+            <h1 className="page-title">POS Counters</h1>
             <p className="page-subtitle">
               Watch each till in real time — click any counter to view its live cart or edit items.
             </p>
@@ -150,7 +150,7 @@ export default function Counters() {
                 Real-time counter monitoring, remote screen viewing, and cashier-consented bill editing are cloud-only features. Switch your terminal to Cloud Mode to enable these collaborative tools.
               </p>
               <button
-                onClick={() => navigate('/settings')}
+                onClick={() => navigate('/pos-settings')}
                 style={{
                   background: 'var(--accent)',
                   color: '#fff',

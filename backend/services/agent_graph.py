@@ -66,7 +66,7 @@ def planner_node(state: AgentState) -> AgentState:
     logger.info(f"[PLANNER] Analyzing: '{state['user_query']}'")
 
     from database.db import SessionLocal
-    from database.models import Invoice, Inventory, Payment
+    from database.models import Invoice, Inventory, LegacyPayment
 
     inv_count = 0
     stock_count = 0
@@ -76,7 +76,7 @@ def planner_node(state: AgentState) -> AgentState:
     try:
         inv_count = db.query(Invoice).filter(Invoice.business_id == state["business_id"]).count()
         stock_count = db.query(Inventory).filter(Inventory.business_id == state["business_id"]).count()
-        pay_count = db.query(Payment).filter(Payment.business_id == state["business_id"]).count()
+        pay_count = db.query(LegacyPayment).filter(LegacyPayment.business_id == state["business_id"]).count()
     except Exception as e:
         logger.warning(f"[PLANNER] Failed to fetch database counts: {e}")
     finally:

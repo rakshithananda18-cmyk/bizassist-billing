@@ -398,7 +398,7 @@ def test_expenses_and_debit_notes_api(api_auth):
 
     # 3. Test P&L report returns the correct expenses
     pnl_resp_before = client.get(
-        "/reports/pnl",
+        "/reports/profit-loss",
         headers=api_auth["owner_headers"]
     )
     assert pnl_resp_before.status_code == 200
@@ -416,7 +416,7 @@ def test_expenses_and_debit_notes_api(api_auth):
 
     # 5. Verify expense is deleted in P&L
     pnl_resp_after = client.get(
-        "/reports/pnl",
+        "/reports/profit-loss",
         headers=api_auth["owner_headers"]
     )
     metrics_after = {m["metric"]: m["amount"] for m in pnl_resp_after.json()}
@@ -507,7 +507,7 @@ def test_expenses_and_debit_notes_api(api_auth):
 
     # 6f. Check P&L report for purchases and purchase returns
     pnl_resp_final = client.get(
-        "/reports/pnl",
+        "/reports/profit-loss",
         headers=api_auth["owner_headers"]
     )
     metrics_final = {m["metric"]: m["amount"] for m in pnl_resp_final.json()}

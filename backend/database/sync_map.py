@@ -16,8 +16,8 @@ from sqlalchemy import text
 
 from database.models import (
     User, Customer, Vendor, Product, Invoice, InvoiceLineItem,
-    Inventory, Payment, StockLedger, ProductBarcode, BusinessSettings,
-    InvoicePayment, SharedLedger, Expense, Godown, StockTransfer,
+    Inventory, LegacyPayment, StockLedger, ProductBarcode, BusinessSettings,
+    InvoicePayment, B2BLedger, Expense, Godown, StockTransfer,
     StockTransferLineItem, PurchaseInvoice, PurchaseInvoiceLineItem,
     PurchaseOrder, PurchaseOrderLineItem, AlertConfig, RateLimitConfig,
 )
@@ -35,12 +35,12 @@ MODEL_MAP: Dict[str, Any] = {
     "invoices": Invoice,
     "invoice_line_items": InvoiceLineItem,
     "inventory": Inventory,
-    "payments": Payment,
+    "payments": LegacyPayment,
     "stock_ledger": StockLedger,
     "product_barcodes": ProductBarcode,
     "business_settings": BusinessSettings,
     "invoice_payments": InvoicePayment,
-    "shared_ledgers": SharedLedger,
+    "b2b_ledgers": B2BLedger,
     "expenses": Expense,
     "godowns": Godown,
     "stock_transfers": StockTransfer,

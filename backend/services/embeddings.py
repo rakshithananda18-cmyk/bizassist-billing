@@ -7,7 +7,7 @@ from typing import Optional, Any
 import numpy as np
 import chromadb
 from database.db import SessionLocal
-from database.models import DocumentEmbedding, Invoice, Inventory, Payment
+from database.models import DocumentEmbedding, Invoice, Inventory, LegacyPayment
 
 logger = logging.getLogger("bizassist.embeddings")
 
@@ -130,7 +130,7 @@ def make_inventory_text(item: Inventory) -> str:
         f"Supplier: {item.supplier or 'N/A'}."
     )
 
-def make_payment_text(pmt: Payment) -> str:
+def make_payment_text(pmt: LegacyPayment) -> str:
     amount_str = f"₹{pmt.amount:,.2f}" if pmt.amount is not None else "₹0.00"
     paid_status = "Paid" if (pmt.paid and pmt.paid.lower() == "yes") else "Unpaid/Pending"
     return (
@@ -275,7 +275,7 @@ def index_new_file_records(db, file_type: str, file_id: int, business_id: int):
         elif file_type == "inventory":
             records = db.query(Inventory).filter(Inventory.file_id == file_id, Inventory.business_id == business_id).all()
         elif file_type == "payment":
-            records = db.query(Payment).filter(Payment.file_id == file_id, Payment.business_id == business_id).all()
+            records = db.query(LegacyPayment).filter(LegacyPayment.file_id == file_id, LegacyPayment.business_id == business_id).all()
 
         if not records:
             logger.info(f"No records found for file ID {file_id}. Skipping embedding generation.")

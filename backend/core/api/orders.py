@@ -78,26 +78,6 @@ def _order_out(order: B2BOrder, db: Session) -> dict:
 
 # ── Routes ───────────────────────────────────────────────────────────────────
 
-@router.get("/catalog/{seller_bizid}")
-def get_catalog(seller_bizid: str, current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
-    """Buyer browses connected supplier's catalog (scoped by connection policies)."""
-    seller = db.query(User).filter(User.public_id == seller_bizid).first()
-    if not seller:
-        raise HTTPException(status_code=404, detail="Supplier BizID not found")
-        
-    try:
-        catalog = order_service.get_supplier_catalog(
-            db,
-            buyer_business_id=current_user["id"],
-            seller_business_id=seller.id
-        )
-        return {"items": catalog}
-    except PermissionError as pe:
-        raise HTTPException(status_code=403, detail=str(pe))
-    except Exception as e:
-        logger.error(f"Catalog retrieval failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Could not retrieve catalogue")
-
 @router.post("/orders")
 async def place_order(req: OrderRequest, current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     """Place a B2B order (Buyer flow). Triggers real-time alert to Seller."""

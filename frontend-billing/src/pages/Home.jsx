@@ -35,7 +35,7 @@ export default function Home() {
   const navigate = useNavigate()
 
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
-  const OWNER_ONLY_PATHS = React.useMemo(() => new Set(['/purchases', '/connections', '/orders', '/reports', '/import', '/staff', '/dashboard']), [])
+  const OWNER_ONLY_PATHS = React.useMemo(() => new Set(['/purchases', '/b2b-network', '/b2b-orders', '/reports', '/import', '/staff', '/dashboard']), [])
   const visibleLinks = QUICK_LINKS.filter(link => !isCashier || !OWNER_ONLY_PATHS.has(link.href))
 
   const hour = new Date().getHours()

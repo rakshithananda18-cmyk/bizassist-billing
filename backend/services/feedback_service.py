@@ -12,7 +12,7 @@ are improved offline by tuning seeds from the collected feedback.
 import logging
 
 from database.db import SessionLocal
-from database.models import Feedback, QueryOverride
+from database.models import AIFeedback, AIQueryOverride
 
 logger = logging.getLogger("bizassist.feedback")
 
@@ -52,7 +52,7 @@ def record_feedback(business_id: int, *, session_id, query, route, handler_key,
 
     db = SessionLocal()
     try:
-        db.add(Feedback(
+        db.add(AIFeedback(
             business_id=business_id, session_id=session_id, query=query,
             route=route, handler_key=handler_key, verdict=verdict, correction=correction,
         ))
@@ -61,14 +61,14 @@ def record_feedback(business_id: int, *, session_id, query, route, handler_key,
         if verdict == "down" and correction:
             norm = normalize_query(query)
             new_route, new_handler = CORRECTION_ROUTES[correction]
-            existing = db.query(QueryOverride).filter(
-                QueryOverride.business_id == business_id,
-                QueryOverride.query_norm == norm,
+            existing = db.query(AIQueryOverride).filter(
+                AIQueryOverride.business_id == business_id,
+                AIQueryOverride.query_norm == norm,
             ).first()
             if existing:
                 existing.route, existing.handler_key = new_route, new_handler
             else:
-                db.add(QueryOverride(
+                db.add(AIQueryOverride(
                     business_id=business_id, query_norm=norm,
                     route=new_route, handler_key=new_handler,
                 ))
@@ -102,9 +102,9 @@ def get_override(business_id: int, query: str):
         return None
     db = SessionLocal()
     try:
-        ov = db.query(QueryOverride).filter(
-            QueryOverride.business_id == business_id,
-            QueryOverride.query_norm == norm,
+        ov = db.query(AIQueryOverride).filter(
+            AIQueryOverride.business_id == business_id,
+            AIQueryOverride.query_norm == norm,
         ).first()
         return (ov.route, ov.handler_key) if ov else None
     except Exception as e:

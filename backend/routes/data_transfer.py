@@ -44,7 +44,7 @@ from database.db import get_db, engine, DATABASE_URL
 from services.auth import get_active_user
 
 router = APIRouter()
-logger = logging.getLogger("bizassist.routes.migrate")
+logger = logging.getLogger("bizassist.routes.data_transfer")
 
 
 # ---------------------------------------------------------------------------
@@ -659,7 +659,7 @@ class ImportBody(BaseModel):
 # ROUTES
 # ---------------------------------------------------------------------------
 
-@router.get("/api/migrate/export")
+@router.get("/api/data-transfer/export")
 def export_data(
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
@@ -711,7 +711,7 @@ def export_data(
     }
 
 
-@router.post("/api/migrate/import")
+@router.post("/api/data-transfer/import")
 def import_data(
     body: ImportBody,
     remap_ids: bool = False,
@@ -811,7 +811,7 @@ def import_data(
     return result
 
 
-@router.get("/api/migrate/count")
+@router.get("/api/data-transfer/count")
 def count_records(
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),

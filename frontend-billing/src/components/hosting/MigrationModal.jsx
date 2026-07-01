@@ -124,7 +124,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
       advanceTo(1)
       let countData = {}
       try {
-        const res = await fetch(`${SOURCE_API_BASE}/api/migrate/count`, { headers: headers() })
+        const res = await fetch(`${SOURCE_API_BASE}/api/data-transfer/count`, { headers: headers() })
         if (!res.ok) throw new Error(`Count failed: HTTP ${res.status}`)
         countData = await res.json()
       } catch (err) {
@@ -141,7 +141,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
 
       // ── Step 2: export ────────────────────────────────────────────────────
       advanceTo(2)
-      const res = await fetch(`${SOURCE_API_BASE}/api/migrate/export`, { headers: headers() })
+      const res = await fetch(`${SOURCE_API_BASE}/api/data-transfer/export`, { headers: headers() })
       if (!res.ok) throw new Error(`Export failed: HTTP ${res.status}`)
       const exportData = await res.json()
       if (exportData.backup_path) setBackupPath(exportData.backup_path)
@@ -164,7 +164,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
       let uploadRes = null
       try {
         // Kick off the real import
-        const importPromise = fetch(`${DEST_API_BASE}/api/migrate/import`, {
+        const importPromise = fetch(`${DEST_API_BASE}/api/data-transfer/import`, {
           method: 'POST',
           headers: headers(),
           body: JSON.stringify({

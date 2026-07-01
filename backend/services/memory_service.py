@@ -23,7 +23,7 @@ from groq import Groq
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from database.db import SessionLocal
-from database.models import BusinessFact, ChatMessage, Invoice, Inventory, Payment
+from database.models import BusinessFact, ChatMessage, Invoice, Inventory
 from sqlalchemy import func
 
 logger = logging.getLogger("bizassist.memory")

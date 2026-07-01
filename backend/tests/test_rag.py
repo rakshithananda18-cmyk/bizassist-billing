@@ -21,7 +21,7 @@ backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, backend_path)
 
 from database.db import engine, SessionLocal
-from database.models import Base, Invoice, Inventory, Payment, DocumentEmbedding, User
+from database.models import Base, Invoice, Inventory, LegacyPayment, DocumentEmbedding, User
 from services.embeddings import (
     make_invoice_text,
     make_inventory_text,
@@ -39,7 +39,7 @@ def setup_db():
     # Clear existing data to avoid conflicts with previous tests sharing the DB instance
     db.query(Invoice).delete()
     db.query(Inventory).delete()
-    db.query(Payment).delete()
+    db.query(LegacyPayment).delete()
     db.query(DocumentEmbedding).delete()
     db.query(User).delete()
     db.commit()
@@ -74,7 +74,7 @@ def test_serializers():
     assert "Low stock!" in item_text
     assert "AstraZeneca" in item_text
 
-    pmt = Payment(customer="Apollo Pharmacy", amount=25000.00, due_date="2026-05-30", paid="Yes")
+    pmt = LegacyPayment(customer="Apollo Pharmacy", amount=25000.00, due_date="2026-05-30", paid="Yes")
     pmt_text = make_payment_text(pmt)
     assert " Apollo Pharmacy" in pmt_text
     assert "₹25,000.00" in pmt_text

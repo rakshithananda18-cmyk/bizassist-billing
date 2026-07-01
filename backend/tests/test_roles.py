@@ -78,7 +78,7 @@ OWNER_ONLY = [
     ("GET",  "/connections", None),
     ("GET",  "/bizid", None),
     ("POST", "/connections/redeem", {"code": "abc"}),
-    ("POST", "/connections/connect", {"seller_bizid": 1}),
+    ("POST", "/connections/accept", {"seller_bizid": 1}),
     
     # B2B ordering Gating:
     ("GET",  "/catalog/123", None),

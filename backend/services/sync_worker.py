@@ -25,8 +25,8 @@ from database.db import SessionLocal, engine, sync_disabled_var
 from database.models import (
     User, SyncQueue, SyncLog, ConflictLog,
     Base, Customer, Vendor, Product, Invoice, InvoiceLineItem,
-    Inventory, Payment, StockLedger, ProductBarcode, BusinessSettings,
-    InvoicePayment, SharedLedger, Expense, Godown, StockTransfer,
+    Inventory, LegacyPayment, StockLedger, ProductBarcode, BusinessSettings,
+    InvoicePayment, B2BLedger, Expense, Godown, StockTransfer,
     StockTransferLineItem, PurchaseInvoice, PurchaseInvoiceLineItem,
     PurchaseOrder, PurchaseOrderLineItem, AlertConfig, RateLimitConfig
 )
@@ -346,7 +346,7 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
                     "invoice_line_items", "purchase_order_line_items",
                     "purchase_invoice_line_items", "invoice_payments",
                     "stock_transfer_line_items", "product_barcodes",
-                    "stock_ledger", "shared_ledgers",
+                    "stock_ledger", "b2b_ledgers",
                 )
                 _ordered = sorted(pulled.items(), key=lambda kv: 1 if kv[0] in _child_last else 0)
                 for table_name, records in _ordered:

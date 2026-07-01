@@ -6,7 +6,7 @@ import io
 from groq import Groq
 import anthropic
 from database.db import SessionLocal
-from database.models import UploadedFile, Invoice, Inventory, Payment
+from database.models import UploadedFile, Invoice, Inventory, LegacyPayment
 from services.embeddings import index_new_file_records
 from services.normalize import to_iso, normalize_status
 from datetime import datetime
@@ -291,10 +291,10 @@ def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str, file_has
         _pay_due = to_iso(data.get("due_date"))   # normalize at ingest (H3)
 
         # Check if a payment for this customer + due_date already exists to avoid duplication
-        existing_payment = db.query(Payment).filter(
-            Payment.customer == data.get("customer"),
-            Payment.due_date == _pay_due,
-            Payment.business_id == business_id
+        existing_payment = db.query(LegacyPayment).filter(
+            LegacyPayment.customer == data.get("customer"),
+            LegacyPayment.due_date == _pay_due,
+            LegacyPayment.business_id == business_id
         ).first()
 
         if existing_payment:
@@ -302,7 +302,7 @@ def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str, file_has
             existing_payment.paid = payment_status
             existing_payment.file_id = file_id
         else:
-            new_payment = Payment(
+            new_payment = LegacyPayment(
                 business_id=business_id,
                 file_id=file_id,
                 customer=data.get("customer"),

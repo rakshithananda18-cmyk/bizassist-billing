@@ -7,7 +7,7 @@ and checking for collisions in the database.
 import random
 from sqlalchemy.orm import Session
 from database.models import User
-from core.models import ConnectionCode
+from core.models import B2BInviteCode
 
 CROCKFORD_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
@@ -32,12 +32,12 @@ def generate_bizid(db: Session) -> str:
 def generate_connection_code(db: Session) -> str:
     """
     Generate a unique 8-character Crockford Base32 connection code.
-    Checks for collisions in the connection_codes table.
+    Checks for collisions in the b2b_invite_codes table.
     """
     while True:
         code = generate_crockford_base32(8)
         
-        # Check collision in connection_codes table
-        exists = db.query(ConnectionCode).filter(ConnectionCode.code == code).first()
+        # Check collision in b2b_invite_codes table
+        exists = db.query(B2BInviteCode).filter(B2BInviteCode.code == code).first()
         if not exists:
             return code

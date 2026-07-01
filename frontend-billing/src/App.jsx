@@ -16,17 +16,18 @@ import Register  from './pages/Register'
 import Home      from './pages/Home'
 import Dashboard from './pages/Dashboard'
 import Sales     from './pages/Sales'
+import LiveView  from './pages/LiveView'
 import Purchases from './pages/Purchases'
 import Payments  from './pages/Payments'
 import Stock     from './pages/Stock'
 import Parties   from './pages/Parties'
 import Reports   from './pages/Reports'
 import Import    from './pages/Import'
-import Connections from './pages/Connections'
-import Orders      from './pages/Orders'
+import B2BNetwork from './pages/B2BNetwork'
+import B2BOrders      from './pages/B2BOrders'
 import Profile     from './pages/Profile'
 import Settings    from './pages/Settings'
-import Counters    from './pages/Counters'
+import POSLiveCounter from './pages/POSLiveCounter'
 
 
 function ProtectedRoute({ children }) {
@@ -45,18 +46,18 @@ function AppRoutes() {
       <Route path="/"          element={<ProtectedRoute><Home      /></ProtectedRoute>} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/sales"     element={<ProtectedRoute><Sales key="sales" /></ProtectedRoute>} />
-      <Route path="/live-view" element={<ProtectedRoute><Sales key="live-view" isLiveViewMode={true} /></ProtectedRoute>} />
+      <Route path="/live-view" element={<ProtectedRoute><LiveView /></ProtectedRoute>} />
       <Route path="/purchases" element={<ProtectedRoute><Purchases /></ProtectedRoute>} />
       <Route path="/payments"  element={<ProtectedRoute><Payments  /></ProtectedRoute>} />
       <Route path="/stock"    element={<ProtectedRoute><Stock     /></ProtectedRoute>} />
       <Route path="/parties"  element={<ProtectedRoute><Parties   /></ProtectedRoute>} />
       <Route path="/reports"  element={<ProtectedRoute><Reports   /></ProtectedRoute>} />
       <Route path="/import"   element={<ProtectedRoute><Import    /></ProtectedRoute>} />
-      <Route path="/connections" element={<ProtectedRoute><Connections /></ProtectedRoute>} />
-      <Route path="/orders"      element={<ProtectedRoute><Orders      /></ProtectedRoute>} />
+      <Route path="/b2b-network" element={<ProtectedRoute><B2BNetwork /></ProtectedRoute>} />
+      <Route path="/b2b-orders"      element={<ProtectedRoute><B2BOrders      /></ProtectedRoute>} />
       <Route path="/profile"     element={<ProtectedRoute><Profile     /></ProtectedRoute>} />
       <Route path="/settings"    element={<ProtectedRoute><Settings    /></ProtectedRoute>} />
-      <Route path="/counters"    element={<ProtectedRoute><Counters    /></ProtectedRoute>} />
+      <Route path="/pos-live-counter"    element={<ProtectedRoute><POSLiveCounter    /></ProtectedRoute>} />
       <Route path="/staff"       element={<Navigate to="/settings?tab=staff" replace />} />
 
 

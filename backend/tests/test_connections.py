@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient
 from main_groq import app
 from database.db import get_db, SessionLocal
 from database.models import User, Product, Inventory
-from core.models import B2BConnection, ConnectionCode, B2BOrder
+from core.models import B2BConnection, B2BInviteCode, B2BOrder
 
 client = TestClient(app)
 
@@ -147,7 +147,7 @@ def test_connection_code_lifecycle():
     # Manually expire the code in the DB
     db = SessionLocal()
     try:
-        db_code = db.query(ConnectionCode).filter(ConnectionCode.code == exp_code).first()
+        db_code = db.query(B2BInviteCode).filter(B2BInviteCode.code == exp_code).first()
         db_code.expires_at = datetime.utcnow() - timedelta(minutes=1)
         db.commit()
     finally:
@@ -166,7 +166,7 @@ def test_direct_connection_via_bizid():
     seller_bizid = seller_bizid_resp.json()["public_id"]
     
     # Connect buyer to seller using BizID
-    connect_resp = client.post("/connections/connect", json={
+    connect_resp = client.post("/connections/accept", json={
         "bizid": seller_bizid,
         "connect_as": "buyer"
     }, headers=headers_buyer)
@@ -177,7 +177,7 @@ def test_direct_connection_via_bizid():
     assert conn_data["seller_name"] == "Test Seller One"
     
     # Connecting to own business should fail
-    resp_own = client.post("/connections/connect", json={
+    resp_own = client.post("/connections/accept", json={
         "bizid": seller_bizid,
         "connect_as": "buyer"
     }, headers=headers_seller)
@@ -185,7 +185,7 @@ def test_direct_connection_via_bizid():
     assert "own business" in resp_own.json()["detail"]
     
     # Connecting with invalid bizid should fail
-    resp_invalid = client.post("/connections/connect", json={
+    resp_invalid = client.post("/connections/accept", json={
         "bizid": "BA-INVALID",
         "connect_as": "buyer"
     }, headers=headers_buyer)

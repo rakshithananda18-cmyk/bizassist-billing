@@ -19,9 +19,14 @@ from sqlalchemy.orm import sessionmaker
 
 # ── Test DB setup ────────────────────────────────────────────────────────────
 import os
+import sys
+backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, backend_path)
+
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 os.environ.setdefault("GROQ_API_KEY", "test-key")
 
+import services.memory_service
 from database.db import Base
 from database.models import BusinessFact
 

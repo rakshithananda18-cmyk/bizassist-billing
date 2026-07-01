@@ -24,9 +24,9 @@ from database.db import get_db, sync_disabled_var
 from services.auth import get_active_user
 from database.models import (
     Base, User, Customer, Vendor, Product, Invoice, InvoiceLineItem,
-    Inventory, Payment, ConflictLog, SyncLog, SyncQueue,
+    Inventory, LegacyPayment, ConflictLog, SyncLog, SyncQueue,
     StockLedger, ProductBarcode, BusinessSettings, InvoicePayment,
-    SharedLedger, Expense, Godown, StockTransfer, StockTransferLineItem,
+    B2BLedger, Expense, Godown, StockTransfer, StockTransferLineItem,
     PurchaseInvoice, PurchaseInvoiceLineItem, PurchaseOrder, PurchaseOrderLineItem,
     AlertConfig, RateLimitConfig
 )

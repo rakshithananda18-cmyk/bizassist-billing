@@ -38,7 +38,7 @@ _UID_TABLES = [
     "journal_entries", "period_locks",
     "invoice_line_items", "purchase_order_line_items", "purchase_invoice_line_items",
     "rate_limit_configs", "alert_configs", "stock_ledger", "product_barcodes",
-    "business_settings", "invoice_payments", "shared_ledgers", "stock_transfer_line_items",
+    "business_settings", "invoice_payments", "b2b_ledgers", "stock_transfer_line_items",
 ]
 
 

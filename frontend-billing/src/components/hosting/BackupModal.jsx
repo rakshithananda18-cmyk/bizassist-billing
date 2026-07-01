@@ -67,7 +67,7 @@ export default function BackupModal({ token, direction = 'cloud-to-local', onCom
     try {
       // 1. Export from source
       advance(0); setProgress(10)
-      const exRes = await fetch(`${cfg.src}/api/migrate/export`, { headers: headers() })
+      const exRes = await fetch(`${cfg.src}/api/data-transfer/export`, { headers: headers() })
       if (!exRes.ok) throw new Error(`Source export failed: HTTP ${exRes.status}`)
       const exportData = await exRes.json()
       if (cancelled.current) return
@@ -75,7 +75,7 @@ export default function BackupModal({ token, direction = 'cloud-to-local', onCom
 
       // 2. Merge into destination (LWW, non-destructive). Does NOT touch hosting_mode.
       advance(1)
-      const imRes = await fetch(`${cfg.dst}/api/migrate/import?merge=true`, {
+      const imRes = await fetch(`${cfg.dst}/api/data-transfer/import?merge=true`, {
         method: 'POST', headers: headers(),
         body: JSON.stringify({ tables: exportData?.tables || {} }),
       })

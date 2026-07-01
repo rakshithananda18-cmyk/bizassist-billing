@@ -5,16 +5,16 @@ Domain service logic for B2B Connections and Codes.
 """
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from core.models import B2BConnection, ConnectionCode
+from core.models import B2BConnection, B2BInviteCode
 from core.connection.utils import generate_connection_code
 from database.models import User
 
-def create_connection_code(db: Session, seller_business_id: int, expires_in_hours: int = 24) -> ConnectionCode:
+def create_connection_code(db: Session, seller_business_id: int, expires_in_hours: int = 24) -> B2BInviteCode:
     """Generate a temporary single-use connection code for a seller."""
     code_str = generate_connection_code(db)
     expires_at = datetime.utcnow() + timedelta(hours=expires_in_hours)
     
-    code_obj = ConnectionCode(
+    code_obj = B2BInviteCode(
         seller_business_id=seller_business_id,
         code=code_str,
         is_used=False,
@@ -30,7 +30,7 @@ def redeem_connection_code(db: Session, buyer_business_id: int, code: str) -> B2
     Redeem a connection code as a buyer to establish a B2B connection with the seller.
     Automatically accepts the connection link.
     """
-    code_obj = db.query(ConnectionCode).filter(ConnectionCode.code == code).first()
+    code_obj = db.query(B2BInviteCode).filter(B2BInviteCode.code == code).first()
     if not code_obj:
         raise ValueError("Invalid connection code")
     

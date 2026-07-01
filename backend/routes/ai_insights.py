@@ -1,0 +1,132 @@
+"""
+routes/ai_insights.py
+=====================
+Merged Business Advisor and Dashboard/Data Endpoints.
+All business logic lives in services/insights_service.py and services/smart_insights.py.
+"""
+import logging
+from fastapi import APIRouter, Header, HTTPException, Depends
+from sqlalchemy.orm import Session
+from database.db import get_db
+from services.auth import get_active_user, restrict_cashier
+import services.insights_service as svc
+from services.smart_insights import generate_insights, build_panel_insights
+
+router = APIRouter()
+logger = logging.getLogger("bizassist.routes.ai_insights")
+
+
+def _user_id(authorization):
+    user = get_active_user(authorization)
+    if (user.get("role") or "").lower() == "cashier":
+        raise HTTPException(status_code=403, detail="Permission denied: cashier restricted")
+    return user["id"]
+
+
+@router.get("/insights")
+def get_business_insights(authorization: str = Header(None), db: Session = Depends(get_db)):
+    uid = _user_id(authorization)
+    try:
+        return svc.business_insights(uid, db)
+    except Exception as e:
+        logger.error("insights error uid=%s: %s", uid, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch business insights")
+
+
+@router.get("/uploads")
+def get_uploads(authorization: str = Header(None), db: Session = Depends(get_db)):
+    uid = _user_id(authorization)
+    try:
+        return svc.uploads_list(uid, db)
+    except Exception as e:
+        logger.error("uploads error uid=%s: %s", uid, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch uploads list")
+
+
+@router.get("/dashboard-summary")
+def get_dashboard_summary(authorization: str = Header(None), db: Session = Depends(get_db)):
+    uid = _user_id(authorization)
+    try:
+        return svc.dashboard_summary(uid, db)
+    except Exception as e:
+        logger.error("dashboard-summary error uid=%s: %s", uid, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to generate dashboard summary")
+
+
+@router.get("/database")
+def get_database(authorization: str = Header(None), db: Session = Depends(get_db)):
+    uid = _user_id(authorization)
+    try:
+        return svc.database_view(uid, db)
+    except Exception as e:
+        logger.error("database error uid=%s: %s", uid, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve database state")
+
+
+@router.delete("/database/delete")
+def delete_entire_database(authorization: str = Header(None), db: Session = Depends(get_db)):
+    uid = _user_id(authorization)
+    try:
+        return svc.wipe_database(uid, db)
+    except Exception as e:
+        db.rollback()
+        logger.error("database/delete error uid=%s: %s", uid, e, exc_info=True)
+        return {"error": str(e), "message": "Failed to delete database"}
+
+
+@router.get("/top-customers")
+def top_customers(authorization: str = Header(None), db: Session = Depends(get_db)):
+    uid = _user_id(authorization)
+    try:
+        return svc.top_customers(uid, db)
+    except Exception as e:
+        logger.error("top-customers error uid=%s: %s", uid, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch top customers")
+
+
+@router.get("/clients")
+def get_clients(authorization: str = Header(None), db: Session = Depends(get_db)):
+    uid = _user_id(authorization)
+    try:
+        return svc.clients_view(uid, db)
+    except Exception as e:
+        logger.error("clients error uid=%s: %s", uid, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch clients list")
+
+
+@router.delete("/delete-upload/{upload_id}")
+def delete_upload(upload_id: int, authorization: str = Header(None), db: Session = Depends(get_db)):
+    uid = _user_id(authorization)
+    try:
+        return svc.delete_upload(uid, upload_id, db)
+    except Exception as e:
+        db.rollback()
+        logger.error("delete-upload error uid=%s upload=%s: %s", uid, upload_id, e, exc_info=True)
+        return {"error": str(e), "message": "Failed to delete upload"}
+
+
+@router.get("/dashboard-charts")
+def dashboard_charts(authorization: str = Header(None), db: Session = Depends(get_db)):
+    uid = _user_id(authorization)
+    try:
+        return svc.dashboard_charts(uid, db)
+    except Exception as e:
+        logger.error("dashboard-charts error uid=%s: %s", uid, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch dashboard data.")
+
+
+@router.get("/smart-insights")
+def smart_insights(current_user: dict = Depends(restrict_cashier)):
+    """On-demand, 70B-reasoned advisory (the chat chip)."""
+    uid = current_user["id"]
+    logger.info(f"[ADVISOR] Generating smart insights for user {uid}...")
+    result = generate_insights(uid)
+    logger.info(f"[ADVISOR] {len(result.get('insights', []))} insight(s) (source={result.get('source')}) for user {uid}.")
+    return result
+
+
+@router.get("/smart-insights/summary")
+def smart_insights_summary(current_user: dict = Depends(restrict_cashier)):
+    """Deterministic 'what's working / could be better' split for the right pane —
+    free, instant, model-free (no hallucination, safe to auto-load)."""
+    return build_panel_insights(current_user["id"])

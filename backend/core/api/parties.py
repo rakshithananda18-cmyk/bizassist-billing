@@ -27,7 +27,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from database.db import get_db
-from database.models import Customer, Vendor, Invoice, Payment
+from database.models import Customer, Vendor, Invoice
 from services.auth import get_active_user
 from services.realtime import realtime_manager, delta_event
 

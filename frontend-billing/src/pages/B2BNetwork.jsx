@@ -13,7 +13,7 @@ import CustomSelect from '../components/common/CustomSelect'
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
 
-export default function Connections() {
+export default function B2BNetwork() {
   const { authFetch } = useAuth()
 
   // State
@@ -183,7 +183,7 @@ export default function Connections() {
   }
 
   return (
-    <AppLayout title="B2B Network Connections">
+    <AppLayout title="B2B Network">
       <div className="slide-up">
 
         {alert && (
@@ -196,7 +196,7 @@ export default function Connections() {
         {/* Header */}
         <div className="page-header">
           <div className="page-header-left">
-            <h1 className="page-title">B2B Connections</h1>
+            <h1 className="page-title">B2B Network</h1>
             <p className="page-subtitle">Link with customers and suppliers to synchronize order flows and visibility policies</p>
           </div>
         </div>

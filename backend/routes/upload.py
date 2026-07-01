@@ -21,7 +21,7 @@ from database.models import (
     UploadedFile,
     Invoice,
     Inventory,
-    Payment,
+    LegacyPayment,
     DocumentEmbedding
 )
 
@@ -234,9 +234,9 @@ async def upload_file(
             )
 
         elif file_type == "payment":
-            before = db.query(Payment).filter(Payment.business_id == active_user_id).count()
+            before = db.query(LegacyPayment).filter(LegacyPayment.business_id == active_user_id).count()
             save_payments(df, db, active_user_id, file_id)
-            after = db.query(Payment).filter(Payment.business_id == active_user_id).count()
+            after = db.query(LegacyPayment).filter(LegacyPayment.business_id == active_user_id).count()
             stats["added"] = max(0, after - before)
             stats["updated"] = len(df) - stats["added"]
 
@@ -327,9 +327,9 @@ async def get_upload_data(
                 for r in records
             ]
         elif file_type == "payment":
-            records = db.query(Payment).filter(
-                Payment.file_id == file_id,
-                Payment.business_id == active_user_id
+            records = db.query(LegacyPayment).filter(
+                LegacyPayment.file_id == file_id,
+                LegacyPayment.business_id == active_user_id
             ).all()
             columns = ["customer", "amount", "due_date", "paid"]
             rows = [
@@ -397,9 +397,9 @@ async def delete_upload(
             Inventory.file_id == file_id,
             Inventory.business_id == active_user_id
         ).delete()
-        del_payments = db.query(Payment).filter(
-            Payment.file_id == file_id,
-            Payment.business_id == active_user_id
+        del_payments = db.query(LegacyPayment).filter(
+            LegacyPayment.file_id == file_id,
+            LegacyPayment.business_id == active_user_id
         ).delete()
         logger.info(
             f"Deleted records for file {file_id} — invoices: {del_invoices}, "
@@ -433,7 +433,7 @@ async def delete_upload(
                 deleted_all = db.query(Inventory).filter(Inventory.business_id == active_user_id).delete()
                 logger.info(f"Cascaded delete of all inventory: {deleted_all} records removed.")
             elif file_type == "payment":
-                deleted_all = db.query(Payment).filter(Payment.business_id == active_user_id).delete()
+                deleted_all = db.query(LegacyPayment).filter(LegacyPayment.business_id == active_user_id).delete()
                 logger.info(f"Cascaded delete of all payments: {deleted_all} records removed.")
 
         db.commit()

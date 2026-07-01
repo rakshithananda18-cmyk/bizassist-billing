@@ -22,7 +22,7 @@ const REPORTS = [
     id: 'pnl',
     title: 'P&L Statement',
     description: 'Profit & Loss overview — revenue, expenses, and net income for the period.',
-    endpoint: '/billing/reports/pnl',
+    endpoint: '/billing/reports/profit-loss',
     color: 'accent',
   },
   {

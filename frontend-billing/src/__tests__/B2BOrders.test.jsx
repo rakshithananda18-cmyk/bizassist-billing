@@ -6,7 +6,7 @@
 // isolation (the SSE stream resolves immediately as "done").
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import Orders from '../pages/Orders'
+import B2BOrders from '../pages/B2BOrders'
 
 // Passthrough layout — avoids pulling in router/nav.
 vi.mock('../layouts/AppLayout', () => ({
@@ -56,14 +56,14 @@ beforeEach(() => {
 
 describe('Orders — buyer auto-stock-in UI', () => {
   it('shows "Stock received" badge on a completed purchase order with a seller invoice', async () => {
-    render(<Orders />)
+    render(<B2BOrders />)
     // Switch to the buyer (outgoing/purchases) tab.
     fireEvent.click(screen.getByText(/Outgoing Orders/))
     expect(await screen.findByText(/Stock received/)).toBeInTheDocument()
   })
 
   it('does NOT show the badge for an order that is not yet completed', async () => {
-    render(<Orders />)
+    render(<B2BOrders />)
     fireEvent.click(screen.getByText(/Outgoing Orders/))
     // Wait for the dispatched order row to render, then assert exactly one badge.
     await screen.findByText('ORD-20260620-BBBB')

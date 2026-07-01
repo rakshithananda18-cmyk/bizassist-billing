@@ -18,7 +18,7 @@ import os
 from services.errors import AskError
 
 from routes.upload import router as upload_router
-from routes.insights import router as insights_router
+from routes.ai_insights import router as ai_insights_router
 from routes.auth import router as auth_router
 from routes.admin import router as admin_router
 from routes.chat import router as chat_router
@@ -27,8 +27,7 @@ from routes.intents import router as intents_router
 from routes.actions import router as actions_router
 from routes.ask import router as ask_router
 from routes.feedback import router as feedback_router
-from routes.smart_insights import router as smart_insights_router
-from routes.migrate import router as migrate_router
+from routes.data_transfer import router as data_transfer_router
 from routes.sync import router as sync_router
 from core.api import core_router          # billing ecosystem — wired from core/
 from database.db import engine, SessionLocal, DATABASE_URL
@@ -205,13 +204,12 @@ app.include_router(ask_router)
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(upload_router)
-app.include_router(insights_router)
+app.include_router(ai_insights_router)
 app.include_router(chat_router)
 app.include_router(alerts_router)
 app.include_router(intents_router)
 app.include_router(actions_router)
 app.include_router(feedback_router)
-app.include_router(smart_insights_router)
-app.include_router(migrate_router)        # Phase 1 – hosting-mode data migration
+app.include_router(data_transfer_router)  # Phase 1 – hosting-mode data migration
 app.include_router(sync_router)           # Phase 2 – hosting-mode synchronization
 app.include_router(core_router)           # billing ecosystem (sales + business templates + future)

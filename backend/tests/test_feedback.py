@@ -16,7 +16,7 @@ sys.path.insert(0, backend_path)
 
 import pytest
 from database.db import SessionLocal
-from database.models import Base, Feedback, QueryOverride
+from database.models import Base, AIFeedback, AIQueryOverride
 from services.feedback_service import record_feedback, get_override, normalize_query
 
 BID = 778899
@@ -33,8 +33,8 @@ def _ensure_schema():
 def _clear():
     db = SessionLocal()
     try:
-        db.query(Feedback).filter(Feedback.business_id == BID).delete()
-        db.query(QueryOverride).filter(QueryOverride.business_id == BID).delete()
+        db.query(AIFeedback).filter(AIFeedback.business_id == BID).delete()
+        db.query(AIQueryOverride).filter(AIQueryOverride.business_id == BID).delete()
         db.commit()
     finally:
         db.close()
@@ -84,8 +84,8 @@ def test_override_is_upserted_not_duplicated():
     assert get_override(BID, "q") == ("DIRECT", "total_revenue")
     db = SessionLocal()
     try:
-        n = (db.query(QueryOverride)
-             .filter(QueryOverride.business_id == BID, QueryOverride.query_norm == "q")
+        n = (db.query(AIQueryOverride)
+             .filter(AIQueryOverride.business_id == BID, AIQueryOverride.query_norm == "q")
              .count())
         assert n == 1, "correction must upsert, not stack duplicate overrides"
     finally:

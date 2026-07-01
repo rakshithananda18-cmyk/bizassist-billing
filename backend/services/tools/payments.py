@@ -2,7 +2,7 @@
 import json
 import logging
 from database.db import SessionLocal
-from database.models import Payment
+from database.models import LegacyPayment
 
 logger = logging.getLogger("bizassist.tools.payments")
 
@@ -11,13 +11,13 @@ def get_payment_list(user_id: int, paid_status: str = None, customer: str = None
     """Retrieves payments, filtering by paid status (Yes/No) or customer name."""
     db = SessionLocal()
     try:
-        query = db.query(Payment).filter(Payment.business_id == user_id)
+        query = db.query(LegacyPayment).filter(LegacyPayment.business_id == user_id)
         if paid_status:
-            query = query.filter(Payment.paid.ilike(paid_status))
+            query = query.filter(LegacyPayment.paid.ilike(paid_status))
         if customer:
-            query = query.filter(Payment.customer.ilike(f"%{customer}%"))
+            query = query.filter(LegacyPayment.customer.ilike(f"%{customer}%"))
 
-        payments = query.order_by(Payment.due_date.asc()).limit(limit).all()
+        payments = query.order_by(LegacyPayment.due_date.asc()).limit(limit).all()
         result = [
             {"customer": p.customer, "amount": float(p.amount or 0), "due_date": p.due_date, "paid": p.paid}
             for p in payments

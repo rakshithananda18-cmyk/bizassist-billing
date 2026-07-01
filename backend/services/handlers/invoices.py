@@ -15,7 +15,7 @@ import re
 from datetime import datetime, timedelta
 from sqlalchemy import func
 from database.db import SessionLocal
-from database.models import Invoice, Inventory, Payment
+from database.models import Invoice, Inventory
 from services.dates import parse_date
 
 logger = logging.getLogger("bizassist.handlers.invoices")

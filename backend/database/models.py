@@ -344,7 +344,7 @@ class Inventory(Base, BusinessOwnedMixin):
 # PAYMENT  (existing table, kept for backward compat)
 # ---------------------------------------------------------------------------
 
-class Payment(Base, BusinessOwnedMixin):
+class LegacyPayment(Base, BusinessOwnedMixin):
     """Legacy payment records from CSV imports."""
     __tablename__ = "payments"
 
@@ -558,7 +558,7 @@ class AlertConfig(Base, TimestampMixin):
 
 class ActionLog(Base, TimestampMixin):
     """Audit trail for every gated agentic action."""
-    __tablename__ = "action_log"
+    __tablename__ = "action_logs"
 
     id          = Column(Integer, primary_key=True, index=True)
     business_id = Column(Integer, index=True)
@@ -574,10 +574,10 @@ class ActionLog(Base, TimestampMixin):
 # FEEDBACK / CORRECTIONS  (answer quality loop)
 # ---------------------------------------------------------------------------
 
-class Feedback(Base, TimestampMixin):
+class AIFeedback(Base, TimestampMixin):
     """Append-only log of thumbs up/down on answers — every wrong answer becomes
     a labelled example for offline seed/regex tuning."""
-    __tablename__ = "feedback"
+    __tablename__ = "ai_feedback"
 
     id          = Column(Integer, primary_key=True, index=True)
     business_id = Column(Integer, index=True)
@@ -590,13 +590,13 @@ class Feedback(Base, TimestampMixin):
     created_at  = Column(DateTime, default=datetime.utcnow)
 
 
-class QueryOverride(Base, TimestampMixin):
+class AIQueryOverride(Base, TimestampMixin):
     """Active per-user correction: an exact (normalized) query routes to a fixed
     intent. Applied at the top of routing so a corrected query returns the right
     answer on re-run. One row per (business_id, query_norm) — upserted."""
-    __tablename__ = "query_override"
+    __tablename__ = "ai_query_overrides"
     __table_args__ = (
-        UniqueConstraint("business_id", "query_norm", name="uq_query_override_biz_query"),
+        UniqueConstraint("business_id", "query_norm", name="uq_ai_query_overrides_biz_query"),
     )
 
     id          = Column(Integer, primary_key=True, index=True)
@@ -655,7 +655,7 @@ class BusinessFact(Base, TimestampMixin):
 # models are loaded, and keeps `from database.models import StockLedger` working.
 from core.models import (  # noqa: E402,F401
     StockLedger, ProductBarcode, BusinessSettings, InvoicePayment, IdempotencyKey,
-    B2BConnection, ConnectionCode, B2BOrder, B2BOrderLineItem, SharedLedger,
+    B2BConnection, B2BInviteCode, B2BOrder, B2BOrderLineItem, B2BLedger,
     Expense, Godown, StockTransfer, StockTransferLineItem,
 )
 

@@ -120,13 +120,13 @@ describe('MigrationModal', () => {
 
   it('runs through the migration steps successfully', async () => {
     const mockFetch = vi.fn().mockImplementation(async (url) => {
-      if (url.endsWith('/api/migrate/count')) {
+      if (url.endsWith('/api/data-transfer/count')) {
         return {
           ok: true,
           json: async () => ({ users: 1, customers: 3 })
         }
       }
-      if (url.endsWith('/api/migrate/export')) {
+      if (url.endsWith('/api/data-transfer/export')) {
         return {
           ok: true,
           json: async () => ({
@@ -135,7 +135,7 @@ describe('MigrationModal', () => {
           })
         }
       }
-      if (url.endsWith('/api/migrate/import')) {
+      if (url.endsWith('/api/data-transfer/import')) {
         return {
           ok: true,
           json: async () => ({
@@ -177,10 +177,10 @@ describe('MigrationModal', () => {
 
   it('handles export failure gracefully and calls onError', async () => {
     const mockFetch = vi.fn().mockImplementation(async (url) => {
-      if (url.endsWith('/api/migrate/count')) {
+      if (url.endsWith('/api/data-transfer/count')) {
         return { ok: true, json: async () => ({}) }
       }
-      if (url.endsWith('/api/migrate/export')) {
+      if (url.endsWith('/api/data-transfer/export')) {
         return { ok: false, status: 500 }
       }
       return { ok: false, status: 404 }

@@ -10,16 +10,16 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from database.models import (
-    User, Invoice, InvoiceLineItem, Inventory, Payment, UploadedFile,
+    User, Invoice, InvoiceLineItem, Inventory, LegacyPayment, UploadedFile,
     DocumentEmbedding, ChatMessage, TokenUsage, RateLimitConfig,
     Customer, Vendor, Product, PurchaseOrder, PurchaseOrderLineItem,
-    PurchaseInvoice, PurchaseInvoiceLineItem, Feedback, QueryOverride,
+    PurchaseInvoice, PurchaseInvoiceLineItem, AIFeedback, AIQueryOverride,
     BusinessFact, AlertConfig
 )
 from core.models import (
     StockLedger, ProductBarcode, BusinessSettings, InvoicePayment,
-    B2BConnection, ConnectionCode, B2BOrder, B2BOrderLineItem,
-    SharedLedger, Expense, Godown, StockTransfer, StockTransferLineItem,
+    B2BConnection, B2BInviteCode, B2BOrder, B2BOrderLineItem,
+    B2BLedger, Expense, Godown, StockTransfer, StockTransferLineItem,
     JournalEntry, JournalLine, PeriodLock
 )
 from services.auth import hash_password
@@ -65,7 +65,7 @@ def list_businesses(db: Session) -> list:
 def wipe_all_data(db: Session) -> dict:
     db.query(Invoice).delete()
     db.query(Inventory).delete()
-    db.query(Payment).delete()
+    db.query(LegacyPayment).delete()
     db.query(UploadedFile).delete()
     db.query(DocumentEmbedding).delete()
     db.query(ChatMessage).delete()
@@ -142,15 +142,15 @@ def wipe_user_data(user_id: int, db: Session) -> dict:
     db.query(B2BConnection).filter(
         (B2BConnection.seller_business_id == user_id) | (B2BConnection.buyer_business_id == user_id)
     ).delete(synchronize_session=False)
-    db.query(ConnectionCode).filter(ConnectionCode.seller_business_id == user_id).delete(synchronize_session=False)
-    db.query(SharedLedger).filter(
-        (SharedLedger.seller_business_id == user_id) | (SharedLedger.buyer_business_id == user_id)
+    db.query(B2BInviteCode).filter(B2BInviteCode.seller_business_id == user_id).delete(synchronize_session=False)
+    db.query(B2BLedger).filter(
+        (B2BLedger.seller_business_id == user_id) | (B2BLedger.buyer_business_id == user_id)
     ).delete(synchronize_session=False)
 
     # 3. Delete all other business-scoped data
     for model in (
-        Payment, UploadedFile, DocumentEmbedding, ChatMessage, TokenUsage,
-        RateLimitConfig, AlertConfig, Feedback, QueryOverride, BusinessFact,
+        LegacyPayment, UploadedFile, DocumentEmbedding, ChatMessage, TokenUsage,
+        RateLimitConfig, AlertConfig, AIFeedback, AIQueryOverride, BusinessFact,
         BusinessSettings, Expense, Godown, PeriodLock
     ):
         db.query(model).filter(model.business_id == user_id).delete(synchronize_session=False)
@@ -215,7 +215,7 @@ def business_details(user_id: int, db: Session) -> dict:
     uploads  = db.query(UploadedFile).filter(UploadedFile.business_id == user_id).all()
     invoices = db.query(Invoice).filter(Invoice.business_id == user_id).all()
     inventory = db.query(Inventory).filter(Inventory.business_id == user_id).all()
-    payments = db.query(Payment).filter(Payment.business_id == user_id).all()
+    payments = db.query(LegacyPayment).filter(LegacyPayment.business_id == user_id).all()
     msgs = db.query(ChatMessage).filter(ChatMessage.business_id == user_id).order_by(ChatMessage.timestamp.desc()).all()
     return {
         "id": target.id, "username": target.username, "business_name": target.business_name,

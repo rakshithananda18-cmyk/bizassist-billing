@@ -26,7 +26,7 @@ sys.path.insert(0, backend_path)
 
 import pytest
 from database.db import engine, SessionLocal
-from database.models import Base, Invoice, Inventory, Payment, User
+from database.models import Base, Invoice, Inventory, LegacyPayment, User
 from services.auth import hash_password
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ def setup_db():
         db.query(User).filter(User.id == 99).delete()
         db.query(Invoice).filter(Invoice.business_id == 99).delete()
         db.query(Inventory).filter(Inventory.business_id == 99).delete()
-        db.query(Payment).filter(Payment.business_id == 99).delete()
+        db.query(LegacyPayment).filter(LegacyPayment.business_id == 99).delete()
         db.commit()
         # Seed a test user
         user = User(

@@ -3,7 +3,7 @@ import pandas as pd
 from database.models import (
     Invoice,
     Inventory,
-    Payment
+    LegacyPayment
 )
 from services.normalize import to_iso, normalize_status
 
@@ -186,10 +186,10 @@ def save_payments(df, db, business_id, file_id=None):
                 amount_val = None
 
             # Check if payment record already exists (by customer + due_date) for this business
-            existing = db.query(Payment).filter(
-                Payment.customer == customer,
-                Payment.due_date == due_date,
-                Payment.business_id == business_id
+            existing = db.query(LegacyPayment).filter(
+                LegacyPayment.customer == customer,
+                LegacyPayment.due_date == due_date,
+                LegacyPayment.business_id == business_id
             ).first()
             
             if existing:
@@ -199,7 +199,7 @@ def save_payments(df, db, business_id, file_id=None):
                 existing.file_id = file_id
             else:
                 # INSERT new record
-                payment = Payment(
+                payment = LegacyPayment(
                     customer=customer,
                     amount=amount_val,
                     due_date=due_date,

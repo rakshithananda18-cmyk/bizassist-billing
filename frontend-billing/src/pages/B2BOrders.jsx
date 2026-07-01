@@ -28,7 +28,7 @@ const STATUS_FLOW = {
 // ============================================================================
 // ── 2. STATE INITIALIZATION (ORDERS & TABS) ──
 // ============================================================================
-export default function Orders() {
+export default function B2BOrders() {
   const { authFetch, token, user, settings } = useAuth()
 
   const settingsRef = useRef(settings)

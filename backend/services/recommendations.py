@@ -193,7 +193,7 @@ def get_business_snapshot(user_id: int) -> str:
     Compact business health string for AI system prompt injection.
     Grounds every AI response in real current data. ~80 tokens.
     """
-    from database.models import Payment
+    from database.models import LegacyPayment
     from datetime import datetime, timedelta
     db = SessionLocal()
     try:

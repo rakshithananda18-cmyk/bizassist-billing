@@ -96,9 +96,9 @@ _COLUMN_MIGRATIONS = [
     # alert_configs — created_at/updated_at already existed but ensure updated_at is present
     {"table": "alert_configs", "column": "created_at", "ddl": "ALTER TABLE alert_configs ADD COLUMN created_at DATETIME"},
     {"table": "alert_configs", "column": "updated_at", "ddl": "ALTER TABLE alert_configs ADD COLUMN updated_at DATETIME"},
-    # action_log — created_at already existed, add updated_at for TimestampMixin
-    {"table": "action_log", "column": "created_at", "ddl": "ALTER TABLE action_log ADD COLUMN created_at DATETIME"},
-    {"table": "action_log", "column": "updated_at", "ddl": "ALTER TABLE action_log ADD COLUMN updated_at DATETIME"},
+    # action_logs — created_at already existed, add updated_at for TimestampMixin
+    {"table": "action_logs", "column": "created_at", "ddl": "ALTER TABLE action_logs ADD COLUMN created_at DATETIME"},
+    {"table": "action_logs", "column": "updated_at", "ddl": "ALTER TABLE action_logs ADD COLUMN updated_at DATETIME"},
     # token_usage — gained TimestampMixin
     {"table": "token_usage", "column": "created_at", "ddl": "ALTER TABLE token_usage ADD COLUMN created_at DATETIME"},
     {"table": "token_usage", "column": "updated_at", "ddl": "ALTER TABLE token_usage ADD COLUMN updated_at DATETIME"},
@@ -180,7 +180,7 @@ _COLUMN_MIGRATIONS = [
     {"table": "product_barcodes",           "column": "uid", "ddl": "ALTER TABLE product_barcodes ADD COLUMN uid TEXT"},
     {"table": "business_settings",          "column": "uid", "ddl": "ALTER TABLE business_settings ADD COLUMN uid TEXT"},
     {"table": "invoice_payments",           "column": "uid", "ddl": "ALTER TABLE invoice_payments ADD COLUMN uid TEXT"},
-    {"table": "shared_ledgers",             "column": "uid", "ddl": "ALTER TABLE shared_ledgers ADD COLUMN uid TEXT"},
+    {"table": "b2b_ledgers",             "column": "uid", "ddl": "ALTER TABLE b2b_ledgers ADD COLUMN uid TEXT"},
     {"table": "stock_transfer_line_items",  "column": "uid", "ddl": "ALTER TABLE stock_transfer_line_items ADD COLUMN uid TEXT"},
 ]
 
@@ -192,7 +192,7 @@ _UID_TABLES = [
     "journal_entries", "period_locks",
     "invoice_line_items", "purchase_order_line_items", "purchase_invoice_line_items",
     "rate_limit_configs", "alert_configs", "stock_ledger", "product_barcodes",
-    "business_settings", "invoice_payments", "shared_ledgers", "stock_transfer_line_items",
+    "business_settings", "invoice_payments", "b2b_ledgers", "stock_transfer_line_items",
 ]
 
 

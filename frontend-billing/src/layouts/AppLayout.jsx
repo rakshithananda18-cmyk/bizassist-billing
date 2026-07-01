@@ -14,9 +14,9 @@ const NAV = [
   {
     section: 'Supply & Inflow',
     items: [
-      { to: '/orders', icon: <OrderIcon size={16} />, label: 'Supplier Orders' },
+      { to: '/b2b-orders', icon: <OrderIcon size={16} />, label: 'B2B Orders' },
       { to: '/purchases', icon: <BillsIcon size={16} />, label: 'Purchase Bills' },
-      { to: '/connections', icon: <ConnectionIcon size={16} />, label: 'Store Sync' },
+      { to: '/b2b-network', icon: <ConnectionIcon size={16} />, label: 'B2B Network' },
       { to: '/import', icon: <ImportIcon size={16} />, label: 'Data Migration' },
     ]
   },
@@ -31,7 +31,7 @@ const NAV = [
     section: 'Sales & Operations',
     items: [
       { to: '/sales',    icon: <CounterIcon size={16} />,   label: 'Billing Counter' },
-      { to: '/counters', icon: <MonitorIcon size={16} />,   label: 'Live Counters' },
+      { to: '/pos-live-counter', icon: <MonitorIcon size={16} />,   label: 'POS Live Counter' },
       { to: '/payments', icon: <CashIcon size={16} />,      label: 'Transactions' },
       { to: '/parties',  icon: <ContactsIcon size={16} />,  label: 'Contacts & Dues' },
       { to: '/stock',    icon: <InventoryIcon size={16} />, label: 'Inventory' },
@@ -61,8 +61,8 @@ const PAGE_TITLES = {
   '/parties':     'Contacts & Dues',
   '/stock':       'Inventory',
   '/purchases':   'Purchase Bills',
-  '/connections': 'Store Sync',
-  '/orders':      'Supplier Orders',
+  '/b2b-network': 'B2B Network',
+  '/b2b-orders':  'B2B Orders',
   '/reports':     'GST & Tax Reports',
   '/import':      'Data Migration',
   '/profile':     'My Profile',
@@ -221,7 +221,7 @@ export default function AppLayout({ children, title }) {
   // Role gating (defense-in-depth — the backend restrict_cashier guard is the
   // real authority; this just hides owner-only destinations from cashiers).
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
-  const OWNER_ONLY_PATHS = React.useMemo(() => new Set(['/purchases', '/connections', '/orders', '/reports', '/import', '/staff', '/dashboard', '/counters']), [])
+  const OWNER_ONLY_PATHS = React.useMemo(() => new Set(['/purchases', '/b2b-network', '/b2b-orders', '/reports', '/import', '/staff', '/dashboard', '/pos-live-counter']), [])
 
   React.useEffect(() => {
     if (isCashier && OWNER_ONLY_PATHS.has(location.pathname)) {

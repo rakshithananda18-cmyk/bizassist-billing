@@ -223,7 +223,7 @@ def stock_ledger(
     ]
 
 
-@router.get("/reports/pnl")
+@router.get("/reports/profit-loss")
 def report_pnl(
     from_date: Optional[str] = Query(None, alias="from"),
     to_date: Optional[str] = Query(None, alias="to"),

@@ -65,7 +65,7 @@ export async function reconcileBizIdOnLogin(token) {
     // auto-pull; we just surface that the local copy may be behind.
     const readTotal = async (base) => {
       try {
-        const r = await fetch(`${base}/api/migrate/count`, { headers })
+        const r = await fetch(`${base}/api/data-transfer/count`, { headers })
         if (!r.ok) return null
         const counts = await r.json()
         return Object.values(counts || {}).reduce((a, n) => a + (Number(n) > 0 ? Number(n) : 0), 0)
