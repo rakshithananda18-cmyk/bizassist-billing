@@ -470,6 +470,8 @@ def _reset_sequences(db: Session, table_names: list[str]) -> None:
 # row whose natural key already exists on the destination is reused, not
 # duplicated — so a re-import is safe for these tables.
 _NATURAL_KEYS: dict[str, list[str]] = {
+    # Tables where the natural key reliably identifies ONE row per business.
+    # Only include tables where the key is genuinely unique per business.
     "customers": ["phone", "name"],
     "vendors": ["phone", "name"],
     "products": ["barcode", "sku", "name"],
@@ -478,8 +480,13 @@ _NATURAL_KEYS: dict[str, list[str]] = {
     "purchase_orders": ["order_no"],
     "godowns": ["name"],
     "product_barcodes": ["barcode"],
-    "inventory": ["product_id"],     # product_id is FK-rewritten before this lookup
-    "business_settings": [],         # one row per business → match on business_id alone
+    "business_settings": [],  # one row per business → match on business_id alone
+    # NOTE: `inventory` intentionally excluded.
+    # A product can have MULTIPLE inventory rows (different batches, godowns,
+    # suppliers). Matching on product_id alone would clobber the wrong batch.
+    # Inventory rows without a uid are inserted fresh (safe) rather than
+    # matched via a lossy LIMIT 1 query. Once uid is enforced (Phase C-3)
+    # this fallback is retired entirely.
 }
 
 
