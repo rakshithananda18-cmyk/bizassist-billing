@@ -47,10 +47,16 @@ vi.mock('../contexts/AuthContext', () => ({
 
 beforeEach(() => {
   authFetch.mockClear()
-  // SSE stream: resolve immediately as done so the reader loop exits.
-  global.fetch = vi.fn(async () => ({
-    ok: true,
-    body: { getReader: () => ({ read: async () => ({ done: true, value: undefined }) }) },
+  global.fetch = vi.fn(async (url) => {
+    if (String(url).includes('/realtime/ticket')) {
+      return { ok: true, json: async () => ({ ticket: 'test-ticket' }) }
+    }
+    return { ok: true, json: async () => ({}) }
+  })
+  global.EventSource = vi.fn(() => ({
+    close: vi.fn(),
+    onmessage: null,
+    onerror: null,
   }))
 })
 

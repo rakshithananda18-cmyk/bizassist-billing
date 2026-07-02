@@ -122,7 +122,7 @@ export default function B2BOrders() {
 
 
   // SSE Stream Ref to clean up
-  const sseAbortControllerRef = useRef(null)
+  const eventSourceRef = useRef(null)
 
   // Load orders depending on active tab
   const loadOrders = useCallback(async () => {
@@ -183,51 +183,49 @@ export default function B2BOrders() {
   useEffect(() => {
     if (!token) return
 
-    // Set up AbortController to terminate fetch stream on cleanup
-    const controller = new AbortController()
-    sseAbortControllerRef.current = controller
+    let reconnectTimer = null
+    let stopped = false
 
     const connectSSE = async () => {
       try {
-        const response = await fetch(`${API_BASE}/connections/realtime/events`, {
+        const ticketResponse = await fetch(`${API_BASE}/realtime/ticket`, {
+          method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`
-          },
-          signal: controller.signal
+          }
         })
 
-        if (!response.ok) {
-          throw new Error('SSE connection failed')
+        if (!ticketResponse.ok) {
+          throw new Error(`Failed to fetch SSE ticket: ${ticketResponse.statusText}`)
         }
 
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
+        const { ticket } = await ticketResponse.json()
+        const es = new EventSource(`${API_BASE}/realtime/events?ticket=${encodeURIComponent(ticket)}`)
+        eventSourceRef.current = es
 
-        while (true) {
-          const { value, done } = await reader.read()
-          if (done) break
+        es.onmessage = (e) => {
+          try {
+            const event = JSON.parse(e.data)
+            handleRealtimeEvent(event)
+          } catch (err) {
+            console.error('Failed to parse SSE event:', err)
+          }
+        }
 
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop()
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const dataStr = line.slice(6)
-              try {
-                const event = JSON.parse(dataStr)
-                handleRealtimeEvent(event)
-              } catch (e) {
-                console.error('Failed to parse SSE event:', e)
-              }
-            }
+        es.onerror = (err) => {
+          es.close()
+          if (eventSourceRef.current === es) {
+            eventSourceRef.current = null
+          }
+          if (!stopped) {
+            console.warn('SSE disconnected, retrying in 5 seconds...', err)
+            reconnectTimer = setTimeout(connectSSE, 5000)
           }
         }
       } catch (err) {
-        if (err.name !== 'AbortError') {
+        if (!stopped) {
           console.warn('SSE disconnected, retrying in 5 seconds...', err)
-          setTimeout(connectSSE, 5000)
+          reconnectTimer = setTimeout(connectSSE, 5000)
         }
       }
     }
@@ -235,8 +233,13 @@ export default function B2BOrders() {
     connectSSE()
 
     return () => {
-      if (sseAbortControllerRef.current) {
-        sseAbortControllerRef.current.abort()
+      stopped = true
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+      }
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close()
+        eventSourceRef.current = null
       }
     }
   }, [token])
