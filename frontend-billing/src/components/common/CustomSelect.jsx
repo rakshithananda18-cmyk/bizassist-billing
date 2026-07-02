@@ -126,6 +126,7 @@ const CustomSelect = forwardRef(function CustomSelect({
     opacity: disabled ? 0.6 : 1,
     outline: 'none',
     width: '100%',
+    backgroundImage: 'none',
     ...style
   }
 

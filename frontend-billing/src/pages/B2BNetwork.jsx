@@ -202,80 +202,75 @@ export default function B2BNetwork() {
         </div>
 
         {/* Top Cards Section: My ID + Operations */}
-        <div className="grid grid-2 gap-4 mb-6">
-          {/* Glassmorphic BizID Display */}
-          <div className="card" style={{
-            background: 'linear-gradient(135deg, rgba(108, 99, 255, 0.1) 0%, rgba(139, 133, 255, 0.05) 100%)',
-            border: '1px solid rgba(108, 99, 255, 0.2)',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between'
-          }}>
+        <div className="grid grid-2 gap-4 mb-5">
+          {/* My BizID Display */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', padding: 'var(--sp-5)' }}>
             <div>
-              <div className="flex items-center gap-2 mb-2">
-                <span style={{ fontSize: '1.25rem' }}><SparkleIcon size={18} style={{ color: 'var(--accent)' }} /></span>
-                <span style={{ fontSize: '0.82rem', textTransform: 'uppercase', tracking: '0.05em', color: 'var(--text-secondary)' }}>My Network Address</span>
+              <div className="flex items-center gap-2 mb-1">
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text)' }}>
+                  My Network Address
+                </span>
               </div>
-              <h3 style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: 16 }}>
-                Share your unique BizID so other businesses can look you up and establish connection channels
-              </h3>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Share your unique BizID so other businesses can establish connection channels with you.
+              </div>
             </div>
             
-            <div className="flex items-center justify-between" style={{
+            <div className="flex items-center justify-between mt-auto" style={{
               background: 'var(--bg-3)',
-              padding: '10px 16px',
+              padding: '8px 12px',
               borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--border)'
+              border: '1px solid var(--border-strong)'
             }}>
-              <span className="td-mono" style={{ fontSize: '1.3rem', fontWeight: 'bold', color: 'var(--accent-light)', letterSpacing: '1px' }}>
+              <span className="td-mono" style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--accent)', letterSpacing: '1px' }}>
                 {myBizId || 'Loading...'}
               </span>
               {myBizId && (
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={() => handleCopy(myBizId, setCopiedId)}
-                  style={{ minWidth: 70 }}
+                  style={{ minWidth: 64, height: 32 }}
                 >
-                  {copiedId ? 'Copied!' : 'Copy'}
+                  {copiedId ? 'Copied' : 'Copy'}
                 </button>
               )}
             </div>
           </div>
 
           {/* Connect to Another Business */}
-          <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', padding: 'var(--sp-5)' }}>
             <div>
-              <div className="flex items-center gap-2 mb-2">
-                <span style={{ fontSize: '1.25rem' }}><ConnectionIcon size={16} /></span>
-                <span style={{ fontSize: '0.82rem', textTransform: 'uppercase', tracking: '0.05em', color: 'var(--text-secondary)' }}>Connect Business Channel</span>
+              <div className="flex items-center gap-2 mb-1">
+                <ConnectionIcon size={16} style={{ color: 'var(--accent)' }} />
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text)' }}>
+                  Connect Business Channel
+                </span>
               </div>
-              <p style={{ fontSize: '0.87rem', color: 'var(--text-secondary)', marginBottom: 12 }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                 Enter the BizID of the supplier you restock from or customer you sell to.
-              </p>
+              </div>
             </div>
             
-            <form onSubmit={handleConnect} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  className="form-input td-mono"
-                  style={{ textTransform: 'uppercase', letterSpacing: '0.5px', flex: 1 }}
-                  placeholder="E.G. BA-ABC123"
-                  value={connectBizId}
-                  onChange={e => setConnectBizId(e.target.value)}
-                  required
-                />
-                <CustomSelect
-                  className="form-select"
-                  value={connectAs}
-                  onChange={e => setConnectAs(e.target.value)}
-                  style={{ width: 170 }}
-                >
-                  <option value="buyer">Connect as Buyer</option>
-                  <option value="seller">Connect as Seller</option>
-                </CustomSelect>
-              </div>
-              <button type="submit" className="btn btn-primary" disabled={connecting} style={{ width: '100%' }}>
-                {connecting ? 'Establishing Connection...' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ConnectionIcon size={16} /> Connect Business</span>}
+            <form onSubmit={handleConnect} className="mt-auto flex" style={{ gap: 'var(--sp-3)' }}>
+              <input
+                className="form-input td-mono"
+                style={{ textTransform: 'uppercase', letterSpacing: '0.5px', flex: 1 }}
+                placeholder="E.G. BA-ABC123"
+                value={connectBizId}
+                onChange={e => setConnectBizId(e.target.value)}
+                required
+              />
+              <CustomSelect
+                className="form-select"
+                value={connectAs}
+                onChange={e => setConnectAs(e.target.value)}
+                style={{ width: 140 }}
+              >
+                <option value="buyer">As Buyer</option>
+                <option value="seller">As Seller</option>
+              </CustomSelect>
+              <button type="submit" className="btn btn-primary" disabled={connecting} style={{ height: 38 }}>
+                {connecting ? '...' : <span style={{ display: 'inline-flex', alignItems: 'center' }}><ConnectionIcon size={16} /></span>}
               </button>
             </form>
           </div>

@@ -4375,3 +4375,86 @@ textarea {
   font-weight: 700;
   letter-spacing: 0.02em;
 }
+
+/* ========================================================================== */
+/* SIDEBAR ICON ANIMATIONS                                                    */
+/* ========================================================================== */
+
+.nav-link:hover .nav-anim-b2border { animation: drive-truck 0.6s ease-in-out; }
+@keyframes drive-truck { 
+  0% { transform: translateX(0); } 
+  25% { transform: translateX(3px) rotate(2deg); } 
+  75% { transform: translateX(-2px) rotate(-1deg); } 
+  100% { transform: translateX(0); } 
+}
+
+.nav-link:hover .nav-anim-purchase { animation: slide-paper 0.5s ease-out; }
+@keyframes slide-paper { 
+  0% { transform: translateY(0); } 
+  50% { transform: translateY(-3px); } 
+  100% { transform: translateY(0); } 
+}
+
+.nav-link:hover .nav-anim-b2bnet { animation: pulse-connect 0.6s ease; }
+@keyframes pulse-connect { 
+  0% { transform: scale(1); } 
+  50% { transform: scale(1.15); stroke: var(--accent); } 
+  100% { transform: scale(1); } 
+}
+
+.nav-link:hover .nav-anim-import { animation: bounce-down 0.6s ease; }
+@keyframes bounce-down { 
+  0%, 100% { transform: translateY(0); } 
+  50% { transform: translateY(3px); } 
+}
+
+.nav-link:hover .nav-anim-home { animation: home-pop 0.4s ease; }
+@keyframes home-pop { 
+  0% { transform: scale(1); } 
+  50% { transform: scale(1.1) translateY(-1px); } 
+  100% { transform: scale(1); } 
+}
+
+.nav-link:hover .nav-anim-dash { animation: dash-wiggle 0.5s ease; }
+@keyframes dash-wiggle { 
+  0% { transform: rotate(0deg); } 
+  25% { transform: rotate(5deg); } 
+  75% { transform: rotate(-5deg); } 
+  100% { transform: rotate(0deg); } 
+}
+
+.nav-link:hover .nav-anim-bill { animation: counter-print 0.6s ease; }
+@keyframes counter-print { 
+  0% { transform: translateY(0); } 
+  50% { transform: translateY(-2px); } 
+  100% { transform: translateY(0); } 
+}
+
+.nav-link:hover .nav-anim-cash { animation: cash-flip 0.6s ease; }
+@keyframes cash-flip { 
+  0% { transform: translateY(0); } 
+  25% { transform: translateY(-2px) rotate(-3deg); } 
+  75% { transform: translateY(1px) rotate(3deg); } 
+  100% { transform: translateY(0); } 
+}
+
+.nav-link:hover .nav-anim-contact { animation: contact-pop 0.5s ease; }
+@keyframes contact-pop { 
+  0% { transform: scale(1); } 
+  50% { transform: scale(1.1); } 
+  100% { transform: scale(1); } 
+}
+
+.nav-link:hover .nav-anim-inventory { animation: box-drop 0.5s ease; }
+@keyframes box-drop { 
+  0% { transform: translateY(-2px); } 
+  50% { transform: translateY(1px); } 
+  100% { transform: translateY(0); } 
+}
+
+.nav-link:hover .nav-anim-report { animation: chart-grow 0.6s ease; }
+@keyframes chart-grow { 
+  0% { transform: scaleY(1); } 
+  50% { transform: scaleY(1.1) translateY(-1px); } 
+  100% { transform: scaleY(1); } 
+}

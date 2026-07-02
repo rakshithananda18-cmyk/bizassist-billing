@@ -14,28 +14,28 @@ const NAV = [
   {
     section: 'Supply & Inflow',
     items: [
-      { to: '/b2b-orders', icon: <OrderIcon size={16} />, label: 'B2B Orders' },
-      { to: '/purchases', icon: <BillsIcon size={16} />, label: 'Purchase Bills' },
-      { to: '/b2b-network', icon: <ConnectionIcon size={16} />, label: 'B2B Network' },
-      { to: '/import', icon: <ImportIcon size={16} />, label: 'Data Migration' },
+      { to: '/b2b-orders', icon: <OrderIcon size={16} className="nav-anim-b2border" />, label: 'B2B Orders' },
+      { to: '/purchases', icon: <BillsIcon size={16} className="nav-anim-purchase" />, label: 'Purchase Bills' },
+      { to: '/b2b-network', icon: <ConnectionIcon size={16} className="nav-anim-b2bnet" />, label: 'B2B Network' },
+      { to: '/import', icon: <ImportIcon size={16} className="nav-anim-import" />, label: 'Data Migration' },
     ]
   },
   {
     section: 'Hub',
     items: [
-      { to: '/',          icon: <HomeIcon size={16} />, label: 'Home'      },
-      { to: '/dashboard', icon: <DashboardIcon size={16} />, label: 'Dashboard' },
+      { to: '/',          icon: <HomeIcon size={16} className="nav-anim-home" />, label: 'Home'      },
+      { to: '/dashboard', icon: <DashboardIcon size={16} className="nav-anim-dash" />, label: 'Dashboard' },
     ]
   },
   {
     section: 'Sales & Operations',
     items: [
-      { to: '/sales',    icon: <CounterIcon size={16} />,   label: 'Billing Counter' },
+      { to: '/sales',    icon: <CounterIcon size={16} className="nav-anim-bill" />,   label: 'Billing Counter' },
       { to: '/pos-live-counter', icon: <MonitorIcon size={16} />,   label: 'POS Live Counter' },
-      { to: '/payments', icon: <CashIcon size={16} />,      label: 'Transactions' },
-      { to: '/parties',  icon: <ContactsIcon size={16} />,  label: 'Contacts & Dues' },
-      { to: '/stock',    icon: <InventoryIcon size={16} />, label: 'Inventory' },
-      { to: '/reports',  icon: <ReportsIcon size={16} />,   label: 'GST & Tax Reports' },
+      { to: '/payments', icon: <CashIcon size={16} className="nav-anim-cash" />,      label: 'Transactions' },
+      { to: '/parties',  icon: <ContactsIcon size={16} className="nav-anim-contact" />,  label: 'Contacts & Dues' },
+      { to: '/stock',    icon: <InventoryIcon size={16} className="nav-anim-inventory" />, label: 'Inventory' },
+      { to: '/reports',  icon: <ReportsIcon size={16} className="nav-anim-report" />,   label: 'GST & Tax Reports' },
     ]
   }
 ]
