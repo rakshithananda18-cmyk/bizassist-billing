@@ -15,7 +15,9 @@ export default function Staff() {
   const { authFetch, settings } = useAuth()
   const [staff, setStaff] = useState([])
   const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState({ username: '', password: '', counter_prefix: '' })
+  const [form, setForm] = useState({ username: '', password: '', confirmPassword: '', counter_prefix: '' })
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -23,7 +25,6 @@ export default function Staff() {
   // Owner-defined named counters (multi-terminal POS §9.3a). Stored on the
   // owner's settings (transactions section → cashier-write-blocked). Each is
   // { name, prefix } e.g. { name:'Front Counter', prefix:'C1' }. Staff are then
-  // ASSIGNED one (their users.counter_prefix) from this list via a dropdown.
   const counters = Array.isArray(settings?.transactions?.counters) ? settings.transactions.counters : []
   const [newCounter, setNewCounter] = useState({ name: '', prefix: '' })
 
@@ -72,7 +73,6 @@ export default function Staff() {
       setLoading(false)
     }
   }, [authFetch])
-
   useEffect(() => { load() }, [load])
 
   const addStaff = async (e) => {
@@ -80,6 +80,10 @@ export default function Staff() {
     setError(''); setSuccess('')
     if (!form.username.trim() || !form.password) {
       setError('Username and password are required.')
+      return
+    }
+    if (form.password !== form.confirmPassword) {
+      setError('Passwords do not match.')
       return
     }
     setSubmitting(true)
@@ -232,14 +236,47 @@ export default function Staff() {
             </div>
             <div className="form-group">
               <label className="form-label">Password</label>
-              <input
-                type="password"
-                className="form-input"
-                value={form.password}
-                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                placeholder="8+ chars, A-z, 0-9"
-                autoComplete="new-password"
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  className="form-input"
+                  value={form.password}
+                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  placeholder="8+ chars, A-z, 0-9"
+                  autoComplete="new-password"
+                  style={{ width: '100%', paddingRight: 40 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                  tabIndex="-1"
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Confirm Password</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showConfirm ? "text" : "password"}
+                  className="form-input"
+                  value={form.confirmPassword || ''}
+                  onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                  placeholder="Confirm password"
+                  autoComplete="new-password"
+                  style={{ width: '100%', paddingRight: 40 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirm(!showConfirm)}
+                  style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                  tabIndex="-1"
+                >
+                  {showConfirm ? 'Hide' : 'Show'}
+                </button>
+              </div>
             </div>
             <div className="form-group">
               <label className="form-label">Counter</label>

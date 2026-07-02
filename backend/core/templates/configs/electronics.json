@@ -1,0 +1,42 @@
+{
+  "key": "electronics",
+  "label": "Electronics / Appliances",
+  "terminology": {
+    "customer": "Customer",
+    "product": "Product",
+    "bill": "Tax Invoice",
+    "supplier": "Distributor"
+  },
+  "billing": {
+    "default_invoice_type": "B2C",
+    "tax_inclusive_default": false,
+    "entry_mode": "search",
+    "payment_modes": ["upi", "card", "cash", "credit", "emi"],
+    "eway_threshold": 50000,
+    "allow_returns": true,
+    "customer_required": false,
+    "line_fields": ["serial_no", "warranty_months", "installation_note"],
+    "counter_widgets": ["serial_capture", "delivery_address", "warranty_note"]
+  },
+  "inventory": {
+    "track_batch": false,
+    "track_expiry": false,
+    "track_serial": true,
+    "loose_qty": false,
+    "default_uoms": ["Nos", "Set"],
+    "reorder_default": 5
+  },
+  "product_fields": [
+    {"field": "name", "required": true},
+    {"field": "hsn_sac", "label": "HSN", "required": true},
+    {"field": "selling_price", "required": true},
+    {"field": "mrp"},
+    {"field": "barcode"},
+    {"attr": "brand", "label": "Brand"},
+    {"attr": "model_no", "label": "Model No."},
+    {"attr": "warranty_months", "label": "Warranty (months)", "type": "number"}
+  ],
+  "invoice_layout": "a4_tax_invoice",
+  "workflows": [],
+  "ai_pack": "available"
+}

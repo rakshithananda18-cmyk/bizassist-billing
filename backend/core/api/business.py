@@ -34,7 +34,10 @@ logger = logging.getLogger("bizassist.core.api.business")
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
 class SetupRequest(BaseModel):
-    template_key: str
+    template_key: Optional[str] = None
+    # Multi-type business (plan Phase 2): ordered list, first = primary.
+    # `template_key` alone still works (single-type, fully backward-compatible).
+    template_keys: Optional[list] = None
 
 
 class ConfigPatch(BaseModel):
@@ -67,21 +70,50 @@ def setup_business(req: SetupRequest,
                    current_user: dict = Depends(restrict_cashier),
                    db: Session = Depends(get_db)):
     """
-    Choose (or switch) the vertical for this business. Unknown key falls back to
-    `general`. Switching the template clears prior overrides (they were keyed to
-    the old vertical's schema). Returns the resolved config.
+    Choose (or switch) the vertical(s) for this business. Accepts either a single
+    `template_key` (legacy, unchanged) or an ordered `template_keys` list whose
+    first entry is the primary (plan Phase 2 multi-type). Unknown keys fall back
+    to `general`. Switching the PRIMARY clears prior overrides (they were keyed
+    to the old vertical's schema). Returns the resolved config.
     """
     bid = current_user["id"]
-    chosen = T.get_template(req.template_key)         # normalises unknown → general
-    key = chosen["key"]
+
+    # Normalise the request into an ordered, deduped, known-key list.
+    requested = req.template_keys if req.template_keys else [req.template_key]
+    keys, seen = [], set()
+    for k in requested:
+        norm = T.get_template(k)["key"]               # normalises unknown → general
+        if norm not in seen:
+            seen.add(norm)
+            keys.append(norm)
+    if not keys:
+        raise HTTPException(status_code=422, detail="at least one business type is required")
+    primary = keys[0]
 
     row = _get_or_create_settings(db, bid)
-    if row.template_key != key:
-        row.overrides = None                          # reset overrides on vertical change
-    row.template_key = key
+    if row.template_key != primary:
+        row.overrides = None                          # reset overrides on primary change
+    row.template_key = primary
+    row.business_types = json.dumps(keys)
     db.commit()
-    logger.info("[BUSINESS] biz=%s template set to '%s'", bid, key)
-    return {"template_key": key, "config": T.resolve_for(bid, db)}
+    logger.info("[BUSINESS] biz=%s template set to '%s' (types=%s)", bid, primary, keys)
+    return {"template_key": primary, "business_types": keys,
+            "config": T.resolve_for(bid, db)}
+
+
+@router.get("/business/billing-profile")
+def get_billing_profile(mode: Optional[str] = None,
+                        current_user: dict = Depends(get_active_user),
+                        db: Session = Depends(get_db)):
+    """
+    The RESOLVED billing-counter profile (plan Phase 2): entry mode, customer
+    gating, line fields, counter widgets, payment modes, and the invoice-template
+    default — for the business's primary vertical, or `?mode=<key>` for any of
+    its other registered business types (the counter mode switcher).
+    """
+    bid = current_user["id"]
+    profile = T.resolve_billing_profile(bid, db, mode_key=mode)
+    return {"profile": profile}
 
 
 @router.get("/business/config")

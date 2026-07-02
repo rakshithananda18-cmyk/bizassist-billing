@@ -182,6 +182,13 @@ _COLUMN_MIGRATIONS = [
     {"table": "invoice_payments",           "column": "uid", "ddl": "ALTER TABLE invoice_payments ADD COLUMN uid TEXT"},
     {"table": "b2b_ledgers",             "column": "uid", "ddl": "ALTER TABLE b2b_ledgers ADD COLUMN uid TEXT"},
     {"table": "stock_transfer_line_items",  "column": "uid", "ddl": "ALTER TABLE stock_transfer_line_items ADD COLUMN uid TEXT"},
+    # Invoice-template system, Phase 1 (plan §1.1) — print-payload snapshot fields.
+    {"table": "invoices",           "column": "invoice_title", "ddl": "ALTER TABLE invoices ADD COLUMN invoice_title TEXT"},
+    {"table": "invoice_line_items", "column": "mrp",           "ddl": "ALTER TABLE invoice_line_items ADD COLUMN mrp REAL"},
+    {"table": "invoice_line_items", "column": "expiry_date",   "ddl": "ALTER TABLE invoice_line_items ADD COLUMN expiry_date TEXT"},
+    {"table": "invoice_line_items", "column": "attributes",    "ddl": "ALTER TABLE invoice_line_items ADD COLUMN attributes TEXT"},
+    # Multi-type business, Phase 2 (plan §2.1) — ordered vertical list, first = primary.
+    {"table": "business_settings", "column": "business_types", "ddl": "ALTER TABLE business_settings ADD COLUMN business_types TEXT"},
 ]
 
 

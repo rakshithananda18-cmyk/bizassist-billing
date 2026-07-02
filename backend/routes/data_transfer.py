@@ -42,6 +42,7 @@ from sqlalchemy.orm import Session
 
 from database.db import get_db, engine, DATABASE_URL
 from services.auth import get_active_user
+from core.connection import transfer as b2b_transfer
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.routes.data_transfer")
@@ -87,6 +88,12 @@ _EXPORT_ORDER: list[str] = [
     "stock_transfers",
     "stock_transfer_line_items",
     "b2b_ledgers",
+    # Tier 9 – B2B relationship tables (two-sided: buyer + seller user ids).
+    # The generic business_id path can't scope these — they export/import via
+    # core.connection.transfer with BizID-based identity re-resolution.
+    "b2b_connections",
+    "b2b_orders",
+    "b2b_order_line_items",
 ]
 
 
@@ -693,9 +700,21 @@ def export_data(
     for table_name in _EXPORT_ORDER:
         if table_name not in existing:
             continue
+        if table_name in b2b_transfer.B2B_RELATIONSHIP_TABLES:
+            continue  # two-sided tables export below via BizID keys
         rows = _fetch_table(db, table_name, business_id)
         if rows:
             tables_data[table_name] = rows
+
+    # B2B relationship tables (connections / orders / order lines): two-sided
+    # rows exported with portable BizID identity keys (bug fix — these were
+    # previously dropped by every migration, orphaning the B2B network).
+    try:
+        for tname, rows in b2b_transfer.export_b2b_tables(db, business_id).items():
+            if rows and tname in existing:
+                tables_data[tname] = rows
+    except Exception as exc:
+        logger.warning("migrate/export: b2b relationship export failed — %s", exc)
 
     logger.info(
         "migrate/export: business_id=%s tables=%s total_rows=%s",
@@ -775,6 +794,13 @@ def import_data(
                 # Users are always identity-matched by username (owner/staff),
                 # never id-remapped — they define the business scope itself.
                 n = _upsert_users(db, rows, dest_owner_id, existing)
+            elif table_name in b2b_transfer.B2B_RELATIONSHIP_TABLES:
+                # Two-sided B2B rows: both parties re-resolved by BizID; rows
+                # whose counterparty isn't in this DB are skipped + logged.
+                if table_name in existing:
+                    n = b2b_transfer.import_b2b_tables(db, table_name, rows, dest_owner_id)
+                else:
+                    n = 0
             elif remap_ids:
                 n = _import_with_remap(
                     db, table_name, rows, dest_owner_id, source_owner_id, existing, id_maps

@@ -163,8 +163,12 @@ class BusinessSettings(Base, TimestampMixin):
     id           = Column(Integer, primary_key=True, index=True)
     uid          = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     business_id  = Column(Integer, index=True, nullable=False)
-    template_key = Column(String,  nullable=False, default="general")  # the chosen vertical
+    template_key = Column(String,  nullable=False, default="general")  # the chosen vertical (PRIMARY)
     overrides    = Column(Text,    nullable=True)                       # JSON: owner's per-setting tweaks
+    # Multi-type business (plan Phase 2): ordered JSON list of vertical keys,
+    # first = primary (always mirrors template_key). NULL → [template_key]
+    # resolved lazily, so no backfill is needed and nothing existing breaks.
+    business_types = Column(Text,  nullable=True)                       # JSON: ["supermarket", "repair", …]
 
     created_at   = Column(DateTime, default=datetime.utcnow)
     updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

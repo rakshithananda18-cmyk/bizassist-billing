@@ -18,6 +18,7 @@ export default function CartEmptyRows({ rowCount, columnOrder, colVisible, stick
                               col === 'discount' ? colVisible.discount :
                               col === 'tax' ? colVisible.tax :
                               col === 'batch' ? colVisible.batch :
+                              col === 'serial' ? colVisible.serial :
                               col === 'price_option' ? colVisible.price_option :
                               col === 'rate' ? colVisible.rate :
                               true;

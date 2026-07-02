@@ -247,6 +247,11 @@ class Invoice(Base, BusinessOwnedMixin, GSTFieldsMixin):
     # (NOT the shared GSTFieldsMixin). Reduces the payable, never the taxable/GST.
     cash_discount = Column(Float, nullable=True, default=0.0)
 
+    # Invoice-template system (plan Phase 1): stored display-title override
+    # ("Tax Invoice" | "Bill of Supply" | "Estimate" | …). NULL → derived at
+    # render time by core/billing/print_payload.py. Presentation-only.
+    invoice_title = Column(String, nullable=True)
+
     customer_ref = relationship("Customer", back_populates="invoices", foreign_keys=[customer_id])
     line_items   = relationship(
         "InvoiceLineItem", back_populates="invoice",
@@ -286,6 +291,11 @@ class InvoiceLineItem(Base, TimestampMixin):
     discount_pct  = Column(Float,  nullable=True,  default=0.0)
     batch_no      = Column(String, nullable=True)                  # pharma/perishable at point of sale
     serial_no     = Column(String, nullable=True)                  # electronics/IMEI tracking
+    # Invoice-template system (plan Phase 1) — sale-time snapshots so historical
+    # invoices print exactly what was sold. All nullable/additive.
+    mrp           = Column(Float,  nullable=True)                  # MRP at sale time (retail/pharma column)
+    expiry_date   = Column(String, nullable=True)                  # expiry at sale time (pharma column)
+    attributes    = Column(Text,   nullable=True)                  # JSON snapshot of vertical fields (size/color/warranty…)
 
     cgst_rate     = Column(Float,  nullable=True, default=0.0)
     sgst_rate     = Column(Float,  nullable=True, default=0.0)
@@ -657,6 +667,7 @@ from core.models import (  # noqa: E402,F401
     StockLedger, ProductBarcode, BusinessSettings, InvoicePayment, IdempotencyKey,
     B2BConnection, B2BInviteCode, B2BOrder, B2BOrderLineItem, B2BLedger,
     Expense, Godown, StockTransfer, StockTransferLineItem,
+    JournalEntry, JournalLine, PeriodLock,
 )
 
 
@@ -730,7 +741,7 @@ _SYNC_TABLES = {
     "expenses",
     "stock_transfers",
     "stock_transfer_line_items",
-    "shared_ledgers",
+    "b2b_ledgers",
 }
 
 
@@ -886,4 +897,5 @@ def handle_after_update(mapper, connection, target):
 @event.listens_for(Mapper, "after_delete")
 def handle_after_delete(mapper, connection, target):
     _queue_change(connection, target, "DELETE")
+# (sync-touch)
 

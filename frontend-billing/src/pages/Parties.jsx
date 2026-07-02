@@ -491,7 +491,7 @@ export default function Parties() {
                       </span>
                     </th>
                     <th className="sortable" onClick={() => handleSort('last_date')}>
-                      Last Invoice
+                      Latest Sale Date
                       <span className={`sort-indicator ${sortConfig.key === 'last_date' && sortConfig.direction ? 'active' : ''}`}>
                         {sortConfig.key === 'last_date' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
                       </span>
@@ -516,7 +516,7 @@ export default function Parties() {
                       </span>
                     </th>
                     <th className="sortable" onClick={() => handleSort('last_date')}>
-                      Last Purchase
+                      Last Invoice Date
                       <span className={`sort-indicator ${sortConfig.key === 'last_date' && sortConfig.direction ? 'active' : ''}`}>
                         {sortConfig.key === 'last_date' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
                       </span>
@@ -583,7 +583,7 @@ export default function Parties() {
                         <td style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{fmt(p.total_amount)}</td>
                         <td><span className={`badge ${p.status === 'paid' ? 'badge-success' : 'badge-warning'}`}>{p.status || 'unpaid'}</span></td>
                         <td>
-                          <div style={{ display: 'flex', gap: 6 }}>
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
                             <button className="btn btn-secondary btn-sm" onClick={() => handlePrintInvoice(p.invoice_number || p.invoice_no)}><PrinterIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Print</button>
                             <button className="btn btn-secondary btn-sm" onClick={() => handleWhatsAppShareInvoice(p)} title="Share invoice on WhatsApp"><MessageIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Share</button>
                             {p.invoice_type !== 'credit_note' && (
@@ -611,7 +611,8 @@ export default function Parties() {
                           : (p.last_purchase_date ? new Date(p.last_purchase_date).toLocaleDateString('en-IN') : '—')
                         }
                       </td>
-                      <td style={{ display: 'flex', gap: 6 }}>
+                      <td>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
                         {activeTab === 'Customers' ? (
                           <>
                             <button className="btn btn-secondary btn-sm" onClick={() => handleViewInvoices(p)}><BillsIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> View Invoices</button>
@@ -622,6 +623,7 @@ export default function Parties() {
                         ) : (
                           <button className="btn btn-secondary btn-sm" onClick={() => handleViewPurchases(p)}><InventoryIcon size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> View Purchases</button>
                         )}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -642,7 +644,7 @@ export default function Parties() {
             </div>
           )
           return (
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
               <button type="button" onClick={() => setIsFullScreen(true)} style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }} title="Full Screen">
                 <ExpandIcon size={14} />
               </button>

@@ -93,7 +93,7 @@ class UpdateVendor(BaseModel):
 
 # ── Serializers ───────────────────────────────────────────────────────────────
 
-def _customer_out(c: Customer, outstanding: float = 0.0) -> dict:
+def _customer_out(c: Customer, outstanding: float = 0.0, last_invoice_date: Optional[str] = None) -> dict:
     return {
         "id": c.id, "name": c.name, "gstin": c.gstin,
         "phone": c.phone, "email": c.email, "address": c.address,
@@ -102,10 +102,12 @@ def _customer_out(c: Customer, outstanding: float = 0.0) -> dict:
         "price_tier": getattr(c, "price_tier", "standard"),
         "is_active": c.is_active,
         "outstanding_dues": round(outstanding, 2),
+        "outstanding_balance": round(outstanding, 2),
+        "last_invoice_date": last_invoice_date,
     }
 
 
-def _vendor_out(v: Vendor) -> dict:
+def _vendor_out(v: Vendor, outstanding: float = 0.0, last_purchase_date: Optional[str] = None) -> dict:
     return {
         "id": v.id, "name": v.name, "gstin": v.gstin,
         "phone": v.phone, "email": v.email, "address": v.address,
@@ -114,18 +116,58 @@ def _vendor_out(v: Vendor) -> dict:
         "last_gstr1_filed": v.last_gstr1_filed,
         "filing_reliability": v.filing_reliability,
         "is_active": v.is_active,
+        "outstanding_balance": round(outstanding, 2),
+        "last_purchase_date": last_purchase_date,
     }
 
 
-def _compute_outstanding(db: Session, business_id: int, customer_id: int) -> float:
+def _compute_vendor_stats(db: Session, business_id: int, vendor_id: int) -> tuple:
+    """
+    Outstanding = SUM(total_amount) for all unpaid/pending purchase invoices.
+    Returns (outstanding, last_purchase_date).
+    """
+    from database.models import PurchaseInvoice
+    row = (
+        db.query(
+            func.coalesce(func.sum(PurchaseInvoice.total_amount), 0.0),
+            func.max(PurchaseInvoice.invoice_date)
+        )
+        .filter(
+            PurchaseInvoice.business_id == business_id,
+            PurchaseInvoice.supplier_id == vendor_id,
+            PurchaseInvoice.status != "Paid",
+        )
+        .first()
+    )
+    
+    # We also need the MAX(invoice_date) regardless of status
+    last_date_row = (
+        db.query(func.max(PurchaseInvoice.invoice_date))
+        .filter(
+            PurchaseInvoice.business_id == business_id,
+            PurchaseInvoice.supplier_id == vendor_id,
+        )
+        .first()
+    )
+    
+    if not row:
+        return 0.0, None
+    total_unpaid, _ = row
+    last_date = last_date_row[0] if last_date_row else None
+    return float(total_unpaid or 0), last_date
+
+
+def _compute_customer_stats(db: Session, business_id: int, customer_id: int) -> tuple:
     """
     Outstanding = SUM(total_amount) - SUM(paid_amount) for all non-credit-note
     invoices of this customer. Read-only, deterministic SQL.
+    Returns (outstanding, last_invoice_date).
     """
     row = (
         db.query(
             func.coalesce(func.sum(Invoice.total_amount), 0.0),
             func.coalesce(func.sum(Invoice.paid_amount), 0.0),
+            func.max(Invoice.invoice_date)
         )
         .filter(
             Invoice.business_id == business_id,
@@ -135,9 +177,9 @@ def _compute_outstanding(db: Session, business_id: int, customer_id: int) -> flo
         .first()
     )
     if row is None:
-        return 0.0
-    total, paid = row
-    return max(float(total or 0) - float(paid or 0), 0.0)
+        return 0.0, None
+    total, paid, last_date = row
+    return max(float(total or 0) - float(paid or 0), 0.0), last_date
 
 
 # ── Customer Routes ───────────────────────────────────────────────────────────
@@ -170,7 +212,7 @@ def list_customers(
     )
     return {
         "total": total, "page": page, "per_page": per_page,
-        "items": [_customer_out(c) for c in items],
+        "items": [_customer_out(c, *_compute_customer_stats(db, bid, c.id)) for c in items],
     }
 
 
@@ -216,8 +258,8 @@ def get_customer(
     ).first()
     if c is None:
         raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
-    outstanding = _compute_outstanding(db, bid, customer_id)
-    return _customer_out(c, outstanding)
+    outstanding, last_date = _compute_customer_stats(db, bid, customer_id)
+    return _customer_out(c, outstanding, last_date)
 
 
 @router.patch("/customers/{customer_id}")
@@ -243,8 +285,8 @@ def update_customer(
 
     db.commit()
     db.refresh(c)
-    outstanding = _compute_outstanding(db, bid, customer_id)
-    dto = _customer_out(c, outstanding)
+    outstanding, last_date = _compute_customer_stats(db, bid, customer_id)
+    dto = _customer_out(c, outstanding, last_date)
     background_tasks.add_task(
         realtime_manager.broadcast, bid,
         delta_event("party", payload=dto, kind="customer", rid=c.id, uid=getattr(c, "uid", None)),
@@ -290,7 +332,7 @@ def customer_ledger(
             "status": inv.status,
         })
 
-    outstanding_total = _compute_outstanding(db, bid, customer_id)
+    outstanding_total, _ = _compute_customer_stats(db, bid, customer_id)
     return {
         "customer_id": customer_id,
         "customer_name": c.name,
@@ -330,7 +372,7 @@ def list_vendors(
     )
     return {
         "total": total, "page": page, "per_page": per_page,
-        "items": [_vendor_out(v) for v in items],
+        "items": [_vendor_out(v, *_compute_vendor_stats(db, bid, v.id)) for v in items],
     }
 
 
@@ -353,7 +395,7 @@ def create_vendor(
     db.add(v)
     db.commit()
     db.refresh(v)
-    dto = _vendor_out(v)
+    dto = _vendor_out(v, 0.0, None)
     background_tasks.add_task(
         realtime_manager.broadcast, bid,
         delta_event("party", payload=dto, kind="vendor", rid=v.id, uid=getattr(v, "uid", None)),
@@ -375,7 +417,8 @@ def get_vendor(
     ).first()
     if v is None:
         raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
-    return _vendor_out(v)
+    outstanding, last_date = _compute_vendor_stats(db, bid, vendor_id)
+    return _vendor_out(v, outstanding, last_date)
 
 
 @router.patch("/vendors/{vendor_id}")
@@ -401,7 +444,8 @@ def update_vendor(
 
     db.commit()
     db.refresh(v)
-    dto = _vendor_out(v)
+    outstanding, last_date = _compute_vendor_stats(db, bid, vendor_id)
+    dto = _vendor_out(v, outstanding, last_date)
     background_tasks.add_task(
         realtime_manager.broadcast, bid,
         delta_event("party", payload=dto, kind="vendor", rid=v.id, uid=getattr(v, "uid", None)),

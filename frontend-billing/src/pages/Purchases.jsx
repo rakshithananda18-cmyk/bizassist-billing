@@ -484,7 +484,7 @@ export default function Purchases() {
                     {sortConfig.key === 'status' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
                   </span>
                 </th>
-                <th>Actions</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr></thead>
               <tbody>
                 {filtered.length === 0 ? (
@@ -509,7 +509,11 @@ export default function Purchases() {
                         <span className={`badge ${b.status === 'confirmed' ? 'badge-success' : 'badge-warning'}`}>{b.status || 'pending'}</span>
                       )}
                     </td>
-                    <td><button className="btn btn-secondary btn-sm" onClick={() => handleViewDetail(b)}>View</button></td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <button className="btn btn-secondary btn-sm" onClick={() => handleViewDetail(b)}>View</button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -528,7 +532,7 @@ export default function Purchases() {
             </div>
           )
           return (
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
               <button type="button" onClick={() => setIsFullScreen(true)} style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }} title="Full Screen">
                 <ExpandIcon size={14} />
               </button>

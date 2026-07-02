@@ -464,6 +464,10 @@ _DEFAULT_SETTINGS = {
         "thermal_printer_mode": False,
         "thermal_page_size": "3inch",      # 3inch (80mm) | 2inch (58mm)
         "thermal_theme": "theme_standard", # theme_standard | theme_compact
+        # Invoice-template system (plan Phase 1): the business's default template
+        # for the invoice viewer. classic | modern | thermal. Per-user last-used
+        # lives client-side; this is the business default.
+        "invoice_template": "classic",
     },
     # ── Transaction Names (custom labels) ────────────────────────────────────
     "labels": {

@@ -4,6 +4,7 @@
 :root {
   /* Surfaces & Canvas */
   --bg:            #fdfdfc; /* Pampas — warm near-white page background */
+  --bg-1:          #f4f4f1; /* Light soft grey for subtle contrast */
   --bg-2:          #ffffff; /* Pure white — left sidebar, cards & panels */
   --bg-3:          #f4f4f1; /* Light soft grey hover background */
   --bg-4:          #eceae4; /* Slightly darker warm grey */
@@ -66,9 +67,39 @@
   --hover-bg:          var(--bg-3);
   --secondary-text:    var(--text-secondary);
 
-  /* Transitions */
+  /* Transitions — one motion system (Phase 4.1). --ease is the app-wide
+     ease-out; NOTHING animates outside these three durations. */
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --dur:  240ms;
+  --dur-fast: 120ms;   /* micro feedback: hovers, presses, toggles */
+  --dur:      180ms;   /* standard: color/background/border shifts */
+  --dur-slow: 240ms;   /* spatial: panels, drawers, modals */
+
+  /* Type scale (Phase 4.1) — 6 steps, use these instead of raw px */
+  --fs-xs:   0.75rem;   /* 12px — table headers, meta, badges */
+  --fs-sm:   0.8125rem; /* 13px — secondary text, labels */
+  --fs-base: 0.875rem;  /* 14px — body */
+  --fs-md:   1rem;      /* 16px — emphasized body, inputs on mobile */
+  --fs-lg:   1.25rem;   /* 20px — section titles, key figures */
+  --fs-2xl:  1.5rem;    /* 24px — page titles, grand totals */
+  --lh-body:    1.45;
+  --lh-heading: 1.2;
+
+  /* Spacing (Phase 4.1) — 4px grid, use these instead of raw px */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 40px;
+
+  /* Border weights (Phase 4.1): hairline for structure, strong for inputs/tables */
+  --border-hairline: rgba(26, 23, 20, 0.12);
+  --border-strong:   #c8c5be;
+
+  /* Focus (Phase 4.1): the ONE keyboard-focus ring, applied via :focus-visible */
+  --focus-ring: 0 0 0 3px var(--accent-dim), 0 0 0 1.5px var(--accent);
 }
 
 .dark-mode {
@@ -80,6 +111,8 @@
   --surface-hover: #2a2923;
   --border:        #44423a;
   --border-focus:  #55534a;
+  --border-hairline: rgba(253, 253, 252, 0.10);
+  --border-strong:   #44423a;
 
   --text-primary:   #fdfdfc;
   --text-secondary: #e2e1dc;
@@ -159,6 +192,16 @@ select option {
   font-family: inherit !important;
 }
 img { display: block; max-width: 100%; }
+
+.custom-select-btn {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--fs-base);
+  box-shadow: var(--shadow-sm);
+}
 
 /* === SCROLLBAR === */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
@@ -345,6 +388,8 @@ img { display: block; max-width: 100%; }
 .page-content {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0 16px 10px; /* No top padding — page-header starts flush */
@@ -371,6 +416,7 @@ img { display: block; max-width: 100%; }
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 14px;
+  flex-shrink: 0;
 }
 
 /* === STICKY SUB-BAR (filters / tab navigators) — pins directly under the
@@ -506,7 +552,7 @@ img { display: block; max-width: 100%; }
   color: var(--text-primary);
   font-size: 13.5px;
   font-weight: 500;
-  transition: background 0.18s ease, color 0.18s ease;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
   border: none;
   cursor: pointer;
   background: transparent;
@@ -519,7 +565,7 @@ img { display: block; max-width: 100%; }
   justify-content: center;
   width: 18px;
   color: var(--text-primary);
-  transition: color 0.18s ease;
+  transition: color var(--dur) var(--ease);
 }
 .nav-link:hover {
   background: var(--bg-3);
@@ -564,7 +610,7 @@ img { display: block; max-width: 100%; }
   box-sizing: border-box;
   cursor: pointer;
   border-radius: 8px;
-  transition: background 0.18s;
+  transition: background var(--dur) var(--ease);
   position: relative;
 }
 .user-chip:hover {
@@ -585,7 +631,7 @@ img { display: block; max-width: 100%; }
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
   flex-shrink: 0;
-  transition: transform 0.15s;
+  transition: transform var(--dur-fast) var(--ease);
   user-select: none;
 }
 .user-chip:hover .user-avatar {
@@ -670,7 +716,7 @@ img { display: block; max-width: 100%; }
   cursor: pointer;
   font-size: 12.5px;
   color: var(--text-secondary);
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
   text-align: left;
   display: flex;
   align-items: center;
@@ -731,7 +777,7 @@ img { display: block; max-width: 100%; }
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 
 .theme-opt-btn:hover {
@@ -765,7 +811,7 @@ img { display: block; max-width: 100%; }
   box-shadow: var(--glass-highlight), var(--glass-shadow);
   position: relative;
   overflow: hidden;
-  transition: transform 0.22s ease, box-shadow 0.22s ease, background-color 0.22s ease;
+  transition: transform var(--dur-slow) var(--ease), box-shadow var(--dur-slow) var(--ease), background-color var(--dur-slow) var(--ease);
 }
 
 .card::before {
@@ -844,6 +890,7 @@ img { display: block; max-width: 100%; }
   grid-template-columns: 1.2fr 0.8fr;
   gap: 24px;
   margin-top: 24px;
+  flex-shrink: 0;
 }
 
 /* ── Summary strip ── */
@@ -855,6 +902,7 @@ img { display: block; max-width: 100%; }
   border: 1px solid var(--border-color);
   border-radius: 12px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 .vsummary-strip-three {
   display: grid;
@@ -864,6 +912,7 @@ img { display: block; max-width: 100%; }
   border: 1px solid var(--border-color);
   border-radius: 12px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 .vsummary-card {
   background: var(--card-color);
@@ -873,7 +922,7 @@ img { display: block; max-width: 100%; }
   flex-direction: column;
   gap: 4px;
   cursor: pointer;
-  transition: background 0.13s;
+  transition: background var(--dur-fast) var(--ease);
 }
 .vsummary-card:hover { background: var(--hover-bg); }
 .vsummary-label {
@@ -1013,7 +1062,7 @@ img { display: block; max-width: 100%; }
 }
 
 /* Print-settings: clicking a live-preview element flashes its setting row. */
-.setting-row { transition: background var(--dur, .15s) var(--ease, ease); scroll-margin-top: 90px; }
+.setting-row { transition: background var(--dur) var(--ease); scroll-margin-top: 90px; }
 .live-print-preview-container [title="Click to edit this setting"]:hover { outline: 1px dashed var(--accent); outline-offset: 2px; }
 .preview-header-line:hover { background: var(--accent-dim, rgba(180,83,9,.08)); }
 .preview-header-line:active { cursor: grabbing; }
@@ -1147,7 +1196,7 @@ img { display: block; max-width: 100%; }
   font-size: 13px;
   font-weight: 600;
   border: 1px solid transparent;
-  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: all var(--dur) var(--ease);
   white-space: nowrap;
   line-height: 1.2;
 }
@@ -1232,7 +1281,8 @@ img { display: block; max-width: 100%; }
   border-radius: var(--radius-lg);
   overflow-x: auto;
   overflow-y: auto;
-  max-height: 65vh;
+  flex: 1;
+  min-height: 0;
   -webkit-overflow-scrolling: touch;
   box-shadow: var(--shadow-sm);
   position: relative;
@@ -1252,7 +1302,7 @@ img { display: block; max-width: 100%; }
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-primary);
-  text-align: left;
+  text-align: center;
   white-space: nowrap;
   border-bottom: 1px solid var(--border);
   position: sticky !important;
@@ -1287,6 +1337,7 @@ img { display: block; max-width: 100%; }
   color: var(--text-secondary);
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
+  text-align: center;
 }
 .data-table tbody tr { transition: background var(--dur) var(--ease); }
 .data-table tbody tr:nth-child(even) { background: var(--bg-3); }
@@ -1362,7 +1413,14 @@ img { display: block; max-width: 100%; }
   padding: 6px 12px;
   transition: border-color var(--dur) var(--ease);
 }
-.search-bar:focus-within { border-color: var(--border-focus); }
+.search-bar:focus-within { 
+  border-color: var(--border-focus); 
+  box-shadow: var(--focus-ring);
+}
+.search-bar input:focus, .search-bar input:focus-visible {
+  box-shadow: none !important;
+  outline: none !important;
+}
 .search-bar input {
   background: transparent;
   border: none;
@@ -1564,7 +1622,7 @@ img { display: block; max-width: 100%; }
 @keyframes spin    { to { transform: rotate(360deg); } }
 
 .fade-in  { animation: fadeIn  200ms var(--ease); }
-.slide-up { animation: slideUp 220ms var(--ease); }
+.slide-up { animation: slideUp 220ms var(--ease); display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
 /* === UTILITIES === */
 .flex       { display: flex; }
@@ -1898,10 +1956,10 @@ img { display: block; max-width: 100%; }
   opacity: 0;
   overflow: hidden;
   white-space: nowrap;
-  transition: max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
-              opacity 0.2s ease, 
-              padding 0.3s ease, 
-              margin-right 0.3s ease;
+  transition: max-width var(--dur-slow) var(--ease),
+              opacity var(--dur) var(--ease),
+              padding var(--dur-slow) var(--ease),
+              margin-right var(--dur-slow) var(--ease);
   margin-right: 0;
   box-shadow: var(--shadow-sm);
 }
@@ -1926,7 +1984,7 @@ img { display: block; max-width: 100%; }
   font-size: 0.82rem;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--dur) var(--ease);
 }
 
 .pos-help-hover-container:hover .pos-help-trigger-btn,
@@ -2058,7 +2116,7 @@ img { display: block; max-width: 100%; }
   background: var(--bg-2);
   text-align: center;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color var(--dur-fast) var(--ease);
 }
 
 .pos-cell-input:focus {
@@ -2582,7 +2640,7 @@ img { display: block; max-width: 100%; }
   font-weight: 500;
   border-radius: 7px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--dur-fast) var(--ease);
 }
 
 .login-tab-btn.active {
@@ -2616,7 +2674,7 @@ img { display: block; max-width: 100%; }
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.18s ease;
+  transition: color var(--dur) var(--ease);
   user-select: none;
   outline: none;
   box-shadow: none;
@@ -2652,13 +2710,13 @@ img { display: block; max-width: 100%; }
   gap: 8px;
   font-size: 12px;
   color: #c02a2a;
-  transition: all 0.18s ease;
+  transition: all var(--dur) var(--ease);
 }
 
 .condition-item .condition-dot {
   font-size: 8px;
   color: #c02a2a;
-  transition: color 0.18s ease;
+  transition: color var(--dur) var(--ease);
 }
 
 .condition-item.valid {
@@ -2687,7 +2745,7 @@ img { display: block; max-width: 100%; }
   font-size: 14px;
   cursor: pointer;
   box-shadow: inset 0 1px 1.5px rgba(255, 255, 255, 0.45);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+  transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
   margin-top: 8px;
   width: 100%;
 }
@@ -2731,7 +2789,7 @@ input[type="checkbox"] {
   color: var(--text-primary);
   font-size: 13px;
   outline: none;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
 
 .login-container .form-group input:focus,
@@ -2748,7 +2806,7 @@ input[type="checkbox"] {
   color: var(--accent);
   text-decoration: none;
   font-weight: 500;
-  transition: color 0.15s ease;
+  transition: color var(--dur-fast) var(--ease);
 }
 
 .admin-link:hover {
@@ -3171,7 +3229,7 @@ input[type="checkbox"] {
   font-weight: 500 !important;
   padding: 8px 16px !important;
   cursor: pointer !important;
-  transition: all 0.15s ease !important;
+  transition: all var(--dur-fast) var(--ease) !important;
   box-shadow: var(--shadow-sm) !important;
   display: inline-flex;
   align-items: center;
@@ -3339,6 +3397,15 @@ input[type="checkbox"] {
   background: var(--bg-2) !important;
   font-weight: 600;
   color: var(--text-muted);
+}
+.pos-hover-remove-cell .pos-delete-btn-hover {
+  display: none;
+}
+.pos-hover-remove-cell:hover .index-number {
+  display: none;
+}
+.pos-hover-remove-cell:hover .pos-delete-btn-hover {
+  display: inline-flex;
 }
 .pos-sticky-cell {
   position: sticky;
@@ -3650,7 +3717,7 @@ input[type="checkbox"] {
     align-items: center;
     justify-content: center;
     border-radius: 6px;
-    transition: background-color 0.2s;
+    transition: background-color var(--dur) var(--ease);
   }
 
   .mobile-menu-toggle:hover {
@@ -3726,7 +3793,7 @@ input[type="checkbox"] {
     background: var(--bg-2) !important;
     box-shadow: 0 0 30px rgba(0,0,0,0.2) !important;
     z-index: 10001 !important;
-    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    transition: transform var(--dur-slow) var(--ease) !important;
     display: flex !important;
     flex-direction: column !important;
     padding: 16px !important;
@@ -3961,7 +4028,7 @@ input[type="checkbox"] {
   border: 1px solid var(--border, rgba(255,255,255,0.1));
   padding: 16px;
   cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
   position: relative;
   overflow: hidden;
 }
@@ -4106,4 +4173,205 @@ input[type="checkbox"] {
   flex: 1 !important;
   overflow: auto !important;
   padding: 4px !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   INVOICE TEMPLATE SYSTEM — A4 print isolation (plan Phase 1)
+   Screen: the print portal stays hidden (the viewer shows its own preview).
+   Print: hide the app, show ONLY #invoice-a4-root on an A4 page — the same
+   pattern the thermal receipt uses, on its own root so the two never clash.
+   ═══════════════════════════════════════════════════════════════════════════ */
+#invoice-a4-root {
+  display: none;
+}
+
+@media print {
+  /* When an A4 invoice portal is present, it wins the page. */
+  body:has(#invoice-a4-root) #root,
+  body:has(#invoice-a4-root) #thermal-receipt,
+  body:has(#invoice-a4-root) .no-print {
+    display: none !important;
+  }
+  #invoice-a4-root {
+    display: block !important;
+    width: 100%;
+    background: #fff;
+    color: #000;
+  }
+  body:has(#invoice-a4-root) {
+    background: #fff !important;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+  /* Keep table rows and signature blocks intact across page breaks. */
+  #invoice-a4-root tr,
+  #invoice-a4-root thead {
+    page-break-inside: avoid;
+  }
+  #invoice-a4-root thead {
+    display: table-header-group; /* repeat the header on every page */
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE 4.1 — FOUNDATION (tokens applied app-wide; premium, calm, precise)
+   CSS-only. No layout, flow, or feature changes. Print blocks above untouched.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Numbers that align are 80% of "premium" in a billing app: every digit in the
+   app renders tabular (fixed-width), so amounts, quantities and totals line up
+   in tables, tickers and the POS total bar. Letters are unaffected. */
+body {
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-body);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  line-height: var(--lh-heading);
+  letter-spacing: -0.01em;   /* slight optical tightening on headings */
+}
+
+/* ── The ONE keyboard-focus ring ──────────────────────────────────────────────
+   Visible for keyboard users (:focus-visible), quiet for mouse users. Replaces
+   browser-default outlines with the accent ring token. */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+[role="tab"]:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+/* Mouse/touch interaction stays clean — no ring on plain :focus for pointers */
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── Inputs read as inputs: structural borders go hairline (via --border use
+   sites), while form controls keep the stronger, more visible border. ── */
+input[type="text"],
+input[type="number"],
+input[type="password"],
+input[type="email"],
+input[type="date"],
+input[type="search"],
+input[type="tel"],
+select,
+textarea {
+  border-color: var(--border-strong);
+}
+
+/* ── Reduced motion: the entire motion system collapses to instant ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PHASE 4.2 — COMPONENT REFINEMENT (buttons · tables · forms · loading)
+   Cascade-layer overrides of the base component classes above. CSS-only.
+   POS cart internals and print blocks are deliberately untouched.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Buttons: uniform heights, pressed feel, calmer secondary ── */
+.btn {
+  min-height: 36px;
+  padding: 0 var(--sp-4);
+  font-size: var(--fs-sm);
+  border-radius: var(--radius-md);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(0.5px);       /* the press */
+  box-shadow: none;
+}
+.btn-sm  { min-height: 30px; padding: 0 var(--sp-3); font-size: var(--fs-xs); }
+.btn-lg  { min-height: 42px; padding: 0 var(--sp-5); font-size: var(--fs-base); }
+.btn-icon { min-height: 32px; min-width: 32px; padding: 0; }
+
+/* secondary: clean outline-on-surface, no glassy inset */
+.btn-secondary {
+  background: var(--bg-2);
+  border-color: var(--border);
+  box-shadow: none;
+}
+.btn-secondary:hover {
+  background: var(--bg-2);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Tables: hairline separators, muted headers, no zebra, calm hover ── */
+.data-table th {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+}
+.data-table td {
+  border-bottom: 1px solid var(--border-hairline);
+}
+.data-table tbody tr:nth-child(even) {
+  background: transparent;            /* zebra off — hairlines carry the rhythm */
+}
+.data-table tbody tr:hover {
+  background: var(--bg-3) !important; /* neutral hover, accent stays for actions */
+}
+.data-table .td-mono {
+  font-family: 'Geist Mono', 'Courier New', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Forms: consistent control height (inputs read as inputs) ── */
+.form-input, .form-select {
+  min-height: 38px;
+}
+.form-label {
+  font-size: var(--fs-xs);
+}
+
+/* ── Modal entrance: 8px rise (subtler than the legacy 12px) ── */
+@keyframes modalRise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.modal {
+  animation: modalRise var(--dur) var(--ease);
+}
+
+/* ── Loading: skeleton shimmer (used by <Skeleton/>) ── */
+@keyframes skeletonShimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.skeleton {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg,
+    var(--bg-3) 25%, var(--bg-4) 50%, var(--bg-3) 75%);
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.4s ease-in-out infinite;
+  color: transparent;
+  user-select: none;
+}
+
+/* ── Status chips: one consistent scale ── */
+.badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }

@@ -34,7 +34,18 @@ export default function CartItemRow({
 }) {
   return (
     <tr className="item-row">
-      <td className="pos-sticky-index">{index + 1}</td>
+      <td className="pos-sticky-index pos-hover-remove-cell" onClick={() => onRemove(index)} style={{ cursor: 'pointer', textAlign: 'center' }} title="Click to remove">
+        <span className="index-number">{index + 1}</span>
+        <button
+          type="button"
+          className="btn btn-ghost btn-icon btn-sm pos-delete-btn-hover"
+          aria-label="Remove item"
+          tabIndex="-1"
+          style={{ padding: 0, height: 24, width: 24 }}
+        >
+          <CloseIcon size={14} color="var(--error)" />
+        </button>
+      </td>
       {columnOrder.map(col => {
         const isVisible = col === 'sku' ? colVisible.sku :
                           col === 'mrp' ? colVisible.mrp :
@@ -43,6 +54,7 @@ export default function CartItemRow({
                           col === 'discount' ? colVisible.discount :
                           col === 'tax' ? colVisible.tax :
                           col === 'batch' ? colVisible.batch :
+                          col === 'serial' ? colVisible.serial :
                           col === 'price_option' ? colVisible.price_option :
                           col === 'rate' ? colVisible.rate :
                           true;
@@ -125,6 +137,24 @@ export default function CartItemRow({
                 ) : (
                   <span className="pos-text-muted">—</span>
                 )}
+              </td>
+            );
+          }
+
+          if (col === 'serial') {
+            // Serial / IMEI capture (electronics · mobile · repair verticals).
+            // Snapshots onto the invoice line (backend serial_no column) and
+            // prints via the payload's serial column.
+            return (
+              <td key="serial" className="pos-align-center pos-cell-padded">
+                <input
+                  type="text"
+                  className="pos-cell-input serial-input"
+                  placeholder="Serial / IMEI"
+                  value={item.serial_no || ''}
+                  onChange={e => setItem(index, { serial_no: e.target.value })}
+                  style={{ minWidth: 110 }}
+                />
               </td>
             );
           }
@@ -226,7 +256,7 @@ export default function CartItemRow({
           if (col === 'rate') {
             const currentRate = parseFloat(item.selected_price) || (parseFloat(item.price) - (parseFloat(item.discount) / (parseFloat(item.qty) || 1)))
             return (
-              <td key="rate">
+              <td key="rate" className="pos-align-right">
                 {item.product_id ? (
                   <input
                     type="number"
@@ -331,16 +361,7 @@ export default function CartItemRow({
         }
         return null;
       })}
-      <td className="pos-align-center">
-        <button
-          type="button"
-          className="btn btn-ghost btn-icon btn-sm pos-delete-btn"
-          onClick={() => onRemove(index)}
-          aria-label="Remove item"
-        >
-          <CloseIcon size={16} />
-        </button>
-      </td>
+
     </tr>
   )
 }

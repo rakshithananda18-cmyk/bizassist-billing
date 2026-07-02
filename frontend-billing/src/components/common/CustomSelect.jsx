@@ -122,16 +122,9 @@ const CustomSelect = forwardRef(function CustomSelect({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    background: 'var(--bg-2, #ffffff)',
-    border: '1px solid var(--border, #e5e7eb)',
-    color: 'var(--text-primary, #1f2937)',
-    padding: '8px 12px',
-    borderRadius: 'var(--radius-md, 6px)',
-    fontSize: '0.875rem',
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.6 : 1,
     outline: 'none',
-    boxShadow: 'var(--shadow-sm, 0 1px 2px rgba(0,0,0,0.05))',
     width: '100%',
     ...style
   }

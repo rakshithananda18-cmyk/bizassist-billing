@@ -585,7 +585,7 @@ export default function B2BOrders() {
                         </div>
                       </td>
                       <td onClick={e => e.stopPropagation()}>
-                        <div className="flex gap-1">
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
                           {activeTab === 'incoming' && status.next && (
                             <button className="btn btn-primary btn-sm" onClick={() => handleStatusChange(order.id, status.next)}>{status.nextLabel}</button>
                           )}
@@ -617,7 +617,7 @@ export default function B2BOrders() {
             </div>
           )
           return (
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
               <button type="button" onClick={() => setIsFullScreen(true)} style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }} title="Full Screen">
                 <ExpandIcon size={14} />
               </button>

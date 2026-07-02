@@ -53,26 +53,32 @@ export default function RegisterView({ reportData, colKeys }) {
       <table className="data-table">
         <thead>
           <tr>
-            {colKeys.map(k => (
-              <th key={k} className="sortable" onClick={() => handleSort(k)}>
-                {k.replace(/_/g, ' ').toUpperCase()}
-                <span className={`sort-indicator ${sortConfig.key === k && sortConfig.direction ? 'active' : ''}`}>
-                  {sortConfig.key === k && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                </span>
-              </th>
-            ))}
+            {colKeys.map(k => {
+              const isNumCol = ['amount', 'price', 'total', 'value', 'balance', 'discount', 'qty', 'tax', 'rate', 'mrp'].some(sub => k.toLowerCase().includes(sub));
+              return (
+                <th key={k} className={`sortable ${isNumCol ? 'pos-align-right' : ''}`} onClick={() => handleSort(k)}>
+                  {k.replace(/_/g, ' ').toUpperCase()}
+                  <span className={`sort-indicator ${sortConfig.key === k && sortConfig.direction ? 'active' : ''}`}>
+                    {sortConfig.key === k && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
+                  </span>
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>
           {sortedData.map((row, i) => (
             <tr key={i}>
-              {colKeys.map(k => (
-                <td key={k}>
-                  {typeof row[k] === 'number' && (k.includes('amount') || k.includes('price') || k.includes('total') || k.includes('value'))
-                    ? `₹${Number(row[k]).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
-                    : String(row[k] ?? '—')}
-                </td>
-              ))}
+              {colKeys.map(k => {
+                const isNumCol = ['amount', 'price', 'total', 'value', 'balance', 'discount', 'qty', 'tax', 'rate', 'mrp'].some(sub => k.toLowerCase().includes(sub));
+                return (
+                  <td key={k} className={isNumCol ? 'pos-align-right' : ''}>
+                    {typeof row[k] === 'number' && isNumCol
+                      ? `₹${Number(row[k]).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+                      : String(row[k] ?? '—')}
+                  </td>
+                )
+              })}
             </tr>
           ))}
         </tbody>

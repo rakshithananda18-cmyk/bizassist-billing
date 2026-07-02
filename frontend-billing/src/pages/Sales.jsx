@@ -15,6 +15,7 @@ import { fmt, getTodayDateStr } from '../utils/format'
 // Invoice money-math (line totals, intra/inter GST split, change due) — pure + tested.
 import { lineTotal, computeInvoiceTotals, changeDue, buildInvoicePayload, columnTotals, suggestedTenders, schemeDiscount } from '../utils/invoiceMath'
 import { logger } from '../utils/logger'
+import { useBillingProfile } from '../hooks/useBillingProfile'
 import TotalBreakupModal from '../components/sales/TotalBreakupModal'
 import PosTotalBar from '../components/sales/PosTotalBar'
 import InvoiceBreakdownCard from '../components/sales/InvoiceBreakdownCard'
@@ -51,7 +52,7 @@ const colLabels = {
   total: 'Total After Tax'
 }
 
-const emptyItem = () => ({ product_id: '', product: '', qty: 1, price: '', discount: 0, sku: '—', is_custom: false, batch_no: '', expiry_date: '', selected_price: '', selected_price_label: 'Standard Price' })
+const emptyItem = () => ({ product_id: '', product: '', qty: 1, price: '', discount: 0, sku: '—', is_custom: false, batch_no: '', expiry_date: '', serial_no: '', selected_price: '', selected_price_label: 'Standard Price' })
 
 const defaultForm = {
   customer_id: '',
@@ -83,6 +84,9 @@ function effectiveHostingMode() {
 // ============================================================================
 export default function Sales(props = {}) {
   const { authFetch, profile, user } = useAuth()
+  // Business-type billing profile (Phase 2) — follows the counter-mode switcher
+  // live; FAIL-OPEN (null when offline → no behavior change).
+  const { profile: billingProfile } = useBillingProfile()
   const { config, attributesSchema, t } = useBusinessConfig()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -205,6 +209,14 @@ export default function Sales(props = {}) {
               parsed.push('price_option')
             }
           }
+          if (!parsed.includes('serial')) {
+            const batchIdx = parsed.indexOf('batch')
+            if (batchIdx !== -1) {
+              parsed.splice(batchIdx + 1, 0, 'serial')
+            } else {
+              parsed.push('serial')
+            }
+          }
           if (!parsed.includes('rate')) {
             const qtyIdx = parsed.indexOf('qty')
             if (qtyIdx !== -1) {
@@ -219,7 +231,7 @@ export default function Sales(props = {}) {
         logger.error('[SALES] failed to parse pos_column_order', e)
       }
     }
-    return ['sku', 'name', 'batch', 'price_option', 'mrp', 'hsn', 'qty', 'unit', 'rate', 'price', 'discount', 'tax', 'total']
+    return ['sku', 'name', 'batch', 'serial', 'price_option', 'mrp', 'hsn', 'qty', 'unit', 'rate', 'price', 'discount', 'tax', 'total']
   })
 
 
@@ -763,6 +775,7 @@ export default function Sales(props = {}) {
       }))
     }
     window.addEventListener('sync-event', handlePresence)
+    return () => window.removeEventListener('sync-event', handlePresence)
   }, [])
 
   useEffect(() => {
@@ -929,7 +942,7 @@ export default function Sales(props = {}) {
   
   const [productBatches, setProductBatches] = useState({})
   
-  const [upiVpa, setUpiVpa] = useState(() => localStorage.getItem('pos_upi_vpa') || 'bizassist@upi')
+  const upiVpa = profile?.phone ? `${profile.phone}@upi` : 'bizassist@upi'
   const [merchantState, setMerchantState] = useState(() => localStorage.getItem('pos_merchant_state') || '37')
 
   const barcodeRef = useRef(null)
@@ -1108,14 +1121,22 @@ export default function Sales(props = {}) {
     }
   }, [form.items, authFetch])
 
+  // Business-type billing profile (Phase 2): vertical line fields decide which
+  // cart columns show by DEFAULT — pharmacy gets batch/expiry, electronics/
+  // mobile/repair get serial — while the owner's explicit settings still win.
+  // FAIL-OPEN: profile null (offline) → settings-only behavior, unchanged.
+  const profileLineFields = billingProfile?.line_fields || []
   const colVisible = {
     sku: settings?.transactions?.pos_show_sku !== false,
     unit: settings?.transactions?.pos_show_unit !== false,
     discount: settings?.transactions?.pos_show_discount !== false,
     tax: settings?.transactions?.pos_show_tax !== false,
     hsn: settings?.transactions?.pos_show_hsn === true,
-    mrp: settings?.transactions?.pos_show_mrp === true,
+    mrp: settings?.transactions?.pos_show_mrp === true
+         || (settings?.transactions?.pos_show_mrp !== false && profileLineFields.includes('mrp')),
     batch: settings?.transactions?.pos_show_batch !== false,
+    serial: settings?.transactions?.pos_show_serial === true
+            || (settings?.transactions?.pos_show_serial !== false && profileLineFields.includes('serial_no')),
     price_option: true,
     rate: true
   }
@@ -1296,6 +1317,7 @@ export default function Sales(props = {}) {
         is_custom: true,
         batch_no: '',
         expiry_date: '',
+        serial_no: '',
         selected_price: '',
         selected_price_label: 'Standard Price'
       })
@@ -1512,6 +1534,7 @@ export default function Sales(props = {}) {
           is_custom: false,
           batch_no: '',
           expiry_date: '',
+          serial_no: '',
           cgst_rate: product.cgst_rate || 0,
           sgst_rate: product.sgst_rate || 0,
           igst_rate: product.igst_rate || 0,
@@ -2496,7 +2519,6 @@ export default function Sales(props = {}) {
         <PosCounterSettingsModal
           onClose={() => setShowSettingsModal(false)}
           upiVpa={upiVpa}
-          setUpiVpa={setUpiVpa}
           merchantState={merchantState}
           setMerchantState={setMerchantState}
           settings={settings}

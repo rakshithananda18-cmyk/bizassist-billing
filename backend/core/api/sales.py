@@ -27,6 +27,7 @@ from database.models import Product, Invoice, InvoiceLineItem, User, Customer
 from services.auth import get_active_user
 from services.realtime import realtime_manager
 from core.billing import commands as billing
+from core.billing import print_payload as PP
 from core.catalog import barcode as PB
 from core import templates as T
 from core.sync.idempotency import ReplayGuard, replay_guard
@@ -230,6 +231,65 @@ def get_sale(invoice_no: str,
     if inv is None:
         raise HTTPException(status_code=404, detail=f"Invoice '{invoice_no}' not found")
     return _invoice_out(inv)
+
+
+# ── Invoice-template system (plan Phase 1) ───────────────────────────────────
+
+@router.get("/sales/{invoice_no}/print-payload")
+def get_print_payload(invoice_no: str,
+                      current_user: dict = Depends(get_active_user),
+                      db: Session = Depends(get_db)):
+    """The normalized InvoicePrintPayload v1 — the ONE payload every invoice
+    template (Classic / Modern / Thermal) renders from. Pure read; templates
+    never recompute money. See core/billing/print_payload.py."""
+    bid = current_user["id"]
+    try:
+        return PP.build_print_payload(db, business_id=bid, invoice_no=invoice_no,
+                                      user_id=current_user.get("user_id") or bid)
+    except LookupError:
+        raise HTTPException(status_code=404, detail=f"Invoice '{invoice_no}' not found")
+    except Exception as e:
+        logger.error("print-payload failed for %s: %s", invoice_no, e, exc_info=True)
+        PP.log_event("payload_failed", business_id=bid, success=False, error=str(e)[:200])
+        raise HTTPException(status_code=500, detail="Could not build the invoice payload.")
+
+
+class PrintEvent(BaseModel):
+    """Client-side render lifecycle beacon (plan §1.3). Fire-and-forget: the
+    frontend never blocks printing on this call."""
+    action:        str                      # template_selected|print_opened|pdf_generated|pdf_failed|shared|template_fallback_used|print_render_failed
+    invoice_no:    Optional[str] = None
+    template_type: Optional[str] = None
+    success:       bool = True
+    error:         Optional[str] = None
+    extra:         Optional[dict] = None
+
+_ALLOWED_PRINT_EVENTS = {
+    "template_selected", "print_opened", "pdf_generated", "pdf_failed",
+    "shared", "template_fallback_used", "print_render_failed",
+    "print_settings_saved",
+}
+
+@router.post("/sales/print-events")
+def post_print_event(ev: PrintEvent,
+                     current_user: dict = Depends(get_active_user),
+                     db: Session = Depends(get_db)):
+    """Structured log sink for client-side invoice-render events."""
+    if ev.action not in _ALLOWED_PRINT_EVENTS:
+        raise HTTPException(status_code=422, detail=f"Unknown print event '{ev.action}'")
+    bid = current_user["id"]
+    biz_type = None
+    try:
+        biz_type = T.resolve_for(bid, db).get("key")
+    except Exception:
+        pass
+    extra = {k: str(v)[:120] for k, v in (ev.extra or {}).items() if v is not None}
+    PP.log_event(ev.action, business_id=bid,
+                 user_id=current_user.get("user_id") or bid,
+                 invoice_id=ev.invoice_no, template_type=ev.template_type,
+                 business_type=biz_type, success=ev.success,
+                 error=(ev.error or None), **extra)
+    return {"ok": True}
 
 
 def num_to_words_indian(num: float) -> str:
@@ -766,6 +826,7 @@ class FrontendInvoiceItem(BaseModel):
     igst_rate: Optional[float] = None
     batch_no: Optional[str] = None
     expiry_date: Optional[str] = None
+    serial_no: Optional[str] = None   # electronics/mobile/repair verticals (Phase 2 line fields)
 
 class FrontendInvoiceRequest(BaseModel):
     customer_id: Optional[int] = None
@@ -852,7 +913,8 @@ def create_sale_invoice_frontend(
             "sgst_rate": it.sgst_rate,
             "igst_rate": it.igst_rate,
             "batch_no": it.batch_no,
-            "expiry_date": it.expiry_date
+            "expiry_date": it.expiry_date,
+            "serial_no": it.serial_no
         })
         
     try:

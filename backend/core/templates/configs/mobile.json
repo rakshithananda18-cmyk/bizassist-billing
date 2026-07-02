@@ -1,0 +1,41 @@
+{
+  "key": "mobile",
+  "label": "Mobile / Accessories Shop",
+  "terminology": {
+    "customer": "Customer",
+    "product": "Product",
+    "bill": "Tax Invoice",
+    "supplier": "Distributor"
+  },
+  "billing": {
+    "default_invoice_type": "B2C",
+    "tax_inclusive_default": true,
+    "entry_mode": "barcode",
+    "payment_modes": ["upi", "card", "cash", "credit", "emi"],
+    "eway_threshold": 50000,
+    "allow_returns": true,
+    "customer_required": false,
+    "line_fields": ["serial_no", "warranty_months"],
+    "counter_widgets": ["imei_scan", "warranty_note"]
+  },
+  "inventory": {
+    "track_batch": false,
+    "track_expiry": false,
+    "track_serial": true,
+    "loose_qty": false,
+    "default_uoms": ["Nos"],
+    "reorder_default": 3
+  },
+  "product_fields": [
+    {"field": "name", "required": true},
+    {"field": "hsn_sac", "label": "HSN"},
+    {"field": "selling_price", "required": true},
+    {"field": "mrp"},
+    {"field": "barcode", "label": "Barcode / IMEI"},
+    {"attr": "brand", "label": "Brand"},
+    {"attr": "variant", "label": "Variant (RAM/Storage/Colour)"}
+  ],
+  "invoice_layout": "a4_tax_invoice",
+  "workflows": [],
+  "ai_pack": "available"
+}

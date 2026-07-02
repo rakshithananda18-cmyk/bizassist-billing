@@ -113,6 +113,11 @@ def _compute_line(line: dict, product: Optional[Product], *, intra: bool, tax_in
         "discount_pct": float(line.get("discount_pct") or 0.0),
         "batch_no":     line.get("batch_no"),
         "serial_no":    line.get("serial_no"),
+        # Sale-time print snapshots (invoice-template system, Phase 1). Nullable,
+        # presentation-only — never enter the tax math above.
+        "mrp":          (float(line["mrp"]) if line.get("mrp") is not None
+                         else (product.mrp if product else None)),
+        "expiry_date":  line.get("expiry_date"),
         "cgst_rate":    cgst_r if intra else 0.0,
         "sgst_rate":    sgst_r if intra else 0.0,
         "igst_rate":    0.0 if intra else igst_r,

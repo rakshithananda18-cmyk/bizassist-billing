@@ -711,7 +711,7 @@ export default function Payments() {
                 </div>
               )
               return (
-                <div style={{ position: 'relative' }}>
+                <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
                   <button 
                     type="button" 
                     onClick={() => setIsFullScreen(true)} 
@@ -823,7 +823,7 @@ export default function Payments() {
                 </div>
               )
               return (
-                <div style={{ position: 'relative' }}>
+                <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
                   <button 
                     type="button" 
                     onClick={() => setIsFullScreen(true)} 
@@ -921,7 +921,7 @@ export default function Payments() {
                 </div>
               )
               return (
-                <div style={{ position: 'relative' }}>
+                <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
                   <button 
                     type="button" 
                     onClick={() => setIsFullScreen(true)} 
@@ -1030,7 +1030,7 @@ export default function Payments() {
                 </div>
               )
               return (
-                <div style={{ position: 'relative' }}>
+                <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
                   <button 
                     type="button" 
                     onClick={() => setIsFullScreen(true)} 
@@ -1282,6 +1282,14 @@ export default function Payments() {
                   ({selectedInvoice.invoice_no} • {selectedInvoice.invoice_date ? new Date(selectedInvoice.invoice_date).toLocaleDateString('en-IN') : ''})
                 </span>
               </span>
+              <button
+                className="btn"
+                style={{ marginRight: 8 }}
+                onClick={() => { window.location.href = `/invoice/${encodeURIComponent(selectedInvoice.invoice_no)}/view` }}
+                title="Open the printable invoice (Classic / BizAssist templates)"
+              >
+                View / Print
+              </button>
               <button className="btn btn-ghost btn-icon" onClick={() => setSelectedInvoice(null)} aria-label="Close">
                 <CloseIcon size={16} />
               </button>

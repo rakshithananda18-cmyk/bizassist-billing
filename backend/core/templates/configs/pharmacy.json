@@ -13,7 +13,10 @@
     "entry_mode": "search",
     "payment_modes": ["cash", "upi", "card", "credit"],
     "eway_threshold": 50000,
-    "allow_returns": true
+    "allow_returns": true,
+    "customer_required": false,
+    "line_fields": ["batch_no", "expiry_date", "mrp"],
+    "counter_widgets": ["expiry_alert", "prescription_ref"]
   },
   "inventory": {
     "track_batch": true,

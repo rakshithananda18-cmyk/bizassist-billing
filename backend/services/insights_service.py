@@ -56,15 +56,16 @@ def dashboard_summary(user_id: int, db: Session) -> dict:
     invoices = db.query(Invoice).filter(Invoice.business_id == user_id).all()
     products = db.query(Product).filter(Product.business_id == user_id).all()
     
-    total_revenue = sum(i.total_amount or 0 for i in invoices)
-    invoice_count = len(invoices)
+    valid_invoices = [i for i in invoices if i.status not in ("Draft", "Cancelled")]
+    total_revenue = sum(i.total_amount or 0 for i in valid_invoices)
+    invoice_count = len(valid_invoices)
     
     thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
     today_str = datetime.now().strftime("%Y-%m-%d")
     
-    rev_30d = sum(i.total_amount or 0 for i in invoices if i.invoice_date and i.invoice_date >= thirty_days_ago)
+    rev_30d = sum(i.total_amount or 0 for i in valid_invoices if i.invoice_date and i.invoice_date >= thirty_days_ago)
     
-    pending_invoices = [i for i in invoices if i.status == "Pending"]
+    pending_invoices = [i for i in valid_invoices if i.status == "Pending"]
     pending_count = len(pending_invoices)
     pending_amount = sum((i.total_amount or 0) - (i.paid_amount or 0) for i in pending_invoices)
     
@@ -74,7 +75,7 @@ def dashboard_summary(user_id: int, db: Session) -> dict:
     ).all()
     paid_today = sum(p.amount_paid or 0.0 for p in payments_today)
     
-    overdue_invoices = [i for i in invoices if i.status == "Overdue"]
+    overdue_invoices = [i for i in valid_invoices if i.status == "Overdue"]
     overdue_count = len(overdue_invoices)
     overdue_amount = sum((i.total_amount or 0) - (i.paid_amount or 0) for i in overdue_invoices)
     
@@ -84,8 +85,12 @@ def dashboard_summary(user_id: int, db: Session) -> dict:
     ).all()
     purchases_30d = sum(p.total_amount or 0.0 for p in purchases)
     
-    active_cust_set = {i.customer for i in invoices if i.invoice_date and i.invoice_date >= thirty_days_ago and i.customer}
+    active_cust_set = {i.customer for i in valid_invoices if i.invoice_date and i.invoice_date >= thirty_days_ago and i.customer}
     active_customers = len(active_cust_set)
+    
+    gross_margin = 0.0
+    if rev_30d > 0:
+        gross_margin = round(max(-999.0, ((rev_30d - purchases_30d) / rev_30d) * 100), 1)
     
     low_stock_items = []
     low_stock_count = 0
@@ -109,7 +114,7 @@ def dashboard_summary(user_id: int, db: Session) -> dict:
                 
     low_stock_items = low_stock_items[:5]
     
-    recent_invoices_db = sorted(invoices, key=lambda i: (i.invoice_date or "", i.id), reverse=True)[:5]
+    recent_invoices_db = sorted(valid_invoices, key=lambda i: (i.invoice_date or "", i.id), reverse=True)[:5]
     recent_invoices = []
     for i in recent_invoices_db:
         recent_invoices.append({
@@ -135,7 +140,7 @@ def dashboard_summary(user_id: int, db: Session) -> dict:
         "low_stock_count": low_stock_count,
         "purchases_30d": purchases_30d,
         "active_customers": active_customers,
-        "gross_margin": 25.0,
+        "gross_margin": gross_margin,
         "recent_invoices": recent_invoices,
         "low_stock_items": low_stock_items
     }

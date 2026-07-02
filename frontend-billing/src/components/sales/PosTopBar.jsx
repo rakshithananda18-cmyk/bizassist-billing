@@ -7,6 +7,7 @@
 import React, { useState, useEffect } from 'react'
 import { CloseIcon, PlusIcon, SettingsIcon } from '../../components/Icons'
 import CounterMenu from './CounterMenu'
+import CounterModeSwitcher from './CounterModeSwitcher'
 import { IS_LOCAL_APP } from '../../config'
 
 export default function PosTopBar({
@@ -188,6 +189,7 @@ export default function PosTopBar({
           </div>
         )}
 
+        <CounterModeSwitcher />
         <CounterMenu
           prefix={counterPrefix}
           isOwner={canManageCounters}

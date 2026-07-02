@@ -13,7 +13,10 @@
     "entry_mode": "search",
     "payment_modes": ["upi", "bank", "cash", "card", "credit"],
     "eway_threshold": 50000,
-    "allow_returns": false
+    "allow_returns": false,
+    "customer_required": true,
+    "line_fields": ["sac", "labour_hours"],
+    "counter_widgets": ["advance_received", "job_reference"]
   },
   "inventory": {
     "track_batch": false,

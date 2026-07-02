@@ -7,6 +7,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
+import { useNavigate } from 'react-router-dom'
 import { logger } from '../utils/logger'
 import {
   SummaryIcon,
@@ -41,6 +42,7 @@ export default function Dashboard() {
     settingsRef.current = settings
   }, [settings])
 
+  const navigate = useNavigate()
   const [stats, setStats]       = useState(null)
   const [payments, setPayments] = useState([])
   const [loading, setLoading]   = useState(true)
@@ -212,7 +214,7 @@ export default function Dashboard() {
                     <p>Transactions and stock updates will appear here.</p>
                   </div>
                 ) : (
-                  <div className="timeline-container" style={{ overflowY: 'auto', maxHeight: '420px', paddingRight: '4px' }}>
+                  <div className="timeline-container" style={{ overflowY: 'auto', flex: 1, minHeight: 0, paddingRight: '4px' }}>
                     {dayFeed.map((item, idx) => (
                       <div key={idx} className="timeline-item">
                         <div className="timeline-marker" style={{ background: item.bg, color: item.color, borderColor: item.color }}>
@@ -285,7 +287,15 @@ export default function Dashboard() {
                         <tbody>
                           {s.recent_invoices.slice(0, 4).map(inv => (
                             <tr key={inv.id}>
-                              <td className="td-mono">{inv.invoice_number}</td>
+                              <td className="td-mono">
+                                <span
+                                  onClick={() => { navigate(`/invoice/${encodeURIComponent(inv.invoice_number)}/view`) }}
+                                  title="View / print this invoice"
+                                  style={{ cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline' }}
+                                >
+                                  {inv.invoice_number}
+                                </span>
+                              </td>
                               <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>₹{inv.total_amount?.toLocaleString('en-IN')}</td>
                               <td>
                                 <span className={`badge badge-${inv.status === 'paid' ? 'success' : inv.status === 'overdue' ? 'danger' : 'warning'}`}

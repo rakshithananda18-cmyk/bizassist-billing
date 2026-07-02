@@ -6,6 +6,7 @@ import { changeDue, paymentBalance } from '../../utils/invoiceMath'
 import { buildUpiUri, qrImageUrl } from '../../utils/share'
 import { logger } from '../../utils/logger'
 import CustomSelect from '../../components/common/CustomSelect'
+import { useBillingProfile } from '../../hooks/useBillingProfile'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -49,6 +50,22 @@ export default function CheckoutModal({
   const [customerSearchQuery, setCustomerSearchQuery] = useState('')
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
   const [customerSelectedIndex, setCustomerSelectedIndex] = useState(-1)
+
+  // Business-type billing profile (plan Phase 2). FAIL-OPEN: when the profile
+  // can't load (offline), guardedSave applies NO restriction — billing never
+  // blocks on config. Customer-first verticals (wholesale/services/repair/
+  // b2b_supplier) require a customer before the bill can be saved.
+  const { profile: billingProfile } = useBillingProfile()
+  const guardedSave = useCallback((paidAndPrint) => {
+    if (billingProfile?.customer_required && !form.customer_id) {
+      const who = billingProfile?.terminology?.customer || 'Customer'
+      logger.info('checkout blocked: customer required by billing profile', billingProfile.mode_key)
+      setAlert?.({ type: 'danger', msg: `${who} selection is required for ${billingProfile?.label || 'this business type'} billing.` })
+      customerRef.current?.focus()
+      return
+    }
+    onSaveInvoice(paidAndPrint)
+  }, [billingProfile, form.customer_id, onSaveInvoice, setAlert])
 
   const [showCustModal, setShowCustModal] = useState(false)
   const [custModalFields, setCustModalFields] = useState({
@@ -347,7 +364,7 @@ export default function CheckoutModal({
     } else if (matchesKey(e, funcKeys?.flowForward || 'Enter')) {
       e.preventDefault()
       e.stopPropagation()
-      onSaveInvoice(true)
+      guardedSave(true)
     } else if (e.key === 'Escape') {
       e.preventDefault()
       e.stopPropagation()
@@ -372,7 +389,7 @@ export default function CheckoutModal({
     } else if (e.ctrlKey && e.key.toLowerCase() === 's') {
       e.preventDefault()
       e.stopPropagation()
-      onSaveInvoice(false)
+      guardedSave(false)
     }
   }
 
@@ -399,13 +416,13 @@ export default function CheckoutModal({
       if ((e.ctrlKey && e.key.toLowerCase() === 'p') || e.key === 'F10') {
         e.preventDefault()
         e.stopPropagation()
-        onSaveInvoice(true)
+        guardedSave(true)
       }
 
       if (e.ctrlKey && e.key.toLowerCase() === 's') {
         e.preventDefault()
         e.stopPropagation()
-        onSaveInvoice(false)
+        guardedSave(false)
       }
 
       if (matchesKey(e, funcKeys?.customerFocus || 'F11')) {
@@ -432,7 +449,7 @@ export default function CheckoutModal({
 
     window.addEventListener('keydown', handleGlobalKeyDown)
     return () => window.removeEventListener('keydown', handleGlobalKeyDown)
-  }, [open, showCustModal, showCustomerDropdown, funcKeys, onClose, onSaveInvoice])
+  }, [open, showCustModal, showCustomerDropdown, funcKeys, onClose, guardedSave])
 
   // Save Customer Handler
   const handleSaveCustomer = async (e) => {
@@ -1160,7 +1177,7 @@ export default function CheckoutModal({
                     cursor: 'pointer',
                     transition: 'background 0.15s ease'
                   }}
-                  onClick={() => onSaveInvoice(true)}
+                  onClick={() => guardedSave(true)}
                 >
                   {submitting ? 'Saving Invoice...' : (isCredit ? 'Save & Print · Enter' : 'Paid & Print · Enter')}
                 </button>
@@ -1179,7 +1196,7 @@ export default function CheckoutModal({
                     cursor: 'pointer',
                     transition: 'color 0.15s ease'
                   }}
-                  onClick={() => onSaveInvoice(false)}
+                  onClick={() => guardedSave(false)}
                 >
                   Save Bill Only (Ctrl+S)
                 </button>

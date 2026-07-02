@@ -19,6 +19,7 @@ export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets
                             col === 'discount' ? colVisible.discount :
                             col === 'tax' ? colVisible.tax :
                             col === 'batch' ? colVisible.batch :
+                            col === 'serial' ? colVisible.serial :
                             col === 'price_option' ? colVisible.price_option :
                             col === 'rate' ? colVisible.rate :
                             true;
@@ -39,24 +40,27 @@ export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets
             if (col === 'batch') {
               return <th key="batch">BATCH</th>;
             }
+            if (col === 'serial') {
+              return <th key="serial">SERIAL / IMEI</th>;
+            }
             if (col === 'price_option') {
-              return <th key="price_option">PRICE OPTION</th>;
+              return <th key="price_option" className="pos-align-center">PRICE OPTION</th>;
             }
             if (col === 'mrp') {
-              return <th key="mrp">MRP (₹)</th>;
+              return <th key="mrp" className="pos-align-right">MRP (₹)</th>;
             }
             if (col === 'hsn') {
-              return <th key="hsn">HSN</th>;
+              return <th key="hsn" className="pos-align-center">HSN</th>;
             }
             if (col === 'qty') {
-              return <th key="qty">QTY</th>;
+              return <th key="qty" className="pos-align-center">QTY</th>;
             }
             if (col === 'unit') {
-              return <th key="unit">UNIT</th>;
+              return <th key="unit" className="pos-align-center">UNIT</th>;
             }
             if (col === 'rate') {
               return (
-                <th key="rate">
+                <th key="rate" className="pos-align-right">
                   PRICE PER UNIT<br/>
                   <span className="pos-text-muted" style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>BEFORE TAX (₹)</span>
                 </th>
@@ -64,21 +68,21 @@ export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets
             }
             if (col === 'price') {
               return (
-                <th key="price">
+                <th key="price" className="pos-align-right">
                   TOTAL<br/>
                   <span className="pos-text-muted" style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>BEFORE TAX (₹)</span>
                 </th>
               );
             }
             if (col === 'discount') {
-              return <th key="discount">DISCOUNT (₹)</th>;
+              return <th key="discount" className="pos-align-right">DISCOUNT (₹)</th>;
             }
             if (col === 'tax') {
-              return <th key="tax">TAX APPLIED(%)</th>;
+              return <th key="tax" className="pos-align-center">TAX APPLIED(%)</th>;
             }
             if (col === 'total') {
               return (
-                <th key="total">
+                <th key="total" className="pos-align-right">
                   TOTAL<br/>
                   <span className="pos-text-muted" style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>AFTER TAX (₹)</span>
                 </th>
@@ -96,7 +100,6 @@ export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets
           }
           return null;
         })}
-        {hasItems && <th className="pos-sticky-header"></th>}
       </tr>
     </thead>
   )

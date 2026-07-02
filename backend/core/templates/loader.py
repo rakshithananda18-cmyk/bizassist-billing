@@ -179,3 +179,91 @@ def clear_cache() -> None:
     """Drop cached configs (tests / hot-reload after editing a JSON)."""
     _load_raw.cache_clear()
     list_templates.cache_clear()
+
+
+# ── Billing profiles (plan Phase 2: business-type adaptive counter) ──────────
+
+# Legacy `invoice_layout` strings → viewer template default + paper.
+_LAYOUT_TO_TEMPLATE = {
+    "thermal_80mm":   {"default_template": "thermal", "paper": "thermal_80mm"},
+    "a4_tax_invoice": {"default_template": "classic", "paper": "a4"},
+    "a4_service":     {"default_template": "modern",  "paper": "a4"},
+}
+
+
+def get_business_types(row) -> list:
+    """Ordered vertical list for a BusinessSettings row. NULL/invalid resolves
+    lazily to [template_key] — the no-backfill contract of migration b4e7a2d8f1c3.
+    The primary (first entry) always mirrors template_key."""
+    types = []
+    raw = getattr(row, "business_types", None) if row is not None else None
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                types = [str(t) for t in parsed if _load_raw(str(t))]
+        except (ValueError, TypeError):
+            types = []
+    primary = row.template_key if row is not None else FALLBACK_KEY
+    if not types:
+        types = [primary]
+    if types[0] != primary:                    # primary always leads
+        types = [primary] + [t for t in types if t != primary]
+    return types
+
+
+def resolve_billing_profile(business_id: int, db, mode_key: Optional[str] = None) -> dict:
+    """
+    The RESOLVED billing-counter profile for one business + one counter mode
+    (plan §2.1). Presentation + defaults ONLY — the command layer still owns all
+    money math. Owner overrides apply to the PRIMARY vertical only (they were
+    keyed to it); secondary modes run their clean template config.
+
+        {mode_key, business_types, entry_mode, customer_required,
+         default_invoice_type, tax_inclusive_default, payment_modes,
+         line_fields, counter_widgets, terminology, inventory,
+         invoice: {default_template, paper}}
+    """
+    from core.models import BusinessSettings
+
+    row = (
+        db.query(BusinessSettings)
+        .filter(BusinessSettings.business_id == business_id)
+        .first()
+    )
+    types = get_business_types(row)
+    mode = mode_key if (mode_key and mode_key in types) else types[0]
+    if mode_key and mode_key not in types:
+        logger.info("[TEMPLATE] biz %s asked for mode '%s' not in %s → primary '%s'",
+                    business_id, mode_key, types, types[0])
+
+    if row is not None and mode == row.template_key:
+        cfg = resolve_for(business_id, db)     # primary: template ⊕ overrides
+    else:
+        cfg = get_template(mode)               # secondary: clean template
+
+    billing = cfg.get("billing", {})
+    layout = cfg.get("invoice_layout", "a4_tax_invoice")
+    invoice = dict(_LAYOUT_TO_TEMPLATE.get(layout, _LAYOUT_TO_TEMPLATE["a4_tax_invoice"]))
+
+    profile = {
+        "mode_key":              cfg.get("key", mode),
+        "label":                 cfg.get("label", mode),
+        "business_types":        types,
+        "entry_mode":            billing.get("entry_mode", "search"),
+        "customer_required":     bool(billing.get("customer_required", False)),
+        "default_invoice_type":  billing.get("default_invoice_type", "B2C"),
+        "tax_inclusive_default": bool(billing.get("tax_inclusive_default", False)),
+        "payment_modes":         billing.get("payment_modes", ["cash", "upi", "card"]),
+        "allow_returns":         bool(billing.get("allow_returns", True)),
+        "line_fields":           billing.get("line_fields", []),
+        "counter_widgets":       billing.get("counter_widgets", []),
+        "terminology":           cfg.get("terminology", {}),
+        "inventory":             cfg.get("inventory", {}),
+        "invoice":               invoice,
+    }
+    logger.info("[TEMPLATE] billing_profile_applied business_id=%s mode_key=%s "
+                "business_types=%s entry_mode=%s customer_required=%s",
+                business_id, profile["mode_key"], ",".join(types),
+                profile["entry_mode"], profile["customer_required"])
+    return profile

@@ -247,6 +247,7 @@ export function buildInvoicePayload({ invoiceNo, form, gstEnabled, billDiscount 
         price: effectivePrice,
         batch_no: it.batch_no || null,
         expiry_date: it.expiry_date || null,
+        serial_no: it.serial_no || null,   // electronics/mobile/repair verticals (Phase 2 line fields)
         cgst_rate: parseFloat(it.cgst_rate) || 0,
         sgst_rate: parseFloat(it.sgst_rate) || 0,
         igst_rate: it.igst_rate

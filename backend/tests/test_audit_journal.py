@@ -138,8 +138,10 @@ def test_posting_is_idempotent_per_source_document():
 def test_posted_journal_reconciles_with_derived_general_ledger():
     owner = _owner("AJ Recon")
     _seed(owner)
+    
     # Net (debit - credit) per account from the POSTED journal.
     aj = client.get("/reports/audit-journal", headers=owner["headers"]).json()
+    
     posted = {}
     for e in aj["entries"]:
         for ln in e["lines"]:

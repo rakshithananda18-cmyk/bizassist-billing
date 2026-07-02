@@ -1,0 +1,40 @@
+{
+  "key": "b2b_supplier",
+  "label": "B2B Supplier",
+  "terminology": {
+    "customer": "Buyer",
+    "product": "SKU",
+    "bill": "Tax Invoice",
+    "supplier": "Vendor"
+  },
+  "billing": {
+    "default_invoice_type": "B2B",
+    "tax_inclusive_default": false,
+    "entry_mode": "search",
+    "payment_modes": ["credit", "neft", "upi", "cheque", "cash"],
+    "eway_threshold": 50000,
+    "allow_returns": true,
+    "customer_required": true,
+    "line_fields": ["scheme_discount"],
+    "counter_widgets": ["outstanding_balance", "b2b_order_convert", "transport_details", "price_tier"]
+  },
+  "inventory": {
+    "track_batch": true,
+    "track_expiry": false,
+    "track_serial": false,
+    "loose_qty": false,
+    "default_uoms": ["Case", "Box", "Nos", "Kg"],
+    "reorder_default": 50
+  },
+  "product_fields": [
+    {"field": "name", "required": true},
+    {"field": "hsn_sac", "label": "HSN", "required": true},
+    {"field": "selling_price", "label": "List Price", "required": true},
+    {"field": "barcode"},
+    {"attr": "case_qty", "label": "Units per Case", "type": "number"},
+    {"attr": "tier_price_wholesale", "label": "Wholesale Tier Price", "type": "number"}
+  ],
+  "invoice_layout": "a4_tax_invoice",
+  "workflows": ["b2b_orders"],
+  "ai_pack": "available"
+}

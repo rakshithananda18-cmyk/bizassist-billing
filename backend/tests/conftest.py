@@ -51,9 +51,9 @@ os.unlink = secure_unlink
 os.environ["DATABASE_URL"] = "sqlite:///./test_bizassist.db"
 
 # Clean up test database file immediately on module load to prevent cross-run pollution
+_root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_test_db = os.path.join(_root_dir, "backend", "test_bizassist.db")
 try:
-    _root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    _test_db = os.path.join(_root_dir, "backend", "test_bizassist.db")
     if os.path.exists(_test_db):
         os.remove(_test_db)
 except Exception:
@@ -65,20 +65,52 @@ os.environ["LLM_ROUTER"] = "off"
 
 import pytest
 
+def _clear_sqlite_sidecars():
+    """Delete stale -wal/-shm sidecars of the test DB. On Windows a leftover
+    WAL/SHM (or a handle an AV/indexer still holds on it) surfaces as
+    'sqlite3.OperationalError: disk I/O error' during DDL — the flake seen in
+    test_phase4_sync setup. Uses the ORIGINAL os.remove (bypasses the guard
+    above, which would recurse)."""
+    for suffix in ("-wal", "-shm"):
+        try:
+            _orig_remove(_test_db + suffix)
+        except OSError:
+            pass
+
+
 @pytest.fixture(scope="module", autouse=True)
 def setup_and_dispose_db():
-    try:
-        from database.db import engine
-        from database.models import Base
-        from database.migration import run_migrations_and_seed
-        engine.dispose()
-        Base.metadata.drop_all(bind=engine)
-        Base.metadata.create_all(bind=engine)
-        run_migrations_and_seed()
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise e
+    import time
+    from database.db import engine
+    from database.models import Base
+    from database.migration import run_migrations_and_seed
+
+    last_err = None
+    for attempt in range(3):
+        try:
+            engine.dispose()
+            if attempt > 0:
+                # retry path: clear sidecars; on the final attempt drop the DB
+                # file itself and let create_all rebuild from scratch.
+                _clear_sqlite_sidecars()
+                if attempt == 2:
+                    try:
+                        _orig_remove(_test_db)
+                    except OSError:
+                        pass
+                time.sleep(0.7)
+            Base.metadata.drop_all(bind=engine)
+            Base.metadata.create_all(bind=engine)
+            run_migrations_and_seed()
+            last_err = None
+            break
+        except Exception as e:  # OperationalError('disk I/O error') et al.
+            last_err = e
+            import traceback
+            traceback.print_exc()
+            engine.dispose()
+    if last_err is not None:
+        raise last_err
     yield
     try:
         from database.db import engine

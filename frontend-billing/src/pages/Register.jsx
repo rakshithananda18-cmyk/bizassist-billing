@@ -12,7 +12,9 @@ import {
   SummaryIcon,
   CounterIcon,
   InventoryIcon,
-  ReportsIcon
+  ReportsIcon,
+  EyeIcon,
+  EyeOffIcon
 } from '../components/Icons'
 import { BuildingMark } from '../components/Logo'
 import CustomSelect from '../components/common/CustomSelect'
@@ -25,6 +27,7 @@ export default function Register() {
     businessName: '',
     username: '',
     password: '',
+    confirmPassword: '',
     country: 'India',
     phone: '',
     agreeTerms: false
@@ -32,6 +35,8 @@ export default function Register() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPasswordCriteria, setShowPasswordCriteria] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [existing, setExisting] = useState(false)   // username already taken on the cloud (the registry)
 
   // Pre-check a username against the CLOUD (the identity authority) so we can
@@ -60,6 +65,14 @@ export default function Register() {
 
   const [templates, setTemplates] = useState([])
   const [selectedTemplate, setSelectedTemplate] = useState('general')
+  // Multi-type business (Phase 2): optional secondary business types. The
+  // primary drives defaults; secondaries add counter modes (e.g. a shop that
+  // is Retail + Repair). Registered via POST /business/setup after signup.
+  const [extraTypes, setExtraTypes] = useState([])
+
+  const toggleExtraType = (key) => {
+    setExtraTypes(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
+  }
 
   useEffect(() => {
     fetch(`${API_BASE}/business/templates`)
@@ -100,7 +113,11 @@ export default function Register() {
     }
     if (!form.agreeTerms) {
       logger.warn('Registration failed client validation: User did not agree to terms.')
-      setError('You must agree to the Terms of Service to create an account.')
+      setError('You must agree to the local data storage Terms of Service.')
+      return
+    }
+    if (form.password !== form.confirmPassword) {
+      setError('Passwords do not match.')
       return
     }
     if (existing) {
@@ -117,6 +134,19 @@ export default function Register() {
         business_name: form.businessName,
         template_key: selectedTemplate
       })
+      // Multi-type (Phase 2): register secondary business types after signup.
+      // Non-fatal — the account works single-type if this call fails; types
+      // can be added later from Settings.
+      const extras = extraTypes.filter(k => k !== selectedTemplate)
+      if (extras.length > 0) {
+        try {
+          const { api } = await import('../api/client')
+          await api.post('/business/setup', { template_keys: [selectedTemplate, ...extras] })
+          logger.info('Secondary business types registered:', extras)
+        } catch (e) {
+          logger.warn('Could not register secondary business types (add them later in Settings):', e?.message)
+        }
+      }
       logger.info('Registration completed successfully! Navigating to dashboard.')
       navigate('/', { replace: true })
     } catch (err) {
@@ -242,6 +272,31 @@ export default function Register() {
                   </option>
                 ))}
               </CustomSelect>
+
+              {/* Multi-type (Phase 2): optional secondary business types */}
+              {templates.length > 1 && (
+                <details style={{ marginTop: 8 }}>
+                  <summary style={{ fontSize: '0.78rem', color: 'var(--text-muted)', cursor: 'pointer', userSelect: 'none' }}>
+                    Also runs as… (optional — adds extra billing modes)
+                  </summary>
+                  <div
+                    data-testid="extra-types"
+                    style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px', marginTop: 10, maxHeight: 110, overflowY: 'auto' }}
+                  >
+                    {templates.filter(t => t.key !== selectedTemplate).map(t => (
+                      <label key={t.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.8rem', cursor: 'pointer', margin: 0, lineHeight: 1.3 }}>
+                        <input
+                          type="checkbox"
+                          checked={extraTypes.includes(t.key)}
+                          onChange={() => toggleExtraType(t.key)}
+                          style={{ cursor: 'pointer', accentColor: 'var(--accent)', marginTop: 2, flexShrink: 0 }}
+                        />
+                        <span>{t.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </details>
+              )}
             </div>
 
             <div className="form-group" style={{ marginTop: '4px' }}>
@@ -273,15 +328,26 @@ export default function Register() {
 
             <div className="form-group" style={{ marginTop: '4px' }}>
               <label htmlFor="password">Password</label>
-              <input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={form.password}
-                onFocus={() => setShowPasswordCriteria(true)}
-                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                required
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={form.password}
+                  onFocus={() => setShowPasswordCriteria(true)}
+                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  required
+                  style={{ width: '100%', paddingRight: '40px' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}
+                  tabIndex="-1"
+                >
+                  {showPassword ? <EyeOffIcon size={16} /> : <EyeIcon size={16} />}
+                </button>
+              </div>
               {showPasswordCriteria && (
                 <div className="password-criteria" style={{ marginTop: 6, padding: '8px 12px' }}>
                   <div className={`criteria-item ${checks.length ? 'met' : ''}`} style={{ display: 'flex', gap: 6, fontSize: '0.75rem', color: checks.length ? 'var(--success)' : 'var(--text-muted)' }}>
@@ -299,6 +365,38 @@ export default function Register() {
                 </div>
               )}
             </div>
+
+            {form.password.length > 0 && (
+              <div className="form-group" style={{ marginTop: '4px' }}>
+                <label htmlFor="confirmPassword">Confirm Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={form.confirmPassword}
+                    onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                    required
+                    style={{ 
+                      width: '100%', 
+                      paddingRight: '40px',
+                      borderColor: form.confirmPassword ? (form.password === form.confirmPassword ? 'var(--success)' : 'var(--error)') : 'var(--border)'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}
+                    tabIndex="-1"
+                  >
+                    {showConfirmPassword ? <EyeOffIcon size={16} /> : <EyeIcon size={16} />}
+                  </button>
+                </div>
+                {form.confirmPassword && form.password !== form.confirmPassword && (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--error)', marginTop: 4 }}>Passwords do not match</div>
+                )}
+              </div>
+            )}
 
             {/* Row with Country & Phone */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: '4px' }}>
@@ -345,7 +443,7 @@ export default function Register() {
                 type="checkbox"
                 checked={form.agreeTerms}
                 onChange={e => setForm(f => ({ ...f, agreeTerms: e.target.checked }))}
-                style={{ marginTop: 3, cursor: 'pointer' }}
+                style={{ cursor: 'pointer', accentColor: 'var(--accent)', marginTop: 2, flexShrink: 0 }}
                 required
               />
               <label htmlFor="agreeTerms" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', cursor: 'pointer', lineHeight: 1.35 }}>
@@ -383,7 +481,7 @@ export default function Register() {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
             <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyCenter: 'center', flexShrink: 0, paddingLeft: 8, paddingTop: 8 }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, paddingLeft: 8, paddingTop: 8 }}>
                 <SummaryIcon size={18} />
               </div>
               <div>
@@ -393,7 +491,7 @@ export default function Register() {
             </div>
 
             <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyCenter: 'center', flexShrink: 0, paddingLeft: 8, paddingTop: 8 }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, paddingLeft: 8, paddingTop: 8 }}>
                 <CounterIcon size={18} />
               </div>
               <div>
@@ -403,7 +501,7 @@ export default function Register() {
             </div>
 
             <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyCenter: 'center', flexShrink: 0, paddingLeft: 8, paddingTop: 8 }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, paddingLeft: 8, paddingTop: 8 }}>
                 <InventoryIcon size={18} />
               </div>
               <div>
@@ -413,7 +511,7 @@ export default function Register() {
             </div>
 
             <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyCenter: 'center', flexShrink: 0, paddingLeft: 8, paddingTop: 8 }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, paddingLeft: 8, paddingTop: 8 }}>
                 <ReportsIcon size={18} />
               </div>
               <div>

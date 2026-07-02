@@ -13,7 +13,10 @@
     "entry_mode": "search",
     "payment_modes": ["cash", "upi", "card", "credit"],
     "eway_threshold": 50000,
-    "allow_returns": true
+    "allow_returns": true,
+    "customer_required": false,
+    "line_fields": ["size", "color"],
+    "counter_widgets": ["discount_presets", "exchange_note"]
   },
   "inventory": {
     "track_batch": false,

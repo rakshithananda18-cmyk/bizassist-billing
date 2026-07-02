@@ -1,0 +1,38 @@
+{
+  "key": "repair",
+  "label": "Repair / Service Center",
+  "terminology": {
+    "customer": "Customer",
+    "product": "Part / Service",
+    "bill": "Service Invoice",
+    "supplier": "Parts Supplier"
+  },
+  "billing": {
+    "default_invoice_type": "B2C",
+    "tax_inclusive_default": false,
+    "entry_mode": "search",
+    "payment_modes": ["upi", "cash", "card", "credit"],
+    "eway_threshold": 50000,
+    "allow_returns": false,
+    "customer_required": true,
+    "line_fields": ["serial_no", "job_card_no", "device_details", "problem_reported", "warranty_note"],
+    "counter_widgets": ["job_card", "advance_received", "device_intake"]
+  },
+  "inventory": {
+    "track_batch": false,
+    "track_expiry": false,
+    "track_serial": true,
+    "loose_qty": false,
+    "default_uoms": ["Nos", "Job"],
+    "reorder_default": 5
+  },
+  "product_fields": [
+    {"field": "name", "required": true},
+    {"field": "hsn_sac", "label": "HSN/SAC"},
+    {"field": "selling_price", "label": "Charge", "required": true},
+    {"attr": "service_type", "label": "Type", "type": "select", "options": ["Part", "Labour", "Diagnostic"]}
+  ],
+  "invoice_layout": "a4_service",
+  "workflows": ["job_cards"],
+  "ai_pack": "available"
+}

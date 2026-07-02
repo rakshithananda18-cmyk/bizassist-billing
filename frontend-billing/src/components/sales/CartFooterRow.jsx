@@ -20,6 +20,7 @@ export default function CartFooterRow({ columnOrder, colVisible, stickyOffsets, 
                             col === 'discount' ? colVisible.discount :
                             col === 'tax' ? colVisible.tax :
                             col === 'batch' ? colVisible.batch :
+                            col === 'serial' ? colVisible.serial :
                             col === 'price_option' ? colVisible.price_option :
                             col === 'rate' ? colVisible.rate :
                             true;
@@ -46,7 +47,6 @@ export default function CartFooterRow({ columnOrder, colVisible, stickyOffsets, 
           }
           return null;
         })}
-        <td className="pos-sticky-footer"></td>
       </tr>
     </tfoot>
   )
