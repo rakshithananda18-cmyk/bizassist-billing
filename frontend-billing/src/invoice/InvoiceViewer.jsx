@@ -11,7 +11,7 @@ import { logger } from '../utils/logger'
 import { resolveTemplate, templateOptions, FALLBACK_TEMPLATE } from './registry'
 import PrintPortal, { triggerPrint } from './PrintPortal'
 import { shareInvoice, buildWhatsAppLink } from './share'
-
+import PageLoader from '../components/PageLoader'
 const LAST_USED_KEY = (bizId) => `invoice.template.${bizId || 'default'}`
 
 /** Deep-freeze the payload in dev/test so any template mutation throws loudly. */
@@ -176,7 +176,7 @@ export default function InvoiceViewer() {
     )
   }
   if (!payload || !template) {
-    return <div className="invoice-viewer" data-testid="invoice-viewer-loading" style={{ padding: 24 }}>Loading invoice…</div>
+    return <PageLoader />
   }
 
   const Template = entry.component

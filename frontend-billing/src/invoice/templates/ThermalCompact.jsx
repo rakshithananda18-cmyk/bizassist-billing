@@ -224,19 +224,19 @@ export default function ThermalCompact({ payload }) {
         </div>
       )}
 
-      {s.print_signature && (
-        <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
-          <div style={{ borderTop: '1px dashed #64748b', width: '110px', textAlign: 'center', paddingTop: '2px', fontSize: '0.75em' }}>
-            {footer.signature_label || 'Authorised Signatory'}
-          </div>
-        </div>
-      )}
-
-      {s.customer_signature && (
-        <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-start' }}>
-          <div style={{ borderTop: '1px dashed #64748b', width: '110px', textAlign: 'center', paddingTop: '2px', fontSize: '0.75em' }}>
-            {footer.customer_signature_label || 'Customer Signature'}
-          </div>
+      {(s.print_signature || s.customer_signature) && (
+        <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+          {s.customer_signature ? (
+            <div style={{ borderTop: '1px dashed #64748b', width: '110px', textAlign: 'center', paddingTop: '2px', fontSize: '0.75em' }}>
+              {footer.customer_signature_label || 'Customer Signature'}
+            </div>
+          ) : <div />}
+          
+          {s.print_signature ? (
+            <div style={{ borderTop: '1px dashed #64748b', width: '110px', textAlign: 'center', paddingTop: '2px', fontSize: '0.75em' }}>
+              {footer.signature_label || 'Authorised Signatory'}
+            </div>
+          ) : <div />}
         </div>
       )}
 
