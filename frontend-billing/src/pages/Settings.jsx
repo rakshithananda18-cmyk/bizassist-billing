@@ -1946,7 +1946,7 @@ export default function Settings() {
                       <span>₹2.00</span>
                     </div>
 
-                    {pr.print_tax_breakdown && (
+                    {pr.print_tax_breakdown !== false && (
                       <Editable k="print_tax_breakdown" style={{ fontSize: '0.75em', color: '#475569', marginBottom: '8px' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                           <thead>

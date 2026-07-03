@@ -72,21 +72,27 @@ export default function ThermalReceipt({
         <div className="dashed" />
       </div>
 
-      <div className="receipt-info">
-        <p><strong>Bill No:</strong> {activeTab.name}</p>
-        <p><strong>Date:</strong> {getTodayDateStr()} &nbsp; <strong>Time:</strong> {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</p>
-        <p><strong>Cashier:</strong> {user?.username || 'POS'} &nbsp; <strong>Counter:</strong> {settings?.print?.counter_id || 'CTR1'}</p>
+      <div className="receipt-info" style={{ marginBottom: '6px', display: 'flex', flexDirection: 'column', gap: '1px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span><b>Bill No:</b> {activeTab.name}</span>
+          <span><b>Counter:</b> {settings?.print?.counter_id || 'POS'}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span><b>Date:</b> {getTodayDateStr()}</span>
+          <span><b>Time:</b> {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+        </div>
         {(() => {
           const c = customers.find(x => String(x.id) === String(form.customer_id))
-          return c ? (
-            <>
-              <p><strong>Customer:</strong> {c.name}</p>
-              {c.phone && <p><strong>Phone:</strong> {c.phone}</p>}
-              {c.gstin && <p><strong>GSTIN:</strong> {c.gstin}</p>}
-            </>
-          ) : null
+          if (c && c.name !== 'Cash Sale') {
+            return (
+              <div>
+                <b>Customer:</b> {c.name}{c.phone ? ` (${c.phone})` : ''}
+              </div>
+            )
+          }
+          return <div><b>Cashier:</b> {user?.username || 'POS'}</div>
         })()}
-        <div className="dashed" />
+        <div className="dashed" style={{ marginTop: '4px' }} />
       </div>
 
       <table className="receipt-table">
@@ -309,19 +315,34 @@ export default function ThermalReceipt({
 
       {/* Signature lines */}
       {(settings?.print?.customer_signature || settings?.print?.print_signature) && (
-        <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between', fontSize: '9px' }}>
-          {settings?.print?.customer_signature && (
-            <div style={{ textAlign: 'center', flex: 1 }}>
-              <div style={{ borderBottom: '1px solid #000', width: '80%', margin: '0 auto 4px auto', height: '15px' }} />
-              <div>{settings.print.customer_signature_label || 'Customer Signature'}</div>
+        <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', fontSize: '9px' }}>
+          {settings?.print?.customer_signature ? (
+            <div style={{ borderTop: '1px dashed #64748b', width: '110px', textAlign: 'center', paddingTop: '2px' }}>
+              {settings.print.customer_signature_label || 'Customer Signature'}
             </div>
-          )}
-          {settings?.print?.print_signature && (
-            <div style={{ textAlign: 'center', flex: 1 }}>
-              <div style={{ borderBottom: '1px solid #000', width: '80%', margin: '0 auto 4px auto', height: '15px' }} />
-              <div>{settings.print.signature_label || 'Authorised Signatory'}</div>
+          ) : <div />}
+          
+          {settings?.print?.print_signature ? (
+            <div style={{ borderTop: '1px dashed #64748b', width: '110px', textAlign: 'center', paddingTop: '2px' }}>
+              {settings.print.signature_label || 'Authorised Signatory'}
             </div>
-          )}
+          ) : <div />}
+        </div>
+      )}
+
+      {/* Computer generated note — always shown */}
+      <div style={{ textAlign: 'center', fontSize: '9px', color: '#94a3b8', marginTop: '10px', paddingTop: '4px', borderTop: '1px dotted #e2e8f0' }}>
+        Computer generated invoice. No signature required.
+      </div>
+
+      {settings?.print?.print_invoice_qr && (
+        <div style={{ textAlign: 'center', marginTop: '12px' }}>
+          <div style={{ width: 90, height: 90, border: '1px dashed #ccc', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '10px' }}>
+            QR Code
+          </div>
+          <div style={{ fontSize: '9px', color: '#64748b', marginTop: '4px' }}>
+            Scan to view invoice online
+          </div>
         </div>
       )}
 

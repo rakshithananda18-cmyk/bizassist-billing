@@ -1,5 +1,6 @@
 // src/invoice/templates/ThermalCompact.jsx — dynamic thermal receipt renderer (Phase 2).
 import { inr, n2, qty } from '../formatters'
+import { QRCodeSVG } from 'qrcode.react'
 
 export default function ThermalCompact({ payload }) {
   if (!payload) return null
@@ -79,7 +80,7 @@ export default function ThermalCompact({ payload }) {
       <div style={{ marginBottom: '6px', fontSize: '0.85em', display: 'flex', flexDirection: 'column', gap: '1px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span><b>Bill No:</b> {invoice.number}</span>
-          {s.counter_id ? <span><b>Counter:</b> {s.counter_id}</span> : null}
+          <span><b>Counter:</b> {s.counter_id || 'POS'}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span><b>Date:</b> {invoice.date}</span>
@@ -90,7 +91,7 @@ export default function ThermalCompact({ payload }) {
             <b>Customer:</b> {buyer.name}{buyer.phone ? ` (${buyer.phone})` : ''}
           </div>
         ) : (
-          <div><b>Cashier:</b> POS</div>
+          <div><b>Cashier:</b> {s.cashier_name || 'POS'}</div>
         )}
       </div>
 
@@ -178,7 +179,7 @@ export default function ThermalCompact({ payload }) {
         </div>
       )}
 
-      {s.print_tax_breakdown && payload.tax_summary && payload.tax_summary.length > 0 && (
+      {s.print_tax_breakdown !== false && payload.tax_summary && payload.tax_summary.length > 0 && (
         <div style={{ fontSize: '0.75em', color: '#475569', marginBottom: '8px' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -244,6 +245,15 @@ export default function ThermalCompact({ payload }) {
       <div style={{ textAlign: 'center', fontSize: '0.7em', color: '#94a3b8', marginTop: '10px', paddingTop: '4px', borderTop: '1px dotted #e2e8f0' }}>
         Computer generated invoice. No signature required.
       </div>
+
+      {s.print_invoice_qr && invoice.public_url && (
+        <div style={{ textAlign: 'center', marginTop: '12px' }}>
+          <QRCodeSVG value={invoice.public_url} size={90} />
+          <div style={{ fontSize: '0.7em', color: '#64748b', marginTop: '4px' }}>
+            Scan to view invoice online
+          </div>
+        </div>
+      )}
     </div>
   )
 }
