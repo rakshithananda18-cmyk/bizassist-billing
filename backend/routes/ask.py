@@ -17,7 +17,21 @@ from services.auth import get_active_user, restrict_cashier
 
 router = APIRouter()
 
-_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# Optional: desktop installs may ship without an AI key — the app must still
+# boot (Groq() raises at construction when api_key is None). AI endpoints
+# return 503 below; billing/POS is unaffected.
+_GROQ_KEY = os.getenv("GROQ_API_KEY")
+_client = Groq(api_key=_GROQ_KEY) if _GROQ_KEY else None
+
+
+def _require_ai_client():
+    if _client is None:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=503,
+            detail="AI features aren't configured on this device. "
+                   "Add GROQ_API_KEY to the app's .env (or use cloud mode) and restart.",
+        )
 
 
 class Prompt(BaseModel):
@@ -40,6 +54,7 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(restrict_cashier)):
       CACHE          -> cached response, 0 tokens
       AI_SIMPLE/COMPLEX -> Groq LLM
     """
+    _require_ai_client()
     from services.ai_router import handle
     return handle(
         prompt_message=prompt.message,
@@ -61,6 +76,7 @@ def ask_ai_stream(prompt: Prompt, current_user: dict = Depends(restrict_cashier)
     Event format:  data: {"type": "...", ...}\\n\\n
     Types: status | token | replace | done | error
     """
+    _require_ai_client()
     from services.ai_router import handle_stream
 
     def generator():

@@ -63,6 +63,35 @@ jobs:
           mkdir -p desktop/resources
           cp -R backend/dist/bizassist-backend desktop/resources/backend
 
+      # Boot the frozen exe with a CLEAN env (no .env, no secrets) exactly like
+      # a fresh user install — catches import-time crashes (JWT_SECRET,
+      # GROQ_API_KEY, ...) that dev machines mask because their .env exists.
+      - name: Smoke test packaged backend
+        shell: bash
+        env:
+          BIZASSIST_DATA_DIR: ${{ runner.temp }}/bizassist-smoke
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            EXE=desktop/resources/backend/bizassist-backend.exe
+          else
+            EXE=desktop/resources/backend/bizassist-backend
+          fi
+          "$EXE" --host 127.0.0.1 --port 8009 &
+          PID=$!
+          for i in $(seq 1 60); do
+            sleep 2
+            if curl -sf http://127.0.0.1:8009/health > /tmp/health.json; then
+              echo "Backend healthy:"; cat /tmp/health.json
+              kill $PID || true
+              exit 0
+            fi
+            # Fail fast if the process already died (import-time crash)
+            kill -0 $PID 2>/dev/null || { echo "::error::Packaged backend crashed on boot"; exit 1; }
+          done
+          echo "::error::Packaged backend never became healthy within 120s"
+          kill $PID || true
+          exit 1
+
       # ── 2. Frontends → Vite builds ──────────────────────────────────────
       - name: Build frontend-billing
         working-directory: frontend-billing
