@@ -1,12 +1,363 @@
 {
   "summary": {
-    "total": 0,
-    "passed": 0,
+    "total": 765,
+    "passed": 35,
     "failed": 0,
     "skipped": 0,
-    "duration": 2.902559757232666,
-    "timestamp": "2026-07-03T22:03:31.212794",
-    "status": "completed"
+    "duration": 36.83506155014038,
+    "timestamp": "2026-07-03T22:34:14.032887",
+    "status": "running"
   },
-  "tests": []
+  "tests": [
+    {
+      "nodeid": "tests/test_accounting.py::test_accounting_endpoints_empty",
+      "name": "test_accounting_endpoints_empty",
+      "file": "tests\\test_accounting.py",
+      "line": 84,
+      "outcome": "passed",
+      "duration": 0.07247999997343868,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_accounting.py::test_accounting_cashier_restricted",
+      "name": "test_accounting_cashier_restricted",
+      "file": "tests\\test_accounting.py",
+      "line": 112,
+      "outcome": "passed",
+      "duration": 0.01319369999691844,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_accounting.py::test_accounting_depth_calculations",
+      "name": "test_accounting_depth_calculations",
+      "file": "tests\\test_accounting.py",
+      "line": 121,
+      "outcome": "passed",
+      "duration": 0.6007729999837466,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_accounting.py::test_accounting_tenant_isolation",
+      "name": "test_accounting_tenant_isolation",
+      "file": "tests\\test_accounting.py",
+      "line": 333,
+      "outcome": "passed",
+      "duration": 0.05699579999782145,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_preview_marks_channels_by_contact",
+      "name": "test_preview_marks_channels_by_contact",
+      "file": "tests\\test_actions.py",
+      "line": 75,
+      "outcome": "passed",
+      "duration": 0.018893699976615608,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_preview_honours_selected_customers",
+      "name": "test_preview_honours_selected_customers",
+      "file": "tests\\test_actions.py",
+      "line": 83,
+      "outcome": "passed",
+      "duration": 0.007057500013615936,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_preview_flags_unconfigured_smtp",
+      "name": "test_preview_flags_unconfigured_smtp",
+      "file": "tests\\test_actions.py",
+      "line": 92,
+      "outcome": "passed",
+      "duration": 0.007711399986874312,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_execute_sends_and_is_idempotent",
+      "name": "test_execute_sends_and_is_idempotent",
+      "file": "tests\\test_actions.py",
+      "line": 100,
+      "outcome": "passed",
+      "duration": 0.031109999981708825,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_mark_paid_preview_and_execute",
+      "name": "test_mark_paid_preview_and_execute",
+      "file": "tests\\test_actions.py",
+      "line": 114,
+      "outcome": "passed",
+      "duration": 0.024016499985009432,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_mark_paid_is_noop_when_already_paid",
+      "name": "test_mark_paid_is_noop_when_already_paid",
+      "file": "tests\\test_actions.py",
+      "line": 131,
+      "outcome": "passed",
+      "duration": 0.01739390002330765,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_mark_paid_unknown_invoice",
+      "name": "test_mark_paid_unknown_invoice",
+      "file": "tests\\test_actions.py",
+      "line": 138,
+      "outcome": "passed",
+      "duration": 0.0019331999938003719,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_digest_previews_to_owner_email",
+      "name": "test_digest_previews_to_owner_email",
+      "file": "tests\\test_actions.py",
+      "line": 145,
+      "outcome": "passed",
+      "duration": 0.007646799960639328,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_digest_not_executable_without_smtp",
+      "name": "test_digest_not_executable_without_smtp",
+      "file": "tests\\test_actions.py",
+      "line": 152,
+      "outcome": "passed",
+      "duration": 0.006227400037460029,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_digest_sends_once_per_day",
+      "name": "test_digest_sends_once_per_day",
+      "file": "tests\\test_actions.py",
+      "line": 158,
+      "outcome": "passed",
+      "duration": 0.024885899969376624,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_escalate_finds_90plus_accounts",
+      "name": "test_escalate_finds_90plus_accounts",
+      "file": "tests\\test_actions.py",
+      "line": 171,
+      "outcome": "passed",
+      "duration": 0.011602899990975857,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_reorder_selects_only_low_stock",
+      "name": "test_reorder_selects_only_low_stock",
+      "file": "tests\\test_actions.py",
+      "line": 182,
+      "outcome": "passed",
+      "duration": 0.001602900039870292,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_top_debtors_tool_ranks_by_customer_total",
+      "name": "test_top_debtors_tool_ranks_by_customer_total",
+      "file": "tests\\test_actions.py",
+      "line": 190,
+      "outcome": "passed",
+      "duration": 0.004188899998553097,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_actions.py::test_reorder_execute_logs_draft",
+      "name": "test_reorder_execute_logs_draft",
+      "file": "tests\\test_actions.py",
+      "line": 200,
+      "outcome": "passed",
+      "duration": 0.01577469997573644,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_graph_tokens.py::test_no_module_level_run_tokens",
+      "name": "test_no_module_level_run_tokens",
+      "file": "tests\\test_agent_graph_tokens.py",
+      "line": 38,
+      "outcome": "passed",
+      "duration": 0.0003588999970816076,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_graph_tokens.py::test_state_carries_token_fields",
+      "name": "test_state_carries_token_fields",
+      "file": "tests\\test_agent_graph_tokens.py",
+      "line": 43,
+      "outcome": "passed",
+      "duration": 0.00035719998413696885,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_graph_tokens.py::test_planner_tokens_accumulate_in_state_not_global",
+      "name": "test_planner_tokens_accumulate_in_state_not_global",
+      "file": "tests\\test_agent_graph_tokens.py",
+      "line": 48,
+      "outcome": "passed",
+      "duration": 0.11574529996141791,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_graph_tokens.py::test_synthesizer_adds_on_top_of_incoming_tokens",
+      "name": "test_synthesizer_adds_on_top_of_incoming_tokens",
+      "file": "tests\\test_agent_graph_tokens.py",
+      "line": 63,
+      "outcome": "passed",
+      "duration": 0.002914800017606467,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_graph_tokens.py::test_planner_uses_json_mode",
+      "name": "test_planner_uses_json_mode",
+      "file": "tests\\test_agent_graph_tokens.py",
+      "line": 76,
+      "outcome": "passed",
+      "duration": 0.006243699986953288,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_graph_tokens.py::test_planner_fallback_by_detected_topic",
+      "name": "test_planner_fallback_by_detected_topic",
+      "file": "tests\\test_agent_graph_tokens.py",
+      "line": 87,
+      "outcome": "passed",
+      "duration": 0.016418699990026653,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_loop.py::test_friendly_error_quota_message",
+      "name": "test_friendly_error_quota_message",
+      "file": "tests\\test_agent_loop.py",
+      "line": 38,
+      "outcome": "passed",
+      "duration": 0.0004621000261977315,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_loop.py::test_friendly_error_generic_message",
+      "name": "test_friendly_error_generic_message",
+      "file": "tests\\test_agent_loop.py",
+      "line": 46,
+      "outcome": "passed",
+      "duration": 0.00035930000012740493,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_loop.py::test_run_agent_loop_quota_returns_friendly_text",
+      "name": "test_run_agent_loop_quota_returns_friendly_text",
+      "file": "tests\\test_agent_loop.py",
+      "line": 51,
+      "outcome": "passed",
+      "duration": 0.0829649000079371,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_loop.py::test_loop_calls_tool_then_answers",
+      "name": "test_loop_calls_tool_then_answers",
+      "file": "tests\\test_agent_loop.py",
+      "line": 59,
+      "outcome": "passed",
+      "duration": 0.003152199962642044,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_loop.py::test_loop_respects_round_cap_then_finalizes",
+      "name": "test_loop_respects_round_cap_then_finalizes",
+      "file": "tests\\test_agent_loop.py",
+      "line": 73,
+      "outcome": "passed",
+      "duration": 0.003555300005245954,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_loop.py::test_stream_emits_tokens_and_done",
+      "name": "test_stream_emits_tokens_and_done",
+      "file": "tests\\test_agent_loop.py",
+      "line": 88,
+      "outcome": "passed",
+      "duration": 0.0012174999574199319,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_loop.py::test_execute_tool_coerces_none_args",
+      "name": "test_execute_tool_coerces_none_args",
+      "file": "tests\\test_agent_loop.py",
+      "line": 99,
+      "outcome": "passed",
+      "duration": 0.003835999988950789,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_agent_loop.py::test_dispatch_uses_loop_only_when_flag_set",
+      "name": "test_dispatch_uses_loop_only_when_flag_set",
+      "file": "tests\\test_agent_loop.py",
+      "line": 108,
+      "outcome": "passed",
+      "duration": 0.0012183000217191875,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_audit_journal.py::test_documents_post_balanced_entries_at_transaction_time",
+      "name": "test_documents_post_balanced_entries_at_transaction_time",
+      "file": "tests\\test_audit_journal.py",
+      "line": 99,
+      "outcome": "passed",
+      "duration": 0.5518466999637894,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_audit_journal.py::test_posting_is_idempotent_per_source_document",
+      "name": "test_posting_is_idempotent_per_source_document",
+      "file": "tests\\test_audit_journal.py",
+      "line": 112,
+      "outcome": "passed",
+      "duration": 0.4533678999869153,
+      "traceback": null,
+      "longrepr": null
+    },
+    {
+      "nodeid": "tests/test_audit_journal.py::test_posted_journal_reconciles_with_derived_general_ledger",
+      "name": "test_posted_journal_reconciles_with_derived_general_ledger",
+      "file": "tests\\test_audit_journal.py",
+      "line": 137,
+      "outcome": "passed",
+      "duration": 0.5584737999597564,
+      "traceback": null,
+      "longrepr": null
+    }
+  ]
 }
