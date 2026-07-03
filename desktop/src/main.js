@@ -42,6 +42,10 @@ let quitting = false;
 log.transports.file.level = 'info';
 log.info(`BizAssist desktop starting (dev=${IS_DEV})`);
 
+// Kill the default "File Edit View Window Help" bar on Windows/Linux.
+// Kept on macOS: the app menu supplies Cmd+C/V/Q and is expected there.
+if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
+
 // ── Single instance ───────────────────────────────────────────────────────────
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -62,6 +66,7 @@ function createMainWindow() {
     height: 900,
     minWidth: 1024,
     minHeight: 640,
+    fullscreen: true,          // distraction-free POS: launch fullscreen (F11 toggles)
     frame: !FRAMELESS,
     titleBarStyle: FRAMELESS ? 'hidden' : 'default',
     backgroundColor: '#0b1020',
@@ -77,6 +82,20 @@ function createMainWindow() {
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.loadURL(BILLING_URL);
+
+  // No menu bar → wire the essentials ourselves: F11 exits/re-enters
+  // fullscreen, Ctrl+Shift+I opens DevTools (field debugging).
+  mainWindow.webContents.on('before-input-event', (e, input) => {
+    if (input.type !== 'keyDown') return;
+    if (input.key === 'F11') {
+      mainWindow.setFullScreen(!mainWindow.isFullScreen());
+      e.preventDefault();
+    }
+    if (input.control && input.shift && input.key.toLowerCase() === 'i') {
+      mainWindow.webContents.toggleDevTools();
+      e.preventDefault();
+    }
+  });
 
   // "Dashboard BIZASSIST" (frontend-ai) opens in its own window;
   // every other external target goes to the OS browser.
