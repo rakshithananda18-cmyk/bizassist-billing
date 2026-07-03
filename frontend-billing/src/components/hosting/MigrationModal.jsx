@@ -58,7 +58,7 @@ function etaText(secondsLeft) {
 }
 
 export default function MigrationModal({ fromMode, toMode, onComplete, onError, token }) {
-  const { user } = useAuth()
+  const { user } = useAuth() || {}   // tolerate render outside AuthProvider (tests)
   const [stepIdx,      setStepIdx]      = useState(0)   // 0-5
   const [stepStatuses, setStepStatuses] = useState(
     STEPS.map((_, i) => (i === 0 ? 'active' : 'pending'))
@@ -149,7 +149,31 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
       const res = await fetch(`${SOURCE_API_BASE}/api/data-transfer/export`, { headers: headers() })
       if (!res.ok) throw new Error(`Export failed: HTTP ${res.status}`)
       const exportData = await res.json()
-      if (exportData.backup_path) setBackupPath(exportData.backup_path)
+      if (cancelledRef.current) return
+
+      // REAL safety net: snapshot the DESTINATION before writing anything to
+      // it, downloaded as a JSON the user actually holds. Restorable via the
+      // same import endpoint. (backup_path from the backend never existed.)
+      try {
+        const snapRes = await fetch(`${DEST_API_BASE}/api/data-transfer/export`, { headers: headers() })
+        if (snapRes.ok) {
+          const snap = await snapRes.json()
+          const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+          const fname = `bizassist-backup-before-${toMode}-migration-${stamp}.json`
+          const url = URL.createObjectURL(new Blob([JSON.stringify(snap)], { type: 'application/json' }))
+          const a = document.createElement('a')
+          a.href = url
+          a.download = fname
+          document.body.appendChild(a)
+          a.click()
+          a.remove()
+          setTimeout(() => URL.revokeObjectURL(url), 5000)
+          setBackupPath(`${fname} (in your Downloads folder)`)
+        }
+      } catch (err) {
+        logger.warn('[MIGRATION] Destination snapshot failed (continuing):', err)
+      }
+
       if (cancelledRef.current) return
       setProgress(35)
       markStep(2, 'done')
@@ -168,8 +192,13 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
 
       let uploadRes = null
       try {
-        // Kick off the real import
-        const importPromise = fetch(`${DEST_API_BASE}/api/data-transfer/import`, {
+        // Kick off the real import.
+        // remap_ids=true is REQUIRED here: the default "mirror" mode upserts by
+        // primary key, so when the destination already has its own rows (any
+        // round-trip local↔cloud), colliding ids OVERWRITE destination data —
+        // this wiped LCL-OW-* invoices in testing. Remap mode assigns fresh
+        // ids, rewrites FKs, and dedups by natural keys (idempotent on retry).
+        const importPromise = fetch(`${DEST_API_BASE}/api/data-transfer/import?remap_ids=true`, {
           method: 'POST',
           headers: headers(),
           body: JSON.stringify({
@@ -470,7 +499,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <AlertIcon size={14} strokeWidth={2.5} />
-                <span>Keep your backup file safe — you can roll back within 7 days by contacting support.</span>
+                <span>Keep the backup JSON safe — it's a full snapshot of the destination from before this migration.</span>
               </div>
             </div>
 

@@ -84,7 +84,9 @@ jobs:
       - name: Sync app version with tag
         working-directory: desktop
         shell: bash
-        run: npm version --no-git-tag-version "${GITHUB_REF_NAME#v}"
+        # --allow-same-version: tagging v1.0.0 while package.json is already
+        # 1.0.0 must not fail the build ("npm error Version not changed").
+        run: npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
 
       - name: Stage renderer dists
         working-directory: desktop

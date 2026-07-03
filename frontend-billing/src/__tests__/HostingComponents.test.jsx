@@ -135,7 +135,8 @@ describe('MigrationModal', () => {
           })
         }
       }
-      if (url.endsWith('/api/data-transfer/import')) {
+      // import is now called with ?remap_ids=true (collision-safe mode)
+      if (url.includes('/api/data-transfer/import')) {
         return {
           ok: true,
           json: async () => ({
@@ -144,9 +145,12 @@ describe('MigrationModal', () => {
           })
         }
       }
+      if (url.endsWith('/settings')) {
+        return { ok: true, json: async () => ({}) }
+      }
       return { ok: false, status: 404 }
     })
-    
+
     vi.stubGlobal('fetch', mockFetch)
 
     const onComplete = vi.fn()
@@ -167,11 +171,15 @@ describe('MigrationModal', () => {
       expect(screen.getByText('Verifying credentials & permissions')).toBeInTheDocument()
     })
 
-    // Wait for success completion callback (which gets fired at the end of migration run)
+    // Success no longer auto-fires onComplete — the user reads the summary and
+    // explicitly continues (the mode switch signs them out, so it must be a choice).
     await waitFor(() => {
-      expect(onComplete).toHaveBeenCalled()
+      expect(screen.getByText(/Sign out & continue/i)).toBeInTheDocument()
     }, { timeout: 4500 })
+    expect(onComplete).not.toHaveBeenCalled()
 
+    fireEvent.click(screen.getByText(/Sign out & continue/i))
+    expect(onComplete).toHaveBeenCalled()
     expect(onError).not.toHaveBeenCalled()
   })
 
