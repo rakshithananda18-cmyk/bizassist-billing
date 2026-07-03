@@ -36,7 +36,7 @@ logger = logging.getLogger("bizassist.agent_graph")
 
 client        = Groq(api_key=os.getenv("GROQ_API_KEY"))
 MODEL_PLANNER = os.getenv("GROQ_MODEL_SIMPLE",  "llama-3.1-8b-instant")    # planner only needs JSON routing
-MODEL_SYNTH   = os.getenv("GROQ_MODEL_COMPLEX", "llama-3.3-70b-versatile") # synthesizer needs reasoning
+MODEL_SYNTH   = os.getenv("GROQ_MODEL_COMPLEX", "qwen/qwen3-32b") # synthesizer needs reasoning
 
 
 # ── State ─────────────────────────────────────────────────────────────

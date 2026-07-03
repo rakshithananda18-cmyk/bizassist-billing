@@ -59,7 +59,7 @@ from database.models import Invoice, ChatMessage
 logger = logging.getLogger("bizassist.ai_router")
 
 MODEL_SIMPLE  = os.getenv("GROQ_MODEL_SIMPLE",  "llama-3.1-8b-instant")
-MODEL_COMPLEX = os.getenv("GROQ_MODEL_COMPLEX", "llama-3.3-70b-versatile")
+MODEL_COMPLEX = os.getenv("GROQ_MODEL_COMPLEX", "qwen/qwen3-32b")
 
 # Max characters of a single tool result fed back to the model. A "draft a
 # reminder" tool can return the entire overdue table (hundreds of rows); without

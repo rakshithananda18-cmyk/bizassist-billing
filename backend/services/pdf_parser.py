@@ -134,9 +134,9 @@ def extract_structured_invoice(raw_text: str) -> dict:
     groq_key = os.getenv("GROQ_API_KEY")
     if groq_key:
         try:
-            logger.info("Extracting invoice structure using Groq (llama-3.3-70b-versatile)...")
+            logger.info("Extracting invoice structure using Groq (qwen/qwen3-32b)...")
             client = Groq(api_key=groq_key)
-            model = "llama-3.3-70b-versatile"
+            model = os.getenv("GROQ_MODEL_COMPLEX", "qwen/qwen3-32b")
             
             completion = client.chat.completions.create(
                 model=model,

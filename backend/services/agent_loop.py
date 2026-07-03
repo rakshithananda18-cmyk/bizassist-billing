@@ -25,7 +25,7 @@ from services.tools import execute_tool, schemas as tool_schemas
 logger = logging.getLogger("bizassist.agent_loop")
 
 _client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-MODEL          = os.getenv("GROQ_MODEL_COMPLEX", "llama-3.3-70b-versatile")
+MODEL          = os.getenv("GROQ_MODEL_COMPLEX", "qwen/qwen3-32b")
 MAX_ROUNDS     = int(os.getenv("AGENT_MAX_TOOL_ROUNDS", "5"))
 MAX_TOOL_CHARS = int(os.getenv("MAX_TOOL_CHARS", "4000"))
 
