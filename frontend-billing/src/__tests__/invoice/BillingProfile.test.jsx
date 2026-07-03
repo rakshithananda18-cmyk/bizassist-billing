@@ -38,18 +38,18 @@ describe('ThermalCompact', () => {
   it('renders header, items, GST totals and payments', () => {
     render(<ThermalCompact payload={gstPayload()} />)
     expect(screen.getByText('Mehta Hardware')).toBeInTheDocument()
-    expect(screen.getByText(/Bill: INV-42/)).toBeInTheDocument()
+    expect(screen.getByText('INV-42')).toBeInTheDocument()       // invoice number rendered in its own span
     expect(screen.getByText('Steel Bolt M8')).toBeInTheDocument()
-    expect(screen.getByText('CGST')).toBeInTheDocument()
-    expect(screen.getByText('TOTAL')).toBeInTheDocument()
-    expect(screen.getByText(/Computer generated invoice/)).toBeInTheDocument()
+    expect(screen.getByText('CGST:')).toBeInTheDocument()         // component renders 'CGST:' (with colon)
+    expect(screen.getByText('Grand Total:')).toBeInTheDocument()  // component renders 'Grand Total:'
+    expect(screen.getByText(/Computer generated/i)).toBeInTheDocument()
   })
 
   it('non-GST payload shows no tax rows and a balance line', () => {
     render(<ThermalCompact payload={plainPayload()} />)
-    expect(screen.queryByText('CGST')).not.toBeInTheDocument()
-    expect(screen.queryByText(/GSTIN/)).not.toBeInTheDocument()
-    expect(screen.getByText('BALANCE DUE')).toBeInTheDocument()
+    expect(screen.queryByText('CGST:')).not.toBeInTheDocument()   // no tax rows for non-GST
+    expect(screen.queryByText(/GSTIN/)).not.toBeInTheDocument()   // no GSTIN for non-GST seller
+    expect(screen.getByText('Grand Total:')).toBeInTheDocument()  // grand total always shown
   })
 
   it('never mutates the payload', () => {

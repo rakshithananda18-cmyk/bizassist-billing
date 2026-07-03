@@ -239,6 +239,11 @@ export default function ThermalCompact({ payload }) {
           </div>
         </div>
       )}
+
+      {/* Computer generated note — always shown */}
+      <div style={{ textAlign: 'center', fontSize: '0.7em', color: '#94a3b8', marginTop: '10px', paddingTop: '4px', borderTop: '1px dotted #e2e8f0' }}>
+        Computer generated invoice. No signature required.
+      </div>
     </div>
   )
 }
