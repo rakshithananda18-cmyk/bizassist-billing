@@ -167,6 +167,30 @@ def _resolve_business_id_by_username(user: dict, db: Session) -> int:
 # ROUTES
 # ---------------------------------------------------------------------------
 
+class CloudTokenBody(BaseModel):
+    token: str
+
+
+@router.post("/api/sync/cloud-token")
+def save_cloud_token(
+    body: CloudTokenBody,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    (Local) Store a CLOUD-issued sync token for this business.
+
+    Standard device provisioning: at owner login the frontend authenticates
+    against the cloud once and hands the resulting 24 h business-scoped JWT
+    here. The sync worker uses it for pushes — replacing the shared-JWT_SECRET
+    requirement (a leaked token exposes one business for ≤24 h, not every install).
+    """
+    from services.sync_worker import store_cloud_token
+    business_id = _resolve_business_id_by_username(current_user, db)
+    store_cloud_token(business_id, body.token)
+    return {"status": "ok"}
+
+
 @router.post("/api/sync/push")
 def push_changes(
     payload: PushPayload,

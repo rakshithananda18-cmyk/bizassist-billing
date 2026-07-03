@@ -94,6 +94,38 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  /**
+   * Standard device provisioning (no shared secrets): with the credentials the
+   * user just typed, obtain a CLOUD-issued 24 h token scoped to this business
+   * and hand it to the local backend for the hybrid sync worker
+   * (POST /api/sync/cloud-token). Best-effort — never blocks or fails login.
+   */
+  const _provisionCloudSyncToken = useCallback(async (username, password, localToken, cloudToken = null) => {
+    if (!IS_LOCAL_APP || !localToken) return
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+    try {
+      let token = cloudToken
+      if (!token) {
+        const res = await fetch(`${CLOUD_URL}/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        })
+        if (!res.ok) return
+        token = (await res.json())?.token
+      }
+      if (!token) return
+      await fetch(`${LOCAL_URL}/api/sync/cloud-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localToken}` },
+        body: JSON.stringify({ token }),
+      })
+      logger.info('[SYNC] Cloud sync token provisioned (24h, business-scoped)')
+    } catch (err) {
+      logger.debug('[SYNC] Cloud sync token provisioning skipped:', err?.message)
+    }
+  }, [])
+
   const login = useCallback(async (username, password) => {
     logger.info('Attempting login for username:', username)
 
@@ -109,6 +141,8 @@ export function AuthProvider({ children }) {
       _saveSession(data)
       // Fire-and-forget: lightweight BizID identity check only (no data pull).
       reconcileBizIdOnLogin(data.token || data.access_token)
+      // Fire-and-forget: provision the cloud sync token for the hybrid worker.
+      _provisionCloudSyncToken(username, password, data.token || data.access_token)
       return
     }
 
@@ -158,6 +192,8 @@ export function AuthProvider({ children }) {
             // Sense divergence and pop the "Cloud → Local Sync" nudge — on a fresh
             // device the cloud always has more, so this surfaces the data popup.
             reconcileBizIdOnLogin(localData.token || localData.access_token)
+            // We already hold a fresh cloud token from the fresh-device login — store it.
+            _provisionCloudSyncToken(username, password, localData.token || localData.access_token, cloudData.token)
             return
           }
           logger.error(`[LOGIN] Cloud login ok but local mirror failed: HTTP ${mirror.status}`)
@@ -171,7 +207,7 @@ export function AuthProvider({ children }) {
     const err = await res.json().catch(() => ({}))
     logger.error('Login request failed with status:', res.status, err.detail)
     throw new Error(err.detail || 'Invalid credentials')
-  }, [_saveSession])
+  }, [_saveSession, _provisionCloudSyncToken])
 
   // Staff login (§9.5): staff never use a global username — authenticate scoped to
   // the business owner (owner username + per-business counter/staff name + password).

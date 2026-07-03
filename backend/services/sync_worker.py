@@ -57,9 +57,51 @@ _OFFLINE_STATE: Dict[int, bool] = {}
 #   - Cloud: HF Space -> Settings -> Secrets -> JWT_SECRET=<same_secret>
 
 
+# ── Cloud-issued sync tokens (standard device provisioning) ──────────────────
+# On owner login the frontend obtains a CLOUD-issued JWT (24 h, scoped to that
+# business) and stores it here via POST /api/sync/cloud-token. The worker then
+# authenticates pushes with the cloud's OWN token — no shared JWT_SECRET needed.
+# Falls back to the legacy self-signed token for shared-secret setups.
+# File lives in CWD: the app-data dir (packaged) / backend/ (dev).
+from pathlib import Path as _Path
+
+_TOKEN_FILE = _Path("cloud_sync_tokens.json")
+
+
+def _load_token_map() -> Dict[str, str]:
+    try:
+        return json.loads(_TOKEN_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_token_map(m: Dict[str, str]) -> None:
+    try:
+        _TOKEN_FILE.write_text(json.dumps(m), encoding="utf-8")
+    except Exception as e:
+        logger.warning("[SYNC_WORKER] Could not persist cloud token map: %s", e)
+
+
+def store_cloud_token(business_id: int, token: str) -> None:
+    m = _load_token_map()
+    m[str(business_id)] = token
+    _save_token_map(m)
+    logger.info("[SYNC_WORKER] Cloud sync token stored for business %s", business_id)
+
+
+def _get_cloud_token(business_id: int) -> Optional[str]:
+    return _load_token_map().get(str(business_id))
+
+
 def _invalidate_cloud_token(business_id: int):
-    """No-op placeholder — kept for future refresh logic."""
-    pass
+    """Drop a rejected/expired cloud token — the next owner login provisions a fresh one."""
+    m = _load_token_map()
+    if m.pop(str(business_id), None) is not None:
+        _save_token_map(m)
+        logger.info(
+            "[SYNC_WORKER] Cloud token invalidated for business %s — refreshes on next login",
+            business_id,
+        )
 
 def _safe_broadcast(business_id: int, event: dict):
     """Broadcast an SSE event from the sync-worker thread.
@@ -204,7 +246,9 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
         .all()
     )
 
-    token = create_access_token({
+    # Prefer the CLOUD-issued token provisioned at login (standard device flow).
+    # Self-signed fallback works only when local & cloud share JWT_SECRET.
+    token = _get_cloud_token(business_id) or create_access_token({
         "id": business_id,
         "user_id": user.id,
         "username": user.username,

@@ -42,7 +42,8 @@
       {
         "provider": "github",
         "owner": "rakshithananda18-cmyk",
-        "repo": "bizassist-billing"
+        "repo": "bizassist-billing",
+        "releaseType": "release"
       }
     ],
     "win": {
@@ -51,8 +52,13 @@
       "artifactName": "BizAssist-Setup-${version}.${ext}"
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
       "perMachine": false,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
       "deleteAppDataOnUninstall": false
     },
     "mac": {
