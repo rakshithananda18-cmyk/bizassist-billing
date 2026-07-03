@@ -123,6 +123,28 @@ def _resolve_business_id_by_username(user: dict, db: Session) -> int:
             ).first()
             if row:
                 return int(row[1]) if row[1] is not None else int(row[0])
+            # IDENTITY GUARD: the token carries a BizID but this DB has no user
+            # with that BizID+username pair. Falling through to the username-only
+            # match could write one business's data into a DIFFERENT business
+            # that happens to share the username (e.g. independently-created
+            # local & cloud accounts). Refuse instead — the user must link
+            # accounts (fresh-device login mirrors the cloud BizID) first.
+            same_name = db.execute(
+                text('SELECT public_id FROM "users" WHERE username = :u'),
+                {"u": username},
+            ).first()
+            if same_name and same_name[0] and str(same_name[0]) != str(public_id):
+                logger.warning(
+                    "sync: BizID mismatch for username '%s' (token=%s, db=%s) — refusing cross-business sync",
+                    username, public_id, same_name[0],
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail="BizID mismatch: this account is a different business on this server. "
+                           "Re-link the device (log out and back in while online) before syncing.",
+                )
+        except HTTPException:
+            raise
         except Exception as exc:
             logger.debug("_resolve_business_id: public_id lookup failed — %s", exc)
 

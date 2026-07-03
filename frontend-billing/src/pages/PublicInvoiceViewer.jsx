@@ -24,6 +24,9 @@ export default function PublicInvoiceViewer() {
     api.get(`/public/invoice/${encodeURIComponent(uid)}?format=json`)
       .then((data) => {
         if (!alive) return
+        if (data?.invoice?.public_url && data.invoice.public_url.startsWith('/')) {
+          data.invoice.public_url = `${window.location.origin}${data.invoice.public_url}`
+        }
         setPayload(data)
         setTemplate(data?.meta?.template_default || FALLBACK_TEMPLATE)
       })
@@ -61,9 +64,11 @@ export default function PublicInvoiceViewer() {
   const Template = entry.component
 
   return (
-    <div style={{ background: '#f4f4f1', minHeight: '100vh', padding: '20px' }}>
+    <div style={{ background: '#f4f4f1', minHeight: '100vh', padding: '20px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div style={{ 
+        width: '100%',
         maxWidth: 820, 
+        minWidth: entry.key.includes('thermal') ? 'auto' : '800px',
         margin: '0 auto', 
         background: '#fff', 
         boxShadow: '0 4px 16px rgba(26,23,20,0.10)' 

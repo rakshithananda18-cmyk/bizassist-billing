@@ -18,7 +18,10 @@ async function runLocalProbe() {
   try {
     const savedLocalUrl = typeof localStorage !== 'undefined' ? localStorage.getItem('bizassist_local_backend_url') : null
     const targetLocal = savedLocalUrl || LOCAL_URL
-    const res = await fetchWithTimeout(`${targetLocal}/health`, 500, { mode: 'cors' })
+    // 3s, not 500ms: /health does real DB work (users.settings scan) and can
+    // exceed 500ms on first hit / dev --reload. A dead server still fails
+    // instantly (connection refused) — the timeout only guards a hung one.
+    const res = await fetchWithTimeout(`${targetLocal}/health`, 3000, { mode: 'cors' })
     const ms = Date.now() - t0
     if (!res.ok) return { status: 'offline', ms: null, error: `HTTP ${res.status}` }
     return { status: ms > 1000 ? 'slow' : 'online', ms, error: null }

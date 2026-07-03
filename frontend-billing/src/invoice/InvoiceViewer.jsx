@@ -74,6 +74,9 @@ export default function InvoiceViewer() {
     api.get(`/sales/${encodeURIComponent(invoiceNo)}/print-payload`)
       .then((data) => {
         if (!alive) return
+        if (data?.invoice?.public_url && data.invoice.public_url.startsWith('/')) {
+          data.invoice.public_url = `${window.location.origin}${data.invoice.public_url}`
+        }
         deepFreeze(data)
         setPayload(data)
         // preference order: per-user last-used → business default → classic
@@ -227,10 +230,16 @@ export default function InvoiceViewer() {
 
       {/* on-screen preview */}
       <div className="invoice-viewer-preview no-print" style={{
-        padding: '20px 8px', display: 'flex', justifyContent: 'center',
+        padding: '20px 8px', display: 'flex', justifyContent: 'flex-start', // Use flex-start so it doesn't get cut off on left when scrolling
         background: 'var(--bg-3, #f4f4f1)', minHeight: '80vh',
+        overflowX: 'auto', WebkitOverflowScrolling: 'touch',
       }}>
-        <div style={{ boxShadow: '0 4px 16px rgba(26,23,20,0.10)', background: '#fff', width: '100%', maxWidth: 820 }}>
+        <div style={{
+          boxShadow: '0 4px 16px rgba(26,23,20,0.10)', background: '#fff',
+          width: '100%', maxWidth: 820,
+          minWidth: entry.key.includes('thermal') ? 'auto' : '800px',
+          margin: '0 auto', // Centers the item if the screen is wider than minWidth
+        }}>
           {body}
         </div>
       </div>

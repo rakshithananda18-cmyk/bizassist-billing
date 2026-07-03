@@ -445,6 +445,20 @@ export function AuthProvider({ children }) {
     }
   }, [fetchSettings])
 
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      logger.warn('[AuthContext] auth_unauthorized event triggered. Auto-logging out.')
+      logout()
+      window.dispatchEvent(new CustomEvent('show_toast', {
+        detail: { type: 'error', msg: 'Session expired. Please log in again.' }
+      }))
+    }
+    window.addEventListener('auth_unauthorized', handleUnauthorized)
+    return () => {
+      window.removeEventListener('auth_unauthorized', handleUnauthorized)
+    }
+  }, [logout])
+
   // Authenticated fetch helper
   const authFetch = useCallback(async (path, opts = {}) => {
     let apiPath = path

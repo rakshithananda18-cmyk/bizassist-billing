@@ -4453,8 +4453,117 @@ textarea {
 }
 
 .nav-link:hover .nav-anim-report { animation: chart-grow 0.6s ease; }
-@keyframes chart-grow { 
-  0% { transform: scaleY(1); } 
-  50% { transform: scaleY(1.1) translateY(-1px); } 
-  100% { transform: scaleY(1); } 
+@keyframes chart-grow {
+  0% { transform: scaleY(1); }
+  50% { transform: scaleY(1.1) translateY(-1px); }
+  100% { transform: scaleY(1); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PREMIUM GRADIENT SYSTEM — global tokens for subscription / hosting upsells
+   (same gradient as the "Manage Hosting & Backups" button)
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --grad-premium:        linear-gradient(135deg, var(--accent) 0%, #4f46e5 100%);
+  --grad-premium-soft:   linear-gradient(135deg, rgba(193, 95, 60, 0.07) 0%, rgba(79, 70, 229, 0.10) 100%);
+  --shadow-premium:      0 4px 12px rgba(99, 99, 255, 0.2);
+  --shadow-premium-lg:   0 8px 28px rgba(99, 99, 255, 0.28);
+}
+
+/* Gradient button — use for every premium/subscription CTA */
+.btn-premium {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--grad-premium);
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--shadow-premium);
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease), filter var(--dur) var(--ease);
+}
+.btn-premium:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-premium-lg);
+  filter: brightness(1.06);
+}
+.btn-premium:active { transform: translateY(0); }
+
+/* Gradient text (headings, "PRO" wordmarks) */
+.text-premium {
+  background: var(--grad-premium);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Gradient stroke for any Icons.jsx icon:  <ZapIcon className="icon-premium" />
+   Requires <PremiumGradientDefs /> mounted once (App root / modal). */
+svg.icon-premium { stroke: url(#bizGradPremium); }
+
+/* Gradient tile behind an icon (badge style) */
+.icon-premium-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--grad-premium);
+  color: #fff;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-premium);
+}
+
+/* Small gradient pill badge (PRO / BEST VALUE) */
+.badge-premium {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--grad-premium);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 3px 10px;
+  border-radius: 999px;
+  box-shadow: var(--shadow-premium);
+}
+
+/* ── Hosting onboarding modal (first-run, local users) ── */
+.hosting-ob-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(15, 12, 10, 0.55);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.hosting-ob-card {
+  background: var(--bg-2, #fff);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  width: 100%;
+  max-width: 920px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  box-shadow: 0 32px 90px rgba(26, 23, 20, 0.30);
+  animation: pf-slide-up 0.26s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.hosting-ob-grid {
+  display: grid;
+  grid-template-columns: 1fr 1px 1.15fr;
+  gap: 0;
+}
+.hosting-ob-divider {
+  background: linear-gradient(180deg, transparent, var(--border) 18%, var(--border) 82%, transparent);
+}
+.hosting-ob-check { display: flex; align-items: flex-start; gap: 10px; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.45; }
+@media (max-width: 760px) {
+  .hosting-ob-grid { grid-template-columns: 1fr; }
+  .hosting-ob-divider { display: none; }
 }

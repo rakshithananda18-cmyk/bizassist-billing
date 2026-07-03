@@ -36,6 +36,26 @@ export default function Login() {
     }
   }, [])
 
+  // Post-migration handoff: the mode switch signs the user out by design.
+  // MigrationModal leaves a prefill + report in localStorage — greet them here.
+  const [migrationNote, setMigrationNote] = useState(null)
+  useEffect(() => {
+    try {
+      const pre = localStorage.getItem('bizassist_prefill_username')
+      if (pre) {
+        setUsername(pre)
+        setView('standard')
+        localStorage.removeItem('bizassist_prefill_username')
+      }
+      const rep = JSON.parse(localStorage.getItem('bizassist_last_migration') || 'null')
+      // Only greet for a fresh migration (15 min window), not forever.
+      if (rep?.at && Date.now() - new Date(rep.at).getTime() < 15 * 60 * 1000) {
+        setMigrationNote(rep)
+      }
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Recent logins state
   const [recentLogins, setRecentLogins] = useState(() => {
     try {
@@ -342,6 +362,24 @@ export default function Login() {
         <div className="login-symbol"><BuildingMark size={42} /></div>
         <h1 className="login-title">BIZASSIST</h1>
         <p className="login-subtitle">ADVANCED BILLING SYSTEM</p>
+
+        {/* Post-migration greeting — the sign-out was intentional (JWT swap) */}
+        {migrationNote && (
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: 8,
+            background: 'var(--grad-premium-soft, rgba(79,70,229,0.08))',
+            border: '1px solid rgba(79, 70, 229, 0.35)',
+            borderRadius: 10, padding: '10px 14px', margin: '0 0 16px',
+            fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'left',
+          }}>
+            <span style={{ color: '#22c55e', marginTop: 1 }}>✓</span>
+            <span>
+              <strong>Migration to {migrationNote.to} mode complete.</strong>{' '}
+              You were signed out to refresh your session — sign back in with the same
+              username to continue{migrationNote.forced ? '. Note: some record counts didn’t match; check your data after login.' : '.'}
+            </span>
+          </div>
+        )}
 
         {/* Show tabs ONLY inside recent logins view to keep screens extremely compact */}
         {view === 'recent' && (

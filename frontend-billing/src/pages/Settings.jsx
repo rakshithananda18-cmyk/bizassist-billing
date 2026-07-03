@@ -308,7 +308,7 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
 
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 2000)
+      const timeoutId = setTimeout(() => controller.abort(), 4000) // /health does DB work; 2s flaked on slow disks/LAN
       const res = await fetch(`${targetUrl.replace(/\/$/, '')}/health`, {
         signal: controller.signal,
         mode: 'cors'

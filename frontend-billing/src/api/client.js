@@ -86,7 +86,12 @@ export async function request(method, path, { query, body, signal, raw, headers 
     try { data = JSON.parse(text) } catch { data = text }
   }
 
-  if (!res.ok) throw await toError(res, method, url, data)
+  if (!res.ok) {
+    if (res.status === 401) {
+      window.dispatchEvent(new CustomEvent('auth_unauthorized'))
+    }
+    throw await toError(res, method, url, data)
+  }
   return data
 }
 

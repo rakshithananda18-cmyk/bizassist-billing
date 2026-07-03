@@ -4,11 +4,13 @@ import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useLock } from '../contexts/LockContext'
 import { API_BASE } from '../config'
+import { AI_DASHBOARD_GATED, getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
+import { IS_DESKTOP_APP, openDownloadPage } from '../config/downloadApp'
 import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
 import SyncNudgeModal from '../components/hosting/SyncNudgeModal'
 import HostingOnboardingModal from '../components/hosting/HostingOnboardingModal'
-import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon } from '../components/Icons'
+import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon, DownloadIcon } from '../components/Icons'
 
 
 const NAV = [
@@ -26,6 +28,9 @@ const NAV = [
     items: [
       { to: '/',          icon: <HomeIcon size={16} className="nav-anim-home" />, label: 'Home'      },
       { to: '/dashboard', icon: <DashboardIcon size={16} className="nav-anim-dash" />, label: 'Dashboard' },
+      // External: the bundled frontend-ai app (opens in its own window in the
+      // desktop app). Gated behind subscription in future — see aiDashboard.js.
+      { external: true, ownerOnly: true, icon: <ZapIcon size={16} />, label: 'Dashboard BIZASSIST' },
     ]
   },
   {
@@ -231,7 +236,7 @@ export default function AppLayout({ children, title }) {
   }, [isCashier, location.pathname, navigate, OWNER_ONLY_PATHS])
 
   const visibleNav = isCashier
-    ? NAV.map(s => ({ ...s, items: s.items.filter(i => !OWNER_ONLY_PATHS.has(i.to)) })).filter(s => s.items.length > 0)
+    ? NAV.map(s => ({ ...s, items: s.items.filter(i => !OWNER_ONLY_PATHS.has(i.to) && !i.ownerOnly) })).filter(s => s.items.length > 0)
     : NAV
 
   const visibleSubnav = isCashier
@@ -881,7 +886,37 @@ export default function AppLayout({ children, title }) {
                     </span>
                   </div>
 
-                   {!isCollapsed && items.map(({ to, icon, label }) => (
+                   {!isCollapsed && items.map(({ to, icon, label, external }) => {
+                    if (external) {
+                      if (!getAiDashboardUrl()) return null // no dashboard on this platform
+                      return (
+                        <a
+                          key={label}
+                          href={getAiDashboardUrl()}
+                          className="nav-link"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setMobileMenuOpen(false)
+                            if (AI_DASHBOARD_GATED) {
+                              window.alert('Dashboard BIZASSIST is part of the upcoming subscription plan.')
+                              return
+                            }
+                            openAiDashboard()
+                          }}
+                        >
+                          <span className="nav-icon">{icon}</span>
+                          {label}
+                          {AI_DASHBOARD_GATED && (
+                            <span style={{
+                              marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 800,
+                              letterSpacing: '0.08em', padding: '2px 6px', borderRadius: 6,
+                              background: 'var(--accent)', color: '#fff'
+                            }}>PRO</span>
+                          )}
+                        </a>
+                      )
+                    }
+                    return (
                     <NavLink
                       key={to}
                       to={to}
@@ -894,7 +929,8 @@ export default function AppLayout({ children, title }) {
                       <span className="nav-icon">{icon}</span>
                       {label}
                     </NavLink>
-                  ))}
+                    )
+                  })}
                 </React.Fragment>
               )
             })}
@@ -1048,6 +1084,15 @@ export default function AppLayout({ children, title }) {
                 >
                   <LockIcon size={14} /> {hasLock ? 'Lock Session' : 'Lock App (Set PIN)'}
                 </button>
+                {!IS_DESKTOP_APP && (
+                  <button
+                    className="btn-premium"
+                    style={{ width: 'calc(100% - 20px)', margin: '6px 10px', padding: '9px 12px', fontSize: '0.8rem' }}
+                    onClick={() => { setShowProfileMenu(false); openDownloadPage(); }}
+                  >
+                    <DownloadIcon size={14} /> Download Desktop App
+                  </button>
+                )}
                 <button className="profile-menu-item logout" onClick={() => { setShowProfileMenu(false); logout(); navigate('/login'); }}>
                   <LogoutIcon size={14} /> Sign Out
                 </button>
@@ -1157,6 +1202,15 @@ export default function AppLayout({ children, title }) {
                 >
                   <LockIcon size={14} /> {hasLock ? 'Lock Session' : 'Lock App (Set PIN)'}
                 </button>
+                {!IS_DESKTOP_APP && (
+                  <button
+                    className="btn-premium"
+                    style={{ width: 'calc(100% - 20px)', margin: '6px 10px', padding: '9px 12px', fontSize: '0.8rem' }}
+                    onClick={() => { setShowProfileMenu(false); openDownloadPage(); }}
+                  >
+                    <DownloadIcon size={14} /> Download Desktop App
+                  </button>
+                )}
                 <button className="profile-menu-item logout" onClick={() => { setShowProfileMenu(false); logout(); navigate('/login'); }}>
                   <LogoutIcon size={14} /> Sign Out
                 </button>

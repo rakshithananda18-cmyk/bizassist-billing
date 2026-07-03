@@ -12,6 +12,25 @@ const defaultSvgProps = (size = 20, strokeWidth = 1.5, className = '') => ({
   className
 })
 
+/**
+ * PremiumGradientDefs — global SVG gradient for premium/subscription icons.
+ * Mount ONCE anywhere in the tree, then any icon becomes gradient with:
+ *   <ZapIcon className="icon-premium" />        (stroke: url(#bizGradPremium))
+ * Matches --grad-premium in index.css (accent → indigo, 135deg).
+ */
+export function PremiumGradientDefs() {
+  return (
+    <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="bizGradPremium" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" style={{ stopColor: 'var(--accent)' }} />
+          <stop offset="100%" style={{ stopColor: '#4f46e5' }} />
+        </linearGradient>
+      </defs>
+    </svg>
+  )
+}
+
 export function EyeIcon({ size, strokeWidth, className }) {
   return (
     <svg {...defaultSvgProps(size, strokeWidth, className)}>

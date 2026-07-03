@@ -31,6 +31,7 @@ from routes.data_transfer import router as data_transfer_router
 from routes.sync import router as sync_router
 from routes.shifts import router as shifts_router   # shift & cash-drawer management (Phase 3)
 from routes.public import router as public_router
+from routes.telemetry import router as telemetry_router  # testing-phase install diagnostics
 from core.api import core_router          # billing ecosystem — wired from core/
 
 from database.db import engine, SessionLocal, DATABASE_URL
@@ -220,6 +221,7 @@ def health_check():
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(ask_router)
+app.include_router(telemetry_router)
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(upload_router)

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { API_BASE, updateApiBase } from '../../config'
+import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
-import { CheckIcon, CloseIcon, AlertIcon, SyncIcon, ShieldIcon } from '../Icons'
+import { CheckIcon, CloseIcon, AlertIcon, SyncIcon, ShieldIcon, LogoutIcon } from '../Icons'
 
 // ── Step definitions ──────────────────────────────────────────────────────────
 const STEPS = [
@@ -57,6 +58,7 @@ function etaText(secondsLeft) {
 }
 
 export default function MigrationModal({ fromMode, toMode, onComplete, onError, token }) {
+  const { user } = useAuth()
   const [stepIdx,      setStepIdx]      = useState(0)   // 0-5
   const [stepStatuses, setStepStatuses] = useState(
     STEPS.map((_, i) => (i === 0 ? 'active' : 'pending'))
@@ -69,10 +71,13 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
   const [errorStep,    setErrorStep]    = useState(null)
   const [errorMsg,     setErrorMsg]     = useState(null)
   const [cancelled,    setCancelled]    = useState(false)
+  const [validation,   setValidation]   = useState([])   // [{entity, expected, found, ok}]
+  const [validationPaused, setValidationPaused] = useState(false) // mismatch → wait for user
 
   const cancelledRef = useRef(false)
   const stepIdxRef = useRef(0)
   const startedRef = useRef(false)   // guard against React StrictMode double-invoke
+  const basesRef = useRef({ src: null, dest: null }) // for finalize-after-pause
 
   const markStep = useCallback((idx, status) => {
     setStepStatuses(prev => prev.map((s, i) => i === idx ? status : s))
@@ -205,66 +210,45 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
       setProgress(85)
       markStep(3, 'done')
 
-      // ── Step 4: validate ──────────────────────────────────────────────────
+      // ── Step 4: validate (REAL — recount on the destination) ──────────────
       advanceTo(4)
-      await new Promise(r => setTimeout(r, 800))
+      basesRef.current = { src: SOURCE_API_BASE, dest: DEST_API_BASE }
+      let results = []
+      try {
+        const vres = await fetch(`${DEST_API_BASE}/api/data-transfer/count`, { headers: headers() })
+        if (vres.ok) {
+          const destCounts = await vres.json()
+          const srcTables = exportData?.tables || {}
+          results = Object.entries(srcTables)
+            .map(([entity, rows]) => {
+              const expected = Array.isArray(rows) ? rows.length : 0
+              // Destination may legitimately hold MORE (pre-existing data merged
+              // in) — a shortfall is the only red flag.
+              const found = Number(destCounts?.[entity] ?? NaN)
+              return { entity, expected, found, ok: !Number.isFinite(found) || found >= expected }
+            })
+            .filter(v => v.expected > 0)
+        }
+      } catch (err) {
+        logger.warn('[MIGRATION] Validation recount unavailable (continuing):', err)
+      }
       if (cancelledRef.current) return
+      setValidation(results)
+      const mismatches = results.filter(v => !v.ok)
       setProgress(95)
+
+      if (mismatches.length > 0) {
+        // Don't silently finalise onto missing data — pause and let the user
+        // decide (retry / continue anyway). Source data is untouched either way.
+        logger.warn('[MIGRATION] Validation mismatches:', mismatches)
+        markStep(4, 'error')
+        setValidationPaused(true)
+        return
+      }
       markStep(4, 'done')
 
       // ── Step 5: finalise ──────────────────────────────────────────────────
-      advanceTo(5)
-      if (cancelledRef.current) return
-
-      // Update local storage and dynamic API base first!
-      try {
-        updateApiBase(toMode)
-      } catch (err) {
-        logger.error('Failed to call updateApiBase:', err)
-      }
-
-      // Update settings on source and destination backends
-      try {
-        await fetch(`${SOURCE_API_BASE}/settings`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            general: { hosting_mode: toMode }
-          })
-        })
-      } catch (err) {
-        logger.warn(`Failed to update settings on source backend (${SOURCE_API_BASE}):`, err)
-      }
-
-      try {
-        await fetch(`${DEST_API_BASE}/settings`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            general: { hosting_mode: toMode }
-          })
-        })
-      } catch (err) {
-        logger.warn(`Failed to update settings on destination backend (${DEST_API_BASE}):`, err)
-      }
-
-      // Dispatch event to refresh settings in AuthContext
-      window.dispatchEvent(new CustomEvent('refresh-settings'))
-
-      if (cancelledRef.current) return
-      setProgress(100)
-      markStep(5, 'done')
-      setEta(0)
-
-      // Done!
-      logger.info(`[MIGRATION] Hosting mode migration completed successfully to ${toMode}`)
-      setTimeout(onComplete, 800)
+      await doFinalize(SOURCE_API_BASE, DEST_API_BASE, results)
 
     } catch (err) {
       if (cancelledRef.current) return
@@ -275,6 +259,61 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
       logger.error(`[MIGRATION] Migration failed at step "${STEPS[failedIdx]?.label || 'unknown'}":`, err)
       onError?.(err)
     }
+  }
+
+  /** Step 5 — switch API base, persist mode on both backends, show summary. */
+  async function doFinalize(SOURCE_API_BASE, DEST_API_BASE, results) {
+    advanceTo(5)
+    if (cancelledRef.current) return
+
+    try {
+      updateApiBase(toMode)
+    } catch (err) {
+      logger.error('Failed to call updateApiBase:', err)
+    }
+
+    for (const base of [SOURCE_API_BASE, DEST_API_BASE]) {
+      try {
+        await fetch(`${base}/settings`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ general: { hosting_mode: toMode } }),
+        })
+      } catch (err) {
+        logger.warn(`Failed to update settings on backend (${base}):`, err)
+      }
+    }
+
+    window.dispatchEvent(new CustomEvent('refresh-settings'))
+    if (cancelledRef.current) return
+    setProgress(100)
+    markStep(5, 'done')
+    setEta(0)
+
+    // Persist a report + prefill so the login page can greet the user after
+    // the (by-design) re-login, and support can inspect what moved.
+    try {
+      localStorage.setItem('bizassist_last_migration', JSON.stringify({
+        at: new Date().toISOString(),
+        from: fromMode,
+        to: toMode,
+        backupPath,
+        validation: results,
+        forced: results?.some?.(v => !v.ok) || false,
+      }))
+      if (user?.username) localStorage.setItem('bizassist_prefill_username', user.username)
+    } catch { /* storage full — non-fatal */ }
+
+    logger.info(`[MIGRATION] Hosting mode migration completed successfully to ${toMode}`)
+    // NOTE: no auto-close. The user reads the summary and continues explicitly —
+    // onComplete triggers the mode switch, which signs them out for a fresh JWT.
+  }
+
+  /** "Continue anyway" after a validation mismatch. */
+  const handleForceFinalize = () => {
+    logger.warn('[MIGRATION] User chose to finalise despite validation mismatches')
+    setValidationPaused(false)
+    doFinalize(basesRef.current.src, basesRef.current.dest, validation)
   }
 
   const handleCancel = () => {
@@ -297,6 +336,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
       position: 'fixed', inset: 0, zIndex: 9999,
       background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(12px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 24,
     }}>
       <div style={{
         background: 'var(--bg-2, #1a1a1a)',
@@ -304,6 +344,9 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
         borderRadius: 16,
         padding: '32px 36px',
         width: '100%', maxWidth: 520,
+        maxHeight: 'calc(100vh - 48px)',      // long table lists must scroll,
+        overflowY: 'auto',                    // not push buttons off-screen
+        overscrollBehavior: 'contain',
         boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
       }}>
         {/* Title */}
@@ -312,6 +355,11 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <CheckIcon size={18} strokeWidth={2.5} style={{ color: '#22c55e' }} />
               <span>Migration Complete!</span>
+            </span>
+          ) : validationPaused ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <AlertIcon size={18} strokeWidth={2.5} style={{ color: '#f97316' }} />
+              <span>Validation needs your attention</span>
             </span>
           ) : hasError ? (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -325,6 +373,8 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 22 }}>
           {isComplete
             ? 'All data has been successfully migrated.'
+            : validationPaused
+            ? 'The destination recount found fewer records than expected.'
             : hasError
             ? 'Something went wrong. Your original data is safe.'
             : 'Please do not close this window or navigate away.'}
@@ -398,28 +448,112 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
           ))}
         </div>
 
-        {/* Success state */}
+        {/* Success state — summary + explicit re-login handoff */}
         {isComplete && (
-          <div style={{
-            background: 'rgba(34,197,94,0.08)',
-            border: '1px solid rgba(34,197,94,0.25)',
-            borderRadius: 8, padding: '12px 16px',
-            fontSize: '0.8rem', color: '#22c55e', marginBottom: 16,
-          }}>
-            {backupPath && (
-              <div style={{ marginBottom: 4 }}>
-                <strong>Backup saved:</strong> <code style={{ fontSize: '0.74rem', wordBreak: 'break-all' }}>{backupPath}</code>
+          <>
+            <div style={{
+              background: 'rgba(34,197,94,0.08)',
+              border: '1px solid rgba(34,197,94,0.25)',
+              borderRadius: 8, padding: '12px 16px',
+              fontSize: '0.8rem', color: '#22c55e', marginBottom: 12,
+            }}>
+              {validation.length > 0 && (
+                <div style={{ marginBottom: 6, fontWeight: 700 }}>
+                  Verified on destination: {validation.reduce((a, v) => a + v.expected, 0).toLocaleString()} records
+                  across {validation.length} tables{validation.some(v => !v.ok) ? ' (with accepted mismatches)' : ' — all counts match'}.
+                </div>
+              )}
+              {backupPath && (
+                <div style={{ marginBottom: 4 }}>
+                  <strong>Backup saved:</strong> <code style={{ fontSize: '0.74rem', wordBreak: 'break-all' }}>{backupPath}</code>
+                </div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <AlertIcon size={14} strokeWidth={2.5} />
+                <span>Keep your backup file safe — you can roll back within 7 days by contacting support.</span>
               </div>
-            )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <AlertIcon size={14} strokeWidth={2.5} />
-              <span>Keep your backup file safe — you can roll back within 7 days by contacting support.</span>
             </div>
-          </div>
+
+            <div style={{
+              background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border, rgba(255,255,255,0.1))',
+              borderRadius: 8, padding: '10px 14px', fontSize: '0.78rem',
+              color: 'var(--text-muted)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8,
+            }}>
+              <ShieldIcon size={15} strokeWidth={2} />
+              <span>
+                One last step: you'll be signed out so your session moves to the <strong>{toMode}</strong> backend.
+                Sign back in with the same username{user?.username ? <> (<strong>{user.username}</strong> — we'll prefill it)</> : ''}.
+              </span>
+            </div>
+
+            <button
+              className="btn-premium"
+              style={{ width: '100%', fontSize: '0.88rem' }}
+              onClick={onComplete}
+            >
+              <LogoutIcon size={15} /> Sign out & continue to {toMode} mode
+            </button>
+          </>
         )}
 
-        {/* Error state */}
-        {hasError && !cancelled && (
+        {/* Validation mismatch — paused, user decides */}
+        {validationPaused && !isComplete && !cancelled && (
+          <>
+            <div style={{
+              background: 'rgba(249,115,22,0.08)',
+              border: '1px solid rgba(249,115,22,0.3)',
+              borderRadius: 8, padding: '12px 16px', marginBottom: 12,
+            }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#f97316', marginBottom: 8 }}>
+                Some records didn't land on the destination
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {validation.filter(v => !v.ok).map(v => (
+                  <div key={v.entity} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+                    <span>{v.entity}</span>
+                    <span style={{ fontWeight: 700, color: '#f97316' }}>{v.found}/{v.expected}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{
+              background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)',
+              borderRadius: 8, padding: '10px 14px', fontSize: '0.78rem', color: '#22c55e', marginBottom: 14,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <ShieldIcon size={14} strokeWidth={2} />
+              <span>Your source data is untouched — retrying is safe (imports merge, nothing duplicates by re-upload).</span>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={handleRetry}
+                style={{
+                  flex: 2, padding: '9px', borderRadius: 8,
+                  background: 'var(--accent)', color: '#fff', border: 'none',
+                  cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700,
+                  display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center',
+                }}
+              >
+                <SyncIcon size={14} /> Retry Migration
+              </button>
+              <button
+                onClick={handleForceFinalize}
+                title="Switch modes even though some counts don't match"
+                style={{
+                  flex: 1, padding: '9px', borderRadius: 8,
+                  border: '1px solid rgba(249,115,22,0.5)',
+                  background: 'transparent', color: '#f97316',
+                  cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
+                }}
+              >
+                Continue anyway
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Error state (hard failures — validation mismatches have their own panel) */}
+        {hasError && !cancelled && !validationPaused && (
           <>
             <div style={{
               background: 'rgba(239,68,68,0.08)',
