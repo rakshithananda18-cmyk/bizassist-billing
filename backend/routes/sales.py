@@ -41,6 +41,9 @@ class SaleLine(BaseModel):
     unit:         Optional[str] = None
     batch_no:     Optional[str] = None
     serial_no:    Optional[str] = None
+    expiry_date:  Optional[str] = None
+    mrp:          Optional[float] = None
+    attributes:   Optional[dict] = None   # vertical fields (size/colour/warranty…)
     cgst_rate:    Optional[float] = None
     sgst_rate:    Optional[float] = None
     igst_rate:    Optional[float] = None
@@ -74,6 +77,7 @@ def _line_out(li: InvoiceLineItem) -> dict:
         "cgst_amount": li.cgst_amount, "sgst_amount": li.sgst_amount,
         "igst_amount": li.igst_amount, "cess_amount": li.cess_amount,
         "line_total": li.line_total, "batch_no": li.batch_no, "serial_no": li.serial_no,
+        "expiry_date": li.expiry_date, "mrp": li.mrp, "attributes": li.attributes,
     }
 
 
@@ -112,10 +116,17 @@ def create_sale(req: SaleRequest,
     bid = current_user["id"]
     if not req.lines:
         raise HTTPException(status_code=422, detail="at least one line is required")
+    # Shift stamping (Phase 3): the POS route (core/api/sales.py POST /invoices)
+    # STRICTLY requires an open shift; this native API tags the sale with the
+    # caller's open shift when one exists so it still enters the drawer tally.
+    from core.shifts import service as shifts_svc
+    operator_id = current_user.get("user_id") or bid
+    active_shift = shifts_svc.get_open_shift(db, business_id=bid, user_id=operator_id)
     try:
         inv = billing.create_sale_invoice(
             db, business_id=bid,
             lines=[l.dict(exclude_none=True) for l in req.lines],
+            shift_id=(active_shift.id if active_shift else None),
             customer=req.customer, customer_id=req.customer_id,
             invoice_no=req.invoice_no, invoice_date=req.invoice_date, due_date=req.due_date,
             place_of_supply=req.place_of_supply, invoice_type=req.invoice_type,

@@ -18,8 +18,10 @@ const S = {
     lineHeight: 1.5, fontVariantNumeric: 'tabular-nums',
   },
   band: {
-    background: ACCENT, color: '#fff', padding: '14px 12mm',
+    padding: '14px 12mm',
     display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16,
+    borderBottom: `2px solid ${ACCENT}`,
+    marginBottom: '12px'
   },
   section: { padding: '0 12mm' },
   label: {
@@ -28,8 +30,8 @@ const S = {
   },
   th: {
     padding: '7px 8px', fontSize: 10.5, textTransform: 'uppercase',
-    letterSpacing: '0.05em', color: MUTED, fontWeight: 600,
-    borderBottom: `2px solid ${INK}`, textAlign: 'left',
+    letterSpacing: '0.05em', color: '#64748b', fontWeight: 700,
+    borderBottom: `1px solid #e2e8f0`, background: '#f8fafc', textAlign: 'left',
   },
   td: { padding: '7px 8px', borderBottom: `1px solid ${HAIR}`, verticalAlign: 'top' },
   right: { textAlign: 'right' },
@@ -66,19 +68,21 @@ export default function ModernA4({ payload }) {
                  style={{ maxHeight: 44, maxWidth: 100, objectFit: 'contain', background: '#fff', borderRadius: 6, padding: 3 }} />
           ) : null}
           <div>
-            <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: '0.01em' }}>{seller.name}</div>
-            <div style={{ fontSize: 10.5, opacity: 0.9 }}>
+            <div style={{ fontSize: 19, fontWeight: 800, letterSpacing: '0.01em', color: ACCENT }}>{seller.name}</div>
+            <div style={{ fontSize: 10.5, color: '#64748b' }}>
               {[seller.phone, seller.email].filter(Boolean).join(' · ')}
             </div>
-            {gst ? <div style={{ fontSize: 10.5, opacity: 0.9 }}>GSTIN {seller.gstin}</div> : null}
+            {gst ? <div style={{ fontSize: 10.5, color: '#64748b', fontWeight: 600, marginTop: 2 }}>GSTIN: {seller.gstin}</div> : null}
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', opacity: 0.85 }}>
+          <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: '0.05em', textTransform: 'uppercase', color: ACCENT }}>
             {invoice.title}
           </div>
-          <div style={{ fontSize: 17, fontWeight: 700 }}>{invoice.number}</div>
-          <div style={{ fontSize: 11, opacity: 0.9 }}>{invoice.date}{invoice.time ? ` · ${invoice.time}` : ''}</div>
+          <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+            Invoice #: <b style={{ color: '#334155' }}>{invoice.number}</b><br />
+            Date: <b style={{ color: '#334155' }}>{invoice.date}{invoice.time ? ` · ${invoice.time}` : ''}</b>
+          </div>
         </div>
       </div>
 
@@ -204,8 +208,9 @@ export default function ModernA4({ payload }) {
           {totals.cash_discount ? <TotalRow k="Cash Discount" v={`− ${inr(totals.cash_discount)}`} /> : null}
           <div style={{
             display: 'flex', justifyContent: 'space-between', padding: '8px 10px',
-            background: '#faf6f3', borderTop: `2px solid ${INK}`, marginTop: 4,
-            fontWeight: 800, fontSize: 15, borderRadius: '0 0 6px 6px',
+            background: '#faf6f3', borderTop: `1px solid #cbd5e1`, marginTop: 4,
+            fontWeight: 900, fontSize: 15, borderRadius: '0 0 6px 6px',
+            color: ACCENT
           }}>
             <span>Total</span><span>{inr(totals.grand_total)}</span>
           </div>

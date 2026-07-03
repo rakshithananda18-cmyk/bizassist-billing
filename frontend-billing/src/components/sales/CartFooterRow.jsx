@@ -13,7 +13,8 @@ export default function CartFooterRow({ columnOrder, colVisible, stickyOffsets, 
       <tr className="pos-cart-foot">
         <td className="pos-footer-index"></td>
         {columnOrder.map(col => {
-          const isVisible = col === 'sku' ? colVisible.sku :
+          const isVisible = col === 'attrs' ? colVisible.attrs :
+                            col === 'sku' ? colVisible.sku :
                             col === 'mrp' ? colVisible.mrp :
                             col === 'hsn' ? colVisible.hsn :
                             col === 'unit' ? colVisible.unit :

@@ -147,5 +147,14 @@ class RealtimeManager:
                 logger.warning(f"[REALTIME] Queue full for Business {business_id}, dropping connection.")
                 self.unsubscribe(business_id, q)
 
+    def shutdown(self):
+        """Push a shutdown event to all queues to unblock SSE responses during server restart."""
+        for queues in self.connections.values():
+            for q in list(queues):
+                try:
+                    q.put_nowait({"type": "shutdown"})
+                except asyncio.QueueFull:
+                    pass
+
 realtime_manager = RealtimeManager()
 

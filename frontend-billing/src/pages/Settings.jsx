@@ -21,6 +21,7 @@ import ConsequenceModal from '../components/hosting/ConsequenceModal'
 import MigrationModal from '../components/hosting/MigrationModal'
 import BackupModal from '../components/hosting/BackupModal'
 import CustomSelect from '../components/common/CustomSelect'
+import { clearBillingProfileCache } from '../hooks/useBillingProfile'
 
 // Sample content shown for each draggable header line in the live preview.
 const PREVIEW_HEADER_CONTENT = {
@@ -954,6 +955,9 @@ export default function Settings() {
         body: JSON.stringify({ template_key: templateKey })
       })
       if (res.ok) {
+        const data = await res.json().catch(() => ({}))
+        if (data.business_types) setBizTypes(data.business_types)
+        clearBillingProfileCache()
         await refreshConfig()
         setToast({ type: 'success', msg: 'Business category changed successfully!' })
       } else {
@@ -964,6 +968,51 @@ export default function Settings() {
       logger.error('Failed to update business category:', err)
       setToast({ type: 'error', msg: 'Network error.' })
     }
+  }
+
+  // ── Multi-type businesses (plan Phase 2): ordered list, first = primary ────
+  const [bizTypes, setBizTypes] = useState([])
+  const [addTypeKey, setAddTypeKey] = useState('')
+  useEffect(() => {
+    authFetch('/business/billing-profile')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.profile?.business_types) setBizTypes(data.profile.business_types)
+      })
+      .catch(err => logger.warn('[Settings] billing-profile fetch failed:', err))
+  }, [authFetch])
+
+  const saveBusinessTypes = async (keys) => {
+    try {
+      const res = await authFetch('/business/setup', {
+        method: 'POST',
+        body: JSON.stringify({ template_keys: keys })
+      })
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setBizTypes(data.business_types || keys)
+        clearBillingProfileCache()
+        await refreshConfig()
+        setToast({ type: 'success', msg: 'Business types updated!' })
+      } else {
+        const err = await res.json().catch(() => ({}))
+        setToast({ type: 'error', msg: err.detail || 'Failed to update business types.' })
+      }
+    } catch (err) {
+      logger.error('Failed to update business types:', err)
+      setToast({ type: 'error', msg: 'Network error.' })
+    }
+  }
+
+  const handleAddBusinessType = () => {
+    if (!addTypeKey || bizTypes.includes(addTypeKey)) return
+    saveBusinessTypes([...bizTypes, addTypeKey])
+    setAddTypeKey('')
+  }
+
+  const handleRemoveBusinessType = (key) => {
+    if (key === bizTypes[0]) return   // primary is changed via the selector above
+    saveBusinessTypes(bizTypes.filter(k => k !== key))
   }
 
   // ============================================================================
@@ -1077,11 +1126,13 @@ export default function Settings() {
     )
   }
 
-  const g   = settings.general
-  const t   = settings.transactions
-  const inv = settings.inventory
-  const pr  = settings.print
-  const lb  = settings.labels
+  const gen = settings.general || {}
+  const tx  = settings.transactions || {}
+  const inv = settings.inventory || {}
+  const pr  = settings.print || {}
+  const lb  = settings.labels || {}
+  const g   = gen
+  const t   = tx
 
   // ── Customisable receipt header: drag to reorder, click L/C/R to align ──────
   const headerLayout = getHeaderLayout(pr)
@@ -1234,6 +1285,67 @@ export default function Settings() {
                         </option>
                       ))}
                     </CustomSelect>
+                  </SettingRow>
+
+                  <SettingRow
+                    label="Business Types"
+                    description="Businesses running more than one vertical (e.g. supermarket + mobile repair) can register secondary types. The counter can switch between them per bill."
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-end' }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
+                        {bizTypes.map((key, i) => {
+                          const label = templates.find(t => t.key === key)?.label || key
+                          return (
+                            <span
+                              key={key}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 6,
+                                padding: '4px 10px', borderRadius: 999, fontSize: '0.78rem',
+                                fontWeight: 600,
+                                background: i === 0 ? 'var(--accent)' : 'var(--bg-subtle, #f1f5f9)',
+                                color: i === 0 ? '#fff' : 'var(--text-muted)',
+                                border: '1px solid var(--border, #e2e8f0)',
+                              }}
+                            >
+                              {label}{i === 0 && ' (Primary)'}
+                              {i > 0 && (
+                                <button
+                                  onClick={() => handleRemoveBusinessType(key)}
+                                  title={`Remove ${label}`}
+                                  style={{
+                                    border: 'none', background: 'transparent', cursor: 'pointer',
+                                    color: 'inherit', padding: 0, lineHeight: 1, fontSize: '0.85rem',
+                                  }}
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </span>
+                          )
+                        })}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <CustomSelect
+                          className="form-input"
+                          style={{ width: 180 }}
+                          value={addTypeKey}
+                          onChange={e => setAddTypeKey(e.target.value)}
+                        >
+                          <option value="">Add a business type…</option>
+                          {templates.filter(t => !bizTypes.includes(t.key)).map(t => (
+                            <option key={t.key} value={t.key}>{t.label}</option>
+                          ))}
+                        </CustomSelect>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={handleAddBusinessType}
+                          disabled={!addTypeKey}
+                          style={{ padding: '6px 14px' }}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
                   </SettingRow>
                 </>
               )}
@@ -1484,6 +1596,9 @@ export default function Settings() {
               <SettingRow label="Show Batch Selector Column" description="Show Batch Selector column on each item in billing table.">
                 <Toggle id="pos_show_batch" checked={t.pos_show_batch !== false} onChange={v => patch('transactions', 'pos_show_batch', v)} />
               </SettingRow>
+              <SettingRow label="Show Serial / IMEI Column" description="Show Serial Number / IMEI column in billing table (electronics, mobile, repair).">
+                <Toggle id="pos_show_serial" checked={t.pos_show_serial === true} onChange={v => patch('transactions', 'pos_show_serial', v)} />
+              </SettingRow>
             </>
           )}
 
@@ -1577,7 +1692,7 @@ export default function Settings() {
                 </SettingRow>
                 </>)}
                 <SettingRow id="set-text_size" label="Text Size">
-                  <CustomSelect className="form-input" style={{ width: 140 }} value={pr.text_size} onChange={e => patch('print', 'text_size', e.target.value)}>
+                  <CustomSelect className="form-input" style={{ width: 140 }} value={gen.text_size || pr.text_size || 'medium'} onChange={e => patch('general', 'text_size', e.target.value)}>
                     <option value="small">Small</option>
                     <option value="medium">Medium</option>
                     <option value="large">Large</option>
@@ -1593,8 +1708,8 @@ export default function Settings() {
                 </SettingRow>
                 {previewMode === 'thermal' && (
                   <>
-                    <SettingRow label="Thermal Paper Size" description="Choose width of your receipt paper roll.">
-                      <CustomSelect className="form-input" style={{ width: 140 }} value={pr.thermal_page_size || '3inch'} onChange={e => patch('print', 'thermal_page_size', e.target.value)}>
+                    <SettingRow id="set-thermal_page_size" label="Thermal Page Size" description="Choose width of your receipt paper roll.">
+                      <CustomSelect className="form-input" style={{ width: 140 }} value={gen.thermal_page_size || pr.thermal_page_size || '3inch'} onChange={e => patch('general', 'thermal_page_size', e.target.value)}>
                         <option value="3inch">3 Inch (80mm)</option>
                         <option value="2inch">2 Inch (58mm)</option>
                       </CustomSelect>
@@ -1618,10 +1733,6 @@ export default function Settings() {
                 <SettingRow id="set-fssai_no" label="FSSAI Licence No." description="Printed at the foot of the receipt (food businesses).">
                   <input type="text" className="form-input" style={{ width: 200 }} value={pr.fssai_no || ''}
                     onChange={e => patch('print', 'fssai_no', e.target.value)} placeholder="e.g. 10122010000279" />
-                </SettingRow>
-                <SettingRow id="set-counter_id" label="Counter / Terminal ID" description="Shown in the receipt header (e.g. CTR1, CTR2).">
-                  <input type="text" className="form-input" style={{ width: 120 }} value={pr.counter_id || ''}
-                    onChange={e => patch('print', 'counter_id', e.target.value)} placeholder="CTR1" />
                 </SettingRow>
                 <SettingRow id="set-prices_incl_gst" label="Show 'Prices Incl. GST' note"><Toggle id="p_incl" checked={pr.prices_incl_gst} onChange={v => patch('print', 'prices_incl_gst', v)} /></SettingRow>
 
@@ -1663,6 +1774,11 @@ export default function Settings() {
                       value={pr.customer_signature_label}
                       onChange={e => patch('print', 'customer_signature_label', e.target.value)}
                       placeholder="Customer Signature" />
+                  </SettingRow>
+                )}
+                {!IS_LOCAL_APP && (
+                  <SettingRow id="set-print_invoice_qr" label="Online Invoice QR Code" hint="Shows a scannable QR on the thermal bill so customers can view the invoice online (Cloud only)">
+                    <Toggle id="p_qr" checked={pr.print_invoice_qr} onChange={v => patch('print', 'print_invoice_qr', v)} />
                   </SettingRow>
                 )}
               </div>
@@ -1713,9 +1829,11 @@ export default function Settings() {
                     padding: '16px',
                     color: '#1e293b',
                     fontFamily: 'monospace',
-                    fontSize: pr.text_size === 'small' ? '0.68rem' : pr.text_size === 'large' ? '0.85rem' : '0.75rem',
+                    fontSize: (gen.text_size || pr.text_size || 'medium') === 'small' ? '0.68em' : (gen.text_size || pr.text_size || 'medium') === 'large' ? '0.85em' : '0.75em',
                     lineHeight: 1.4,
                     width: '100%',
+                    maxWidth: (gen.thermal_page_size || pr.thermal_page_size || '3inch') === '2inch' ? '220px' : '300px',
+                    margin: '0 auto',
                     position: 'relative'
                   }}>
                     <div style={{ borderBottom: '1px dashed #94a3b8', paddingBottom: '4px', marginBottom: '6px' }}>
@@ -1739,7 +1857,7 @@ export default function Settings() {
                             title="Drag to reorder · L / C / R to align"
                             style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'grab', borderRadius: 3, opacity: dragKey === line.key ? 0.4 : 1 }}
                           >
-                            <span style={{ opacity: 0.35, fontSize: '0.7rem' }}>⠿</span>
+                            <span style={{ opacity: 0.35, fontSize: '0.9em' }}>⠿</span>
                             <div style={{ flex: 1, textAlign: line.align, ...c.style }}>{c.node}</div>
                             <span className="hdr-align" style={{ display: 'inline-flex', gap: 1 }}>
                               {[['left', 'L'], ['center', 'C'], ['right', 'R']].map(([a, lbl]) => (
@@ -1749,7 +1867,7 @@ export default function Settings() {
                                   onClick={() => setHeaderAlign(line.key, a)}
                                   title={`Align ${a}`}
                                   style={{
-                                    fontSize: '0.55rem', lineHeight: 1, padding: '2px 4px', cursor: 'pointer',
+                                    fontSize: '0.75em', lineHeight: 1, padding: '2px 4px', cursor: 'pointer',
                                     border: 'none', borderRadius: 2, fontWeight: 700,
                                     background: line.align === a ? 'var(--accent)' : 'transparent',
                                     color: line.align === a ? '#fff' : '#94a3b8',
@@ -1764,13 +1882,13 @@ export default function Settings() {
                       })}
                     </div>
 
-                    <div style={{ marginBottom: '6px', fontSize: '0.64rem', display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span><b>Bill No:</b> 6471</span><span><b>Counter:</b> {pr.counter_id || 'CTR1'}</span></div>
+                    <div style={{ marginBottom: '6px', fontSize: '0.85em', display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span><b>Bill No:</b> 6471</span><span><b>Counter:</b> {user?.counter_prefix || 'POS'}</span></div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}><span><b>Date:</b> {new Date().toLocaleDateString('en-IN')}</span><span><b>Time:</b> {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span></div>
-                      <div><b>Cashier:</b> POS</div>
+                      <div><b>Cashier:</b> {user?.username || 'POS'}</div>
                     </div>
 
-                    <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '8px', fontSize: '0.64rem' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '8px', fontSize: '0.85em' }}>
                       <thead>
                         <tr style={{ borderBottom: '1px dashed #94a3b8' }}>
                           {pr.print_item_sno !== false && <th style={{ textAlign: 'left' }}>#</th>}
@@ -1784,7 +1902,7 @@ export default function Settings() {
                       <tbody>
                         <tr>
                           {pr.print_item_sno !== false && <td>1</td>}
-                          <td>Parle-G {pr.print_item_hsn && <span style={{ fontSize: '0.55rem', color: '#64748b' }}>(1905)</span>}</td>
+                          <td>Parle-G {pr.print_item_hsn && <span style={{ fontSize: '0.85em', color: '#64748b' }}>(1905)</span>}</td>
                           <td style={{ textAlign: 'right' }}>10.00</td>
                           <td style={{ textAlign: 'right' }}>10.00</td>
                           <td style={{ textAlign: 'center' }}>2</td>
@@ -1792,7 +1910,7 @@ export default function Settings() {
                         </tr>
                         <tr style={{ borderBottom: '1px dashed #94a3b8' }}>
                           {pr.print_item_sno !== false && <td>2</td>}
-                          <td>Tata Salt {pr.print_item_hsn && <span style={{ fontSize: '0.55rem', color: '#64748b' }}>(2501)</span>}</td>
+                          <td>Tata Salt {pr.print_item_hsn && <span style={{ fontSize: '0.85em', color: '#64748b' }}>(2501)</span>}</td>
                           <td style={{ textAlign: 'right' }}>30.00</td>
                           <td style={{ textAlign: 'right' }}>28.00</td>
                           <td style={{ textAlign: 'center' }}>1</td>
@@ -1802,34 +1920,34 @@ export default function Settings() {
                     </table>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-end', borderBottom: '1px dashed #94a3b8', paddingBottom: '6px', marginBottom: '6px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '120px', fontSize: '0.68rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '120px', fontSize: '0.9em' }}>
                         <span>Subtotal:</span>
                         <span>₹46.00</span>
                       </div>
                       {pr.print_item_tax !== false && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '120px', fontSize: '0.68rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '120px', fontSize: '0.9em' }}>
                           <span>GST (18%):</span>
                           <span>₹4.00</span>
                         </div>
                       )}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '120px', fontSize: '0.72rem', fontWeight: 'bold' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '120px', fontSize: '1.05em', fontWeight: 'bold' }}>
                         <span>Grand Total:</span>
                         <span>₹48.00</span>
                       </div>
                     </div>
 
                     {/* Total quantity vs distinct items + savings (matches the M.R. Traders receipt) */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.66rem', marginBottom: '4px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85em', marginBottom: '4px' }}>
                       <span>Qty: 3</span>
                       <span>Items: 2</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', fontWeight: 'bold', color: '#16a34a', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95em', fontWeight: 'bold', color: '#16a34a', marginBottom: '8px' }}>
                       <span>You have Saved:</span>
                       <span>₹2.00</span>
                     </div>
 
                     {pr.print_tax_breakdown && (
-                      <Editable k="print_tax_breakdown" style={{ fontSize: '0.56rem', color: '#475569', marginBottom: '8px' }}>
+                      <Editable k="print_tax_breakdown" style={{ fontSize: '0.75em', color: '#475569', marginBottom: '8px' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                           <thead>
                             <tr style={{ borderBottom: '1px dotted #94a3b8' }}>
@@ -1847,39 +1965,53 @@ export default function Settings() {
                     )}
 
                     {(pr.fssai_no || pr.prices_incl_gst) && (
-                      <div style={{ fontSize: '0.56rem', color: '#64748b', textAlign: 'center', marginBottom: '8px' }}>
+                      <div style={{ fontSize: '0.75em', color: '#64748b', textAlign: 'center', marginBottom: '8px' }}>
                         {pr.prices_incl_gst && <div>E. &amp; O.E. · Prices Incl. GST</div>}
                         {pr.fssai_no && <div>FSSAI: {pr.fssai_no}</div>}
                       </div>
                     )}
 
                     {pr.print_amount_in_words && (
-                      <Editable k="print_amount_in_words" style={{ fontSize: '0.6rem', color: '#64748b', fontStyle: 'italic', marginBottom: '8px', textAlign: 'center' }}>
+                      <Editable k="print_amount_in_words" style={{ fontSize: '0.8em', color: '#64748b', fontStyle: 'italic', marginBottom: '8px', textAlign: 'center' }}>
                         Rupees Forty-Eight Only
                       </Editable>
                     )}
 
                     {pr.print_terms_conditions && pr.terms_conditions_text && (
-                      <Editable k="print_terms_conditions" style={{ fontSize: '0.6rem', color: '#64748b', textAlign: 'center', borderTop: '1px dashed #94a3b8', paddingTop: '4px', marginTop: '4px' }}>
+                      <Editable k="print_terms_conditions" style={{ fontSize: '0.8em', color: '#64748b', textAlign: 'center', borderTop: '1px dashed #94a3b8', paddingTop: '4px', marginTop: '4px' }}>
                         <b>Terms:</b> {pr.terms_conditions_text}
                       </Editable>
                     )}
 
-                    {pr.print_signature && (
-                      <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
-                        <div style={{ borderTop: '1px dashed #64748b', width: '110px', textAlign: 'center', paddingTop: '2px', fontSize: '0.58rem' }}>
-                          {pr.signature_label || 'Authorised Signatory'}
-                        </div>
+                    {(pr.print_signature || pr.customer_signature) && (
+                      <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                        {pr.customer_signature ? (
+                          <div style={{ borderTop: '1px dashed #64748b', width: '110px', textAlign: 'center', paddingTop: '2px', fontSize: '0.75em' }}>
+                            {pr.customer_signature_label || 'Customer Signature'}
+                          </div>
+                        ) : <div />}
+                        {pr.print_signature ? (
+                          <div style={{ borderTop: '1px dashed #64748b', width: '110px', textAlign: 'center', paddingTop: '2px', fontSize: '0.75em' }}>
+                            {pr.signature_label || 'Authorised Signatory'}
+                          </div>
+                        ) : <div />}
                       </div>
                     )}
 
-                    {pr.customer_signature && (
-                      <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-start' }}>
-                        <div style={{ borderTop: '1px dashed #64748b', width: '110px', textAlign: 'center', paddingTop: '2px', fontSize: '0.58rem' }}>
-                          {pr.customer_signature_label || 'Customer Signature'}
+                    {!IS_LOCAL_APP && pr.print_invoice_qr && (
+                      <div style={{ textAlign: 'center', marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #94a3b8' }}>
+                        <div style={{ display: 'inline-block', background: '#fff', padding: '4px', border: '1px solid #e2e8f0', borderRadius: '4px' }}>
+                          <div style={{ width: 60, height: 60, background: 'repeating-linear-gradient(45deg,#cbd5e1 0,#cbd5e1 2px,#fff 0,#fff 8px)', borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.55em', color: '#64748b', flexDirection: 'column', gap: 2 }}>
+                            <span>QR</span>
+                          </div>
                         </div>
+                        <div style={{ fontSize: '0.6em', color: '#64748b', marginTop: 2 }}>Scan to view invoice online</div>
                       </div>
                     )}
+
+                    <div style={{ textAlign: 'center', marginTop: 10, fontSize: '0.65em', color: '#94a3b8', borderTop: '1px dashed #e2e8f0', paddingTop: 6 }}>
+                      Computer generated invoice · {pr.counter_id || 'BA-XXXXXX'}
+                    </div>
                   </div>
                 ) : (
                   /* A4 INVOICE PREVIEW */
@@ -1890,7 +2022,7 @@ export default function Settings() {
                     borderRadius: '6px',
                     padding: '20px',
                     color: '#334155',
-                    fontSize: pr.text_size === 'small' ? '0.68rem' : pr.text_size === 'large' ? '0.85rem' : '0.75rem',
+                    fontSize: (gen.text_size || pr.text_size || 'medium') === 'small' ? '0.68em' : (gen.text_size || pr.text_size || 'medium') === 'large' ? '0.85em' : '0.75em',
                     lineHeight: 1.4,
                     width: '100%',
                     position: 'relative'
@@ -1961,12 +2093,12 @@ export default function Settings() {
                         )}
                       </div>
                       <div style={{ width: '40%', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68em' }}>
                           <span>Subtotal:</span>
                           <span>₹46.00</span>
                         </div>
                         {pr.print_item_tax !== false && (
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68em' }}>
                             <span>Total GST:</span>
                             <span>₹4.00</span>
                           </div>

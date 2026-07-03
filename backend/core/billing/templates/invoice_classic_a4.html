@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ invoice.title }}</title>
+    <style>
+        /* Import a basic font and reset */
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;700;800&display=swap');
+        
+        @page {
+            size: A4;
+            margin: 10mm 9mm;
+        }
+
+        body {
+            font-family: 'DM Sans', Arial, sans-serif;
+            font-size: 12px;
+            line-height: 1.45;
+            color: #000;
+            background: #fff;
+            margin: 0;
+            padding: 0;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .box { border: 1px solid #000; }
+        .hairline { border-bottom: 1px solid #000; }
+        
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        
+        th {
+            border: 1px solid #000;
+            padding: 4px 6px;
+            font-weight: 700;
+            font-size: 11px;
+            text-align: left;
+            background: #f2f2f2;
+        }
+        
+        td {
+            border: 1px solid #000;
+            padding: 4px 6px;
+            vertical-align: top;
+        }
+
+        .right { text-align: right; }
+        .bold { font-weight: 700; }
+        .label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-weight: 700;
+        }
+        
+        /* Flexbox replacements (WeasyPrint supports flexbox) */
+        .flex { display: flex; }
+        .flex-1 { flex: 1; }
+        .flex-1-2 { flex: 1.2; }
+        .flex-1-3 { flex: 1.3; }
+        .flex-1-4 { flex: 1.4; }
+        .gap-12 { gap: 12px; }
+        .gap-16 { gap: 16px; }
+        .items-center { align-items: center; }
+        .text-center { text-align: center; }
+        .self-end { align-self: flex-end; }
+        
+        .header-logo {
+            max-height: 52px;
+            max-width: 110px;
+            object-fit: contain;
+        }
+    </style>
+</head>
+<body>
+    {% set gst = visibility.gst_mode %}
+    {% set igst = visibility.igst_mode %}
+
+    <!-- A. Header -->
+    <div class="box flex items-center gap-12" style="padding: 8px 10px;">
+        {% if seller.logo_url %}
+        <img src="{{ seller.logo_url }}" class="header-logo" alt="logo" />
+        {% endif %}
+        
+        <div class="flex-1 text-center">
+            <div style="font-size: 20px; font-weight: 800; letter-spacing: 0.02em;">{{ seller.name }}</div>
+            {% if seller.address %}<div>{{ seller.address }}</div>{% endif %}
+            <div>
+                {% if seller.phone %}<span>Ph: {{ seller.phone }}</span>{% endif %}
+                {% if seller.phone and seller.email %} &middot; {% endif %}
+                {% if seller.email %}<span>{{ seller.email }}</span>{% endif %}
+            </div>
+            {% if gst %}
+            <div class="bold">
+                GSTIN: {{ seller.gstin }}
+                {% if seller.state %}<span style="font-weight: 400;"> &middot; State: {{ seller.state }} ({{ seller.state_code }})</span>{% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- title strip -->
+    <div class="box text-center" style="border-top: none; padding: 3px 10px; font-weight: 800; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase;">
+        {{ invoice.title }}
+    </div>
+
+    <!-- meta + B. buyer -->
+    <div class="flex" style="border-left: 1px solid #000; border-right: 1px solid #000;">
+        <div class="flex-1-2" style="padding: 6px 10px; border-right: 1px solid #000;">
+            <div class="label">Billed To</div>
+            <div class="bold">{{ buyer.name }}</div>
+            {% if buyer.billing_address %}<div>{{ buyer.billing_address }}</div>{% endif %}
+            {% if buyer.phone %}<div>Ph: {{ buyer.phone }}</div>{% endif %}
+            {% if gst and buyer.gstin %}<div>GSTIN: {{ buyer.gstin }}</div>{% endif %}
+            {% if gst and buyer.state %}<div>State: {{ buyer.state }} ({{ buyer.state_code }})</div>{% endif %}
+        </div>
+        <div class="flex-1" style="padding: 6px 10px; font-size: 12px;">
+            <table style="border: none;">
+                <tr><td style="border: none; padding: 0 8px 0 0;">Invoice No.</td><td style="border: none; padding: 0;" class="bold">{{ invoice.number }}</td></tr>
+                <tr><td style="border: none; padding: 0 8px 0 0;">Date</td><td style="border: none; padding: 0;" class="bold">{{ invoice.date }}{% if invoice.time %} &middot; {{ invoice.time }}{% endif %}</td></tr>
+                {% if invoice.due_date %}<tr><td style="border: none; padding: 0 8px 0 0;">Due Date</td><td style="border: none; padding: 0;">{{ invoice.due_date }}</td></tr>{% endif %}
+                {% if gst and invoice.place_of_supply %}<tr><td style="border: none; padding: 0 8px 0 0;">Place of Supply</td><td style="border: none; padding: 0;">{{ invoice.place_of_supply }}</td></tr>{% endif %}
+                {% if gst and invoice.reverse_charge %}<tr><td style="border: none; padding: 0 8px 0 0;">Reverse Charge</td><td style="border: none; padding: 0;">Yes</td></tr>{% endif %}
+            </table>
+        </div>
+    </div>
+
+    <!-- C. Item table -->
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Item</th>
+                {% if visibility.hsn %}<th>HSN/SAC</th>{% endif %}
+                {% if visibility.batch %}<th>Batch</th>{% endif %}
+                {% if visibility.expiry %}<th>Exp.</th>{% endif %}
+                {% if visibility.serial %}<th>Serial/IMEI</th>{% endif %}
+                {% if visibility.mrp %}<th class="right">MRP</th>{% endif %}
+                <th class="right">Qty</th>
+                <th>Unit</th>
+                <th class="right">Rate</th>
+                <th class="right">Disc.</th>
+                {% if gst %}<th class="right">Taxable</th>{% endif %}
+                {% if gst %}<th class="right">GST%</th>{% endif %}
+                {% if gst and not igst %}<th class="right">CGST</th>{% endif %}
+                {% if gst and not igst %}<th class="right">SGST</th>{% endif %}
+                {% if gst and igst %}<th class="right">IGST</th>{% endif %}
+                <th class="right">Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for l in lines %}
+            <tr>
+                <td>{{ l.sno }}</td>
+                <td>
+                    {{ l.name }}
+                    {% if l.description %}<div style="font-size: 10px; color: #333;">{{ l.description }}</div>{% endif %}
+                </td>
+                {% if visibility.hsn %}<td>{{ l.hsn_sac or '—' }}</td>{% endif %}
+                {% if visibility.batch %}<td>{{ l.batch_no or '—' }}</td>{% endif %}
+                {% if visibility.expiry %}<td>{{ l.expiry or '—' }}</td>{% endif %}
+                {% if visibility.serial %}<td>{{ l.serial_no or '—' }}</td>{% endif %}
+                {% if visibility.mrp %}<td class="right">{{ "{:,.2f}".format(l.mrp) if l.mrp is not none else '—' }}</td>{% endif %}
+                <td class="right">{{ l.qty }}</td>
+                <td>{{ l.unit }}</td>
+                <td class="right">{{ "{:,.2f}".format(l.rate) }}</td>
+                <td class="right">{{ "{:,.2f}".format(l.discount) if l.discount else '—' }}</td>
+                {% if gst %}<td class="right">{{ "{:,.2f}".format(l.taxable_value) }}</td>{% endif %}
+                {% if gst %}<td class="right">{{ l.gst_rate }}%</td>{% endif %}
+                {% if gst and not igst %}<td class="right">{{ "{:,.2f}".format(l.cgst) }}</td>{% endif %}
+                {% if gst and not igst %}<td class="right">{{ "{:,.2f}".format(l.sgst) }}</td>{% endif %}
+                {% if gst and igst %}<td class="right">{{ "{:,.2f}".format(l.igst) }}</td>{% endif %}
+                <td class="right bold">{{ "{:,.2f}".format(l.line_total) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- D. Totals + words -->
+    <div class="flex box" style="border-top: none;">
+        <div class="flex-1-3" style="padding: 6px 10px; border-right: 1px solid #000;">
+            <div class="label">Amount in Words</div>
+            <div style="font-style: italic;">{{ totals.amount_in_words }}</div>
+
+            {% if payments|length > 0 %}
+            <div style="margin-top: 8px;">
+                <div class="label">Payments</div>
+                {% for p in payments %}
+                <div>
+                    {{ p.mode }}: ₹{{ "{:,.2f}".format(p.amount) }}{% if p.reference %} ({{ p.reference }}){% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if gst and tax_summary|length > 0 %}
+            <div style="margin-top: 8px;">
+                <div class="label">Tax Summary (HSN-wise)</div>
+                <table style="margin-top: 2px;">
+                    <thead>
+                        <tr>
+                            <th>HSN</th><th class="right">Taxable</th><th class="right">Rate</th>
+                            {% if igst %}<th class="right">IGST</th>{% else %}<th class="right">CGST</th><th class="right">SGST</th>{% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for g in tax_summary %}
+                        <tr>
+                            <td>{{ g.hsn }}</td><td class="right">{{ "{:,.2f}".format(g.taxable) }}</td><td class="right">{{ g.rate }}%</td>
+                            {% if igst %}
+                            <td class="right">{{ "{:,.2f}".format(g.igst) }}</td>
+                            {% else %}
+                            <td class="right">{{ "{:,.2f}".format(g.cgst) }}</td><td class="right">{{ "{:,.2f}".format(g.sgst) }}</td>
+                            {% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="flex-1" style="padding: 6px 10px;">
+            <table style="border: none;">
+                <!-- Row helper macro -->
+                {% macro summary_row(k, v, big=False) %}
+                <tr>
+                    <td style="border: none; padding: 2px 4px; {% if big %}font-weight: 800; font-size: 13px; border-top: 1px solid #000;{% endif %}">{{ k }}</td>
+                    <td style="border: none; padding: 2px 4px; text-align: right; {% if big %}font-weight: 800; font-size: 13px; border-top: 1px solid #000;{% endif %}">{{ v }}</td>
+                </tr>
+                {% endmacro %}
+                
+                {{ summary_row("Sub Total (Taxable)", "₹{:,.2f}".format(totals.taxable_amount)) }}
+                {% if totals.total_discount %}{{ summary_row("Discount", "− ₹{:,.2f}".format(totals.total_discount)) }}{% endif %}
+                {% if gst and not igst %}{{ summary_row("CGST", "₹{:,.2f}".format(totals.cgst_total)) }}{% endif %}
+                {% if gst and not igst %}{{ summary_row("SGST", "₹{:,.2f}".format(totals.sgst_total)) }}{% endif %}
+                {% if gst and igst %}{{ summary_row("IGST", "₹{:,.2f}".format(totals.igst_total)) }}{% endif %}
+                {% if gst and totals.cess_total %}{{ summary_row("Cess", "₹{:,.2f}".format(totals.cess_total)) }}{% endif %}
+                {% if totals.round_off %}{{ summary_row("Round Off", "₹{:,.2f}".format(totals.round_off)) }}{% endif %}
+                {% if totals.cash_discount %}{{ summary_row("Cash Discount", "− ₹{:,.2f}".format(totals.cash_discount)) }}{% endif %}
+                
+                {{ summary_row("GRAND TOTAL", "₹{:,.2f}".format(totals.grand_total), big=True) }}
+                {{ summary_row("Amount Paid", "₹{:,.2f}".format(totals.amount_paid)) }}
+                {% if totals.balance_due %}{{ summary_row("Balance Due", "₹{:,.2f}".format(totals.balance_due), big=True) }}{% endif %}
+            </table>
+        </div>
+    </div>
+
+    <!-- F. Footer -->
+    <div class="flex gap-16" style="margin-top: 10px;">
+        <div class="flex-1-4">
+            {% if footer.terms %}
+            <div class="label">Terms &amp; Conditions</div>
+            <div style="font-size: 10px; white-space: pre-wrap;">{{ footer.terms }}</div>
+            {% endif %}
+            {% if footer.return_policy %}
+            <div style="font-size: 10px; margin-top: 4px;">{{ footer.return_policy }}</div>
+            {% endif %}
+        </div>
+        <div class="flex-1 text-center self-end">
+            <div style="border-bottom: 1px solid #000; height: 36px; margin-bottom: 4px;"></div>
+            <div style="font-size: 10px;">{{ footer.customer_signature_label }}</div>
+        </div>
+        <div class="flex-1 text-center self-end">
+            <div style="border-bottom: 1px solid #000; height: 36px; margin-bottom: 4px;"></div>
+            <div style="font-size: 10px; font-weight: 700;">For {{ seller.name }}<br />{{ footer.signature_label }}</div>
+        </div>
+    </div>
+
+    <div class="text-center" style="font-size: 9px; color: #444; margin-top: 10px;">
+        {% if footer.thank_you %}<span>{{ footer.thank_you }} &middot; </span>{% endif %}
+        This is a computer generated invoice.
+        {% if seller.biz_id %}<span> &middot; BizID: {{ seller.biz_id }}</span>{% endif %}
+    </div>
+</body>
+</html>

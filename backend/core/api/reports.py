@@ -448,6 +448,91 @@ def report_sales_register(
     return result
 
 
+@router.get("/reports/shift-reconciliations")
+def report_shift_reconciliations(
+    response: Response,
+    from_date: Optional[str] = Query(None, alias="from"),
+    to_date: Optional[str] = Query(None, alias="to"),
+    limit: int = Query(DEFAULT_PAGE_LIMIT, ge=0, le=MAX_PAGE_LIMIT),
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(restrict_cashier),
+    db: Session = Depends(get_db),
+):
+    """Shift & cash-drawer reconciliation history (plan Phase 3): who operated
+    the register, when, opening float, expected vs counted cash/UPI, the
+    short/over discrepancy, plus paid in/out movements and what was left in
+    the drawer vs moved to bank. Owner-only (cashiers see only their own
+    current shift via /shifts/current)."""
+    from database.models import RegisterShift, ShiftCashMovement
+    bid = current_user["id"]
+    q = db.query(RegisterShift).filter(RegisterShift.business_id == bid)
+    if from_date:
+        q = q.filter(RegisterShift.start_time >= from_date)
+    if to_date:
+        q = q.filter(RegisterShift.start_time <= f"{to_date} 23:59:59")
+    limit, offset = _clamp_page(limit, offset)
+    total = q.count()
+    response.headers["X-Total-Count"] = str(total)
+    rows = (
+        q.order_by(RegisterShift.start_time.desc())
+        .offset(offset).limit(limit).all()
+    )
+
+    user_ids = {r.user_id for r in rows}
+    names = {}
+    if user_ids:
+        for u in db.query(User).filter(User.id.in_(user_ids)).all():
+            names[u.id] = u.staff_login_name or u.username
+
+    # Movement sums per shift in one grouped query (paid in / out / to bank).
+    shift_ids = [r.id for r in rows]
+    moves = {}
+    if shift_ids:
+        mrows = (
+            db.query(ShiftCashMovement.shift_id, ShiftCashMovement.movement_type,
+                     ShiftCashMovement.category,
+                     func.coalesce(func.sum(ShiftCashMovement.amount), 0.0))
+            .filter(ShiftCashMovement.business_id == bid,
+                    ShiftCashMovement.shift_id.in_(shift_ids))
+            .group_by(ShiftCashMovement.shift_id, ShiftCashMovement.movement_type,
+                      ShiftCashMovement.category)
+            .all()
+        )
+        for sid, mtype, cat, total in mrows:
+            m = moves.setdefault(sid, {"paid_in": 0.0, "paid_out": 0.0, "removed_at_close": 0.0})
+            if cat == "closing_removal":
+                m["removed_at_close"] += float(total or 0.0)
+            elif cat != "opening_variance" and mtype in ("paid_in", "paid_out"):
+                m[mtype] += float(total or 0.0)
+
+    result = []
+    for s in rows:
+        cash_diff = ((s.closing_cash_actual or 0.0) - (s.closing_cash_expected or 0.0)) \
+            if s.status == "CLOSED" else None
+        upi_diff = ((s.closing_upi_actual or 0.0) - (s.closing_upi_expected or 0.0)) \
+            if s.status == "CLOSED" else None
+        m = moves.get(s.id, {"paid_in": 0.0, "paid_out": 0.0, "removed_at_close": 0.0})
+        result.append({
+            "operator": names.get(s.user_id, f"user #{s.user_id}"),
+            "start_time": s.start_time.strftime("%Y-%m-%d %H:%M") if s.start_time else None,
+            "end_time": s.end_time.strftime("%Y-%m-%d %H:%M") if s.end_time else None,
+            "status": s.status,
+            "opening_cash": round(s.opening_cash or 0.0, 2),
+            "paid_in": round(m["paid_in"], 2),
+            "paid_out": round(m["paid_out"], 2),
+            "expected_cash": round(s.closing_cash_expected, 2) if s.closing_cash_expected is not None else None,
+            "counted_cash": round(s.closing_cash_actual, 2) if s.closing_cash_actual is not None else None,
+            "cash_short_over": round(cash_diff, 2) if cash_diff is not None else None,
+            "left_in_drawer": round(s.closing_float, 2) if s.closing_float is not None else None,
+            "moved_out_at_close": round(m["removed_at_close"], 2),
+            "expected_upi": round(s.closing_upi_expected, 2) if s.closing_upi_expected is not None else None,
+            "counted_upi": round(s.closing_upi_actual, 2) if s.closing_upi_actual is not None else None,
+            "upi_short_over": round(upi_diff, 2) if upi_diff is not None else None,
+            "notes": s.notes,
+        })
+    return result
+
+
 @router.get("/reports/purchase-register")
 def report_purchase_register(
     response: Response,
@@ -1735,7 +1820,7 @@ def report_verify_chain(
 
     Walks every posted entry in order and recomputes the SHA-256 chain. Returns
     `{ok: True, checked, head}` when the books are intact, or `{ok: False,
-    broken_at, …}` pointing at the first entry that was edited/deleted/reordered.
+    broken_at, ...}` pointing at the first entry that was edited/deleted/reordered.
     Owner-only; business-scoped.
     """
     from core.accounting.posting import verify_chain

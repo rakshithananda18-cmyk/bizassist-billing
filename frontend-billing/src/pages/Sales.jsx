@@ -5,7 +5,7 @@
 //              Integrated with offline outbox sync and collaborative SSE sessions.
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { IS_LOCAL_APP } from '../config'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
@@ -29,6 +29,7 @@ import CartEmptyRows from '../components/sales/CartEmptyRows'
 import CartItemRow from '../components/sales/CartItemRow'
 import CartFooterRow from '../components/sales/CartFooterRow'
 import { PosCounterSettingsModal } from '../components/sales/PosSettingsModals'
+import { OpenShiftModal, CloseShiftModal, CashMovementModal } from '../components/sales/ShiftModals'
 import usePaymentFlow from '../hooks/usePaymentFlow'
 import { syncManager } from '../sync/syncManager'
 import { pendingInvoiceRows } from '../sync/pendingInvoices'
@@ -40,6 +41,8 @@ const colLabels = {
   sku: 'Item Code',
   name: 'Item Name',
   batch: 'Batch',
+  serial: 'Serial / IMEI',
+  attrs: 'Item Details (Size/Color/Warranty…)',
   price_option: 'Price Option',
   mrp: 'MRP',
   hsn: 'HSN',
@@ -52,7 +55,7 @@ const colLabels = {
   total: 'Total After Tax'
 }
 
-const emptyItem = () => ({ product_id: '', product: '', qty: 1, price: '', discount: 0, sku: '—', is_custom: false, batch_no: '', expiry_date: '', serial_no: '', selected_price: '', selected_price_label: 'Standard Price' })
+const emptyItem = () => ({ product_id: '', product: '', qty: 1, price: '', discount: 0, sku: '—', is_custom: false, batch_no: '', expiry_date: '', serial_no: '', attributes: {}, selected_price: '', selected_price_label: 'Standard Price' })
 
 const defaultForm = {
   customer_id: '',
@@ -94,6 +97,7 @@ export default function Sales(props = {}) {
   const liveClientId = searchParams.get('client_id')
   const isLiveView = props.isLiveViewMode || !!liveCounter
   const isOwner = (user?.role || '').toLowerCase() !== 'cashier'
+  const location = useLocation()
 
   // Collaborative live counter states
   const [editState, setEditState] = useState('idle') // 'idle' | 'requesting' | 'granted' | 'denied'
@@ -123,6 +127,35 @@ export default function Sales(props = {}) {
   const [dbInvoices, setDbInvoices]   = useState([])
   const [showPayConfirmModal, setShowPayConfirmModal] = useState(false)
   const [staffList, setStaffList] = useState([])
+
+  // ── Shift & cash-drawer management (Phase 3) ──────────────────────────────
+  // undefined = still checking · null = NO open shift (billing locked behind
+  // the OpenShiftModal gatekeeper — every role, owner included) · object = open.
+  // Live-view (owner watching a remote counter) is exempt: it's the CASHIER's
+  // shift, not the viewer's.
+  const [shift, setShift] = useState(undefined)
+  const [showCloseShiftModal, setShowCloseShiftModal] = useState(false)
+  const [showCashMovementModal, setShowCashMovementModal] = useState(false)
+
+  const refreshShift = useCallback(async () => {
+    if (isLiveView) return
+    try {
+      const res = await authFetch('/shifts/current')
+      if (res.ok) {
+        const data = await res.json().catch(() => null)
+        setShift(data?.shift ?? null)
+      } else {
+        setShift(null)
+      }
+    } catch {
+      // Offline: FAIL-OPEN like the billing profile — don't brick the counter
+      // on a network blip. The backend still strictly enforces the gate when
+      // the bill (or the offline outbox replay) reaches it.
+      setShift(s => (s === undefined ? { offline: true } : s))
+    }
+  }, [authFetch, isLiveView])
+
+  useEffect(() => { refreshShift() }, [refreshShift])
 
   // ============================================================================
   // ── 4. OFFLINE SYNC OUTBOX BINDINGS ──
@@ -225,13 +258,21 @@ export default function Sales(props = {}) {
               parsed.push('rate')
             }
           }
+          if (!parsed.includes('attrs')) {
+            const serialIdx = parsed.indexOf('serial')
+            if (serialIdx !== -1) {
+              parsed.splice(serialIdx + 1, 0, 'attrs')
+            } else {
+              parsed.push('attrs')
+            }
+          }
           return parsed
         }
       } catch (e) {
         logger.error('[SALES] failed to parse pos_column_order', e)
       }
     }
-    return ['sku', 'name', 'batch', 'serial', 'price_option', 'mrp', 'hsn', 'qty', 'unit', 'rate', 'price', 'discount', 'tax', 'total']
+    return ['sku', 'name', 'batch', 'serial', 'attrs', 'price_option', 'mrp', 'hsn', 'qty', 'unit', 'rate', 'price', 'discount', 'tax', 'total']
   })
 
 
@@ -520,6 +561,64 @@ export default function Sales(props = {}) {
     localStorage.setItem(`pos_minimized_tabs_${uid}`, JSON.stringify(tabs))
     localStorage.setItem(`pos_minimized_active_id_${uid}`, activeTabId)
   }, [tabs, activeTabId, user?.user_id, user?.id, isLiveView])
+
+  // ============================================================================
+  // ── 7.5. HANDLE LOCATION STATE (Duplicate / Credit Note) ──
+  // ============================================================================
+  useEffect(() => {
+    if (!location.state) return
+    const { duplicateFrom, creditNoteFrom } = location.state
+    const sourceInvoice = duplicateFrom || creditNoteFrom
+    if (!sourceInvoice) return
+
+    // Clear state so we don't reload it again if user navigates back and forth
+    window.history.replaceState({}, document.title)
+
+    authFetch(`/sales/${encodeURIComponent(sourceInvoice)}/print-payload`)
+      .then(res => res.json())
+      .then(payload => {
+        if (!payload || !payload.invoice) return
+
+        const inv = payload.invoice
+        const lines = payload.lines || []
+        
+        // Map payload items back to POS form structure
+        const cartItems = lines.map(line => {
+           // We might not have full product data in payload, but we have enough for POS
+           return {
+             ...emptyItem(),
+             product_id: '', 
+             product: line.name || '',
+             qty: line.qty ? parseFloat(line.qty) : 1,
+             rate: line.rate ? parseFloat(line.rate) : 0,
+             price: line.rate ? parseFloat(line.rate) : 0,
+             discount: line.discount ? parseFloat(line.discount) : 0,
+             sku: '—',
+             hsn: line.hsn || '',
+             unit: line.unit || 'Nos',
+             is_custom: true // mark as custom so POS doesn't try to sync prices with db
+           }
+        })
+
+        const newForm = {
+           ...defaultForm,
+           customer_id: payload.buyer?.name || '', // Will map as free-text unless matching customer is found
+           items: cartItems,
+           gst_enabled: !!(payload.seller?.gstin),
+           notes: creditNoteFrom ? `Credit Note for Invoice ${sourceInvoice}` : '',
+        }
+        
+        // Create new tab
+        const newId = Math.random().toString(36).substring(7)
+        setTabs(prev => [
+           ...prev,
+           { id: newId, name: creditNoteFrom ? `CN-${sourceInvoice}` : `Dup-${sourceInvoice}`, form: newForm }
+        ])
+        setActiveTabId(newId)
+      })
+      .catch(e => logger.error('Failed to load invoice for duplication', e))
+
+  }, [location.state, authFetch])
 
   // ============================================================================
   // ── 8. COLLABORATIVE LIVE COUNTER (SSE) ──
@@ -1126,7 +1225,13 @@ export default function Sales(props = {}) {
   // mobile/repair get serial — while the owner's explicit settings still win.
   // FAIL-OPEN: profile null (offline) → settings-only behavior, unchanged.
   const profileLineFields = billingProfile?.line_fields || []
+  // Dynamic vertical fields beyond the native cart columns (textile size/color,
+  // electronics warranty, repair job-card…) — rendered as a DETAILS column and
+  // packed into each line's `attributes` JSON blob on save.
+  const NATIVE_LINE_FIELDS = ['batch_no', 'expiry_date', 'serial_no', 'mrp', 'sac']
+  const extraAttrFields = profileLineFields.filter(f => !NATIVE_LINE_FIELDS.includes(f))
   const colVisible = {
+    attrs: extraAttrFields.length > 0,
     sku: settings?.transactions?.pos_show_sku !== false,
     unit: settings?.transactions?.pos_show_unit !== false,
     discount: settings?.transactions?.pos_show_discount !== false,
@@ -1318,6 +1423,7 @@ export default function Sales(props = {}) {
         batch_no: '',
         expiry_date: '',
         serial_no: '',
+        attributes: {},
         selected_price: '',
         selected_price_label: 'Standard Price'
       })
@@ -1415,7 +1521,9 @@ export default function Sales(props = {}) {
     return () => { clearTimeout(t); clearInterval(hb) }
   }, [form?.items, grandTotal, activeTab?.name, clientId, getCounterPrefix, authFetch])
 
-  const entryMode = config?.billing?.entry_mode || 'search'
+  // Entry mode: the RESOLVED billing profile wins (it follows the device's
+  // counter-mode switcher for multi-type businesses); config is the fallback.
+  const entryMode = billingProfile?.entry_mode || config?.billing?.entry_mode || 'search'
   const groupedProducts = products.reduce((acc, p) => {
     const cat = p.category || 'General';
     if (!acc[cat]) acc[cat] = [];
@@ -1535,6 +1643,7 @@ export default function Sales(props = {}) {
           batch_no: '',
           expiry_date: '',
           serial_no: '',
+          attributes: {},
           cgst_rate: product.cgst_rate || 0,
           sgst_rate: product.sgst_rate || 0,
           igst_rate: product.igst_rate || 0,
@@ -2095,6 +2204,60 @@ export default function Sales(props = {}) {
           liveModeStatus={isLiveView ? { counter: liveCounter, isEditing: editState === 'granted' } : null}
         />
 
+        {/* ── Shift status strip (Phase 3) — visible whenever a shift is open ── */}
+        {!isLiveView && shift && !shift.offline && (
+          <div style={{
+            background: 'var(--bg-3)', borderBottom: '1px solid var(--border)',
+            padding: '4px 16px', display: 'flex', alignItems: 'center',
+            justifyContent: 'space-between', fontSize: '0.76rem', color: 'var(--text-muted)',
+          }}>
+            <span>
+              <span style={{ color: '#22c55e', fontWeight: 800 }}>● Shift open</span>
+              {shift.start_time && <> since {new Date(shift.start_time + (shift.start_time.endsWith('Z') ? '' : 'Z')).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</>}
+              {' '}· float ₹{Number(shift.opening_cash || 0).toFixed(2)}
+            </span>
+            <span style={{ display: 'flex', gap: 6 }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{ fontSize: '0.72rem', padding: '2px 10px' }}
+                onClick={() => setShowCashMovementModal(true)}
+              >
+                Cash In / Out
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{ fontSize: '0.72rem', padding: '2px 10px' }}
+                onClick={async () => { await refreshShift(); setShowCloseShiftModal(true) }}
+              >
+                Close Register / End Shift
+              </button>
+            </span>
+          </div>
+        )}
+
+        {/* ── Shift gatekeeper (Phase 3): no open shift → billing stays locked ── */}
+        <OpenShiftModal
+          open={!isLiveView && shift === null}
+          authFetch={authFetch}
+          operatorName={user?.username}
+          onOpened={(s) => setShift(s)}
+        />
+        <CloseShiftModal
+          open={showCloseShiftModal}
+          authFetch={authFetch}
+          shift={shift && !shift.offline ? shift : null}
+          onClose={() => setShowCloseShiftModal(false)}
+          onClosed={() => { setShowCloseShiftModal(false); setShift(null) }}
+        />
+        <CashMovementModal
+          open={showCashMovementModal}
+          authFetch={authFetch}
+          onClose={() => setShowCashMovementModal(false)}
+          onRecorded={() => { setShowCashMovementModal(false); refreshShift() }}
+        />
+
         {isLiveView && (
           <div style={{
             background: 'var(--bg-3)',
@@ -2244,6 +2407,7 @@ export default function Sales(props = {}) {
                     stickyOffsets={stickyOffsets}
                     t={t}
                     hasItems={form.items.length > 0}
+                    extraAttrFields={extraAttrFields}
                   />
                   <tbody>
                     {form.items.length === 0 ? (
@@ -2273,6 +2437,7 @@ export default function Sales(props = {}) {
                           getPriceOptions={getPriceOptions}
                           authFetch={authFetch}
                           logger={logger}
+                          extraAttrFields={extraAttrFields}
                         />
                       ))
                     )}

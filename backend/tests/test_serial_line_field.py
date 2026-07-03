@@ -43,6 +43,10 @@ def test_serial_no_flows_from_pos_to_print_payload():
     finally:
         db.close()
 
+    # Shift gatekeeper (Phase 3): POST /invoices needs an OPEN register shift.
+    r = client.post("/shifts/open", headers=headers, json={"opening_cash": 0})
+    assert r.status_code == 201, r.text
+
     # POS "Save Bill" path (the outbox route) with a serial on the line
     r = client.post("/invoices", headers=headers, json={
         "items": [{"product_id": pid, "product": "Redmi 13C", "qty": 1,

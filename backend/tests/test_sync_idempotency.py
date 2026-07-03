@@ -65,7 +65,12 @@ def _signup(name="Idem Biz", state="29"):
         pid = p.id
     finally:
         db.close()
-    return {"headers": {"Authorization": f"Bearer {b['token']}"}, "bid": bid, "pid": pid}
+    headers = {"Authorization": f"Bearer {b['token']}"}
+    # Shift gatekeeper (Phase 3): the POS route (POST /invoices) requires an
+    # OPEN register shift for every role — open one for this test operator.
+    r = client.post("/shifts/open", headers=headers, json={"opening_cash": 0})
+    assert r.status_code == 201, r.text
+    return {"headers": headers, "bid": bid, "pid": pid}
 
 
 def _sale_body(pid, qty=1):

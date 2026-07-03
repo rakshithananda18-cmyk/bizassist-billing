@@ -19,6 +19,7 @@ Contract rules (plan §Phase-1):
 import hashlib
 import json
 import logging
+import os
 from datetime import datetime
 
 from database.models import Invoice, User, Customer
@@ -195,6 +196,33 @@ def _payload_hash(invoice_no: str, totals: dict, lines: list) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
+def _header_layout(pr: dict) -> list:
+    saved = pr.get("header_layout")
+    default = [
+        {"key": "logo", "align": "center"},
+        {"key": "company_name", "align": "center"},
+        {"key": "company_address", "align": "center"},
+        {"key": "company_contact", "align": "center"},
+        {"key": "gstin", "align": "center"},
+    ]
+    if not saved or not isinstance(saved, list):
+        return default
+    clean = []
+    valid_keys = [d["key"] for d in default]
+    for l in saved:
+        if isinstance(l, dict) and l.get("key") in valid_keys:
+            align = l.get("align", "center")
+            clean.append({
+                "key": l["key"],
+                "align": align if align in ("left", "center", "right") else "center"
+            })
+    present = {d["key"] for d in clean}
+    for d in default:
+        if d["key"] not in present:
+            clean.append(d)
+    return clean
+
+
 # ── The builder ───────────────────────────────────────────────────────────────
 
 def build_print_payload(db, *, business_id: int, invoice_no: str, user_id=None) -> dict:
@@ -220,6 +248,15 @@ def build_print_payload(db, *, business_id: int, invoice_no: str, user_id=None) 
     cfg = T.resolve_for(business_id, db)
     business_type = cfg.get("key", "general")
     pr, tx = _user_print_settings(seller)
+
+    cashier = db.query(User).filter(User.id == user_id).first() if user_id else seller
+    counter_prefix = cashier.counter_prefix if cashier else None
+    cashier_gen = {}
+    if cashier and cashier.settings:
+        try:
+            cashier_gen = json.loads(cashier.settings).get("general", {})
+        except Exception:
+            pass
 
     seller_gstin = (seller.gstin or "").strip() if seller else ""
     gst_mode = bool(seller_gstin)
@@ -312,6 +349,11 @@ def build_print_payload(db, *, business_id: int, invoice_no: str, user_id=None) 
             "is_credit": bool((inv.total_amount or 0) < 0),
             "invoice_type": inv.invoice_type,
             "reverse_charge": bool(inv.reverse_charge),
+            "uid_token": getattr(inv, "uid_token", None),
+            "public_url": (
+                f"{os.getenv('FRONTEND_URL', '').rstrip('/')}/public/invoice/{inv.uid_token}"
+                if getattr(inv, "uid_token", None) else None
+            ),
             "is_tax_inclusive": bool(inv.is_tax_inclusive),
         },
         "seller": {
@@ -351,6 +393,29 @@ def build_print_payload(db, *, business_id: int, invoice_no: str, user_id=None) 
         },
         "visibility": {"gst_mode": gst_mode, "igst_mode": igst_mode,
                        "columns": columns, "blocks": blocks},
+        "settings": {
+            "header_layout": _header_layout(pr),
+            "print_item_sno": pr.get("print_item_sno", True),
+            "print_item_hsn": pr.get("print_item_hsn", True),
+            "print_item_tax": pr.get("print_item_tax", True),
+            "print_tax_breakdown": pr.get("print_tax_breakdown", True),
+            "print_amount_in_words": pr.get("print_amount_in_words", True),
+            "print_signature": pr.get("print_signature", True),
+            "customer_signature": pr.get("customer_signature", False),
+            "prices_incl_gst": pr.get("prices_incl_gst", False),
+            "fssai_no": pr.get("fssai_no"),
+            "text_size": cashier_gen.get("text_size", pr.get("text_size", "medium")),
+            "print_logo": pr.get("print_logo", True),
+            "print_company_name": pr.get("print_company_name", True),
+            "print_company_address": pr.get("print_company_address", True),
+            "print_company_phone": pr.get("print_company_phone", True),
+            "print_company_email": pr.get("print_company_email", True),
+            "print_gstin": pr.get("print_gstin", True),
+            "thermal_page_size": cashier_gen.get("thermal_page_size", pr.get("thermal_page_size", "3inch")),
+            "counter_id": counter_prefix,
+            "cashier_name": getattr(cashier, "username", "POS") if cashier else "POS",
+            "print_invoice_qr": pr.get("print_invoice_qr", False),
+        },
         "meta": {
             "business_type": business_type,
             "template_default": pr.get("invoice_template", "classic"),

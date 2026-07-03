@@ -45,6 +45,8 @@ async def sse_realtime_feed(request: Request, current_user: dict = Depends(get_a
                     break
                 try:
                     event = await asyncio.wait_for(q.get(), timeout=15.0)
+                    if event.get("type") == "shutdown":
+                        break
                     yield f"data: {json.dumps(event)}\n\n"
                 except asyncio.TimeoutError:
                     # Periodically yield keep-alive comment to prevent proxy timeouts

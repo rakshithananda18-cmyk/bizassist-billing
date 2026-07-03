@@ -218,7 +218,13 @@ def record_payment(
                 
     if not inv_id:
         raise HTTPException(status_code=422, detail=f"Invoice reference '{req.invoice_ref or req.invoice_id}' not found")
-        
+
+    # Shift stamping (Phase 3): a receipt taken while the operator has an open
+    # shift counts toward that shift's drawer tally (credit collections too).
+    from core.shifts import service as shifts_svc
+    operator_id = current_user.get("user_id") or bid
+    active_shift = shifts_svc.get_open_shift(db, business_id=bid, user_id=operator_id)
+
     try:
         p = billing.record_payment(
             db,
@@ -229,6 +235,7 @@ def record_payment(
             payment_date=p_date,
             note=p_note,
             idempotency_key=req.idempotency_key,
+            shift_id=(active_shift.id if active_shift else None),
         )
         background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "payment"})
         return guard.store({

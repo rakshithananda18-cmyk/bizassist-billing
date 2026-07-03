@@ -15,6 +15,7 @@ All commands:
 
 Money math lives here and is fully unit-tested. Routes stay thin.
 """
+import json
 import logging
 import re
 from datetime import datetime
@@ -63,6 +64,24 @@ def _line_rates(line: dict, product: Optional[Product]):
             return float(getattr(product, key))
         return 0.0
     return pick("cgst_rate"), pick("sgst_rate"), pick("igst_rate"), float(line.get("cess_rate") or 0.0)
+
+
+def _pack_attributes(attrs) -> Optional[str]:
+    """Serialise the line's dynamic `attributes` blob to a JSON string for the
+    Text column. Accepts a dict, a pre-serialised JSON string, or None. Empty
+    dicts collapse to None so untouched verticals store nothing."""
+    if not attrs:
+        return None
+    if isinstance(attrs, str):
+        try:
+            parsed = json.loads(attrs)
+        except (TypeError, ValueError):
+            return None
+        return json.dumps(parsed) if parsed else None
+    if isinstance(attrs, dict):
+        clean = {k: v for k, v in attrs.items() if v not in (None, "")}
+        return json.dumps(clean) if clean else None
+    return None
 
 
 def _compute_line(line: dict, product: Optional[Product], *, intra: bool, tax_inclusive: bool) -> dict:
@@ -118,6 +137,9 @@ def _compute_line(line: dict, product: Optional[Product], *, intra: bool, tax_in
         "mrp":          (float(line["mrp"]) if line.get("mrp") is not None
                          else (product.mrp if product else None)),
         "expiry_date":  line.get("expiry_date"),
+        # Vertical-specific dynamic fields (size/colour/warranty/…): stored as a
+        # JSON snapshot on the line, presentation-only — never enter tax math.
+        "attributes":   _pack_attributes(line.get("attributes")),
         "cgst_rate":    cgst_r if intra else 0.0,
         "sgst_rate":    sgst_r if intra else 0.0,
         "igst_rate":    0.0 if intra else igst_r,
@@ -197,7 +219,8 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
                         cash_discount: float = 0.0,
                         counter_prefix: Optional[str] = None,
                         renumber_on_conflict: bool = False,
-                        mark_paid: bool = False) -> Invoice:
+                        mark_paid: bool = False,
+                        shift_id: Optional[int] = None) -> Invoice:
     """
     COMMAND: create one sale invoice atomically (header + lines + stock moves).
     Commits the transaction.
@@ -331,6 +354,7 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
         discount_total=disc_t, round_off=round_off, cash_discount=cash_disc,
         paid_amount=paid, payment_mode=payment_mode,
         payment_date=(datetime.today().strftime("%Y-%m-%d") if paid > 0 else None),
+        shift_id=shift_id,
     )
     db.add(inv)
     db.flush()                              # get inv.id for the line FKs + stock refs
@@ -345,6 +369,7 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
             payment_mode=payment_mode or "Cash",
             payment_date=inv.invoice_date,
             note=f"Initial payment for invoice {number}",
+            shift_id=shift_id,
         )
         db.add(pay_row)
 
@@ -387,7 +412,8 @@ def record_payment(db, *, business_id: int, invoice_id: int,
                    payment_mode: Optional[str] = None,
                    payment_date: Optional[str] = None,
                    note: Optional[str] = None,
-                   idempotency_key: Optional[str] = None) -> InvoicePayment:
+                   idempotency_key: Optional[str] = None,
+                   shift_id: Optional[int] = None) -> InvoicePayment:
     """
     COMMAND: record one payment receipt against an invoice (append-only).
     Commits the transaction. Idempotent on (business_id, idempotency_key).
@@ -436,6 +462,7 @@ def record_payment(db, *, business_id: int, invoice_id: int,
         payment_date=payment_date or datetime.today().strftime("%Y-%m-%d"),
         note=note,
         idempotency_key=idempotency_key,
+        shift_id=shift_id,
     )
     db.add(pay)
 

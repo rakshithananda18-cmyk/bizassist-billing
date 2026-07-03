@@ -89,6 +89,13 @@ const REPORTS = [
     color: 'danger',
   },
   {
+    id: 'shift-reconciliations',
+    title: 'Shift Reconciliations',
+    description: 'Register shifts — who operated the counter, opening float, expected vs counted cash/UPI, and short/over discrepancies.',
+    endpoint: '/billing/reports/shift-reconciliations',
+    color: 'danger',
+  },
+  {
     id: 'day-book',
     title: 'Day Book',
     description: 'Chronological transaction registry for a specific day or date range — sales, purchases, opex, receipts.',
@@ -143,7 +150,7 @@ const REPORTS = [
 // Reports grouped into clean, recommended-order categories for the selector.
 // (Source of intra-group order — does NOT touch the REPORTS array above.)
 const REPORT_GROUPS = [
-  { label: 'Operations', ids: ['day-book', 'sales-register', 'purchase-register', 'outstanding', 'stock-movement'] },
+  { label: 'Operations', ids: ['day-book', 'sales-register', 'purchase-register', 'outstanding', 'stock-movement', 'shift-reconciliations'] },
   { label: 'GST & Compliance', ids: ['gst', 'gstr1-b2b', 'gstr1-b2cs', 'gstr1-hsn', 'gstr3b'] },
   { label: 'Financial Statements', ids: ['pnl', 'balance-sheet', 'trial-balance'] },
   { label: 'Books & Ledgers', ids: ['party-ledger', 'journal', 'general-ledger', 'audit-journal'] },
@@ -162,6 +169,7 @@ const reportIcons = {
   'purchase-register': <BillsIcon size={18} />,
   outstanding: <CashIcon size={18} />,
   'day-book': <CounterIcon size={18} />,
+  'shift-reconciliations': <CashIcon size={18} />,
   'balance-sheet': <SummaryIcon size={18} />,
   'trial-balance': <SummaryIcon size={18} />,
   'party-ledger': <CashIcon size={18} />,

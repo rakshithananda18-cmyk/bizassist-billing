@@ -6,13 +6,14 @@
 // directly inside the existing <table className="pos-cart-table">.
 import React from 'react'
 
-export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets, t, hasItems }) {
+export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets, t, hasItems, extraAttrFields = [] }) {
   return (
     <thead>
       <tr>
         <th className="pos-header-index">#</th>
         {columnOrder.map(col => {
-          const isVisible = col === 'sku' ? colVisible.sku :
+          const isVisible = col === 'attrs' ? colVisible.attrs :
+                            col === 'sku' ? colVisible.sku :
                             col === 'mrp' ? colVisible.mrp :
                             col === 'hsn' ? colVisible.hsn :
                             col === 'unit' ? colVisible.unit :
@@ -42,6 +43,10 @@ export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets
             }
             if (col === 'serial') {
               return <th key="serial">SERIAL / IMEI</th>;
+            }
+            if (col === 'attrs') {
+              // Dynamic vertical fields (textile size/color, warranty, job card…)
+              return <th key="attrs">{extraAttrFields.map(f => f.replace(/_/g, ' ').toUpperCase()).join(' / ') || 'DETAILS'}</th>;
             }
             if (col === 'price_option') {
               return <th key="price_option" className="pos-align-center">PRICE OPTION</th>;

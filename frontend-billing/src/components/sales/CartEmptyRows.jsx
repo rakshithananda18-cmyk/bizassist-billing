@@ -11,7 +11,8 @@ export default function CartEmptyRows({ rowCount, columnOrder, colVisible, stick
         <tr key={`empty-${idx}`} style={{ height: '35px' }}>
           <td style={{ position: 'sticky', left: 0, background: 'var(--bg-2)' }}></td>
           {columnOrder.map(col => {
-            const isVisible = col === 'sku' ? colVisible.sku :
+            const isVisible = col === 'attrs' ? colVisible.attrs :
+                              col === 'sku' ? colVisible.sku :
                               col === 'mrp' ? colVisible.mrp :
                               col === 'hsn' ? colVisible.hsn :
                               col === 'unit' ? colVisible.unit :

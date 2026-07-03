@@ -29,6 +29,7 @@ import Profile     from './pages/Profile'
 import Settings    from './pages/Settings'
 import POSLiveCounter from './pages/POSLiveCounter'
 import InvoiceViewer  from './invoice/InvoiceViewer'
+import PublicInvoiceViewer from './pages/PublicInvoiceViewer'
 
 
 function ProtectedRoute({ children }) {
@@ -43,6 +44,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/login"    element={user ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/register" element={user ? <Navigate to="/" replace /> : <Register />} />
+      <Route path="/public/invoice/:uid" element={<PublicInvoiceViewer />} />
 
       <Route path="/"          element={<ProtectedRoute><Home      /></ProtectedRoute>} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

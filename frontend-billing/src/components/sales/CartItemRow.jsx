@@ -31,6 +31,7 @@ export default function CartItemRow({
   getPriceOptions,
   authFetch,
   logger,
+  extraAttrFields = [],
 }) {
   return (
     <tr className="item-row">
@@ -47,7 +48,8 @@ export default function CartItemRow({
         </button>
       </td>
       {columnOrder.map(col => {
-        const isVisible = col === 'sku' ? colVisible.sku :
+        const isVisible = col === 'attrs' ? colVisible.attrs :
+                          col === 'sku' ? colVisible.sku :
                           col === 'mrp' ? colVisible.mrp :
                           col === 'hsn' ? colVisible.hsn :
                           col === 'unit' ? colVisible.unit :
@@ -155,6 +157,31 @@ export default function CartItemRow({
                   onChange={e => setItem(index, { serial_no: e.target.value })}
                   style={{ minWidth: 110 }}
                 />
+              </td>
+            );
+          }
+
+          if (col === 'attrs') {
+            // Dynamic vertical fields (textile size/color, electronics warranty,
+            // repair job-card…) — packed into the line's `attributes` JSON blob;
+            // presentation-only, never enters the money math.
+            return (
+              <td key="attrs" className="pos-align-center pos-cell-padded">
+                <div className="pos-flex-col-center" style={{ gap: 4 }}>
+                  {extraAttrFields.map(f => (
+                    <input
+                      key={f}
+                      type="text"
+                      className="pos-cell-input attr-input"
+                      placeholder={f.replace(/_/g, ' ')}
+                      value={item.attributes?.[f] || ''}
+                      onChange={e => setItem(index, {
+                        attributes: { ...(item.attributes || {}), [f]: e.target.value }
+                      })}
+                      style={{ minWidth: 90 }}
+                    />
+                  ))}
+                </div>
               </td>
             );
           }

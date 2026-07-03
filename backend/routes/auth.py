@@ -419,6 +419,7 @@ _DEFAULT_SETTINGS = {
         "pos_show_tax": True,
         "pos_show_hsn": False,
         "pos_show_mrp": False,
+        "pos_show_serial": False,
     },
     # ── Items / Inventory ─────────────────────────────────────────────────────
     "inventory": {
@@ -550,24 +551,30 @@ def update_settings(
     """Merge-update the user's app settings and persist."""
     logger.info(f"[SETTINGS] PUT /settings requested by user '{current_user.get('username')}' (ID {current_user.get('id')})")
 
-    # Restrict cashiers from modifying non-general settings
-    is_cashier = (current_user.get("role") or "").lower() == "cashier"
-    if is_cashier:
-        if req.transactions is not None or req.inventory is not None or req.print is not None or req.labels is not None:
-            logger.warning(f"[SETTINGS] Cashier '{current_user.get('username')}' blocked from modifying global settings")
-            raise HTTPException(status_code=403, detail="Permission denied: cashier restricted from modifying global settings")
-        if req.general is not None:
-            blocked_keys = ("realtime_sync_global", "hosting_mode")
-            if any(k in req.general for k in blocked_keys):
-                logger.warning(f"[SETTINGS] Cashier '{current_user.get('username')}' blocked from modifying global general configurations")
-                raise HTTPException(status_code=403, detail="Permission denied: cashier restricted from modifying global configurations")
-
     user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
         logger.warning(f"[SETTINGS] User with ID {current_user.get('id')} not found during update")
         raise HTTPException(status_code=404, detail="User not found")
 
     current = _get_user_settings(user, db)
+
+    # Restrict cashiers from modifying non-general settings
+    is_cashier = (current_user.get("role") or "").lower() == "cashier"
+    if is_cashier:
+        # Ignore sections if they are identical to what's already saved
+        if req.transactions and req.transactions == current.get("transactions", {}): req.transactions = None
+        if req.inventory and req.inventory == current.get("inventory", {}): req.inventory = None
+        if req.print and req.print == current.get("print", {}): req.print = None
+        if req.labels and req.labels == current.get("labels", {}): req.labels = None
+
+        if req.transactions is not None or req.inventory is not None or req.print is not None or req.labels is not None:
+            logger.warning(f"[SETTINGS] Cashier '{current_user.get('username')}' blocked from modifying global settings")
+            raise HTTPException(status_code=403, detail="Permission denied: cashier restricted from modifying global settings")
+        if req.general is not None:
+            blocked_keys = ("realtime_sync_global", "hosting_mode")
+            if any(k in req.general and req.general[k] != current.get("general", {}).get(k) for k in blocked_keys):
+                logger.warning(f"[SETTINGS] Cashier '{current_user.get('username')}' blocked from modifying global general configurations")
+                raise HTTPException(status_code=403, detail="Permission denied: cashier restricted from modifying global configurations")
 
     # Merge each provided section
     for section in ("general", "transactions", "inventory", "print", "labels"):
@@ -581,5 +588,4 @@ def update_settings(
     logger.info(f"[SETTINGS] Settings successfully updated and committed for user '{user.username}'")
     logger.debug(f"[SETTINGS] New settings structure: {current}")
     return current
-
 

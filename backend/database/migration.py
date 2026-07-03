@@ -189,6 +189,18 @@ _COLUMN_MIGRATIONS = [
     {"table": "invoice_line_items", "column": "attributes",    "ddl": "ALTER TABLE invoice_line_items ADD COLUMN attributes TEXT"},
     # Multi-type business, Phase 2 (plan §2.1) — ordered vertical list, first = primary.
     {"table": "business_settings", "column": "business_types", "ddl": "ALTER TABLE business_settings ADD COLUMN business_types TEXT"},
+    # Shift & cash-drawer management, Phase 3 — link money rows to the register
+    # shift they were rung under (register_shifts table itself comes via create_all).
+    {"table": "invoices",         "column": "shift_id", "ddl": "ALTER TABLE invoices ADD COLUMN shift_id INTEGER"},
+    {"table": "payments",         "column": "shift_id", "ddl": "ALTER TABLE payments ADD COLUMN shift_id INTEGER"},
+    {"table": "invoice_payments", "column": "shift_id", "ddl": "ALTER TABLE invoice_payments ADD COLUMN shift_id INTEGER"},
+    # Public share link & invoice templates, Phase 4
+    {"table": "invoices", "column": "uid_token",      "ddl": "ALTER TABLE invoices ADD COLUMN uid_token TEXT"},
+    {"table": "invoices", "column": "print_template", "ddl": "ALTER TABLE invoices ADD COLUMN print_template TEXT"},
+    # Shift Phase 3b — float carry-forward + cash movements (paid in/out, bank,
+    # expense). shift_cash_movements table itself comes via create_all.
+    {"table": "register_shifts", "column": "opening_expected", "ddl": "ALTER TABLE register_shifts ADD COLUMN opening_expected REAL"},
+    {"table": "register_shifts", "column": "closing_float",    "ddl": "ALTER TABLE register_shifts ADD COLUMN closing_float REAL"},
 ]
 
 
@@ -200,6 +212,7 @@ _UID_TABLES = [
     "invoice_line_items", "purchase_order_line_items", "purchase_invoice_line_items",
     "rate_limit_configs", "alert_configs", "stock_ledger", "product_barcodes",
     "business_settings", "invoice_payments", "b2b_ledgers", "stock_transfer_line_items",
+    "register_shifts", "shift_cash_movements",
 ]
 
 

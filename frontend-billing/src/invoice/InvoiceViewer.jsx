@@ -10,6 +10,7 @@ import { api } from '../api/client'
 import { logger } from '../utils/logger'
 import { resolveTemplate, templateOptions, FALLBACK_TEMPLATE } from './registry'
 import PrintPortal, { triggerPrint } from './PrintPortal'
+import { shareInvoice, buildWhatsAppLink } from './share'
 
 const LAST_USED_KEY = (bizId) => `invoice.template.${bizId || 'default'}`
 
@@ -123,16 +124,35 @@ export default function InvoiceViewer() {
   }, [invoiceNo, entry.key])
 
   const onShare = useCallback(async () => {
-    beacon('shared', {
-      invoice_no: invoiceNo, template_type: entry.key,
-      extra: { channel: navigator.share ? 'native' : 'clipboard' },
-    })
-    const text = `${payload?.invoice?.title || 'Invoice'} ${invoiceNo} — ${payload?.seller?.name || ''}`
     try {
-      if (navigator.share) await navigator.share({ title: text, url: window.location.href })
-      else await navigator.clipboard.writeText(window.location.href)
-    } catch { /* user cancelled */ }
+      const result = await shareInvoice(payload)
+      beacon('shared', {
+        invoice_no: invoiceNo, template_type: entry.key,
+        extra: { channel: result.method },
+      })
+      alert(`Invoice link shared via ${result.method === 'native' ? 'device share' : 'clipboard'}.`)
+    } catch (e) {
+      if (e.message) alert(e.message)
+    }
   }, [invoiceNo, entry.key, payload])
+
+  const onShareWhatsApp = useCallback(() => {
+    if (!payload?.invoice?.uid_token) return alert("Invoice doesn't have a public link.")
+    const link = `${window.location.origin}/public/invoice/${payload.invoice.uid_token}`
+    const text = `Here is your invoice ${invoiceNo} for ${payload.totals?.total_amount}.\nView it here: ${link}`
+    // If we had the customer phone we could pre-fill it here
+    const waLink = buildWhatsAppLink(payload.buyer?.phone || '', text)
+    window.open(waLink, '_blank')
+    beacon('shared', { invoice_no: invoiceNo, template_type: entry.key, extra: { channel: 'whatsapp' } })
+  }, [invoiceNo, entry.key, payload])
+
+  const onDuplicate = useCallback(() => {
+    navigate('/sales', { state: { duplicateFrom: invoiceNo } })
+  }, [navigate, invoiceNo])
+
+  const onCreditNote = useCallback(() => {
+    navigate('/sales', { state: { creditNoteFrom: invoiceNo } })
+  }, [navigate, invoiceNo])
 
   const onSetDefault = useCallback(async () => {
     setSavingDefault(true)
@@ -191,10 +211,13 @@ export default function InvoiceViewer() {
         </div>
 
         <span style={{ flex: 1 }} />
+        <button className="btn" onClick={onDuplicate}>Duplicate</button>
+        <button className="btn" onClick={onCreditNote}>Credit Note</button>
         <button className="btn" onClick={onSetDefault} disabled={savingDefault}>
           {savingDefault ? 'Saving…' : 'Set as default'}
         </button>
-        <button className="btn" onClick={onShare}>Share</button>
+        <button className="btn" onClick={onShareWhatsApp} style={{ background: '#25D366', color: '#fff', border: 'none' }}>WhatsApp</button>
+        <button className="btn" onClick={onShare}>Share Link</button>
         <button className="btn" onClick={onDownloadPdf}>Download PDF</button>
         <button className="btn" data-testid="invoice-print-btn" onClick={onPrint}
                 style={{ background: 'var(--accent, #c15f3c)', color: '#fff' }}>

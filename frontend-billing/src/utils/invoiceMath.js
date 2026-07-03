@@ -234,6 +234,7 @@ export function buildInvoicePayload({ invoiceNo, form, gstEnabled, billDiscount 
     cash_discount: parseFloat(cashDiscount) || 0,   // POST-tax cash discount / round-off (absolute ₹)
     paid_amount: parseFloat(paidAmount) || 0,       // amount received now → drives Paid/Partial/Unpaid status
     mark_paid: !!markPaid,                           // "Paid & Print" → settle full payable exactly
+    payment_mode: form.payment_mode || null,         // cash|upi|card|credit — drives shift drawer tallies (Phase 3)
     notes: form.notes || null,
     items: form.items.map((it) => {
       const q = parseFloat(it.qty) || 1
@@ -248,6 +249,9 @@ export function buildInvoicePayload({ invoiceNo, form, gstEnabled, billDiscount 
         batch_no: it.batch_no || null,
         expiry_date: it.expiry_date || null,
         serial_no: it.serial_no || null,   // electronics/mobile/repair verticals (Phase 2 line fields)
+        // Dynamic vertical fields (size/colour/warranty…) — packed as a JSON
+        // blob; presentation-only, never enters the money math.
+        attributes: (it.attributes && Object.keys(it.attributes).length > 0) ? it.attributes : null,
         cgst_rate: parseFloat(it.cgst_rate) || 0,
         sgst_rate: parseFloat(it.sgst_rate) || 0,
         igst_rate: it.igst_rate

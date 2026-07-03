@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page {
+    margin: 0;
+    size: {% if payload.settings.thermal_page_size == '2inch' %}58mm{% else %}80mm{% endif %} auto;
+  }
+  body {
+    margin: 0;
+    padding: 16px;
+    background: #ffffff;
+    color: #1e293b;
+    font-family: monospace;
+    font-size: {% if payload.settings.text_size == 'small' %}0.68em{% elif payload.settings.text_size == 'large' %}0.85em{% else %}0.75em{% endif %};
+    line-height: 1.4;
+    width: {% if payload.settings.thermal_page_size == '2inch' %}58mm{% else %}80mm{% endif %};
+    box-sizing: border-box;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85em;
+  }
+  th, td {
+    padding: 2px 0;
+  }
+</style>
+</head>
+<body>
+  <!-- Header -->
+  <div style="border-bottom: 1px dashed #94a3b8; padding-bottom: 4px; margin-bottom: 6px;">
+    {% for row in payload.settings.header_layout %}
+      {% set align = row.align %}
+      
+      {% if row.key == 'logo' and payload.settings.print_logo and seller.logo_url %}
+        <div style="text-align: {{ align }}; margin-bottom: 4px;">
+          <img src="{{ seller.logo_url }}" alt="Logo" style="max-width: 60px; max-height: 60px;" />
+        </div>
+      {% endif %}
+      
+      {% if row.key == 'company_name' and payload.settings.print_company_name %}
+        <div style="text-align: {{ align }}; font-weight: bold; font-size: 1.1em;">{{ seller.name }}</div>
+      {% endif %}
+      
+      {% if row.key == 'company_address' and payload.settings.print_company_address and seller.address %}
+        <div style="text-align: {{ align }};">{{ seller.address.replace('\n', ', ') }}</div>
+      {% endif %}
+      
+      {% if row.key == 'company_contact' %}
+        {% if (payload.settings.print_company_phone and seller.phone) or (payload.settings.print_company_email and seller.email) %}
+        <div style="text-align: {{ align }};">
+          {% if payload.settings.print_company_phone and seller.phone %}Ph: {{ seller.phone }}{% endif %}
+          {% if payload.settings.print_company_phone and seller.phone and payload.settings.print_company_email and seller.email %} &middot; {% endif %}
+          {% if payload.settings.print_company_email and seller.email %}{{ seller.email }}{% endif %}
+        </div>
+        {% endif %}
+      {% endif %}
+
+      {% if row.key == 'gstin' and payload.settings.print_gstin and seller.gstin %}
+        <div style="text-align: {{ align }};">GSTIN: {{ seller.gstin }}</div>
+      {% endif %}
+      
+    {% endfor %}
+  </div>
+
+  <!-- Meta -->
+  <div style="margin-bottom: 6px; font-size: 0.85em; display: flex; flex-direction: column; gap: 1px;">
+    <div style="display: flex; justify-content: space-between;">
+      <span><b>Bill No:</b> {{ invoice.number }}</span>
+      {% if payload.settings.counter_id %}
+      <span><b>Counter:</b> {{ payload.settings.counter_id }}</span>
+      {% endif %}
+    </div>
+    <div style="display: flex; justify-content: space-between;">
+      <span><b>Date:</b> {{ invoice.date }}</span>
+      {% if invoice.time %}<span><b>Time:</b> {{ invoice.time }}</span>{% endif %}
+    </div>
+    <div><b>Cashier:</b> {{ payload.settings.cashier_name }}</div>
+  </div>
+
+  <!-- Items -->
+  <table style="margin-bottom: 8px;">
+    <thead>
+      <tr style="border-bottom: 1px dashed #94a3b8;">
+        {% if payload.settings.print_item_sno %}<th style="text-align: left;">#</th>{% endif %}
+        <th style="text-align: left;">Item</th>
+        <th style="text-align: right;">MRP</th>
+        <th style="text-align: right;">Rate</th>
+        <th style="text-align: center;">Qty</th>
+        <th style="text-align: right;">Amt</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in lines %}
+      <tr {% if loop.last %}style="border-bottom: 1px dashed #94a3b8;"{% endif %}>
+        {% if payload.settings.print_item_sno %}<td>{{ loop.index }}</td>{% endif %}
+        <td>
+          {{ line.name }}
+          {% if payload.settings.print_item_hsn and line.hsn_sac %}
+            <span style="font-size: 0.85em; color: #64748b;">({{ line.hsn_sac }})</span>
+          {% endif %}
+        </td>
+        <td style="text-align: right;">{{ line.mrp or line.rate }}</td>
+        <td style="text-align: right;">{{ line.rate }}</td>
+        <td style="text-align: center;">{{ line.qty|float|round(2)|string|replace('.0', '') }}</td>
+        <td style="text-align: right;">{{ line.line_total }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Totals -->
+  <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end; border-bottom: 1px dashed #94a3b8; padding-bottom: 6px; margin-bottom: 6px;">
+    <div style="display: flex; justify-content: space-between; width: 120px; font-size: 0.9em;">
+      <span>Subtotal:</span>
+      <span>₹{{ totals.subtotal }}</span>
+    </div>
+    {% if payload.settings.print_item_tax and totals.cgst_total|float > 0 %}
+      <div style="display: flex; justify-content: space-between; width: 120px; font-size: 0.9em;">
+        <span>CGST:</span>
+        <span>₹{{ totals.cgst_total }}</span>
+      </div>
+    {% endif %}
+    {% if payload.settings.print_item_tax and totals.sgst_total|float > 0 %}
+      <div style="display: flex; justify-content: space-between; width: 120px; font-size: 0.9em;">
+        <span>SGST:</span>
+        <span>₹{{ totals.sgst_total }}</span>
+      </div>
+    {% endif %}
+    {% if payload.settings.print_item_tax and totals.igst_total|float > 0 %}
+      <div style="display: flex; justify-content: space-between; width: 120px; font-size: 0.9em;">
+        <span>IGST:</span>
+        <span>₹{{ totals.igst_total }}</span>
+      </div>
+    {% endif %}
+    {% if totals.round_off|float != 0 %}
+      <div style="display: flex; justify-content: space-between; width: 120px; font-size: 0.9em;">
+        <span>Round Off:</span>
+        <span>₹{{ totals.round_off }}</span>
+      </div>
+    {% endif %}
+    <div style="display: flex; justify-content: space-between; width: 120px; font-size: 1.05em; font-weight: bold;">
+      <span>Grand Total:</span>
+      <span>₹{{ totals.grand_total }}</span>
+    </div>
+  </div>
+
+  <!-- Savings / Summary -->
+  <div style="display: flex; justify-content: space-between; font-size: 0.85em; margin-bottom: 4px;">
+    <span>Qty: {{ lines|map(attribute='qty')|sum|round(2) }}</span>
+    <span>Items: {{ lines|length }}</span>
+  </div>
+  {% if totals.total_discount|float > 0 %}
+  <div style="display: flex; justify-content: space-between; font-size: 0.95em; font-weight: bold; color: #16a34a; margin-bottom: 8px;">
+    <span>You have Saved:</span>
+    <span>₹{{ totals.total_discount }}</span>
+  </div>
+  {% endif %}
+
+  <!-- Tax Breakdown -->
+  {% if payload.settings.print_tax_breakdown and tax_summary %}
+    <div style="font-size: 0.75em; color: #475569; margin-bottom: 8px;">
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="border-bottom: 1px dotted #94a3b8;">
+            <th style="text-align: left;">Tax%</th>
+            <th style="text-align: right;">Taxable</th>
+            <th style="text-align: right;">CGST</th>
+            <th style="text-align: right;">SGST</th>
+            {% if visibility.igst_mode %}<th style="text-align: right;">IGST</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in tax_summary %}
+          <tr>
+            <td>{{ t.rate }}%</td>
+            <td style="text-align: right;">{{ t.taxable }}</td>
+            <td style="text-align: right;">{{ t.cgst }}</td>
+            <td style="text-align: right;">{{ t.sgst }}</td>
+            {% if visibility.igst_mode %}<td style="text-align: right;">{{ t.igst }}</td>{% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  <!-- FSSAI / Terms -->
+  {% if payload.settings.fssai_no or payload.settings.prices_incl_gst %}
+    <div style="font-size: 0.75em; color: #64748b; text-align: center; margin-bottom: 8px;">
+      {% if payload.settings.prices_incl_gst %}<div>E. &amp; O.E. &middot; Prices Incl. GST</div>{% endif %}
+      {% if payload.settings.fssai_no %}<div>FSSAI: {{ payload.settings.fssai_no }}</div>{% endif %}
+    </div>
+  {% endif %}
+
+  {% if payload.settings.print_amount_in_words and totals.amount_in_words %}
+    <div style="font-size: 0.8em; color: #64748b; font-style: italic; margin-bottom: 8px; text-align: center;">
+      {{ totals.amount_in_words }}
+    </div>
+  {% endif %}
+
+  {% if footer.terms %}
+    <div style="font-size: 0.8em; color: #64748b; text-align: center; border-top: 1px dashed #94a3b8; padding-top: 4px; margin-top: 4px;">
+      <b>Terms:</b> {{ footer.terms }}
+    </div>
+  {% endif %}
+
+  <!-- Signatures -->
+  {% if payload.settings.print_signature or payload.settings.customer_signature %}
+    <div style="margin-top: 16px; display: flex; justify-content: space-between; align-items: flex-end;">
+      {% if payload.settings.customer_signature %}
+        <div style="border-top: 1px dashed #64748b; width: 110px; text-align: center; padding-top: 2px; font-size: 0.75em;">
+          {{ footer.customer_signature_label }}
+        </div>
+      {% else %}
+        <div></div>
+      {% endif %}
+      {% if payload.settings.print_signature %}
+        <div style="border-top: 1px dashed #64748b; width: 110px; text-align: center; padding-top: 2px; font-size: 0.75em;">
+          {{ footer.signature_label }}
+        </div>
+      {% else %}
+        <div></div>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <!-- QR Code for online invoice (cloud only) -->
+  {% if payload.settings.print_invoice_qr and invoice.uid_token %}
+    {% set qr_url = invoice.public_url or ('/public/invoice/' + invoice.uid_token) %}
+    <div style="text-align: center; margin-top: 10px; padding-top: 8px; border-top: 1px dashed #94a3b8;">
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&margin=4&data={{ qr_url | urlencode }}" alt="Invoice QR" style="width: 80px; height: 80px;" />
+      <div style="font-size: 0.7em; color: #64748b; margin-top: 2px;">Scan to view invoice online</div>
+    </div>
+  {% endif %}
+
+  <!-- Computer generated footer -->
+  <div style="text-align: center; margin-top: 10px; font-size: 0.7em; color: #94a3b8; border-top: 1px dashed #e2e8f0; padding-top: 6px;">
+    Computer generated invoice &middot; {{ payload.settings.counter_id or 'BA' }}
+  </div>
+
+</body>
+</html>

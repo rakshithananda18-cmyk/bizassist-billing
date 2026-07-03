@@ -292,490 +292,12 @@ def post_print_event(ev: PrintEvent,
     return {"ok": True}
 
 
-def num_to_words_indian(num: float) -> str:
-    """Convert number to Indian English Rupees words."""
-    try:
-        rupees = int(num)
-        paise = int(round((num - rupees) * 100))
-        
-        def words_under_100(n):
-            units = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
-                     "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"]
-            tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
-            if n < 20:
-                return units[n]
-            else:
-                return tens[n // 10] + (" " + units[n % 10] if n % 10 != 0 else "")
+import os
+from jinja2 import Environment, FileSystemLoader
 
-        def int_to_words(n):
-            if n == 0:
-                return "Zero"
-            parts = []
-            if n >= 10000000: # Crore
-                crore = n // 10000000
-                parts.append(words_under_100(crore) + " Crore")
-                n %= 10000000
-            if n >= 100000: # Lakh
-                lakh = n // 100000
-                parts.append(words_under_100(lakh) + " Lakh")
-                n %= 100000
-            if n >= 1000: # Thousand
-                thousand = n // 1000
-                parts.append(words_under_100(thousand) + " Thousand")
-                n %= 1000
-            if n >= 100: # Hundred
-                hundred = n // 100
-                parts.append(words_under_100(hundred) + " Hundred")
-                n %= 100
-            if n > 0:
-                if parts:
-                    parts.append("and " + words_under_100(n))
-                else:
-                    parts.append(words_under_100(n))
-            return " ".join(parts)
-
-        words = int_to_words(rupees) + " Rupees"
-        if paise > 0:
-            words += " and " + words_under_100(paise) + " Paise"
-        return words + " Only"
-    except Exception:
-        return ""
-
-
-def generate_invoice_html(inv: Invoice, biz: Optional[User], config: dict) -> str:
-    import json
-    terminology = config.get("terminology", {})
-    bill_label = terminology.get("bill", "Bill")
-    customer_label = terminology.get("customer", "Customer")
-    product_label = terminology.get("product", "Product")
-
-    # Load print settings from user settings
-    print_settings = {
-        "theme_color": "#C2714F",
-        "page_size": "A4",
-        "print_orientation": "portrait",
-        "invoice_theme": "classic",
-        "print_logo": True,
-        "print_company_name": True,
-        "print_company_address": True,
-        "print_company_phone": True,
-        "print_company_email": True,
-        "print_gstin": True,
-        "print_terms_conditions": True,
-        "terms_conditions_text": "Thank you for your business!",
-        "print_signature": True,
-        "signature_label": "Authorised Signatory",
-        "customer_signature": True,
-        "customer_signature_label": "Customer Signature",
-        "print_tax_breakdown": True,
-        "print_item_sno": True,
-        "print_item_hsn": True,
-        "print_item_discount": True,
-        "print_item_tax": True,
-        "print_amount_in_words": False,
-        "text_size": "medium",
-    }
-
-    if biz and biz.settings:
-        try:
-            saved = json.loads(biz.settings)
-            if "print" in saved and isinstance(saved["print"], dict):
-                print_settings.update(saved["print"])
-        except Exception:
-            pass
-
-    theme = print_settings.get("invoice_theme", "classic")
-    theme_color = print_settings.get("theme_color", "#C2714F")
-    orientation = print_settings.get("print_orientation", "portrait")
-    page_size = print_settings.get("page_size", "A4")
-
-    # Font sizing mappings
-    size_map = {"small": "11px", "medium": "13px", "large": "15px"}
-    base_font_size = size_map.get(print_settings.get("text_size", "medium"), "13px")
-
-    def fmt_curr(val):
-        return f"₹{val:,.2f}" if val is not None else "₹0.00"
-
-    # Dynamic columns
-    headers = []
-    if print_settings.get("print_item_sno", True):
-        headers.append("<th style='width: 40px;'>#</th>")
-    headers.append(f"<th>{product_label}</th>")
-    if print_settings.get("print_item_hsn", True):
-        headers.append("<th>HSN/SAC</th>")
-    headers.append("<th class='text-right'>Qty</th>")
-    headers.append("<th class='text-right'>Rate</th>")
-    if print_settings.get("print_item_discount", True):
-        headers.append("<th class='text-right'>Disc</th>")
-    headers.append("<th class='text-right'>Taxable</th>")
-    if print_settings.get("print_item_tax", True):
-        headers.append("<th class='text-right'>GST</th>")
-    headers.append("<th class='text-right'>Total</th>")
-    headers_html = "\n".join(headers)
-
-    lines_html = ""
-    for idx, li in enumerate(inv.line_items):
-        tax_rate = (li.cgst_rate or 0) + (li.sgst_rate or 0) + (li.igst_rate or 0)
-        tax_amount = (li.cgst_amount or 0) + (li.sgst_amount or 0) + (li.igst_amount or 0)
-        
-        cells = []
-        if print_settings.get("print_item_sno", True):
-            cells.append(f"<td>{idx + 1}</td>")
-        cells.append(f"<td>{li.product_name or '—'}</td>")
-        if print_settings.get("print_item_hsn", True):
-            cells.append(f"<td>{li.hsn_sac or '—'}</td>")
-        cells.append(f"<td class='text-right'>{li.quantity or 0} {li.unit or 'Nos'}</td>")
-        cells.append(f"<td class='text-right'>{fmt_curr(li.unit_price)}</td>")
-        if print_settings.get("print_item_discount", True):
-            cells.append(f"<td class='text-right'>{li.discount or 0}%</td>")
-        cells.append(f"<td class='text-right'>{fmt_curr(li.taxable_value)}</td>")
-        if print_settings.get("print_item_tax", True):
-            cells.append(f"<td class='text-right'>{tax_rate}% ({fmt_curr(tax_amount)})</td>")
-        cells.append(f"<td class='text-right'>{fmt_curr(li.line_total)}</td>")
-        
-        lines_html += f"<tr>{''.join(cells)}</tr>\n"
-
-    # Merchant details section
-    biz_header_lines = []
-    if print_settings.get("print_company_name", True):
-        biz_header_lines.append(f'<h1 class="biz-title">{biz.business_name if biz else "BizAssist Client"}</h1>')
-    if print_settings.get("print_gstin", True) and biz and biz.gstin:
-        biz_header_lines.append(f'<div style="font-weight: bold; margin-bottom: 2px;">GSTIN: {biz.gstin}</div>')
-    if print_settings.get("print_company_address", True) and biz and biz.address:
-        biz_header_lines.append(f'<div>{biz.address}</div>')
-        
-    contacts = []
-    if print_settings.get("print_company_phone", True) and biz and biz.phone:
-        contacts.append(f"Phone: {biz.phone}")
-    if print_settings.get("print_company_email", True) and biz and biz.email:
-        contacts.append(f"Email: {biz.email}")
-    if contacts:
-        biz_header_lines.append(f'<div>{" | ".join(contacts)}</div>')
-    biz_header_html = "\n".join(biz_header_lines)
-
-    # Tax breakdown rows
-    cgst_row = f"<tr><td>CGST Total</td><td class='text-right'>{fmt_curr(inv.cgst_total)}</td></tr>" if print_settings.get("print_tax_breakdown", True) else ""
-    sgst_row = f"<tr><td>SGST Total</td><td class='text-right'>{fmt_curr(inv.sgst_total)}</td></tr>" if print_settings.get("print_tax_breakdown", True) else ""
-    igst_row = f"<tr><td>IGST Total</td><td class='text-right'>{fmt_curr(inv.igst_total)}</td></tr>" if print_settings.get("print_tax_breakdown", True) else ""
-
-    # Amount in words
-    words_html = ""
-    if print_settings.get("print_amount_in_words", False):
-        amt_words = num_to_words_indian(inv.total_amount)
-        if amt_words:
-            words_html = f"""
-            <div style="margin-top: 15px; font-size: 11px; color: #475569; font-style: italic;">
-                <strong>Amount in Words:</strong> {amt_words}
-            </div>
-            """
-
-    # Terms
-    terms_html = ""
-    if print_settings.get("print_terms_conditions", True) and print_settings.get("terms_conditions_text"):
-        terms_html = f"""
-        <div style="margin-top: 30px; padding: 12px; background: #fdfdfd; border-left: 3px solid {theme_color}; page-break-inside: avoid; border-radius: 4px;">
-            <strong style="color: #475569;">Terms & Conditions:</strong>
-            <div style="white-space: pre-wrap; margin-top: 5px; font-size: 11px; color: #64748b;">{print_settings.get("terms_conditions_text")}</div>
-        </div>
-        """
-
-    # Signatures
-    sig_block_html = ""
-    if print_settings.get("customer_signature", True) or print_settings.get("print_signature", True):
-        sig_cols = []
-        if print_settings.get("customer_signature", True):
-            cust_label = print_settings.get("customer_signature_label", "Customer Signature")
-            sig_cols.append(f"""
-            <div style="text-align: center; flex: 1;">
-                <div style="border-bottom: 1px solid #cbd5e1; width: 70%; margin: 40px auto 5px auto; height: 1px;"></div>
-                <div style="font-size: 11px; color: #475569;">{cust_label}</div>
-            </div>
-            """)
-        if print_settings.get("print_signature", True):
-            sig_label = print_settings.get("signature_label", "Authorised Signatory")
-            sig_cols.append(f"""
-            <div style="text-align: center; flex: 1;">
-                <div style="border-bottom: 1px solid #cbd5e1; width: 70%; margin: 40px auto 5px auto; height: 1px;"></div>
-                <div style="font-size: 11px; color: #475569; font-weight: bold;">{sig_label}</div>
-            </div>
-            """)
-        sig_block_html = f"""
-        <div style="display: flex; justify-content: space-between; margin-top: 40px; page-break-inside: avoid;">
-            {''.join(sig_cols)}
-        </div>
-        """
-
-    # Theme CSS Injection
-    theme_css = ""
-    if theme == "modern":
-        theme_css = f"""
-            .biz-title {{
-                color: {theme_color};
-                font-size: 26px;
-                font-weight: 800;
-                margin: 0 0 5px 0;
-            }}
-            th {{
-                background: {theme_color} !important;
-                color: #ffffff !important;
-                border: none !important;
-                font-weight: 600;
-                padding: 12px 10px;
-            }}
-            table {{
-                border-radius: 8px;
-                overflow: hidden;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            }}
-            .panel-title {{
-                background: #f1f5f9;
-                padding: 6px 10px;
-                border-radius: 4px;
-                color: #475569;
-                border: none;
-                font-size: 9px;
-            }}
-        """
-    elif theme == "minimal":
-        theme_css = f"""
-            .biz-title {{
-                color: #0f172a;
-                font-size: 22px;
-                font-weight: 800;
-                text-transform: uppercase;
-                margin: 0 0 5px 0;
-            }}
-            th {{
-                background: transparent !important;
-                color: #000000 !important;
-                border-bottom: 2px solid #000000 !important;
-                border-top: 2px solid #000000 !important;
-                font-weight: 700;
-                padding: 6px 4px;
-            }}
-            td {{
-                border-bottom: 1px solid #f1f5f9 !important;
-                padding: 8px 4px;
-            }}
-            .panel-title {{
-                border-bottom: 1.5px solid #0f172a;
-                color: #0f172a;
-                font-weight: 800;
-                font-size: 9px;
-            }}
-        """
-    else: # classic
-        theme_css = f"""
-            .biz-title {{
-                font-size: 24px;
-                font-weight: 700;
-                color: {theme_color};
-                margin: 0 0 5px 0;
-            }}
-            th {{
-                background: #fdfaf7;
-                border-bottom: 2px solid #e2e2e0;
-                padding: 10px;
-            }}
-            td {{
-                border-bottom: 1px solid #e2e2e0;
-                padding: 10px;
-            }}
-            .panel-title {{
-                border-bottom: 1px solid #e2e2e0;
-                color: #8c8c88;
-                font-size: 10px;
-            }}
-        """
-
-    logo_html = ""
-    if print_settings.get("print_logo", True) and biz and biz.logo:
-        logo_html = f"""
-        <div style="margin-bottom: 15px;">
-            <img src="{biz.logo}" style="max-height: 60px; max-width: 180px; object-fit: contain;" alt="logo" />
-        </div>
-        """
-
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <title>{bill_label} {inv.invoice_id}</title>
-        <style>
-            @page {{
-                size: {page_size} {orientation};
-                margin: 15mm;
-            }}
-            body {{
-                font-family: 'DM Sans', Arial, sans-serif;
-                color: #2b2b2a;
-                margin: 0;
-                padding: 0;
-                font-size: {base_font_size};
-                line-height: 1.5;
-            }}
-            .header {{
-                display: flex;
-                justify-content: space-between;
-                border-bottom: 2px solid {theme_color};
-                padding-bottom: 20px;
-                margin-bottom: 30px;
-            }}
-            .invoice-title {{
-                font-size: 28px;
-                font-weight: 700;
-                text-align: right;
-                margin: 0 0 10px 0;
-                color: #2b2b2a;
-            }}
-            .grid {{
-                display: flex;
-                justify-content: space-between;
-                margin-bottom: 30px;
-            }}
-            .grid > div {{
-                flex: 1;
-            }}
-            .panel-title {{
-                font-weight: 700;
-                text-transform: uppercase;
-                letter-spacing: 0.08em;
-                padding-bottom: 5px;
-                margin-bottom: 10px;
-            }}
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin-bottom: 30px;
-            }}
-            th {{
-                text-align: left;
-                font-size: 10px;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-                font-weight: 700;
-            }}
-            .text-right {{
-                text-align: right;
-            }}
-            .totals-container {{
-                display: flex;
-                justify-content: space-end;
-                margin-top: 20px;
-            }}
-            .totals-table {{
-                width: 320px;
-                margin-bottom: 0;
-                margin-left: auto;
-            }}
-            .totals-table td {{
-                padding: 6px 10px;
-                border-bottom: 1px solid #f1f5f9;
-            }}
-            .totals-table tr.grand {{
-                font-size: 15px;
-                font-weight: 700;
-                border-top: 2px solid {theme_color};
-                border-bottom: 2px solid {theme_color};
-            }}
-            .badge {{
-                display: inline-block;
-                padding: 4px 10px;
-                border-radius: 99px;
-                font-size: 10px;
-                font-weight: 700;
-                text-transform: uppercase;
-            }}
-            .badge-Paid {{ background: #d1fae5; color: #065f46; }}
-            .badge-Pending {{ background: #fef3c7; color: #92400e; }}
-            .badge-Overdue {{ background: #fee2e2; color: #991b1b; }}
-            
-            {theme_css}
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <div>
-                {logo_html}
-                {biz_header_html}
-            </div>
-            <div class="text-right">
-                <h2 class="invoice-title">{bill_label}</h2>
-                <div><strong>No:</strong> {inv.invoice_id}</div>
-                <div><strong>Date:</strong> {inv.invoice_date}</div>
-                <div style="margin-top: 10px;">
-                    <span class="badge badge-{inv.status}">{inv.status}</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="grid">
-            <div>
-                <div class="panel-title">Bill To ({customer_label})</div>
-                <div style="font-size: 15px; font-weight: 700; margin-bottom: 5px;">{inv.customer or 'Walk-in Customer'}</div>
-                <div>GSTIN: {inv.gstin_buyer or '—'}</div>
-                <div>Place of Supply: {inv.place_of_supply or '—'}</div>
-            </div>
-            <div style="margin-left: 40px;">
-                <div class="panel-title">Details</div>
-                <div><strong>Payment Mode:</strong> {inv.payment_mode or 'Cash'}</div>
-                <div><strong>Due Date:</strong> {inv.due_date or '—'}</div>
-                <div><strong>Type:</strong> {inv.invoice_type or 'B2C'}</div>
-            </div>
-        </div>
-
-        <table>
-            <thead>
-                <tr>
-                    {headers_html}
-                </tr>
-            </thead>
-            <tbody>
-                {lines_html}
-            </tbody>
-        </table>
-
-        <div class="totals-container">
-            <table class="totals-table">
-                <tr>
-                    <td>Subtotal</td>
-                    <td class="text-right">{fmt_curr(inv.subtotal)}</td>
-                </tr>
-                {cgst_row}
-                {sgst_row}
-                {igst_row}
-                <tr>
-                    <td>Round Off</td>
-                    <td class="text-right">{fmt_curr(inv.round_off)}</td>
-                </tr>
-                <tr class="grand">
-                    <td>Grand Total</td>
-                    <td class="text-right">{fmt_curr(inv.total_amount)}</td>
-                </tr>
-                <tr>
-                    <td>Amount Paid</td>
-                    <td class="text-right">{fmt_curr(inv.paid_amount)}</td>
-                </tr>
-                <tr style="border-top: 1px solid #e2e2e0;">
-                    <td><strong>Balance Due</strong></td>
-                    <td class="text-right" style="color: #c02a2a; font-weight: 700;">
-                        {fmt_curr(max((inv.total_amount or 0) - (inv.paid_amount or 0), 0.0))}
-                    </td>
-                </tr>
-            </table>
-        </div>
-        
-        {words_html}
-        {terms_html}
-        {sig_block_html}
-        
-        {f'<div style="margin-top: 30px; padding: 12px; background: #fdfdfd; border-left: 3px solid #64748b; font-size: 11px; border-radius: 4px;"><strong>Notes:</strong> {inv.notes}</div>' if inv.notes else ''}
-    </body>
-    </html>
-    """
-    return html
-
+# Set up Jinja2 environment pointing to backend/core/billing/templates
+_TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "..", "billing", "templates")
+_jinja_env = Environment(loader=FileSystemLoader(_TEMPLATE_DIR))
 
 @router.get("/sales/{invoice_no}/pdf")
 def get_invoice_pdf(
@@ -792,15 +314,26 @@ def get_invoice_pdf(
     )
     if inv is None:
         raise HTTPException(status_code=404, detail=f"Invoice '{invoice_no}' not found")
-
-    biz = db.query(User).filter(User.id == bid).first()
-    config = T.resolve_for(bid, db)
-    html_content = generate_invoice_html(inv, biz, config)
-
+        
+    payload = PP.build_print_payload(db, business_id=bid, invoice_no=invoice_no, user_id=current_user.get("user_id") or bid)
+    
+    # Select template (fallback to classic A4)
+    template_name = "invoice_classic_a4.html" 
+    if inv.print_template == "thermal":
+        template_name = "invoice_thermal.html"
+        
+    try:
+        template = _jinja_env.get_template(template_name)
+    except Exception:
+        template = _jinja_env.get_template("invoice_classic_a4.html")
+        
+    html_content = template.render(payload=payload, **payload)
+    
     try:
         import weasyprint
         pdf_bytes = weasyprint.HTML(string=html_content).write_pdf()
         from fastapi import Response
+        PP.log_event("pdf_generated", business_id=bid, user_id=current_user.get("user_id") or bid, invoice_id=invoice_no, success=True)
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
@@ -808,8 +341,9 @@ def get_invoice_pdf(
                 "Content-Disposition": f"inline; filename=invoice_{invoice_no}.pdf"
             }
         )
-    except Exception:
+    except Exception as e:
         # Fallback to serving the printable HTML directly
+        PP.log_event("pdf_failed", business_id=bid, user_id=current_user.get("user_id") or bid, invoice_id=invoice_no, success=False, error=str(e))
         from fastapi.responses import HTMLResponse
         return HTMLResponse(content=html_content)
 
@@ -827,6 +361,7 @@ class FrontendInvoiceItem(BaseModel):
     batch_no: Optional[str] = None
     expiry_date: Optional[str] = None
     serial_no: Optional[str] = None   # electronics/mobile/repair verticals (Phase 2 line fields)
+    attributes: Optional[dict] = None  # dynamic vertical fields (size/colour/warranty…) → JSON snapshot
 
 class FrontendInvoiceRequest(BaseModel):
     customer_id: Optional[int] = None
@@ -840,6 +375,7 @@ class FrontendInvoiceRequest(BaseModel):
     cash_discount: float = 0.0   # POST-tax cash discount / round-off (₹) — reduces payable, not GST (R4)
     paid_amount: float = 0.0     # amount received now → Paid/Partial/Unpaid status (default 0 = unpaid)
     mark_paid: bool = False      # "Paid & Print": settle the full payable exactly (status Paid)
+    payment_mode: Optional[str] = None  # cash|upi|card|credit — drives shift drawer tallies (Phase 3)
 
 
 def _invoice_out_for_frontend(inv: Invoice) -> dict:
@@ -894,6 +430,19 @@ def create_sale_invoice_frontend(
     if hit is not None:
         return hit
 
+    # ── Shift gatekeeper (Phase 3): EVERY role — cashier AND owner — needs an
+    # OPEN shift to ring a sale; that's what makes end-of-day tallies exact.
+    # Offline bills are rung under an open shift too (the POS gate runs before
+    # the outbox), so replays normally land while it's still open.
+    from core.shifts import service as shifts_svc
+    operator_id = current_user.get("user_id") or bid
+    try:
+        active_shift = shifts_svc.require_open_shift(db, business_id=bid, user_id=operator_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=409,
+            detail="shift_required: open a register shift before billing.")
+
     # Resolve customer name
     customer_name = None
     if req.customer_id:
@@ -914,7 +463,8 @@ def create_sale_invoice_frontend(
             "igst_rate": it.igst_rate,
             "batch_no": it.batch_no,
             "expiry_date": it.expiry_date,
-            "serial_no": it.serial_no
+            "serial_no": it.serial_no,
+            "attributes": it.attributes
         })
         
     try:
@@ -928,11 +478,14 @@ def create_sale_invoice_frontend(
             tax_inclusive=False,
             invoice_no=req.invoice_no,
             counter_prefix=req.counter_prefix,
-            renumber_on_conflict=guard.active,
+            renumber_on_conflict=guard.active,  # §9.3b
+
             bill_discount=req.bill_discount,
             cash_discount=req.cash_discount,
             paid_amount=req.paid_amount,
             mark_paid=req.mark_paid,
+            payment_mode=req.payment_mode,
+            shift_id=active_shift.id,
         )
         if req.notes:
             inv.notes = req.notes
@@ -948,5 +501,3 @@ def create_sale_invoice_frontend(
         db.rollback()
         logger.error("create_invoice_frontend failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Could not create invoice.")
-
-

@@ -211,6 +211,10 @@ class InvoicePayment(Base, TimestampMixin):
     payment_date    = Column(String, nullable=True)   # YYYY-MM-DD
     note            = Column(String, nullable=True)
     idempotency_key = Column(String, nullable=True, index=True)
+    # Shift & cash-drawer management (plan Phase 3): the register shift this
+    # receipt was taken under — cash/UPI tallies sum THESE rows, so credit
+    # collections during a shift count toward its drawer too. Nullable.
+    shift_id        = Column(Integer, ForeignKey("register_shifts.id"), nullable=True, index=True)
 
     created_at      = Column(DateTime, default=datetime.utcnow)
 
@@ -545,6 +549,3 @@ class PeriodLock(Base, BusinessOwnedMixin):
     __table_args__ = (
         Index("ix_period_locks_biz", "business_id", "id"),
     )
-
-
-

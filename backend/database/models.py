@@ -252,6 +252,17 @@ class Invoice(Base, BusinessOwnedMixin, GSTFieldsMixin):
     # render time by core/billing/print_payload.py. Presentation-only.
     invoice_title = Column(String, nullable=True)
 
+    # Shift & cash-drawer management (plan Phase 3): links every counter sale to
+    # the register shift it was rung under. Nullable — historical invoices and
+    # non-counter flows (imports, B2B) carry NULL.
+    shift_id = Column(Integer, ForeignKey("register_shifts.id"), nullable=True, index=True)
+
+    # Public share link (plan Phase 4): unguessable token for Trust Ledger.
+    uid_token = Column(String, unique=True, index=True, nullable=True, default=lambda: str(uuid.uuid4()))
+
+    # Per-invoice template override (plan Phase 4): e.g. "classic_a4", overrides business default
+    print_template = Column(String, nullable=True)
+
     customer_ref = relationship("Customer", back_populates="invoices", foreign_keys=[customer_id])
     line_items   = relationship(
         "InvoiceLineItem", back_populates="invoice",
@@ -365,6 +376,91 @@ class LegacyPayment(Base, BusinessOwnedMixin):
     file_id      = Column(Integer, nullable=True, index=True)
     invoice_id   = Column(Integer, ForeignKey("invoices.id"), nullable=True, index=True)
     payment_mode = Column(String,  nullable=True)
+    # Shift & cash-drawer management (plan Phase 3) — see Invoice.shift_id.
+    shift_id     = Column(Integer, ForeignKey("register_shifts.id"), nullable=True, index=True)
+
+
+# ---------------------------------------------------------------------------
+# REGISTER SHIFT  (shift & cash-drawer management, plan Phase 3)
+# ---------------------------------------------------------------------------
+
+class RegisterShift(Base, BusinessOwnedMixin):
+    """
+    One cashier session at the register: opened with a counted cash float,
+    closed with counted cash/UPI tallied against the system's expectation.
+
+    Rules:
+      • ONE OPEN shift per user at a time (enforced in routes/shifts.py).
+      • EVERY counter sale requires an open shift — all roles, including the
+        owner (single-operator businesses need day-wise accounting too).
+      • APPEND-ONLY: a closed shift is never reopened or edited; corrections
+        are notes on the next shift.
+
+    PK follows codebase convention (Integer id + uuid `uid`) rather than a raw
+    UUID PK, so the sync layer treats it like every other business table.
+    """
+    __tablename__ = "register_shifts"
+
+    # The operator (staff or owner user id) — NOT the business id; that's
+    # `business_id` from BusinessOwnedMixin.
+    user_id      = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    start_time   = Column(DateTime, nullable=False, default=datetime.utcnow)
+    end_time     = Column(DateTime, nullable=True)
+
+    opening_cash = Column(Float, nullable=False, default=0.0)
+    # Float carry-forward (Shopify-style): the suggested opening at open time
+    # (= previous shift's closing_float). Stored so an operator editing the
+    # prefill leaves an auditable opening variance. NULL = no prior shift.
+    opening_expected = Column(Float, nullable=True)
+
+    # Snapshotted at close (expected = opening + system-recorded takings).
+    closing_cash_expected = Column(Float, nullable=True)
+    closing_cash_actual   = Column(Float, nullable=True)
+    closing_upi_expected  = Column(Float, nullable=True)
+    closing_upi_actual    = Column(Float, nullable=True)
+    # What was LEFT IN THE DRAWER at close (≤ counted cash) — becomes the next
+    # shift's suggested opening float; the removed remainder is recorded as a
+    # closing_removal cash movement (bank deposit / owner withdrawal).
+    closing_float = Column(Float, nullable=True)
+
+    status = Column(String, nullable=False, default="OPEN", index=True)  # OPEN | CLOSED
+    notes  = Column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_register_shifts_biz_status", "business_id", "status"),
+        Index("ix_register_shifts_user_status", "user_id", "status"),
+    )
+
+
+class ShiftCashMovement(Base, BusinessOwnedMixin):
+    """
+    One non-sale cash movement in/out of the drawer during a shift — the
+    Square "Paid In / Paid Out" & Lightspeed "Cash In/Out, Petty Cash" model.
+    APPEND-ONLY: corrections are opposite movements, never edits.
+
+    movement_type: paid_in | paid_out
+    category:
+      paid_in  → change_top_up   (cash added to make change)
+      paid_out → bank_deposit | expense | owner_withdrawal
+      system   → opening_variance (prefilled float edited at open — audit only,
+                 NEVER enters the tally: the entered opening cash is the truth),
+                 closing_removal  (cash taken out at close, after the count —
+                 audit only: the close snapshot already happened)
+    """
+    __tablename__ = "shift_cash_movements"
+
+    shift_id      = Column(Integer, ForeignKey("register_shifts.id"), nullable=False, index=True)
+    user_id       = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    movement_type = Column(String, nullable=False)               # paid_in | paid_out
+    category      = Column(String, nullable=False)
+    amount        = Column(Float,  nullable=False)               # always positive
+    note          = Column(Text,   nullable=True)
+    # When category='expense', the auto-created Expense row (books link).
+    expense_id    = Column(Integer, ForeignKey("expenses.id"), nullable=True, index=True)
+
+    __table_args__ = (
+        Index("ix_shift_cash_movements_shift", "business_id", "shift_id"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -898,4 +994,3 @@ def handle_after_update(mapper, connection, target):
 def handle_after_delete(mapper, connection, target):
     _queue_change(connection, target, "DELETE")
 # (sync-touch)
-

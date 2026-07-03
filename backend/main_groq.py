@@ -29,7 +29,10 @@ from routes.ask import router as ask_router
 from routes.feedback import router as feedback_router
 from routes.data_transfer import router as data_transfer_router
 from routes.sync import router as sync_router
+from routes.shifts import router as shifts_router   # shift & cash-drawer management (Phase 3)
+from routes.public import router as public_router
 from core.api import core_router          # billing ecosystem — wired from core/
+
 from database.db import engine, SessionLocal, DATABASE_URL
 from database.models import Base
 from database.migration import run_migrations_and_seed
@@ -58,19 +61,35 @@ if _workers and str(_workers).strip().isdigit() and int(_workers) > 1:
 Base.metadata.create_all(bind=engine)
 run_migrations_and_seed()
 
-# ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(_app):
     """Startup/shutdown lifecycle handler."""
-    # (R-1) Hand the main event loop to the realtime manager so the background
-    # sync worker (a separate thread) can marshal SSE broadcasts back onto it.
     import asyncio
     from services.realtime import realtime_manager
     realtime_manager.set_loop(asyncio.get_running_loop())
 
+    # Start a background task to watch for Uvicorn's should_exit flag.
+    # Uvicorn waits for active connections (like our SSE streams) to close
+    # *before* calling the lifespan yield teardown. This watcher detects
+    # the shutdown signal early and closes SSE queues so Uvicorn can reload.
+    async def watch_uvicorn_shutdown():
+        import gc
+        while True:
+            await asyncio.sleep(1.0)
+            for obj in gc.get_objects():
+                if type(obj).__name__ == "Server" and getattr(obj, "should_exit", False):
+                    logger.info("[LIFESPAN] Uvicorn shutdown detected — closing realtime SSE connections...")
+                    realtime_manager.shutdown()
+                    return
+                    
+    watcher_task = asyncio.create_task(watch_uvicorn_shutdown())
+
     start_scheduler()
     preload_model_async()
     yield
+    
+    watcher_task.cancel()
+    realtime_manager.shutdown()
     stop_scheduler()
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
@@ -212,4 +231,6 @@ app.include_router(actions_router)
 app.include_router(feedback_router)
 app.include_router(data_transfer_router)  # Phase 1 – hosting-mode data migration
 app.include_router(sync_router)           # Phase 2 – hosting-mode synchronization
+app.include_router(shifts_router)         # Phase 3 – shift & cash-drawer management
+app.include_router(public_router)         # Phase 4 - Public share links
 app.include_router(core_router)           # billing ecosystem (sales + business templates + future)
