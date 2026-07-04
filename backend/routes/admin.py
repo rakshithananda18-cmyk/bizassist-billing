@@ -343,10 +343,10 @@ def get_server_log(lines: int = Query(200, ge=1, le=2000),
 @router.get("/admin/audit-log")
 def get_audit_log(limit: int = Query(200, ge=1, le=1000),
                   current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
-    """Newest-first view over logs/admin_audit.jsonl (who did what, when)."""
+    """Newest-first view over DB action_logs table, falling back to logs/admin_audit.jsonl."""
     try:
         svc.require_admin(current_user["id"], db)
-        return svc.read_audit_log(limit=limit)
+        return svc.read_audit_log(limit=limit, db=db)
     except HTTPException: raise
     except Exception as e:
         logger.error("admin/audit-log: %s", e, exc_info=True)

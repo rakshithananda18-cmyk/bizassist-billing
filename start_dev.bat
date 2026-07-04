@@ -30,7 +30,7 @@ timeout /t 1 /nobreak >nul
 
 REM --- Backend (with --reload so code changes are picked up instantly) ---
 start "BizAssist Backend" powershell -ExecutionPolicy Bypass -NoExit -Command ^
-  "cd '%ROOT%backend'; & '%ROOT%venv\Scripts\Activate.ps1'; $env:PYTHONPATH='.'; Write-Host 'Backend → http://127.0.0.1:8001' -ForegroundColor Green; uvicorn main_groq:app --reload --port 8001"
+  "cd '%ROOT%backend'; & '%ROOT%venv\Scripts\Activate.ps1'; $env:PYTHONPATH='.'; $env:LOG_FILE='logs/bizassist.log'; Write-Host 'Backend → http://127.0.0.1:8001' -ForegroundColor Green; uvicorn main_groq:app --reload --port 8001"
 
 REM Give the backend a moment to bind the port before frontends start
 timeout /t 3 /nobreak >nul

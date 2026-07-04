@@ -13,7 +13,8 @@ ENV PATH="/home/user/.local/bin:$PATH" \
     HF_HOME=/home/user/.cache/huggingface \
     SENTENCE_TRANSFORMERS_HOME=/home/user/.cache/sentence_transformers \
     HF_HUB_DISABLE_SYMLINKS_WARNING=1 \
-    ADMIN_API_ENABLED=1
+    ADMIN_API_ENABLED=1 \
+    LOG_FILE=logs/bizassist.log
 
 WORKDIR /app
 

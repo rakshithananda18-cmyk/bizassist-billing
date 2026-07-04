@@ -48,8 +48,8 @@ def _admin_api_enabled() -> bool:
     return os.getenv("ADMIN_API_ENABLED", "0") == "1"
 
 
-def audit_log(admin, action: str, details: dict = None):
-    """Append who/what/when for every admin mutation (JSONL, no migration).
+def audit_log(admin, action: str, details: dict = None, db: Session = None):
+    """Append who/what/when for every admin mutation (JSONL + DB fallback).
 
     Identities are recorded by **BizID** (users.public_id) + username, not the
     numeric row id — numeric ids differ between the cloud and local databases,
@@ -70,7 +70,30 @@ def audit_log(admin, action: str, details: dict = None):
             }
             f.write(json.dumps(entry) + "\n")
     except Exception as e:
-        logger.error(f"Audit log failed: {e}")
+        logger.error(f"Audit log JSONL failed: {e}")
+
+    if db is not None:
+        try:
+            from database.models import ActionLog
+            business_id = getattr(admin, "id", admin)
+            target = None
+            if details and "target" in details:
+                target = str(details["target"])
+            elif details and "target_username" in details:
+                target = str(details["target_username"])
+                
+            log_row = ActionLog(
+                business_id=business_id,
+                action=action,
+                target=target,
+                detail=json.dumps(details) if details else None,
+                status="success"
+            )
+            db.add(log_row)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Audit log DB write failed: {e}")
 
 
 def require_admin(user_id: int, db: Session, action: str = None, details: dict = None) -> User:
@@ -89,14 +112,12 @@ def require_admin(user_id: int, db: Session, action: str = None, details: dict =
 
     if action:
         det = dict(details or {})
-        # Enrich the target's numeric id with its stable BizID + username so the
-        # trail stays meaningful across cloud/local databases.
         if det.get("target") is not None:
             t = db.query(User).filter(User.id == det["target"]).first()
             if t:
                 det["target_bizid"] = t.public_id
                 det["target_username"] = t.username
-        audit_log(u, action, det)
+        audit_log(u, action, det, db=db)
 
     return u
 
@@ -416,9 +437,29 @@ def telemetry_businesses(db=None) -> list:
     return out
 
 
-def read_audit_log(limit: int = 200) -> list:
-    """Newest-first reader over logs/admin_audit.jsonl."""
+def read_audit_log(limit: int = 200, db: Session = None) -> list:
+    """Newest-first reader over DB action_logs table, falling back to logs/admin_audit.jsonl."""
     limit = max(1, min(int(limit or 200), 1000))
+    
+    if db is not None:
+        try:
+            from database.models import ActionLog
+            logs = db.query(ActionLog).order_by(ActionLog.id.desc()).limit(limit).all()
+            if logs:
+                return [
+                    {
+                        "timestamp": log.created_at.isoformat() if log.created_at else None,
+                        "admin_id": log.business_id,
+                        "admin_bizid": None,
+                        "admin_username": "admin",
+                        "action": log.action,
+                        "details": json.loads(log.detail) if log.detail else {}
+                    }
+                    for log in logs
+                ]
+        except Exception as e:
+            logger.error(f"Failed to read audit log from DB: {e}")
+
     path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs", "admin_audit.jsonl")
     if not os.path.exists(path):
         return []
