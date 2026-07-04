@@ -261,7 +261,7 @@ function PasscodeModal({ open, hasLock, onClose, setupPasscode, clearPasscode })
 }
 
 // ─── Hosting Mode Section (card-based mode switcher with modal chain) ─────────
-function HostingModeSection({ currentMode, onModeChange, token }) {
+function HostingModeSection({ currentMode, onModeChange, token, autoSwitchTarget = null, onAutoSwitchConsumed = null }) {
   const { localProbe, cloudProbe, internetProbe, sseProbe, recheck } = useReadinessProbe()
   const [preflightTarget,  setPreflightTarget]  = useState(null)  // 'local'|'cloud'|'hybrid'
   const [consequenceTarget, setConsequenceTarget] = useState(null)
@@ -407,11 +407,58 @@ function HostingModeSection({ currentMode, onModeChange, token }) {
     },
   ]
 
+  // Explain WHY a target mode can't be entered, instead of failing silently.
+  // (Root cause of the "select Cloud → nothing happens" report: the cloud
+  // probe was CORS-blocked/offline, so the card was locked/unavailable and the
+  // click was swallowed with no feedback.)
+  const explainBlocked = (mode, state) => {
+    if (state === 'active') return `You're already in ${mode} mode.`
+    if (state === 'locked')
+      return `${mode[0].toUpperCase() + mode.slice(1)} mode is blocked: the cloud server rejected this app's request (CORS). Check that the app is on the latest build and that the cloud URL is reachable.`
+    if (state === 'unavailable')
+      return `${mode[0].toUpperCase() + mode.slice(1)} mode needs the cloud, which is currently offline/unreachable. Connect to the internet and press Re-check, then try again.`
+    return null
+  }
+
   const handleCardClick = (mode) => {
     const state = cardState(mode)
-    if (state === 'active' || state === 'locked' || state === 'unavailable') return
+    if (state === 'active' || state === 'locked' || state === 'unavailable') {
+      const msg = explainBlocked(mode, state)
+      if (msg) {
+        logger.warn(`[SETTINGS] Mode switch to "${mode}" blocked (${state}): ${msg}`)
+        window.dispatchEvent(new CustomEvent('show_toast', {
+          detail: { type: state === 'active' ? 'info' : 'error', msg },
+        }))
+      }
+      return
+    }
     setPreflightTarget(mode)
   }
+
+  // Deep-link entry (e.g. the first-run HostingOnboardingModal navigates to
+  // /settings?tab=advanced&switch=cloud): auto-open the guarded preflight for
+  // the requested target instead of silently dropping the user on the tab.
+  // If the target isn't reachable yet, tell the user why rather than opening a
+  // dead preflight (this is what made the onboarding "Cloud" choice look like a
+  // silent failure).
+  useEffect(() => {
+    if (!autoSwitchTarget) return
+    if (['local', 'cloud', 'hybrid'].includes(autoSwitchTarget) && autoSwitchTarget !== currentMode) {
+      const state = cardState(autoSwitchTarget)
+      if (state === 'ready') {
+        setPreflightTarget(autoSwitchTarget)
+      } else {
+        const msg = explainBlocked(autoSwitchTarget, state)
+        if (msg) {
+          window.dispatchEvent(new CustomEvent('show_toast', {
+            detail: { type: 'error', msg },
+          }))
+        }
+      }
+    }
+    onAutoSwitchConsumed?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSwitchTarget])
 
   return (
     <div style={{ marginBottom: 24 }}>
@@ -2387,6 +2434,15 @@ export default function Settings() {
                   switchMode(newMode)
                 }}
                 token={token}
+                autoSwitchTarget={IS_LOCAL_APP ? searchParams.get('switch') : null}
+                onAutoSwitchConsumed={() => {
+                  // one-shot: strip ?switch= so a refresh doesn't re-open the flow
+                  setSearchParams(prev => {
+                    const next = new URLSearchParams(prev)
+                    next.delete('switch')
+                    return next
+                  }, { replace: true })
+                }}
               />
               {IS_LOCAL_APP && g.hosting_mode === 'hybrid' && (
                 <SettingRow label="Sync Interval" description="How frequently local changes are synced to the cloud.">

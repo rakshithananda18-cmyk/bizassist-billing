@@ -7,6 +7,7 @@ survives app updates/reinstalls.
 
 Build:  pyinstaller bizassist-backend.spec   (see desktop/scripts/build-backend.*)
 """
+from __future__ import annotations  # PEP 604 (X | Y) on Python 3.9 dev venvs
 import argparse
 import multiprocessing
 import os

@@ -6,6 +6,7 @@ BizAssist FastAPI application entry point.
 Intentionally thin — wires app, middleware, and routers only.
 All business logic lives in services/ and routes/.
 """
+from __future__ import annotations  # PEP 604 (X | Y) on Python 3.9 dev venvs
 from contextlib import asynccontextmanager
 from sqlalchemy import text
 

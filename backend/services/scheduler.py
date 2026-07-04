@@ -132,12 +132,25 @@ def start_scheduler():
         misfire_grace_time=86400,
     )
 
+    # DB maintenance: weekly purge of the PERSISTENT telemetry_events table
+    # (Supabase on the cloud) + 200 MB size guard. See telemetry_maintenance.py.
+    from services.telemetry_maintenance import run_telemetry_db_maintenance
+    _scheduler.add_job(
+        run_telemetry_db_maintenance,
+        CronTrigger(day_of_week="sun", hour=3, minute=0),
+        id="telemetry_db_maintenance",
+        name="Telemetry DB Maintenance (weekly purge + size guard)",
+        replace_existing=True,
+        misfire_grace_time=86400,
+    )
+
     _scheduler.start()
     logger.info(
         "[SCHED] Started. Jobs: daily summary @ 8:00 IST, "
         "overdue/low-stock/expiry @ 9:00–9:10 IST, "
         "memory distillation @ Sunday 23:00 IST, "
-        "telemetry relay every 3h + retention trim @ 2:30 IST."
+        "telemetry relay every 3h + retention trim @ 2:30 IST, "
+        "telemetry DB maintenance @ Sunday 3:00 IST."
     )
 
 

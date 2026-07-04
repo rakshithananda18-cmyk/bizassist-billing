@@ -549,3 +549,45 @@ class PeriodLock(Base, BusinessOwnedMixin):
     __table_args__ = (
         Index("ix_period_locks_biz", "business_id", "id"),
     )
+
+
+# ---------------------------------------------------------------------------
+# TELEMETRY — persistent diagnostics store (testing phase)
+# ---------------------------------------------------------------------------
+
+class TelemetryEvent(Base):
+    """
+    Persistent telemetry sink. The JSONL files under logs/ are EPHEMERAL on the
+    HF Space (wiped on every Space restart) — this table (Supabase Postgres on
+    the cloud, SQLite locally) is the durable copy the Admin Console reads.
+
+    Written by POST /api/telemetry/log (direct) and /api/telemetry/import
+    (relayed from local installs). `bizid` is the business public_id — the
+    cross-DB identity spine — so admin can debug per business/user.
+
+    Retention (services/telemetry_maintenance.py):
+      • weekly job purges rows older than TELEMETRY_RETENTION_DAYS
+      • size guard: if the table exceeds TELEMETRY_MAX_MB (default 200), admin
+        is expected to download the tar.gz archive (GET /admin/telemetry/archive
+        ?purge=1); the weekly job force-trims the oldest rows as a last resort.
+    """
+    __tablename__ = "telemetry_events"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    received_at  = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    at           = Column(String, nullable=True)     # client-side ISO timestamp
+    source       = Column(String(40),  nullable=False, default="unknown")
+    device_id    = Column(String(64),  nullable=False, index=True)
+    app_version  = Column(String(20),  nullable=True)
+    platform     = Column(String(20),  nullable=True)
+    bizid        = Column(String(64),  nullable=True, index=True)   # business public_id
+    level        = Column(String(10),  nullable=False, default="info")
+    event        = Column(String(80),  nullable=False, index=True)
+    payload      = Column(Text, nullable=True)       # JSON string (capped)
+    relay_device = Column(String(64),  nullable=True)  # set when relayed local → cloud
+    relayed_at   = Column(String, nullable=True)
+
+    __table_args__ = (
+        Index("ix_telemetry_bizid_received", "bizid", "received_at"),
+        Index("ix_telemetry_received", "received_at"),
+    )

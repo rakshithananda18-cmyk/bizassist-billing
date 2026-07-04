@@ -4,7 +4,7 @@
 //              and configuring baseline settings.
 // ============================================================================
 import React, { useState, useEffect } from 'react'
-import { API_BASE, CLOUD_URL } from '../config'
+import { API_BASE, CLOUD_URL, IS_LOCAL_APP } from '../config'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
@@ -65,6 +65,10 @@ export default function Register() {
 
   const [templates, setTemplates] = useState([])
   const [selectedTemplate, setSelectedTemplate] = useState('general')
+  // Where should this business's data live? Chosen at signup in the desktop
+  // app (web always runs on cloud). 'local' just proceeds; 'cloud'/'hybrid'
+  // route into the guarded switch flow after signup (never a silent switch).
+  const [hostingChoice, setHostingChoice] = useState('local')
   // Multi-type business (Phase 2): optional secondary business types. The
   // primary drives defaults; secondaries add counter modes (e.g. a shop that
   // is Retail + Repair). Registered via POST /business/setup after signup.
@@ -75,14 +79,49 @@ export default function Register() {
   }
 
   useEffect(() => {
-    fetch(`${API_BASE}/business/templates`)
-      .then(res => res.ok ? res.json() : {})
-      .then(data => {
-        if (data && data.templates) {
-          setTemplates(data.templates)
+    // Templates come from the active backend; if the local (desktop) backend
+    // can't serve them (older packaged build without the config JSONs), fall
+    // back to the cloud, and finally to a built-in list — the Business
+    // Category dropdown must never be empty. The built-in list mirrors
+    // backend/core/templates/configs/*.json so an un-rebuilt desktop app still
+    // shows every category (rebuild with the updated .spec restores the live list).
+    const FALLBACK_TEMPLATES = [
+      { key: 'general',      label: 'General Business' },
+      { key: 'supermarket',  label: 'Supermarket / Retail' },
+      { key: 'pharmacy',     label: 'Pharmacy / Medical' },
+      { key: 'restaurant',   label: 'Restaurant / Café' },
+      { key: 'electronics',  label: 'Electronics / Appliances' },
+      { key: 'mobile',       label: 'Mobile / Accessories Shop' },
+      { key: 'hardware',     label: 'Hardware / Electricals' },
+      { key: 'repair',       label: 'Repair / Service Center' },
+      { key: 'services',     label: 'Services / Professional' },
+      { key: 'b2b_supplier', label: 'B2B Supplier' },
+    ]
+    const fetchTemplates = async (base) => {
+      const res = await fetch(`${base}/business/templates`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      return Array.isArray(data?.templates) && data.templates.length ? data.templates : null
+    }
+    ;(async () => {
+      try {
+        const t = await fetchTemplates(API_BASE)
+        if (t) { setTemplates(t); return }
+        throw new Error('empty template list')
+      } catch (err) {
+        logger.warn('Templates unavailable on active backend, trying cloud:', err?.message)
+        try {
+          if (CLOUD_URL !== API_BASE) {
+            const t = await fetchTemplates(CLOUD_URL)
+            if (t) { setTemplates(t); return }
+          }
+          throw new Error('empty cloud template list')
+        } catch (err2) {
+          logger.error('Failed to load templates from all sources — using built-in fallback:', err2?.message)
+          setTemplates(FALLBACK_TEMPLATES)
         }
-      })
-      .catch(err => logger.error('Failed to load templates:', err))
+      }
+    })()
   }, [])
 
   // Live password validation checks
@@ -147,8 +186,15 @@ export default function Register() {
           logger.warn('Could not register secondary business types (add them later in Settings):', e?.message)
         }
       }
-      logger.info('Registration completed successfully! Navigating to dashboard.')
-      navigate('/', { replace: true })
+      logger.info('Registration completed successfully!')
+      // Hosting choice made at signup: local proceeds to the dashboard; cloud/
+      // hybrid enter the guarded switch flow (connection checks + re-login) so
+      // the choice can never fail silently.
+      if (IS_LOCAL_APP && (hostingChoice === 'cloud' || hostingChoice === 'hybrid')) {
+        navigate(`/settings?tab=advanced&switch=${hostingChoice}`, { replace: true })
+      } else {
+        navigate('/', { replace: true })
+      }
     } catch (err) {
       logger.error('Registration signup API call failed:', err.message)
       setError(err.message || 'Registration failed. Please check details and try again.')
@@ -298,6 +344,39 @@ export default function Register() {
                 </details>
               )}
             </div>
+
+            {IS_LOCAL_APP && (
+              <div className="form-group" style={{ marginTop: '4px' }}>
+                <label>Where should your data live?</label>
+                <div data-testid="hosting-choice" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 4 }}>
+                  {[
+                    { key: 'local',  title: 'Local',  desc: 'On this device. Fast, fully offline.' },
+                    { key: 'hybrid', title: 'Hybrid', desc: 'Local speed + cloud backup & AI.' },
+                    { key: 'cloud',  title: 'Cloud',  desc: 'Cloud is the record. Multi-device.' },
+                  ].map(opt => (
+                    <button
+                      type="button"
+                      key={opt.key}
+                      onClick={() => setHostingChoice(opt.key)}
+                      style={{
+                        textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
+                        border: `1.5px solid ${hostingChoice === opt.key ? 'var(--accent)' : 'var(--border)'}`,
+                        background: hostingChoice === opt.key ? 'var(--accent-dim)' : 'var(--bg-2)',
+                        color: 'var(--text-primary)',
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: '0.86rem' }}>{opt.title}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.3 }}>{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+                {hostingChoice !== 'local' && (
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>
+                    You'll confirm the {hostingChoice} switch (connection checks + one re-login) right after signup.
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="form-group" style={{ marginTop: '4px' }}>
               <label htmlFor="username">Username or Email</label>

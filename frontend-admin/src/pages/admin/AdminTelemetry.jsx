@@ -6,8 +6,14 @@ import { Icon } from '../../components/icons'
 
 /**
  * AdminTelemetry — Phase B.2 + B.3 of the Admin Console plan.
- * Tabs: Events (filterable telemetry.jsonl viewer) · Devices (latest per
- * install) · Server Log (bizassist.log tail) · Audit (admin_audit.jsonl).
+ * Tabs: Events (filterable, DB-first telemetry viewer, scoped by bizid) ·
+ * Businesses (per-bizid rollup) · Devices (latest per install) ·
+ * Server Log (bizassist.log tail) · Audit (admin_audit.jsonl).
+ *
+ * Debugging model: every field install carries a stable `bizid` (business
+ * public_id). Filter by it to see exactly one business's diagnostics without
+ * grepping the global stream. Events are DB-first (persistent telemetry_events
+ * table — survives HF Space restarts) with a JSONL file fallback.
  */
 
 const LEVEL_COLORS = {
@@ -30,11 +36,17 @@ function fmtTime(iso) {
   try { return new Date(iso).toLocaleString() } catch { return iso }
 }
 
+function fmtBizid(b) {
+  if (!b) return '—'
+  return b.length > 14 ? b.slice(0, 14) + '…' : b
+}
+
 const TABS = [
-  { key: 'events',  label: 'Events' },
-  { key: 'devices', label: 'Devices' },
-  { key: 'server',  label: 'Server Log' },
-  { key: 'audit',   label: 'Audit Trail' },
+  { key: 'events',     label: 'Events' },
+  { key: 'businesses', label: 'Businesses' },
+  { key: 'devices',    label: 'Devices' },
+  { key: 'server',     label: 'Server Log' },
+  { key: 'audit',      label: 'Audit Trail' },
 ]
 
 export default function AdminTelemetry() {
@@ -44,13 +56,25 @@ export default function AdminTelemetry() {
 
   // Events
   const [events, setEvents] = useState([])
-  const [filters, setFilters] = useState({ device: '', event: '', level: '', limit: 200 })
+  const [filters, setFilters] = useState({ device: '', event: '', level: '', bizid: '', limit: 200 })
   const [expanded, setExpanded] = useState(null)
 
-  // Devices / server log / audit
+  // Storage health (persistent telemetry_events table)
+  const [stats, setStats] = useState(null)
+  const [archiving, setArchiving] = useState(false)
+
+  // Businesses / Devices / server log / audit
+  const [businesses, setBusinesses] = useState([])
   const [devices, setDevices] = useState([])
   const [serverLog, setServerLog] = useState({ path: null, lines: [] })
   const [audit, setAudit] = useState([])
+
+  const loadStats = useCallback(async () => {
+    try {
+      const res = await authFetch(`${API_BASE}/admin/telemetry/stats`)
+      if (res.ok) setStats(await res.json())
+    } catch (err) { console.error(err) }
+  }, [authFetch])
 
   const loadEvents = useCallback(async () => {
     setLoading(true)
@@ -59,6 +83,7 @@ export default function AdminTelemetry() {
       if (filters.device) params.set('device', filters.device)
       if (filters.event) params.set('event', filters.event)
       if (filters.level) params.set('level', filters.level)
+      if (filters.bizid) params.set('bizid', filters.bizid)
       params.set('limit', filters.limit || 200)
       const res = await authFetch(`${API_BASE}/admin/telemetry?${params}`)
       if (res.ok) setEvents((await res.json()).events || [])
@@ -68,7 +93,10 @@ export default function AdminTelemetry() {
   const loadTab = useCallback(async (t) => {
     setLoading(true)
     try {
-      if (t === 'devices') {
+      if (t === 'businesses') {
+        const res = await authFetch(`${API_BASE}/admin/telemetry/businesses`)
+        if (res.ok) setBusinesses(await res.json())
+      } else if (t === 'devices') {
         const res = await authFetch(`${API_BASE}/admin/telemetry/devices`)
         if (res.ok) setDevices(await res.json())
       } else if (t === 'server') {
@@ -81,26 +109,91 @@ export default function AdminTelemetry() {
     } catch (err) { console.error(err) } finally { setLoading(false) }
   }, [authFetch])
 
+  // Download the full telemetry table as gzip JSONL; optionally purge archived
+  // rows (max-id watermark — rows ingested during the download survive).
+  const downloadArchive = useCallback(async (purge) => {
+    if (purge && !window.confirm(
+      'Download a gzip archive of ALL telemetry rows and then DELETE the archived rows from the cloud DB?\n\n' +
+      'Rows that arrive during the download are kept. This is the recommended way to keep Supabase under the size cap.'
+    )) return
+    setArchiving(true)
+    try {
+      const res = await authFetch(`${API_BASE}/admin/telemetry/archive${purge ? '?purge=1' : ''}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const cd = res.headers.get('content-disposition') || ''
+      const m = cd.match(/filename="?([^"]+)"?/)
+      const name = (m && m[1]) || `telemetry-archive-${new Date().toISOString().slice(0, 10)}.jsonl.gz`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = name
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+      if (purge) { await loadStats(); if (tab === 'events') loadEvents() }
+    } catch (err) {
+      console.error(err)
+      alert(`Archive failed: ${err.message}`)
+    } finally { setArchiving(false) }
+  }, [authFetch, loadStats, loadEvents, tab])
+
+  const viewBusiness = (bizid) => {
+    setFilters(f => ({ ...f, bizid }))
+    setTab('events')
+  }
+
   useEffect(() => {
+    loadStats()
     if (tab === 'events') loadEvents()
     else loadTab(tab)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
+
+  const overCap = stats?.over_cap
+  const pct = stats ? Math.min(100, Math.round((stats.size_mb / (stats.max_mb || 200)) * 100)) : 0
 
   return (
     <div className="admin-main" style={{ margin: 0, padding: 0 }}>
       <div className="admin-header-row" style={{ borderBottom: '1.5px solid var(--border-color)', paddingBottom: 20 }}>
         <div className="admin-title-group">
           <h1>✦ TELEMETRY & LOGS</h1>
-          <p>Field-install diagnostics, server log tail, and the admin audit trail</p>
+          <p>Field-install diagnostics by business (bizid), server log tail, and the admin audit trail</p>
         </div>
-        <button className="btn-flush" onClick={() => (tab === 'events' ? loadEvents() : loadTab(tab))} style={{ padding: '10px 16px', fontSize: 13 }}>
+        <button className="btn-flush" onClick={() => { loadStats(); tab === 'events' ? loadEvents() : loadTab(tab) }} style={{ padding: '10px 16px', fontSize: 13 }}>
           ↻ Refresh
         </button>
       </div>
 
+      {/* ── Persistent-store health banner ── */}
+      {stats && (
+        <div style={{
+          marginTop: 16, padding: '12px 16px', borderRadius: 10,
+          border: `1px solid ${overCap ? '#c0392b' : 'var(--border-color)'}`,
+          background: overCap ? 'rgba(192,57,43,0.08)' : 'var(--hover-bg)',
+          display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'center', fontSize: 13,
+        }}>
+          <span><strong>{stats.rows.toLocaleString()}</strong> rows</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <strong>{stats.size_mb} MB</strong> / {stats.max_mb} MB cap
+            <span style={{ width: 90, height: 6, borderRadius: 3, background: 'var(--border-color)', overflow: 'hidden' }}>
+              <span style={{ display: 'block', height: '100%', width: `${pct}%`, background: overCap ? '#c0392b' : 'var(--accent-color)' }} />
+            </span>
+          </span>
+          <span style={{ opacity: 0.8 }}>retention {stats.retention_days}d · {fmtTime(stats.oldest)} → {fmtTime(stats.newest)}</span>
+          {overCap && <span style={{ color: '#c0392b', fontWeight: 700 }}>⚠ Over cap — archive &amp; purge now</span>}
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <button className="btn-flush" disabled={archiving} onClick={() => downloadArchive(false)} style={{ fontSize: 12 }}>
+              {archiving ? '…' : '⭳ Download (.gz)'}
+            </button>
+            <button className="btn-flush" disabled={archiving} onClick={() => downloadArchive(true)}
+                    style={{ fontSize: 12, color: '#c0392b', fontWeight: 600 }}>
+              Archive &amp; purge
+            </button>
+          </span>
+        </div>
+      )}
+
       {/* Sub-tabs */}
-      <div style={{ display: 'flex', gap: 6, marginTop: 20 }}>
+      <div style={{ display: 'flex', gap: 6, marginTop: 20, flexWrap: 'wrap' }}>
         {TABS.map(t => (
           <button
             key={t.key}
@@ -121,7 +214,10 @@ export default function AdminTelemetry() {
       {/* ── EVENTS ── */}
       {tab === 'events' && (
         <Section title="Telemetry Events (newest first)" icon={<Icon name="chart" size={16} />} noPad style={{ marginTop: 16 }}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '12px 16px 0' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '12px 16px 0', alignItems: 'center' }}>
+            <input placeholder="Business id (bizid)…" value={filters.bizid}
+                   onChange={e => setFilters(f => ({ ...f, bizid: e.target.value }))}
+                   style={{ fontSize: 12, padding: '6px 10px', fontFamily: "'Geist Mono',monospace" }} />
             <input placeholder="Device id contains…" value={filters.device}
                    onChange={e => setFilters(f => ({ ...f, device: e.target.value }))}
                    style={{ fontSize: 12, padding: '6px 10px' }} />
@@ -136,6 +232,12 @@ export default function AdminTelemetry() {
               <option value="error">error</option>
             </select>
             <button className="btn-flush" onClick={loadEvents} style={{ fontSize: 12 }}>Apply</button>
+            {filters.bizid && (
+              <button className="btn-flush" onClick={() => { setFilters(f => ({ ...f, bizid: '' })); setTimeout(loadEvents, 0) }}
+                      style={{ fontSize: 12, color: 'var(--accent-color)' }}>
+                Clear bizid ✕
+              </button>
+            )}
           </div>
 
           {loading ? <div className="vskel" style={{ margin: 16 }}></div> : (
@@ -146,6 +248,7 @@ export default function AdminTelemetry() {
                     <th>Received</th>
                     <th>Level</th>
                     <th>Event</th>
+                    <th>Business</th>
                     <th>Source</th>
                     <th>Device</th>
                     <th>Version</th>
@@ -154,7 +257,7 @@ export default function AdminTelemetry() {
                 </thead>
                 <tbody>
                   {events.length === 0 ? (
-                    <tr><td colSpan="7" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 30 }}>
+                    <tr><td colSpan="8" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 30 }}>
                       No telemetry events match. Installs report here automatically.
                     </td></tr>
                   ) : events.map((ev, i) => (
@@ -162,6 +265,14 @@ export default function AdminTelemetry() {
                       <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmtTime(ev.received_at)}</td>
                       <td><LevelBadge level={ev.level} /></td>
                       <td style={{ fontWeight: 600, color: ev.level === 'error' ? '#c0392b' : 'var(--text-color)' }}>{ev.event}</td>
+                      <td>
+                        {ev.bizid ? (
+                          <button className="btn-flush" title={ev.bizid} onClick={() => viewBusiness(ev.bizid)}
+                                  style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: 'var(--accent-color)' }}>
+                            {fmtBizid(ev.bizid)}
+                          </button>
+                        ) : <span style={{ opacity: 0.5 }}>—</span>}
+                      </td>
                       <td style={{ fontSize: 12 }}>{ev.source}</td>
                       <td style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, opacity: 0.8 }}>{(ev.device_id || '').slice(0, 12)}</td>
                       <td style={{ fontSize: 12 }}>{ev.app_version || '—'}<span style={{ opacity: 0.6 }}> {ev.platform || ''}</span></td>
@@ -188,6 +299,39 @@ export default function AdminTelemetry() {
         </Section>
       )}
 
+      {/* ── BUSINESSES ── */}
+      {tab === 'businesses' && (
+        <Section title="Businesses reporting telemetry (by bizid)" icon={<Icon name="users" size={16} />} noPad style={{ marginTop: 16 }}>
+          {loading ? <div className="vskel" style={{ margin: 16 }}></div> : (
+            <div className="admin-table-wrap" style={{ overflowX: 'auto', width: '100%' }}>
+              <table className="admin-table" style={{ width: '100%', marginTop: 12 }}>
+                <thead>
+                  <tr><th>Business (bizid)</th><th>Events</th><th>Last Write</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {businesses.length === 0 ? (
+                    <tr><td colSpan="4" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 30 }}>
+                      No business-tagged telemetry yet. Installs that have logged in send their bizid automatically.
+                    </td></tr>
+                  ) : businesses.map((b, i) => (
+                    <tr key={i}>
+                      <td style={{ fontFamily: "'Geist Mono',monospace", fontSize: 12 }} title={b.bizid}>{b.bizid}</td>
+                      <td style={{ fontWeight: 600 }}>{b.events != null ? b.events.toLocaleString() : '—'}</td>
+                      <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{fmtTime(b.last_write)}</td>
+                      <td>
+                        <button className="btn-flush" onClick={() => viewBusiness(b.bizid)} style={{ fontSize: 12, color: 'var(--accent-color)' }}>
+                          View events →
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
+      )}
+
       {/* ── DEVICES ── */}
       {tab === 'devices' && (
         <Section title="Devices (latest report per install)" icon={<Icon name="users" size={16} />} noPad style={{ marginTop: 16 }}>
@@ -195,14 +339,26 @@ export default function AdminTelemetry() {
             <div className="admin-table-wrap" style={{ overflowX: 'auto', width: '100%' }}>
               <table className="admin-table" style={{ width: '100%', marginTop: 12 }}>
                 <thead>
-                  <tr><th>Device</th><th>App Version</th><th>Platform</th><th>Source</th><th>Last Seen</th><th>Last Event</th></tr>
+                  <tr><th>Device</th><th>Business(es)</th><th>App Version</th><th>Platform</th><th>Source</th><th>Last Seen</th><th>Last Event</th></tr>
                 </thead>
                 <tbody>
                   {devices.length === 0 ? (
-                    <tr><td colSpan="6" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 30 }}>No devices have reported telemetry yet.</td></tr>
+                    <tr><td colSpan="7" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 30 }}>No devices have reported telemetry yet.</td></tr>
                   ) : devices.map((d, i) => (
                     <tr key={i}>
                       <td style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11 }}>{d.device_id}</td>
+                      <td style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11 }}>
+                        {Array.isArray(d.bizids) && d.bizids.length
+                          ? (
+                            <span title={d.bizids.join(', ')}>
+                              <button className="btn-flush" onClick={() => viewBusiness(d.bizids[0])} style={{ fontSize: 11, color: 'var(--accent-color)' }}>
+                                {fmtBizid(d.bizids[0])}
+                              </button>
+                              {d.shared && <span className="tag" style={{ marginLeft: 6, fontSize: 9 }}>+{d.bizids.length - 1} shared</span>}
+                            </span>
+                          )
+                          : (d.last_bizid ? fmtBizid(d.last_bizid) : <span style={{ opacity: 0.5 }}>—</span>)}
+                      </td>
                       <td style={{ fontWeight: 600 }}>{d.app_version || '—'}</td>
                       <td>{d.platform || '—'}</td>
                       <td style={{ fontSize: 12 }}>{d.source}</td>

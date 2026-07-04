@@ -243,12 +243,13 @@ def get_telemetry(device: Optional[str] = None, event: Optional[str] = None,
                   bizid: Optional[str] = None,
                   limit: int = Query(200, ge=1, le=1000),
                   current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
-    """Filterable, newest-first telemetry view. With ?bizid= it reads that
-    business's segregated file (logs/businesses/<bizid>/telemetry.jsonl)."""
+    """Filterable, newest-first telemetry view. DB-first (persistent
+    telemetry_events table); JSONL file fallback. ?bizid= scopes to one
+    business."""
     try:
         svc.require_admin(current_user["id"], db)
         return svc.read_telemetry(device=device, event=event, level=level,
-                                  since=since, bizid=bizid, limit=limit)
+                                  since=since, bizid=bizid, limit=limit, db=db)
     except HTTPException: raise
     except Exception as e:
         logger.error("admin/telemetry: %s", e, exc_info=True)
@@ -257,10 +258,10 @@ def get_telemetry(device: Optional[str] = None, event: Optional[str] = None,
 
 @router.get("/admin/telemetry/businesses")
 def get_telemetry_businesses(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
-    """Per-business telemetry folders (logs/businesses/<bizid>/)."""
+    """Businesses with telemetry (DB-first; folder fallback)."""
     try:
         svc.require_admin(current_user["id"], db)
-        return svc.telemetry_businesses()
+        return svc.telemetry_businesses(db=db)
     except HTTPException: raise
     except Exception as e:
         logger.error("admin/telemetry/businesses: %s", e, exc_info=True)
@@ -272,10 +273,55 @@ def get_telemetry_devices(current_user: dict = Depends(get_active_user), db: Ses
     """Latest entry per device — app version, platform, last seen."""
     try:
         svc.require_admin(current_user["id"], db)
-        return svc.telemetry_devices()
+        return svc.telemetry_devices(db=db)
     except HTTPException: raise
     except Exception as e:
         logger.error("admin/telemetry/devices: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/admin/telemetry/stats")
+def get_telemetry_stats(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """Health of the persistent telemetry store: rows, bounds, size vs the
+    TELEMETRY_MAX_MB cap — powers the Admin Console storage panel."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        from services import telemetry_maintenance as tm
+        return tm.stats(db)
+    except HTTPException: raise
+    except Exception as e:
+        logger.error("admin/telemetry/stats: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/admin/telemetry/archive")
+def download_telemetry_archive(purge: bool = Query(False),
+                               current_user: dict = Depends(get_active_user),
+                               db: Session = Depends(get_db)):
+    """Download EVERY telemetry row as gzip JSONL (telemetry-archive-*.jsonl.gz).
+    With ?purge=1 the archived rows are deleted after the archive is built
+    (max-id watermark: rows ingested during the export are kept). This is the
+    'when the store hits ~200 MB, archive to a file on my machine and clean
+    the cloud' flow."""
+    try:
+        svc.require_admin(current_user["id"], db,
+                          action="telemetry_archive_purge" if purge else None)
+        from services import telemetry_maintenance as tm
+        from fastapi.responses import Response
+        blob, filename, max_id = tm.build_archive(db)
+        purged = tm.purge_archived(db, max_id) if purge else 0
+        return Response(
+            content=blob,
+            media_type="application/gzip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Telemetry-Archived-Max-Id": str(max_id),
+                "X-Telemetry-Purged-Rows": str(purged),
+            },
+        )
+    except HTTPException: raise
+    except Exception as e:
+        logger.error("admin/telemetry/archive: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

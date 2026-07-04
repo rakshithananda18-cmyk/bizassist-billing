@@ -52,11 +52,13 @@ export default function HostingOnboardingModal() {
    * Don't hard-switch from here — switching backends requires the guarded
    * flow in Settings → Advanced (connection checks, preflight checklist,
    * consequence warning, migration) and forces a re-login by design.
-   * Send the user there instead.
+   * Deep-link the user straight INTO that flow (?switch=<mode> auto-opens
+   * the preflight), so choosing Cloud/Hybrid here never fails silently.
    */
-  const handleUpgrade = () => {
+  const handleUpgrade = (mode) => {
     dismiss()
-    navigate('/settings?tab=advanced')
+    const target = mode === 'cloud' || mode === 'hybrid' ? mode : 'hybrid'
+    navigate(`/settings?tab=advanced&switch=${target}`)
   }
 
   if (!show) return null

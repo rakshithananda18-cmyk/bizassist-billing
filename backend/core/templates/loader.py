@@ -23,13 +23,46 @@ import copy
 import json
 import logging
 import os
+import sys
 from functools import lru_cache
 from typing import Optional
 
 logger = logging.getLogger("bizassist.templates")
 
-_CONFIG_DIR = os.path.join(os.path.dirname(__file__), "configs")
+
+def _resolve_config_dir() -> str:
+    """
+    Locate configs/ in BOTH dev and frozen (PyInstaller) runs.
+
+    Dev:     <repo>/backend/core/templates/configs (next to this file).
+    Frozen:  PyInstaller puts pure modules inside the bundle archive, so
+             __file__ may point somewhere that has no sibling configs/ dir.
+             The .spec ships the JSONs as data files at
+             <sys._MEIPASS>/core/templates/configs — check there too.
+    """
+    candidates = [os.path.join(os.path.dirname(__file__), "configs")]
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.append(os.path.join(meipass, "core", "templates", "configs"))
+    # onedir builds: data files live next to the executable
+    if getattr(sys, "frozen", False):
+        candidates.append(os.path.join(os.path.dirname(sys.executable), "core", "templates", "configs"))
+        candidates.append(os.path.join(os.path.dirname(sys.executable), "_internal", "core", "templates", "configs"))
+    for c in candidates:
+        if os.path.isdir(c):
+            return c
+    logger.error("[TEMPLATE] configs directory not found — tried: %s", candidates)
+    return candidates[0]
+
+
+_CONFIG_DIR = _resolve_config_dir()
 FALLBACK_KEY = "general"
+
+# Absolute last resort so the signup picker is never empty (e.g. a packaged
+# build that somehow shipped without the config JSONs).
+_BUILTIN_FALLBACK_TEMPLATES = (
+    {"key": "general", "label": "General / Retail Store"},
+)
 
 # Top-level sections an override is allowed to touch. An override may deep-merge
 # into these but may NOT add a brand-new top-level key (keeps templates honest).
@@ -53,14 +86,25 @@ def _load_raw(key: str) -> Optional[dict]:
 
 @lru_cache(maxsize=1)
 def list_templates() -> tuple:
-    """All available templates as a tuple of {key,label} (for the picker)."""
+    """All available templates as a tuple of {key,label} (for the picker).
+
+    Never returns empty: if the configs dir is missing/unreadable (a broken
+    packaged build), fall back to the built-in minimal list so the signup
+    Business Category dropdown always renders.
+    """
     out = []
-    for fname in sorted(os.listdir(_CONFIG_DIR)):
-        if not fname.endswith(".json"):
-            continue
-        cfg = _load_raw(fname[:-5])
-        if cfg:
-            out.append({"key": cfg["key"], "label": cfg.get("label", cfg["key"])})
+    try:
+        for fname in sorted(os.listdir(_CONFIG_DIR)):
+            if not fname.endswith(".json"):
+                continue
+            cfg = _load_raw(fname[:-5])
+            if cfg:
+                out.append({"key": cfg["key"], "label": cfg.get("label", cfg["key"])})
+    except OSError as e:
+        logger.error("[TEMPLATE] cannot list configs dir %s: %s", _CONFIG_DIR, e)
+    if not out:
+        logger.error("[TEMPLATE] no templates found — serving built-in fallback list")
+        out = [dict(t) for t in _BUILTIN_FALLBACK_TEMPLATES]
     return tuple(out)
 
 

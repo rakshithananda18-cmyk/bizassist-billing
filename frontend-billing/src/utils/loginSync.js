@@ -19,7 +19,7 @@ import { logger } from './logger'
  * `_upsert_users` copies the cloud BizID onto the local owner). Best-effort:
  * any failure is swallowed — login is already complete.
  */
-export async function reconcileBizIdOnLogin(token) {
+export async function reconcileBizIdOnLogin(token, cloudToken = null) {
   try {
     if (!IS_LOCAL_APP) return
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return
@@ -28,12 +28,20 @@ export async function reconcileBizIdOnLogin(token) {
       && localStorage.getItem('bizassist_hosting_mode')) || 'local'
     if (mode === 'cloud') return   // cloud is the identity home — nothing to reconcile locally
 
-    const headers = {
+    // IMPORTANT: tokens are backend-specific. The local backend signs JWTs
+    // with its OWN secret (random per install on packaged builds), so the
+    // cloud rejects them with 401 "Invalid token" — which both breaks this
+    // check AND floods the cloud auth log. Cloud reads therefore require a
+    // cloud-issued token; without one we skip the cloud half quietly.
+    const headersFor = (t) => ({
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
+      ...(t ? { Authorization: `Bearer ${t}` } : {}),
+    })
+    const localHeaders = headersFor(token)
+    const cloudHeaders = cloudToken ? headersFor(cloudToken) : null
 
-    const readBiz = async (base) => {
+    const readBiz = async (base, headers) => {
+      if (!headers) return null
       try {
         const r = await fetch(`${base}/profile`, { headers })
         if (!r.ok) return null
@@ -42,9 +50,13 @@ export async function reconcileBizIdOnLogin(token) {
       } catch { return null }
     }
 
+    if (!cloudHeaders) {
+      logger.info('[LOGIN-IDENTITY] No cloud-issued token available — skipping cloud identity check (offline or no cloud account).')
+    }
+
     const [cloudBiz, localBiz] = await Promise.all([
-      readBiz(CLOUD_URL),
-      readBiz(LOCAL_URL),
+      readBiz(CLOUD_URL, cloudHeaders),
+      readBiz(LOCAL_URL, localHeaders),
     ])
 
     if (!cloudBiz) {
@@ -63,7 +75,8 @@ export async function reconcileBizIdOnLogin(token) {
     // Cheap, read-only COUNT comparison (no data pulled — stays gated). If the
     // cloud has meaningfully more records, nudge the user to sync. We never
     // auto-pull; we just surface that the local copy may be behind.
-    const readTotal = async (base) => {
+    const readTotal = async (base, headers) => {
+      if (!headers) return null
       try {
         const r = await fetch(`${base}/api/data-transfer/count`, { headers })
         if (!r.ok) return null
@@ -72,8 +85,8 @@ export async function reconcileBizIdOnLogin(token) {
       } catch { return null }
     }
     const [cloudTotal, localTotal] = await Promise.all([
-      readTotal(CLOUD_URL),
-      readTotal(LOCAL_URL),
+      readTotal(CLOUD_URL, cloudHeaders),
+      readTotal(LOCAL_URL, localHeaders),
     ])
     if (cloudTotal != null && localTotal != null && cloudTotal > localTotal) {
       logger.info(`[LOGIN-SENSE] Cloud has more data than this device (cloud=${cloudTotal}, local=${localTotal}) — nudging to sync.`)

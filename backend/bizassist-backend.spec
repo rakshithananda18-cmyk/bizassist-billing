@@ -51,6 +51,11 @@ for pkg in ("chromadb", "tiktoken_ext", "onnxruntime", "tokenizers", "transforme
 # Alembic migrations so the frozen app can migrate the user's DB.
 datas += [("alembic", "alembic"), ("alembic.ini", ".")]
 
+# Business template configs (core/templates/configs/*.json). Without these the
+# packaged app's /business/templates returns nothing and the signup "Business
+# Category" dropdown is empty in the desktop app.
+datas += [("core/templates/configs", "core/templates/configs")]
+
 a = Analysis(
     ["server_entry.py"],
     pathex=["."],

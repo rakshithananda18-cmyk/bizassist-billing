@@ -101,8 +101,8 @@ export function AuthProvider({ children }) {
    * (POST /api/sync/cloud-token). Best-effort — never blocks or fails login.
    */
   const _provisionCloudSyncToken = useCallback(async (username, password, localToken, cloudToken = null) => {
-    if (!IS_LOCAL_APP || !localToken) return
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+    if (!IS_LOCAL_APP || !localToken) return null
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return null
     try {
       let token = cloudToken
       if (!token) {
@@ -111,18 +111,20 @@ export function AuthProvider({ children }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password }),
         })
-        if (!res.ok) return
+        if (!res.ok) return null
         token = (await res.json())?.token
       }
-      if (!token) return
+      if (!token) return null
       await fetch(`${LOCAL_URL}/api/sync/cloud-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localToken}` },
         body: JSON.stringify({ token }),
       })
       logger.info('[SYNC] Cloud sync token provisioned (24h, business-scoped)')
+      return token
     } catch (err) {
       logger.debug('[SYNC] Cloud sync token provisioning skipped:', err?.message)
+      return null
     }
   }, [])
 
@@ -139,10 +141,12 @@ export function AuthProvider({ children }) {
       const data = await res.json()
       logger.info('Login successful for user:', data.username, 'role:', data.role)
       _saveSession(data)
-      // Fire-and-forget: lightweight BizID identity check only (no data pull).
-      reconcileBizIdOnLogin(data.token || data.access_token)
-      // Fire-and-forget: provision the cloud sync token for the hybrid worker.
+      // Fire-and-forget: provision the cloud sync token first, then run the
+      // BizID identity check WITH that cloud token. Never send a locally
+      // signed JWT to the cloud — its JWT_SECRET differs on packaged installs,
+      // so the cloud would (correctly) reject it with 401 "Invalid token".
       _provisionCloudSyncToken(username, password, data.token || data.access_token)
+        .then(cloudTok => reconcileBizIdOnLogin(data.token || data.access_token, cloudTok))
       return
     }
 
@@ -191,7 +195,7 @@ export function AuthProvider({ children }) {
             _saveSession(localData)
             // Sense divergence and pop the "Cloud → Local Sync" nudge — on a fresh
             // device the cloud always has more, so this surfaces the data popup.
-            reconcileBizIdOnLogin(localData.token || localData.access_token)
+            reconcileBizIdOnLogin(localData.token || localData.access_token, cloudData.token)
             // We already hold a fresh cloud token from the fresh-device login — store it.
             _provisionCloudSyncToken(username, password, localData.token || localData.access_token, cloudData.token)
             return
@@ -605,4 +609,3 @@ export const useBusinessConfig = () => {
     t
   }
 }
-

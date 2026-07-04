@@ -173,12 +173,71 @@ def _business_telemetry_path(bizid: str) -> str:
     return os.path.join("logs", "businesses", token, "telemetry.jsonl") if token else ""
 
 
+def _read_telemetry_db(device: str = None, event: str = None, level: str = None,
+                       since: str = None, bizid: str = None, limit: int = 200,
+                       db=None):
+    """DB-first reader over telemetry_events (the durable store — the JSONL
+    files are ephemeral on the HF Space). Returns None when the table is
+    unavailable/empty so the caller can fall back to the files."""
+    try:
+        from core.models import TelemetryEvent
+        q = db.query(TelemetryEvent)
+        if bizid:
+            q = q.filter(TelemetryEvent.bizid == bizid)
+        if device:
+            q = q.filter(TelemetryEvent.device_id.contains(device))
+        if event:
+            q = q.filter(TelemetryEvent.event == event)
+        if level:
+            q = q.filter(TelemetryEvent.level == level)
+        if since:
+            try:
+                since_dt = datetime.fromisoformat(str(since).replace("Z", "+00:00")).replace(tzinfo=None)
+                q = q.filter(TelemetryEvent.received_at >= since_dt)
+            except Exception:
+                pass
+        total = q.count()
+        if total == 0:
+            return None
+        rows = q.order_by(TelemetryEvent.received_at.desc(), TelemetryEvent.id.desc()).limit(limit).all()
+        events = []
+        for r in rows:
+            rec = {
+                "received_at": r.received_at.isoformat() if r.received_at else None,
+                "source": r.source, "device_id": r.device_id,
+                "level": r.level, "event": r.event,
+            }
+            if r.at:           rec["at"] = r.at
+            if r.app_version:  rec["app_version"] = r.app_version
+            if r.platform:     rec["platform"] = r.platform
+            if r.bizid:        rec["bizid"] = r.bizid
+            if r.relay_device: rec["relay_device"] = r.relay_device
+            if r.relayed_at:   rec["relayed_at"] = r.relayed_at
+            if r.payload:
+                try:
+                    rec["payload"] = json.loads(r.payload)
+                except Exception:
+                    rec["payload"] = r.payload
+            events.append(rec)
+        return {"events": events, "total_scanned": total, "path": "db:telemetry_events"}
+    except Exception:
+        return None
+
+
 def read_telemetry(device: str = None, event: str = None, level: str = None,
-                   since: str = None, bizid: str = None, limit: int = 200) -> dict:
-    """Newest-first, filterable reader. With a bizid filter, reads that
-    business's segregated file (logs/businesses/<bizid>/) when it exists —
-    falling back to filtering the global stream."""
+                   since: str = None, bizid: str = None, limit: int = 200,
+                   db=None) -> dict:
+    """Newest-first, filterable reader. Prefers the persistent DB table
+    (survives HF restarts); falls back to the JSONL files. With a bizid
+    filter, reads that business's segregated file when it exists."""
     limit = max(1, min(int(limit or 200), 1000))
+
+    if db is not None:
+        db_out = _read_telemetry_db(device=device, event=event, level=level,
+                                    since=since, bizid=bizid, limit=limit, db=db)
+        if db_out is not None:
+            return db_out
+
     path = _telemetry_path()
     filtering_bizid = None
     if bizid:
@@ -223,10 +282,43 @@ def read_telemetry(device: str = None, event: str = None, level: str = None,
     return {"events": rows, "total_scanned": scanned, "path": path}
 
 
-def telemetry_devices() -> list:
+def telemetry_devices(db=None) -> list:
     """Aggregate per device: app version, platform, last seen — and every
     BizID the device has reported under, so shared devices (multiple
-    businesses on one install) are visible at a glance."""
+    businesses on one install) are visible at a glance. DB-first, JSONL
+    fallback."""
+    if db is not None:
+        try:
+            from core.models import TelemetryEvent
+            from sqlalchemy import func
+            if (db.query(func.count(TelemetryEvent.id)).scalar() or 0) > 0:
+                devices = {}
+                for r in db.query(TelemetryEvent).order_by(TelemetryEvent.received_at.asc()).all():
+                    did = r.device_id
+                    if not did:
+                        continue
+                    cur = devices.setdefault(did, {"device_id": did, "_bizids": set(), "last_seen": ""})
+                    if r.bizid:
+                        cur["_bizids"].add(r.bizid)
+                    seen = r.received_at.isoformat() if r.received_at else ""
+                    if seen >= (cur.get("last_seen") or ""):
+                        cur.update({
+                            "app_version": r.app_version, "platform": r.platform,
+                            "source": r.source, "last_seen": seen,
+                            "last_event": r.event, "last_level": r.level,
+                            "last_bizid": r.bizid or cur.get("last_bizid"),
+                        })
+                out = []
+                for d in devices.values():
+                    bizids = sorted(d.pop("_bizids"))
+                    d["bizids"] = bizids
+                    d["bizid_count"] = len(bizids)
+                    d["shared"] = len(bizids) > 1
+                    out.append(d)
+                return sorted(out, key=lambda d: d.get("last_seen") or "", reverse=True)
+        except Exception:
+            pass  # fall back to file
+
     path = _telemetry_path()
     if not os.path.exists(path):
         return []
@@ -286,8 +378,28 @@ def server_log_tail(lines: int = 200, q: str = None) -> dict:
     return {"path": None, "filter": q, "lines": []}
 
 
-def telemetry_businesses() -> list:
-    """List the per-business telemetry folders (logs/businesses/<bizid>/)."""
+def telemetry_businesses(db=None) -> list:
+    """Businesses that have telemetry. DB-first (durable), folder fallback."""
+    if db is not None:
+        try:
+            from core.models import TelemetryEvent
+            from sqlalchemy import func
+            rows = (db.query(
+                        TelemetryEvent.bizid,
+                        func.count(TelemetryEvent.id),
+                        func.max(TelemetryEvent.received_at),
+                    )
+                    .filter(TelemetryEvent.bizid.isnot(None))
+                    .group_by(TelemetryEvent.bizid)
+                    .all())
+            if rows:
+                return [{
+                    "bizid": b, "events": int(n),
+                    "last_write": mx.isoformat() if mx else None,
+                } for b, n, mx in sorted(rows, key=lambda r: r[0] or "")]
+        except Exception:
+            pass  # fall back to folders
+
     root = os.path.join("logs", "businesses")
     if not os.path.isdir(root):
         return []

@@ -12,6 +12,7 @@ SOLID design:
 
 Backward compatibility: all original columns kept, new columns nullable.
 """
+from __future__ import annotations  # PEP 604 (X | Y) on Python 3.9 dev venvs
 
 import uuid
 from datetime import datetime

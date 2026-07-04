@@ -50,6 +50,11 @@ _PULL_CURSOR: Dict[int, str] = {}
 # a SyncLog row on a state *change* (online↔offline), not every failed cycle.
 _OFFLINE_STATE: Dict[int, bool] = {}
 
+# Businesses whose SELF-SIGNED tokens the cloud has rejected (JWT_SECRET
+# mismatch). We stop self-signing for them until a cloud-issued token arrives,
+# instead of spamming the cloud auth log every 15 s.
+_SELF_SIGNED_REJECTED: Dict[int, bool] = {}
+
 # IMPORTANT: The local backend and HF Space MUST share the same JWT_SECRET env variable.
 # If they differ, the sync worker's locally-signed tokens will be rejected by the cloud
 # with HTTP 401 "Invalid token". Set JWT_SECRET to the same value in both:
@@ -86,6 +91,8 @@ def store_cloud_token(business_id: int, token: str) -> None:
     m = _load_token_map()
     m[str(business_id)] = token
     _save_token_map(m)
+    # A fresh cloud-issued token clears the self-signed backoff.
+    _SELF_SIGNED_REJECTED.pop(business_id, None)
     logger.info("[SYNC_WORKER] Cloud sync token stored for business %s", business_id)
 
 
@@ -248,7 +255,15 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
 
     # Prefer the CLOUD-issued token provisioned at login (standard device flow).
     # Self-signed fallback works only when local & cloud share JWT_SECRET.
-    token = _get_cloud_token(business_id) or create_access_token({
+    _cloud_token = _get_cloud_token(business_id)
+    used_self_signed = _cloud_token is None
+    if used_self_signed and _SELF_SIGNED_REJECTED.get(business_id):
+        # The cloud already rejected our self-signed tokens (secrets differ —
+        # the default on packaged installs). Retrying every cycle only floods
+        # the cloud auth log with "Token rejected — invalid token". Wait until
+        # the next owner login provisions a cloud-issued token.
+        return
+    token = _cloud_token or create_access_token({
         "id": business_id,
         "user_id": user.id,
         "username": user.username,
@@ -314,9 +329,21 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
             err_msg = str(e)
             logger.error("[SYNC_WORKER] Push failed for business_id=%s: %s", business_id, e)
             
-            # If 401, invalidate cached token so next run fetches a fresh one
+            # If 401, invalidate cached token so next run fetches a fresh one.
+            # If the REJECTED token was self-signed, stop self-signing for this
+            # business until a cloud-issued token is provisioned (owner login) —
+            # otherwise we'd spam the cloud with invalid tokens every cycle.
             if "401" in err_msg:
                 _invalidate_cloud_token(business_id)
+                if used_self_signed and not _SELF_SIGNED_REJECTED.get(business_id):
+                    _SELF_SIGNED_REJECTED[business_id] = True
+                    logger.error(
+                        "[SYNC_WORKER] Cloud rejected our SELF-SIGNED token for business %s — "
+                        "local & cloud JWT_SECRETs differ (normal on packaged installs). "
+                        "Hybrid sync pauses until the owner logs in again (which provisions "
+                        "a cloud-issued sync token), or set the same JWT_SECRET on both ends.",
+                        business_id,
+                    )
             
             # Store error on the first pending queue item
             queue_items[0].error = f"Push failed: {err_msg}"

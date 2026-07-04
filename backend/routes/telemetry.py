@@ -71,6 +71,59 @@ def _business_jsonl_path(bizid: str) -> Path:
     return p / "telemetry.jsonl"
 
 
+def _persist_records_to_db(records: List[Dict[str, Any]]) -> int:
+    """
+    Durable copy → telemetry_events table (Supabase Postgres on the cloud;
+    SQLite locally). The JSONL files above are EPHEMERAL on the HF Space, so
+    the DB is what the Admin Console actually reads. Best-effort: telemetry
+    must never break the app, so all failures are swallowed (logged once).
+    """
+    if not records:
+        return 0
+    try:
+        from database.db import SessionLocal
+        from core.models import TelemetryEvent
+
+        def _parse_dt(value):
+            if not value:
+                return datetime.utcnow()
+            try:
+                return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(tzinfo=None)
+            except Exception:
+                return datetime.utcnow()
+
+        db = SessionLocal()
+        try:
+            for rec in records:
+                payload = rec.get("payload")
+                if payload is not None and not isinstance(payload, str):
+                    try:
+                        payload = json.dumps(payload, default=str)[:_MAX_PAYLOAD_CHARS]
+                    except Exception:
+                        payload = str(payload)[:_MAX_PAYLOAD_CHARS]
+                db.add(TelemetryEvent(
+                    received_at=_parse_dt(rec.get("received_at")),
+                    at=(str(rec.get("at"))[:64] if rec.get("at") else None),
+                    source=(rec.get("source") or "unknown")[:40],
+                    device_id=(rec.get("device_id") or "unknown")[:64],
+                    app_version=(rec.get("app_version") or None),
+                    platform=(rec.get("platform") or None),
+                    bizid=rec.get("bizid"),
+                    level=(rec.get("level") or "info")[:10],
+                    event=(rec.get("event") or "unknown")[:80],
+                    payload=payload,
+                    relay_device=rec.get("relay_device"),
+                    relayed_at=(str(rec.get("relayed_at"))[:64] if rec.get("relayed_at") else None),
+                ))
+            db.commit()
+            return len(records)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning("[TELEMETRY] DB persist skipped (%s) — JSONL/console copy still made", e)
+        return 0
+
+
 @router.post("/api/telemetry/log")
 def ingest_telemetry(batch: TelemetryBatch):
     """
@@ -85,6 +138,7 @@ def ingest_telemetry(batch: TelemetryBatch):
     received_at = datetime.now(timezone.utc).isoformat()
     events = batch.events[:_MAX_EVENTS_PER_BATCH]
     bizid = _safe_bizid(batch.bizid) if batch.bizid else None
+    db_records = []
 
     for ev in events:
         payload_str = ""
@@ -116,6 +170,7 @@ def ingest_telemetry(batch: TelemetryBatch):
         if batch.platform:     record["platform"] = batch.platform
         if bizid:              record["bizid"] = bizid
         if ev.payload:         record["payload"] = ev.payload
+        db_records.append(record)
 
         # Append JSONL for grep-able post-mortems (best-effort) — global stream
         # plus the per-business mirror when the batch carries a bizid.
@@ -128,6 +183,9 @@ def ingest_telemetry(batch: TelemetryBatch):
                     f.write(data)
         except Exception:
             pass  # read-only FS (HF) — logger output above still lands
+
+    # Durable copy (survives HF Space restarts) — best-effort.
+    _persist_records_to_db(db_records)
 
     return {"status": "ok", "accepted": len(events)}
 
@@ -154,6 +212,7 @@ def import_telemetry(body: TelemetryImport):
 
     relayed_at = datetime.now(timezone.utc).isoformat()
     accepted = 0
+    db_records = []
     for rec in body.records[:_MAX_IMPORT_RECORDS]:
         if not isinstance(rec, dict) or not rec.get("event") or not rec.get("device_id"):
             continue                              # skip malformed lines silently
@@ -166,6 +225,7 @@ def import_telemetry(body: TelemetryImport):
             rec["bizid"] = bizid
         else:
             rec.pop("bizid", None)
+        db_records.append(rec)
         try:
             data = json.dumps(rec, default=str)[:_MAX_PAYLOAD_CHARS * 2] + "\n"
             with _jsonl_path().open("a", encoding="utf-8") as f:
@@ -176,6 +236,11 @@ def import_telemetry(body: TelemetryImport):
             accepted += 1
         except Exception:
             pass  # read-only FS — nothing to do
+
+    # Durable copy (survives HF Space restarts) — best-effort. Counts as
+    # accepted even when the FS copy failed (read-only container FS).
+    persisted = _persist_records_to_db(db_records)
+    accepted = max(accepted, persisted)
 
     logger.info(f"[TELEMETRY] Imported {accepted} relayed records"
                 f"{' from ' + body.relay_device if body.relay_device else ''}")

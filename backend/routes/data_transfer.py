@@ -29,6 +29,7 @@ Missing-table safety
 --------------------
 All table accesses are guarded with `if table_name in _existing_tables(db)`.
 """
+from __future__ import annotations  # PEP 604 (X | Y) on Python 3.9 dev venvs
 
 import logging
 from datetime import datetime, timezone
