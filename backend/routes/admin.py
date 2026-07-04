@@ -481,3 +481,19 @@ def download_feedback_logs(feedback_id: int, current_user: dict = Depends(get_ac
     except Exception as e:
         logger.error("admin/feedback/logs: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+from fastapi import Query
+
+@router.get("/admin/table-alterations")
+def get_admin_table_alterations(limit: int = Query(100, ge=1, le=1000), current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """Retrieve database table alterations (audit logs) from the system."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        from database.models import TableAlteration
+        alterations = db.query(TableAlteration).order_by(TableAlteration.id.desc()).limit(limit).all()
+        return alterations
+    except HTTPException: raise
+    except Exception as e:
+        logger.error("admin/table-alterations: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
