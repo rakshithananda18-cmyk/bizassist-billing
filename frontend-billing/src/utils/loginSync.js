@@ -40,13 +40,12 @@ export async function reconcileBizIdOnLogin(token, cloudToken = null) {
     const localHeaders = headersFor(token)
     const cloudHeaders = cloudToken ? headersFor(cloudToken) : null
 
-    const readBiz = async (base, headers) => {
+    const readProfile = async (base, headers) => {
       if (!headers) return null
       try {
         const r = await fetch(`${base}/profile`, { headers })
         if (!r.ok) return null
-        const p = await r.json()
-        return p?.public_id || null
+        return await r.json()
       } catch { return null }
     }
 
@@ -54,10 +53,18 @@ export async function reconcileBizIdOnLogin(token, cloudToken = null) {
       logger.info('[LOGIN-IDENTITY] No cloud-issued token available — skipping cloud identity check (offline or no cloud account).')
     }
 
-    const [cloudBiz, localBiz] = await Promise.all([
-      readBiz(CLOUD_URL, cloudHeaders),
-      readBiz(LOCAL_URL, localHeaders),
+    const [cloudProfile, localProfile] = await Promise.all([
+      readProfile(CLOUD_URL, cloudHeaders),
+      readProfile(LOCAL_URL, localHeaders),
     ])
+    const cloudBiz = cloudProfile?.public_id || null
+    const localBiz = localProfile?.public_id || null
+
+    // Cloud is the account authority for the premium flag. The cross-device sync
+    // nudges below are a PAID feature, so we only surface them for premium
+    // accounts. Free accounts still work fully offline — they just don't get the
+    // sync prompt.
+    const isPremium = !!(cloudProfile?.is_premium ?? localProfile?.is_premium)
 
     if (!cloudBiz) {
       // No cloud identity reachable (offline / no cloud account yet) — nothing to do.
@@ -71,10 +78,16 @@ export async function reconcileBizIdOnLogin(token, cloudToken = null) {
       logger.info(`[LOGIN-IDENTITY] BizID consistent (${localBiz}).`)
     }
 
-    // ── Divergence sense: does the cloud hold data this device doesn't have? ──
-    // Cheap, read-only COUNT comparison (no data pulled — stays gated). If the
-    // cloud has meaningfully more records, nudge the user to sync. We never
-    // auto-pull; we just surface that the local copy may be behind.
+    // ── Divergence sense (PREMIUM only): is either side missing data the other
+    // side holds? Cheap, read-only COUNT comparison — no data is pulled or
+    // pushed here (that stays gated behind the user pressing "Sync now"). We
+    // surface it on EVERY login (not just the first) so a premium user never
+    // silently works on a stale copy.
+    if (!isPremium) {
+      logger.info('[LOGIN-SENSE] Account is free-tier — skipping cross-device sync nudge (premium feature).')
+      return
+    }
+
     const readTotal = async (base, headers) => {
       if (!headers) return null
       try {
@@ -88,11 +101,25 @@ export async function reconcileBizIdOnLogin(token, cloudToken = null) {
       readTotal(CLOUD_URL, cloudHeaders),
       readTotal(LOCAL_URL, localHeaders),
     ])
-    if (cloudTotal != null && localTotal != null && cloudTotal > localTotal) {
+
+    if (cloudTotal == null || localTotal == null) return
+
+    if (cloudTotal > localTotal) {
+      // Cloud is ahead → offer to pull it down onto this device (cloud → local).
       logger.info(`[LOGIN-SENSE] Cloud has more data than this device (cloud=${cloudTotal}, local=${localTotal}) — nudging to sync.`)
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('cloud-data-available', {
-          detail: { cloudTotal, localTotal, delta: cloudTotal - localTotal },
+          detail: { direction: 'cloud-to-local', cloudTotal, localTotal, delta: cloudTotal - localTotal },
+        }))
+      }
+    } else if (localTotal > cloudTotal) {
+      // This device is ahead → the cloud (and other devices) are missing data
+      // that lives here. Offer to push it up so nothing is missed on the other
+      // devices (local → cloud).
+      logger.info(`[LOGIN-SENSE] This device has more data than the cloud (local=${localTotal}, cloud=${cloudTotal}) — nudging to push up.`)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('cloud-data-available', {
+          detail: { direction: 'local-to-cloud', cloudTotal, localTotal, delta: localTotal - cloudTotal },
         }))
       }
     }

@@ -38,7 +38,9 @@ function deviceId() {
 
 function currentBizId() {
   try {
-    const u = JSON.parse(localStorage.getItem('user') || 'null')
+    // The billing app stores the session under 'billing_user' (not 'user') — the
+    // old key meant the BizID never attached to telemetry batches.
+    const u = JSON.parse(localStorage.getItem('billing_user') || 'null')
     return u?.public_id || null
   } catch {
     return null

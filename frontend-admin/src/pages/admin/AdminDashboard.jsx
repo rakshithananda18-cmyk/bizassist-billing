@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { logger } from '../../utils/logger'
 import { useDialog } from '../../contexts/DialogContext'
 import { API_BASE } from '../../config'
 import { BuildingMark } from '../../components/Logo'
@@ -27,7 +28,7 @@ export default function AdminDashboard() {
         setRouterMode(data.mode)
       }
     } catch (err) {
-      console.error('router-mode load failed', err)
+      logger.error('router-mode load failed', err)
     }
   }
 
@@ -74,7 +75,7 @@ export default function AdminDashboard() {
         files: combinedFiles
       })
     } catch (err) {
-      console.error(err)
+      logger.error(err)
     } finally {
       setLoading(false)
     }

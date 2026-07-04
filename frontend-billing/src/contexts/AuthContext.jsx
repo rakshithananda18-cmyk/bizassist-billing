@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { API_BASE, updateApiBase, IS_LOCAL_APP, CLOUD_URL, LOCAL_URL } from '../config'
-import { logger } from '../utils/logger'
+import { logger, setBizId } from '../utils/logger'
 import { reconcileBizIdOnLogin } from '../utils/loginSync'
 
 const AuthContext = createContext(null)
@@ -34,16 +34,19 @@ export function AuthProvider({ children }) {
       const savedToken = localStorage.getItem('billing_token')
       if (savedUser) {
         let userObj = JSON.parse(savedUser)
-        // Ensure user_id is populated even for old sessions by decoding token
-        if (savedToken && !userObj.user_id) {
+        // Ensure user_id / public_id are populated even for old sessions by
+        // decoding the token (both are in the JWT payload).
+        if (savedToken && (!userObj.user_id || !userObj.public_id)) {
           const decoded = decodeToken(savedToken)
-          if (decoded && decoded.user_id) {
-            userObj.user_id = decoded.user_id
+          if (decoded) {
+            userObj.user_id = userObj.user_id || decoded.user_id
+            userObj.public_id = userObj.public_id || decoded.public_id
             localStorage.setItem('billing_user', JSON.stringify(userObj))
-            logger.info('Auto-healed user session with user_id from JWT payload:', decoded.user_id)
+            logger.info('Auto-healed user session from JWT payload (user_id/public_id).')
           }
         }
         setUser(userObj)
+        setBizId(userObj.public_id)   // restore [BizId=…] logging context
         logger.info('Session restored successfully for user from localStorage')
       } else {
         logger.debug('No saved session user found in localStorage.')
@@ -58,16 +61,20 @@ export function AuthProvider({ children }) {
     const tok = data.token || data.access_token
     localStorage.setItem('billing_token', tok)
     
-    // Auto-resolve user_id from token payload if not sent in data response
+    // Auto-resolve user_id / public_id from token payload if not sent in the
+    // data response (the JWT carries both).
     let resolvedUserId = data.user_id
-    if (!resolvedUserId && tok) {
+    let resolvedBizId = data.public_id
+    if ((!resolvedUserId || !resolvedBizId) && tok) {
       const decoded = decodeToken(tok)
-      resolvedUserId = decoded?.user_id
+      resolvedUserId = resolvedUserId || decoded?.user_id
+      resolvedBizId = resolvedBizId || decoded?.public_id
     }
 
     const userObj = {
       id: data.id,
       user_id: resolvedUserId || data.id,
+      public_id: resolvedBizId || null,               // BizID — used for [BizId=…] logging + telemetry
       username: data.username,
       business_name: data.business_name,
       role: data.role,
@@ -76,6 +83,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('billing_user', JSON.stringify(userObj))
     setToken(tok)
     setUser(userObj)
+    setBizId(userObj.public_id)   // stamp every subsequent log line with [BizId=…]
     // Store which backend this account lives on (db_mode: 'local' | 'cloud').
     // We log a warning if the account's home backend doesn't match the current
     // platform (e.g. local account opened on web URL) but do NOT redirect —
@@ -269,10 +277,13 @@ export function AuthProvider({ children }) {
   // the business owner (owner username + per-business counter/staff name + password).
   const staffLogin = useCallback(async (ownerUsername, staffLoginName, password) => {
     logger.info('Attempting staff login under owner:', ownerUsername, 'as', staffLoginName)
+    const body = JSON.stringify({ owner_username: ownerUsername, staff_login_name: staffLoginName, password })
+
+    // 1. Try the platform's primary backend (local on the desktop app).
     const res = await fetch(`${API_BASE}/login/staff`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ owner_username: ownerUsername, staff_login_name: staffLoginName, password }),
+      body,
     })
     if (res.ok) {
       const data = await res.json()
@@ -281,6 +292,41 @@ export function AuthProvider({ children }) {
       reconcileBizIdOnLogin(data.token || data.access_token)
       return
     }
+
+    // 2. FRESH-DEVICE fallback (desktop, online): on a brand-new device the local
+    //    backend is only an identity mirror — the owner's staff rows aren't there
+    //    yet (they arrive when the business data syncs down). So a staff on a new
+    //    terminal fails locally even with the correct password. Authenticate
+    //    against the CLOUD instead and run THIS terminal as a cloud client — it
+    //    has no local copy of the business to serve anyway (same as the web).
+    //    This never masks a wrong password: the cloud is tried only AFTER the
+    //    local attempt has already failed. Reversible from Settings → Hosting.
+    if (IS_LOCAL_APP && CLOUD_URL !== API_BASE &&
+        (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+      try {
+        const cloudRes = await fetch(`${CLOUD_URL}/login/staff`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        })
+        if (cloudRes.ok) {
+          const cloudData = await cloudRes.json()
+          logger.info('[STAFF] Fresh device — authenticated on cloud; running this terminal as a cloud client.')
+          // Point this device at the cloud where the staff's data lives. (Hybrid
+          // routes to the LOCAL backend, which lacks the data, so it must be cloud.)
+          updateApiBase('cloud')
+          _saveSession(cloudData)
+          window.dispatchEvent(new CustomEvent('show_toast', {
+            detail: { type: 'info', msg: 'Signed in via cloud — this device has no local copy of the business yet.' },
+          }))
+          return
+        }
+      } catch (e) {
+        logger.warn('[STAFF] Cloud fallback failed:', e?.message)
+      }
+    }
+
+    // 3. No fallback applied → surface the original error.
     const err = await res.json().catch(() => ({}))
     logger.error('Staff login failed:', res.status, err.detail)
     throw new Error(err.detail || 'Invalid credentials')
@@ -317,8 +363,8 @@ export function AuthProvider({ children }) {
     return res.json()
   }, [])
 
-  const signup = useCallback(async ({ username, password, business_name, template_key }) => {
-    logger.info('Attempting signup for username:', username, 'business:', business_name, 'template:', template_key)
+  const signup = useCallback(async ({ username, password, business_name, template_key, hosting = 'local' }) => {
+    logger.info('Attempting signup for username:', username, 'business:', business_name, 'template:', template_key, 'hosting:', hosting)
 
     // Cloud-authoritative identity (D9): on the downloaded app we register on the
     // CLOUD first (the single BizID authority), then mirror the account locally
@@ -346,10 +392,76 @@ export function AuthProvider({ children }) {
       //    Seed the template ONLY on local (the working copy); the cloud receives
       //    this data later via backup/push, so seeding it on cloud too would
       //    create duplicate starter data.
-      const localData = await _doSignup(LOCAL_URL, { username, password, business_name, public_id: bizId })
-      await _applyTemplate(LOCAL_URL, localData.token || localData.access_token, template_key)
-      logger.info(`[SIGNUP] Cloud-issued BizID ${bizId} mirrored to local. Logged in locally.`)
+      let localData
+      let didReclaim = false
+      try {
+        localData = await _doSignup(LOCAL_URL, { username, password, business_name, public_id: bizId })
+      } catch (err) {
+        // Local orphan: the cloud accepted this username (so its old cloud account
+        // was deleted → username free on the cloud), but a stale LOCAL mirror still
+        // holds it → the local /signup 400s. Re-key that orphan to the new BizID
+        // instead of failing — same person, same device. (Non-destructive: any
+        // existing local data on the row is kept.)
+        if (err.status === 400) {
+          logger.warn('[SIGNUP] Local username is orphaned — reclaiming it onto the new cloud BizID.')
+          const res = await fetch(`${LOCAL_URL}/api/auth/reclaim_local`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, public_id: bizId, business_name }),
+          })
+          if (!res.ok) {
+            const e = await res.json().catch(() => ({}))
+            throw new Error(e.detail || 'An account with this username already exists on this device and could not be reset.')
+          }
+          localData = await res.json()
+          didReclaim = true
+        } else {
+          throw err
+        }
+      }
+      // Only seed the template on a FRESH local account — a reclaimed orphan may
+      // already have its starter data, and re-seeding would duplicate it.
+      if (!didReclaim) {
+        await _applyTemplate(LOCAL_URL, localData.token || localData.access_token, template_key)
+      }
+      logger.info(`[SIGNUP] Cloud-issued BizID ${bizId} ${didReclaim ? 'reclaimed onto' : 'mirrored to'} local. Logged in locally.`)
       _saveSession(localData)
+
+      // ── Automate the hosting choice made at signup — NO separate onboarding
+      //    and NO migration. A brand-new account has no data to move, so:
+      //      • 'local'          → stay offline-only on the local backend.
+      //      • 'hybrid' (Local + Cloud) → keep the fast local backend AND turn on
+      //        background cloud sync: persist the mode on the local DB (so the
+      //        sync worker engages) and provision the cloud sync token from the
+      //        credentials we already have. The local JWT stays valid (hybrid
+      //        still talks to the local backend), so there's nothing to re-login.
+      try {
+        const localTok = localData.token || localData.access_token
+        if (hosting === 'hybrid') {
+          updateApiBase('hybrid')
+          await fetch(`${LOCAL_URL}/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localTok}` },
+            body: JSON.stringify({ general: { hosting_mode: 'hybrid' } }),
+          }).catch(() => { /* self-heals on next settings fetch */ })
+          // Mint the cloud sync token, then also stamp hosting_mode=hybrid on the
+          // CLOUD record with it — otherwise the cloud (and the Admin Console)
+          // keeps the default 'local' because the sync worker only moves business
+          // data, not the settings JSON. Best-effort; never blocks signup.
+          const cloudTok = await _provisionCloudSyncToken(username, password, localTok)
+          if (cloudTok) {
+            await fetch(`${CLOUD_URL}/settings`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cloudTok}` },
+              body: JSON.stringify({ general: { hosting_mode: 'hybrid' } }),
+            }).catch(() => { /* cloud will still function; this is informational */ })
+          }
+        } else {
+          updateApiBase('local')
+        }
+      } catch (e) {
+        logger.warn('[SIGNUP] Hosting auto-setup skipped (works, sync self-heals on next login):', e?.message)
+      }
       return
     }
 
@@ -358,7 +470,7 @@ export function AuthProvider({ children }) {
     await _applyTemplate(API_BASE, data.token || data.access_token, template_key)
     logger.info('Signup successful (web/cloud) for user:', data.username)
     _saveSession(data)
-  }, [_saveSession, _applyTemplate, _doSignup])
+  }, [_saveSession, _applyTemplate, _doSignup, _provisionCloudSyncToken])
 
   const logout = useCallback(() => {
     logger.info('Logging out user, clearing local session token.')
@@ -385,6 +497,7 @@ export function AuthProvider({ children }) {
     setToken(null)
     setUser(null)
     setAppReady(false)
+    setBizId(null)   // stop tagging logs with the signed-out business
   }, [])
 
   /**
@@ -429,6 +542,43 @@ export function AuthProvider({ children }) {
       detail: { type: 'info', msg: `Switched to ${newMode} mode. Please log in again.` }
     }))
     logger.info(`[MODE SWITCH] Done. API_BASE is now: ${API_BASE}`)
+  }, [token])
+
+  /**
+   * setHostingMode — flip between Local and Local+Cloud (hybrid) WITHOUT a logout.
+   *
+   * Both modes talk to the SAME local backend (hybrid just adds a background
+   * push to the cloud), so the local-signed JWT stays valid and there is no id
+   * mismatch — unlike the old pure-cloud switch, nothing here requires a
+   * re-login or a data migration. Turning Local+Cloud ON still needs a cloud
+   * token (minted from the password at login); enabling it for an already
+   * signed-in user is therefore driven through the guarded re-login path
+   * (switchMode) so the sync worker gets its token. Turning it OFF (→ local) or
+   * confirming a mode is a pure, instant, non-destructive preference change.
+   */
+  const setHostingMode = useCallback(async (newMode) => {
+    logger.info(`[MODE] Setting hosting mode to "${newMode}" (no logout — same local backend)`)
+    try {
+      const res = await fetch(`${API_BASE}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ general: { hosting_mode: newMode } }),
+      })
+      if (!res.ok) logger.warn(`[MODE] Save mode returned HTTP ${res.status}`)
+    } catch (err) {
+      logger.warn('[MODE] Could not save mode to backend (continuing anyway):', err)
+    }
+    updateApiBase(newMode)
+    window.dispatchEvent(new CustomEvent('refresh-settings'))
+    window.dispatchEvent(new CustomEvent('show_toast', {
+      detail: {
+        type: 'success',
+        msg: newMode === 'local'
+          ? 'Switched to Local. Cloud sync is paused — billing stays fast and offline.'
+          : 'Local + Cloud enabled. Your data now syncs to the cloud in the background.',
+      },
+    }))
+    logger.info(`[MODE] Done. API_BASE is now: ${API_BASE}`)
   }, [token])
 
   const [profile, setProfile] = useState(null)
@@ -626,7 +776,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      user, token, loading, login, staffLogin, logout, signup, switchMode, authFetch, profile, fetchProfile, setProfile,
+      user, token, loading, login, staffLogin, logout, signup, switchMode, setHostingMode, authFetch, profile, fetchProfile, setProfile,
       businessConfig, attributesSchema, fetchBusinessConfig, appReady, setAppReady,
       settings, fetchSettings
     }}>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { API_BASE } from '../config'
+import { logger } from '../utils/logger'
 import { AlertIcon, CheckIcon } from '../components/Icons'
 
 export default function Support() {
@@ -28,7 +28,10 @@ export default function Support() {
       formData.append('message', message)
       formData.append('attach_logs', attachLogs ? 'true' : 'false')
 
-      const res = await authFetch(`${API_BASE}/feedback/submit`, {
+      // authFetch already prepends API_BASE — pass the PATH only. (Passing a full
+      // URL here produced the doubled `http://127.0.0.1:8001http://127.0.0.1:8001/…`
+      // that made every feedback submit fail to parse.)
+      const res = await authFetch(`/feedback/submit`, {
         method: 'POST',
         // Note: fetch automatically sets content-type for FormData with boundaries,
         // so we do not manually set Content-Type header.
@@ -43,7 +46,7 @@ export default function Support() {
         throw new Error(data.detail || data.error || 'Failed to submit feedback.')
       }
     } catch (err) {
-      console.error('Feedback submit error:', err)
+      logger.error('Feedback submit error:', err)
       setStatus({ type: 'error', msg: err.message || 'Network error, please try again.' })
     } finally {
       setSubmitting(false)

@@ -22,6 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from database.db import SessionLocal, engine, sync_disabled_var
+from logging_config import current_bizid_var
 from database.models import (
     User, SyncQueue, SyncLog, ConflictLog,
     Base, Customer, Vendor, Product, Invoice, InvoiceLineItem,
@@ -187,8 +188,12 @@ def run_hybrid_sync():
                 if last_run and (now - last_run).total_seconds() < sync_interval:
                     continue
                 
-                # Perform sync
-                sync_business(db, user, sync_interval)
+                # Perform sync (tag the worker's log lines with this business's BizID)
+                _t = current_bizid_var.set(user.public_id or "-")
+                try:
+                    sync_business(db, user, sync_interval)
+                finally:
+                    current_bizid_var.reset(_t)
                 _LAST_RUN[business_id] = now
             except Exception as e:
                 logger.error("[SYNC_WORKER] Error checking settings for user %s: %s", user.username, e)
@@ -205,7 +210,11 @@ def trigger_sync_run(business_id: int):
             logger.warning("[SYNC_WORKER] trigger_sync_run: business %s not found", business_id)
             return
         
-        sync_business(db, user, force=True)
+        _t = current_bizid_var.set(user.public_id or "-")
+        try:
+            sync_business(db, user, force=True)
+        finally:
+            current_bizid_var.reset(_t)
         _LAST_RUN[business_id] = datetime.utcnow()
     except Exception as e:
         logger.error("[SYNC_WORKER] Manual sync flush failed for business %s: %s", business_id, e)

@@ -137,7 +137,7 @@ export default function B2BOrders() {
         setAlert({ type: 'danger', msg: 'Failed to fetch orders.' })
       }
     } catch (err) {
-      console.error('Error fetching orders:', err)
+      logger.error('Error fetching orders:', err)
       setAlert({ type: 'danger', msg: 'Network error loading orders.' })
     } finally {
       setLoading(false)
@@ -153,7 +153,7 @@ export default function B2BOrders() {
         setSuppliers(data.as_buyer || [])
       }
     } catch (err) {
-      console.error('Error loading connected suppliers:', err)
+      logger.error('Error loading connected suppliers:', err)
     }
   }, [authFetch])
 
@@ -208,7 +208,7 @@ export default function B2BOrders() {
             const event = JSON.parse(e.data)
             handleRealtimeEvent(event)
           } catch (err) {
-            console.error('Failed to parse SSE event:', err)
+            logger.error('Failed to parse SSE event:', err)
           }
         }
 
@@ -218,13 +218,13 @@ export default function B2BOrders() {
             eventSourceRef.current = null
           }
           if (!stopped) {
-            console.warn('SSE disconnected, retrying in 5 seconds...', err)
+            logger.warn('SSE disconnected, retrying in 5 seconds...', err)
             reconnectTimer = setTimeout(connectSSE, 5000)
           }
         }
       } catch (err) {
         if (!stopped) {
-          console.warn('SSE disconnected, retrying in 5 seconds...', err)
+          logger.warn('SSE disconnected, retrying in 5 seconds...', err)
           reconnectTimer = setTimeout(connectSSE, 5000)
         }
       }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
+import { logger } from '../utils/logger'
 import { fetchSessions } from '../utils/sessionsCache'
 import { Icon } from './icons'
 import { useDialog } from '../contexts/DialogContext'
@@ -101,7 +102,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
       if (customersRes.ok) setCustomers(await customersRes.json())
       if (insightsRes.ok) setPanelInsights(await insightsRes.json())
     } catch (err) {
-      console.error('Failed to load insights data:', err)
+      logger.error('Failed to load insights data:', err)
     }
   }
 
@@ -111,7 +112,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
       try {
         localStorage.setItem(`rp_section_${name}`, nextVal ? 'collapsed' : 'open')
       } catch (e) {
-        console.error(e)
+        logger.error(e)
       }
       return { ...prev, [name]: nextVal }
     })
@@ -135,7 +136,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
         window.dispatchEvent(new CustomEvent('ai-sessions-updated'))
       }
     } catch (err) {
-      console.error('Failed to delete chat session:', err)
+      logger.error('Failed to delete chat session:', err)
     }
   }
 
@@ -154,7 +155,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
         window.dispatchEvent(new CustomEvent('ai-sessions-updated'))
       }
     } catch (err) {
-      console.error('Failed to rename chat session:', err)
+      logger.error('Failed to rename chat session:', err)
     }
   }
 

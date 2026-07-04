@@ -4,31 +4,40 @@ import BackupModal from './BackupModal'
 import { SyncIcon, CloudIcon } from '../Icons'
 
 /**
- * SyncNudgeModal — a one-time, non-blocking nudge shown when the cloud holds
- * data this device doesn't have (sensed at login via a read-only count compare;
- * see utils/loginSync.js → 'cloud-data-available' event).
+ * SyncNudgeModal — a non-blocking nudge shown (for premium accounts) when the
+ * cloud and this device hold different amounts of data, sensed at EVERY login via
+ * a read-only count compare (see utils/loginSync.js → 'cloud-data-available').
  *
- * It does NOT auto-pull (cloud data is subscription-gated). It just surfaces the
- * divergence and offers a one-click **Cloud → Local Sync** (the same gated,
- * non-destructive merge as the Settings button). Mount once near the app root.
+ * Two directions:
+ *   • 'cloud-to-local' — the cloud is ahead; offer to pull it down so this device
+ *     doesn't miss data another device created.
+ *   • 'local-to-cloud' — this device is ahead; offer to push it up so the cloud
+ *     (and other devices) don't miss data created here.
+ *
+ * It does NOT auto-sync (data movement stays gated behind an explicit click). It
+ * just surfaces the divergence and runs the same non-destructive merge as the
+ * Settings button. Mount once near the app root.
  */
 export default function SyncNudgeModal() {
   const { token } = useAuth()
-  const [info, setInfo] = useState(null)     // { cloudTotal, localTotal, delta }
+  const [info, setInfo] = useState(null)     // { direction, cloudTotal, localTotal, delta }
   const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
-    const onEvt = (e) => setInfo(e?.detail || { delta: 0 })
+    const onEvt = (e) => setInfo(e?.detail || { delta: 0, direction: 'cloud-to-local' })
     window.addEventListener('cloud-data-available', onEvt)
     return () => window.removeEventListener('cloud-data-available', onEvt)
   }, [])
 
-  // Running the actual sync → reuse the Cloud → Local merge modal.
+  const direction = info?.direction || 'cloud-to-local'
+  const isPull = direction === 'cloud-to-local'
+
+  // Running the actual sync → reuse the merge modal in the sensed direction.
   if (syncing) {
     return (
       <BackupModal
         token={token}
-        direction="cloud-to-local"
+        direction={direction}
         onComplete={() => { setSyncing(false); setInfo(null) }}
         onError={() => { /* BackupModal shows its own error UI; keep it open */ }}
       />
@@ -44,7 +53,7 @@ export default function SyncNudgeModal() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: '1.08rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <CloudIcon size={18} style={{ color: 'var(--accent)' }} />
-            <span>Cloud data available</span>
+            <span>{isPull ? 'Cloud data available' : 'This device has unsynced data'}</span>
           </span>
           <button
             type="button"
@@ -56,17 +65,28 @@ export default function SyncNudgeModal() {
           </button>
         </div>
         <div style={{ fontSize: '0.84rem', color: 'var(--text-muted)', lineHeight: 1.55, marginBottom: 18 }}>
-          Your cloud account has {n > 0 ? <strong>{n} record{n === 1 ? '' : 's'}</strong> : 'data'} that {n === 1 ? "isn't" : "aren't"} on this device yet. They won’t appear here until you sync.
-          <div style={{ marginTop: 8, opacity: 0.85 }}>
-            Bring it down now? (This is a safe merge — nothing on this device is overwritten.)
-          </div>
+          {isPull ? (
+            <>
+              Your cloud account has {n > 0 ? <strong>{n} record{n === 1 ? '' : 's'}</strong> : 'data'} that {n === 1 ? "isn't" : "aren't"} on this device yet. They won’t appear here until you sync.
+              <div style={{ marginTop: 8, opacity: 0.85 }}>
+                Bring it down now? (This is a safe merge — nothing on this device is overwritten.)
+              </div>
+            </>
+          ) : (
+            <>
+              This device has {n > 0 ? <strong>{n} record{n === 1 ? '' : 's'}</strong> : 'data'} that {n === 1 ? "isn't" : "aren't"} on the cloud yet. Your other devices won’t see {n === 1 ? 'it' : 'them'} until you sync.
+              <div style={{ marginTop: 8, opacity: 0.85 }}>
+                Push it up now? (This is a safe merge — nothing on the cloud is overwritten.)
+              </div>
+            </>
+          )}
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <button
             onClick={() => setSyncing(true)}
             style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
-            <SyncIcon size={14} /> Sync now
+            <SyncIcon size={14} /> {isPull ? 'Sync down now' : 'Sync up now'}
           </button>
         </div>
       </div>

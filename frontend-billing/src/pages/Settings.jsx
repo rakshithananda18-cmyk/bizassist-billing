@@ -10,7 +10,7 @@ import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { useLock } from '../contexts/LockContext'
 import { API_BASE, IS_LOCAL_APP, updateApiBase } from '../config'
-import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon, MonitorIcon, SyncIcon, CloudIcon, ZapIcon, WifiOffIcon, RobotIcon, DevicesIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon, MonitorIcon, SyncIcon, ZapIcon, WifiOffIcon, RobotIcon, DevicesIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import { SkylineLoader } from '../components/Logo'
 import { getHeaderLayout, isHeaderLineEnabled, moveItem } from '../utils/printLayout'
@@ -365,7 +365,7 @@ function HostingModeSection({ currentMode, onModeChange, token, autoSwitchTarget
     if (mode === currentMode) return 'active'
     const needs = {
       local:  { p1: localProbe },
-      cloud:  { p2: cloudProbe, p3: internetProbe },
+      // 'Local + Cloud' needs the local backend AND a reachable cloud to sync to.
       hybrid: { p1: localProbe, p2: cloudProbe, p3: internetProbe },
     }[mode] || {}
     const probes = Object.values(needs)
@@ -388,23 +388,20 @@ function HostingModeSection({ currentMode, onModeChange, token, autoSwitchTarget
     {
       mode: 'hybrid',
       icon: <SyncIcon size={18} />,
-      title: 'Hybrid',
-      desc: 'Fast local POS checkouts. Background sync to cloud. Unlocks cloud backups and AI Advisor.',
+      title: 'Local + Cloud',
+      desc: 'Fast local POS checkouts, plus automatic background sync to the cloud. Unlocks cloud backup, multi-device access and AI Advisor.',
       badges: [
-        { icon: <SyncIcon size={12} />, text: 'Sync' },
+        { icon: <SyncIcon size={12} />, text: 'Cloud sync' },
+        { icon: <DevicesIcon size={12} />, text: 'Multi-device' },
         { icon: <RobotIcon size={12} />, text: 'AI enabled' },
       ],
     },
-    {
-      mode: 'cloud',
-      icon: <CloudIcon size={18} />,
-      title: 'Cloud Only',
-      desc: 'Cloud is the single source of record. Real-time sync across all devices. Requires internet.',
-      badges: [
-        { icon: <DevicesIcon size={12} />, text: 'Multi-device' },
-        { icon: <CloudIcon size={12} />, text: 'Always synced' },
-      ],
-    },
+    // NOTE: pure "Cloud Only" mode is intentionally not offered on the desktop
+    // app. It made checkout network-dependent and required a data migration +
+    // re-login on every switch. "Local + Cloud" gives the same cloud benefits
+    // (backup, multi-device, AI) without giving up offline speed — and the web
+    // app is already the cloud view of that same account. The cloud backend,
+    // sync worker, BizID authority and provisioning all still run underneath.
   ]
 
   // Explain WHY a target mode can't be entered, instead of failing silently.
@@ -422,13 +419,26 @@ function HostingModeSection({ currentMode, onModeChange, token, autoSwitchTarget
 
   const handleCardClick = (mode) => {
     const state = cardState(mode)
-    if (state === 'active' || state === 'locked' || state === 'unavailable') {
+    if (state === 'active') {
+      window.dispatchEvent(new CustomEvent('show_toast', {
+        detail: { type: 'info', msg: explainBlocked(mode, state) },
+      }))
+      return
+    }
+    // Switching to Local is always safe & instant: going offline-only needs no
+    // connection and no data move (the local DB is already the source of truth).
+    // No re-login — Local and Local + Cloud share the same local backend.
+    if (mode === 'local') {
+      onModeChange('local')
+      return
+    }
+    // Local + Cloud: needs a reachable cloud to sync to. If it isn't reachable,
+    // say why instead of failing silently.
+    if (state === 'locked' || state === 'unavailable') {
       const msg = explainBlocked(mode, state)
       if (msg) {
-        logger.warn(`[SETTINGS] Mode switch to "${mode}" blocked (${state}): ${msg}`)
-        window.dispatchEvent(new CustomEvent('show_toast', {
-          detail: { type: state === 'active' ? 'info' : 'error', msg },
-        }))
+        logger.warn(`[SETTINGS] Enabling Local + Cloud blocked (${state}): ${msg}`)
+        window.dispatchEvent(new CustomEvent('show_toast', { detail: { type: 'error', msg } }))
       }
       return
     }
@@ -443,12 +453,15 @@ function HostingModeSection({ currentMode, onModeChange, token, autoSwitchTarget
   // silent failure).
   useEffect(() => {
     if (!autoSwitchTarget) return
-    if (['local', 'cloud', 'hybrid'].includes(autoSwitchTarget) && autoSwitchTarget !== currentMode) {
-      const state = cardState(autoSwitchTarget)
+    // Legacy links may still carry ?switch=cloud (pure-cloud mode is gone) — map
+    // it to 'hybrid' (Local + Cloud), which is its replacement.
+    const target = autoSwitchTarget === 'cloud' ? 'hybrid' : autoSwitchTarget
+    if (['local', 'hybrid'].includes(target) && target !== currentMode) {
+      const state = cardState(target)
       if (state === 'ready') {
-        setPreflightTarget(autoSwitchTarget)
+        setPreflightTarget(target)
       } else {
-        const msg = explainBlocked(autoSwitchTarget, state)
+        const msg = explainBlocked(target, state)
         if (msg) {
           window.dispatchEvent(new CustomEvent('show_toast', {
             detail: { type: 'error', msg },
@@ -712,8 +725,12 @@ function HostingModeSection({ currentMode, onModeChange, token, autoSwitchTarget
           internetProbe={internetProbe}
           onClose={() => setPreflightTarget(null)}
           onProceed={() => {
-            setConsequenceTarget(preflightTarget)
+            // Enabling Local + Cloud: no data migration (local stays the source),
+            // just turn on sync. onModeChange routes 'hybrid' through the guarded
+            // re-login so the sync worker gets its cloud token.
+            const t = preflightTarget
             setPreflightTarget(null)
+            onModeChange(t)
           }}
         />
       )}
@@ -760,7 +777,7 @@ function HostingModeSection({ currentMode, onModeChange, token, autoSwitchTarget
 // ── 3. MAIN SETTINGS STATE INITIALIZATION ──
 // ============================================================================
 export default function Settings() {
-  const { authFetch, user, token, fetchSettings, switchMode } = useAuth()
+  const { authFetch, user, token, fetchSettings, switchMode, setHostingMode } = useAuth()
   const { config, refreshConfig } = useBusinessConfig()
   const { hasLock, setupPasscode, clearPasscode } = useLock()
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
@@ -2428,15 +2445,23 @@ export default function Settings() {
               <HostingModeSection
                 // Effective mode is platform-aware: the web/browser is ALWAYS
                 // cloud (it can't reach a local backend), regardless of the
-                // account's stored hosting_mode. Only the downloaded app honours
-                // the stored Local/Hybrid/Cloud choice.
-                currentMode={IS_LOCAL_APP ? (g.hosting_mode || 'local') : 'cloud'}
+                // account's stored hosting_mode. On the desktop app there are now
+                // only two choices — Local and Local + Cloud (hybrid). Any legacy
+                // account stored as 'cloud' is shown as 'hybrid' (Local + Cloud).
+                currentMode={IS_LOCAL_APP ? ((g.hosting_mode === 'cloud' ? 'hybrid' : g.hosting_mode) || 'local') : 'cloud'}
                 onModeChange={(newMode) => {
-                  // patch saves to current backend; switchMode then updates
-                  // API_BASE and forces logout so user gets a new JWT from
-                  // the new backend (IDs differ between local and cloud DBs)
                   patch('general', 'hosting_mode', newMode)
-                  switchMode(newMode)
+                  if (newMode === 'hybrid') {
+                    // Enabling Local + Cloud needs a cloud token (minted from the
+                    // password at login), so route through the guarded re-login.
+                    // No data migration — the local DB stays the source and the
+                    // sync worker pushes it up afterwards.
+                    switchMode('hybrid')
+                  } else {
+                    // Going Local (offline-only) stays on the same local backend
+                    // — no logout, no data move, instant.
+                    setHostingMode('local')
+                  }
                 }}
                 token={token}
                 autoSwitchTarget={IS_LOCAL_APP ? searchParams.get('switch') : null}

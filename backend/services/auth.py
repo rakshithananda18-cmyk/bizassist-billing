@@ -67,6 +67,10 @@ def get_active_user(authorization: str = Header(None), token: str = Query(None))
     if not jwt_token:
         logger.info("[AUTH] Request rejected — missing or malformed Authorization header or query token")
         raise HTTPException(status_code=401, detail="Bearer authorization token or query token missing")
+    # NOTE: the request-scoped BizID for [BizId=…] logging is set in the HTTP
+    # middleware (main_groq.py), NOT here. A sync dependency runs in a threadpool
+    # context that is discarded before the route handler, so setting the
+    # contextvar here would never reach the handler's log lines.
     return decode_access_token(jwt_token)
 
 

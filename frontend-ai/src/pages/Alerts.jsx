@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useDialog } from '../contexts/DialogContext'
+import { logger } from '../utils/logger'
 import { API_BASE } from '../config'
 import { PageHeader, Section } from '../components/ui'
 import { Icon } from '../components/icons'
@@ -103,7 +104,7 @@ export default function Alerts() {
         })
       }
     } catch (e) {
-      console.error('Alerts load failed:', e)
+      logger.error('Alerts load failed:', e)
     } finally {
       setLoading(false)
     }
@@ -160,7 +161,7 @@ export default function Alerts() {
         setMemoryFacts(data.facts || [])
       }
     } catch (e) {
-      console.error('Failed to load memory facts:', e)
+      logger.error('Failed to load memory facts:', e)
     }
   }
 
@@ -171,7 +172,7 @@ export default function Alerts() {
       const res = await authFetch(`${API_BASE}/alerts/memory-facts/${id}`, { method: 'DELETE' })
       if (res.ok) setMemoryFacts(prev => (prev || []).filter(f => f.id !== id))
     } catch (e) {
-      console.error('Failed to delete fact:', e)
+      logger.error('Failed to delete fact:', e)
     }
   }
 

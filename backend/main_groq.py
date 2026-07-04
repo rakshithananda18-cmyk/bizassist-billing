@@ -151,13 +151,18 @@ async def root():
 # `app.current_business_id` so Postgres RLS policies can filter by tenant,
 # and populate user context variables for audit logging.
 from database.db import current_business_id_var, current_user_id_var, current_username_var
+from logging_config import current_bizid_var
 
 @app.middleware("http")
 async def _set_rls_business_id(request: Request, call_next):
-    """Set business, user, and username contextvars before each request."""
+    """Set business, user, username, and BizID contextvars before each request.
+    (Setting biz_id HERE, in async middleware, is what makes [BizId=…] appear on
+    log lines — a sync dependency's contextvar set is discarded before the
+    threadpool route handler runs.)"""
     business_id = None
     user_id = None
     username = None
+    biz_id = None
 
     # Check for Authorization header or query parameter
     auth_header = request.headers.get("Authorization", "")
@@ -179,12 +184,14 @@ async def _set_rls_business_id(request: Request, call_next):
             business_id = payload.get("id")
             user_id = payload.get("user_id") or payload.get("id")
             username = payload.get("username")
+            biz_id = payload.get("public_id")
         except Exception:
             pass  # invalid / expired token — route will 401 later
 
     t_biz = current_business_id_var.set(business_id)
     t_uid = current_user_id_var.set(user_id)
     t_uname = current_username_var.set(username)
+    t_bizid = current_bizid_var.set(biz_id or "-")
 
     try:
         return await call_next(request)
@@ -192,6 +199,7 @@ async def _set_rls_business_id(request: Request, call_next):
         current_business_id_var.reset(t_biz)
         current_user_id_var.reset(t_uid)
         current_username_var.reset(t_uname)
+        current_bizid_var.reset(t_bizid)
 
 
 @app.exception_handler(Exception)

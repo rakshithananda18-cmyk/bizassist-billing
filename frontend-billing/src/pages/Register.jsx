@@ -171,7 +171,8 @@ export default function Register() {
         username: form.username,
         password: form.password,
         business_name: form.businessName,
-        template_key: selectedTemplate
+        template_key: selectedTemplate,
+        hosting: hostingChoice,   // 'local' | 'hybrid' — auto-configured in signup()
       })
       // Multi-type (Phase 2): register secondary business types after signup.
       // Non-fatal — the account works single-type if this call fails; types
@@ -187,14 +188,11 @@ export default function Register() {
         }
       }
       logger.info('Registration completed successfully!')
-      // Hosting choice made at signup: local proceeds to the dashboard; cloud/
-      // hybrid enter the guarded switch flow (connection checks + re-login) so
-      // the choice can never fail silently.
-      if (IS_LOCAL_APP && (hostingChoice === 'cloud' || hostingChoice === 'hybrid')) {
-        navigate(`/settings?tab=advanced&switch=${hostingChoice}`, { replace: true })
-      } else {
-        navigate('/', { replace: true })
-      }
+      // Hosting is auto-configured inside signup() from the choice above (Local, or
+      // Local + Cloud which turns on background sync). There is no separate
+      // onboarding, migration, or re-login — a brand-new account has no data to
+      // move — so we go straight to the app.
+      navigate('/', { replace: true })
     } catch (err) {
       logger.error('Registration signup API call failed:', err.message)
       setError(err.message || 'Registration failed. Please check details and try again.')
@@ -348,11 +346,10 @@ export default function Register() {
             {IS_LOCAL_APP && (
               <div className="form-group" style={{ marginTop: '4px' }}>
                 <label>Where should your data live?</label>
-                <div data-testid="hosting-choice" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 4 }}>
+                <div data-testid="hosting-choice" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 4 }}>
                   {[
-                    { key: 'local',  title: 'Local',  desc: 'On this device. Fast, fully offline.' },
-                    { key: 'hybrid', title: 'Hybrid', desc: 'Local speed + cloud backup & AI.' },
-                    { key: 'cloud',  title: 'Cloud',  desc: 'Cloud is the record. Multi-device.' },
+                    { key: 'local',  title: 'Local',          desc: 'On this device. Fast, fully offline. Free.' },
+                    { key: 'hybrid', title: 'Local + Cloud',  desc: 'Local speed + automatic cloud sync, backup & multi-device.' },
                   ].map(opt => (
                     <button
                       type="button"
@@ -370,9 +367,9 @@ export default function Register() {
                     </button>
                   ))}
                 </div>
-                {hostingChoice !== 'local' && (
+                {hostingChoice === 'hybrid' && (
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>
-                    You'll confirm the {hostingChoice} switch (connection checks + one re-login) right after signup.
+                    Set up automatically — no extra steps. Billing stays fast and offline while your data syncs to the cloud in the background.
                   </div>
                 )}
               </div>

@@ -7,6 +7,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
+import { logger } from '../utils/logger'
 import { AlertIcon, BillsIcon, CartIcon, CheckIcon, CloseIcon, ConnectionIcon, SettingsIcon, ShieldIcon, SparkleIcon } from '../components/Icons'
 import CustomSelect from '../components/common/CustomSelect'
 
@@ -64,7 +65,7 @@ export default function B2BNetwork() {
         setConnections(connRes)
       }
     } catch (err) {
-      console.error('Error loading connections:', err)
+      logger.error('Error loading connections:', err)
       setAlert({ type: 'danger', msg: 'Failed to load connections data.' })
     } finally {
       setLoading(false)

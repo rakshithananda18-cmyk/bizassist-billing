@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { logger } from '../../utils/logger'
 import { useDialog } from '../../contexts/DialogContext'
 import { API_BASE } from '../../config'
 import { Section } from '../../components/ui'
@@ -54,7 +55,7 @@ export default function AdminBusinesses() {
       const data = await res.json()
       setBusinesses(data)
     } catch (err) {
-      console.error(err)
+      logger.error(err)
     } finally {
       setLoading(false)
     }
@@ -91,7 +92,7 @@ export default function AdminBusinesses() {
         const s = await res.json()
         setPlanForm(f => ({ ...f, plan: s.plan || 'free', status: s.status === 'none' ? 'active' : s.status, expires_at: s.expires_at ? String(s.expires_at).slice(0, 10) : '', note: s.note || '' }))
       }
-    } catch (err) { console.error(err) }
+    } catch (err) { logger.error(err) }
   }
 
   async function handlePlanSubmit(e) {
@@ -214,7 +215,7 @@ export default function AdminBusinesses() {
         })
       }
     } catch (err) {
-      console.error(err)
+      logger.error(err)
     }
   }
 

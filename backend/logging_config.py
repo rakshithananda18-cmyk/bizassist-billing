@@ -28,9 +28,17 @@ Sample output
     12:34:56 INFO   services.ai_router      [DIRECT] handler=invoice_count
     12:34:56 WARN   services.rate_limiter   [RATELIMIT] user 7 hit daily limit
 """
+import contextvars
+import json
 import logging
 import os
 import sys
+
+# Request-scoped business identifier (BizID / public_id, e.g. "BA-JABXGD").
+# Set once per request in services.auth.get_active_user; read by _BizIdFilter so
+# EVERY log line carries [BizId=…] for grep / Elasticsearch (biz_id keyword) and
+# DDP metrics. Defaults to "-" for system/unauthenticated lines.
+current_bizid_var = contextvars.ContextVar("current_bizid", default=None)
 
 # ── Canonical message tags ──────────────────────────────────────────
 # Use these so every component logs with a consistent, greppable prefix.
@@ -106,15 +114,30 @@ class _ComponentFilter(logging.Filter):
         return True
 
 
+class _BizIdFilter(logging.Filter):
+    """Adds `biz_id` (the request's BizID) to every record so the formatter can
+    stamp `[BizId=…]`. Never raises — a logging filter must not break logging."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            record.biz_id = current_bizid_var.get() or "-"
+        except Exception:
+            record.biz_id = "-"
+        return True
+
+
 class _Formatter(logging.Formatter):
     def __init__(self, use_color: bool):
         super().__init__(
-            fmt="%(asctime)s %(levelname)-5s %(component)-22s %(message)s",
+            fmt="%(asctime)s %(levelname)-5s %(component)-22s [BizId=%(biz_id)s] %(message)s",
             datefmt="%H:%M:%S",
         )
         self.use_color = use_color
 
     def format(self, record: logging.LogRecord) -> str:
+        # Guard: if a record reaches us without the filter (defensive), stamp a
+        # placeholder so the %(biz_id)s field never KeyErrors.
+        if not hasattr(record, "biz_id"):
+            record.biz_id = "-"
         # 5-char level: WARNING -> WARN, CRITICAL -> CRIT
         short = {"WARNING": "WARN", "CRITICAL": "CRIT"}.get(record.levelname, record.levelname)
         original = record.levelname
@@ -126,6 +149,42 @@ class _Formatter(logging.Formatter):
             if color:
                 out = f"{color}{out}{_RESET}"
         return out
+
+
+class _JsonFormatter(logging.Formatter):
+    """ECS-aligned structured logs (opt-in via LOG_FORMAT=json) for the log
+    pipeline / Elasticsearch / DDP metrics. `biz_id` is a first-class field so a
+    business's whole trail is filterable/aggregatable. Never logs secrets."""
+    def format(self, record: logging.LogRecord) -> str:
+        if not hasattr(record, "biz_id"):
+            record.biz_id = "-"
+        if not hasattr(record, "component"):
+            record.component = record.name
+        from datetime import datetime as _dt
+        ts = _dt.utcfromtimestamp(record.created).strftime("%Y-%m-%dT%H:%M:%S.") + f"{int(record.msecs):03d}Z"
+        payload = {
+            "@timestamp": ts,
+            "log.level": record.levelname.lower(),
+            "biz_id": record.biz_id,
+            "service.name": "bizassist-backend",
+            "component": record.component,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["error.stack_trace"] = self.formatException(record.exc_info)
+        # Any structured extras attached via logger.*(..., extra={"labels": {...}}).
+        labels = getattr(record, "labels", None)
+        if isinstance(labels, dict):
+            payload["labels"] = labels
+        return json.dumps(payload, ensure_ascii=False)
+
+
+def _make_formatter(use_color: bool) -> logging.Formatter:
+    """Pick the log format: LOG_FORMAT=json → structured JSON, else the
+    human-readable console format (default, keeps local dev + tests unchanged)."""
+    if (os.getenv("LOG_FORMAT") or "").lower() == "json":
+        return _JsonFormatter()
+    return _Formatter(use_color=use_color)
 
 
 def configure_logging(level: str = None, *, color: bool = None) -> None:
@@ -149,7 +208,8 @@ def configure_logging(level: str = None, *, color: bool = None) -> None:
 
     handler = logging.StreamHandler(stream=sys.stderr)
     handler.addFilter(_ComponentFilter())
-    handler.setFormatter(_Formatter(use_color=color))
+    handler.addFilter(_BizIdFilter())
+    handler.setFormatter(_make_formatter(use_color=color))
 
     root.addHandler(handler)
 
@@ -174,7 +234,8 @@ def configure_logging(level: str = None, *, color: bool = None) -> None:
             os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
             fh = SafeRotatingFileHandler(log_file, maxBytes=5_000_000, backupCount=3, encoding="utf-8")
             fh.addFilter(_ComponentFilter())
-            fh.setFormatter(_Formatter(use_color=False))
+            fh.addFilter(_BizIdFilter())
+            fh.setFormatter(_make_formatter(use_color=False))
             root.addHandler(fh)
         except Exception as e:
             logging.getLogger("bizassist.logging").warning(f"{TAG.ADMIN} file log disabled: {e}")

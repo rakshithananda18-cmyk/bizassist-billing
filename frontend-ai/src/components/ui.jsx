@@ -11,6 +11,7 @@
 // (Modal lives in ./Modal, alert/confirm dialogs in ../contexts/DialogContext,
 //  outline icons in ./icons.)
 // ============================================================================
+import { logger } from '../utils/logger'
 
 export function PageHeader({ title, subtitle, actions, badge, style }) {
   return (
@@ -139,7 +140,7 @@ export function Section({
           return saved === 'true'
         }
       } catch (e) {
-        console.warn(e)
+        logger.warn(e)
       }
     }
     return defaultOpen
@@ -152,7 +153,7 @@ export function Section({
         try {
           localStorage.setItem(storageKey, String(next))
         } catch (e) {
-          console.warn(e)
+          logger.warn(e)
         }
       }
       return next

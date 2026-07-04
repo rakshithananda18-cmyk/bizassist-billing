@@ -449,11 +449,16 @@ def read_audit_log(limit: int = 200, db: Session = None) -> list:
                 rows = []
                 for log in logs:
                     details_val = {}
-                    if log.detail:
+                    # `detail` is JSON-in-Text, but historical rows may hold an
+                    # empty string or plain text, which makes json.loads raise
+                    # "Expecting value: line 1 column 1 (char 0)". Guard every row
+                    # so one bad row can't fail (or spam-log) the whole read.
+                    raw_detail = getattr(log, "detail", None)
+                    if raw_detail:
                         try:
-                            details_val = json.loads(log.detail)
+                            details_val = json.loads(raw_detail)
                         except Exception:
-                            details_val = {"raw": log.detail}
+                            details_val = {"raw": raw_detail}
                     rows.append({
                         "timestamp": log.created_at.isoformat() if log.created_at else None,
                         "admin_id": log.business_id,
@@ -464,7 +469,10 @@ def read_audit_log(limit: int = 200, db: Session = None) -> list:
                     })
                 return rows
         except Exception as e:
-            logger.error(f"Failed to read audit log from DB: %s", e, exc_info=True)
+            # Degrade quietly to the file-based reader below. This used to log at
+            # ERROR with a full traceback on every admin poll, flooding the log
+            # (the repeated "Failed to read audit log from DB" spam).
+            logger.warning("Audit-log DB read unavailable, using file fallback: %s", e)
 
     path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs", "admin_audit.jsonl")
     if not os.path.exists(path):
@@ -649,10 +657,25 @@ def wipe_user_data(user_id: int, db: Session) -> dict:
     except Exception as e:
         logger.error("Chroma purge failed for user %s: %s", user_id, e, exc_info=True)
 
-    # 5. Delete the target user and invalidate cache
+    # 5. Delete the owner's STAFF sub-accounts too. They belong to this business
+    #    (parent_business_id == owner id) and share the owner's data (already
+    #    wiped above); leaving them would orphan their parent_business_id AND keep
+    #    their globally-unique usernames reserved forever.
+    staff_deleted = (
+        db.query(User)
+          .filter(User.parent_business_id == user_id)
+          .delete(synchronize_session=False)
+    )
+
+    # 6. Delete the target owner and invalidate cache. Removing the User rows frees
+    #    the (unique) usernames so the business can be registered again cleanly.
     db.delete(target)
     db.commit()
     invalidate_user_cache(user_id)
+    logger.warning(
+        "[ADMIN] Wiped business %s ('%s') — data + owner account + %d staff account(s) deleted; usernames freed.",
+        user_id, target.username, staff_deleted or 0,
+    )
     return {"status": "success", "message": "All data for " + target.username + " deleted."}
 
 

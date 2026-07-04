@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
+import { logger } from '../utils/logger'
 import Chat from '../pages/Chat'
 import InsightsPanel from '../components/InsightsPanel'
 import { Icon } from '../components/icons'
@@ -168,7 +169,7 @@ export default function AppLayout() {
         });
       }
     } catch (e) {
-      console.error("Failed to load dashboard summary stats:", e);
+      logger.error("Failed to load dashboard summary stats:", e);
     }
   };
 
@@ -312,7 +313,7 @@ export default function AppLayout() {
         });
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
     }
   };
 

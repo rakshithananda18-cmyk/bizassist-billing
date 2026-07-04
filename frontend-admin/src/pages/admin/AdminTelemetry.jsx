@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { logger } from '../../utils/logger'
 import { API_BASE } from '../../config'
 import { Section } from '../../components/ui'
 import { Icon } from '../../components/icons'
@@ -73,7 +74,7 @@ export default function AdminTelemetry() {
     try {
       const res = await authFetch(`${API_BASE}/admin/telemetry/stats`)
       if (res.ok) setStats(await res.json())
-    } catch (err) { console.error(err) }
+    } catch (err) { logger.error(err) }
   }, [authFetch])
 
   const loadEvents = useCallback(async () => {
@@ -87,7 +88,7 @@ export default function AdminTelemetry() {
       params.set('limit', filters.limit || 200)
       const res = await authFetch(`${API_BASE}/admin/telemetry?${params}`)
       if (res.ok) setEvents((await res.json()).events || [])
-    } catch (err) { console.error(err) } finally { setLoading(false) }
+    } catch (err) { logger.error(err) } finally { setLoading(false) }
   }, [authFetch, filters])
 
   const loadTab = useCallback(async (t) => {
@@ -106,7 +107,7 @@ export default function AdminTelemetry() {
         const res = await authFetch(`${API_BASE}/admin/audit-log?limit=200`)
         if (res.ok) setAudit(await res.json())
       }
-    } catch (err) { console.error(err) } finally { setLoading(false) }
+    } catch (err) { logger.error(err) } finally { setLoading(false) }
   }, [authFetch])
 
   // Download the full telemetry table as gzip JSONL; optionally purge archived
@@ -131,7 +132,7 @@ export default function AdminTelemetry() {
       URL.revokeObjectURL(url)
       if (purge) { await loadStats(); if (tab === 'events') loadEvents() }
     } catch (err) {
-      console.error(err)
+      logger.error(err)
       alert(`Archive failed: ${err.message}`)
     } finally { setArchiving(false) }
   }, [authFetch, loadStats, loadEvents, tab])

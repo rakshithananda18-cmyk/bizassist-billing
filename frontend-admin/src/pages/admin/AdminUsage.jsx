@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { logger } from '../../utils/logger'
 import { API_BASE } from '../../config'
 
 export default function AdminUsage() {
@@ -19,7 +20,7 @@ export default function AdminUsage() {
       const data = await res.json()
       setStats(data)
     } catch (err) {
-      console.error(err)
+      logger.error(err)
     } finally {
       setLoading(false)
     }

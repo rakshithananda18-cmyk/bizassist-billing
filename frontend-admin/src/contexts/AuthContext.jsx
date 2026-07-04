@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { API_BASE } from '../config'
+import { logger, setBizId } from '../utils/logger'
 
 const AuthContext = createContext(null)
 
@@ -50,10 +51,10 @@ export function AuthProvider({ children }) {
             setUser(data)
             ssoSuccess = true
           } else {
-            console.warn('[SSO] Ticket redemption rejected by server')
+            logger.warn('[SSO] Ticket redemption rejected by server')
           }
         } catch (err) {
-          console.warn('[SSO] Ticket redemption failed:', err)
+          logger.warn('[SSO] Ticket redemption failed:', err)
         }
       }
       
@@ -71,6 +72,9 @@ export function AuthProvider({ children }) {
     
     initAuth()
   }, [])
+
+  // Keep the [BizId=…] logging context in sync with the signed-in business.
+  useEffect(() => { setBizId(user?.public_id || null) }, [user])
 
   // Listen for SSO tickets sent via postMessage from the billing app.
   // This fires when the tab is already open (React is mounted) and the user
@@ -105,10 +109,10 @@ export function AuthProvider({ children }) {
           if (data.business_name) localStorage.setItem('biz_name', data.business_name)
           setUser(data)
         } else {
-          console.warn('[SSO] postMessage ticket redemption rejected by server')
+          logger.warn('[SSO] postMessage ticket redemption rejected by server')
         }
       } catch (err) {
-        console.warn('[SSO] postMessage ticket redemption failed:', err)
+        logger.warn('[SSO] postMessage ticket redemption failed:', err)
       }
     }
 

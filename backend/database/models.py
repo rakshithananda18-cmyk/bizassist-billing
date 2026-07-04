@@ -94,6 +94,9 @@ class User(Base, TimestampMixin):
     # "counter_1". The global-unique `username` is auto-derived internally; staff
     # never log in by it directly (they go owner → counter dropdown). NULL for owners.
     staff_login_name = Column(String, nullable=True)
+    # Premium/paid subscription flag. Cloud-sync nudges (cloud↔local sync popups)
+    # and other paid capabilities are gated on this. Defaults to False (free tier).
+    is_premium    = Column(Boolean, default=False, nullable=False, server_default="0")
 
 
 class UploadedFile(Base, TimestampMixin):

@@ -43,6 +43,17 @@ export function useRealtimeLeader(token, settings, user) {
     const channel = new BroadcastChannel('bizassist_sse_leader')
     channelRef.current = channel
 
+    // A late SSE onopen/onerror can fire AFTER this effect's cleanup closed the
+    // channel (StrictMode remount, unmount, reconnect), and postMessage on a
+    // closed channel throws "InvalidStateError: Channel is closed" — uncaught,
+    // it also spams window_error telemetry. Route every broadcast through this
+    // guard so a closed channel is a quiet no-op.
+    let channelClosed = false
+    const safePost = (msg) => {
+      if (channelClosed) return
+      try { channel.postMessage(msg) } catch { /* channel already closed */ }
+    }
+
     let lastSyncTime = localStorage.getItem(`sync_last_time_${user.id}`) || null
     let lastEntity = localStorage.getItem(`sync_last_entity_${user.id}`) || null
     let connectionError = null
@@ -146,7 +157,7 @@ export function useRealtimeLeader(token, settings, user) {
             window.dispatchEvent(new CustomEvent('realtime-sync-auto-disabled', { detail: { reason } }))
             
             // Broadcast to follower tabs
-            channel.postMessage({ type: 'settings_updated_auto_disable', reason })
+            safePost({ type: 'settings_updated_auto_disable', reason })
             
             // Trigger local settings reload
             window.dispatchEvent(new CustomEvent('refresh-settings'))
@@ -182,7 +193,7 @@ export function useRealtimeLeader(token, settings, user) {
       }))
 
       emitStatus('connecting')
-      channel.postMessage({ type: 'status_change', status: 'connecting', error: null })
+      safePost({ type: 'status_change', status: 'connecting', error: null })
 
       try {
         // Fetch short-lived ticket first (Feature 1)
@@ -208,7 +219,7 @@ export function useRealtimeLeader(token, settings, user) {
           connectionError = null
           consecutiveFailureCountRef.current = 0 // Reset failure counter on success
           emitStatus('connected')
-          channel.postMessage({ type: 'status_change', status: 'connected', error: null })
+          safePost({ type: 'status_change', status: 'connected', error: null })
           window.dispatchEvent(new CustomEvent('show_toast', {
             detail: { type: 'success', msg: 'Cloud real-time sync connected.' }
           }))
@@ -223,7 +234,7 @@ export function useRealtimeLeader(token, settings, user) {
             await processEvent(data, true)
 
             // Broadcast event to followers
-            channel.postMessage({ type: 'sync_event', data })
+            safePost({ type: 'sync_event', data })
           } catch (err) {
             logger.error('[REALTIME] SSE parse error:', err)
           }
@@ -237,7 +248,7 @@ export function useRealtimeLeader(token, settings, user) {
           }
           connectionError = 'Sync stream interrupted. Reconnecting…'
           emitStatus('error')
-          channel.postMessage({ type: 'status_change', status: 'error', error: connectionError })
+          safePost({ type: 'status_change', status: 'error', error: connectionError })
           window.dispatchEvent(new CustomEvent('show_toast', {
             detail: { type: 'error', msg: 'Sync stream interrupted. Reconnecting…' }
           }))
@@ -252,7 +263,7 @@ export function useRealtimeLeader(token, settings, user) {
         }
         connectionError = err.message || 'Failed to initialize sync client.'
         emitStatus('error')
-        channel.postMessage({ type: 'status_change', status: 'error', error: connectionError })
+        safePost({ type: 'status_change', status: 'error', error: connectionError })
         window.dispatchEvent(new CustomEvent('show_toast', {
           detail: { type: 'error', msg: `Sync connection failed: ${connectionError}` }
         }))
@@ -274,7 +285,7 @@ export function useRealtimeLeader(token, settings, user) {
         if (!isCurrentLeader) {
           logger.info(`[REALTIME] Tab ${tabId} elected as leader.`)
           isCurrentLeader = true
-          channel.postMessage({ type: 'leader_claimed', tabId })
+          safePost({ type: 'leader_claimed', tabId })
           connectSSE()
         }
       } else {
@@ -298,7 +309,7 @@ export function useRealtimeLeader(token, settings, user) {
       if (currentLeader === tabId) {
         localStorage.removeItem('realtime_leader_tab')
         localStorage.removeItem('realtime_leader_ts')
-        channel.postMessage({ type: 'leader_left', tabId })
+        safePost({ type: 'leader_left', tabId })
       }
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
@@ -393,7 +404,7 @@ export function useRealtimeLeader(token, settings, user) {
         reconnectTimeoutRef.current = null
       }
       if (isCurrentLeader) {
-        channel.postMessage({ type: 'status_change', status: 'error', error: connectionError })
+        safePost({ type: 'status_change', status: 'error', error: connectionError })
       }
       window.dispatchEvent(new CustomEvent('show_toast', {
         detail: { type: 'warning', msg: 'Network connection lost. Sync suspended.' }
@@ -406,7 +417,7 @@ export function useRealtimeLeader(token, settings, user) {
         connectSSE()
       } else {
         // followers forward to the leader (or ask leader to reconnect) via channel
-        channel.postMessage({ type: 'reconnect_request' })
+        safePost({ type: 'reconnect_request' })
       }
     }
 
@@ -439,6 +450,7 @@ export function useRealtimeLeader(token, settings, user) {
         esRef.current.close()
         esRef.current = null
       }
+      channelClosed = true   // stop any late SSE handler from posting to it
       channel.close()
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { MonitorIcon, CloudIcon, SyncIcon, SettingsIcon, AlertIcon } from '../Icons'
 import { CLOUD_URL } from '../../config'
+import { logger } from '../../utils/logger'
 
 // Consequence definitions for each transition
 const TRANSITIONS = {
@@ -121,7 +122,7 @@ export default function ConsequenceModal({ fromMode, toMode, onCancel, onConfirm
           }
         }
       })
-      .catch(err => console.warn('Failed to check cloud count during pre-switch check:', err))
+      .catch(err => logger.warn('Failed to check cloud count during pre-switch check:', err))
       .finally(() => setLoadingCloudCheck(false))
     }
   }, [fromMode, toMode])

@@ -78,6 +78,73 @@ def reconcile_password(req: ReconcilePasswordRequest, db: Session = Depends(get_
     return {"status": "ok", "business_name": user.business_name, "public_id": user.public_id}
 
 
+class ReclaimLocalRequest(BaseModel):
+    username: str
+    password: str                       # new password, already registered on the cloud
+    public_id: str                      # freshly-minted cloud BizID to adopt
+    business_name: Optional[str] = None
+
+
+@router.post("/api/auth/reclaim_local")
+def reclaim_local(req: ReclaimLocalRequest, db: Session = Depends(get_db)):
+    """
+    LOCAL-ONLY: re-key an ORPHANED local owner account onto a freshly-minted cloud
+    identity, then log in. This handles re-registering a username whose CLOUD
+    account was deleted — the username is free on the cloud (so cloud signup just
+    succeeded and minted a new BizID), but a stale LOCAL mirror still holds it,
+    which otherwise makes the local /signup return 400 "Username already exists".
+
+    Safe because: (1) it runs only on the LOCAL backend (localhost trust model,
+    single device owner); (2) it is reached ONLY after the cloud accepted a NEW
+    signup for this username, proving the old cloud identity is gone; (3) it
+    re-keys identity (BizID) + password and does NOT create or merge across
+    businesses. It is non-destructive to any existing local data on the row —
+    the caller can start fresh separately if they want a clean slate.
+    """
+    if _DB_MODE == "cloud":
+        raise HTTPException(status_code=400, detail="Reclaim is a local-only operation.")
+    if not (req.public_id or "").strip():
+        raise HTTPException(status_code=400, detail="public_id (new cloud BizID) is required.")
+
+    uname = (req.username or "").strip()
+    user = (db.query(User)
+              .filter(User.username == uname, User.parent_business_id.is_(None))
+              .first())
+    if not user:
+        raise HTTPException(status_code=404, detail="No local account to reclaim.")
+
+    old_bizid = user.public_id
+    user.public_id = req.public_id
+    user.password = hash_password(req.password)
+    if req.business_name:
+        user.business_name = req.business_name
+    db.commit()
+    db.refresh(user)
+    logger.warning(
+        f"[AUTH] Reclaimed orphaned local account '{uname}': "
+        f"BizID {old_bizid} → {user.public_id} (cloud account was re-registered)."
+    )
+
+    token = create_access_token({
+        "id": user.id,
+        "user_id": user.id,
+        "username": user.username,
+        "public_id": user.public_id,
+        "business_name": user.business_name,
+        "role": user.role,
+    })
+    return {
+        "token": token,
+        "id": user.id,
+        "user_id": user.id,
+        "username": user.username,
+        "public_id": user.public_id,
+        "business_name": user.business_name,
+        "role": user.role,
+        "db_mode": _DB_MODE,
+    }
+
+
 class SignupRequest(BaseModel):
     username: str
     password: str
@@ -453,6 +520,7 @@ def get_profile(current_user: dict = Depends(get_active_user), db: Session = Dep
         "pan": user.pan,
         "logo": user.logo,
         "counter_prefix": user.counter_prefix,
+        "is_premium": bool(getattr(user, "is_premium", False)),
     }
 
 
@@ -500,6 +568,7 @@ def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(get_a
         "pan": user.pan,
         "logo": user.logo,
         "counter_prefix": user.counter_prefix,
+        "is_premium": bool(getattr(user, "is_premium", False)),
     }
 
 

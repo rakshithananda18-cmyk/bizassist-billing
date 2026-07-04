@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
 import { BuildingMark } from '../components/Logo'
-import { API_BASE } from '../config'
+import { API_BASE, CLOUD_URL, IS_LOCAL_APP } from '../config'
 import CustomSelect from '../components/common/CustomSelect'
 import BootHealthCheck from '../components/BootHealthCheck'
 
@@ -85,6 +85,22 @@ export default function Login() {
   // password). Staff are never logged in by a global username directly.
   const [standardStep, setStandardStep] = useState('username')  // username | choose | owner | staff
   const [bizLookup, setBizLookup] = useState(null)              // { business_name, staff:[{login_name, counter_prefix, role}] }
+
+  // Remove a saved business from the recent-logins list (localStorage + state).
+  // Only forgets the quick-login shortcut on THIS device — the account itself is
+  // untouched and can be signed into again from "Other business".
+  const deleteRecentLogin = (e, username) => {
+    e.stopPropagation()
+    e.preventDefault()
+    const next = recentLogins.filter(r => r.username !== username)
+    setRecentLogins(next)
+    try { localStorage.setItem('bizassist_recent_logins', JSON.stringify(next)) } catch { /* ignore */ }
+    logger.info('Removed a business from recent logins on this device.')
+    if (next.length === 0) {
+      setUsername(''); setPassword(''); setError('')
+      setView('standard')
+    }
+  }
 
   // Handle standard submit (when logging in first-time or other account)
   async function handleSubmitStandard(e) {
@@ -211,15 +227,42 @@ export default function Login() {
     if (!owner) { setError('Enter the business owner username.'); return }
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/staff-counters?owner=${encodeURIComponent(owner)}`)
-      if (res.ok) {
-        const data = await res.json()
+      // Resolve owner → business + staff. On the desktop app the LOCAL backend is
+      // only an identity mirror on a fresh device (business/staff rows are gated),
+      // so a local lookup returns 404 or an empty staff list and the Staff button
+      // never appears — even though staff exist on the cloud. So: query local
+      // first, and if it can't tell us about staff, fall back to the CLOUD (which
+      // is the identity + staff authority). This makes the Owner/Staff picker work
+      // on Windows exactly like it does on the web.
+      const lookup = async (base) => {
+        const res = await fetch(`${base}/staff-counters?owner=${encodeURIComponent(owner)}`)
+        if (!res.ok) return null
+        return res.json()
+      }
+
+      let data = null
+      try { data = await lookup(API_BASE) } catch { data = null }
+
+      const localHasStaff = data && Array.isArray(data.staff) && data.staff.length > 0
+      if (IS_LOCAL_APP && CLOUD_URL !== API_BASE && !localHasStaff &&
+          (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+        try {
+          const cloudData = await lookup(CLOUD_URL)
+          if (cloudData && Array.isArray(cloudData.staff) && cloudData.staff.length > 0) {
+            data = cloudData
+          } else if (!data && cloudData) {
+            data = cloudData
+          }
+        } catch { /* cloud unreachable — keep whatever local gave us */ }
+      }
+
+      if (data) {
         setBizLookup(data)
         // If the business has staff, offer the choice; else go straight to owner password.
         setStandardStep((data.staff && data.staff.length > 0) ? 'choose' : 'owner')
       } else {
-        // Owner not found via lookup (typo / fresh account) — still allow an owner
-        // password attempt (login() will validate); no staff option.
+        // Owner not found on either backend (typo / brand-new account) — still allow
+        // an owner password attempt (login() will validate); no staff option.
         setBizLookup(null)
         setStandardStep('owner')
       }
@@ -410,8 +453,8 @@ export default function Login() {
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '12px 0 20px', width: '100%', boxSizing: 'border-box' }}>
               {recentLogins.map((item, idx) => (
+                <div key={idx} style={{ position: 'relative' }}>
                 <button
-                  key={idx}
                   type="button"
                   onClick={async () => {
                     setSelectedOwner(item)
@@ -420,31 +463,42 @@ export default function Login() {
                     const hasCachedStaff = item.staffAccounts && item.staffAccounts.length > 0
                     setView(hasCachedStaff ? 'recent-choose' : 'password')
                     try {
-                      const res = await fetch(`${API_BASE}/staff-counters?owner=${encodeURIComponent(item.username)}`)
-                      if (res.ok) {
-                        const data = await res.json()
-                        const liveStaff = (data.staff || []).map(s => ({
-                          username: s.login_name,
-                          role: s.role
-                        }))
-                        setSelectedOwner(prev => {
-                          if (prev && prev.username === item.username) {
-                            return { ...prev, staffAccounts: liveStaff }
-                          }
-                          return prev
-                        })
+                      // Resolve the owner's staff. On the desktop app the LOCAL
+                      // backend is only an identity mirror on a fresh device, so
+                      // /staff-counters returns an empty list there even when
+                      // staff exist on the cloud — which used to hide (and wipe)
+                      // the Owner/Staff choice. So query local first, then fall
+                      // back to the CLOUD (the staff authority) if local has none.
+                      const lookup = async (base) => {
+                        const r = await fetch(`${base}/staff-counters?owner=${encodeURIComponent(item.username)}`)
+                        if (!r.ok) return null
+                        return r.json()
+                      }
+                      const toStaff = (data) => (data?.staff || []).map(s => ({ username: s.login_name, role: s.role }))
+
+                      let liveStaff = toStaff(await lookup(API_BASE).catch(() => null))
+                      if (IS_LOCAL_APP && CLOUD_URL !== API_BASE && liveStaff.length === 0 &&
+                          (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+                        const cloudStaff = toStaff(await lookup(CLOUD_URL).catch(() => null))
+                        if (cloudStaff.length > 0) liveStaff = cloudStaff
+                      }
+
+                      // IMPORTANT: never DOWNGRADE on an empty result — an offline
+                      // local lookup must not wipe cached staff or hide the choice.
+                      if (liveStaff.length > 0) {
+                        setSelectedOwner(prev =>
+                          (prev && prev.username === item.username) ? { ...prev, staffAccounts: liveStaff } : prev
+                        )
                         const recent = JSON.parse(localStorage.getItem('bizassist_recent_logins') || '[]')
                         const idx = recent.findIndex(r => r.username === item.username)
                         if (idx !== -1) {
                           recent[idx].staffAccounts = liveStaff
                           localStorage.setItem('bizassist_recent_logins', JSON.stringify(recent))
                         }
-                        setView(prev => {
-                          if (prev === 'recent' || prev === 'recent-choose') {
-                            return liveStaff.length > 0 ? 'recent-choose' : 'password'
-                          }
-                          return prev
-                        })
+                        setView(prev => (prev === 'recent' || prev === 'recent-choose') ? 'recent-choose' : prev)
+                      } else if (!hasCachedStaff) {
+                        // No staff anywhere and nothing cached → owner password.
+                        setView(prev => (prev === 'recent' || prev === 'recent-choose') ? 'password' : prev)
                       }
                     } catch (err) {
                       logger.error('Failed to fetch live staff list for quick login:', err)
@@ -516,6 +570,27 @@ export default function Login() {
                     </svg>
                   </div>
                 </button>
+                {/* Remove this saved business (this device only) */}
+                <button
+                  type="button"
+                  aria-label="Remove from recent logins"
+                  title="Remove from recent logins"
+                  onClick={(e) => deleteRecentLogin(e, item.username)}
+                  style={{
+                    position: 'absolute', top: 8, right: 8, width: 24, height: 24,
+                    borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-3)',
+                    color: 'var(--text-muted)', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', cursor: 'pointer', lineHeight: 1, padding: 0, zIndex: 2,
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--error, #ef4444)'; e.currentTarget.style.borderColor = 'var(--error, #ef4444)' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+                </div>
               ))}
             </div>
             

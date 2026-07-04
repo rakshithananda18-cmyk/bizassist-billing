@@ -4,12 +4,15 @@ import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useLock } from '../contexts/LockContext'
 import { API_BASE } from '../config'
+import { logger } from '../utils/logger'
 import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
 import { IS_DESKTOP_APP, openDownloadPage } from '../config/downloadApp'
 import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
 import SyncNudgeModal from '../components/hosting/SyncNudgeModal'
-import HostingOnboardingModal from '../components/hosting/HostingOnboardingModal'
+import WebLocalOnlyNotice from '../components/hosting/WebLocalOnlyNotice'
+// HostingOnboardingModal removed: hosting is now chosen once, in Register.
+// The post-login onboarding pop-up duplicated that choice and was intrusive.
 import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon, DownloadIcon } from '../components/Icons'
 
 
@@ -124,7 +127,7 @@ export default function AppLayout({ children, title }) {
         setFlushing(false)
       }
     } catch (err) {
-      console.error('Failed to trigger manual sync flush:', err)
+      logger.error('Failed to trigger manual sync flush:', err)
       setFlushing(false)
     }
   }, [token])
@@ -142,7 +145,7 @@ export default function AppLayout({ children, title }) {
           setQueueDepth(data)
         }
       } catch (err) {
-        console.error('Failed to fetch sync queue depth:', err)
+        logger.error('Failed to fetch sync queue depth:', err)
       }
     }
 
@@ -257,7 +260,7 @@ export default function AppLayout({ children, title }) {
         return JSON.parse(saved)
       }
     } catch (e) {
-      console.error(e)
+      logger.error(e)
     }
     return {
       'Hub': false,
@@ -271,7 +274,7 @@ export default function AppLayout({ children, title }) {
     try {
       localStorage.setItem('sidebar_collapsed_sections', JSON.stringify(collapsed))
     } catch (e) {
-      console.error(e)
+      logger.error(e)
     }
   }, [collapsed])
 
@@ -287,7 +290,9 @@ export default function AppLayout({ children, title }) {
 
   // Theme support
   const [theme, setTheme] = React.useState(() => {
-    return localStorage.getItem('billing_theme') || 'light'
+    // Default to 'system' so the app follows the OS light/dark setting out of the
+    // box (matches the boot script in index.html). Explicit choices still win.
+    return localStorage.getItem('billing_theme') || 'system'
   })
 
   React.useEffect(() => {
@@ -325,6 +330,27 @@ export default function AppLayout({ children, title }) {
       return () => mediaQuery.removeEventListener('change', handler)
     }
   }, [theme])
+
+  // One-time notice the first time the app auto-adopts the OS theme (i.e. the
+  // user never picked one). Captured before the theme effect persists 'system'.
+  const themeAutoAdopted = React.useRef(
+    typeof localStorage !== 'undefined' && !localStorage.getItem('billing_theme')
+  )
+  React.useEffect(() => {
+    if (!themeAutoAdopted.current) return
+    try {
+      if (localStorage.getItem('billing_theme_toast_shown')) return
+      localStorage.setItem('billing_theme_toast_shown', '1')
+    } catch { return }
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    // Small delay so the toast listener is mounted and it isn't jarring on first paint.
+    const t = setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('show_toast', {
+        detail: { type: 'info', msg: `Matching your system theme (${prefersDark ? 'dark' : 'light'}). Change it anytime in Settings.` },
+      }))
+    }, 900)
+    return () => clearTimeout(t)
+  }, [])
 
   // Profile popover menu
   const [showProfileMenu, setShowProfileMenu] = React.useState(false)
@@ -522,9 +548,10 @@ export default function AppLayout({ children, title }) {
   return (
     <div className={`app-shell ${isSalesPage ? 'pos-layout-shell' : ''}`}>
       {!appReady && <PageLoader />}
-      {/* Nudge to sync when the cloud holds data this device doesn't (sensed at login) */}
+      {/* Nudge to sync when a device is missing data the other side holds (sensed at login) */}
       <SyncNudgeModal />
-      <HostingOnboardingModal />
+      {/* Web-only: a Local-only account has no data on the cloud — explain instead of showing an empty app */}
+      <WebLocalOnlyNotice />
 
       {/* Global Toast Container */}
       {/* Landscape orientation overlay for POS `/sales` page on mobile */}

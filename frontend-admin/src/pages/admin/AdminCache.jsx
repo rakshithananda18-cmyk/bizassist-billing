@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { logger } from '../../utils/logger'
 import { useDialog } from '../../contexts/DialogContext'
 import { API_BASE } from '../../config'
 import { Icon } from '../../components/icons'
@@ -22,7 +23,7 @@ export default function AdminCache() {
       const data = await res.json()
       setCacheStats(data)
     } catch (err) {
-      console.error(err)
+      logger.error(err)
     } finally {
       setLoading(false)
     }
