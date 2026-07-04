@@ -156,7 +156,7 @@ def configure_logging(level: str = None, *, color: bool = None) -> None:
     # Optional persistent file log (Phase 5 observability + shadow-route analysis).
     # Opt-in via LOG_FILE=path; plain text (no colour), size-bounded. Default off,
     # so console-only behaviour and existing tests are unchanged.
-    log_file = os.getenv("LOG_FILE")
+    log_file = os.getenv("LOG_FILE", "logs/bizassist.log")
     if log_file:
         try:
             from logging.handlers import RotatingFileHandler
