@@ -8,6 +8,7 @@ const ADMIN_NAV = [
   { to: '/admin/dashboard',  icon: 'dashboard', label: 'Overview' },
   { to: '/admin/businesses', icon: 'users',     label: 'Businesses' },
   { to: '/admin/usage',      icon: 'chart',     label: 'Usage & Limits' },
+  { to: '/admin/health',     icon: 'alert',     label: 'Health & Audits' },
   { to: '/admin/telemetry',  icon: 'file',      label: 'Telemetry & Logs' },
   { to: '/admin/cache',      icon: 'trash',     label: 'Cache & System' },
 ]

@@ -839,6 +839,7 @@ _SYNC_TABLES = {
     "stock_transfers",
     "stock_transfer_line_items",
     "b2b_ledgers",
+    "table_alterations",
 }
 
 
@@ -995,3 +996,176 @@ def handle_after_update(mapper, connection, target):
 def handle_after_delete(mapper, connection, target):
     _queue_change(connection, target, "DELETE")
 # (sync-touch)
+
+# ── USER FEEDBACK ────────────────────────────────────────────────────────────
+
+class UserFeedback(Base):
+    """User submitted support feedback and issues."""
+    __tablename__ = "user_feedback"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    business_id   = Column(Integer, index=True)
+    username      = Column(String, nullable=True)
+    message       = Column(Text)
+    log_file_path = Column(String, nullable=True)
+    created_at    = Column(DateTime, default=datetime.utcnow)
+
+
+# ── TABLE ALTERATION AUDITING ───────────────────────────────────────────────
+
+class TableAlteration(Base):
+    """Audit log of database table insertions, updates, and deletions by users."""
+    __tablename__ = "table_alterations"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    user_id     = Column(Integer, nullable=True)
+    username    = Column(String, nullable=True)
+    business_id = Column(Integer, nullable=True)
+    table_name  = Column(String, index=True)
+    action      = Column(String)  # INSERT, UPDATE, DELETE
+    record_id   = Column(String, nullable=True)
+    old_values  = Column(Text, nullable=True)  # JSON-serialized old values
+    new_values  = Column(Text, nullable=True)  # JSON-serialized new values
+    created_at  = Column(DateTime, default=datetime.utcnow)
+    # Step 3 durable UID for cross-DB sync
+    uid         = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
+
+
+from sqlalchemy.orm import Session
+from sqlalchemy import inspect
+import json
+
+EXCLUDED_TABLES = {
+    "table_alterations", "action_log", "action_logs", "token_usage", 
+    "chat_messages", "document_embeddings", "alembic_version", 
+    "uploaded_files", "sync_queue", "sync_logs", "conflict_logs", 
+    "telemetry_events"
+}
+
+def serialize_val(val):
+    if val is None:
+        return None
+    from datetime import datetime, date
+    if isinstance(val, (datetime, date)):
+        return val.isoformat()
+    if isinstance(val, (int, float, str, bool)):
+        return val
+    return str(val)
+
+@event.listens_for(Session, "before_flush")
+def audit_before_flush(session, flush_context, instances):
+    # Retrieve context variables
+    from database.db import current_user_id_var, current_username_var, current_business_id_var
+    user_id = current_user_id_var.get()
+    username = current_username_var.get()
+    business_id = current_business_id_var.get()
+
+    pending = getattr(session, "_pending_audits", None)
+    if pending is None:
+        pending = []
+        session._pending_audits = pending
+
+    # Track inserts
+    for obj in session.new:
+        tbl = getattr(obj, "__tablename__", None)
+        if not tbl or tbl in EXCLUDED_TABLES:
+            continue
+        new_vals = {}
+        for col in obj.__table__.columns:
+            val = getattr(obj, col.name, None)
+            new_vals[col.name] = serialize_val(val)
+        pending.append({
+            "action": "INSERT",
+            "table_name": tbl,
+            "obj": obj,
+            "old_values": None,
+            "new_values": json.dumps(new_vals),
+            "user_id": user_id,
+            "username": username,
+            "business_id": business_id or getattr(obj, "business_id", None)
+        })
+
+    # Track updates
+    for obj in session.dirty:
+        if not session.is_modified(obj):
+            continue
+        tbl = getattr(obj, "__tablename__", None)
+        if not tbl or tbl in EXCLUDED_TABLES:
+            continue
+        
+        old_vals = {}
+        new_vals = {}
+        state = inspect(obj)
+        for attr in state.attrs:
+            if attr.history.has_changes():
+                col_name = attr.key
+                old_val = attr.history.deleted[0] if attr.history.deleted else None
+                new_val = attr.value
+                old_vals[col_name] = serialize_val(old_val)
+                new_vals[col_name] = serialize_val(new_val)
+                
+        if old_vals:
+            pending.append({
+                "action": "UPDATE",
+                "table_name": tbl,
+                "obj": obj,
+                "old_values": json.dumps(old_vals),
+                "new_values": json.dumps(new_vals),
+                "user_id": user_id,
+                "username": username,
+                "business_id": business_id or getattr(obj, "business_id", None)
+            })
+
+    # Track deletes
+    for obj in session.deleted:
+        tbl = getattr(obj, "__tablename__", None)
+        if not tbl or tbl in EXCLUDED_TABLES:
+            continue
+        old_vals = {}
+        for col in obj.__table__.columns:
+            val = getattr(obj, col.name, None)
+            old_vals[col.name] = serialize_val(val)
+        pending.append({
+            "action": "DELETE",
+            "table_name": tbl,
+            "obj": obj,
+            "old_values": json.dumps(old_vals),
+            "new_values": None,
+            "user_id": user_id,
+            "username": username,
+            "business_id": business_id or getattr(obj, "business_id", None)
+        })
+
+@event.listens_for(Session, "after_flush")
+def audit_after_flush(session, flush_context):
+    pending = getattr(session, "_pending_audits", None)
+    if not pending:
+        return
+    
+    session._pending_audits = []
+    
+    for item in pending:
+        obj = item.pop("obj")
+        pk = inspect(obj).identity
+        record_id = str(pk[0]) if pk else None
+        
+        # Insert raw SQL directly on the connection to prevent session flushes recursive loops
+        connection = session.connection()
+        connection.execute(
+            text(
+                "INSERT INTO table_alterations (user_id, username, business_id, table_name, action, record_id, old_values, new_values, created_at, uid) "
+                "VALUES (:user_id, :username, :business_id, :table_name, :action, :record_id, :old_values, :new_values, :created_at, :uid)"
+            ),
+            {
+                "user_id": item["user_id"],
+                "username": item["username"],
+                "business_id": item["business_id"],
+                "table_name": item["table_name"],
+                "action": item["action"],
+                "record_id": record_id,
+                "old_values": item["old_values"],
+                "new_values": item["new_values"],
+                "created_at": datetime.utcnow(),
+                "uid": str(uuid.uuid4())
+            }
+        )

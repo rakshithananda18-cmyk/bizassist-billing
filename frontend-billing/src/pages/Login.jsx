@@ -10,6 +10,7 @@ import { logger } from '../utils/logger'
 import { BuildingMark } from '../components/Logo'
 import { API_BASE } from '../config'
 import CustomSelect from '../components/common/CustomSelect'
+import BootHealthCheck from '../components/BootHealthCheck'
 
 export default function Login() {
   const { login, staffLogin } = useAuth()
@@ -1031,6 +1032,14 @@ export default function Login() {
         )}
       </div>
     </div>
+    {/* First-run self-test: field installs can check backend/cloud/DB/clock
+        and one-click send diagnostics instead of failing silently. */}
+    <details style={{ position: 'fixed', bottom: 12, right: 12, zIndex: 50, maxWidth: 480 }}>
+      <summary style={{ cursor: 'pointer', fontSize: '0.78rem', color: 'var(--text-muted)', userSelect: 'none' }}>⚙ System check</summary>
+      <div style={{ marginTop: 8 }}>
+        <BootHealthCheck auto={true} />
+      </div>
+    </details>
     </>
   )
 }

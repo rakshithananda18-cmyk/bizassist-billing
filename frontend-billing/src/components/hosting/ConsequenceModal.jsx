@@ -1,5 +1,6 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { MonitorIcon, CloudIcon, SyncIcon, SettingsIcon, AlertIcon } from '../Icons'
+import { CLOUD_URL } from '../../config'
 
 // Consequence definitions for each transition
 const TRANSITIONS = {
@@ -85,7 +86,7 @@ const TRANSITIONS = {
   },
 }
 
-export default function ConsequenceModal({ fromMode, toMode, onCancel, onConfirm }) {
+export default function ConsequenceModal({ fromMode, toMode, onCancel, onConfirm, onSyncFirst }) {
   const key = `${fromMode}→${toMode}`
   const info = TRANSITIONS[key] || {
     title: `Switch to ${toMode} mode`,
@@ -95,6 +96,35 @@ export default function ConsequenceModal({ fromMode, toMode, onCancel, onConfirm
     confirmLabel: 'Confirm',
     confirmColor: 'var(--accent)',
   }
+
+  const [cloudCount, setCloudCount] = useState(null)
+  const [loadingCloudCheck, setLoadingCloudCheck] = useState(false)
+
+  useEffect(() => {
+    if (fromMode === 'local' && (toMode === 'hybrid' || toMode === 'cloud')) {
+      const cloudToken = localStorage.getItem('bizassist_cloud_token')
+      if (!cloudToken) return
+
+      setLoadingCloudCheck(true)
+      fetch(`${CLOUD_URL}/api/data-transfer/count`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${cloudToken}`
+        }
+      })
+      .then(res => res.ok ? res.json() : null)
+      .then(counts => {
+        if (counts) {
+          const total = Object.values(counts).reduce((a, n) => a + (Number(n) > 0 ? Number(n) : 0), 0)
+          if (total > 0) {
+            setCloudCount(total)
+          }
+        }
+      })
+      .catch(err => console.warn('Failed to check cloud count during pre-switch check:', err))
+      .finally(() => setLoadingCloudCheck(false))
+    }
+  }, [fromMode, toMode])
 
   const getIcon = (type) => {
     switch (type) {
@@ -109,10 +139,11 @@ export default function ConsequenceModal({ fromMode, toMode, onCancel, onConfirm
     <div
       className="pf-backdrop"
       onMouseDown={onCancel}
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }}
     >
       <div
         className="pf-modal"
-        style={{ maxWidth: 460 }}
+        style={{ maxWidth: 480, background: 'var(--bg-2, #181818)', border: '1px solid var(--border, rgba(255,255,255,0.12))', borderRadius: 16, padding: '26px 30px', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}
         onMouseDown={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -134,11 +165,49 @@ export default function ConsequenceModal({ fromMode, toMode, onCancel, onConfirm
           display: 'flex', flexDirection: 'column', gap: 6,
         }}>
           {info.bullets.map((b, i) => (
-            <li key={i} style={{ fontSize: '0.84rem', color: 'var(--text-secondary, #222)', lineHeight: 1.5 }}>
+            <li key={i} style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
               {b}
             </li>
           ))}
         </ul>
+
+        {/* Cloud data warning / sync option box */}
+        {cloudCount !== null && (
+          <div style={{
+            background: 'rgba(79, 70, 229, 0.08)',
+            border: '1px solid rgba(79, 70, 229, 0.3)',
+            borderRadius: 8,
+            padding: '12px 14px',
+            marginBottom: 16,
+          }}>
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent, #4f46e5)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }} className="text-premium">
+              <CloudIcon size={14} /> Existing Cloud Data Detected
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 10 }}>
+              We found <strong>{cloudCount} records</strong> in your cloud account. Working locally should align with your cloud data. We recommend pulling this cloud data to your local machine first before switching.
+            </div>
+            <button
+              onClick={onSyncFirst}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: 6,
+                background: 'var(--accent, #4f46e5)',
+                color: '#fff',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6
+              }}
+            >
+              <SyncIcon size={12} /> Sync Cloud → Local First
+            </button>
+          </div>
+        )}
 
         {/* Danger bullets */}
         {info.danger.length > 0 && (

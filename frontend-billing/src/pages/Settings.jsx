@@ -723,7 +723,12 @@ function HostingModeSection({ currentMode, onModeChange, token, autoSwitchTarget
         <ConsequenceModal
           fromMode={currentMode}
           toMode={consequenceTarget}
+          token={token}
           onCancel={() => setConsequenceTarget(null)}
+          onSyncFirst={() => {
+            setBackupDir('cloud-to-local')
+            setConsequenceTarget(null)
+          }}
           onConfirm={() => {
             setMigrationState({ from: currentMode, to: consequenceTarget })
             setConsequenceTarget(null)

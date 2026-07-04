@@ -80,3 +80,101 @@ def submit_feedback(body: FeedbackRequest, current_user: dict = Depends(restrict
         "message": ("Got it — I'll answer that the right way next time."
                     if result["override"] else "Thanks for the feedback."),
     }
+
+
+from fastapi import File, UploadFile, Form
+import shutil
+import os
+from datetime import datetime
+
+@router.post("/feedback/submit")
+async def submit_merchant_feedback(
+    message: str = Form(...),
+    attach_logs: bool = Form(False),
+    file: Optional[UploadFile] = File(None),
+    current_user: dict = Depends(get_active_user)
+):
+    """Submit support feedback. On local, forwards to cloud with logs zipped. On cloud, stores feedback & logs file on disk."""
+    from database.db import engine
+    is_cloud = engine.dialect.name == "postgresql"
+    
+    business_id = current_user.get("id")
+    username = current_user.get("username")
+    
+    if not is_cloud:
+        # ── LOCAL CLIENT BEHAVIOR ──
+        archive_path = None
+        if attach_logs:
+            from services.log_uploader import archive_logs
+            archive_path = archive_logs(business_id)
+            
+        from services.sync_worker import _get_cloud_token, CLOUD_URL
+        token = _get_cloud_token(business_id)
+        if not token:
+            raise HTTPException(status_code=400, detail="Cloud integration is not enabled.")
+            
+        url = f"{CLOUD_URL}/feedback/submit"
+        try:
+            import httpx
+            headers = {"Authorization": f"Bearer {token}"}
+            # FastAPI Form parsing requires string values
+            data = {"message": message, "attach_logs": "true" if attach_logs else "false"}
+            
+            files = None
+            if archive_path and os.path.exists(archive_path):
+                f = open(archive_path, "rb")
+                files = {"file": (os.path.basename(archive_path), f, "application/gzip")}
+                
+            resp = httpx.post(url, data=data, files=files, headers=headers, timeout=30.0)
+            
+            if files:
+                f.close()
+                try:
+                    os.remove(archive_path)
+                except Exception:
+                    pass
+                    
+            if resp.status_code == 200:
+                return {"ok": True, "message": "Feedback and logs submitted to cloud successfully."}
+            else:
+                raise HTTPException(status_code=resp.status_code, detail=f"Cloud upload failed: {resp.text}")
+        except Exception as e:
+            logger.error("Failed to forward feedback to cloud: %s", e)
+            raise HTTPException(status_code=500, detail=f"Failed to submit feedback: {e}")
+            
+    else:
+        # ── CLOUD RECEIVER BEHAVIOR ──
+        # Save feedback text to user_feedback table
+        from database.db import SessionLocal
+        db = SessionLocal()
+        try:
+            log_file_path = None
+            if file:
+                upload_dir = os.path.join("logs", "remote_clients", str(business_id))
+                os.makedirs(upload_dir, exist_ok=True)
+                
+                timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                filename = f"feedback_{timestamp}_{file.filename}"
+                dest_path = os.path.join(upload_dir, filename)
+                
+                with open(dest_path, "wb") as f_out:
+                    shutil.copyfileobj(file.file, f_out)
+                log_file_path = dest_path.replace("\\", "/")
+                
+            from database.models import UserFeedback
+            feedback_row = UserFeedback(
+                business_id=business_id,
+                username=username,
+                message=message,
+                log_file_path=log_file_path,
+                created_at=datetime.utcnow()
+            )
+            db.add(feedback_row)
+            db.commit()
+            return {"ok": True, "message": "Feedback received successfully."}
+        except Exception as e:
+            db.rollback()
+            logger.error("Failed to save feedback on cloud: %s", e)
+            raise HTTPException(status_code=500, detail="Internal server error saving feedback.")
+        finally:
+            db.close()

@@ -379,3 +379,105 @@ def set_subscription(business_id: int, body: SubscriptionRequest,
     except Exception as e:
         db.rollback(); logger.error("admin/subscription POST %s: %s", business_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+from fastapi.responses import FileResponse
+import os
+import httpx
+from datetime import datetime
+
+@router.get("/admin/health-check")
+def get_admin_health_check(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """Health check endpoint for the Admin Console displaying DB connections and server status."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        
+        sqlite_status = "unknown"
+        postgres_status = "unknown"
+        
+        db_type = db.bind.dialect.name
+        try:
+            db.execute(text("SELECT 1")).fetchone()
+            db_conn_ok = True
+        except Exception:
+            db_conn_ok = False
+            
+        if db_type == "sqlite":
+            sqlite_status = "connected" if db_conn_ok else "error"
+        else:
+            postgres_status = "connected" if db_conn_ok else "error"
+            
+        if db_type == "sqlite":
+            from services.sync_worker import CLOUD_URL
+            try:
+                resp = httpx.get(f"{CLOUD_URL}/health", timeout=2.0)
+                postgres_status = "reachable" if resp.status_code == 200 else "error"
+            except Exception:
+                postgres_status = "unreachable"
+
+        log_size = 0
+        log_exists = False
+        log_path = "logs/bizassist.log"
+        if os.path.exists(log_path):
+            log_exists = True
+            log_size = os.path.getsize(log_path)
+            
+        from services import telemetry_maintenance as tm
+        telemetry_stats = {}
+        try:
+            telemetry_stats = tm.stats(db)
+        except Exception:
+            pass
+            
+        return {
+            "status": "ok",
+            "db_type": db_type,
+            "sqlite": sqlite_status,
+            "postgres": postgres_status,
+            "log_file": {
+                "exists": log_exists,
+                "size_bytes": log_size
+            },
+            "telemetry": telemetry_stats,
+            "server_time": datetime.utcnow().isoformat()
+        }
+    except HTTPException: raise
+    except Exception as e:
+        logger.error("admin/health-check: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/admin/feedbacks")
+def get_admin_feedbacks(limit: int = Query(100, ge=1, le=1000), current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """Retrieve submitted merchant feedback forms and logs."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        from database.models import UserFeedback
+        feedbacks = db.query(UserFeedback).order_by(UserFeedback.id.desc()).limit(limit).all()
+        return feedbacks
+    except HTTPException: raise
+    except Exception as e:
+        logger.error("admin/feedbacks: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/admin/feedback/logs/{feedback_id}")
+def download_feedback_logs(feedback_id: int, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """Download the zipped logs associated with a merchant feedback submission."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        from database.models import UserFeedback
+        feedback = db.query(UserFeedback).filter(UserFeedback.id == feedback_id).first()
+        if not feedback or not feedback.log_file_path:
+            raise HTTPException(status_code=404, detail="Feedback or log file not found.")
+        if not os.path.exists(feedback.log_file_path):
+            raise HTTPException(status_code=404, detail="Log file archive does not exist on disk.")
+        return FileResponse(
+            path=feedback.log_file_path,
+            filename=os.path.basename(feedback.log_file_path),
+            media_type="application/gzip"
+        )
+    except HTTPException: raise
+    except Exception as e:
+        logger.error("admin/feedback/logs: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")

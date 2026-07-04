@@ -1090,6 +1090,13 @@ export default function AppLayout({ children, title }) {
                 >
                   <LockIcon size={14} /> {hasLock ? 'Lock Session' : 'Lock App (Set PIN)'}
                 </button>
+                <button
+                  className="profile-menu-item"
+                  onClick={() => { setShowProfileMenu(false); navigate('/support'); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                >
+                  <AlertIcon size={14} /> Feedback & Support
+                </button>
                 {!IS_DESKTOP_APP && (
                   <button
                     className="btn-premium"
@@ -1207,6 +1214,13 @@ export default function AppLayout({ children, title }) {
                   style={{ color: 'var(--warning, #f59e0b)', display: 'flex', alignItems: 'center', gap: 8 }}
                 >
                   <LockIcon size={14} /> {hasLock ? 'Lock Session' : 'Lock App (Set PIN)'}
+                </button>
+                <button
+                  className="profile-menu-item"
+                  onClick={() => { setShowProfileMenu(false); navigate('/support'); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                >
+                  <AlertIcon size={14} /> Feedback & Support
                 </button>
                 {!IS_DESKTOP_APP && (
                   <button

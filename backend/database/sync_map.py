@@ -20,6 +20,7 @@ from database.models import (
     InvoicePayment, B2BLedger, Expense, Godown, StockTransfer,
     StockTransferLineItem, PurchaseInvoice, PurchaseInvoiceLineItem,
     PurchaseOrder, PurchaseOrderLineItem, AlertConfig, RateLimitConfig,
+    TableAlteration,
 )
 
 # table name -> SQLAlchemy ORM model
@@ -51,6 +52,7 @@ MODEL_MAP: Dict[str, Any] = {
     "purchase_order_line_items": PurchaseOrderLineItem,
     "alert_configs": AlertConfig,
     "rate_limit_configs": RateLimitConfig,
+    "table_alterations": TableAlteration,
 }
 
 logger = logging.getLogger("bizassist.sync_map")

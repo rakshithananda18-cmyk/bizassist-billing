@@ -103,6 +103,13 @@ _default_origins = (
     "http://localhost:3000,"
     "http://localhost:5173,http://127.0.0.1:5173,"
     "http://localhost:5174,http://127.0.0.1:5174,"
+    "http://localhost:5175,http://127.0.0.1:5175,"
+    # Packaged desktop app serves its renderer on these loopback ports
+    # (desktop/src/main.js: BILLING_PORT 8450, AI_PORT 8451). The regex below
+    # also covers any 127.0.0.1:PORT, but list them explicitly so the app's
+    # allowed origin is obvious and greppable.
+    "http://127.0.0.1:8450,http://localhost:8450,"
+    "http://127.0.0.1:8451,http://localhost:8451,"
     "https://bizassist-react.vercel.app,"
     "https://bizassist.vercel.app,"
     "https://rakshit-dev-bizassist.hf.space"
@@ -131,41 +138,73 @@ async def _ask_error_handler(_request: Request, exc: AskError):
     return JSONResponse(status_code=exc.status_code, content=exc.payload)
 
 
-# ── Postgres RLS middleware ───────────────────────────────────────────────────
-# On every request that carries a valid JWT, set the session-local variable
-# `app.current_business_id` so Postgres RLS policies can filter by tenant.
-# No-op on SQLite (dev/test) — the dialect check guards safely.
-from database.db import current_business_id_var
 
-@app.middleware("http")
-async def _set_rls_business_id(request: Request, call_next):
-    """Set current_business_id_var contextvar for Postgres RLS before each request."""
-    business_id: int | None = None
-
-    # Extract business_id from Bearer token (best-effort — auth errors are
-    # handled by the route-level dependency; we never raise here).
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        try:
-            import jwt
-            from services.auth import JWT_SECRET, JWT_ALGORITHM
-            payload = jwt.decode(
-                auth_header[7:], JWT_SECRET, algorithms=[JWT_ALGORITHM]
-            )
-            business_id = payload.get("id")
-        except Exception:
-            pass  # invalid / expired token — route will 401 later
-
-    token = current_business_id_var.set(business_id)
-    try:
-        return await call_next(request)
-    finally:
-        current_business_id_var.reset(token)
 
 
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "BizAssist API is running"}
+
+
+# ── Postgres RLS & User Context middleware ───────────────────────────────────
+# On every request that carries a valid JWT, set the session-local variable
+# `app.current_business_id` so Postgres RLS policies can filter by tenant,
+# and populate user context variables for audit logging.
+from database.db import current_business_id_var, current_user_id_var, current_username_var
+
+@app.middleware("http")
+async def _set_rls_business_id(request: Request, call_next):
+    """Set business, user, and username contextvars before each request."""
+    business_id = None
+    user_id = None
+    username = None
+
+    # Check for Authorization header or query parameter
+    auth_header = request.headers.get("Authorization", "")
+    token_param = request.query_params.get("token")
+    jwt_token = None
+
+    if auth_header and auth_header.startswith("Bearer "):
+        jwt_token = auth_header[7:]
+    elif token_param:
+        jwt_token = token_param
+
+    if jwt_token:
+        try:
+            import jwt
+            from services.auth import JWT_SECRET, JWT_ALGORITHM
+            payload = jwt.decode(
+                jwt_token, JWT_SECRET, algorithms=[JWT_ALGORITHM]
+            )
+            business_id = payload.get("id")
+            user_id = payload.get("user_id") or payload.get("id")
+            username = payload.get("username")
+        except Exception:
+            pass  # invalid / expired token — route will 401 later
+
+    t_biz = current_business_id_var.set(business_id)
+    t_uid = current_user_id_var.set(user_id)
+    t_uname = current_username_var.set(username)
+
+    try:
+        return await call_next(request)
+    finally:
+        current_business_id_var.reset(t_biz)
+        current_user_id_var.reset(t_uid)
+        current_username_var.reset(t_uname)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Log all unhandled exceptions so no crashes or errors go silent."""
+    import logging
+    logger = logging.getLogger("bizassist.api")
+    logger.error("Unhandled exception during request %s %s: %s", request.method, request.url, exc, exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal Server Error", "error": str(exc)}
+    )
+
 
 
 @app.get("/health")

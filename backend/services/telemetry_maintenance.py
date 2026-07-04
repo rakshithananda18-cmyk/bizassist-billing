@@ -131,6 +131,46 @@ def purge_archived(db, max_id: int) -> int:
     return n
 
 
+# ── Optional object-storage archive (hands-off) ──────────────────────────────
+# When the size guard trips, we can push the gzip archive to S3-compatible
+# object storage (AWS S3, Cloudflare R2, Supabase Storage) BEFORE trimming, so
+# nothing is ever lost without a human downloading it. Opt-in via env; if boto3
+# isn't installed or the bucket isn't set, we silently fall back to force-trim.
+#
+#   TELEMETRY_ARCHIVE_S3_BUCKET     bucket name (enables the feature)
+#   TELEMETRY_ARCHIVE_S3_PREFIX     key prefix (default "telemetry/")
+#   TELEMETRY_ARCHIVE_S3_ENDPOINT   custom endpoint (R2/Supabase); omit for AWS
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_DEFAULT_REGION  standard creds
+
+def _archive_bucket() -> str:
+    return os.getenv("TELEMETRY_ARCHIVE_S3_BUCKET", "").strip()
+
+
+def upload_archive_to_object_storage(data: bytes, filename: str) -> bool:
+    """Best-effort upload of the gzip archive. Returns True only on confirmed
+    success. Never raises — telemetry maintenance must not break on this."""
+    bucket = _archive_bucket()
+    if not bucket:
+        return False
+    try:
+        import boto3  # optional dependency; only needed if the feature is on
+    except Exception:
+        logger.warning("[TELEMETRY-MAINT] object-storage archive requested but boto3 is not installed")
+        return False
+    try:
+        prefix = os.getenv("TELEMETRY_ARCHIVE_S3_PREFIX", "telemetry/")
+        endpoint = os.getenv("TELEMETRY_ARCHIVE_S3_ENDPOINT") or None
+        key = f"{prefix.rstrip('/')}/{filename}"
+        client = boto3.client("s3", endpoint_url=endpoint)
+        client.put_object(Bucket=bucket, Key=key, Body=data,
+                          ContentType="application/gzip")
+        logger.info("[TELEMETRY-MAINT] archived %s bytes to s3://%s/%s", len(data), bucket, key)
+        return True
+    except Exception as e:
+        logger.error("[TELEMETRY-MAINT] object-storage archive failed: %s", e)
+        return False
+
+
 # ── Scheduled maintenance ────────────────────────────────────────────────────
 
 def run_telemetry_db_maintenance():
@@ -163,6 +203,15 @@ def run_telemetry_db_maintenance():
                 "force-trimming oldest rows now to protect the database.",
                 size / 1048576, MAX_MB,
             )
+            # Hands-off path: if object storage is configured, archive EVERYTHING
+            # to the bucket and purge exactly what we archived — no data lost.
+            if _archive_bucket():
+                data, fname, max_id = build_archive(db)
+                if upload_archive_to_object_storage(data, fname):
+                    purged = purge_archived(db, max_id)
+                    logger.warning("[TELEMETRY-MAINT] over-cap: archived to object storage and purged %s rows", purged)
+                    return
+                logger.error("[TELEMETRY-MAINT] object-storage archive failed — falling back to force-trim (data will be lost)")
             from sqlalchemy import func
             total = db.query(func.count(TelemetryEvent.id)).scalar() or 0
             # Estimate rows to drop proportionally to the overshoot (keep ~80% cap).

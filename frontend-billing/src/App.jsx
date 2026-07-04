@@ -30,6 +30,7 @@ import Settings    from './pages/Settings'
 import POSLiveCounter from './pages/POSLiveCounter'
 import InvoiceViewer  from './invoice/InvoiceViewer'
 import PublicInvoiceViewer from './pages/PublicInvoiceViewer'
+import Support from './pages/Support'
 
 
 function ProtectedRoute({ children }) {
@@ -60,6 +61,7 @@ function AppRoutes() {
       <Route path="/b2b-orders"      element={<ProtectedRoute><B2BOrders      /></ProtectedRoute>} />
       <Route path="/profile"     element={<ProtectedRoute><Profile     /></ProtectedRoute>} />
       <Route path="/settings"    element={<ProtectedRoute><Settings    /></ProtectedRoute>} />
+      <Route path="/support"     element={<ProtectedRoute><Support     /></ProtectedRoute>} />
       <Route path="/pos-live-counter"    element={<ProtectedRoute><POSLiveCounter    /></ProtectedRoute>} />
       <Route path="/invoice/:invoiceNo/view" element={<ProtectedRoute><InvoiceViewer /></ProtectedRoute>} />
       <Route path="/staff"       element={<Navigate to="/settings?tab=staff" replace />} />

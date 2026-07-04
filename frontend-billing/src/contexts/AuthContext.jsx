@@ -115,6 +115,7 @@ export function AuthProvider({ children }) {
         token = (await res.json())?.token
       }
       if (!token) return null
+      localStorage.setItem('bizassist_cloud_token', token)
       await fetch(`${LOCAL_URL}/api/sync/cloud-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localToken}` },
@@ -204,6 +205,57 @@ export function AuthProvider({ children }) {
           throw new Error('Signed in, but could not set up this device. Please try again.')
         }
         // Cloud login also failed → fall through to surface the credential error.
+      } else if (res.status === 401) {
+        // Local account exists but credentials failed locally. Check if cloud has updated credentials.
+        try {
+          if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+            const cloudRes = await fetch(`${CLOUD_URL}/login`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ username, password }),
+            })
+            if (cloudRes.ok) {
+              const cloudData = await cloudRes.json()
+              // Credentials verified on Cloud. Request local backend to reconcile/sync the password.
+              const reconcileRes = await fetch(`${LOCAL_URL}/api/auth/reconcile_password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  username,
+                  password,
+                  public_id: cloudData.public_id
+                })
+              })
+              if (reconcileRes.ok) {
+                // Retry local login now that local password hash is updated.
+                const retryRes = await fetch(`${API_BASE}/login`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ username, password }),
+                })
+                if (retryRes.ok) {
+                  const retryData = await retryRes.json()
+                  logger.info('[LOGIN] Local password reconciled with cloud and login successful.')
+                  _saveSession(retryData)
+                  _provisionCloudSyncToken(username, password, retryData.token || retryData.access_token, cloudData.token)
+                    .then(cloudTok => reconcileBizIdOnLogin(retryData.token || retryData.access_token, cloudTok))
+                  return
+                }
+              } else {
+                const recErr = await reconcileRes.json().catch(() => ({}))
+                if (recErr.detail) {
+                  throw new Error(recErr.detail)
+                }
+              }
+            }
+          }
+        } catch (err) {
+          if (err.message && err.message.includes('Identity mismatch')) {
+            logger.error('[LOGIN-RECONCILE] Reconcile mismatch:', err.message)
+            throw err
+          }
+          logger.warn('[LOGIN-RECONCILE] Swallowing non-mismatch reconcile error:', err.message)
+        }
       }
     }
 
@@ -328,6 +380,7 @@ export function AuthProvider({ children }) {
 
     localStorage.removeItem('billing_token')
     localStorage.removeItem('billing_user')
+    localStorage.removeItem('bizassist_cloud_token')
     localStorage.removeItem('bizassist_user_home_mode')  // clear home mode — next user gets their own
     setToken(null)
     setUser(null)

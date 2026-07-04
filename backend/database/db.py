@@ -79,6 +79,8 @@ import contextvars
 from sqlalchemy import text
 
 current_business_id_var = contextvars.ContextVar("current_business_id", default=None)
+current_user_id_var = contextvars.ContextVar("current_user_id", default=None)
+current_username_var = contextvars.ContextVar("current_username", default=None)
 sync_disabled_var = contextvars.ContextVar("sync_disabled", default=False)
 
 def get_db():

@@ -101,6 +101,16 @@ def start_scheduler():
         misfire_grace_time=30,  # tolerate a late run rather than warning
     )
 
+    from services.log_uploader import run_daily_log_upload
+    _scheduler.add_job(
+        run_daily_log_upload,
+        CronTrigger(hour=23, minute=30),
+        id="daily_log_upload",
+        name="Daily Diagnostic Log Upload",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+
     # ── Telemetry relay + retention (Admin Console plan) ─────────────────────
     # Relay: local installs ship new telemetry lines to the cloud every 3h
     # (no-op on the cloud backend / when TELEMETRY_RELAY=0). First run ~2min

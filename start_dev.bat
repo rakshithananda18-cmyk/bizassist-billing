@@ -13,7 +13,7 @@ setlocal
 set ROOT=%~dp0
 
 REM --- Kill any stale process already using our ports ---
-echo Cleaning up stale processes on ports 8001, 5173, 5174...
+echo Cleaning up stale processes on ports 8001, 5173, 5174, 5175...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8001 " ^| findstr "LISTENING" 2^>nul') do (
     taskkill /PID %%a /F >nul 2>&1
 )
@@ -21,6 +21,9 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5173 " ^| findstr "LISTENIN
     taskkill /PID %%a /F >nul 2>&1
 )
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5174 " ^| findstr "LISTENING" 2^>nul') do (
+    taskkill /PID %%a /F >nul 2>&1
+)
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5175 " ^| findstr "LISTENING" 2^>nul') do (
     taskkill /PID %%a /F >nul 2>&1
 )
 timeout /t 1 /nobreak >nul
@@ -40,10 +43,15 @@ REM --- Billing Frontend ---
 start "BizAssist Billing" powershell -ExecutionPolicy Bypass -NoExit -Command ^
   "cd '%ROOT%frontend-billing'; if (-not (Test-Path 'node_modules')) { npm install }; Write-Host 'Billing App → http://127.0.0.1:5174' -ForegroundColor Yellow; npm run dev -- --port 5174"
 
+REM --- Admin Dashboard Frontend ---
+start "BizAssist Admin Console" powershell -ExecutionPolicy Bypass -NoExit -Command ^
+  "cd '%ROOT%frontend-admin'; if (-not (Test-Path 'node_modules')) { npm install }; Write-Host 'Admin Console → http://127.0.0.1:5175' -ForegroundColor Magenta; npm run dev -- --port 5175"
+
 echo.
 echo  Started:
 echo   - Backend on :8001  (with --reload)
 echo   - AI Dashboard on :5173
 echo   - Billing App on :5174
+echo   - Admin Console on :5175
 echo  Close the opened windows to stop.
 echo.

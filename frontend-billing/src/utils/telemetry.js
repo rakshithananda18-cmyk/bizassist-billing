@@ -99,6 +99,26 @@ export function logEvent(event, payload = {}, level = 'info') {
   enqueue(String(event).slice(0, 80), payload, level)
 }
 
+/** User-triggered "Send diagnostics": stamp a marker event with environment
+ *  context and force an immediate flush to the local AND cloud sinks, so the
+ *  last N (bizid-tagged) events reach the Admin Console right away. Returns
+ *  true once the flush has been kicked off. */
+export function sendDiagnostics(reason = 'manual', extra = {}) {
+  try {
+    enqueue('diagnostics_report', {
+      reason,
+      mode: (typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_hosting_mode')) || 'local',
+      app_version: (typeof window !== 'undefined' && window.__APP_VERSION__) || undefined,
+      platform: (typeof navigator !== 'undefined' && navigator.platform) || undefined,
+      user_agent: (typeof navigator !== 'undefined' && navigator.userAgent) || undefined,
+      url: (typeof location !== 'undefined' && location.href) || undefined,
+      ...extra,
+    }, 'info')
+  } catch { /* diagnostics must never throw */ }
+  flush()  // posts to the active backend, and to cloud when they differ
+  return true
+}
+
 /** Install global error capture. Call once from main.jsx. */
 export function initTelemetry() {
   if (installed || typeof window === 'undefined') return

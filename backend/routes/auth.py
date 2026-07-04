@@ -41,6 +41,43 @@ def biz_id_check(req: IdentityCheckRequest, db: Session = Depends(get_db)):
     return {"exists": exists}
 
 
+class ReconcilePasswordRequest(BaseModel):
+    username: str
+    password: str        # the new password that just succeeded on the cloud
+    public_id: str       # cloud's BizID — MUST match the local account's
+
+
+@router.post("/api/auth/reconcile_password")
+def reconcile_password(req: ReconcilePasswordRequest, db: Session = Depends(get_db)):
+    """
+    Re-sync a LOCAL owner account's password after the SAME credentials
+    succeeded on the cloud (password drift → offline login was blocked).
+
+    Identity-safe: the update happens ONLY when the local account's BizID
+    (public_id) matches the cloud's. A username that maps to a DIFFERENT
+    business on this device is reported as a mismatch and never overwritten —
+    so we can't silently log someone into the wrong local business. Localhost
+    trust model, same as the fresh-device /signup mirror.
+    """
+    uname = (req.username or "").strip()
+    user = (db.query(User)
+              .filter(User.username == uname, User.parent_business_id.is_(None))
+              .first())
+    if not user:
+        raise HTTPException(status_code=404, detail="No such local owner account")
+    if not req.public_id or user.public_id != req.public_id:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"Identity mismatch: on this device '{uname}' is the business "
+                    f"'{user.business_name}', which is different from the cloud account. "
+                    f"Nothing was changed."),
+        )
+    user.password = hash_password(req.password)
+    db.commit()
+    logger.info(f"[AUTH] Reconciled local password for '{uname}' (BizID {user.public_id}) from cloud.")
+    return {"status": "ok", "business_name": user.business_name, "public_id": user.public_id}
+
+
 class SignupRequest(BaseModel):
     username: str
     password: str
