@@ -120,6 +120,9 @@ function createMainWindow() {
 
 function openAiWindow(url) {
   if (aiWindow && !aiWindow.isDestroyed()) {
+    if (url) {
+      aiWindow.loadURL(url);
+    }
     aiWindow.show();
     aiWindow.focus();
     return;

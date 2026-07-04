@@ -306,6 +306,22 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => {
     logger.info('Logging out user, clearing local session token.')
+    
+    // Hidden cross-origin iframe to trigger AI dashboard logout synchronously
+    try {
+      const { hostname, port } = window.location
+      const aiUrl = import.meta.env.VITE_AI_DASHBOARD_URL || 
+        (port === '8450' ? `http://${hostname}:8451` : `http://${hostname}:5173`)
+        
+      const iframe = document.createElement('iframe')
+      iframe.style.display = 'none'
+      iframe.src = `${aiUrl}/?logout=true`
+      document.body.appendChild(iframe)
+      setTimeout(() => iframe.remove(), 2000)
+    } catch (e) {
+      // Ignore if iframe fails
+    }
+
     localStorage.removeItem('billing_token')
     localStorage.removeItem('billing_user')
     localStorage.removeItem('bizassist_user_home_mode')  // clear home mode — next user gets their own

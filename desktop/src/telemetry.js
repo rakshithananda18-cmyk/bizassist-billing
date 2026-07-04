@@ -21,6 +21,7 @@ const LOCAL_URL = 'http://127.0.0.1:8001';
 const ENABLED = process.env.TELEMETRY !== '0';
 
 let deviceId = null;
+let currentBizId = null;
 
 /** Stable anonymous install id, persisted in userData. */
 function getDeviceId() {
@@ -37,6 +38,32 @@ function getDeviceId() {
     deviceId = 'unknown-' + crypto.randomBytes(4).toString('hex');
   }
   return deviceId;
+}
+
+/**
+ * BizID (business public_id) attribution. The renderer reports it after login
+ * (IPC 'telemetry:set-bizid'); we persist the last-known value so pre-login
+ * boot events on the NEXT launch are still attributable to the business.
+ */
+function _bizidPath() { return path.join(app.getPath('userData'), 'last-bizid'); }
+
+function setTelemetryBizId(bizid) {
+  const clean = String(bizid || '').replace(/[^A-Za-z0-9_\-]/g, '').slice(0, 64);
+  currentBizId = clean || null;
+  try {
+    if (clean) fs.writeFileSync(_bizidPath(), clean);
+    else if (fs.existsSync(_bizidPath())) fs.unlinkSync(_bizidPath());   // logout → detach
+  } catch { /* best-effort */ }
+}
+
+function getTelemetryBizId() {
+  if (currentBizId) return currentBizId;
+  try {
+    if (fs.existsSync(_bizidPath())) {
+      currentBizId = fs.readFileSync(_bizidPath(), 'utf8').trim() || null;
+    }
+  } catch { /* best-effort */ }
+  return currentBizId;
 }
 
 async function postTo(base, body) {
@@ -71,6 +98,8 @@ function sendTelemetry(event, payload = {}, level = 'info') {
     platform: `${process.platform}-${process.arch}`,
     events: [{ event, level, payload, at: new Date().toISOString() }],
   };
+  const bizid = getTelemetryBizId();
+  if (bizid) body.bizid = bizid;   // groups events per business on the backend
   // Local lands in the local backend's log file; cloud lands on the HF Space.
   postTo(LOCAL_URL, body);
   postTo(CLOUD_URL, body);
@@ -87,4 +116,4 @@ function logTail(lines = 40) {
   }
 }
 
-module.exports = { sendTelemetry, logTail };
+module.exports = { sendTelemetry, logTail, setTelemetryBizId };

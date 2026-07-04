@@ -150,3 +150,46 @@ def restrict_cashier_or_ticket(current_user: dict = Depends(get_active_user_or_t
         raise HTTPException(status_code=403, detail="Permission denied: cashier restricted")
     return current_user
 
+
+# ── Subscription gating (Admin Console plan, Phase B.5) ──────────────────────
+# require_plan("pro") is a dependency factory for plan-gated routes (/ask*,
+# hybrid sync activation). Enforcement is behind SUBSCRIPTION_ENFORCED
+# (default "0") so the hooks can ship — and the console can grant plans —
+# before the paywall actually flips on. Admins always pass.
+
+def subscription_enforced() -> bool:
+    import os
+    return os.getenv("SUBSCRIPTION_ENFORCED", "0") == "1"
+
+
+def require_plan(min_plan: str = "pro"):
+    """FastAPI dependency factory: 402 when the business's effective plan is
+    below `min_plan` (staff inherit the owner's plan). No-op unless
+    SUBSCRIPTION_ENFORCED=1."""
+    def _dep(current_user: dict = Depends(get_active_user)) -> dict:
+        if not subscription_enforced():
+            return current_user
+        if (current_user.get("role") or "").lower() == "admin":
+            return current_user
+        from database.db import SessionLocal
+        from database.models import User as _User
+        from services.admin_service import effective_plan
+        db = SessionLocal()
+        try:
+            row = db.query(_User).filter(_User.username == current_user.get("username")).first()
+            holder = row
+            if row and row.parent_business_id:
+                holder = db.query(_User).filter(_User.id == row.parent_business_id).first() or row
+            plan = effective_plan(holder) if holder else "free"
+        finally:
+            db.close()
+        if min_plan == "pro" and plan != "pro":
+            logger.info("[AUTH] plan gate: user=%s plan=%s needs=%s",
+                        current_user.get("username"), plan, min_plan)
+            raise HTTPException(
+                status_code=402,
+                detail="This feature requires the Pro plan. Contact your provider to upgrade.",
+            )
+        return current_user
+    return _dep
+

@@ -1,0 +1,1114 @@
+/* =========================================
+   SIDEBAR
+========================================= */
+
+.sidebar {
+    width: clamp(240px, 15vw, 270px) !important;
+    min-width: clamp(240px, 15vw, 270px) !important;
+    max-width: clamp(240px, 15vw, 270px) !important;
+    background: var(--sidebar-color);
+    padding: 10px 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    margin: 5px 0 7px 7px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1), margin 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow-x: hidden;
+}
+
+.sidebar.collapsed {
+    width: 56px !important;
+    min-width: 56px !important;
+    max-width: 56px !important;
+    padding: 10px 6px;
+    align-items: center;
+    overflow: visible;
+}
+
+/* ── Sidebar header area ── */
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 38px;
+    padding: 0 4px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.sidebar-close-btn-mobile {
+    display: none;
+}
+
+.sidebar.collapsed .sidebar-header {
+    justify-content: center;
+    padding: 0;
+}
+
+/* Sidebar toggle button (rect split vertical design) */
+.sidebar-toggle-btn {
+    border: none;
+    background: transparent;
+    color: var(--secondary-text);
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
+}
+
+.sidebar-toggle-btn:hover {
+    background: var(--hover-bg);
+    color: var(--accent-color);
+}
+
+.sidebar.collapsed .sidebar-toggle-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+}
+
+/* BizAssist brand text logo */
+.sidebar-brand-text {
+    font-family: 'Crimson Pro', Georgia, serif;
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--text-color);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    opacity: 1;
+    transition: opacity 0.2s ease;
+}
+
+/* Collapsed: hide the wordmark entirely (the brand mark now lives in the nav). */
+.sidebar.collapsed .sidebar-brand-text {
+    opacity: 0;
+    display: none;
+}
+
+.sidebar-sep {
+    height: 1px;
+    background: var(--border-color);
+    margin: 4px 4px 8px;
+    opacity: 0.7;
+    transition: width 0.3s, margin 0.3s;
+}
+
+.sidebar.collapsed .sidebar-sep {
+    width: 24px;
+    margin: 4px auto 8px auto;
+}
+
+/* Sidebar nav buttons — button (legacy) + a (React NavLink) */
+.sidebar button.matte-glass:not(.sidebar-toggle-btn):not(.theme-btn),
+.sidebar a.matte-glass {
+    border: none;
+    background: transparent;
+    color: var(--text-color);
+    text-decoration: none;
+    height: 38px;
+    width: 100%;
+    padding: 0 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13.5px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 500;
+    transition: background 0.18s ease, color 0.18s ease, padding 0.3s ease, justify-content 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    letter-spacing: 0.01em;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.sidebar.collapsed button.matte-glass:not(.sidebar-toggle-btn):not(.theme-btn),
+.sidebar.collapsed a.matte-glass {
+    padding: 0;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+}
+
+.sidebar button.matte-glass:not(.sidebar-toggle-btn):not(.theme-btn):hover,
+.sidebar a.matte-glass:hover {
+    background: var(--hover-bg);
+    color: var(--text-color);
+}
+
+.sidebar button.matte-glass:not(.sidebar-toggle-btn):not(.theme-btn) svg,
+.sidebar a.matte-glass svg {
+    flex-shrink: 0;
+    color: var(--text-color);
+    transition: color 0.18s ease;
+}
+
+.sidebar button.matte-glass:not(.sidebar-toggle-btn):not(.theme-btn):hover svg,
+.sidebar a.matte-glass:hover svg {
+    color: var(--accent-color);
+}
+
+/* Active state — clean left-bar indicator (button legacy + a React NavLink) */
+.sidebar button.active,
+.sidebar a.active,
+html[data-active="ai"]        .sidebar button#ai-btn,
+html[data-active="ai"]        .sidebar a#ai-btn,
+html[data-active="dashboard"] .sidebar button#dashboard-btn,
+html[data-active="dashboard"] .sidebar a#dashboard-btn,
+html[data-active="invoices"]  .sidebar button#invoices-btn,
+html[data-active="invoices"]  .sidebar a#invoices-btn,
+html[data-active="payments"]  .sidebar button#payments-btn,
+html[data-active="payments"]  .sidebar a#payments-btn,
+html[data-active="clients"]   .sidebar button#clients-btn,
+html[data-active="clients"]   .sidebar a#clients-btn,
+html[data-active="uploads"]   .sidebar button#uploads-btn,
+html[data-active="uploads"]   .sidebar a#uploads-btn,
+html[data-active="database"]  .sidebar button#db-btn,
+html[data-active="database"]  .sidebar a#db-btn {
+    background: var(--accent-soft);
+    color: var(--accent-color);
+    font-weight: 600;
+    position: relative;
+}
+
+.sidebar button.active svg,
+.sidebar a.active svg,
+html[data-active="ai"]        .sidebar button#ai-btn svg,
+html[data-active="ai"]        .sidebar a#ai-btn svg,
+html[data-active="dashboard"] .sidebar button#dashboard-btn svg,
+html[data-active="dashboard"] .sidebar a#dashboard-btn svg,
+html[data-active="invoices"]  .sidebar button#invoices-btn svg,
+html[data-active="invoices"]  .sidebar a#invoices-btn svg,
+html[data-active="payments"]  .sidebar button#payments-btn svg,
+html[data-active="payments"]  .sidebar a#payments-btn svg,
+html[data-active="clients"]   .sidebar button#clients-btn svg,
+html[data-active="clients"]   .sidebar a#clients-btn svg,
+html[data-active="uploads"]   .sidebar button#uploads-btn svg,
+html[data-active="uploads"]   .sidebar a#uploads-btn svg,
+html[data-active="database"]  .sidebar button#db-btn svg,
+html[data-active="database"]  .sidebar a#db-btn svg {
+    color: var(--accent-color);
+}
+
+.sidebar button.active::before,
+.sidebar a.active::before,
+html[data-active="ai"]        .sidebar button#ai-btn::before,
+html[data-active="ai"]        .sidebar a#ai-btn::before,
+html[data-active="dashboard"] .sidebar button#dashboard-btn::before,
+html[data-active="dashboard"] .sidebar a#dashboard-btn::before,
+html[data-active="invoices"]  .sidebar button#invoices-btn::before,
+html[data-active="invoices"]  .sidebar a#invoices-btn::before,
+html[data-active="payments"]  .sidebar button#payments-btn::before,
+html[data-active="payments"]  .sidebar a#payments-btn::before,
+html[data-active="clients"]   .sidebar button#clients-btn::before,
+html[data-active="clients"]   .sidebar a#clients-btn::before,
+html[data-active="uploads"]   .sidebar button#uploads-btn::before,
+html[data-active="uploads"]   .sidebar a#uploads-btn::before,
+html[data-active="database"]  .sidebar button#db-btn::before,
+html[data-active="database"]  .sidebar a#db-btn::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 16px;
+    background: var(--accent-color);
+    border-radius: 0 2px 2px 0;
+}
+
+/* Hide active indicator bar when collapsed */
+.sidebar.collapsed button.active::before,
+.sidebar.collapsed a.active::before,
+html[data-active="ai"]        .sidebar.collapsed button#ai-btn::before,
+html[data-active="ai"]        .sidebar.collapsed a#ai-btn::before,
+html[data-active="dashboard"] .sidebar.collapsed button#dashboard-btn::before,
+html[data-active="dashboard"] .sidebar.collapsed a#dashboard-btn::before,
+html[data-active="invoices"]  .sidebar.collapsed button#invoices-btn::before,
+html[data-active="invoices"]  .sidebar.collapsed a#invoices-btn::before,
+html[data-active="payments"]  .sidebar.collapsed button#payments-btn::before,
+html[data-active="payments"]  .sidebar.collapsed a#payments-btn::before,
+html[data-active="clients"]   .sidebar.collapsed button#clients-btn::before,
+html[data-active="clients"]   .sidebar.collapsed a#clients-btn::before,
+html[data-active="uploads"]   .sidebar.collapsed button#uploads-btn::before,
+html[data-active="uploads"]   .sidebar.collapsed a#uploads-btn::before,
+html[data-active="database"]  .sidebar.collapsed button#db-btn::before,
+html[data-active="database"]  .sidebar.collapsed a#db-btn::before {
+    display: none;
+}
+
+/* Sidebar texts transition */
+.sidebar-text {
+    opacity: 1;
+    white-space: nowrap;
+    transition: opacity 0.2s ease, width 0.2s ease;
+    display: inline-block;
+}
+
+/* Fixed-width icon slot so every nav label starts at the same x, regardless of
+   the icon's own size (the BizAssist mark is a touch larger than the others). */
+.nav-ico {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.sidebar.collapsed .sidebar-text {
+    opacity: 0;
+    width: 0;
+    pointer-events: none;
+    display: none;
+}
+
+/* =========================================
+   MAIN AREA
+========================================= */
+
+div.main {
+    flex: 1;
+    padding: 5px 7px 7px 12px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+    gap: 0;
+}
+
+/* =========================================
+   THEME SWITCHER
+========================================= */
+
+.theme-dropdown {
+    margin-top: auto;
+    position: relative;
+}
+
+.theme-btn {
+    width: 38px;
+    height: 38px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-color);
+    cursor: pointer;
+    font-size: 16px;
+    transition: background 0.18s ease, color 0.18s ease;
+}
+
+.theme-btn:hover {
+    background: var(--hover-bg);
+    color: var(--accent-color);
+}
+
+
+/* =========================================
+   DATABASE / HIDDEN PANEL
+========================================= */
+
+.hidden { display: none !important; }
+
+.database-panel { margin-top: 20px; }
+
+.database-table { overflow-x: auto; margin-top: 20px; }
+
+.database-table table { width: 100%; border-collapse: collapse; }
+
+.database-table th,
+.database-table td {
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* =========================================
+   SCROLLBARS
+========================================= */
+
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 20px;
+}
+*::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+}
+
+/* =========================================
+   MOBILE NAVBAR & OVERLAY (DESKTOP HIDDEN)
+========================================= */
+
+.mobile-navbar {
+    display: none;
+}
+
+.mobile-overlay {
+    display: none;
+}
+
+.mobile-assistant-toggle {
+    display: none !important;
+}
+
+/* Siri-style horizontal ocean waves flowing inside the frosted FAB. */
+@keyframes fab-wave { from { transform: translateX(0); } to { transform: translateX(-32px); } }
+.fab-waves { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+.fab-logo {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: flex-start;          /* sit ABOVE the waves */
+    justify-content: center;
+    padding-top: 6px;
+    z-index: 2;                        /* above the waves */
+    color: var(--accent-color);        /* accent-coloured mark */
+    pointer-events: none;
+}
+.fab-logo svg { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18)); }
+.fab-wave  { animation: fab-wave linear infinite; will-change: transform; }
+.fab-wave.fw1 { fill: rgba(193, 95, 60, 0.30); animation-duration: 3.4s; }
+.fab-wave.fw2 { fill: rgba(240, 173, 78, 0.45); animation-duration: 4.6s; animation-direction: reverse; }
+.fab-wave.fw3 { fill: rgba(212, 113, 74, 0.60); animation-duration: 5.8s; }
+@media (prefers-reduced-motion: reduce) {
+    .fab-wave { animation: none !important; }
+}
+
+/* =========================================
+   RESPONSIVE — TABLET
+========================================= */
+
+@media (max-width: 1200px) {
+    .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+    .assistant-panel { height: 500px; }
+}
+
+/* =========================================
+   RESPONSIVE — MOBILE
+========================================= */
+
+@media (max-width: 1024px) {
+    html, body { 
+        overflow: hidden !important; 
+        height: 100% !important;
+        position: fixed !important;
+        width: 100% !important;
+    }
+
+    .app { 
+        flex-direction: column !important; 
+        height: 100vh !important; 
+        height: 100dvh !important;
+        overflow: hidden !important; 
+    }
+
+    /* Top navbar display */
+    .mobile-navbar {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between;
+        height: 56px;
+        padding: 0 16px;
+        background: var(--sidebar-color);
+        border-bottom: 1px solid var(--border-color);
+        position: relative;
+        z-index: 1005;
+        box-shadow: var(--shadow-sm);
+        flex-shrink: 0;
+    }
+
+    /* Flicker-free navbar toggle buttons based on active view state */
+    /* Floating Action Button (FAB) for AI Assistant on mobile */
+    .mobile-assistant-toggle {
+        display: none;
+    }
+
+    html:not([data-active="ai"]) #mobile-assistant-toggle {
+        display: flex !important;
+        position: fixed !important;
+        bottom: 26px !important;
+        left: var(--fab-x, 50%) !important;
+        right: auto !important;
+        transform: translateX(-50%) !important;
+        touch-action: none !important;
+        width: 60px !important;
+        height: 60px !important;
+        border-radius: 50% !important;
+        /* frosted glass */
+        background: linear-gradient(150deg, rgba(255,255,255,0.32), rgba(255,255,255,0.08)) !important;
+        -webkit-backdrop-filter: blur(14px) saturate(160%) !important;
+        backdrop-filter: blur(14px) saturate(160%) !important;
+        border: 1px solid rgba(255, 255, 255, 0.45) !important;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18), inset 0 1px 1px rgba(255, 255, 255, 0.6) !important;
+        overflow: hidden !important;   /* clip the waves to the circle */
+        padding: 0 !important;
+        align-items: stretch !important;
+        justify-content: stretch !important;
+        z-index: 1009 !important;
+        cursor: pointer;
+        transition: transform 0.15s ease !important;
+    }
+
+    .dark-mode html:not([data-active="ai"]) #mobile-assistant-toggle,
+    html.dark-mode:not([data-active="ai"]) #mobile-assistant-toggle {
+        background: rgba(40, 40, 40, 0.35) !important;
+        border-color: rgba(255, 255, 255, 0.18) !important;
+    }
+
+    html:not([data-active="ai"]) #mobile-assistant-toggle:active {
+        transform: translateX(-50%) scale(0.94) !important;
+    }
+
+    html[data-active="ai"] #mobile-assistant-toggle {
+        display: none !important;
+    }
+
+    #mobile-overlay.active ~ #mobile-assistant-toggle {
+        display: none !important;
+    }
+
+    html[data-active="ai"] #mobile-insights-toggle {
+        display: flex !important;
+    }
+    html:not([data-active="ai"]) #mobile-insights-toggle {
+        display: none !important;
+    }
+
+    .mobile-nav-btn {
+        background: transparent;
+        border: none;
+        color: var(--text-color);
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+    }
+
+    .mobile-nav-btn:hover {
+        background: var(--hover-bg);
+        color: var(--accent-color);
+    }
+
+    .mobile-navbar-title {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-color);
+        font-family: 'DM Sans', sans-serif;
+        letter-spacing: -0.01em;
+        white-space: nowrap;
+        pointer-events: none;
+    }
+
+    .mobile-navbar-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* Mobile profile badge inside navbar */
+    .mobile-profile {
+        position: relative;
+        padding: 0 !important;
+        width: 36px !important;
+        height: 36px !important;
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+    }
+
+    #mobileProfileMenu {
+        position: absolute;
+        top: 44px !important;
+        bottom: auto !important;
+        right: 0 !important;
+        left: auto !important;
+        width: 178px !important;
+        z-index: 1009 !important;
+    }
+
+    /* Dark dimming backdrop overlay */
+    .mobile-overlay {
+        display: block !important;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease, backdrop-filter 0.3s ease, -webkit-backdrop-filter 0.3s ease, background-color 0.3s ease;
+        z-index: 1008;
+    }
+
+    .mobile-overlay.active {
+        background: rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(1.5px);
+        -webkit-backdrop-filter: blur(1.5px);
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    /* Main Area setup */
+    div.main { 
+        min-width: 0 !important; 
+        padding: 12px !important; 
+        overflow: hidden !important; 
+        height: calc(100vh - 56px) !important;
+        height: calc(100dvh - 56px) !important;
+        max-height: none !important;
+        flex: 1 !important;
+        position: relative !important;
+        z-index: auto !important;
+    }
+
+    .dashboard-left { 
+        overflow-y: auto !important; 
+        flex: 1 !important;
+        min-height: 0 !important;
+        padding-right: 0 !important;
+    }
+
+    .assistant-panel { 
+        height: 100% !important; 
+        min-height: 0 !important; 
+        display: flex !important;
+        flex-direction: column !important;
+        flex: 1 !important;
+    }
+
+    /* Sidebar configured as vertical sliding drawer panel */
+    .sidebar,
+    .sidebar.collapsed {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        bottom: 0 !important;
+        width: 70vw !important;
+        max-width: 320px !important;
+        min-width: 0 !important;
+        height: 100vh !important;
+        height: 100dvh !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        border: none !important;
+        border-right: 1px solid var(--border-color) !important;
+        transform: translateX(-100%) !important;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.3s step-end !important;
+        z-index: 1010 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        background: var(--sidebar-color) !important;
+        box-shadow: var(--shadow-lg) !important;
+        padding: 16px 12px !important;
+        gap: 8px !important;
+        align-items: stretch !important;
+        visibility: hidden !important;
+    }
+
+    .sidebar.mobile-open,
+    .sidebar.collapsed.mobile-open {
+        transform: translateX(0) !important;
+        visibility: visible !important;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s step-start !important;
+        border-top-right-radius: 16px !important;
+        border-bottom-right-radius: 16px !important;
+    }
+
+    .sidebar button:not(.sidebar-toggle-btn):not(.theme-btn),
+    .sidebar a.matte-glass {
+        width: 100% !important;
+        justify-content: flex-start !important;
+        padding: 0 10px !important;
+        height: 38px !important;
+        border-radius: 8px !important;
+    }
+
+    /* Make sure texts are shown in mobile view drawer */
+    .sidebar .sidebar-text {
+        opacity: 1 !important;
+        display: inline-block !important;
+        pointer-events: auto !important;
+        width: auto !important;
+    }
+
+    .sidebar .sidebar-brand-text {
+        opacity: 1 !important;
+        display: flex !important;
+        align-items: center;
+        gap: 8px !important;
+        justify-content: flex-start !important;
+    }
+    /* Mobile drawer is full-width — always show the wordmark, even if collapsed. */
+    .sidebar .sidebar-brand-text > span,
+    .sidebar.collapsed .sidebar-brand-text > span {
+        display: inline !important;
+    }
+
+    .sidebar .sidebar-header {
+        justify-content: space-between !important;
+        padding: 0 4px !important;
+    }
+
+    .sidebar-close-btn-mobile {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        color: var(--text-color);
+        font-size: 22px;
+        cursor: pointer;
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        transition: background 0.15s, color 0.15s;
+        margin-left: auto;
+        flex-shrink: 0;
+    }
+    .sidebar-close-btn-mobile:hover {
+        background: var(--hover-bg);
+        color: var(--accent-color);
+    }
+    .sidebar .sidebar-toggle-btn,
+    .sidebar.collapsed .sidebar-toggle-btn {
+        display: flex !important;
+    }
+
+    .sidebar .sidebar-toggle-btn {
+        width: 32px !important;
+        height: 32px !important;
+        border-radius: 6px !important;
+    }
+
+    .sidebar .sidebar-sep {
+        width: auto !important;
+        margin: 4px 4px 8px !important;
+    }
+
+    .sidebar .sidebar-footer {
+        padding-top: 14px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 14px !important;
+    }
+
+    .sidebar .sidebar-footer .theme-btn {
+        width: 36px !important;
+        height: 36px !important;
+        border-radius: 8px !important;
+    }
+
+    .sidebar .profile-badge-wrap {
+        padding: 6px 8px !important;
+        justify-content: flex-start !important;
+        width: 100% !important;
+    }
+
+
+    .sidebar.collapsed .sidebar-text {
+        opacity: 1 !important;
+        display: inline-block !important;
+        pointer-events: auto !important;
+        width: auto !important;
+    }
+    .sidebar.collapsed .sidebar-brand-text {
+        opacity: 1 !important;
+        display: block !important;
+    }
+    .sidebar.collapsed .sidebar-header {
+        justify-content: space-between !important;
+        padding: 0 4px !important;
+    }
+    .sidebar.collapsed .sidebar-toggle-btn {
+        width: 32px !important;
+        height: 32px !important;
+        border-radius: 6px !important;
+    }
+    .sidebar.collapsed button.matte-glass:not(.sidebar-toggle-btn):not(.theme-btn),
+    .sidebar.collapsed a.matte-glass {
+        padding: 0 10px !important;
+        justify-content: flex-start !important;
+        width: 100% !important;
+        height: 38px !important;
+        border-radius: 8px !important;
+    }
+    .sidebar.collapsed .sidebar-sep {
+        width: auto !important;
+        margin: 4px 4px 8px !important;
+    }
+    .sidebar.collapsed .sidebar-footer {
+        padding-top: 14px !important;
+    }
+    .sidebar.collapsed .sidebar-footer .theme-btn {
+        width: 36px !important;
+        height: 36px !important;
+        border-radius: 8px !important;
+    }
+    .sidebar.collapsed .profile-badge-wrap {
+        padding: 6px 8px !important;
+        justify-content: flex-start !important;
+        width: 100% !important;
+    }
+    .sidebar.collapsed .profile-menu {
+        left: 4px !important;
+        bottom: 50px !important;
+    }
+
+    .theme-dropdown { margin-top: auto; margin-left: 0; }
+
+    .cards { grid-template-columns: 1fr; }
+
+    .card p { font-size: 26px; }
+
+    .dashboard-grid { 
+        display: flex !important; 
+        flex-direction: column !important; 
+        height: 100% !important;
+        min-height: 0 !important;
+        gap: 12px !important;
+        flex: 1 !important;
+    }
+
+    table { font-size: 13px; }
+    th, td { padding: 9px 8px; }
+
+    .actions { flex-direction: column; }
+    .actions button { width: 100%; }
+
+    .message { max-width: 95%; font-size: 13px; }
+
+    textarea { font-size: 14px; padding: 12px; }
+
+    .input-area button { width: 46px; height: 46px; }
+}
+
+@media (max-width: 480px) {
+    .logo { font-size: 16px; }
+    .sidebar { padding: 16px 12px !important; }
+    .sidebar button:not(.sidebar-toggle-btn):not(.theme-btn),
+    .sidebar a.matte-glass { padding: 0 10px !important; font-size: 13.5px !important; }
+    .card { border-radius: 10px; }
+    .widget { border-radius: 10px; padding: 16px; }
+    .assistant-panel { border-radius: 10px; padding: 14px; }
+    .widget-title { font-size: 11px; }
+    .card p { font-size: 24px; }
+
+}
+
+/* =========================================
+   AI BUSINESS BANNER
+========================================= */
+.ai-biz-banner {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 73px;
+    min-height: 73px;
+    max-height: 73px;
+    background: var(--card-gradient);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    box-shadow: var(--shadow-sm);
+    padding: 16px 24px;
+    margin-bottom: 5px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    transition: 
+        transform 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.15s, 
+        opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.15s,
+        max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1) 0s,
+        min-height 0.3s cubic-bezier(0.16, 1, 0.3, 1) 0s,
+        margin-bottom 0.3s cubic-bezier(0.16, 1, 0.3, 1) 0s,
+        padding 0.3s cubic-bezier(0.16, 1, 0.3, 1) 0s,
+        border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1) 0s,
+        box-shadow 0.2s ease 0s;
+}
+
+.ai-biz-banner:hover {
+    box-shadow: var(--shadow-md);
+    border-color: var(--border-subtle);
+}
+
+.ai-biz-banner::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 0%, var(--accent-softer) 0%, transparent 75%);
+    pointer-events: none;
+}
+
+.ai-biz-banner-name {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 30px;
+    font-weight: 700;
+    color: var(--text-color);
+    letter-spacing: -0.02em;
+    cursor: pointer;
+    transition: color 0.15s ease;
+    line-height: 1.2;
+    z-index: 1;
+}
+
+.ai-biz-banner-name:hover {
+    color: var(--accent-color);
+}
+
+.ai-biz-banner-sub {
+    font-size: 11px;
+    color: var(--secondary-text);
+    margin-top: 4px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-weight: 600;
+    z-index: 1;
+}
+
+/* ---- SIDEBAR FOOTER & PROFILE BADGE ─── */
+/* ---- SIDEBAR FOOTER & PROFILE BADGE ─── */
+.sidebar-footer {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-color);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.sidebar.collapsed .sidebar-footer {
+    padding-top: 14px;
+}
+
+
+
+/* Integrated Theme Selector inside Profile Popup Menu */
+.profile-menu-theme {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: transparent;
+}
+
+.profile-menu-theme-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--secondary-text);
+}
+
+.profile-theme-toggle {
+    display: flex;
+    background: var(--hover-bg);
+    border-radius: 6px;
+    padding: 2px;
+    gap: 2px;
+}
+
+.theme-opt-btn {
+    background: transparent;
+    border: none;
+    color: var(--secondary-text);
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    transition: background 0.15s, color 0.15s;
+}
+
+.theme-opt-btn:hover {
+    color: var(--text-color);
+}
+
+.theme-opt-btn.active {
+    background: var(--card-color) !important;
+    color: var(--accent-color) !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12) !important;
+}
+
+/* User profile initials wrapper */
+.profile-badge-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 6px 8px;
+    box-sizing: border-box;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background 0.18s;
+    position: relative;
+}
+.profile-badge-wrap:hover {
+    background: var(--hover-bg);
+}
+
+.sidebar.collapsed .profile-badge-wrap {
+    padding: 0;
+    justify-content: center;
+    width: auto;
+    background: transparent;
+}
+
+/* Circular initials badge */
+.profile-badge-circle {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-color) 0%, #e07840 100%);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+    flex-shrink: 0;
+    transition: transform 0.15s;
+    user-select: none;
+}
+
+.profile-badge-wrap:hover .profile-badge-circle {
+    transform: scale(1.05);
+}
+
+/* Business name labels in footer */
+.profile-biz-name-text {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 110px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.profile-biz-name-text:hover {
+    color: var(--accent-color);
+}
+
+/* Floating profile context menu */
+.profile-menu {
+    position: absolute;
+    bottom: 50px;
+    left: 4px;
+    width: 168px;
+    background: var(--card-color);
+    border-radius: 10px;
+    overflow: hidden;
+    display: none;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-md);
+    z-index: 1000;
+    animation: modalFadeIn 0.15s ease;
+}
+
+.sidebar.collapsed .profile-menu {
+    left: 55px;
+    bottom: 0px;
+}
+
+
+@keyframes modalFadeIn {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.profile-menu-header {
+    padding: 10px 12px;
+    background: var(--hover-bg);
+}
+
+.profile-menu-biz {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+}
+
+.profile-menu-sub {
+    font-size: 10px;
+    color: var(--secondary-text);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 2px;
+    text-align: left;
+}
+
+.profile-menu-sep {
+    height: 1px;
+    background: var(--border-color);
+}
+
+.profile-menu-item {
+    padding: 10px 12px;
+    cursor: pointer;
+    font-size: 12.5px;
+    color: var(--text-color);
+    transition: background 0.15s ease, color 0.15s ease;
+    text-align: left;
+}
+
+.profile-menu-item:hover {
+    background: var(--hover-bg);
+    color: var(--accent-color);
+}
+
+.profile-menu-item.logout:hover {
+    background: rgba(192, 42, 42, 0.08);
+    color: #c02a2a;
+}
+
+/* Align sidebar collapse button with right panel collapse button style */
+.sidebar-toggle-btn {
+    border: 1px solid var(--border-color) !important;
+    background: transparent !important;
+    color: var(--secondary-text) !important;
+    box-shadow: none !important;
+}
+
+.sidebar-toggle-btn:hover {
+    background: var(--accent-soft) !important;
+    color: var(--accent-color) !important;
+    border-color: var(--accent-color) !important;
+}
+

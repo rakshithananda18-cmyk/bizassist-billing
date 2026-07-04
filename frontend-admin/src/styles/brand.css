@@ -1,0 +1,104 @@
+/* ==========================================================================
+   BIZASSIST — Brand mark, loaders, and page splash
+   ========================================================================== */
+
+@keyframes ba-grow {
+    0%, 100% { transform: scaleY(0.28); }
+    50%      { transform: scaleY(1); }
+}
+
+@keyframes ba-twinkle {
+    0%, 100% { opacity: 0.45; transform: scale(0.8); }
+    50%      { opacity: 1;    transform: scale(1); }
+}
+
+@keyframes ba-fade-in {
+    0%   { opacity: 0; transform: translateY(6px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Tower rises out of the ground (clip-reveal) and STAYS up — never falls. */
+@keyframes ba-rise {
+    0%   { transform: translateY(var(--d)); }
+    30%  { transform: translateY(0); }
+    100% { transform: translateY(0); }
+}
+
+/* Visibility cycle: start from nothing, fade in as it rises, fade out at the
+   top — the reset to ground happens while invisible, so it only ever rises. */
+@keyframes ba-cycle {
+    0%   { opacity: 0; }
+    12%  { opacity: 1; }
+    82%  { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* Star pops in once the towers are up, then fades with them. */
+@keyframes ba-rise-star {
+    0%, 45%  { opacity: 0; transform: scale(0.5); }
+    60%      { opacity: 1; transform: scale(1); }
+    82%      { opacity: 1; transform: scale(1); }
+    100%     { opacity: 0; transform: scale(0.5); }
+}
+
+.ba-bar {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    animation: ba-grow 1.1s ease-in-out infinite;
+}
+
+.ba-star {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: ba-twinkle 1.5s ease-in-out infinite;
+}
+
+.ba-rise {
+    animation: ba-rise 2.6s ease-out infinite, ba-cycle 2.6s linear infinite;
+    animation-fill-mode: backwards, backwards;
+}
+
+.ba-rise-star {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: ba-rise-star 2.6s ease-out infinite;
+    animation-fill-mode: backwards;
+}
+
+.ba-wordmark {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--text-color);
+    line-height: 1;
+}
+
+/* Full-screen page splash (initial load / auth check) */
+.ba-pageloader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    background: var(--bg-color);
+}
+
+.ba-tagline {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--secondary-text);
+    text-align: center;
+    animation: ba-fade-in 0.5s ease-out;
+}
+
+.ba-tagline .hl { color: var(--accent-color); }
+
+@media (prefers-reduced-motion: reduce) {
+    .ba-bar, .ba-star, .ba-tagline, .ba-rise, .ba-rise-star { animation: none; }
+    .ba-bar, .ba-rise { transform: none; }
+    .ba-rise-star { opacity: 1; }
+}

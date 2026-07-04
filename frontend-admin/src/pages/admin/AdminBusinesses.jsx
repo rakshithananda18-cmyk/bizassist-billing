@@ -33,6 +33,15 @@ export default function AdminBusinesses() {
   const [inspectDetails, setInspectDetails] = useState(null)
   const [inspectLoading, setInspectLoading] = useState(false)
 
+  // Subscription modal states (Phase B.5)
+  const [showPlanModal, setShowPlanModal] = useState(false)
+  const [planForm, setPlanForm] = useState({ id: null, businessName: '', plan: 'free', status: 'active', expires_at: '', note: '' })
+  const [planError, setPlanError] = useState('')
+
+  // Type-the-name wipe confirmation (danger guard)
+  const [wipeTarget, setWipeTarget] = useState(null)   // { id, name }
+  const [wipeTyped, setWipeTyped] = useState('')
+
   useEffect(() => {
     loadBusinesses()
   }, [])
@@ -51,9 +60,16 @@ export default function AdminBusinesses() {
     }
   }
 
-  // --- WIPE USER DATA ---
-  async function handleWipeUser(id, name) {
-    if (!(await showConfirm(`WARNING: This will permanently delete the user account and all dynamic business data (invoices, inventory, payments, uploads, document embeddings, and chat messages) specifically for ${name}. Proceed?`))) return
+  // --- WIPE USER DATA (type-the-name confirmation) ---
+  function handleWipeUser(id, name) {
+    setWipeTyped('')
+    setWipeTarget({ id, name })
+  }
+
+  async function confirmWipe() {
+    if (!wipeTarget || wipeTyped !== wipeTarget.name) return
+    const { id, name } = wipeTarget
+    setWipeTarget(null)
     try {
       const res = await authFetch(`${API_BASE}/admin/wipe-user-data/${id}`, { method: 'DELETE' })
       const data = await res.json()
@@ -61,6 +77,46 @@ export default function AdminBusinesses() {
       loadBusinesses()
     } catch (err) {
       await showError(err)
+    }
+  }
+
+  // --- SUBSCRIPTION (Phase B.5) ---
+  async function openPlanModal(b) {
+    setPlanError('')
+    setPlanForm({ id: b.id, businessName: b.business_name, plan: b.plan || 'free', status: b.plan_status || 'active', expires_at: b.plan_expires_at ? b.plan_expires_at.slice(0, 10) : '', note: '' })
+    setShowPlanModal(true)
+    try {
+      const res = await authFetch(`${API_BASE}/admin/subscription/${b.id}`)
+      if (res.ok) {
+        const s = await res.json()
+        setPlanForm(f => ({ ...f, plan: s.plan || 'free', status: s.status === 'none' ? 'active' : s.status, expires_at: s.expires_at ? String(s.expires_at).slice(0, 10) : '', note: s.note || '' }))
+      }
+    } catch (err) { console.error(err) }
+  }
+
+  async function handlePlanSubmit(e) {
+    e.preventDefault()
+    setPlanError('')
+    const body = { plan: planForm.plan }
+    if (planForm.plan !== 'free') {
+      body.status = planForm.status || 'active'
+      if (planForm.expires_at) body.expires_at = `${planForm.expires_at}T23:59:59`
+      if (planForm.note) body.note = planForm.note
+    }
+    try {
+      const res = await authFetch(`${API_BASE}/admin/subscription/${planForm.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      if (!res.ok) {
+        const errData = await res.json()
+        throw new Error(errData.detail || 'Failed to save subscription')
+      }
+      setShowPlanModal(false)
+      loadBusinesses()
+    } catch (err) {
+      setPlanError(err.message)
     }
   }
 
@@ -235,8 +291,12 @@ export default function AdminBusinesses() {
               <thead>
                 <tr>
                   <th>ID</th>
+                  <th>BizID</th>
                   <th>Business Name</th>
                   <th>Username</th>
+                  <th>Mode</th>
+                  <th>Sync</th>
+                  <th>Plan</th>
                   <th>Total Invoices</th>
                   <th>Tracked Revenue</th>
                   <th>Inventory Stock Count</th>
@@ -247,7 +307,7 @@ export default function AdminBusinesses() {
               <tbody>
                 {businesses.length === 0 ? (
                   <tr>
-                    <td colSpan="8" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 30 }}>
+                    <td colSpan="12" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 30 }}>
                       No enterprise businesses registered yet.
                     </td>
                   </tr>
@@ -255,8 +315,24 @@ export default function AdminBusinesses() {
                   businesses.map(b => (
                     <tr key={b.id}>
                       <td style={{ fontFamily: "'Geist Mono',monospace", opacity: 0.75 }}>{b.id}</td>
+                      <td style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, opacity: 0.85 }} title="Stable identity across cloud & local databases">{b.bizid || '—'}</td>
                       <td style={{ fontWeight: 600, color: 'var(--accent-color)' }}>{b.business_name}</td>
                       <td>{b.username}</td>
+                      <td><span className="tag">{b.hosting_mode || 'local'}</span></td>
+                      <td>
+                        <span title={b.last_sync_at ? `Last sync ${b.last_sync_at}${b.sync_queue_depth ? ` · ${b.sync_queue_depth} queued` : ''}` : 'Never synced'} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: b.online_last_24h ? '#3a9a5c' : 'var(--border-color)', display: 'inline-block' }}></span>
+                          {b.online_last_24h ? '24h' : (b.last_sync_at ? 'stale' : '—')}
+                          {b.sync_queue_depth > 0 && <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>+{b.sync_queue_depth}</span>}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="tag" style={{
+                          background: b.plan === 'pro' ? 'rgba(58,154,92,0.12)' : 'var(--accent-soft)',
+                          color: b.plan === 'pro' ? '#3a9a5c' : 'var(--secondary-text)',
+                          fontWeight: 700, textTransform: 'uppercase', fontSize: 10
+                        }}>{b.plan || 'free'}</span>
+                      </td>
                       <td>{b.invoice_count}</td>
                       <td style={{ fontFamily: "'Crimson Pro',serif", fontSize: 16, fontWeight: 600 }}>
                         ₹{b.total_revenue.toLocaleString('en-IN')}
@@ -268,6 +344,7 @@ export default function AdminBusinesses() {
                           <button className="btn-flush" onClick={() => openInspectModal(b)}>Inspect</button>
                           <button className="btn-flush" onClick={() => openEditModal(b)}>Edit</button>
                           <button className="btn-flush" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => openLimitsModal(b)}><Icon name="settings" size={12} /> Limits</button>
+                          <button className="btn-flush" onClick={() => openPlanModal(b)}>Plan</button>
                           <button className="btn-flush" onClick={() => handleFlushCache(b.id, b.business_name)}>Flush Cache</button>
                           <button className="btn-wipe-row" onClick={() => handleWipeUser(b.id, b.business_name)}>Wipe Data</button>
                         </div>
@@ -446,6 +523,90 @@ export default function AdminBusinesses() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* SUBSCRIPTION / PLAN MODAL (Phase B.5) */}
+      {showPlanModal && (
+        <div className="custom-modal-overlay">
+          <div className="custom-modal-card admin-modal-card" style={{ maxWidth: 460 }}>
+            <div className="custom-modal-title">Subscription: {planForm.businessName}</div>
+            <form onSubmit={handlePlanSubmit} className="auth-form" style={{ marginTop: 16 }}>
+              <div className="admin-form-grid">
+                <div className="form-group">
+                  <label>Plan</label>
+                  <select value={planForm.plan} onChange={e => setPlanForm(f => ({ ...f, plan: e.target.value }))}>
+                    <option value="free">Free (revoke)</option>
+                    <option value="pro">Pro</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Status</label>
+                  <select value={planForm.status} disabled={planForm.plan === 'free'} onChange={e => setPlanForm(f => ({ ...f, status: e.target.value }))}>
+                    <option value="active">Active</option>
+                    <option value="trial">Trial</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-group" style={{ marginTop: 8 }}>
+                <label>Expires On (blank = no expiry)</label>
+                <input type="date" value={planForm.expires_at} disabled={planForm.plan === 'free'}
+                       onChange={e => setPlanForm(f => ({ ...f, expires_at: e.target.value }))} />
+              </div>
+              <div className="form-group" style={{ marginTop: 8 }}>
+                <label>Note (internal)</label>
+                <input type="text" placeholder="e.g. field-testing grant" value={planForm.note} disabled={planForm.plan === 'free'}
+                       onChange={e => setPlanForm(f => ({ ...f, note: e.target.value }))} />
+              </div>
+              {planError && <div className="auth-error">{planError}</div>}
+              <div className="custom-modal-actions" style={{ marginTop: 24 }}>
+                <button type="button" className="custom-modal-btn cancel-btn" onClick={() => setShowPlanModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="custom-modal-btn confirm-btn" style={{ background: 'var(--accent-color)' }}>
+                  {planForm.plan === 'free' ? 'Revoke Plan' : 'Save Plan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* WIPE CONFIRMATION MODAL (type-the-name guard) */}
+      {wipeTarget && (
+        <div className="custom-modal-overlay">
+          <div className="custom-modal-card admin-modal-card" style={{ maxWidth: 460 }}>
+            <div className="custom-modal-title" style={{ color: 'var(--accent-color)' }}>⚠ Permanently wipe {wipeTarget.name}?</div>
+            <p style={{ fontSize: 13, color: 'var(--secondary-text)', marginTop: 12, lineHeight: 1.5 }}>
+              This deletes the account and ALL its business data — invoices, inventory,
+              payments, uploads, embeddings and chat history. This cannot be undone.
+              Type the business name <strong style={{ color: 'var(--text-color)' }}>{wipeTarget.name}</strong> to confirm.
+            </p>
+            <div className="form-group" style={{ marginTop: 12 }}>
+              <input
+                type="text"
+                autoFocus
+                placeholder="Type the business name exactly"
+                value={wipeTyped}
+                onChange={e => setWipeTyped(e.target.value)}
+              />
+            </div>
+            <div className="custom-modal-actions" style={{ marginTop: 20 }}>
+              <button type="button" className="custom-modal-btn cancel-btn" onClick={() => setWipeTarget(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="custom-modal-btn confirm-btn"
+                disabled={wipeTyped !== wipeTarget.name}
+                onClick={confirmWipe}
+                style={{ background: wipeTyped === wipeTarget.name ? '#c0392b' : 'var(--border-color)', cursor: wipeTyped === wipeTarget.name ? 'pointer' : 'not-allowed' }}
+              >
+                Wipe Everything
+              </button>
+            </div>
           </div>
         </div>
       )}

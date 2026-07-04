@@ -13,7 +13,7 @@ from typing import Optional
 from groq import Groq
 import os
 
-from services.auth import get_active_user, restrict_cashier
+from services.auth import get_active_user, restrict_cashier, require_plan
 
 router = APIRouter()
 
@@ -46,7 +46,8 @@ def home():
 
 
 @router.post("/ask")
-def ask_ai(prompt: Prompt, current_user: dict = Depends(restrict_cashier)):
+def ask_ai(prompt: Prompt, current_user: dict = Depends(restrict_cashier),
+           _plan: dict = Depends(require_plan("pro"))):
     """
     Hybrid AI endpoint -- 4-tier routing:
       CONVERSATIONAL -> short reply, 0 tokens
@@ -65,7 +66,8 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(restrict_cashier)):
 
 
 @router.post("/ask/stream")
-def ask_ai_stream(prompt: Prompt, current_user: dict = Depends(restrict_cashier)):
+def ask_ai_stream(prompt: Prompt, current_user: dict = Depends(restrict_cashier),
+                  _plan: dict = Depends(require_plan("pro"))):
     """
     SSE streaming endpoint -- same routing logic as /ask but streams tokens.
 

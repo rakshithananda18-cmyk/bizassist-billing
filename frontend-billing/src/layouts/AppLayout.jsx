@@ -4,7 +4,7 @@ import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useLock } from '../contexts/LockContext'
 import { API_BASE } from '../config'
-import { AI_DASHBOARD_GATED, getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
+import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
 import { IS_DESKTOP_APP, openDownloadPage } from '../config/downloadApp'
 import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
@@ -84,6 +84,12 @@ export default function AppLayout({ children, title }) {
 
   const hostingMode = settings?.general?.hosting_mode || 'local'
   const isSyncOn = hostingMode === 'cloud' || hostingMode === 'hybrid'
+
+  // Subscription gate (Admin Console plan, Phase B.5): the backend's /settings
+  // response carries the business's real plan + whether enforcement is live.
+  // Replaces the old hardcoded AI_DASHBOARD_GATED const.
+  const subscription = settings?.subscription
+  const aiGated = !!(subscription?.enforced && subscription?.plan !== 'pro')
 
   const [queueDepth, setQueueDepth] = React.useState({
     pending_count: 0,
@@ -897,8 +903,8 @@ export default function AppLayout({ children, title }) {
                           onClick={(e) => {
                             e.preventDefault()
                             setMobileMenuOpen(false)
-                            if (AI_DASHBOARD_GATED) {
-                              window.alert('Dashboard BIZASSIST is part of the upcoming subscription plan.')
+                            if (aiGated) {
+                              window.alert('Dashboard BIZASSIST is part of the Pro plan. Contact your provider to upgrade.')
                               return
                             }
                             openAiDashboard()
@@ -906,7 +912,7 @@ export default function AppLayout({ children, title }) {
                         >
                           <span className="nav-icon">{icon}</span>
                           {label}
-                          {AI_DASHBOARD_GATED && (
+                          {aiGated && (
                             <span style={{
                               marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 800,
                               letterSpacing: '0.08em', padding: '2px 6px', borderRadius: 6,

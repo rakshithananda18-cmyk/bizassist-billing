@@ -26,19 +26,21 @@ export default function Login() {
   const hasUnmetConditions = !condLength || !condCapital || !condLower || !condNumber || !condSpecial
 
   useEffect(() => {
-    if (tab !== 'signup' || !pwFocus || password.length === 0) {
-      setShowConditions(false)
-      return
-    }
+    // Make sure theme applies even before logging in
+    const stored = localStorage.getItem('theme') || 'system'
+    const computed = stored === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : stored
+    document.body.setAttribute('data-theme', computed)
+  }, [])
 
+  useEffect(() => {
     // Reset visibility immediately when typing/focus changes
     setShowConditions(false)
-
+    
     // Wait for 1 second of idle typing to show the requirements dropdown
     const timer = setTimeout(() => {
       setShowConditions(true)
     }, 1000)
-
+    
     return () => clearTimeout(timer)
   }, [password, pwFocus, tab])
 
@@ -107,24 +109,6 @@ export default function Login() {
         <h1 className="login-title">BIZASSIST</h1>
         <p className="login-subtitle">Enterprise Business Intelligence Portal</p>
 
-        {/* Sign In / Register tabs */}
-        <div className="login-tabs">
-          <button
-            type="button"
-            className={`login-tab-btn ${tab === 'login' ? 'active' : ''}`}
-            onClick={() => { setTab('login'); setError('') }}
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
-            className={`login-tab-btn ${tab === 'signup' ? 'active' : ''}`}
-            onClick={() => { setTab('signup'); setError('') }}
-          >
-            Register
-          </button>
-        </div>
-
         <form id="login-form" onSubmit={handleSubmit}>
 
           {/* Username */}
@@ -141,20 +125,6 @@ export default function Login() {
             />
           </div>
 
-          {/* Business Name — signup only */}
-          {tab === 'signup' && (
-            <div className="form-group" id="group-bizname">
-              <label htmlFor="bizname">Business Name</label>
-              <input
-                type="text"
-                id="bizname"
-                placeholder="e.g. Medicare Pharmacy"
-                value={bizname}
-                onChange={e => setBizname(e.target.value)}
-              />
-            </div>
-          )}
-
           {/* Password */}
           <div className="form-group">
             <label htmlFor="password">Password</label>
@@ -165,8 +135,6 @@ export default function Login() {
                 placeholder="••••••••"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                onFocus={() => setPwFocus(true)}
-                onBlur={() => setPwFocus(false)}
                 required
                 autoComplete="current-password"
               />
@@ -191,22 +159,9 @@ export default function Login() {
               </button>
             </div>
 
-            {tab === 'login' && (
-              <div className="forgot-password-tip" style={{ marginTop: 6, fontSize: 11.5, color: 'var(--secondary-text)', textAlign: 'left', lineHeight: '1.4' }}>
-                Forgot password? Contact your system administrator to reset it.
-              </div>
-            )}
-
-            {/* Password strength conditions — signup only */}
-            {showConditions && hasUnmetConditions && (
-              <div id="password-conditions" className="password-conditions">
-                {!condLength   && <div className="condition-item" id="cond-length"><span className="condition-dot">●</span> 8+ characters</div>}
-                {!condCapital  && <div className="condition-item" id="cond-capital"><span className="condition-dot">●</span> Capital letter</div>}
-                {!condLower    && <div className="condition-item" id="cond-lowercase"><span className="condition-dot">●</span> Lowercase letter</div>}
-                {!condNumber   && <div className="condition-item" id="cond-number"><span className="condition-dot">●</span> Contains a number</div>}
-                {!condSpecial  && <div className="condition-item" id="cond-special"><span className="condition-dot">●</span> Special character</div>}
-              </div>
-            )}
+            <div className="forgot-password-tip" style={{ marginTop: 6, fontSize: 11.5, color: 'var(--secondary-text)', textAlign: 'left', lineHeight: '1.4' }}>
+              Forgot password? Contact your system administrator to reset it.
+            </div>
           </div>
 
           {/* Error */}
@@ -216,15 +171,10 @@ export default function Login() {
             </div>
           )}
 
-          <button
-            type="submit"
-            className="login-submit-btn"
-            id="submit-btn"
-            disabled={loading}
-          >
+          <button type="submit" className="login-submit-btn" disabled={loading}>
             {loading
-              ? (tab === 'login' ? 'Signing in...' : 'Registering...')
-              : (tab === 'login' ? 'Sign In' : 'Create Account')}
+            ? 'Signing in...'
+            : 'Sign In to Dashboard'}
           </button>
         </form>
 

@@ -1,0 +1,11 @@
+/* ==========================================================================
+   BIZASSIST React — MASTER CSS STYLE SHEET
+   Imports modular sub-stylesheets for better maintainability.
+   ========================================================================== */
+
+@import './variables.css';
+@import './layout.css';
+@import './widgets.css';
+@import './chat.css';
+@import './auth.css';
+@import './admin.css';

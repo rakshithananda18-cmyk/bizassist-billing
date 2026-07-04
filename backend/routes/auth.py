@@ -6,7 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from database.db import get_db, DATABASE_URL
 from database.models import User
-from services.auth import hash_password, verify_password, create_access_token, get_active_user
+from services.auth import hash_password, verify_password, create_access_token, get_active_user, create_sse_ticket, require_owner, get_active_user_or_ticket, _sse_tickets
 from services.rate_limiter import check_ip_rate_limit
 
 router = APIRouter()
@@ -293,6 +293,98 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Internal server signup error")
 
 
+# ---------------------------------------------------------------------------
+# SSO & HANDOFF TICKETS
+# ---------------------------------------------------------------------------
+
+@router.post("/handoff-ticket")
+def handoff_ticket(current_user: dict = Depends(require_owner)):
+    """
+    (Phase C) Generate a short-lived (30s), single-use SSO ticket for the owner.
+    This allows them to seamlessly cross origins (e.g. into the AI Admin Console)
+    without logging in again.
+    """
+    logger.info(f"[AUTH] Generating SSO handoff ticket for owner '{current_user.get('username')}'")
+    ticket = create_sse_ticket(current_user, expires_in_seconds=30)
+    return {"ticket": ticket}
+
+
+class RedeemTicketRequest(BaseModel):
+    ticket: str
+
+
+@router.post("/redeem-ticket")
+def redeem_ticket(req: RedeemTicketRequest, request: Request, db: Session = Depends(get_db)):
+    """
+    (Phase C) Exchange a valid SSO ticket for a full, fresh JWT session.
+    """
+    logger.info("[AUTH] Attempting to redeem SSO handoff ticket...")
+    try:
+        ip = request.client.host if request.client else "unknown"
+        rl = check_ip_rate_limit(ip)
+        if not rl["allowed"]:
+            raise HTTPException(status_code=429, detail=rl["reason"])
+
+        # Direct ticket lookup — bypasses FastAPI DI which would be a no-op here.
+        # get_active_user_or_ticket uses Query(None) params; calling it directly
+        # passes ticket=None, falls through to JWT auth, always raises 401.
+        from datetime import datetime as _dt
+        now = _dt.utcnow()
+        ticket_data = _sse_tickets.get(req.ticket)
+        if not ticket_data:
+            logger.warning("[AUTH] SSO ticket not found or already used")
+            raise HTTPException(status_code=401, detail="Invalid or expired ticket")
+        if now > ticket_data["expires"]:
+            _sse_tickets.pop(req.ticket, None)
+            logger.warning("[AUTH] SSO ticket expired")
+            raise HTTPException(status_code=401, detail="Invalid or expired ticket")
+        # Single-use: remove immediately after validation
+        _sse_tickets.pop(req.ticket, None)
+        current_user = ticket_data["user"]
+        logger.info("[AUTH] SSO ticket verified for user '%s'", current_user.get("username"))
+
+        
+        user_row = db.query(User).filter(User.username == current_user.get("username")).first()
+        if not user_row:
+            raise HTTPException(status_code=401, detail="User no longer exists")
+
+        business_id = user_row.parent_business_id or user_row.id
+        business_name = user_row.business_name
+        if user_row.parent_business_id:
+            owner = db.query(User).filter(User.id == user_row.parent_business_id).first()
+            if owner:
+                business_name = owner.business_name
+
+        token = create_access_token({
+            "id": business_id,
+            "user_id": user_row.id,
+            "username": user_row.username,
+            "public_id": user_row.public_id,
+            "business_name": business_name,
+            "role": user_row.role
+        })
+
+        logger.info(f"[AUTH] Ticket redeemed successfully for user '{user_row.username}'. Issued new session.")
+        return {
+            "token": token,
+            "id": business_id,
+            "user_id": user_row.id,
+            "username": user_row.username,
+            "public_id": user_row.public_id,
+            "business_name": business_name,
+            "role": user_row.role,
+            "counter_prefix": user_row.counter_prefix,
+            "db_mode": _DB_MODE,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[AUTH] Error redeeming ticket: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+
+
 class ProfileUpdateRequest(BaseModel):
     business_name: Optional[str] = None
     gstin: Optional[str] = None
@@ -531,15 +623,39 @@ def _get_user_settings(user: User, db: Session = None) -> dict:
     return base
 
 
+def _subscription_view(user: User, db: Session = None) -> dict:
+    """Read-only subscription info for the client (Phase B.5). Staff inherit the
+    owner's plan. Admin-managed only — PUT /settings can never modify this."""
+    from services.admin_service import effective_plan, _settings_dict
+    from services.auth import subscription_enforced
+    plan_holder = user
+    if user.parent_business_id and db:
+        owner = db.query(User).filter(User.id == user.parent_business_id).first()
+        if owner:
+            plan_holder = owner
+    sub = _settings_dict(plan_holder).get("subscription") or {}
+    return {
+        "plan":       effective_plan(plan_holder),
+        "status":     sub.get("status", "none"),
+        "expires_at": sub.get("expires_at"),
+        # Whether the backend actually gates Pro features right now — the client
+        # shows PRO badges / blocks only when this is true.
+        "enforced":   subscription_enforced(),
+    }
+
+
 @router.get("/settings")
 def get_settings(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
-    """Return current user's app settings (merged with defaults)."""
+    """Return current user's app settings (merged with defaults) + read-only
+    subscription info (frontend flips AI/PRO gating off the real plan)."""
     logger.info(f"[SETTINGS] GET /settings requested by user '{current_user.get('username')}' (ID {current_user.get('id')})")
     user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
         logger.warning(f"[SETTINGS] User with ID {current_user.get('id')} not found")
         raise HTTPException(status_code=404, detail="User not found")
-    return _get_user_settings(user, db)
+    merged = _get_user_settings(user, db)
+    merged["subscription"] = _subscription_view(user, db)
+    return merged
 
 
 @router.put("/settings")
@@ -576,6 +692,17 @@ def update_settings(
                 logger.warning(f"[SETTINGS] Cashier '{current_user.get('username')}' blocked from modifying global general configurations")
                 raise HTTPException(status_code=403, detail="Permission denied: cashier restricted from modifying global configurations")
 
+    # Pro-gate hybrid sync activation (Phase B.5) — no-op unless SUBSCRIPTION_ENFORCED=1.
+    from services.auth import subscription_enforced
+    if (subscription_enforced()
+            and req.general
+            and req.general.get("hosting_mode") == "hybrid"
+            and current.get("general", {}).get("hosting_mode") != "hybrid"
+            and (current_user.get("role") or "").lower() != "admin"):
+        if _subscription_view(user, db).get("plan") != "pro":
+            logger.info(f"[SETTINGS] plan gate: '{user.username}' blocked from enabling hybrid sync (free plan)")
+            raise HTTPException(status_code=402, detail="Hybrid sync requires the Pro plan. Contact your provider to upgrade.")
+
     # Merge each provided section
     for section in ("general", "transactions", "inventory", "print", "labels"):
         patch = getattr(req, section)
@@ -583,9 +710,23 @@ def update_settings(
             logger.debug(f"[SETTINGS] Patching section '{section}' for user '{user.username}': {patch}")
             current[section].update(patch)
 
+    # Preserve the admin-managed `subscription` key across saves and strip any
+    # client-supplied value (Phase B.5 guard: subscription is server-authoritative;
+    # the SettingsUpdateRequest schema already rejects unknown sections, and the
+    # merged view never includes it, so re-attach from what's on disk).
+    current.pop("subscription", None)
+    try:
+        prev = json.loads(user.settings) if user.settings else {}
+        if isinstance(prev, dict) and "subscription" in prev:
+            current["subscription"] = prev["subscription"]
+    except Exception:
+        pass
+
     user.settings = json.dumps(current)
     db.commit()
     logger.info(f"[SETTINGS] Settings successfully updated and committed for user '{user.username}'")
     logger.debug(f"[SETTINGS] New settings structure: {current}")
-    return current
+    resp = dict(current)
+    resp["subscription"] = _subscription_view(user, db)
+    return resp
 

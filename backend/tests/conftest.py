@@ -63,6 +63,14 @@ except Exception:
 # will NOT overwrite this, so tests ignore whatever the dev's .env says.
 os.environ["LLM_ROUTER"] = "off"
 
+# The admin API is fail-closed (404) unless explicitly enabled — enable it for
+# the suite so /admin/* tests exercise the real auth logic. Individual tests
+# flip it to "0" to assert the closed behaviour.
+os.environ["ADMIN_API_ENABLED"] = "1"
+# Keep the paywall dormant for the suite (free users can call /ask etc.);
+# subscription tests flip it on explicitly.
+os.environ.setdefault("SUBSCRIPTION_ENFORCED", "0")
+
 import pytest
 
 def _clear_sqlite_sidecars():

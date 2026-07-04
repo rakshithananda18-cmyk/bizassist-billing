@@ -101,11 +101,43 @@ def start_scheduler():
         misfire_grace_time=30,  # tolerate a late run rather than warning
     )
 
+    # ── Telemetry relay + retention (Admin Console plan) ─────────────────────
+    # Relay: local installs ship new telemetry lines to the cloud every 3h
+    # (no-op on the cloud backend / when TELEMETRY_RELAY=0). First run ~2min
+    # after boot so fresh field issues surface quickly.
+    from services.telemetry_relay import run_telemetry_relay, run_telemetry_retention
+    from datetime import datetime, timedelta
+
+    _scheduler.add_job(
+        run_telemetry_relay,
+        "interval",
+        hours=3,
+        next_run_time=datetime.now(_scheduler.timezone) + timedelta(minutes=2),
+        id="telemetry_relay",
+        name="Telemetry Relay (local → cloud)",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=3600,
+    )
+
+    # Retention: trim telemetry logs (global + per-business) to the last
+    # TELEMETRY_RETENTION_DAYS days (default 7). Runs everywhere, nightly.
+    _scheduler.add_job(
+        run_telemetry_retention,
+        CronTrigger(hour=2, minute=30),
+        id="telemetry_retention",
+        name="Telemetry Retention Trim",
+        replace_existing=True,
+        misfire_grace_time=86400,
+    )
+
     _scheduler.start()
     logger.info(
         "[SCHED] Started. Jobs: daily summary @ 8:00 IST, "
         "overdue/low-stock/expiry @ 9:00–9:10 IST, "
-        "memory distillation @ Sunday 23:00 IST."
+        "memory distillation @ Sunday 23:00 IST, "
+        "telemetry relay every 3h + retention trim @ 2:30 IST."
     )
 
 

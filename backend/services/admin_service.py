@@ -3,18 +3,28 @@ services/admin_service.py
 ==========================
 Business logic for admin endpoints.
 Routes call these functions; all DB/logic lives here.
+
+Phase A hardening (Admin Console plan):
+- ADMIN_API_ENABLED env gate, **default OFF** (fail closed). The desktop /
+  PyInstaller build never sets it, so /admin/* effectively does not exist on
+  customer machines (404, not 403 — don't advertise the surface). The HF Space
+  sets ADMIN_API_ENABLED=1 (see root Dockerfile).
+- audit_log(): every /admin/* mutation appends who/what/when to
+  logs/admin_audit.jsonl (same pattern as telemetry — no DB migration).
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
+import os
+import json
 from database.models import (
     User, Invoice, InvoiceLineItem, Inventory, LegacyPayment, UploadedFile,
     DocumentEmbedding, ChatMessage, TokenUsage, RateLimitConfig,
     Customer, Vendor, Product, PurchaseOrder, PurchaseOrderLineItem,
     PurchaseInvoice, PurchaseInvoiceLineItem, AIFeedback, AIQueryOverride,
-    BusinessFact, AlertConfig
+    BusinessFact, AlertConfig, SyncQueue, SyncLog
 )
 from core.models import (
     StockLedger, ProductBarcode, BusinessSettings, InvoicePayment,
@@ -28,13 +38,66 @@ from services.rate_limiter import get_usage_summary
 
 logger = logging.getLogger("bizassist.admin_service")
 
+# Subscription plans (Phase B.5) — stored in users.settings JSON under the
+# reserved "subscription" key. No migration; syncs with the settings machinery.
+VALID_PLANS = ("free", "pro")
 
-def require_admin(user_id: int, db: Session) -> User:
-    """Raises 403 if the current user is not an admin. Returns the admin User row."""
+
+def _admin_api_enabled() -> bool:
+    """Fail closed: admin API only exists when explicitly enabled (HF Space)."""
+    return os.getenv("ADMIN_API_ENABLED", "0") == "1"
+
+
+def audit_log(admin, action: str, details: dict = None):
+    """Append who/what/when for every admin mutation (JSONL, no migration).
+
+    Identities are recorded by **BizID** (users.public_id) + username, not the
+    numeric row id — numeric ids differ between the cloud and local databases,
+    while the BizID is the stable cross-DB identity spine. `admin` may be a
+    User row (preferred) or a bare int id (legacy callers)."""
+    try:
+        log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(log_dir, "admin_audit.jsonl")
+        with open(log_file, "a") as f:
+            entry = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "admin_id": getattr(admin, "id", admin),
+                "admin_bizid": getattr(admin, "public_id", None),
+                "admin_username": getattr(admin, "username", None),
+                "action": action,
+                "details": details or {}
+            }
+            f.write(json.dumps(entry) + "\n")
+    except Exception as e:
+        logger.error(f"Audit log failed: {e}")
+
+
+def require_admin(user_id: int, db: Session, action: str = None, details: dict = None) -> User:
+    """Raises 404 if the admin API is disabled (fail closed — don't advertise
+    the surface on customer installs), 403 if the caller is not an admin.
+    Returns the admin User row. Pass `action` on mutations to audit-log them
+    (targets referenced by numeric id are enriched with their BizID)."""
+    if not _admin_api_enabled():
+        logger.warning(f"[AUTH] Admin API disabled — blocked user_id={user_id}")
+        raise HTTPException(status_code=404, detail="Not found")
+
     u = db.query(User).filter(User.id == user_id).first()
     if not u or u.role != "admin":
         logger.warning(f"[AUTH] Admin access denied for user_id={user_id} (role={getattr(u, 'role', None)})")
         raise HTTPException(status_code=403, detail="Access denied. Admin role required.")
+
+    if action:
+        det = dict(details or {})
+        # Enrich the target's numeric id with its stable BizID + username so the
+        # trail stays meaningful across cloud/local databases.
+        if det.get("target") is not None:
+            t = db.query(User).filter(User.id == det["target"]).first()
+            if t:
+                det["target_bizid"] = t.public_id
+                det["target_username"] = t.username
+        audit_log(u, action, det)
+
     return u
 
 
@@ -46,21 +109,286 @@ def require_target_user(user_id: int, db: Session) -> User:
     return u
 
 
+# ── Fleet monitor (Phase B.1) ────────────────────────────────────────────────
+
+def _settings_dict(u: User) -> dict:
+    try:
+        return json.loads(u.settings) if u.settings else {}
+    except Exception:
+        return {}
+
+
 def list_businesses(db: Session) -> list:
+    """Per business: core stats + fleet fields (hosting mode, last sync,
+    queue depth, online-in-last-24h) + subscription plan."""
+    now = datetime.utcnow()
     businesses = db.query(User).filter(User.role == "enterprise").all()
     result = []
     for b in businesses:
+        s = _settings_dict(b)
+        sub = s.get("subscription") or {}
+        last_sync = (
+            db.query(func.max(SyncLog.synced_at))
+            .filter(SyncLog.business_id == b.id).scalar()
+        )
+        queue_depth = (
+            db.query(SyncQueue)
+            .filter(SyncQueue.business_id == b.id, SyncQueue.synced_at.is_(None))
+            .count()
+        )
+        online_24h = bool(last_sync and (now - last_sync) < timedelta(hours=24))
         result.append({
             "id":              b.id,
+            "bizid":           b.public_id,   # stable identity across cloud/local DBs
             "username":        b.username,
             "business_name":   b.business_name,
             "invoice_count":   db.query(Invoice).filter(Invoice.business_id == b.id).count(),
             "total_revenue":   db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == b.id).scalar() or 0,
             "inventory_count": db.query(Inventory).filter(Inventory.business_id == b.id).count(),
             "upload_count":    db.query(UploadedFile).filter(UploadedFile.business_id == b.id).count(),
+            # Fleet fields
+            "hosting_mode":    s.get("general", {}).get("hosting_mode", "local"),
+            "last_sync_at":    last_sync.isoformat() if last_sync else None,
+            "sync_queue_depth": queue_depth,
+            "online_last_24h": online_24h,
+            # Subscription
+            "plan":            sub.get("plan", "free"),
+            "plan_status":     sub.get("status"),
+            "plan_expires_at": sub.get("expires_at"),
         })
     return result
 
+
+# ── Telemetry / logs viewer (Phase B.2 + B.3) ────────────────────────────────
+
+def _telemetry_path() -> str:
+    """Match routes/telemetry.py: logs/telemetry.jsonl relative to CWD."""
+    return os.path.join("logs", "telemetry.jsonl")
+
+
+def _business_telemetry_path(bizid: str) -> str:
+    """Per-business mirror written by routes/telemetry.py."""
+    import re
+    token = re.sub(r"[^A-Za-z0-9_\-]", "", bizid or "")[:64]
+    return os.path.join("logs", "businesses", token, "telemetry.jsonl") if token else ""
+
+
+def read_telemetry(device: str = None, event: str = None, level: str = None,
+                   since: str = None, bizid: str = None, limit: int = 200) -> dict:
+    """Newest-first, filterable reader. With a bizid filter, reads that
+    business's segregated file (logs/businesses/<bizid>/) when it exists —
+    falling back to filtering the global stream."""
+    limit = max(1, min(int(limit or 200), 1000))
+    path = _telemetry_path()
+    filtering_bizid = None
+    if bizid:
+        bpath = _business_telemetry_path(bizid)
+        if bpath and os.path.exists(bpath):
+            path = bpath                      # segregated file — no bizid filter needed
+        else:
+            filtering_bizid = bizid           # fall back to global + filter
+    if not os.path.exists(path):
+        return {"events": [], "total_scanned": 0, "path": path}
+
+    rows = []
+    scanned = 0
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read telemetry log: {e}")
+
+    for line in reversed(lines):          # newest-first
+        line = line.strip()
+        if not line:
+            continue
+        scanned += 1
+        try:
+            rec = json.loads(line)
+        except Exception:
+            continue
+        if device and device not in (rec.get("device_id") or ""):
+            continue
+        if event and event != rec.get("event"):
+            continue
+        if level and level != rec.get("level"):
+            continue
+        if since and (rec.get("received_at") or "") < since:
+            continue
+        if filtering_bizid and filtering_bizid != rec.get("bizid"):
+            continue
+        rows.append(rec)
+        if len(rows) >= limit:
+            break
+    return {"events": rows, "total_scanned": scanned, "path": path}
+
+
+def telemetry_devices() -> list:
+    """Aggregate per device: app version, platform, last seen — and every
+    BizID the device has reported under, so shared devices (multiple
+    businesses on one install) are visible at a glance."""
+    path = _telemetry_path()
+    if not os.path.exists(path):
+        return []
+    devices = {}
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                did = rec.get("device_id")
+                if not did:
+                    continue
+                cur = devices.setdefault(did, {"device_id": did, "_bizids": set(), "last_seen": ""})
+                if rec.get("bizid"):
+                    cur["_bizids"].add(rec["bizid"])
+                if (rec.get("received_at") or "") > (cur.get("last_seen") or ""):
+                    cur.update({
+                        "app_version": rec.get("app_version"),
+                        "platform":    rec.get("platform"),
+                        "source":      rec.get("source"),
+                        "last_seen":   rec.get("received_at"),
+                        "last_event":  rec.get("event"),
+                        "last_level":  rec.get("level"),
+                        "last_bizid":  rec.get("bizid") or cur.get("last_bizid"),
+                    })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read telemetry log: {e}")
+
+    out = []
+    for d in devices.values():
+        bizids = sorted(d.pop("_bizids"))
+        d["bizids"] = bizids
+        d["bizid_count"] = len(bizids)
+        d["shared"] = len(bizids) > 1        # one install used by multiple businesses
+        out.append(d)
+    return sorted(out, key=lambda d: d.get("last_seen") or "", reverse=True)
+
+
+def server_log_tail(lines: int = 200, q: str = None) -> dict:
+    """Tail of the backend server log (bizassist.log) for the Debug tab.
+    Optional `q` substring filter (e.g. a BizID or username) gives a segregated
+    view of one business's lines without shipping the whole log."""
+    lines = max(1, min(int(lines or 200), 2000))
+    candidates = ("bizassist.log", os.path.join("logs", "bizassist.log"))
+    for path in candidates:
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8", errors="replace") as f:
+                    all_lines = [l.rstrip("\n") for l in f.readlines()]
+                if q:
+                    all_lines = [l for l in all_lines if q in l]
+                return {"path": path, "filter": q, "lines": all_lines[-lines:]}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to read server log: {e}")
+    return {"path": None, "filter": q, "lines": []}
+
+
+def telemetry_businesses() -> list:
+    """List the per-business telemetry folders (logs/businesses/<bizid>/)."""
+    root = os.path.join("logs", "businesses")
+    if not os.path.isdir(root):
+        return []
+    out = []
+    for name in sorted(os.listdir(root)):
+        f = os.path.join(root, name, "telemetry.jsonl")
+        if os.path.isfile(f):
+            try:
+                size = os.path.getsize(f)
+                mtime = datetime.utcfromtimestamp(os.path.getmtime(f)).isoformat()
+            except OSError:
+                size, mtime = 0, None
+            out.append({"bizid": name, "size_bytes": size, "last_write": mtime})
+    return out
+
+
+def read_audit_log(limit: int = 200) -> list:
+    """Newest-first reader over logs/admin_audit.jsonl."""
+    limit = max(1, min(int(limit or 200), 1000))
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs", "admin_audit.jsonl")
+    if not os.path.exists(path):
+        return []
+    rows = []
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        lines = f.readlines()
+    for line in reversed(lines):
+        try:
+            rows.append(json.loads(line))
+        except Exception:
+            continue
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+# ── Subscriptions (Phase B.5 — schema-free, lives in users.settings JSON) ────
+
+def get_subscription(business_id: int, db: Session) -> dict:
+    target = require_target_user(business_id, db)
+    s = _settings_dict(target)
+    sub = s.get("subscription") or {}
+    return {
+        "business_id": business_id,
+        "username":    target.username,
+        "business_name": target.business_name,
+        "plan":        sub.get("plan", "free"),
+        "status":      sub.get("status", "none"),
+        "expires_at":  sub.get("expires_at"),
+        "granted_by":  sub.get("granted_by"),
+        "granted_at":  sub.get("granted_at"),
+        "note":        sub.get("note"),
+    }
+
+
+def set_subscription(business_id: int, body, admin: User, db: Session) -> dict:
+    """Grant / extend / revoke a plan. Stored under the reserved `subscription`
+    key in users.settings — routes/auth.py strips this key from client PUT
+    /settings patches and preserves it on every save, so only admins can
+    change it."""
+    target = require_target_user(business_id, db)
+    plan = (body.plan or "free").lower()
+    if plan not in VALID_PLANS:
+        raise HTTPException(status_code=400, detail=f"Invalid plan. Valid: {', '.join(VALID_PLANS)}")
+
+    s = _settings_dict(target)
+    if plan == "free":
+        # Revoke: drop the key entirely — free is the absence of a grant.
+        s.pop("subscription", None)
+    else:
+        s["subscription"] = {
+            "plan":       plan,
+            "status":     body.status or "active",
+            "expires_at": body.expires_at,
+            "granted_by": admin.username,
+            "granted_at": datetime.utcnow().isoformat(),
+            "note":       body.note,
+        }
+    target.settings = json.dumps(s)
+    db.commit()
+    invalidate_user_cache(business_id)
+    return get_subscription(business_id, db)
+
+
+def effective_plan(user: User) -> str:
+    """The user's current plan, accounting for expiry. Staff inherit the owner's
+    plan via the caller passing the owner row."""
+    sub = _settings_dict(user).get("subscription") or {}
+    plan = (sub.get("plan") or "free").lower()
+    if plan == "free":
+        return "free"
+    exp = sub.get("expires_at")
+    if exp:
+        try:
+            if datetime.fromisoformat(str(exp).replace("Z", "+00:00")).replace(tzinfo=None) < datetime.utcnow():
+                return "free"
+        except Exception:
+            pass
+    return plan
+
+
+# ── Existing admin ops ───────────────────────────────────────────────────────
 
 def wipe_all_data(db: Session) -> dict:
     db.query(Invoice).delete()
@@ -76,26 +404,26 @@ def wipe_all_data(db: Session) -> dict:
 
 def wipe_user_data(user_id: int, db: Session) -> dict:
     target = require_target_user(user_id, db)
-    
+
     # 1. Delete child lines that do NOT have business_id directly
     db.query(InvoiceLineItem).filter(
         InvoiceLineItem.invoice_id.in_(
             db.query(Invoice.id).filter(Invoice.business_id == user_id)
         )
     ).delete(synchronize_session=False)
-    
+
     db.query(PurchaseInvoiceLineItem).filter(
         PurchaseInvoiceLineItem.purchase_invoice_id.in_(
             db.query(PurchaseInvoice.id).filter(PurchaseInvoice.business_id == user_id)
         )
     ).delete(synchronize_session=False)
-    
+
     db.query(PurchaseOrderLineItem).filter(
         PurchaseOrderLineItem.purchase_order_id.in_(
             db.query(PurchaseOrder.id).filter(PurchaseOrder.business_id == user_id)
         )
     ).delete(synchronize_session=False)
-    
+
     db.query(B2BOrderLineItem).filter(
         B2BOrderLineItem.order_id.in_(
             db.query(B2BOrder.id).filter(
@@ -103,19 +431,19 @@ def wipe_user_data(user_id: int, db: Session) -> dict:
             )
         )
     ).delete(synchronize_session=False)
-    
+
     db.query(JournalLine).filter(
         JournalLine.entry_id.in_(
             db.query(JournalEntry.id).filter(JournalEntry.business_id == user_id)
         )
     ).delete(synchronize_session=False)
-    
+
     db.query(StockTransferLineItem).filter(
         StockTransferLineItem.transfer_id.in_(
             db.query(StockTransfer.id).filter(StockTransfer.business_id == user_id)
         )
     ).delete(synchronize_session=False)
-    
+
     db.query(ProductBarcode).filter(
         ProductBarcode.product_id.in_(
             db.query(Product.id).filter(Product.business_id == user_id)
@@ -137,7 +465,7 @@ def wipe_user_data(user_id: int, db: Session) -> dict:
     db.query(Product).filter(Product.business_id == user_id).delete(synchronize_session=False)
     db.query(Customer).filter(Customer.business_id == user_id).delete(synchronize_session=False)
     db.query(Vendor).filter(Vendor.business_id == user_id).delete(synchronize_session=False)
-    
+
     # B2B network relationships (use correct key names)
     db.query(B2BConnection).filter(
         (B2BConnection.seller_business_id == user_id) | (B2BConnection.buyer_business_id == user_id)
@@ -161,7 +489,7 @@ def wipe_user_data(user_id: int, db: Session) -> dict:
         delete_user_chroma_memories(user_id)
     except Exception as e:
         logger.error("Chroma purge failed for user %s: %s", user_id, e, exc_info=True)
-        
+
     # 5. Delete the target user and invalidate cache
     db.delete(target)
     db.commit()
