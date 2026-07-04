@@ -446,19 +446,25 @@ def read_audit_log(limit: int = 200, db: Session = None) -> list:
             from database.models import ActionLog
             logs = db.query(ActionLog).order_by(ActionLog.id.desc()).limit(limit).all()
             if logs:
-                return [
-                    {
+                rows = []
+                for log in logs:
+                    details_val = {}
+                    if log.detail:
+                        try:
+                            details_val = json.loads(log.detail)
+                        except Exception:
+                            details_val = {"raw": log.detail}
+                    rows.append({
                         "timestamp": log.created_at.isoformat() if log.created_at else None,
                         "admin_id": log.business_id,
                         "admin_bizid": None,
                         "admin_username": "admin",
                         "action": log.action,
-                        "details": json.loads(log.detail) if log.detail else {}
-                    }
-                    for log in logs
-                ]
+                        "details": details_val
+                    })
+                return rows
         except Exception as e:
-            logger.error(f"Failed to read audit log from DB: {e}")
+            logger.error(f"Failed to read audit log from DB: %s", e, exc_info=True)
 
     path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs", "admin_audit.jsonl")
     if not os.path.exists(path):
