@@ -14,6 +14,7 @@ import logging
 import os
 import json
 import asyncio
+import threading
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
@@ -55,6 +56,36 @@ _OFFLINE_STATE: Dict[int, bool] = {}
 # mismatch). We stop self-signing for them until a cloud-issued token arrives,
 # instead of spamming the cloud auth log every 15 s.
 _SELF_SIGNED_REJECTED: Dict[int, bool] = {}
+
+# ── Push tuning ──────────────────────────────────────────────────────────────
+# A cold free HF Space (CPU tier, embedding model loading on boot) can take far
+# longer than 10 s to apply a batch. The old flat 10 s read timeout aborted the
+# request mid-apply → "The read operation timed out" → the WHOLE batch was
+# marked failed and re-sent every cycle, so the outbox never drained. Give reads
+# a generous budget and chunk the outbox so each request completes in-window.
+_PUSH_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=60.0, pool=10.0)
+_PUSH_CHUNK_SIZE = 20
+
+# (Guard) Per-business in-flight flag so a slow push can't overlap with the next
+# scheduler tick / a manual flush for the same business — overlapping pushes
+# re-send the same rows concurrently, causing duplicate-key contention on the
+# cloud and making every push even slower (the thundering-herd retry storm seen
+# in the cloud logs). A business already pushing is simply skipped this cycle.
+_PUSH_INFLIGHT: Dict[int, bool] = {}
+_PUSH_INFLIGHT_LOCK = threading.Lock()
+
+
+def _try_acquire_push(business_id: int) -> bool:
+    with _PUSH_INFLIGHT_LOCK:
+        if _PUSH_INFLIGHT.get(business_id):
+            return False
+        _PUSH_INFLIGHT[business_id] = True
+        return True
+
+
+def _release_push(business_id: int) -> None:
+    with _PUSH_INFLIGHT_LOCK:
+        _PUSH_INFLIGHT.pop(business_id, None)
 
 # IMPORTANT: The local backend and HF Space MUST share the same JWT_SECRET env variable.
 # If they differ, the sync worker's locally-signed tokens will be rejected by the cloud
@@ -129,7 +160,12 @@ def _safe_broadcast(business_id: int, event: dict):
         logger.warning("[SYNC_WORKER] Failed to broadcast event: %s", e)
 
 # (R-7) Single shared source — see database/sync_map.py
-from database.sync_map import MODEL_MAP as _MODEL_MAP, ENTITY_BROADCAST_MAP, resolve_parent_fk_uids
+from database.sync_map import (
+    MODEL_MAP as _MODEL_MAP,
+    ENTITY_BROADCAST_MAP,
+    resolve_parent_fk_uids,
+    _USER_FK_REPOINT_ENTITIES,
+)
 
 
 def _row_to_dict(row) -> dict:
@@ -187,7 +223,22 @@ def run_hybrid_sync():
                 now = datetime.utcnow()
                 if last_run and (now - last_run).total_seconds() < sync_interval:
                     continue
-                
+
+                # Idle-skip: if this business has nothing queued, do NOT probe the
+                # cloud or emit a log line every tick. A hybrid business with an
+                # empty outbox is the steady state — silently mark it checked so
+                # idle installs produce zero network + zero log noise (the "why is
+                # the scheduler doing things when nothing's happening" confusion).
+                pending = (
+                    db.query(SyncQueue)
+                    .filter(SyncQueue.business_id == business_id,
+                            SyncQueue.synced_at.is_(None))
+                    .first()
+                )
+                if pending is None:
+                    _LAST_RUN[business_id] = now
+                    continue
+
                 # Perform sync (tag the worker's log lines with this business's BizID)
                 _t = current_bizid_var.set(user.public_id or "-")
                 try:
@@ -197,6 +248,10 @@ def run_hybrid_sync():
                 _LAST_RUN[business_id] = now
             except Exception as e:
                 logger.error("[SYNC_WORKER] Error checking settings for user %s: %s", user.username, e)
+    except Exception as e:
+        # A scheduler tick must never raise into APScheduler (it would log a
+        # scary traceback and, on some executors, disable the job). Contain it.
+        logger.error("[SYNC_WORKER] Sync tick aborted: %s", e)
     finally:
         db.close()
 
@@ -226,6 +281,21 @@ def trigger_sync_run(business_id: int):
 # ── SYNC BUSINESS TRANSACTION LOGIC ──
 # ============================================================================
 def sync_business(db: Session, user: User, interval: int = 30, force: bool = False, do_pull: bool = False):
+    """Guarded entry point: ensures only one push runs per business at a time."""
+    business_id = user.id
+    if not _try_acquire_push(business_id):
+        logger.debug(
+            "[SYNC_WORKER] push already in-flight for business_id=%s — skipping this cycle",
+            business_id,
+        )
+        return
+    try:
+        return _sync_business_impl(db, user, interval=interval, force=force, do_pull=do_pull)
+    finally:
+        _release_push(business_id)
+
+
+def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool = False, do_pull: bool = False):
     business_id = user.id
     logger.debug("[SYNC_WORKER] Running sync for business_id=%s", business_id)
 
@@ -283,8 +353,9 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
     headers = {"Authorization": f"Bearer {token}"}
 
     if queue_items:
-        # Push to cloud
-        changes = []
+        # Build (queue_item -> change) pairs, draining non-syncable / corrupt
+        # rows in place so they leave the pending window instead of recycling.
+        pairs = []  # list[(SyncQueue, dict)]
         for item in queue_items:
             # Skip entities that aren't syncable (e.g. `users` — identity is never
             # synced as data). They'd be rejected by the cloud as "unknown entity";
@@ -307,65 +378,85 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
                     item.error = f"Corrupt payload: {e}"
                     item.synced_at = datetime.utcnow()  # remove from the pending window
                     continue
-            changes.append({
+            pairs.append((item, {
                 "entity": item.entity,
                 "entity_id": item.entity_id,
                 "operation": item.operation,
                 "payload": payload_dict,
                 "created_at": item.created_at.isoformat()
-            })
+            }))
 
-        try:
-            resp = httpx.post(f"{CLOUD_URL}/api/sync/push", json={"changes": changes}, headers=headers, timeout=10.0)
-            if resp.status_code != 200 or resp.json().get("status") != "success":
-                raise Exception(f"HTTP {resp.status_code}: {resp.text}")
-            
-            # Pushed successfully! Mark synced
-            now = datetime.utcnow()
-            for item in queue_items:
-                item.synced_at = now
-                item.error = None
-            
+        # Persist the drained skip/dead-letter items even if nothing is pushable.
+        db.commit()
+
+        # Push in CHUNKS so each request finishes well within the read timeout
+        # even on a cold free HF Space. Items are marked synced per chunk, so a
+        # timeout on chunk N still banks chunks 1..N-1 (the outbox shrinks each
+        # cycle) instead of the all-or-nothing batch that stalled at "N pending".
+        total_pushed = 0
+        for start in range(0, len(pairs), _PUSH_CHUNK_SIZE):
+            chunk = pairs[start:start + _PUSH_CHUNK_SIZE]
+            chunk_changes = [c for (_it, c) in chunk]
+            try:
+                resp = httpx.post(
+                    f"{CLOUD_URL}/api/sync/push",
+                    json={"changes": chunk_changes},
+                    headers=headers,
+                    timeout=_PUSH_TIMEOUT,
+                )
+                if resp.status_code != 200 or resp.json().get("status") != "success":
+                    raise Exception(f"HTTP {resp.status_code}: {resp.text}")
+
+                # Chunk pushed successfully — mark just this chunk synced.
+                now = datetime.utcnow()
+                for (it, _c) in chunk:
+                    it.synced_at = now
+                    it.error = None
+                db.commit()
+                total_pushed += len(chunk_changes)
+            except Exception as e:
+                err_msg = str(e)
+                logger.error("[SYNC_WORKER] Push failed for business_id=%s: %s", business_id, e)
+
+                # If 401, invalidate cached token so next run fetches a fresh one.
+                # If the REJECTED token was self-signed, stop self-signing for this
+                # business until a cloud-issued token is provisioned (owner login) —
+                # otherwise we'd spam the cloud with invalid tokens every cycle.
+                if "401" in err_msg:
+                    _invalidate_cloud_token(business_id)
+                    if used_self_signed and not _SELF_SIGNED_REJECTED.get(business_id):
+                        _SELF_SIGNED_REJECTED[business_id] = True
+                        logger.error(
+                            "[SYNC_WORKER] Cloud rejected our SELF-SIGNED token for business %s — "
+                            "local & cloud JWT_SECRETs differ (normal on packaged installs). "
+                            "Hybrid sync pauses until the owner logs in again (which provisions "
+                            "a cloud-issued sync token), or set the same JWT_SECRET on both ends.",
+                            business_id,
+                        )
+
+                # Store error on the first still-pending item of this chunk.
+                chunk[0][0].error = f"Push failed: {err_msg}"
+                log = SyncLog(
+                    business_id=business_id,
+                    status="failed",
+                    error=f"Push failed: {err_msg}",
+                    synced_at=datetime.utcnow()
+                )
+                db.add(log)
+                db.commit()
+                # Abort remaining chunks this cycle to keep sequence order; the
+                # chunks already committed above stay synced (progress preserved).
+                return
+
+        if total_pushed:
             log = SyncLog(
                 business_id=business_id,
                 status="success",
-                synced_at=now
-            )
-            db.add(log)
-            db.commit()
-            logger.info("[SYNC_WORKER] Successfully pushed %s changes for business_id=%s", len(changes), business_id)
-        except Exception as e:
-            err_msg = str(e)
-            logger.error("[SYNC_WORKER] Push failed for business_id=%s: %s", business_id, e)
-            
-            # If 401, invalidate cached token so next run fetches a fresh one.
-            # If the REJECTED token was self-signed, stop self-signing for this
-            # business until a cloud-issued token is provisioned (owner login) —
-            # otherwise we'd spam the cloud with invalid tokens every cycle.
-            if "401" in err_msg:
-                _invalidate_cloud_token(business_id)
-                if used_self_signed and not _SELF_SIGNED_REJECTED.get(business_id):
-                    _SELF_SIGNED_REJECTED[business_id] = True
-                    logger.error(
-                        "[SYNC_WORKER] Cloud rejected our SELF-SIGNED token for business %s — "
-                        "local & cloud JWT_SECRETs differ (normal on packaged installs). "
-                        "Hybrid sync pauses until the owner logs in again (which provisions "
-                        "a cloud-issued sync token), or set the same JWT_SECRET on both ends.",
-                        business_id,
-                    )
-            
-            # Store error on the first pending queue item
-            queue_items[0].error = f"Push failed: {err_msg}"
-            log = SyncLog(
-                business_id=business_id,
-                status="failed",
-                error=f"Push failed: {err_msg}",
                 synced_at=datetime.utcnow()
             )
             db.add(log)
             db.commit()
-            # Abort this sync cycle to keep sequence order
-            return
+            logger.info("[SYNC_WORKER] Successfully pushed %s changes for business_id=%s", total_pushed, business_id)
 
     # The hybrid worker is PUSH-ONLY (local → cloud backup). Cloud data is
     # subscription-gated, so we never auto-pull it down. A cloud→local data sync
@@ -426,7 +517,7 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
                     "invoice_line_items", "purchase_order_line_items",
                     "purchase_invoice_line_items", "invoice_payments",
                     "stock_transfer_line_items", "product_barcodes",
-                    "stock_ledger", "b2b_ledgers",
+                    "stock_ledger", "b2b_ledgers", "shift_cash_movements",
                 )
                 _ordered = sorted(pulled.items(), key=lambda kv: 1 if kv[0] in _child_last else 0)
                 for table_name, records in _ordered:
@@ -477,7 +568,14 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
                         try:
                             with db.begin_nested():
                                 data = dict(record)
-                                
+
+                                # Same user_id→owner re-point as the push path:
+                                # register_shifts / shift_cash_movements carry a
+                                # user_id FK to the non-synced `users` table, so
+                                # the source DB's integer id won't exist here.
+                                if table_name in _USER_FK_REPOINT_ENTITIES and "user_id" in data:
+                                    data["user_id"] = business_id
+
                                 # Resolve foreign keys via the parent's durable uid
                                 # (shared helper — same logic as push_changes). If a
                                 # parent_uid is present but its row isn't local yet

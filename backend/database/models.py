@@ -846,6 +846,14 @@ _SYNC_TABLES = {
     "stock_transfer_line_items",
     "b2b_ledgers",
     "table_alterations",
+    # register_shifts is the PARENT of invoices/invoice_payments (shift_id FK).
+    # It was present in the apply-side MODEL_MAP but missing here, so shift rows
+    # were never enqueued/pushed — leaving their child invoices perpetually
+    # deferred on the cloud ("parent register_shifts … not in this DB yet") and
+    # the outbox stuck at "N pending". Enqueue shifts (and their cash movements)
+    # so children can resolve their parent and drain.
+    "register_shifts",
+    "shift_cash_movements",
 }
 
 

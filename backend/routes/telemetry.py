@@ -149,12 +149,18 @@ def ingest_telemetry(batch: TelemetryBatch):
                 payload_str = str(ev.payload)[:_MAX_PAYLOAD_CHARS]
 
         line = (
-            f"[TELEMETRY] {batch.source} v{batch.app_version or '?'} "
+            f"[TELEMETRY][CLIENT:{ev.level}] {batch.source} v{batch.app_version or '?'} "
             f"({batch.platform or '?'}, device {batch.device_id[:12]}"
             f"{', biz ' + bizid if bizid else ''}) "
             f"{ev.event}: {payload_str}"
         )
-        log_fn = {"error": logger.error, "warn": logger.warning}.get(ev.level, logger.info)
+        # A CLIENT-reported error (expired token, flaky network, SSE drop) is a
+        # client condition, NOT a backend fault — it must not masquerade as a
+        # server ERROR and trip error dashboards/alerts. Mirror it to the server
+        # log at a CAPPED, clearly client-attributed level (client error → WARN,
+        # client warn → INFO). The original client level is preserved verbatim in
+        # the persisted telemetry record and in the [CLIENT:<level>] tag above.
+        log_fn = {"error": logger.warning, "warn": logger.info}.get(ev.level, logger.info)
         log_fn(line)
 
         # Clean record: only meaningful fields, no None-padding.

@@ -51,10 +51,15 @@ def decode_access_token(token: str) -> dict:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         return payload
     except jwt.ExpiredSignatureError:
-        logger.warning("[AUTH] Token rejected — signature expired")
+        # Routine: a client's token aged out and it should re-authenticate. This
+        # is expected operation, not a fault — log at INFO so it doesn't read as
+        # a server error in the console.
+        logger.info("[AUTH] 401 expired token — client should re-authenticate")
         raise HTTPException(status_code=401, detail="Signature has expired")
     except jwt.InvalidTokenError:
-        logger.warning("[AUTH] Token rejected — invalid token")
+        # Usually a stale client token after a backend restart / JWT_SECRET change
+        # (e.g. a browser tab left open). Not a backend fault — INFO, not WARN.
+        logger.info("[AUTH] 401 invalid/stale token — client should re-authenticate")
         raise HTTPException(status_code=401, detail="Invalid token")
 
 def get_active_user(authorization: str = Header(None), token: str = Query(None)) -> dict:

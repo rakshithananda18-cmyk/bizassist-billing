@@ -36,7 +36,12 @@ router = APIRouter()
 logger = logging.getLogger("bizassist.routes.sync")
 
 # (R-7) Single shared source — see database/sync_map.py
-from database.sync_map import MODEL_MAP as _MODEL_MAP, ENTITY_BROADCAST_MAP, resolve_parent_fk_uids
+from database.sync_map import (
+    MODEL_MAP as _MODEL_MAP,
+    ENTITY_BROADCAST_MAP,
+    resolve_parent_fk_uids,
+    _USER_FK_REPOINT_ENTITIES,
+)
 
 
 APPEND_ONLY_DELETE_BLOCKLIST = frozenset({
@@ -243,12 +248,13 @@ def push_changes(
             if "business_id" in data:
                 data["business_id"] = business_id
 
-            # register_shifts carries a user_id FK to `users` (which is NOT a
-            # synced table), so the SOURCE db's integer user_id won't exist in
-            # THIS db and the insert would fail its FK. Re-point it at the
-            # resolved owner (business_id) so the shift lands instead of crashing.
-            # (Shifts are business-scoped; owner attribution is sufficient here.)
-            if change.entity == "register_shifts" and "user_id" in data:
+            # register_shifts and shift_cash_movements carry a user_id FK to
+            # `users` (which is NOT a synced table), so the SOURCE db's integer
+            # user_id won't exist in THIS db and the insert would fail its FK
+            # (NOT NULL, so it can't just be dropped). Re-point it at the resolved
+            # owner (business_id) so the row lands instead of crashing. Both are
+            # business-scoped; owner attribution is sufficient here.
+            if change.entity in _USER_FK_REPOINT_ENTITIES and "user_id" in data:
                 data["user_id"] = business_id
 
             existing = None

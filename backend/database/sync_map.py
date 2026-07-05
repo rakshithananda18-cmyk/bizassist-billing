@@ -20,7 +20,7 @@ from database.models import (
     InvoicePayment, B2BLedger, Expense, Godown, StockTransfer,
     StockTransferLineItem, PurchaseInvoice, PurchaseInvoiceLineItem,
     PurchaseOrder, PurchaseOrderLineItem, AlertConfig, RateLimitConfig,
-    TableAlteration, RegisterShift,
+    TableAlteration, RegisterShift, ShiftCashMovement,
 )
 
 # table name -> SQLAlchemy ORM model
@@ -38,6 +38,8 @@ MODEL_MAP: Dict[str, Any] = {
     # ("parent register_shifts … not in this DB yet"), stalling the whole outbox.
     # (RegisterShift was designed to sync — it was just missing from this map.)
     "register_shifts": RegisterShift,
+    # Child of register_shifts (shift_id FK) — synced after its parent shift.
+    "shift_cash_movements": ShiftCashMovement,
     "invoices": Invoice,
     "invoice_line_items": InvoiceLineItem,
     "inventory": Inventory,
@@ -59,6 +61,14 @@ MODEL_MAP: Dict[str, Any] = {
     "rate_limit_configs": RateLimitConfig,
     "table_alterations": TableAlteration,
 }
+
+# Synced entities whose `user_id` FK points at the NON-synced `users` table.
+# The source DB's integer user_id won't exist in the destination DB, and the
+# column is NOT NULL, so the apply side must re-point it at the resolved owner
+# (business_id) rather than let the insert fail its FK. Single source of truth
+# for both apply paths (push route + pull worker).
+_USER_FK_REPOINT_ENTITIES = frozenset({"register_shifts", "shift_cash_movements"})
+
 
 logger = logging.getLogger("bizassist.sync_map")
 

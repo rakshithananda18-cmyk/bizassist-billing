@@ -25,13 +25,21 @@ def _auth_lines(caplog):
     return [r.message for r in caplog.records if "[AUTH]" in r.message]
 
 
-def test_invalid_token_logs_auth_warning(caplog):
+def _auth_records(caplog):
+    return [r for r in caplog.records if "[AUTH]" in r.message]
+
+
+def test_invalid_token_logs_auth_info(caplog):
+    # A rejected/stale token is a routine client condition (a tab left open after
+    # a backend restart / JWT_SECRET change), NOT a backend fault — it must still
+    # be logged (not silent), but at INFO so it doesn't read as a server error.
     with caplog.at_level(logging.INFO, logger="bizassist.auth"):
         with pytest.raises(HTTPException) as exc:
             auth.get_active_user("Bearer not.a.real.jwt")
     assert exc.value.status_code == 401
-    assert any("invalid token" in m.lower() for m in _auth_lines(caplog)), \
-        "invalid token must produce a [AUTH] log line"
+    recs = [r for r in _auth_records(caplog) if "invalid" in r.message.lower()]
+    assert recs, "invalid token must produce a [AUTH] log line"
+    assert recs[0].levelno == logging.INFO, "rejected token should log at INFO, not WARN/ERROR"
 
 
 def test_missing_header_logs_auth(caplog):
@@ -43,7 +51,7 @@ def test_missing_header_logs_auth(caplog):
         "missing header must produce a [AUTH] log line"
 
 
-def test_expired_token_logs_auth_warning(caplog):
+def test_expired_token_logs_auth_info(caplog):
     from datetime import timedelta
     # create a token that is already expired
     token = auth.create_access_token({"id": 1, "username": "x"}, expires_delta=timedelta(seconds=-5))
@@ -51,8 +59,9 @@ def test_expired_token_logs_auth_warning(caplog):
         with pytest.raises(HTTPException) as exc:
             auth.get_active_user(f"Bearer {token}")
     assert exc.value.status_code == 401
-    assert any("expired" in m.lower() for m in _auth_lines(caplog)), \
-        "expired token must produce a [AUTH] log line"
+    recs = [r for r in _auth_records(caplog) if "expired" in r.message.lower()]
+    assert recs, "expired token must produce a [AUTH] log line"
+    assert recs[0].levelno == logging.INFO, "expired token should log at INFO, not WARN/ERROR"
 
 
 def test_valid_token_does_not_log_failure(caplog):
