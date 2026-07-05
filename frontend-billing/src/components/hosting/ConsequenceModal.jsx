@@ -32,7 +32,7 @@ const TRANSITIONS = {
     confirmColor: '#f97316',
   },
   'local→hybrid': {
-    title: 'Enable Hybrid Mode',
+    title: 'Enable Local + Cloud',
     iconType: 'hybrid',
     bullets: [
       'Local database remains your primary POS (fast checkouts)',
@@ -41,11 +41,11 @@ const TRANSITIONS = {
       'A one-time initial upload will happen now',
     ],
     danger: [],
-    confirmLabel: 'Enable Hybrid',
+    confirmLabel: 'Enable Local + Cloud',
     confirmColor: '#22c55e',
   },
   'cloud→hybrid': {
-    title: 'Switch to Hybrid Mode',
+    title: 'Switch to Local + Cloud',
     iconType: 'hybrid',
     bullets: [
       'Cloud data will be pulled to a local cache on this PC',
@@ -53,7 +53,7 @@ const TRANSITIONS = {
       'Slight delay in cross-device visibility (eventual consistency)',
     ],
     danger: [],
-    confirmLabel: 'Switch to Hybrid',
+    confirmLabel: 'Switch to Local + Cloud',
     confirmColor: '#22c55e',
   },
   'hybrid→cloud': {

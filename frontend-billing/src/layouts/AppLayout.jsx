@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useLock } from '../contexts/LockContext'
-import { API_BASE } from '../config'
+import { API_BASE, IS_LOCAL_APP } from '../config'
 import { logger } from '../utils/logger'
 import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
 import { IS_DESKTOP_APP, openDownloadPage } from '../config/downloadApp'
@@ -86,7 +86,10 @@ export default function AppLayout({ children, title }) {
   const location = useLocation()
 
   const hostingMode = settings?.general?.hosting_mode || 'local'
-  const isSyncOn = hostingMode === 'cloud' || hostingMode === 'hybrid'
+  const effectiveMode = !IS_LOCAL_APP
+    ? 'cloud'
+    : (localStorage.getItem('bizassist_hosting_mode') || hostingMode)
+  const isSyncOn = effectiveMode === 'cloud' || effectiveMode === 'hybrid'
 
   // Subscription gate (Admin Console plan, Phase B.5): the backend's /settings
   // response carries the business's real plan + whether enforcement is live.
@@ -133,7 +136,7 @@ export default function AppLayout({ children, title }) {
   }, [token])
 
   React.useEffect(() => {
-    if (hostingMode !== 'hybrid' || !token) return
+    if (effectiveMode !== 'hybrid' || !token) return
 
     const fetchQueueDepth = async () => {
       try {
@@ -152,7 +155,7 @@ export default function AppLayout({ children, title }) {
     fetchQueueDepth()
     const interval = setInterval(fetchQueueDepth, 10000)
     return () => clearInterval(interval)
-  }, [hostingMode, token])
+  }, [effectiveMode, token])
 
   const [syncHealth, setSyncHealth] = React.useState(() => {
     if (window.__syncStatus) {
@@ -602,13 +605,13 @@ export default function AppLayout({ children, title }) {
                     marginTop: '4px',
                     width: 'fit-content',
                     transition: 'all 0.2s ease',
-                    backgroundColor: hostingMode === 'hybrid'
+                    backgroundColor: effectiveMode === 'hybrid'
                       ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'rgba(239, 68, 68, 0.1)' :
                          queueDepth.pending_count > 0 ? 'rgba(245, 158, 11, 0.1)' : 'rgba(34, 197, 94, 0.1)')
                       : (syncHealth.status === 'connected' ? 'rgba(34, 197, 94, 0.1)' :
                          syncHealth.status === 'connecting' ? 'rgba(245, 158, 11, 0.1)' :
                          'rgba(239, 68, 68, 0.1)'),
-                    color: hostingMode === 'hybrid'
+                    color: effectiveMode === 'hybrid'
                       ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger, #ef4444)' :
                          queueDepth.pending_count > 0 ? 'var(--warning, #f59e0b)' : 'var(--success, #22c55e)')
                       : (syncHealth.status === 'connected' ? 'var(--success, #22c55e)' :
@@ -620,7 +623,7 @@ export default function AppLayout({ children, title }) {
                   }}
                   title="Click to view sync health check details"
                 >
-                  {hostingMode === 'hybrid' ? (
+                  {effectiveMode === 'hybrid' ? (
                     <>
                       {queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? (
                         <>
@@ -735,7 +738,7 @@ export default function AppLayout({ children, title }) {
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>Hosting Mode</span>
                     <span style={{ fontWeight: '600', color: 'var(--text-primary)', textTransform: 'capitalize' }}>
-                      {hostingMode}
+                      {effectiveMode}
                     </span>
                   </div>
                   
@@ -743,13 +746,13 @@ export default function AppLayout({ children, title }) {
                     <span style={{ color: 'var(--text-secondary)' }}>Status</span>
                     <span style={{
                       fontWeight: '700',
-                      color: hostingMode === 'hybrid'
+                      color: effectiveMode === 'hybrid'
                         ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger)' :
                            queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)')
                         : (syncHealth.status === 'connected' ? 'var(--success)' :
                            syncHealth.status === 'connecting' ? 'var(--warning)' : 'var(--danger)')
                     }}>
-                      {hostingMode === 'hybrid'
+                      {effectiveMode === 'hybrid'
                         ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'Sync Error' :
                            queueDepth.pending_count > 0 ? 'Syncing...' : 'Synced')
                         : (syncHealth.status === 'connected' ? 'Connected' :
@@ -764,7 +767,7 @@ export default function AppLayout({ children, title }) {
                     </span>
                   </div>
 
-                  {hostingMode === 'hybrid' && (
+                  {effectiveMode === 'hybrid' && (
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Sync Outbox</span>
                       <span style={{ fontWeight: '600', color: queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)' }}>
@@ -773,7 +776,7 @@ export default function AppLayout({ children, title }) {
                     </div>
                   )}
 
-                  {hostingMode !== 'hybrid' && (
+                  {effectiveMode !== 'hybrid' && (
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Last Sync Message</span>
                       <span style={{ fontWeight: '600', color: 'var(--text-primary)', textTransform: 'capitalize' }}>
@@ -782,7 +785,7 @@ export default function AppLayout({ children, title }) {
                     </div>
                   )}
 
-                  {hostingMode === 'hybrid' && queueDepth.last_sync_time && (
+                  {effectiveMode === 'hybrid' && queueDepth.last_sync_time && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderTop: '1px solid var(--border)', paddingTop: '6px' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Last Synced At</span>
                       <span style={{ fontWeight: '500', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
@@ -793,7 +796,7 @@ export default function AppLayout({ children, title }) {
                     </div>
                   )}
 
-                  {hostingMode !== 'hybrid' && syncHealth.lastSyncTime && (
+                  {effectiveMode !== 'hybrid' && syncHealth.lastSyncTime && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderTop: '1px solid var(--border)', paddingTop: '6px' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Last Synced At</span>
                       <span style={{ fontWeight: '500', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
@@ -805,7 +808,7 @@ export default function AppLayout({ children, title }) {
                   )}
                 </div>
 
-                {hostingMode === 'hybrid' && queueDepth.last_error && (
+                {effectiveMode === 'hybrid' && queueDepth.last_error && (
                   <div style={{
                     backgroundColor: 'rgba(239, 68, 68, 0.05)',
                     border: '1px solid rgba(239, 68, 68, 0.2)',
@@ -821,7 +824,7 @@ export default function AppLayout({ children, title }) {
                   </div>
                 )}
 
-                {hostingMode !== 'hybrid' && syncHealth.error && (
+                {effectiveMode !== 'hybrid' && syncHealth.error && (
                   <div style={{
                     backgroundColor: 'rgba(239, 68, 68, 0.05)',
                     border: '1px solid rgba(239, 68, 68, 0.2)',
@@ -837,7 +840,7 @@ export default function AppLayout({ children, title }) {
                   </div>
                 )}
 
-                {hostingMode === 'hybrid' && (
+                {effectiveMode === 'hybrid' && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
@@ -866,7 +869,7 @@ export default function AppLayout({ children, title }) {
                   </button>
                 )}
 
-                {hostingMode !== 'hybrid' && (syncHealth.status === 'error' || syncHealth.status === 'connecting') && (
+                {effectiveMode !== 'hybrid' && (syncHealth.status === 'error' || syncHealth.status === 'connecting') && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation()

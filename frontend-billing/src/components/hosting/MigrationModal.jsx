@@ -396,7 +396,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
               <span>Migration Failed</span>
             </span>
           ) : (
-            `Migrating to ${toMode} mode…`
+            `Migrating to ${toMode === 'hybrid' ? 'Local + Cloud' : toMode} mode…`
           )}
         </div>
         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 22 }}>
@@ -510,7 +510,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
             }}>
               <ShieldIcon size={15} strokeWidth={2} />
               <span>
-                One last step: you'll be signed out so your session moves to the <strong>{toMode}</strong> backend.
+                One last step: you'll be signed out so your session moves to the <strong>{toMode === 'hybrid' ? 'Local + Cloud' : toMode}</strong> backend.
                 Sign back in with the same username{user?.username ? <> (<strong>{user.username}</strong> — we'll prefill it)</> : ''}.
               </span>
             </div>
@@ -520,7 +520,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
               style={{ width: '100%', fontSize: '0.88rem' }}
               onClick={onComplete}
             >
-              <LogoutIcon size={15} /> Sign out & continue to {toMode} mode
+              <LogoutIcon size={15} /> Sign out & continue to {toMode === 'hybrid' ? 'Local + Cloud' : toMode} mode
             </button>
           </>
         )}

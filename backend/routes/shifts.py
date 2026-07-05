@@ -32,10 +32,21 @@ router = APIRouter()
 logger = logging.getLogger("bizassist.routes.shifts")
 
 
-def _uid(current_user: dict) -> int:
-    """The operator's own user id (staff tokens carry user_id; owner tokens may
-    predate it — for an owner, business id IS the user id)."""
-    return current_user.get("user_id") or current_user["id"]
+def _safe_uid(current_user: dict, db: Session) -> int:
+    """Resolve the operator's user_id, with a cross-DB fallback.
+
+    When a Local+Cloud user opens the cloud URL while still holding a
+    local-issued JWT, the embedded user_id (e.g. 40) won't exist in the
+    cloud DB's users table. In that case fall back to business_id (== the
+    cloud-native owner id), which always exists.
+    """
+    uid = current_user.get("user_id") or current_user["id"]
+    bid = current_user["id"]
+    if uid == bid:
+        return uid  # same value — no check needed
+    # Verify the uid actually exists; if not, use the business owner's id.
+    exists = db.query(User.id).filter(User.id == uid).first()
+    return uid if exists else bid
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -71,7 +82,7 @@ def open_shift(req: OpenShiftRequest,
     from the carried-forward suggestion, an opening_variance movement is logged."""
     try:
         shift = shifts.open_shift(
-            db, business_id=current_user["id"], user_id=_uid(current_user),
+            db, business_id=current_user["id"], user_id=_safe_uid(current_user, db),
             opening_cash=req.opening_cash, notes=req.notes,
         )
         return {"shift": shifts.shift_out(shift, movements=shifts.list_movements(db, shift))}
@@ -89,7 +100,7 @@ def suggested_float(current_user: dict = Depends(get_active_user),
     """The float to prefill in the Open Shift screen: the previous shift's
     'left in drawer' amount (same operator first, business-wide fallback)."""
     return shifts.suggested_opening_cash(
-        db, business_id=current_user["id"], user_id=_uid(current_user))
+        db, business_id=current_user["id"], user_id=_safe_uid(current_user, db))
 
 
 @router.get("/shifts/current")
@@ -97,7 +108,7 @@ def current_shift(current_user: dict = Depends(get_active_user),
                   db: Session = Depends(get_db)):
     """The caller's active OPEN shift with a LIVE tally + movements, or {shift: null}."""
     shift = shifts.get_open_shift(
-        db, business_id=current_user["id"], user_id=_uid(current_user))
+        db, business_id=current_user["id"], user_id=_safe_uid(current_user, db))
     if shift is None:
         return {"shift": None}
     return {"shift": shifts.shift_out(shift,
@@ -113,7 +124,7 @@ def record_movement(req: CashMovementRequest,
     'expense' paid-out also creates a real Expense row posted to the journal."""
     try:
         mv = shifts.record_cash_movement(
-            db, business_id=current_user["id"], user_id=_uid(current_user),
+            db, business_id=current_user["id"], user_id=_safe_uid(current_user, db),
             movement_type=req.movement_type, category=req.category,
             amount=req.amount, note=req.note, expense_category=req.expense_category,
         )
@@ -124,7 +135,7 @@ def record_movement(req: CashMovementRequest,
                                 detail="Open a register shift before recording cash movements.")
         raise HTTPException(status_code=422, detail=code)
     shift = shifts.get_open_shift(
-        db, business_id=current_user["id"], user_id=_uid(current_user))
+        db, business_id=current_user["id"], user_id=_safe_uid(current_user, db))
     return {"movement": shifts.movement_out(mv),
             "tally": shifts.compute_tally(db, shift) if shift else None}
 
@@ -144,7 +155,7 @@ def shift_tally(shift_id: int,
         raise HTTPException(status_code=404, detail=f"Shift {shift_id} not found")
     # A cashier may only tally their OWN shift; owner-level roles see any.
     role = (current_user.get("role") or "").lower()
-    if role in ("cashier", "supply adder") and shift.user_id != _uid(current_user):
+    if role in ("cashier", "supply adder") and shift.user_id != _safe_uid(current_user, db):
         raise HTTPException(status_code=403, detail="You can only tally your own shift.")
     return {"tally": shifts.compute_tally(db, shift)}
 
@@ -158,7 +169,7 @@ def close_shift(req: CloseShiftRequest,
     the removed remainder as a bank deposit / owner withdrawal."""
     try:
         shift = shifts.close_shift(
-            db, business_id=current_user["id"], user_id=_uid(current_user),
+            db, business_id=current_user["id"], user_id=_safe_uid(current_user, db),
             closing_cash_actual=req.closing_cash_actual,
             closing_upi_actual=req.closing_upi_actual,
             leave_in_drawer=req.leave_in_drawer,

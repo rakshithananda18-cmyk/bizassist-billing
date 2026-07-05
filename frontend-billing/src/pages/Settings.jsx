@@ -725,12 +725,8 @@ function HostingModeSection({ currentMode, onModeChange, token, autoSwitchTarget
           internetProbe={internetProbe}
           onClose={() => setPreflightTarget(null)}
           onProceed={() => {
-            // Enabling Local + Cloud: no data migration (local stays the source),
-            // just turn on sync. onModeChange routes 'hybrid' through the guarded
-            // re-login so the sync worker gets its cloud token.
-            const t = preflightTarget
+            setConsequenceTarget(preflightTarget)
             setPreflightTarget(null)
-            onModeChange(t)
           }}
         />
       )}
@@ -2454,8 +2450,7 @@ export default function Settings() {
                   if (newMode === 'hybrid') {
                     // Enabling Local + Cloud needs a cloud token (minted from the
                     // password at login), so route through the guarded re-login.
-                    // No data migration — the local DB stays the source and the
-                    // sync worker pushes it up afterwards.
+                    // Data migration is handled by the modals prior to this call.
                     switchMode('hybrid')
                   } else {
                     // Going Local (offline-only) stays on the same local backend
