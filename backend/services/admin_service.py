@@ -572,26 +572,17 @@ def wipe_all_data(db: Session) -> dict:
 def wipe_user_data(user_id: int, db: Session) -> dict:
     target = require_target_user(user_id, db)
 
-    user_customers_subq = db.query(Customer.id).filter(Customer.business_id == user_id)
-    user_vendors_subq = db.query(Vendor.id).filter(Vendor.business_id == user_id)
-
-    user_invoices_subq = db.query(Invoice.id).filter(
-        (Invoice.business_id == user_id) |
-        (Invoice.customer_id.in_(user_customers_subq))
-    )
-
-    user_purchase_invoices_subq = db.query(PurchaseInvoice.id).filter(
-        (PurchaseInvoice.business_id == user_id) |
-        (PurchaseInvoice.vendor_id.in_(user_vendors_subq))
-    )
-
     # 1. Delete child lines that do NOT have business_id directly
     db.query(InvoiceLineItem).filter(
-        InvoiceLineItem.invoice_id.in_(user_invoices_subq)
+        InvoiceLineItem.invoice_id.in_(
+            db.query(Invoice.id).filter(Invoice.business_id == user_id)
+        )
     ).delete(synchronize_session=False)
 
     db.query(PurchaseInvoiceLineItem).filter(
-        PurchaseInvoiceLineItem.purchase_invoice_id.in_(user_purchase_invoices_subq)
+        PurchaseInvoiceLineItem.purchase_invoice_id.in_(
+            db.query(PurchaseInvoice.id).filter(PurchaseInvoice.business_id == user_id)
+        )
     ).delete(synchronize_session=False)
 
     db.query(PurchaseOrderLineItem).filter(
@@ -627,12 +618,9 @@ def wipe_user_data(user_id: int, db: Session) -> dict:
     ).delete(synchronize_session=False)
 
     # 2. Delete parent records in correct dependency order
-    db.query(InvoicePayment).filter(
-        (InvoicePayment.business_id == user_id) |
-        (InvoicePayment.invoice_id.in_(user_invoices_subq))
-    ).delete(synchronize_session=False)
-    db.query(Invoice).filter(Invoice.id.in_(user_invoices_subq)).delete(synchronize_session=False)
-    db.query(PurchaseInvoice).filter(PurchaseInvoice.id.in_(user_purchase_invoices_subq)).delete(synchronize_session=False)
+    db.query(InvoicePayment).filter(InvoicePayment.business_id == user_id).delete(synchronize_session=False)
+    db.query(Invoice).filter(Invoice.business_id == user_id).delete(synchronize_session=False)
+    db.query(PurchaseInvoice).filter(PurchaseInvoice.business_id == user_id).delete(synchronize_session=False)
     db.query(PurchaseOrder).filter(PurchaseOrder.business_id == user_id).delete(synchronize_session=False)
     db.query(B2BOrder).filter(
         (B2BOrder.seller_business_id == user_id) | (B2BOrder.buyer_business_id == user_id)
