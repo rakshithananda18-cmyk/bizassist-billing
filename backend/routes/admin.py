@@ -190,6 +190,27 @@ def get_business_details(user_id: int, current_user: dict = Depends(get_active_u
         logger.error("admin/business-details/%s: %s", user_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@router.get("/admin/business-logs/{user_id}")
+def download_business_logs(user_id: int, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """Download the most recent log archive a business uploaded to the cloud
+    (via feedback / the daily log-upload job). Stored under
+    logs/remote_clients/<business_id>/. 404 if the business never uploaded any."""
+    import os, glob
+    from fastapi.responses import FileResponse
+    try:
+        svc.require_admin(current_user["id"], db, action="download_business_logs", details={"target": user_id})
+        upload_dir = os.path.join("logs", "remote_clients", str(user_id))
+        files = sorted(glob.glob(os.path.join(upload_dir, "*")), key=os.path.getmtime, reverse=True)
+        files = [f for f in files if os.path.isfile(f)]
+        if not files:
+            raise HTTPException(status_code=404, detail="No uploaded logs for this business yet.")
+        latest = files[0]
+        return FileResponse(latest, media_type="application/gzip", filename=os.path.basename(latest))
+    except HTTPException: raise
+    except Exception as e:
+        logger.error("admin/business-logs/%s: %s", user_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 @router.get("/admin/rate-limits/{user_id}")
 def get_rate_limits(user_id: int, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
     try:

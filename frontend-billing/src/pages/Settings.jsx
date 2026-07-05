@@ -2522,6 +2522,28 @@ export default function Settings() {
               </div>
 
               <SectionHeader title="Data & Backup" />
+              <SettingRow label="Download Diagnostics Logs" description="Package this device's app logs as a .tar.gz you can download and share for debugging.">
+                <button
+                  className="btn btn-secondary"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`${API_BASE}/diagnostics/logs`, { headers: { Authorization: `Bearer ${token}` } })
+                      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                      const blob = await res.blob()
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement('a')
+                      a.href = url
+                      a.download = `bizassist-logs-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.tar.gz`
+                      document.body.appendChild(a); a.click(); a.remove()
+                      setTimeout(() => URL.revokeObjectURL(url), 5000)
+                    } catch (e) {
+                      window.dispatchEvent(new CustomEvent('show_toast', { detail: { type: 'error', msg: 'Could not download logs: ' + (e.message || e) } }))
+                    }
+                  }}
+                >
+                  Download logs
+                </button>
+              </SettingRow>
               <SettingRow label="Auto Backup" description="Periodically request backup files for storage.">
                 <Toggle id="auto_backup" checked={g.auto_backup === true} onChange={v => patch('general', 'auto_backup', v)} />
               </SettingRow>

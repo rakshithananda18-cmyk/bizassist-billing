@@ -100,7 +100,9 @@ def run_daily_log_upload():
     # 2. Process active users/businesses
     db = SessionLocal()
     try:
-        users = db.query(User).filter(User.active == True).all()
+        # Owners only (staff share the owner's business). There is no `User.active`
+        # column — the old filter raised AttributeError and crashed this daily job.
+        users = db.query(User).filter(User.parent_business_id.is_(None)).all()
         for user in users:
             business_id = user.id
             token = _get_cloud_token(business_id)

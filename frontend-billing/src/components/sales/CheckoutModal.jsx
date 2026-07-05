@@ -476,10 +476,29 @@ export default function CheckoutModal({
         const updatedCustRes = await authFetch('/billing/customers')
         if (updatedCustRes.ok) {
           const custData = await updatedCustRes.json()
-          const custItems = Array.isArray(custData) ? custData : (custData && Array.isArray(custData.items) ? custData.items : [])
+          let custItems = Array.isArray(custData) ? custData : (custData && Array.isArray(custData.items) ? custData.items : [])
+          // The refetched list can lag a just-committed write (local cache); make
+          // sure the customer we just saved is present so the Edit button's lookup
+          // finds it — otherwise a brand-new customer opens a blank "Add" form and
+          // looks "not editable". Upsert savedCust into the list.
+          if (savedCust && savedCust.id != null) {
+            const idx = custItems.findIndex(c => String(c.id) === String(savedCust.id))
+            if (idx === -1) custItems = [savedCust, ...custItems]
+            else custItems[idx] = { ...custItems[idx], ...savedCust }
+          }
           setCustomers(custItems)
           setForm(f => ({ ...f, customer_id: savedCust.id }))
           setCustomerSearchQuery(savedCust.name + (savedCust.phone ? ` (${savedCust.phone})` : ''))
+        } else {
+          // Even if the refetch failed, keep the new customer usable/editable.
+          if (savedCust && savedCust.id != null) {
+            setCustomers(prev => {
+              const arr = Array.isArray(prev) ? prev.slice() : []
+              if (!arr.some(c => String(c.id) === String(savedCust.id))) arr.unshift(savedCust)
+              return arr
+            })
+            setForm(f => ({ ...f, customer_id: savedCust.id }))
+          }
         }
       } else {
         const err = await res.json().catch(() => ({}))

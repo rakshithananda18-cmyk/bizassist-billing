@@ -173,6 +173,7 @@ export default function Register() {
         business_name: form.businessName,
         template_key: selectedTemplate,
         hosting: hostingChoice,   // 'local' | 'hybrid' — auto-configured in signup()
+        phone: (form.phone || '').trim() || null,   // if given, lands on the profile
       })
       // Multi-type (Phase 2): register secondary business types after signup.
       // Non-fatal — the account works single-type if this call fails; types

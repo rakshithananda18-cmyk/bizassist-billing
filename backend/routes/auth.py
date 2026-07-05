@@ -149,6 +149,7 @@ class SignupRequest(BaseModel):
     username: str
     password: str
     business_name: str
+    phone: Optional[str] = None            # captured at registration → stored on the profile
     # Optional cloud-issued BizID. When the downloaded app registers, it creates
     # the account on the cloud first (the single authority), then mirrors it
     # locally passing the cloud's public_id here so both sides share one BizID.
@@ -362,7 +363,8 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             password=hash_password(req.password),
             business_name=req.business_name,
             role="enterprise",
-            public_id=bizid
+            public_id=bizid,
+            phone=(req.phone or None),   # captured at registration → shows on the profile
         )
         db.add(user)
         db.commit()
@@ -499,6 +501,7 @@ class ProfileUpdateRequest(BaseModel):
     pan: Optional[str] = None
     logo: Optional[str] = None
     counter_prefix: Optional[str] = None   # owner sets their OWN POS counter series (§9.3a)
+    upi_vpa: Optional[str] = None          # editable UPI handle for POS QR + invoices
 
 
 @router.get("/profile")
@@ -521,6 +524,7 @@ def get_profile(current_user: dict = Depends(get_active_user), db: Session = Dep
         "logo": user.logo,
         "counter_prefix": user.counter_prefix,
         "is_premium": bool(getattr(user, "is_premium", False)),
+        "upi_vpa": getattr(user, "upi_vpa", None),
     }
 
 
@@ -550,6 +554,8 @@ def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(get_a
         import re
         token = re.sub(r"[^A-Za-z0-9_]", "", req.counter_prefix.strip()).rstrip("-")[:8]
         user.counter_prefix = token or None
+    if req.upi_vpa is not None:
+        user.upi_vpa = (req.upi_vpa.strip() or None)
 
     db.commit()
     db.refresh(user)
@@ -569,6 +575,7 @@ def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(get_a
         "logo": user.logo,
         "counter_prefix": user.counter_prefix,
         "is_premium": bool(getattr(user, "is_premium", False)),
+        "upi_vpa": getattr(user, "upi_vpa", None),
     }
 
 

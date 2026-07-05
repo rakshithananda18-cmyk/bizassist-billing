@@ -110,6 +110,7 @@ _COLUMN_MIGRATIONS = [
     # users — per-business staff display/login name (§9.5 multi-tenant staff)
     {"table": "users", "column": "staff_login_name", "ddl": "ALTER TABLE users ADD COLUMN staff_login_name TEXT"},
     {"table": "users", "column": "is_premium",       "ddl": "ALTER TABLE users ADD COLUMN is_premium BOOLEAN DEFAULT 0 NOT NULL"},
+    {"table": "users", "column": "upi_vpa",           "ddl": "ALTER TABLE users ADD COLUMN upi_vpa TEXT"},
     # invoices additions
     {"table": "invoices", "column": "godown_id",        "ddl": "ALTER TABLE invoices ADD COLUMN godown_id INTEGER"},
     {"table": "invoices", "column": "reverse_charge",   "ddl": "ALTER TABLE invoices ADD COLUMN reverse_charge BOOLEAN DEFAULT FALSE"},

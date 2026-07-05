@@ -130,6 +130,21 @@ export function AuthProvider({ children }) {
         body: JSON.stringify({ token }),
       })
       logger.info('[SYNC] Cloud sync token provisioned (24h, business-scoped)')
+      // Keep the CLOUD record's hosting_mode in step with this device when it's
+      // on Local + Cloud, so the Admin Console shows "Local + Cloud" (the sync
+      // worker moves business data, not the settings JSON). Runs for BOTH paths
+      // that mint a cloud token — signup and the Settings switch → re-login.
+      // Best-effort and informational; never affects the token result.
+      try {
+        const mode = (typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_hosting_mode')) || 'local'
+        if (mode === 'hybrid') {
+          await fetch(`${CLOUD_URL}/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ general: { hosting_mode: 'hybrid' } }),
+          }).catch(() => {})
+        }
+      } catch { /* informational only */ }
       return token
     } catch (err) {
       logger.debug('[SYNC] Cloud sync token provisioning skipped:', err?.message)
@@ -363,7 +378,7 @@ export function AuthProvider({ children }) {
     return res.json()
   }, [])
 
-  const signup = useCallback(async ({ username, password, business_name, template_key, hosting = 'local' }) => {
+  const signup = useCallback(async ({ username, password, business_name, template_key, hosting = 'local', phone = null }) => {
     logger.info('Attempting signup for username:', username, 'business:', business_name, 'template:', template_key, 'hosting:', hosting)
 
     // Cloud-authoritative identity (D9): on the downloaded app we register on the
@@ -378,7 +393,7 @@ export function AuthProvider({ children }) {
       // 1. Create the cloud account → mints the BizID.
       let cloudData
       try {
-        cloudData = await _doSignup(CLOUD_URL, { username, password, business_name })
+        cloudData = await _doSignup(CLOUD_URL, { username, password, business_name, phone })
       } catch (err) {
         if (err.status === 400) {
           // Username already taken on the cloud — most likely the same person.
@@ -395,7 +410,7 @@ export function AuthProvider({ children }) {
       let localData
       let didReclaim = false
       try {
-        localData = await _doSignup(LOCAL_URL, { username, password, business_name, public_id: bizId })
+        localData = await _doSignup(LOCAL_URL, { username, password, business_name, public_id: bizId, phone })
       } catch (err) {
         // Local orphan: the cloud accepted this username (so its old cloud account
         // was deleted → username free on the cloud), but a stale LOCAL mirror still
@@ -444,18 +459,10 @@ export function AuthProvider({ children }) {
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localTok}` },
             body: JSON.stringify({ general: { hosting_mode: 'hybrid' } }),
           }).catch(() => { /* self-heals on next settings fetch */ })
-          // Mint the cloud sync token, then also stamp hosting_mode=hybrid on the
-          // CLOUD record with it — otherwise the cloud (and the Admin Console)
-          // keeps the default 'local' because the sync worker only moves business
-          // data, not the settings JSON. Best-effort; never blocks signup.
-          const cloudTok = await _provisionCloudSyncToken(username, password, localTok)
-          if (cloudTok) {
-            await fetch(`${CLOUD_URL}/settings`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cloudTok}` },
-              body: JSON.stringify({ general: { hosting_mode: 'hybrid' } }),
-            }).catch(() => { /* cloud will still function; this is informational */ })
-          }
+          // Mint the cloud sync token (best-effort). _provisionCloudSyncToken also
+          // stamps hosting_mode=hybrid on the cloud record when the device is on
+          // Local + Cloud, so the Admin Console reflects it. Never blocks signup.
+          _provisionCloudSyncToken(username, password, localTok)
         } else {
           updateApiBase('local')
         }
@@ -466,7 +473,7 @@ export function AuthProvider({ children }) {
     }
 
     // Web: register on the cloud backend (API_BASE = cloud here).
-    const data = await _doSignup(API_BASE, { username, password, business_name })
+    const data = await _doSignup(API_BASE, { username, password, business_name, phone })
     await _applyTemplate(API_BASE, data.token || data.access_token, template_key)
     logger.info('Signup successful (web/cloud) for user:', data.username)
     _saveSession(data)

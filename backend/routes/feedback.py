@@ -178,3 +178,54 @@ async def submit_merchant_feedback(
             raise HTTPException(status_code=500, detail="Internal server error saving feedback.")
         finally:
             db.close()
+
+
+@router.get("/diagnostics/logs")
+def download_diagnostics_logs(current_user: dict = Depends(get_active_user)):
+    """Build and stream a .tar.gz of THIS backend's diagnostic logs so the user
+    can download them (Settings → "Download logs") and share them for debugging.
+
+    Collects, if present: the app log file (LOG_FILE env, else logs/bizassist.log)
+    and its rotations, plus the admin audit log. No business data — only app logs.
+    """
+    import io, os, glob, tarfile
+    from datetime import datetime as _dt
+    from fastapi.responses import StreamingResponse
+
+    candidates = []
+    log_file = os.getenv("LOG_FILE") or os.path.join("logs", "bizassist.log")
+    # the file + any rotations (bizassist.log.1, .2, …)
+    candidates.extend(sorted(glob.glob(log_file + "*")))
+    for extra in (os.path.join("logs", "admin_audit.jsonl"),):
+        if os.path.exists(extra):
+            candidates.append(extra)
+
+    existing = [p for p in dict.fromkeys(candidates) if os.path.isfile(p)]
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        if existing:
+            for p in existing:
+                try:
+                    tar.add(p, arcname=os.path.basename(p))
+                except Exception as ex:
+                    logger.warning("diagnostics: could not add %s: %s", p, ex)
+        else:
+            # Never hand back an empty/confusing archive — include a note.
+            note = (
+                "No on-disk log file was found on this backend.\n"
+                "On the desktop app, backend logs are also captured in the app's "
+                "Electron log (main.log) under %APPDATA%\\<app>\\logs.\n"
+            ).encode("utf-8")
+            info = tarfile.TarInfo(name="README.txt")
+            info.size = len(note)
+            tar.addfile(info, io.BytesIO(note))
+    buf.seek(0)
+
+    fname = f"bizassist-logs-{_dt.utcnow().strftime('%Y%m%d-%H%M%S')}.tar.gz"
+    logger.info("[DIAGNOSTICS] Served %d log file(s) to user '%s'", len(existing), current_user.get("username"))
+    return StreamingResponse(
+        buf,
+        media_type="application/gzip",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )

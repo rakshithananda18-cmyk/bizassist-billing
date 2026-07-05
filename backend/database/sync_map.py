@@ -20,7 +20,7 @@ from database.models import (
     InvoicePayment, B2BLedger, Expense, Godown, StockTransfer,
     StockTransferLineItem, PurchaseInvoice, PurchaseInvoiceLineItem,
     PurchaseOrder, PurchaseOrderLineItem, AlertConfig, RateLimitConfig,
-    TableAlteration,
+    TableAlteration, RegisterShift,
 )
 
 # table name -> SQLAlchemy ORM model
@@ -33,6 +33,11 @@ MODEL_MAP: Dict[str, Any] = {
     "customers": Customer,
     "vendors": Vendor,
     "products": Product,
+    # register_shifts MUST appear before invoices: an invoice carries a shift_id
+    # FK, so the parent shift has to sync first or every invoice defers forever
+    # ("parent register_shifts … not in this DB yet"), stalling the whole outbox.
+    # (RegisterShift was designed to sync — it was just missing from this map.)
+    "register_shifts": RegisterShift,
     "invoices": Invoice,
     "invoice_line_items": InvoiceLineItem,
     "inventory": Inventory,

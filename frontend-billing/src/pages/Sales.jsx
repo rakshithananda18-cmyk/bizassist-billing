@@ -1041,7 +1041,12 @@ export default function Sales(props = {}) {
   
   const [productBatches, setProductBatches] = useState({})
   
-  const upiVpa = profile?.phone ? `${profile.phone}@upi` : 'bizassist@upi'
+  // Prefer the merchant's explicit, editable UPI handle (Profile → UPI ID). Fall
+  // back to a device-local override, then to a phone-derived guess. A real VPA is
+  // often NOT number@upi, so the profile field is the source of truth.
+  const upiVpa = (profile?.upi_vpa && profile.upi_vpa.trim())
+    || (typeof localStorage !== 'undefined' && localStorage.getItem('pos_upi_vpa'))
+    || (profile?.phone ? `${profile.phone}@upi` : 'bizassist@upi')
   const [merchantState, setMerchantState] = useState(() => localStorage.getItem('pos_merchant_state') || '37')
 
   const barcodeRef = useRef(null)

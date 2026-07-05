@@ -77,6 +77,10 @@ async function startBackend(resourcesPath, userDataDir) {
       ...process.env,
       BIZASSIST_DATA_DIR: dataDir,
       BIZASSIST_DESKTOP: '1',
+      // Persist a rotating backend log next to the DB so "Settings → Download
+      // logs" (GET /diagnostics/logs) has something to package. Backend stdout is
+      // still mirrored into the Electron main.log too.
+      LOG_FILE: path.join(dataDir, 'bizassist.log'),
     },
     windowsHide: true, // no flashing console on Windows
     detached: false,

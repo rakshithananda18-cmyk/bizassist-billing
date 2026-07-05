@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from database.db import get_db, sync_disabled_var
 from services.auth import get_active_user
@@ -242,6 +243,14 @@ def push_changes(
             if "business_id" in data:
                 data["business_id"] = business_id
 
+            # register_shifts carries a user_id FK to `users` (which is NOT a
+            # synced table), so the SOURCE db's integer user_id won't exist in
+            # THIS db and the insert would fail its FK. Re-point it at the
+            # resolved owner (business_id) so the shift lands instead of crashing.
+            # (Shifts are business-scoped; owner attribution is sufficient here.)
+            if change.entity == "register_shifts" and "user_id" in data:
+                data["user_id"] = business_id
+
             existing = None
             uid_val = data.get("uid")
 
@@ -335,13 +344,53 @@ def push_changes(
                             val = _parse_dt(val)
                     setattr(target_obj, key, val)
 
-            if not existing:
-                db.add(target_obj)
-            db.flush()
-            processed_count += 1
-            ent_name = entity_map.get(change.entity)
-            if ent_name:
-                entities_to_broadcast.add(ent_name)
+            # Per-row SAVEPOINT: one bad row (e.g. a duplicate uid whose data is
+            # already on the cloud, or a transient FK) must NOT abort the whole
+            # batch and stall the outbox forever (the "N pending" loop). We roll
+            # back just that row and keep going. A duplicate/integrity row is
+            # ACKed (counted processed) so the client stops re-sending it — its
+            # data is already present on the destination.
+            try:
+                with db.begin_nested():
+                    if not existing:
+                        db.add(target_obj)
+                    db.flush()
+                processed_count += 1
+                ent_name = entity_map.get(change.entity)
+                if ent_name:
+                    entities_to_broadcast.add(ent_name)
+            except IntegrityError as ie:
+                # Most likely a concurrent insert of the same uid (two overlapping
+                # pushes) — the row now EXISTS. Re-fetch by uid and UPDATE it
+                # (merge) so the change actually lands instead of being dropped,
+                # respecting LWW (only overwrite when the incoming row is newer).
+                deduped = "skipped"
+                try:
+                    if uid_val and hasattr(model_cls, "uid"):
+                        dup = db.query(model_cls).filter(model_cls.uid == uid_val).first()
+                        if dup is not None:
+                            inc_dt = _parse_dt(data.get("updated_at"))
+                            cur_dt = _parse_dt(getattr(dup, "updated_at", None)) if hasattr(dup, "updated_at") else None
+                            if (inc_dt is None) or (cur_dt is None) or (inc_dt >= cur_dt):
+                                with db.begin_nested():
+                                    for key, val in data.items():
+                                        if key in model_cls.__table__.columns and key != "id":
+                                            col_type = model_cls.__table__.columns[key].type
+                                            if hasattr(col_type, "python_type") and col_type.python_type == datetime and val:
+                                                val = _parse_dt(val)
+                                            setattr(dup, key, val)
+                                    db.flush()
+                                deduped = "updated"
+                            else:
+                                deduped = "kept-newer-cloud"
+                except Exception as ie2:
+                    logger.warning("sync/push: dedupe-update failed for %s uid=%s: %s", change.entity, uid_val, ie2)
+                logger.info(
+                    "sync/push: %s.id=%s integrity-deduped by uid (%s): %s",
+                    change.entity, change.entity_id, deduped, getattr(ie, "orig", ie),
+                )
+                processed_count += 1  # ack either way so it isn't re-sent every cycle
+                continue
 
         db.commit()
 

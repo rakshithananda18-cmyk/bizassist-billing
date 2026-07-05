@@ -49,10 +49,20 @@ export default function BackupModal({ token, direction = 'cloud-to-local', onCom
     idxRef.current = i
     setStatuses(prev => prev.map((p, k) => (k < i ? 'done' : k === i ? 'active' : 'pending')))
   }, [])
-  const headers = useCallback(() => ({
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  }), [token])
+  // Tokens are backend-specific: the LOCAL backend accepts the local JWT, the
+  // CLOUD backend only accepts a CLOUD-issued token (the local JWT → HTTP 401 on
+  // the cloud). So pick the token by which backend we're talking to. Using one
+  // token for both was the cause of "Destination merge failed: HTTP 401" on a
+  // Local + Cloud push.
+  const headersFor = useCallback((base) => {
+    let cloudTok = null
+    try { cloudTok = localStorage.getItem('bizassist_cloud_token') } catch { /* ignore */ }
+    const t = base === CLOUD_URL ? cloudTok : token
+    return {
+      'Content-Type': 'application/json',
+      ...(t ? { Authorization: `Bearer ${t}` } : {}),
+    }
+  }, [token])
 
   useEffect(() => {
     if (started.current) return       // fire once, even under StrictMode double-mount
@@ -67,7 +77,7 @@ export default function BackupModal({ token, direction = 'cloud-to-local', onCom
     try {
       // 1. Export from source
       advance(0); setProgress(10)
-      const exRes = await fetch(`${cfg.src}/api/data-transfer/export`, { headers: headers() })
+      const exRes = await fetch(`${cfg.src}/api/data-transfer/export`, { headers: headersFor(cfg.src) })
       if (!exRes.ok) throw new Error(`Source export failed: HTTP ${exRes.status}`)
       const exportData = await exRes.json()
       if (cancelled.current) return
@@ -76,10 +86,18 @@ export default function BackupModal({ token, direction = 'cloud-to-local', onCom
       // 2. Merge into destination (LWW, non-destructive). Does NOT touch hosting_mode.
       advance(1)
       const imRes = await fetch(`${cfg.dst}/api/data-transfer/import?merge=true`, {
-        method: 'POST', headers: headers(),
+        method: 'POST', headers: headersFor(cfg.dst),
         body: JSON.stringify({ tables: exportData?.tables || {} }),
       })
-      if (!imRes.ok) throw new Error(`Destination merge failed: HTTP ${imRes.status}`)
+      if (!imRes.ok) {
+        // A cloud-side 401 means the cloud sync token is missing/expired (it's a
+        // 24h token) — the local JWT can't authenticate to the cloud. Re-login
+        // re-provisions it; say so instead of a bare HTTP 401.
+        if (imRes.status === 401 && cfg.dst === CLOUD_URL) {
+          throw new Error('Cloud session expired — please sign out and sign back in to reconnect cloud sync, then retry.')
+        }
+        throw new Error(`Destination merge failed: HTTP ${imRes.status}`)
+      }
       const imData = await imRes.json()
       if (cancelled.current) return
       mark(1, 'done'); setProgress(85)

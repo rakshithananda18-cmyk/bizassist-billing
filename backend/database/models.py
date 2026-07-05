@@ -97,6 +97,9 @@ class User(Base, TimestampMixin):
     # Premium/paid subscription flag. Cloud-sync nudges (cloud↔local sync popups)
     # and other paid capabilities are gated on this. Defaults to False (free tier).
     is_premium    = Column(Boolean, default=False, nullable=False, server_default="0")
+    # Editable UPI VPA (e.g. "name@upi") for POS collection QR + invoices. Distinct
+    # from `phone` — a merchant's UPI handle is often NOT number@upi.
+    upi_vpa       = Column(String, nullable=True)
 
 
 class UploadedFile(Base, TimestampMixin):

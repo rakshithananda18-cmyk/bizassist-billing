@@ -121,6 +121,24 @@ export default function AdminBusinesses() {
     }
   }
 
+  // --- DOWNLOAD BUSINESS LOGS (latest archive this business uploaded) ---
+  async function handleDownloadLogs(id, name) {
+    try {
+      const res = await authFetch(`${API_BASE}/admin/business-logs/${id}`)
+      if (res.status === 404) { await showAlert(`No uploaded logs for ${name} yet.`); return }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `business-${id}-logs.tar.gz`
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+    } catch (err) {
+      await showError(err)
+    }
+  }
+
   // --- FLUSH MERCH CACHE ---
   async function handleFlushCache(id, name) {
     if (!(await showConfirm(`Flush cached context and response lookups for ${name}?`))) return
@@ -347,6 +365,7 @@ export default function AdminBusinesses() {
                           <button className="btn-flush" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => openLimitsModal(b)}><Icon name="settings" size={12} /> Limits</button>
                           <button className="btn-flush" onClick={() => openPlanModal(b)}>Plan</button>
                           <button className="btn-flush" onClick={() => handleFlushCache(b.id, b.business_name)}>Flush Cache</button>
+                          <button className="btn-flush" onClick={() => handleDownloadLogs(b.id, b.business_name)}>Logs</button>
                           <button className="btn-wipe-row" onClick={() => handleWipeUser(b.id, b.business_name)}>Wipe Data</button>
                         </div>
                       </td>

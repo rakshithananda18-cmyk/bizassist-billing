@@ -19,7 +19,8 @@ export default function Profile() {
     address: '',
     state_code: '',
     pan: '',
-    logo: ''
+    logo: '',
+    upi_vpa: ''
   })
   const [loading, setLoading] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
@@ -35,7 +36,8 @@ export default function Profile() {
         address: profile.address || '',
         state_code: profile.state_code || '',
         pan: profile.pan || '',
-        logo: profile.logo || ''
+        logo: profile.logo || '',
+        upi_vpa: profile.upi_vpa || ''
       })
     }
   }, [profile])
@@ -234,6 +236,21 @@ export default function Profile() {
                 value={formData.phone}
                 onChange={handleChange}
               />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: '600' }}>UPI ID (VPA)</label>
+              <input
+                type="text"
+                name="upi_vpa"
+                className="form-input"
+                placeholder="e.g. yourname@okhdfcbank"
+                value={formData.upi_vpa}
+                onChange={handleChange}
+              />
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                Used for the POS payment QR and invoices. Leave blank to fall back to your phone number.
+              </div>
             </div>
 
             <div className="form-group">
