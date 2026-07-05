@@ -200,6 +200,14 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         })
 
         logger.info(f"[AUTH] User '{req.username}' authenticated (role={user.role}, business={business_id}).")
+        # Pro/free segregation signal — logged once per login (not per request).
+        try:
+            from services.auth import subscription_enforced as _enf
+            _tier = _subscription_view(user, db).get("plan", "free")
+            logger.info("[PLAN] login tier=%s user=%s business=%s enforced=%s",
+                        _tier, req.username, business_id, _enf())
+        except Exception:
+            pass
         return {
             "token": token,
             "id": business_id,
@@ -523,7 +531,9 @@ def get_profile(current_user: dict = Depends(get_active_user), db: Session = Dep
         "pan": user.pan,
         "logo": user.logo,
         "counter_prefix": user.counter_prefix,
-        "is_premium": bool(getattr(user, "is_premium", False)),
+        # Premium = active paid plan (admin grant) OR the legacy override column.
+        # Staff inherit the owner's plan via _subscription_view's holder resolve.
+        "is_premium": _is_premium(user, db),
         "upi_vpa": getattr(user, "upi_vpa", None),
     }
 
@@ -574,7 +584,9 @@ def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(get_a
         "pan": user.pan,
         "logo": user.logo,
         "counter_prefix": user.counter_prefix,
-        "is_premium": bool(getattr(user, "is_premium", False)),
+        # Premium = active paid plan (admin grant) OR the legacy override column.
+        # Staff inherit the owner's plan via _subscription_view's holder resolve.
+        "is_premium": _is_premium(user, db),
         "upi_vpa": getattr(user, "upi_vpa", None),
     }
 
@@ -734,6 +746,23 @@ def _get_user_settings(user: User, db: Session = None) -> dict:
     else:
         logger.debug(f"[SETTINGS] User '{user.username}' has no custom settings, using base/defaults")
     return base
+
+
+def _is_premium(user: User, db: Session = None) -> bool:
+    """Single source of truth for the premium flag exposed on /profile.
+
+    True when EITHER (a) the account has an active paid plan — the admin-managed
+    subscription, staff inheriting the owner's plan — OR (b) the legacy
+    `is_premium` override column is set (a direct manual/admin flip). The OR keeps
+    both paths working: the subscription system drives it in production, while the
+    column remains a valid escape hatch and preserves backward compatibility.
+    """
+    try:
+        if _subscription_view(user, db).get("plan") != "free":
+            return True
+    except Exception:
+        pass
+    return bool(getattr(user, "is_premium", False))
 
 
 def _subscription_view(user: User, db: Session = None) -> dict:

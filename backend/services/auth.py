@@ -176,25 +176,37 @@ def require_plan(min_plan: str = "pro"):
     below `min_plan` (staff inherit the owner's plan). No-op unless
     SUBSCRIPTION_ENFORCED=1."""
     def _dep(current_user: dict = Depends(get_active_user)) -> dict:
-        if not subscription_enforced():
-            return current_user
-        if (current_user.get("role") or "").lower() == "admin":
-            return current_user
-        from database.db import SessionLocal
-        from database.models import User as _User
-        from services.admin_service import effective_plan
-        db = SessionLocal()
-        try:
-            row = db.query(_User).filter(_User.username == current_user.get("username")).first()
-            holder = row
-            if row and row.parent_business_id:
-                holder = db.query(_User).filter(_User.id == row.parent_business_id).first() or row
-            plan = effective_plan(holder) if holder else "free"
-        finally:
-            db.close()
-        if min_plan == "pro" and plan != "pro":
-            logger.info("[AUTH] plan gate: user=%s plan=%s needs=%s",
-                        current_user.get("username"), plan, min_plan)
+        uname = current_user.get("username")
+        is_admin = (current_user.get("role") or "").lower() == "admin"
+
+        # Resolve the effective plan (admins are always "pro"). Staff inherit the
+        # owner's plan. We compute it even when enforcement is OFF so the tier is
+        # always logged — this is the pro/free segregation signal.
+        if is_admin:
+            plan = "pro"
+        else:
+            from database.db import SessionLocal
+            from database.models import User as _User
+            from services.admin_service import effective_plan
+            db = SessionLocal()
+            try:
+                row = db.query(_User).filter(_User.username == uname).first()
+                holder = row
+                if row and row.parent_business_id:
+                    holder = db.query(_User).filter(_User.id == row.parent_business_id).first() or row
+                plan = effective_plan(holder) if holder else "free"
+            finally:
+                db.close()
+
+        enforced = subscription_enforced()
+        allowed = is_admin or (not enforced) or (min_plan != "pro") or (plan == "pro")
+        tier = "admin" if is_admin else plan
+        # Block → INFO (actionable). Allow → DEBUG (available for audit, no noise).
+        (logger.info if not allowed else logger.debug)(
+            "[PLAN] tier=%s user=%s needs=%s enforced=%s decision=%s",
+            tier, uname, min_plan, enforced, "block" if not allowed else "allow",
+        )
+        if not allowed:
             raise HTTPException(
                 status_code=402,
                 detail="This feature requires the Pro plan. Contact your provider to upgrade.",

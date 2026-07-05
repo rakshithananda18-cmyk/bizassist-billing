@@ -533,6 +533,15 @@ export function AuthProvider({ children }) {
         },
         body: JSON.stringify({ general: { hosting_mode: newMode } }),
       })
+      // Pro-gate: the backend refuses to enable hybrid/cloud on a free plan (402).
+      // Abort the switch and tell the user — do NOT flip mode, log out, or migrate.
+      if (res.status === 402) {
+        let detail = 'Local + Cloud requires the Pro plan. Contact your provider to upgrade.'
+        try { detail = (await res.json()).detail || detail } catch { /* keep default */ }
+        window.dispatchEvent(new CustomEvent('show_toast', { detail: { type: 'error', msg: detail } }))
+        logger.info('[MODE SWITCH] Blocked — Pro plan required')
+        return false
+      }
       if (!res.ok) logger.warn(`[MODE SWITCH] Save mode returned HTTP ${res.status}`)
     } catch (err) {
       logger.warn('[MODE SWITCH] Could not save mode to backend (continuing anyway):', err)
@@ -571,6 +580,16 @@ export function AuthProvider({ children }) {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ general: { hosting_mode: newMode } }),
       })
+      // Pro-gate: enabling hybrid on a free plan is refused (402). Abort and tell
+      // the user instead of falsely toasting "Local + Cloud enabled". Switching
+      // back to 'local' is never gated, so this only trips when turning cloud ON.
+      if (res.status === 402) {
+        let detail = 'Local + Cloud requires the Pro plan. Contact your provider to upgrade.'
+        try { detail = (await res.json()).detail || detail } catch { /* keep default */ }
+        window.dispatchEvent(new CustomEvent('show_toast', { detail: { type: 'error', msg: detail } }))
+        logger.info('[MODE] Hybrid blocked — Pro plan required')
+        return false
+      }
       if (!res.ok) logger.warn(`[MODE] Save mode returned HTTP ${res.status}`)
     } catch (err) {
       logger.warn('[MODE] Could not save mode to backend (continuing anyway):', err)

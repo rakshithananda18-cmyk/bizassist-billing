@@ -47,6 +47,14 @@ export default function CheckoutModal({
   const modalRef = useRef(null)
   const customerDropdownRef = useRef(null)
 
+  // Drawer input refs
+  const drawerNameRef = useRef(null)
+  const drawerPhoneRef = useRef(null)
+  const drawerGstinRef = useRef(null)
+  const drawerPriceTierRef = useRef(null)
+  const drawerSaveBtnRef = useRef(null)
+  const drawerCancelBtnRef = useRef(null)
+
   const [customerSearchQuery, setCustomerSearchQuery] = useState('')
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false)
   const [customerSelectedIndex, setCustomerSelectedIndex] = useState(-1)
@@ -67,7 +75,7 @@ export default function CheckoutModal({
     onSaveInvoice(paidAndPrint)
   }, [billingProfile, form.customer_id, onSaveInvoice, setAlert])
 
-  const [showCustModal, setShowCustModal] = useState(false)
+  const [showCustDrawer, setShowCustDrawer] = useState(false)
   const [custModalFields, setCustModalFields] = useState({
     id: '',
     name: '',
@@ -76,6 +84,16 @@ export default function CheckoutModal({
     price_tier: 'standard'
   })
   const [savingCustomer, setSavingCustomer] = useState(false)
+
+  // Automatically focus customer drawer Name field when drawer opens
+  useEffect(() => {
+    if (showCustDrawer) {
+      setTimeout(() => {
+        drawerNameRef.current?.focus()
+        drawerNameRef.current?.select()
+      }, 50)
+    }
+  }, [showCustDrawer])
 
   // Pending dues for the selected customer (shown inline below the totals).
   const [customerDues, setCustomerDues] = useState(null)
@@ -264,7 +282,8 @@ export default function CheckoutModal({
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       if (!showCustomerDropdown) setShowCustomerDropdown(true)
-      setCustomerSelectedIndex(prev => Math.min(filteredCustomers.length - 1, prev + 1))
+      // Allow selecting up to filteredCustomers.length (for the add customer item)
+      setCustomerSelectedIndex(prev => Math.min(filteredCustomers.length > 0 ? filteredCustomers.length : 0, prev + 1))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setCustomerSelectedIndex(prev => Math.max(-1, prev - 1))
@@ -275,13 +294,28 @@ export default function CheckoutModal({
       setTimeout(() => paymentModeRef.current?.focus(), 50)
     } else if (matchesKey(e, funcKeys?.flowForward || 'Enter')) {
       e.preventDefault()
-      if (showCustomerDropdown && customerSelectedIndex !== -1 && filteredCustomers[customerSelectedIndex]) {
-        const c = filteredCustomers[customerSelectedIndex]
-        setForm(f => ({ ...f, customer_id: c.id }))
-        setCustomerSearchQuery(c.name + (c.phone ? ` (${c.phone})` : ''))
-        setShowCustomerDropdown(false)
-        setCustomerSelectedIndex(-1)
-        setTimeout(() => godownRef.current?.focus(), 50)
+      if (showCustomerDropdown && customerSelectedIndex !== -1) {
+        if (customerSelectedIndex === (filteredCustomers.length > 0 ? filteredCustomers.length : 0)) {
+          // Trigger add customer drawer
+          const isPhone = /^\d+$/.test(customerSearchQuery.trim())
+          setCustModalFields({
+            id: '',
+            name: isPhone ? '' : customerSearchQuery,
+            phone: isPhone ? customerSearchQuery : '',
+            gstin: '',
+            price_tier: 'standard'
+          })
+          setShowCustomerDropdown(false)
+          setCustomerSelectedIndex(-1)
+          setShowCustDrawer(true)
+        } else if (filteredCustomers[customerSelectedIndex]) {
+          const c = filteredCustomers[customerSelectedIndex]
+          setForm(f => ({ ...f, customer_id: c.id }))
+          setCustomerSearchQuery(c.name + (c.phone ? ` (${c.phone})` : ''))
+          setShowCustomerDropdown(false)
+          setCustomerSelectedIndex(-1)
+          setTimeout(() => godownRef.current?.focus(), 50)
+        }
       } else if (showCustomerDropdown && filteredCustomers.length > 0 && customerSearchQuery.trim()) {
         const c = filteredCustomers[0]
         setForm(f => ({ ...f, customer_id: c.id }))
@@ -302,7 +336,7 @@ export default function CheckoutModal({
             price_tier: 'standard'
           })
           setShowCustomerDropdown(false)
-          setShowCustModal(true)
+          setShowCustDrawer(true)
         }
       }
     } else if (e.key === 'Escape') {
@@ -313,6 +347,56 @@ export default function CheckoutModal({
       } else {
         onClose()
       }
+    }
+  }
+
+  const handleDrawerKeyDown = (e, fieldName) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      if (e.shiftKey) {
+        // Navigate backwards
+        if (fieldName === 'cancel') {
+          drawerSaveBtnRef.current?.focus()
+        } else if (fieldName === 'save') {
+          drawerPriceTierRef.current?.focus()
+        } else if (fieldName === 'price_tier') {
+          drawerGstinRef.current?.focus()
+        } else if (fieldName === 'gstin') {
+          drawerPhoneRef.current?.focus()
+        } else if (fieldName === 'phone') {
+          drawerNameRef.current?.focus()
+          drawerNameRef.current?.select()
+        }
+      } else {
+        // Navigate forwards
+        if (fieldName === 'name') {
+          drawerPhoneRef.current?.focus()
+          drawerPhoneRef.current?.select()
+        } else if (fieldName === 'phone') {
+          drawerGstinRef.current?.focus()
+          drawerGstinRef.current?.select()
+        } else if (fieldName === 'gstin') {
+          drawerPriceTierRef.current?.focus()
+        } else if (fieldName === 'price_tier') {
+          drawerSaveBtnRef.current?.focus()
+        } else if (fieldName === 'save') {
+          handleSaveCustomer(e)
+        } else if (fieldName === 'cancel') {
+          setShowCustDrawer(false)
+          setTimeout(() => {
+            customerRef.current?.focus()
+            customerRef.current?.select()
+          }, 50)
+        }
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      setShowCustDrawer(false)
+      setTimeout(() => {
+        customerRef.current?.focus()
+        customerRef.current?.select()
+      }, 50)
     }
   }
 
@@ -398,7 +482,7 @@ export default function CheckoutModal({
     if (!open) return
 
     const handleGlobalKeyDown = (e) => {
-      if (showCustModal) return
+      if (showCustDrawer) return
 
       if (e.key === 'Escape') {
         if (showCustomerDropdown) {
@@ -449,11 +533,11 @@ export default function CheckoutModal({
 
     window.addEventListener('keydown', handleGlobalKeyDown)
     return () => window.removeEventListener('keydown', handleGlobalKeyDown)
-  }, [open, showCustModal, showCustomerDropdown, funcKeys, onClose, guardedSave])
+  }, [open, showCustDrawer, showCustomerDropdown, funcKeys, onClose, guardedSave])
 
   // Save Customer Handler
   const handleSaveCustomer = async (e) => {
-    e.preventDefault()
+    if (e && typeof e.preventDefault === 'function') e.preventDefault()
     if (!custModalFields.name.trim()) return
     setSavingCustomer(true)
     try {
@@ -472,7 +556,7 @@ export default function CheckoutModal({
       if (res.ok) {
         const savedCust = await res.json()
         setAlert({ type: 'success', msg: `Customer ${isEdit ? 'updated' : 'created'} successfully!` })
-        setShowCustModal(false)
+        setShowCustDrawer(false)
         const updatedCustRes = await authFetch('/billing/customers')
         if (updatedCustRes.ok) {
           const custData = await updatedCustRes.json()
@@ -489,6 +573,7 @@ export default function CheckoutModal({
           setCustomers(custItems)
           setForm(f => ({ ...f, customer_id: savedCust.id }))
           setCustomerSearchQuery(savedCust.name + (savedCust.phone ? ` (${savedCust.phone})` : ''))
+          setTimeout(() => godownRef.current?.focus(), 50)
         } else {
           // Even if the refetch failed, keep the new customer usable/editable.
           if (savedCust && savedCust.id != null) {
@@ -499,6 +584,7 @@ export default function CheckoutModal({
             })
             setForm(f => ({ ...f, customer_id: savedCust.id }))
           }
+          setTimeout(() => godownRef.current?.focus(), 50)
         }
       } else {
         const err = await res.json().catch(() => ({}))
@@ -663,7 +749,7 @@ export default function CheckoutModal({
                           price_tier: 'standard'
                         })
                       }
-                      setShowCustModal(true)
+                      setShowCustDrawer(true)
                     }}
                   >
                     {form.customer_id ? <EditIcon size={14} /> : <PlusIcon size={14} />}
@@ -720,6 +806,8 @@ export default function CheckoutModal({
                           )
                         })()
 
+                        const isAddActive = customerSelectedIndex === (filteredCustomers.length > 0 ? filteredCustomers.length : 0)
+
                         return (
                           <>
                             {filteredCustomers.length > 0 ? (
@@ -754,34 +842,38 @@ export default function CheckoutModal({
                                 No matching customer found.
                               </div>
                             )}
-                            {query && !filteredCustomers.some(c => c.name.toLowerCase() === query) && (
-                              <div
-                                style={{
-                                  padding: '8px 12px',
-                                  cursor: 'pointer',
-                                  background: 'var(--bg-3)',
-                                  color: 'var(--accent)',
-                                  fontWeight: 600,
-                                  fontSize: '0.82rem',
-                                  textAlign: 'center',
-                                  borderTop: '1px solid var(--border)'
-                                }}
-                                onClick={() => {
-                                  const isPhone = /^\d+$/.test(customerSearchQuery.trim())
-                                  setCustModalFields({
-                                    id: '',
-                                    name: isPhone ? '' : customerSearchQuery,
-                                    phone: isPhone ? customerSearchQuery : '',
-                                    gstin: '',
-                                    price_tier: 'standard'
-                                  })
-                                  setShowCustomerDropdown(false)
-                                  setShowCustModal(true)
-                                }}
-                              >
-                                <PlusIcon size={14} /> Create customer "{customerSearchQuery}"
-                              </div>
-                            )}
+
+                            {/* Persistent Add/Create customer option at bottom of dropdown */}
+                            <div
+                              className={`pos-customer-dropdown-item ${isAddActive ? 'active' : ''}`}
+                              style={{
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                background: isAddActive ? 'var(--accent)' : 'var(--bg-3)',
+                                color: isAddActive ? '#ffffff' : 'var(--accent)',
+                                fontWeight: 600,
+                                fontSize: '0.82rem',
+                                textAlign: 'center',
+                                borderTop: '1px solid var(--border)'
+                              }}
+                              onClick={() => {
+                                const isPhone = /^\d+$/.test(customerSearchQuery.trim())
+                                setCustModalFields({
+                                  id: '',
+                                  name: isPhone ? '' : customerSearchQuery,
+                                  phone: isPhone ? customerSearchQuery : '',
+                                  gstin: '',
+                                  price_tier: 'standard'
+                                })
+                                setShowCustomerDropdown(false)
+                                setCustomerSelectedIndex(-1)
+                                setShowCustDrawer(true)
+                              }}
+                              onMouseEnter={() => setCustomerSelectedIndex(filteredCustomers.length > 0 ? filteredCustomers.length : 0)}
+                            >
+                              <PlusIcon size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} />
+                              {customerSearchQuery.trim() ? `Create customer "${customerSearchQuery}"` : 'Add New Customer'}
+                            </div>
                           </>
                         )
                       })()}
@@ -789,6 +881,132 @@ export default function CheckoutModal({
                   </>
                 )}
               </div>
+
+              {/* Customer Creation/Edit Drawer */}
+              {showCustDrawer && (
+                <div
+                  style={{
+                    background: 'var(--bg-3)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px',
+                    marginTop: '4px',
+                    boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)'
+                  }}
+                  onKeyDown={e => {
+                    // Stop Escape key propagation to keep it within the drawer context
+                    if (e.key === 'Escape') {
+                      e.stopPropagation()
+                    }
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '6px' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--accent)' }}>
+                      <UserIcon size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} />
+                      {custModalFields.id ? 'Edit Customer Details' : 'Add New Customer'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {/* Customer Name */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Customer Name *</label>
+                      <input
+                        ref={drawerNameRef}
+                        type="text"
+                        required
+                        className="pos-form-input"
+                        value={custModalFields.name}
+                        onChange={e => setCustModalFields(prev => ({ ...prev, name: e.target.value }))}
+                        onKeyDown={e => handleDrawerKeyDown(e, 'name')}
+                        placeholder="Enter customer name..."
+                        style={{ height: 32, fontSize: '0.85rem' }}
+                      />
+                    </div>
+
+                    {/* Phone & GSTIN row */}
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Phone Number</label>
+                        <input
+                          ref={drawerPhoneRef}
+                          type="text"
+                          className="pos-form-input"
+                          value={custModalFields.phone}
+                          onChange={e => setCustModalFields(prev => ({ ...prev, phone: e.target.value }))}
+                          onKeyDown={e => handleDrawerKeyDown(e, 'phone')}
+                          placeholder="e.g. 9876543210"
+                          style={{ height: 32, fontSize: '0.85rem' }}
+                        />
+                      </div>
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)' }}>GSTIN</label>
+                        <input
+                          ref={drawerGstinRef}
+                          type="text"
+                          className="pos-form-input"
+                          value={custModalFields.gstin}
+                          onChange={e => setCustModalFields(prev => ({ ...prev, gstin: e.target.value }))}
+                          onKeyDown={e => handleDrawerKeyDown(e, 'gstin')}
+                          placeholder="15-digit GSTIN..."
+                          style={{ height: 32, fontSize: '0.85rem' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Price Tier */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Price Tier</label>
+                      <CustomSelect
+                        ref={drawerPriceTierRef}
+                        className="pos-form-select"
+                        value={custModalFields.price_tier}
+                        onChange={e => setCustModalFields(prev => ({ ...prev, price_tier: e.target.value }))}
+                        onKeyDown={e => handleDrawerKeyDown(e, 'price_tier')}
+                        style={{ height: 32, fontSize: '0.85rem' }}
+                      >
+                        <option value="standard">Standard Pricing</option>
+                        <option value="wholesale">Wholesale Pricing</option>
+                        <option value="distributor">Distributor Pricing</option>
+                      </CustomSelect>
+                    </div>
+
+                    {/* Buttons */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
+                      <button
+                        ref={drawerCancelBtnRef}
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => {
+                          setShowCustDrawer(false)
+                          setTimeout(() => {
+                            customerRef.current?.focus()
+                            customerRef.current?.select()
+                          }, 50)
+                        }}
+                        onKeyDown={e => handleDrawerKeyDown(e, 'cancel')}
+                        style={{ height: 30, padding: '0 12px', fontSize: '0.8rem' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        ref={drawerSaveBtnRef}
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={savingCustomer}
+                        onClick={handleSaveCustomer}
+                        onKeyDown={e => handleDrawerKeyDown(e, 'save')}
+                        style={{ background: 'var(--accent)', borderColor: 'var(--accent)', height: 30, padding: '0 12px', fontSize: '0.8rem' }}
+                      >
+                        {savingCustomer ? 'Saving...' : 'Save Customer'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Godown Selection & Date Selection Row */}
               <div style={{ display: 'flex', gap: '12px' }}>
@@ -1226,78 +1444,7 @@ export default function CheckoutModal({
         </div>
       </div>
 
-      {/* Customer Creation Modal */}
-      {showCustModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCustModal(false)} style={{ zIndex: 2020 }}>
-          <div className="modal" style={{ maxWidth: 400 }}>
-            <div className="modal-header">
-              <span className="modal-title" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
-                <UserIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> {custModalFields.id ? 'Edit Customer Details' : 'Add New Customer'}
-              </span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowCustModal(false)} style={{ color: 'var(--text-muted)' }} aria-label="Close"><CloseIcon size={16} /></button>
-            </div>
-            <form onSubmit={handleSaveCustomer}>
-              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Customer Name *</label>
-                  <input
-                    type="text"
-                    required
-                    className="pos-form-input"
-                    value={custModalFields.name}
-                    onChange={e => setCustModalFields(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="Enter customer name..."
-                  />
-                </div>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Phone Number</label>
-                  <input
-                    type="text"
-                    className="pos-form-input"
-                    value={custModalFields.phone}
-                    onChange={e => setCustModalFields(prev => ({ ...prev, phone: e.target.value }))}
-                    placeholder="e.g. 9876543210"
-                  />
-                </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>GSTIN</label>
-                  <input
-                    type="text"
-                    className="pos-form-input"
-                    value={custModalFields.gstin}
-                    onChange={e => setCustModalFields(prev => ({ ...prev, gstin: e.target.value }))}
-                    placeholder="15-digit GSTIN..."
-                  />
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Price Tier</label>
-                  <CustomSelect
-                    className="pos-form-select"
-                    value={custModalFields.price_tier}
-                    onChange={e => setCustModalFields(prev => ({ ...prev, price_tier: e.target.value }))}
-                  >
-                    <option value="standard">Standard Pricing</option>
-                    <option value="wholesale">Wholesale Pricing</option>
-                    <option value="distributor">Distributor Pricing</option>
-                  </CustomSelect>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowCustModal(false)}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn btn-primary btn-sm" disabled={savingCustomer} style={{ background: 'var(--accent)', borderColor: 'var(--accent)' }}>
-                    {savingCustomer ? 'Saving...' : 'Save Customer'}
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   )
 }

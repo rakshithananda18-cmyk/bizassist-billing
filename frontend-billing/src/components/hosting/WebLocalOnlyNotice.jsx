@@ -18,7 +18,7 @@ import { CloudIcon, MonitorIcon } from '../Icons'
  * (IS_LOCAL_APP) never renders this — it has the data locally.
  */
 export default function WebLocalOnlyNotice() {
-  const { profile } = useAuth()
+  const { profile, settings } = useAuth()
   const [dismissed, setDismissed] = useState(false)
 
   useEffect(() => {
@@ -34,6 +34,11 @@ export default function WebLocalOnlyNotice() {
   //  hidden, so it can never false-fire during rollout.)
   if (IS_LOCAL_APP) return null
   if (dismissed) return null
+  // A hybrid/cloud account DOES push its data to the cloud, so the web view is
+  // NOT empty for them — never show the "your data is on your desktop" notice,
+  // regardless of premium. Only a genuinely Local-only account lands here.
+  const hostingMode = settings?.general?.hosting_mode
+  if (hostingMode === 'hybrid' || hostingMode === 'cloud') return null
   if (!profile || profile.is_premium !== false) return null
 
   const dismiss = () => {

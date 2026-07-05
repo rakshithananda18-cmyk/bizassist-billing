@@ -119,4 +119,28 @@ describe('CheckoutModal', () => {
     const updatedForm = updater({ payment_mode: 'credit', amount_received: '399' })
     expect(updatedForm.amount_received).toBe('0')
   })
+
+  it('opens and closes the inline customer drawer', () => {
+    const props = baseProps()
+    render(<CheckoutModal {...props} />)
+    
+    // The drawer should be closed initially
+    expect(screen.queryByText('Customer Name *')).not.toBeInTheDocument()
+    
+    // Click the Plus button next to the customer name input
+    const plusBtn = screen.getByTitle('Add New Customer')
+    fireEvent.click(plusBtn)
+    
+    // Now the drawer should be open and display customer fields
+    expect(screen.getByText('Customer Name *')).toBeInTheDocument()
+    expect(screen.getByText('Phone Number')).toBeInTheDocument()
+    expect(screen.getByText('GSTIN')).toBeInTheDocument()
+    
+    // Click the Cancel button in the drawer to close it
+    const cancelBtn = screen.getByText('Cancel')
+    fireEvent.click(cancelBtn)
+    
+    // The drawer should be closed now
+    expect(screen.queryByText('Customer Name *')).not.toBeInTheDocument()
+  })
 })

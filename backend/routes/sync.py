@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from database.db import get_db, sync_disabled_var
-from services.auth import get_active_user
+from services.auth import get_active_user, require_plan
 from database.models import (
     Base, User, Customer, Vendor, Product, Invoice, InvoiceLineItem,
     Inventory, LegacyPayment, ConflictLog, SyncLog, SyncQueue,
@@ -202,6 +202,7 @@ def push_changes(
     payload: PushPayload,
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
+    _plan: dict = Depends(require_plan("pro")),   # 402 for free plan when SUBSCRIPTION_ENFORCED=1
     db: Session = Depends(get_db),
 ):
     """
@@ -419,6 +420,7 @@ def push_changes(
 def pull_changes(
     last_sync_at: Optional[str] = None,
     current_user: dict = Depends(get_active_user),
+    _plan: dict = Depends(require_plan("pro")),   # 402 for free plan when SUBSCRIPTION_ENFORCED=1
     db: Session = Depends(get_db),
 ):
     """

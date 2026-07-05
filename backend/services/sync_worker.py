@@ -57,6 +57,12 @@ _OFFLINE_STATE: Dict[int, bool] = {}
 # instead of spamming the cloud auth log every 15 s.
 _SELF_SIGNED_REJECTED: Dict[int, bool] = {}
 
+# Businesses the cloud has refused for lacking the Pro plan (HTTP 402 when
+# SUBSCRIPTION_ENFORCED=1). We pause their sync instead of hammering the cloud
+# every cycle with data it will keep rejecting. Cleared when a fresh cloud token
+# arrives (store_cloud_token) — i.e. the owner logs in again after an upgrade.
+_PLAN_BLOCKED: Dict[int, bool] = {}
+
 # ── Push tuning ──────────────────────────────────────────────────────────────
 # A cold free HF Space (CPU tier, embedding model loading on boot) can take far
 # longer than 10 s to apply a batch. The old flat 10 s read timeout aborted the
@@ -123,8 +129,10 @@ def store_cloud_token(business_id: int, token: str) -> None:
     m = _load_token_map()
     m[str(business_id)] = token
     _save_token_map(m)
-    # A fresh cloud-issued token clears the self-signed backoff.
+    # A fresh cloud-issued token clears the self-signed backoff and any Pro-plan
+    # pause — a re-login is exactly how an upgraded account resumes sync.
     _SELF_SIGNED_REJECTED.pop(business_id, None)
+    _PLAN_BLOCKED.pop(business_id, None)
     logger.info("[SYNC_WORKER] Cloud sync token stored for business %s", business_id)
 
 
@@ -323,6 +331,12 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
     # Cloud is reachable — clear the offline flag so the next outage logs once.
     _OFFLINE_STATE[business_id] = False
 
+    # Pro-plan pause: the cloud already refused this business's sync (402). Don't
+    # keep pushing data it will reject — wait until the owner re-logs in after an
+    # upgrade (store_cloud_token clears this flag).
+    if _PLAN_BLOCKED.get(business_id):
+        return
+
     # 2. Query next unsynced batch
     queue_items = (
         db.query(SyncQueue)
@@ -416,6 +430,29 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 total_pushed += len(chunk_changes)
             except Exception as e:
                 err_msg = str(e)
+
+                # 402 = the cloud enforces Pro and this business is on the free
+                # plan. This is NOT an error/outage — pause sync (so we stop
+                # retrying every cycle) and surface a clear, actionable message
+                # instead of a scary "Push failed" loop. Resumes on next login
+                # after an upgrade (store_cloud_token clears _PLAN_BLOCKED).
+                if "402" in err_msg:
+                    _PLAN_BLOCKED[business_id] = True
+                    logger.info(
+                        "[SYNC_WORKER] Cloud sync paused for business %s — Pro plan required "
+                        "(free account). Resumes after upgrade + re-login.",
+                        business_id,
+                    )
+                    chunk[0][0].error = "Cloud sync requires the Pro plan"
+                    db.add(SyncLog(
+                        business_id=business_id,
+                        status="failed",
+                        error="Cloud sync requires the Pro plan — upgrade to enable Local + Cloud.",
+                        synced_at=datetime.utcnow(),
+                    ))
+                    db.commit()
+                    return
+
                 logger.error("[SYNC_WORKER] Push failed for business_id=%s: %s", business_id, e)
 
                 # If 401, invalidate cached token so next run fetches a fresh one.
