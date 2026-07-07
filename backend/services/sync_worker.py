@@ -503,6 +503,31 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
             db.add(log)
             db.commit()
             logger.info("[SYNC_WORKER] Successfully pushed %s changes for business_id=%s", total_pushed, business_id)
+        else:
+            # If we didn't push any changes (queue is empty or already synced), check if
+            # there are 0 pending items. If so, and our previous run was a failure,
+            # write a success log to clear the error state on the UI.
+            unsynced_count = (
+                db.query(SyncQueue)
+                .filter(SyncQueue.business_id == business_id, SyncQueue.synced_at.is_(None))
+                .count()
+            )
+            if unsynced_count == 0:
+                last_log = (
+                    db.query(SyncLog)
+                    .filter(SyncLog.business_id == business_id)
+                    .order_by(SyncLog.synced_at.desc())
+                    .first()
+                )
+                if last_log and last_log.status == "failed":
+                    log = SyncLog(
+                        business_id=business_id,
+                        status="success",
+                        synced_at=datetime.utcnow()
+                    )
+                    db.add(log)
+                    db.commit()
+                    logger.info("[SYNC_WORKER] Cleared previous sync error for business_id=%s (now online & fully synced)", business_id)
 
     # The hybrid worker is PUSH-ONLY (local → cloud backup). Cloud data is
     # subscription-gated, so we never auto-pull it down. A cloud→local data sync
