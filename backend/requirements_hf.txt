@@ -29,6 +29,7 @@ anthropic>=0.105.2             # Claude PDF parsing (services/pdf_parser.py)
 langgraph>=0.2.0               # pulls langchain-core in automatically
 
 # ── Embeddings / vector store ──────────────────────────────────
+torch==2.5.1                   # pin PyTorch to v2.5.1 to avoid Dynamo polyfills tupleloader SystemError in v2.6.0
 sentence-transformers>=3.0.0   # local MiniLM (free, no API cost); pulls torch (~240 MB)
 chromadb>=0.4.0
 
