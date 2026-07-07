@@ -119,6 +119,14 @@ export default function Sales(props = {}) {
   const [submitting, setSubmitting]   = useState(false)
   const [alert, setAlert]             = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery)
+    }, 200) // 200ms debounce delay
+    return () => clearTimeout(handler)
+  }, [searchQuery])
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [settingsInitialTab, setSettingsInitialTab] = useState('general')
@@ -1796,15 +1804,25 @@ export default function Sales(props = {}) {
       setSelectedIndex(prev => Math.max(-1, prev - 1))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      if (selectedIndex !== -1 && filteredProducts[selectedIndex]) {
-        addProductToCart(filteredProducts[selectedIndex])
+      let currentFiltered = filteredProducts
+      if (searchQuery.trim() !== debouncedSearchQuery.trim()) {
+        currentFiltered = searchQuery.trim()
+          ? products.filter(p =>
+              p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              (p.barcode && p.barcode.toLowerCase().includes(searchQuery.toLowerCase())) ||
+              (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase()))
+            ).slice(0, 8)
+          : []
+      }
+      if (selectedIndex !== -1 && currentFiltered[selectedIndex]) {
+        addProductToCart(currentFiltered[selectedIndex])
       } else if (searchQuery.trim()) {
         const code = searchQuery.trim()
         const exactMatch = products.find(p => p.barcode === code || (p.sku && p.sku === code))
         if (exactMatch) {
           addProductToCart(exactMatch)
-        } else if (filteredProducts.length > 0) {
-          addProductToCart(filteredProducts[0])
+        } else if (currentFiltered.length > 0) {
+          addProductToCart(currentFiltered[0])
         } else {
           addCustomItemToCart()
           setForm(f => {
@@ -2094,11 +2112,11 @@ export default function Sales(props = {}) {
 
   const stickyOffsets = getStickyLeftOffsets(columnOrder, colVisible)
 
-  const filteredProducts = searchQuery.trim()
+  const filteredProducts = debouncedSearchQuery.trim()
     ? products.filter(p =>
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (p.barcode && p.barcode.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase()))
+        p.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+        (p.barcode && p.barcode.toLowerCase().includes(debouncedSearchQuery.toLowerCase())) ||
+        (p.sku && p.sku.toLowerCase().includes(debouncedSearchQuery.toLowerCase()))
       ).slice(0, 8)
     : []
 
