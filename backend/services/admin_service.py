@@ -24,7 +24,7 @@ from database.models import (
     DocumentEmbedding, ChatMessage, TokenUsage, RateLimitConfig,
     Customer, Vendor, Product, PurchaseOrder, PurchaseOrderLineItem,
     PurchaseInvoice, PurchaseInvoiceLineItem, AIFeedback, AIQueryOverride,
-    BusinessFact, AlertConfig, SyncQueue, SyncLog
+    BusinessFact, AlertConfig, SyncQueue, SyncLog, RegisterShift, ShiftCashMovement
 )
 from core.models import (
     StockLedger, ProductBarcode, BusinessSettings, InvoicePayment,
@@ -630,6 +630,25 @@ def wipe_user_data(user_id: int, db: Session) -> dict:
     db.query(StockLedger).filter(StockLedger.business_id == user_id).delete(synchronize_session=False)
     db.query(Inventory).filter(Inventory.business_id == user_id).delete(synchronize_session=False)
     db.query(Product).filter(Product.business_id == user_id).delete(synchronize_session=False)
+
+    # NULLify any remaining foreign keys to customer/vendor to prevent ForeignKeyViolation
+    # from cross-business references or orphan records.
+    user_customers_subq = db.query(Customer.id).filter(Customer.business_id == user_id)
+    user_vendors_subq = db.query(Vendor.id).filter(Vendor.business_id == user_id)
+
+    db.query(Invoice).filter(Invoice.customer_id.in_(user_customers_subq)).update(
+        {Invoice.customer_id: None}, synchronize_session=False
+    )
+    db.query(PurchaseInvoice).filter(PurchaseInvoice.supplier_id.in_(user_vendors_subq)).update(
+        {PurchaseInvoice.supplier_id: None}, synchronize_session=False
+    )
+    db.query(PurchaseOrder).filter(PurchaseOrder.vendor_id.in_(user_vendors_subq)).update(
+        {PurchaseOrder.vendor_id: None}, synchronize_session=False
+    )
+    db.query(Inventory).filter(Inventory.vendor_id.in_(user_vendors_subq)).update(
+        {Inventory.vendor_id: None}, synchronize_session=False
+    )
+
     db.query(Customer).filter(Customer.business_id == user_id).delete(synchronize_session=False)
     db.query(Vendor).filter(Vendor.business_id == user_id).delete(synchronize_session=False)
 
@@ -646,7 +665,7 @@ def wipe_user_data(user_id: int, db: Session) -> dict:
     for model in (
         LegacyPayment, UploadedFile, DocumentEmbedding, ChatMessage, TokenUsage,
         RateLimitConfig, AlertConfig, AIFeedback, AIQueryOverride, BusinessFact,
-        BusinessSettings, Expense, Godown, PeriodLock
+        BusinessSettings, Expense, Godown, PeriodLock, ShiftCashMovement, RegisterShift
     ):
         db.query(model).filter(model.business_id == user_id).delete(synchronize_session=False)
 
