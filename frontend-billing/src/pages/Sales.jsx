@@ -2411,13 +2411,13 @@ export default function Sales(props = {}) {
               searchQuery={searchQuery}
               onSearchChange={(v) => { setSearchQuery(v); setSelectedIndex(-1) }}
               onKeyDown={handleSearchKeyDown}
-              placeholder={`Scan barcode or search by ${t('product', 'item')} code, model no or name (F9)…`}
+              placeholder={loading ? "Loading products/items from database..." : `Scan barcode or search by ${t('product', 'item')} code, model no or name (F9)…`}
               onAddCustom={addCustomItemToCart}
               filteredProducts={filteredProducts}
               selectedIndex={selectedIndex}
               onHoverIndex={setSelectedIndex}
               onPick={addProductToCart}
-              disabled={isLiveView && editState !== 'granted'}
+              disabled={loading || (isLiveView && editState !== 'granted')}
             />
 
             {/* Cart Table list container */}
