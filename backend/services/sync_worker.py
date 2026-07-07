@@ -305,6 +305,15 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
 
 def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool = False, do_pull: bool = False):
     business_id = user.id
+
+    # 0. Subscription check: if subscription is enforced and the user does not have a Pro plan,
+    # background sync is restricted/paused (only required login/identity is synced during auth).
+    from services.admin_service import effective_plan
+    from services.auth import subscription_enforced
+    if subscription_enforced() and effective_plan(user) != "pro":
+        logger.debug("[SYNC_WORKER] Plan is not Pro and subscription is enforced — pausing background sync for business %s", business_id)
+        return
+
     logger.debug("[SYNC_WORKER] Running sync for business_id=%s", business_id)
 
     # 1. Probe cloud endpoint health
