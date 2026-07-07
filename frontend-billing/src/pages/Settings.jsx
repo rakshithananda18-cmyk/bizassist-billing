@@ -408,14 +408,17 @@ function HostingModeSection({ currentMode, onModeChange, token, autoSwitchTarget
   // (Root cause of the "select Cloud → nothing happens" report: the cloud
   // probe was CORS-blocked/offline, so the card was locked/unavailable and the
   // click was swallowed with no feedback.)
-  const explainBlocked = (mode, state) => {
-    if (state === 'active') return `You're already in ${mode} mode.`
-    if (state === 'locked')
-      return `${mode[0].toUpperCase() + mode.slice(1)} mode is blocked: the cloud server rejected this app's request (CORS). Check that the app is on the latest build and that the cloud URL is reachable.`
-    if (state === 'unavailable')
-      return `${mode[0].toUpperCase() + mode.slice(1)} mode needs the cloud, which is currently offline/unreachable. Connect to the internet and press Re-check, then try again.`
-    return null
-  }
+  const explainBlocked = (mode, state) =>
+    // Human-readable label for toast messages — never show the internal mode key.
+    {
+      const label = { local: 'Local', hybrid: 'Local + Cloud', cloud: 'Cloud' }[mode] || mode
+      if (state === 'active') return `You're already on ${label}.`
+      if (state === 'locked')
+        return `${label} is blocked: the cloud server rejected this app's request (CORS). Check that the app is on the latest build and that the cloud URL is reachable.`
+      if (state === 'unavailable')
+        return `${label} needs the cloud, which is currently offline/unreachable. Connect to the internet and press Re-check, then try again.`
+      return null
+    }
 
   const handleCardClick = (mode) => {
     const state = cardState(mode)

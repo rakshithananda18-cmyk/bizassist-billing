@@ -554,8 +554,9 @@ export function AuthProvider({ children }) {
     setToken(null)
     setUser(null)
     setAppReady(false)
+    const modeLabel = { local: 'Local', hybrid: 'Local + Cloud', cloud: 'Cloud' }[newMode] || newMode
     window.dispatchEvent(new CustomEvent('show_toast', {
-      detail: { type: 'info', msg: `Switched to ${newMode} mode. Please log in again.` }
+      detail: { type: 'info', msg: `Switched to ${modeLabel}. Please log in again.` }
     }))
     logger.info(`[MODE SWITCH] Done. API_BASE is now: ${API_BASE}`)
   }, [token])
