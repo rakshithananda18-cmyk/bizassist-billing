@@ -67,7 +67,7 @@ describe('PreflightModal', () => {
       />
     )
 
-    expect(screen.getByText(/Switch to Hybrid Mode/i)).toBeInTheDocument()
+    expect(screen.getByText(/Switch to Local \+ Cloud/i)).toBeInTheDocument()
     expect(screen.getByText('Local Backend (P1)')).toBeInTheDocument()
     expect(screen.getByText('Cloud Backend (P2)')).toBeInTheDocument()
     expect(screen.getByText('Internet Access (P3)')).toBeInTheDocument()
@@ -79,7 +79,7 @@ describe('PreflightModal', () => {
     expect(onProceed).toHaveBeenCalledTimes(1)
 
     // Backdrop click when not checking calls onClose
-    const backdrop = screen.getByText(/Switch to Hybrid Mode/i).closest('.pf-backdrop')
+    const backdrop = screen.getByText(/Switch to Local \+ Cloud/i).closest('.pf-backdrop')
     fireEvent.mouseDown(backdrop)
     expect(onClose).toHaveBeenCalledTimes(1)
   })

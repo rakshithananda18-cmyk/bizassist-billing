@@ -112,7 +112,7 @@ export default function PreflightModal({
   const modeLabel = {
     local:  'Local Mode',
     cloud:  'Cloud Mode',
-    hybrid: 'Hybrid Mode',
+    hybrid: 'Local + Cloud',
   }[targetMode] || targetMode
 
   return (

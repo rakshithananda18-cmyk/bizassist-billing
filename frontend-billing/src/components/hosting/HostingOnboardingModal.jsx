@@ -145,7 +145,7 @@ export default function HostingOnboardingModal() {
                     RECOMMENDED
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: 'var(--accent, #4f46e5)' }} className="text-premium">
-                    <SyncIcon size={14} /> Hybrid Mode
+                    <SyncIcon size={14} /> Local + Cloud
                   </div>
                 </th>
                 <th style={{ padding: '12px 16px', fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-muted, #888)', textAlign: 'center', width: '23%' }}>
@@ -237,7 +237,7 @@ export default function HostingOnboardingModal() {
                 display: 'inline-flex', alignItems: 'center', gap: 8, border: 'none'
               }}
             >
-              <ZapIcon size={15} /> Try Hybrid Mode
+              <ZapIcon size={15} /> Try Local + Cloud
             </button>
           </div>
         </div>

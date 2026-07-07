@@ -75,7 +75,7 @@ const TRANSITIONS = {
     bullets: [
       'Local database becomes the sole source of truth',
       'Cloud sync will be permanently disabled on this device',
-      'Other devices connected via hybrid mode will lose access',
+      'Other devices using Local + Cloud will lose access',
       'AI Insights and cloud backups will be disabled',
     ],
     danger: [
