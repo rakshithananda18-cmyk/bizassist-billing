@@ -97,6 +97,43 @@ export default function AppLayout({ children, title }) {
   const subscription = settings?.subscription
   const aiGated = !!(subscription?.enforced && subscription?.plan !== 'pro')
 
+  const isFreePlan = !subscription?.plan || subscription?.plan !== 'pro'
+  const isSyncPaused = isSyncOn && isFreePlan
+
+  const [sessionExpired, setSessionExpired] = React.useState(false)
+
+  React.useEffect(() => {
+    // Session expiration applies only to the WEB (cloud) app when the user is not on a Pro plan.
+    // If the subscription is enforced (or if we want to follow the 5 min preview rule on cloud),
+    // we block the view after 5 minutes of continuous session.
+    if (IS_LOCAL_APP) return
+
+    // Allow admins to bypass
+    const isOwnerOrStaff = user?.role !== 'admin'
+    const isFree = !subscription?.plan || subscription?.plan !== 'pro'
+    
+    if (isOwnerOrStaff && isFree) {
+      let sessionStart = sessionStorage.getItem('bizassist_session_start_time')
+      if (!sessionStart) {
+        sessionStart = String(Date.now())
+        sessionStorage.setItem('bizassist_session_start_time', sessionStart)
+      }
+      
+      const checkExpiry = () => {
+        const elapsed = Date.now() - Number(sessionStart)
+        if (elapsed >= 300000) { // 5 minutes = 300,000 ms
+          setSessionExpired(true)
+        }
+      }
+      
+      checkExpiry()
+      const interval = setInterval(checkExpiry, 5000)
+      return () => clearInterval(interval)
+    } else {
+      setSessionExpired(false)
+    }
+  }, [user, subscription])
+
   const [queueDepth, setQueueDepth] = React.useState({
     pending_count: 0,
     last_sync_time: null,
@@ -605,25 +642,34 @@ export default function AppLayout({ children, title }) {
                     marginTop: '4px',
                     width: 'fit-content',
                     transition: 'all 0.2s ease',
-                    backgroundColor: effectiveMode === 'hybrid'
-                      ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'rgba(239, 68, 68, 0.1)' :
-                         queueDepth.pending_count > 0 ? 'rgba(245, 158, 11, 0.1)' : 'rgba(34, 197, 94, 0.1)')
-                      : (syncHealth.status === 'connected' ? 'rgba(34, 197, 94, 0.1)' :
-                         syncHealth.status === 'connecting' ? 'rgba(245, 158, 11, 0.1)' :
-                         'rgba(239, 68, 68, 0.1)'),
-                    color: effectiveMode === 'hybrid'
-                      ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger, #ef4444)' :
-                         queueDepth.pending_count > 0 ? 'var(--warning, #f59e0b)' : 'var(--success, #22c55e)')
-                      : (syncHealth.status === 'connected' ? 'var(--success, #22c55e)' :
-                         syncHealth.status === 'connecting' ? 'var(--warning, #f59e0b)' :
-                         'var(--danger, #ef4444)'),
+                    backgroundColor: isSyncPaused
+                      ? 'rgba(245, 158, 11, 0.1)'
+                      : (effectiveMode === 'hybrid'
+                          ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'rgba(239, 68, 68, 0.1)' :
+                             queueDepth.pending_count > 0 ? 'rgba(245, 158, 11, 0.1)' : 'rgba(34, 197, 94, 0.1)')
+                          : (syncHealth.status === 'connected' ? 'rgba(34, 197, 94, 0.1)' :
+                             syncHealth.status === 'connecting' ? 'rgba(245, 158, 11, 0.1)' :
+                             'rgba(239, 68, 68, 0.1)')),
+                    color: isSyncPaused
+                      ? 'var(--warning, #f59e0b)'
+                      : (effectiveMode === 'hybrid'
+                          ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger, #ef4444)' :
+                             queueDepth.pending_count > 0 ? 'var(--warning, #f59e0b)' : 'var(--success, #22c55e)')
+                          : (syncHealth.status === 'connected' ? 'var(--success, #22c55e)' :
+                             syncHealth.status === 'connecting' ? 'var(--warning, #f59e0b)' :
+                             'var(--danger, #ef4444)')),
                     border: '1px solid currentColor',
                     textTransform: 'none',
                     letterSpacing: 'normal'
                   }}
                   title="Click to view sync health check details"
                 >
-                  {effectiveMode === 'hybrid' ? (
+                  {isSyncPaused ? (
+                    <>
+                      <AlertIcon size={10} strokeWidth={2.5} />
+                      <span>Sync Paused</span>
+                    </>
+                  ) : effectiveMode === 'hybrid' ? (
                     <>
                       {queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? (
                         <>
@@ -746,17 +792,21 @@ export default function AppLayout({ children, title }) {
                     <span style={{ color: 'var(--text-secondary)' }}>Status</span>
                     <span style={{
                       fontWeight: '700',
-                      color: effectiveMode === 'hybrid'
-                        ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger)' :
-                           queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)')
-                        : (syncHealth.status === 'connected' ? 'var(--success)' :
-                           syncHealth.status === 'connecting' ? 'var(--warning)' : 'var(--danger)')
+                      color: isSyncPaused
+                        ? 'var(--warning, #f59e0b)'
+                        : (effectiveMode === 'hybrid'
+                            ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger)' :
+                               queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)')
+                            : (syncHealth.status === 'connected' ? 'var(--success)' :
+                               syncHealth.status === 'connecting' ? 'var(--warning)' : 'var(--danger)'))
                     }}>
-                      {effectiveMode === 'hybrid'
-                        ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'Sync Error' :
-                           queueDepth.pending_count > 0 ? 'Syncing...' : 'Synced')
-                        : (syncHealth.status === 'connected' ? 'Connected' :
-                           syncHealth.status === 'connecting' ? 'Reconnecting...' : 'Error / Offline')}
+                      {isSyncPaused
+                        ? 'Sync Paused (Pro Required)'
+                        : (effectiveMode === 'hybrid'
+                            ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'Sync Error' :
+                               queueDepth.pending_count > 0 ? 'Syncing...' : 'Synced')
+                            : (syncHealth.status === 'connected' ? 'Connected' :
+                               syncHealth.status === 'connecting' ? 'Reconnecting...' : 'Error / Offline'))}
                     </span>
                   </div>
 
@@ -770,8 +820,11 @@ export default function AppLayout({ children, title }) {
                   {effectiveMode === 'hybrid' && (
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Sync Outbox</span>
-                      <span style={{ fontWeight: '600', color: queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)' }}>
-                        {queueDepth.pending_count > 0 ? `${queueDepth.pending_count} pending` : 'Fully Synced'}
+                      <span style={{
+                        fontWeight: '600',
+                        color: isSyncPaused ? 'var(--warning, #f59e0b)' : (queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)')
+                      }}>
+                        {isSyncPaused ? 'Paused — Pro Required' : (queueDepth.pending_count > 0 ? `${queueDepth.pending_count} pending` : 'Fully Synced')}
                       </span>
                     </div>
                   )}
@@ -843,18 +896,19 @@ export default function AppLayout({ children, title }) {
                 {effectiveMode === 'hybrid' && (
                   <button
                     onClick={(e) => {
+                      if (isSyncPaused) return
                       e.stopPropagation()
                       handleSyncFlush()
                     }}
-                    disabled={flushing}
+                    disabled={flushing || isSyncPaused}
                     style={{
                       width: '100%',
                       padding: '6px 12px',
-                      backgroundColor: flushing ? 'rgba(255,255,255,0.08)' : 'var(--accent, #3b82f6)',
-                      color: flushing ? 'var(--text-muted)' : '#fff',
+                      backgroundColor: (flushing || isSyncPaused) ? 'rgba(255,255,255,0.08)' : 'var(--accent, #3b82f6)',
+                      color: (flushing || isSyncPaused) ? 'var(--text-muted)' : '#fff',
                       border: 'none',
                       borderRadius: 'var(--radius-sm, 4px)',
-                      cursor: flushing ? 'not-allowed' : 'pointer',
+                      cursor: (flushing || isSyncPaused) ? 'not-allowed' : 'pointer',
                       fontWeight: '600',
                       fontSize: '0.75rem',
                       transition: 'background-color 0.2s',
@@ -865,7 +919,7 @@ export default function AppLayout({ children, title }) {
                     }}
                   >
                     <SyncIcon size={12} className={flushing ? 'sync-spinner-small' : ''} />
-                    {flushing ? 'Syncing Now...' : 'Sync Now'}
+                    {isSyncPaused ? 'Upgrade to Pro to Sync' : (flushing ? 'Syncing Now...' : 'Sync Now')}
                   </button>
                 )}
 
@@ -1363,6 +1417,107 @@ export default function AppLayout({ children, title }) {
           ))}
         </div>,
         document.body
+      )}
+      {sessionExpired && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 99999,
+          background: 'rgba(15, 23, 42, 0.95)',
+          backdropFilter: 'blur(16px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 24,
+        }}>
+          <div style={{
+            background: 'var(--bg-2, #1a1a1a)',
+            border: '1px solid var(--border, rgba(255, 255, 255, 0.12))',
+            borderRadius: 24,
+            padding: '40px 48px',
+            width: '100%',
+            maxWidth: 500,
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+            textAlign: 'center',
+          }}>
+            <div style={{
+              width: 80,
+              height: 80,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 24px',
+              boxShadow: '0 8px 30px rgba(99, 102, 241, 0.3)'
+            }}>
+              <LockIcon size={40} style={{ color: '#fff' }} />
+            </div>
+
+            <h2 style={{
+              fontSize: '1.75rem',
+              fontWeight: 800,
+              color: 'var(--text-primary, #fff)',
+              marginBottom: 16,
+              letterSpacing: '-0.02em',
+              lineHeight: 1.2
+            }}>
+              Upgrade to Pro Required
+            </h2>
+
+            <p style={{
+              fontSize: '0.94rem',
+              color: 'var(--text-secondary, #ccc)',
+              lineHeight: 1.6,
+              marginBottom: 24
+            }}>
+              Your 5-minute preview of the cloud application has expired. Access to the shared cloud database, multi-device sync, and premium features require a Pro subscription.
+            </p>
+
+            <div style={{
+              background: 'rgba(99, 102, 241, 0.08)',
+              border: '1px solid rgba(99, 102, 241, 0.25)',
+              borderRadius: 12,
+              padding: '16px',
+              fontSize: '0.84rem',
+              color: 'var(--text-primary, #fff)',
+              lineHeight: 1.5,
+              marginBottom: 28,
+              textAlign: 'left'
+            }}>
+              <strong>Want to upgrade?</strong> Contact your provider or system administrator to activate the <strong>Pro Plan</strong> and resume work.
+            </div>
+
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12
+            }}>
+              <button
+                onClick={() => {
+                  sessionStorage.removeItem('bizassist_session_start_time')
+                  logout()
+                  navigate('/login')
+                }}
+                style={{
+                  padding: '14px 28px',
+                  borderRadius: 12,
+                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  boxShadow: '0 4px 14px rgba(99, 102, 241, 0.4)',
+                  transition: 'all 0.2s',
+                  width: '100%'
+                }}
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -171,14 +171,14 @@ def subscription_enforced() -> bool:
     return os.getenv("SUBSCRIPTION_ENFORCED", "0") == "1"
 
 
-def require_plan(min_plan: str = "pro"):
+def require_plan(min_plan: str = "pro", force_enforcement: bool = False):
     """FastAPI dependency factory: 402 when the business's effective plan is
     below `min_plan` (staff inherit the owner's plan). No-op unless
-    SUBSCRIPTION_ENFORCED=1."""
+    SUBSCRIPTION_ENFORCED=1 or force_enforcement=True."""
     def _dep(current_user: dict = Depends(get_active_user)) -> dict:
         uname = current_user.get("username")
         is_admin = (current_user.get("role") or "").lower() == "admin"
-
+ 
         # Resolve the effective plan (admins are always "pro"). Staff inherit the
         # owner's plan. We compute it even when enforcement is OFF so the tier is
         # always logged — this is the pro/free segregation signal.
@@ -197,8 +197,8 @@ def require_plan(min_plan: str = "pro"):
                 plan = effective_plan(holder) if holder else "free"
             finally:
                 db.close()
-
-        enforced = subscription_enforced()
+ 
+        enforced = subscription_enforced() or force_enforcement
         allowed = is_admin or (not enforced) or (min_plan != "pro") or (plan == "pro")
         tier = "admin" if is_admin else plan
         # Block → INFO (actionable). Allow → DEBUG (available for audit, no noise).
