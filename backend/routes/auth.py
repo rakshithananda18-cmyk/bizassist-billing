@@ -787,7 +787,7 @@ def _sync_subscription_from_cloud(user: User, db: Session):
         resp = httpx.get(
             f"{CLOUD_URL}/settings",
             headers={"Authorization": f"Bearer {token}"},
-            timeout=1.5
+            timeout=5.0
         )
         if resp.status_code == 200:
             cloud_settings = resp.json()

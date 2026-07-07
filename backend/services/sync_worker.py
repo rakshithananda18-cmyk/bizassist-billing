@@ -318,7 +318,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
 
     # 1. Probe cloud endpoint health
     try:
-        resp = httpx.get(f"{CLOUD_URL}/health", timeout=3.0)
+        resp = httpx.get(f"{CLOUD_URL}/health", timeout=10.0)
         if resp.status_code != 200 or resp.json().get("status") != "ok":
             raise Exception("Cloud health probe returned non-ok status")
     except Exception as e:
