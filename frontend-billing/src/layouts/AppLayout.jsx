@@ -80,7 +80,7 @@ const PAGE_TITLES = {
 }
 
 export default function AppLayout({ children, title }) {
-  const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings } = useAuth()
+  const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings, fetchSettings } = useAuth()
   const { hasLock, lock, resetInactivityTimer } = useLock()
   const navigate = useNavigate()
   const location = useLocation()
@@ -101,6 +101,19 @@ export default function AppLayout({ children, title }) {
   const isSyncPaused = isSyncOn && isFreePlan
 
   const [sessionExpired, setSessionExpired] = React.useState(false)
+  const [checkingPlan, setCheckingPlan] = React.useState(false)
+
+  const handleCheckPlan = async (e) => {
+    if (e && e.stopPropagation) e.stopPropagation()
+    setCheckingPlan(true)
+    try {
+      await fetchSettings()
+    } catch (err) {
+      console.error('[SETTINGS] Failed to refresh plan status:', err)
+    } finally {
+      setCheckingPlan(false)
+    }
+  }
 
   React.useEffect(() => {
     // Session expiration applies only to the WEB (cloud) app when the user is not on a Pro plan.
@@ -896,19 +909,22 @@ export default function AppLayout({ children, title }) {
                 {effectiveMode === 'hybrid' && (
                   <button
                     onClick={(e) => {
-                      if (isSyncPaused) return
                       e.stopPropagation()
-                      handleSyncFlush()
+                      if (isSyncPaused) {
+                        handleCheckPlan(e)
+                      } else {
+                        handleSyncFlush()
+                      }
                     }}
-                    disabled={flushing || isSyncPaused}
+                    disabled={flushing || checkingPlan}
                     style={{
                       width: '100%',
                       padding: '6px 12px',
-                      backgroundColor: (flushing || isSyncPaused) ? 'rgba(255,255,255,0.08)' : 'var(--accent, #3b82f6)',
-                      color: (flushing || isSyncPaused) ? 'var(--text-muted)' : '#fff',
+                      backgroundColor: (flushing || checkingPlan) ? 'rgba(255,255,255,0.08)' : 'var(--accent, #3b82f6)',
+                      color: (flushing || checkingPlan) ? 'var(--text-muted)' : '#fff',
                       border: 'none',
                       borderRadius: 'var(--radius-sm, 4px)',
-                      cursor: (flushing || isSyncPaused) ? 'not-allowed' : 'pointer',
+                      cursor: (flushing || checkingPlan) ? 'not-allowed' : 'pointer',
                       fontWeight: '600',
                       fontSize: '0.75rem',
                       transition: 'background-color 0.2s',
@@ -918,8 +934,17 @@ export default function AppLayout({ children, title }) {
                       gap: '6px'
                     }}
                   >
-                    <SyncIcon size={12} className={flushing ? 'sync-spinner-small' : ''} />
-                    {isSyncPaused ? 'Upgrade to Pro to Sync' : (flushing ? 'Syncing Now...' : 'Sync Now')}
+                    {isSyncPaused ? (
+                      <>
+                        <span className={checkingPlan ? 'sync-spinner-small' : ''} />
+                        {checkingPlan ? 'Checking...' : 'Refresh Plan Status'}
+                      </>
+                    ) : (
+                      <>
+                        <SyncIcon size={12} className={flushing ? 'sync-spinner-small' : ''} />
+                        {flushing ? 'Syncing Now...' : 'Sync Now'}
+                      </>
+                    )}
                   </button>
                 )}
 

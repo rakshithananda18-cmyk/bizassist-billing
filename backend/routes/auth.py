@@ -765,9 +765,59 @@ def _is_premium(user: User, db: Session = None) -> bool:
     return bool(getattr(user, "is_premium", False))
 
 
+def _sync_subscription_from_cloud(user: User, db: Session):
+    if _DB_MODE != "local" or not db:
+        return
+ 
+    # Check if hosting mode is hybrid
+    s = _get_user_settings(user, db)
+    if s.get("general", {}).get("hosting_mode") != "hybrid":
+        return
+ 
+    from services.sync_worker import CLOUD_URL, _get_cloud_token
+    import httpx
+ 
+    business_id = user.parent_business_id or user.id
+    token = _get_cloud_token(business_id)
+    if not token:
+        return
+ 
+    try:
+        # Fetch latest settings/subscription from the cloud
+        resp = httpx.get(
+            f"{CLOUD_URL}/settings",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=1.5
+        )
+        if resp.status_code == 200:
+            cloud_settings = resp.json()
+            cloud_sub = cloud_settings.get("subscription")
+            if cloud_sub:
+                # Update local DB settings with the cloud subscription info
+                plan_holder = user
+                if user.parent_business_id:
+                    owner = db.query(User).filter(User.id == user.parent_business_id).first()
+                    if owner:
+                        plan_holder = owner
+ 
+                local_settings = json.loads(plan_holder.settings) if plan_holder.settings else {}
+                local_settings["subscription"] = cloud_sub
+                plan_holder.settings = json.dumps(local_settings)
+                db.add(plan_holder)
+                db.commit()
+                logger.info(f"[SETTINGS] Automatically synced subscription from cloud for business {business_id}: {cloud_sub}")
+    except Exception as e:
+        logger.debug(f"[SETTINGS] Background cloud subscription check skipped/failed: {e}")
+
+
 def _subscription_view(user: User, db: Session = None) -> dict:
     """Read-only subscription info for the client (Phase B.5). Staff inherit the
     owner's plan. Admin-managed only — PUT /settings can never modify this."""
+    if db:
+        try:
+            _sync_subscription_from_cloud(user, db)
+        except Exception:
+            pass
     from services.admin_service import effective_plan, _settings_dict
     from services.auth import subscription_enforced
     plan_holder = user
