@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react'
 import { logger } from '../utils/logger'
 import { buildInvoicePayload } from '../utils/invoiceMath'
 import { newClientRequestId } from '../sync/uuid'
+import { IS_LOCAL_APP } from '../config'
 
 export default function usePaymentFlow({
   form,
@@ -103,8 +104,9 @@ export default function usePaymentFlow({
     }
 
     try {
-      // Known-offline → don't even try the network; queue straight away.
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      // Known-offline (only on the WEB/cloud app — the desktop app's backend is on localhost, so it is always online relative to the frontend)
+      const isOfflineForBackend = !IS_LOCAL_APP && typeof navigator !== 'undefined' && navigator.onLine === false
+      if (isOfflineForBackend) {
         return await doQueueOffline()
       }
 
