@@ -659,7 +659,8 @@ export default function AppLayout({ children, title }) {
                       ? 'rgba(245, 158, 11, 0.1)'
                       : (effectiveMode === 'hybrid'
                           ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'rgba(239, 68, 68, 0.1)' :
-                             queueDepth.pending_count > 0 ? 'rgba(245, 158, 11, 0.1)' : 'rgba(34, 197, 94, 0.1)')
+                             queueDepth.pending_count > 0 ? 'rgba(245, 158, 11, 0.1)' :
+                             !syncHealth.isOnline ? 'rgba(255, 255, 255, 0.05)' : 'rgba(34, 197, 94, 0.1)')
                           : (syncHealth.status === 'connected' ? 'rgba(34, 197, 94, 0.1)' :
                              syncHealth.status === 'connecting' ? 'rgba(245, 158, 11, 0.1)' :
                              'rgba(239, 68, 68, 0.1)')),
@@ -667,7 +668,8 @@ export default function AppLayout({ children, title }) {
                       ? 'var(--warning, #f59e0b)'
                       : (effectiveMode === 'hybrid'
                           ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger, #ef4444)' :
-                             queueDepth.pending_count > 0 ? 'var(--warning, #f59e0b)' : 'var(--success, #22c55e)')
+                             queueDepth.pending_count > 0 ? 'var(--warning, #f59e0b)' :
+                             !syncHealth.isOnline ? 'var(--text-muted)' : 'var(--success, #22c55e)')
                           : (syncHealth.status === 'connected' ? 'var(--success, #22c55e)' :
                              syncHealth.status === 'connecting' ? 'var(--warning, #f59e0b)' :
                              'var(--danger, #ef4444)')),
@@ -693,6 +695,11 @@ export default function AppLayout({ children, title }) {
                         <>
                           <span className="sync-spinner-small" />
                           <span>{queueDepth.pending_count} pending</span>
+                        </>
+                      ) : !syncHealth.isOnline ? (
+                        <>
+                          <AlertIcon size={10} strokeWidth={2.5} />
+                          <span>Sync Offline</span>
                         </>
                       ) : (
                         <>
