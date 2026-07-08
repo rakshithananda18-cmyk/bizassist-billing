@@ -96,7 +96,7 @@ export default function AppLayout({ children, title }) {
   // response carries the business's real plan + whether enforcement is live.
   // Replaces the old hardcoded AI_DASHBOARD_GATED const.
   const subscription = settings?.subscription
-  const aiGated = !!(subscription?.enforced && subscription?.plan !== 'pro')
+  const aiGated = !subscription?.plan || subscription?.plan !== 'pro'
 
   const isFreePlan = !subscription?.plan || subscription?.plan !== 'pro'
   const isSyncPaused = isSyncOn && isFreePlan
