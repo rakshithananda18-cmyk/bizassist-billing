@@ -670,7 +670,7 @@ export default function Sales(props = {}) {
     const shouldBroadcast =
       POS_CROSS_DEVICE_CART_SYNC ||
       (isLiveView && editState === 'granted') ||
-      (!isLiveView && effectiveHostingMode() === 'cloud')
+      !isLiveView
     if (!shouldBroadcast) return
 
     const uid = user?.user_id || user?.id
@@ -954,12 +954,6 @@ export default function Sales(props = {}) {
     if ((user?.role || '').toLowerCase() === 'cashier') return []
     const ownerPrefix = (user?.counter_prefix || '').trim() || 'OW'
     const tag = effectiveHostingMode() === 'cloud' ? '' : 'LCL-'
-    const mode = effectiveHostingMode()
-    // Local-only mode: no staff SSE, just show the owner's counter.
-    // Cloud and hybrid both have staff data available — show all counters.
-    if (mode === 'local') {
-      return [{ label: `${tag}${ownerPrefix}`, value: ownerPrefix }]
-    }
     const prefixes = [ownerPrefix]
     staffList.forEach(s => {
       if ((s.role || '').toLowerCase() === 'cashier') {
@@ -1666,8 +1660,6 @@ export default function Sales(props = {}) {
   // network_mode tells the owner's Live Counters view whether this cashier is on
   // the same LAN ('local') or connecting remotely via cloud ('cloud').
   useEffect(() => {
-    const mode = effectiveHostingMode()
-    if (mode !== 'cloud' && mode !== 'hybrid') return
     if (settingsRef.current?.general?.realtime_sync_sales === false) return
     const counter = getCounterPrefix().replace(/-$/, '')
     const items = (form?.items || []).filter(it => it.product)
