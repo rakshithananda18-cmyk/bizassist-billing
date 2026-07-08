@@ -110,23 +110,17 @@ async def lifespan(_app):
                     s.connect(("8.8.8.8", 80))
                     local_ip = s.getsockname()[0]
 
-                # Find the first user's biz public_id from the local DB
+                # Find the owner business's public_id (BizId) and integer ID from local DB
                 db = SessionLocal()
                 try:
-                    rows = db.execute(text("SELECT id, settings FROM users LIMIT 5")).fetchall()
+                    rows = db.execute(text("SELECT id, public_id FROM users WHERE parent_business_id IS NULL")).fetchall()
                     biz_ids = []
                     for row in rows:
                         uid = row[0]
-                        settings_str = row[1]
-                        if settings_str:
-                            try:
-                                s_dict = _json.loads(settings_str)
-                                pub_id = s_dict.get("public_id") or str(uid)
-                                biz_ids.append(pub_id)
-                            except Exception:
-                                biz_ids.append(str(uid))
-                        else:
-                            biz_ids.append(str(uid))
+                        pub_id = row[1]
+                        if pub_id:
+                            biz_ids.append(str(pub_id).strip())
+                        biz_ids.append(str(uid))
                 finally:
                     db.close()
 
