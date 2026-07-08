@@ -8,6 +8,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
+import { formatIST } from '../utils/format'
 import { useLock } from '../contexts/LockContext'
 import { API_BASE, IS_LOCAL_APP, updateApiBase } from '../config'
 import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon, MonitorIcon, SyncIcon, ZapIcon, WifiOffIcon, RobotIcon, DevicesIcon } from '../components/Icons'
@@ -666,8 +667,7 @@ function HostingModeSection({ currentMode, onModeChange, token, autoSwitchTarget
           try {
             const iso = localStorage.getItem(`bizassist_last_sync_${dir}`)
             if (!iso) return 'Never synced'
-            const d = new Date(iso)
-            return `Last synced: ${d.toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+            return `Last synced: ${formatIST(iso)}`
           } catch { return '' }
         }
         const btn = (dir, label) => (

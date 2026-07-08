@@ -123,7 +123,7 @@ export function useReadinessProbe() {
       let status = 'checking'
       if (detail.status === 'connected') {
         status = 'online'
-      } else if (detail.status === 'error' || detail.status === 'disconnected') {
+      } else if (detail.status === 'error' || detail.status === 'offline' || detail.status === 'disconnected') {
         status = 'offline'
       }
       setSseProbe({

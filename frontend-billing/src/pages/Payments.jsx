@@ -10,6 +10,7 @@ import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, Warehou
 
 import { logger } from '../utils/logger'
 import CustomSelect from '../components/common/CustomSelect'
+import { formatISTDate } from '../utils/format'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '₹0'
@@ -153,7 +154,7 @@ export default function Payments() {
         type: 'pending_due',
         amount: d.balance_due,
         method: '—',
-        reference: `Pending Balance (Due: ${d.due_date ? new Date(d.due_date).toLocaleDateString('en-IN') : '—'})`,
+        reference: `Pending Balance (Due: ${d.due_date ? formatISTDate(d.due_date) : '—'})`,
         _sortDate: d.invoice_date || d.due_date
       }))
       const mappedCreditNotes = creditNotes.map(cn => ({
@@ -687,7 +688,7 @@ export default function Payments() {
                       </td></tr>
                     ) : filteredExpenses.map(e => (
                       <tr key={e.id}>
-                        <td>{e.expense_date ? new Date(e.expense_date).toLocaleDateString('en-IN') : '—'}</td>
+                        <td>{e.expense_date ? formatISTDate(e.expense_date) : '—'}</td>
                         <td className="td-primary">{e.category}</td>
                         <td><span className={`badge ${e.expense_type === 'Direct' ? 'badge-warning' : 'badge-info'}`}>{e.expense_type}</span></td>
                         <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{fmt(e.amount)}</td>
@@ -785,7 +786,7 @@ export default function Payments() {
                       </td></tr>
                     ) : filteredPendingDues.map(d => (
                       <tr key={d.id}>
-                        <td>{d.due_date ? new Date(d.due_date).toLocaleDateString('en-IN') : '—'}</td>
+                        <td>{d.due_date ? formatISTDate(d.due_date) : '—'}</td>
                         <td className="td-mono">
                           {d.invoice_id ? (
                             <span 
@@ -877,7 +878,7 @@ export default function Payments() {
                       </td></tr>
                     ) : filteredCreditNotes.map(cn => (
                       <tr key={cn.id}>
-                        <td>{cn.date ? new Date(cn.date).toLocaleDateString('en-IN') : '—'}</td>
+                        <td>{cn.date ? formatISTDate(cn.date) : '—'}</td>
                         <td className="td-mono">
                           {cn.invoice_id ? (
                             <span 
@@ -990,7 +991,7 @@ export default function Payments() {
                       </td></tr>
                     ) : filtered.map(p => (
                       <tr key={p.id}>
-                        <td>{p.date ? new Date(p.date).toLocaleDateString('en-IN') : '—'}</td>
+                        <td>{p.date ? formatISTDate(p.date) : '—'}</td>
                         <td className="td-mono">
                           {(p.invoice_number || p.invoice_ref) ? (
                             <span 

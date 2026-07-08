@@ -397,20 +397,87 @@ def _invoice_out_for_frontend(inv: Invoice) -> dict:
     }
 
 
+@router.get("/products/meta")
+def products_meta(
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
+):
+    """Lightweight cache-validity check for the client product list.
+
+    Returns count and max_id so the frontend can decide in one tiny request
+    whether a full /products?per_page=1000 fetch is needed. The client caches
+    {count, max_id} alongside the product list; if both match on the next open
+    the heavy fetch is skipped entirely.
+
+    Using max(id) as a change sentinel because the Product model has no
+    updated_at column — any INSERT/soft-delete changes max(id) or count.
+    """
+    from sqlalchemy import func as sqlfunc
+    bid = current_user["id"]
+    row = (
+        db.query(
+            sqlfunc.count(Product.id).label("count"),
+            sqlfunc.max(Product.id).label("max_id"),
+        )
+        .filter(Product.business_id == bid, Product.is_active == True)
+        .first()
+    )
+    return {
+        "count":  row.count  if row else 0,
+        "max_id": row.max_id if row else 0,
+    }
+
+
 @router.get("/invoices")
 def list_invoices(
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
+    from_date: Optional[str] = None,   # "YYYY-MM-DD" in IST
+    to_date:   Optional[str] = None,   # "YYYY-MM-DD" in IST (inclusive)
+    per_page:  int = 0,                # 0 = unlimited (legacy default)
+    sort:      str = "desc",
 ):
-    """List all invoices for the business."""
+    """List invoices for the business with optional date-range filter.
+
+    from_date / to_date are IST calendar dates (YYYY-MM-DD). They are
+    converted to UTC datetime boundaries so stored UTC timestamps are
+    correctly windowed against IST business dates.
+    """
+    from datetime import datetime, timezone, timedelta
+    IST = timezone(timedelta(hours=5, minutes=30))
+
     bid = current_user["id"]
-    invoices = (
-        db.query(Invoice)
-        .filter(Invoice.business_id == bid)
-        .order_by(Invoice.invoice_date.desc(), Invoice.id.desc())
-        .all()
-    )
+    q = db.query(Invoice).filter(Invoice.business_id == bid)
+
+    if from_date:
+        try:
+            # IST midnight → UTC
+            ist_start = datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=IST)
+            utc_start = ist_start.astimezone(timezone.utc).replace(tzinfo=None)
+            q = q.filter(Invoice.invoice_date >= utc_start)
+        except ValueError:
+            pass  # malformed date — ignore, return all
+
+    if to_date:
+        try:
+            # IST end-of-day (23:59:59) → UTC
+            ist_end = datetime.strptime(to_date, "%Y-%m-%d").replace(
+                hour=23, minute=59, second=59, tzinfo=IST
+            )
+            utc_end = ist_end.astimezone(timezone.utc).replace(tzinfo=None)
+            q = q.filter(Invoice.invoice_date <= utc_end)
+        except ValueError:
+            pass
+
+    order = Invoice.invoice_date.desc() if sort != "asc" else Invoice.invoice_date.asc()
+    q = q.order_by(order, Invoice.id.desc())
+
+    if per_page and per_page > 0:
+        q = q.limit(per_page)
+
+    invoices = q.all()
     return [_invoice_out_for_frontend(inv) for inv in invoices]
+
 
 
 @router.post("/invoices", status_code=201)

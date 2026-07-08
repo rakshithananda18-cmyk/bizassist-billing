@@ -202,7 +202,7 @@ def push_changes(
     payload: PushPayload,
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
-    _plan: dict = Depends(require_plan("pro", force_enforcement=True)),   # 402 for free plan (strictly enforced for sync)
+    _plan: dict = Depends(require_plan("pro")),   # 402 for free plan when SUBSCRIPTION_ENFORCED=1
     db: Session = Depends(get_db),
 ):
     """
@@ -420,7 +420,7 @@ def push_changes(
 def pull_changes(
     last_sync_at: Optional[str] = None,
     current_user: dict = Depends(get_active_user),
-    _plan: dict = Depends(require_plan("pro", force_enforcement=True)),   # 402 for free plan (strictly enforced for sync)
+    _plan: dict = Depends(require_plan("pro")),   # 402 for free plan when SUBSCRIPTION_ENFORCED=1
     db: Session = Depends(get_db),
 ):
     """

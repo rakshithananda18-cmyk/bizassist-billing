@@ -1,8 +1,28 @@
 import React, { useState } from 'react'
 import { SummaryIcon } from '../Icons'
+import { formatIST } from '../../utils/format'
 
 export default function RegisterView({ reportData, colKeys }) {
   const [sortConfig, setSortConfig] = useState({ key: '', direction: '' })
+
+  const formatValue = (val, key) => {
+    if (val == null) return '—'
+    const k = key.toLowerCase()
+    const isDateCol = ['date', 'created_at', 'updated_at', 'synced_at'].some(sub => k.includes(sub))
+    
+    if (isDateCol && typeof val === 'string') {
+      // Full ISO timestamp or datetime string (e.g. 2026-07-07T18:21:43Z or 2026-07-07 18:21)
+      if (val.includes('T') || (val.includes('-') && val.includes(':'))) {
+        return formatIST(val)
+      }
+      // Simple date string YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+        const [y, m, d] = val.split('-').map(Number)
+        return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`
+      }
+    }
+    return String(val)
+  }
 
   const handleSort = (key) => {
     let direction = 'asc'
@@ -75,7 +95,7 @@ export default function RegisterView({ reportData, colKeys }) {
                   <td key={k} className={isNumCol ? 'pos-align-right' : ''}>
                     {typeof row[k] === 'number' && isNumCol
                       ? `₹${Number(row[k]).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
-                      : String(row[k] ?? '—')}
+                      : formatValue(row[k], k)}
                   </td>
                 )
               })}

@@ -3,6 +3,13 @@ import { logger } from '../utils/logger'
 import { buildInvoicePayload } from '../utils/invoiceMath'
 import { newClientRequestId } from '../sync/uuid'
 import { IS_LOCAL_APP } from '../config'
+import { getFromDateStr } from '../utils/format'
+
+// Module-level save lock — shared across ALL instances of this hook.
+// Prevents duplicate POSTs when React StrictMode mounts two instances
+// simultaneously, or when the user double-clicks the Pay button.
+// Key = invoice number, Value = true while in flight.
+const _saveLock = new Map()
 
 export default function usePaymentFlow({
   form,
@@ -46,6 +53,17 @@ export default function usePaymentFlow({
       setAlert({ type: 'danger', msg: 'Please add items and complete all fields.' })
       return false
     }
+
+    // Module-level lock: prevent duplicate saves from concurrent hook instances
+    // (React StrictMode double-mount or rapid double-click on Pay button).
+    const lockKey = activeTab.name
+    if (_saveLock.has(lockKey)) {
+      logger.warn('[SALES] duplicate save blocked for', lockKey)
+      return false
+    }
+    _saveLock.set(lockKey, true)
+    // Safety net: auto-clear after 5s in case save throws before clearing
+    const lockTimer = setTimeout(() => _saveLock.delete(lockKey), 5000)
     
     const pay = (payable ?? grandTotal)
     const isCredit = form.payment_mode === 'credit'
@@ -130,22 +148,38 @@ export default function usePaymentFlow({
         setAlert({ type: 'success', msg: printAfterSave ? 'Invoice created and print triggered!' : 'Invoice created successfully!' })
         
         const finishReset = () => {
-          authFetch('/billing/invoices').then(r => r.ok ? r.json() : []).then(invs => {
-            setDbInvoices(invs)
-            setTabs(prev => syncTabNames(prev, invs))
+          if (IS_LOCAL_APP) {
+            // Local app: skip the full invoice list re-fetch after every save.
+            // The list is stale by at most one entry and refreshes naturally when
+            // the user navigates to /payments. Removing this round-trip makes POS
+            // feel noticeably snappier (saves 100-400ms per bill on the hybrid path).
             closeTab(activeTabId, null, true)
-          }).catch(() => closeTab(activeTabId, null, true))
+          } else {
+            // Cloud mode: refresh the 7-day invoice window only (not all invoices ever).
+            const fromDate = getFromDateStr(7)
+            authFetch(`/billing/invoices?from_date=${fromDate}&per_page=500&sort=desc`)
+              .then(r => r.ok ? r.json() : [])
+              .then(invs => {
+                setDbInvoices(invs)
+                setTabs(prev => syncTabNames(prev, invs))
+                closeTab(activeTabId, null, true)
+              }).catch(() => closeTab(activeTabId, null, true))
+          }
           setTimeout(() => barcodeRef.current?.focus(), 100)
         }
+
 
         if (printAfterSave) {
           const invoiceNo = serverInvoiceNo
           const isThermal = settings?.print?.thermal_printer_mode === true
           if (isThermal) {
+            // 800ms delay: ensures the ThermalReceipt Portal is fully painted in the
+            // DOM before window.print() fires. 500ms was occasionally too short on
+            // slower machines / hybrid mode (more state updates before render).
             setTimeout(() => {
               window.print()
               finishReset()
-            }, 500)
+            }, 800)
           } else {
             setTimeout(async () => {
               try {
@@ -207,6 +241,8 @@ export default function usePaymentFlow({
         return false
       }
     } finally {
+      clearTimeout(lockTimer)
+      _saveLock.delete(lockKey)
       setSubmitting(false)
     }
   }, [form, authFetch, activeTab.name, activeTabId, closeTab, gstAmt, settings, grandTotal, payable, cashDiscountAmt, changeToReturn, billDiscountAmt, setAlert, setSubmitting, setDbInvoices, setTabs, syncTabNames, barcodeRef, enqueueOffline])

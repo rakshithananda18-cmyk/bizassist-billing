@@ -11,10 +11,11 @@ import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { AlertIcon, BillsIcon, CheckIcon, ChevronRightIcon, CloseIcon, TagIcon } from '../components/Icons'
 // Shared formatting helpers (money / today / amount-in-words) live in utils/format.
-import { fmt, getTodayDateStr } from '../utils/format'
+import { fmt, getTodayDateStr, getFromDateStr } from '../utils/format'
 // Invoice money-math (line totals, intra/inter GST split, change due) — pure + tested.
 import { lineTotal, computeInvoiceTotals, changeDue, buildInvoicePayload, columnTotals, suggestedTenders, schemeDiscount } from '../utils/invoiceMath'
 import { logger } from '../utils/logger'
+import { getCached, setCached, invalidateCache } from '../utils/sessionCache'
 import { useBillingProfile } from '../hooks/useBillingProfile'
 import TotalBreakupModal from '../components/sales/TotalBreakupModal'
 import PosTotalBar from '../components/sales/PosTotalBar'
@@ -954,11 +955,10 @@ export default function Sales(props = {}) {
     const ownerPrefix = (user?.counter_prefix || '').trim() || 'OW'
     const tag = effectiveHostingMode() === 'cloud' ? '' : 'LCL-'
     const mode = effectiveHostingMode()
-    if (mode !== 'cloud') {
-      return [{
-        label: `${tag}${ownerPrefix}`,
-        value: ownerPrefix
-      }]
+    // Local-only mode: no staff SSE, just show the owner's counter.
+    // Cloud and hybrid both have staff data available — show all counters.
+    if (mode === 'local') {
+      return [{ label: `${tag}${ownerPrefix}`, value: ownerPrefix }]
     }
     const prefixes = [ownerPrefix]
     staffList.forEach(s => {
@@ -1109,48 +1109,155 @@ export default function Sales(props = {}) {
   // ============================================================================
   // ── 9. ON-MOUNT DATA INITIALIZERS ──
   // ============================================================================
+  // Capture unstable deps in refs so `load` doesn't need them in its deps array.
+  // Without this, authFetch recreates on every token refresh → load recreates →
+  // useEffect([load]) re-fires → a second full 7-request reload happens every
+  // time the auth token is validated (every ~30s). Using refs breaks this cycle:
+  // load() always has the latest authFetch / setForm / getNextInvoiceNo without
+  // being stale, but its identity never changes so useEffect doesn't re-run.
+  const authFetchRef = useRef(authFetch)
+  const setFormRef = useRef(setForm)
+  const getNextInvoiceNoRef = useRef(getNextInvoiceNo)
+  const userRoleRef = useRef(user?.role)
+  const userIdRef   = useRef(user?.id || user?.user_id)   // stable userId for cache keys
+  const productsRef = useRef([])
+  useEffect(() => { authFetchRef.current = authFetch }, [authFetch])
+  useEffect(() => { setFormRef.current = setForm }, [setForm])
+  useEffect(() => { getNextInvoiceNoRef.current = getNextInvoiceNo }, [getNextInvoiceNo])
+  useEffect(() => { userRoleRef.current = user?.role }, [user?.role])
+  useEffect(() => { userIdRef.current = user?.id || user?.user_id }, [user?.id, user?.user_id])
+
+  const isLoadingRef = useRef(false)
+  const lastLoadRef = useRef(0)
   const load = useCallback(() => {
-    isSystemLoadingRef.current = true
-    setLoading(true)
+    // Guard 1: concurrent-load prevention — skip if already in flight.
+    if (isLoadingRef.current) return
+    // Guard 2: cooldown — skip if last load completed less than 5s ago.
+    const now = Date.now()
+    if (now - lastLoadRef.current < 5000) return
+    isLoadingRef.current = true
+
+    const _authFetch  = authFetchRef.current
+    const _userRole   = userRoleRef.current
+    const userId      = userIdRef.current
+
+    // ── Phase 1: Instant render from sessionStorage cache ────────────────────
+    // Synchronous — no network, no spinner, counter is usable immediately.
+    const cachedProds = getCached('products',  userId)
+    const cachedCusts = getCached('customers', userId)
+    const cachedGods  = getCached('godowns',   userId)
+    const cachedStaff = getCached('staff',     userId)
+
+    if (cachedProds.data?.length) {
+      productsRef.current = cachedProds.data
+      setProducts(cachedProds.data)
+    }
+    if (cachedCusts.data?.length) setCustomers(cachedCusts.data)
+    if (cachedGods.data?.length) {
+      setGodowns(cachedGods.data)
+      setForm(f => ({ ...f, godown_id: f.godown_id || cachedGods.data[0]?.id || '' }))
+    }
+    if (cachedStaff.data) setStaffList(cachedStaff.data)
+
+    // Only show the loading spinner on a true cold start (no cache at all).
+    const hasCachedProducts = !!cachedProds.data?.length
+    if (!hasCachedProducts) setLoading(true)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // 7-day rolling invoice window (IST-aware).
+    const fromDate = getFromDateStr(7)
+
+    // ── Phase 2: Background network refresh ──────────────────────────────────
+    // Products use a meta-check: a 50-byte request decides if the 200KB
+    // product list needs refreshing. Customers, godowns, staff always refresh
+    // but do NOT block rendering (cache is already shown in Phase 1).
+
+    const fetchProducts = async () => {
+      const cached = getCached('products', userId)
+      // If cache exists AND not expired, do a meta-check first.
+      if (cached.data?.length && !cached.expired) {
+        try {
+          const meta = await _authFetch('/billing/products/meta')
+            .then(r => r.ok ? r.json() : null).catch(() => null)
+          if (
+            meta &&
+            meta.count  === cached.meta?.count &&
+            meta.max_id === cached.meta?.max_id
+          ) {
+            // Cache is still valid — skip the full 200KB fetch.
+            logger.debug('[SALES] Product cache valid (meta match) — skipping full fetch')
+            return cached.data
+          }
+        } catch { /* fall through to full fetch */ }
+      }
+      // Full fetch needed (cold start or meta mismatch).
+      const [prod, meta] = await Promise.all([
+        _authFetch('/products?per_page=1000').then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
+        _authFetch('/billing/products/meta').then(r => r.ok ? r.json() : null).catch(() => null),
+      ])
+      const items = prod?.items || []
+      setCached('products', userId, items, 2 * 60 * 60 * 1000, meta) // 2h TTL
+      return items
+    }
+
+    const fetchCustomers = () =>
+      _authFetch('/billing/customers')
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => [])
+        .then(c => {
+          const items = Array.isArray(c) ? c : (c?.items || [])
+          setCached('customers', userId, items, 15 * 60 * 1000) // 15 min TTL
+          return items
+        })
+
+    const fetchGodowns = () =>
+      _authFetch('/billing/godowns')
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => [])
+        .then(g => {
+          setCached('godowns', userId, g, 4 * 60 * 60 * 1000) // 4h TTL
+          return g
+        })
+
+    const fetchStaff = () =>
+      ((_userRole || '').toLowerCase() !== 'cashier')
+        ? _authFetch('/staff').then(r => r.ok ? r.json() : []).catch(() => [])
+            .then(s => { setCached('staff', userId, s, 4 * 60 * 60 * 1000); return s })
+        : Promise.resolve(cachedStaff.data || [])
+
+    // Invoices are NOT cached in sessionStorage — they change on every bill save.
+    const fetchInvoices = () =>
+      _authFetch(`/billing/invoices?from_date=${fromDate}&per_page=500&sort=desc`)
+        .then(r => r.ok ? r.json() : []).catch(() => [])
+
     Promise.all([
-      authFetch('/billing/customers').then(r => r.ok ? r.json() : []).catch(() => []),
-      authFetch('/products?per_page=1000').then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
-      authFetch('/billing/godowns').then(r => r.ok ? r.json() : []).catch(() => []),
-      authFetch('/settings').then(r => r.ok ? r.json() : null).catch(() => null),
-      authFetch('/billing/invoices').then(r => r.ok ? r.json() : []).catch(() => []),
-      ((user?.role || '').toLowerCase() !== 'cashier')
-        ? authFetch('/staff').then(r => r.ok ? r.json() : []).catch(() => [])
-        : Promise.resolve([]),
-    ]).then(([cust, prod, gods, sett, invs, staff]) => {
-      const custItems = Array.isArray(cust) ? cust : (cust && Array.isArray(cust.items) ? cust.items : [])
-      const prodItems = prod && Array.isArray(prod.items) ? prod.items : []
-      setCustomers(custItems)
-      setProducts(prodItems)
-      setGodowns(gods)
+      fetchCustomers(),
+      fetchProducts(),
+      fetchGodowns(),
+      fetchInvoices(),
+      fetchStaff(),
+    ]).then(([cust, prod, gods, invs, staff]) => {
+      // Only update state if value actually changed to avoid unnecessary re-renders.
+      setCustomers(cust)
+      if (prod.length) {
+        productsRef.current = prod
+        setProducts(prod)
+      }
+      if (gods.length) {
+        setGodowns(gods)
+        setForm(f => ({ ...f, godown_id: f.godown_id || gods[0]?.id || '' }))
+      }
       setDbInvoices(invs)
       setStaffList(staff)
-      if (sett) {
-        setSettings(sett)
-      }
-      
-      const defaultGodownId = gods.length > 0 ? gods[0].id : ''
-      setForm(f => ({
-        ...f,
-        customer_id: f.customer_id || '',
-        godown_id: f.godown_id || defaultGodownId
-      }))
-
-      // Dynamically rename initial tab to match database next number and resolve
-      // duplicates — folding in any offline-queued bills so numbers don't collide.
       setTabs(prev => syncTabNames(prev, mergePending(invs)))
     }).finally(() => {
+      lastLoadRef.current = Date.now()
+      isLoadingRef.current = false
+      isSystemLoadingRef.current = false
       setLoading(false)
-      setTimeout(() => barcodeRef.current?.focus(), 100)
-      setTimeout(() => {
-        isSystemLoadingRef.current = false
-      }, 500)
+      setTimeout(() => barcodeRef.current?.focus(), 300)
     })
-  }, [authFetch, setForm, getNextInvoiceNo, user?.role])
+  }, [])
 
   const settingsRef = useRef(settings)
   useEffect(() => {
@@ -1158,20 +1265,67 @@ export default function Sales(props = {}) {
   }, [settings])
 
   useEffect(() => {
+    // Cross-device sync: when the owner bills from the cloud URL on any device
+    // (phone, another PC, tablet), the sync worker (running every ~25s) pulls
+    // those changes into the local DB and broadcasts a sync.trigger SSE event
+    // for each affected entity. The handleSync listener below receives those
+    // events and invalidates the relevant sessionStorage cache entries, causing
+    // the next load() to re-fetch fresh data from local DB. No URL-access
+    // marker needed — the sync-event path covers all devices automatically.
+
     load()
+
+    // Sync-event strategy: replace full load() with targeted per-entity refresh.
+    // — invoice / payment: only re-fetch the 7-day invoice window (1 request)
+    // — product / party:   invalidate cache + full load()
+    // This avoids 7-request reloads on every bill save by another counter.
+    let syncDebounceTimer = null
     const handleSync = (e) => {
       const currentSettings = settingsRef.current
       const isSalesSyncEnabled = currentSettings?.general?.realtime_sync_sales !== false
       if (!isSalesSyncEnabled) return
-      logger.debug('[SALES] Real-time sync event received:', e.detail)
-      if (['invoice', 'product', 'party'].includes(e.detail.entity)) {
-        load()
+      logger.debug('[SALES] sync-event received:', e.detail?.entity)
+      const entity = e.detail?.entity
+      const uid = userIdRef.current
+      if (entity === 'invoice' || entity === 'payment') {
+        // Lightweight: only refresh the invoice list — 1 request, not 7.
+        clearTimeout(syncDebounceTimer)
+        syncDebounceTimer = setTimeout(async () => {
+          try {
+            const fromDate = getFromDateStr(7)
+            const invs = await authFetchRef.current(
+              `/billing/invoices?from_date=${fromDate}&per_page=500&sort=desc`
+            ).then(r => r.ok ? r.json() : null)
+            if (invs) {
+              setDbInvoices(invs)
+              setTabs(prev => syncTabNames(prev, mergePending(invs)))
+            }
+          } catch { /* best-effort — next sync will catch up */ }
+        }, 800)
+      } else if (entity === 'product') {
+        // Invalidate product cache so the next load fetches fresh data.
+        invalidateCache('products', uid)
+        clearTimeout(syncDebounceTimer)
+        syncDebounceTimer = setTimeout(() => load(), 800)
+      } else if (entity === 'party') {
+        // Invalidate customer cache so the next load fetches fresh data.
+        invalidateCache('customers', uid)
+        clearTimeout(syncDebounceTimer)
+        syncDebounceTimer = setTimeout(() => load(), 800)
       }
     }
-    window.addEventListener('focus', load)
+    // On reconnect: push outbox to backend, no data pull needed (local is truth).
+    const handleOnline = () => {
+      logger.info('[SALES] Network restored — flushing outbox to backend')
+      authFetchRef.current('/api/sync/flush', { method: 'POST' }).then(() => {
+        window.dispatchEvent(new CustomEvent('sync-flushed'))
+      }).catch(() => { /* best-effort */ })
+    }
+    window.addEventListener('online', handleOnline)
     window.addEventListener('sync-event', handleSync)
     return () => {
-      window.removeEventListener('focus', load)
+      clearTimeout(syncDebounceTimer)
+      window.removeEventListener('online', handleOnline)
       window.removeEventListener('sync-event', handleSync)
     }
   }, [load])
@@ -1806,13 +1960,18 @@ export default function Sales(props = {}) {
       e.preventDefault()
       let currentFiltered = filteredProducts
       if (searchQuery.trim() !== debouncedSearchQuery.trim()) {
-        currentFiltered = searchQuery.trim()
-          ? products.filter(p =>
-              p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-              (p.barcode && p.barcode.toLowerCase().includes(searchQuery.toLowerCase())) ||
-              (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase()))
-            ).slice(0, 8)
-          : []
+        const sq = searchQuery.trim()
+        if (sq) {
+          const sql = sq.toLowerCase()
+          currentFiltered = products.filter(p => {
+            const nl = p.name ? p.name.toLowerCase() : ''
+            const bl = p.barcode ? p.barcode.toLowerCase() : ''
+            const sl = p.sku ? p.sku.toLowerCase() : ''
+            return nl.includes(sql) || bl.includes(sql) || sl.includes(sql)
+          }).slice(0, 8)
+        } else {
+          currentFiltered = []
+        }
       }
       if (selectedIndex !== -1 && currentFiltered[selectedIndex]) {
         addProductToCart(currentFiltered[selectedIndex])
@@ -2112,13 +2271,44 @@ export default function Sales(props = {}) {
 
   const stickyOffsets = getStickyLeftOffsets(columnOrder, colVisible)
 
-  const filteredProducts = debouncedSearchQuery.trim()
-    ? products.filter(p =>
-        p.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-        (p.barcode && p.barcode.toLowerCase().includes(debouncedSearchQuery.toLowerCase())) ||
-        (p.sku && p.sku.toLowerCase().includes(debouncedSearchQuery.toLowerCase()))
-      ).slice(0, 8)
-    : []
+  // ── Optimised product search ──────────────────────────────────────────────
+  // Pre-lowercase the query ONCE (not 3× per product per render).
+  // Rank: exact barcode/SKU first → name starts-with → name/barcode/SKU contains.
+  // useMemo means this only re-runs when the debounced query or product list
+  // changes — not on every keystroke or unrelated state update.
+  const filteredProducts = useMemo(() => {
+    const q = debouncedSearchQuery.trim()
+    if (!q) return []
+    const ql = q.toLowerCase()
+
+    const exact   = []
+    const starts  = []
+    const contains = []
+
+    for (const p of products) {
+      const nameLow    = p.name ? p.name.toLowerCase() : ''
+      const barcodeLow = p.barcode ? p.barcode.toLowerCase() : ''
+      const skuLow     = p.sku ? p.sku.toLowerCase() : ''
+
+      // Exact barcode / SKU match → instant add (barcode scanner path)
+      if (barcodeLow === ql || skuLow === ql) {
+        exact.push(p)
+        continue
+      }
+      // Name or barcode starts-with → high confidence
+      if (nameLow.startsWith(ql) || barcodeLow.startsWith(ql) || skuLow.startsWith(ql)) {
+        starts.push(p)
+        continue
+      }
+      // Anywhere in name / barcode / SKU → lower confidence
+      if (nameLow.includes(ql) || barcodeLow.includes(ql) || skuLow.includes(ql)) {
+        contains.push(p)
+      }
+    }
+
+    // Return top 8 across all tiers
+    return [...exact, ...starts, ...contains].slice(0, 8)
+  }, [debouncedSearchQuery, products])
 
   // ============================================================================
   // ── 12. POS COUNTER RENDER (JSX) ──

@@ -43,7 +43,8 @@ export default function POSLiveCounter() {
 
   // Fetch staff list to get all configured counters
   useEffect(() => {
-    if (isOwner && hostingMode === 'cloud') {
+    // Hybrid mode has cloud SSE — live counters work in both cloud and hybrid.
+    if (isOwner && (hostingMode === 'cloud' || hostingMode === 'hybrid')) {
       authFetch('/staff')
         .then(r => r.ok ? r.json() : [])
         .then(data => setStaffList(data || []))
@@ -51,9 +52,9 @@ export default function POSLiveCounter() {
     }
   }, [isOwner, hostingMode, authFetch])
 
-  // Listen to SSE presence updates
+  // Listen to SSE presence updates (cloud and hybrid both have SSE)
   useEffect(() => {
-    if (hostingMode !== 'cloud') return
+    if (hostingMode === 'local') return
 
     const onSync = (e) => {
       const d = e.detail
@@ -142,15 +143,16 @@ export default function POSLiveCounter() {
             <div className="alert alert-warning">Only the business owner can view live counters.</div>
           )}
 
-          {isOwner && hostingMode !== 'cloud' && (
+          {/* Only pure local mode (no SSE) can't show live counters */}
+          {isOwner && hostingMode === 'local' && (
             <div className="card" style={{ padding: '40px 24px', textAlign: 'center', maxWidth: 600, margin: '40px auto', borderRadius: 16, border: '1px solid var(--border)' }}>
               <div style={{ fontSize: '3rem', marginBottom: 16 }}>☁️</div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Live Counters requires Cloud Mode</h2>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Live Counters needs cloud sync</h2>
               <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: 24, lineHeight: 1.5 }}>
-                Real-time counter monitoring, remote screen viewing, and cashier-consented bill editing are cloud-only features. Switch your terminal to Cloud Mode to enable these collaborative tools.
+                Real-time counter monitoring uses cloud SSE. Switch to <strong>Local + Cloud</strong> mode in Settings to enable it — billing stays fast and local, only the live view connects to the cloud.
               </p>
               <button
-                onClick={() => navigate('/pos-settings')}
+                onClick={() => navigate('/settings?tab=hosting')}
                 style={{
                   background: 'var(--accent)',
                   color: '#fff',
@@ -170,13 +172,13 @@ export default function POSLiveCounter() {
             </div>
           )}
 
-          {isOwner && hostingMode === 'cloud' && tiles.length === 0 && (
+          {isOwner && (hostingMode === 'cloud' || hostingMode === 'hybrid') && tiles.length === 0 && (
             <div className="card" style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>
               No cashier counters configured. A till appears here when you add cashiers with counter prefixes under Staff settings.
             </div>
           )}
 
-          {isOwner && hostingMode === 'cloud' && tiles.length > 0 && (
+          {isOwner && (hostingMode === 'cloud' || hostingMode === 'hybrid') && tiles.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
               {tiles.map(s => {
                 const highlight = focusCounter && String(s.counter) === String(focusCounter)

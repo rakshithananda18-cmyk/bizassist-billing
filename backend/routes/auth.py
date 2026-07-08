@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
@@ -16,6 +17,14 @@ logger = logging.getLogger("bizassist.auth")
 # The frontend stores this as the user's "home mode" so API requests
 # always route back to the correct backend after a mode switch.
 _DB_MODE = "cloud" if ("postgresql" in DATABASE_URL or "postgres" in DATABASE_URL) else "local"
+
+# Per-business cooldown for cloud subscription sync (seconds).
+# Prevents hammering the cloud on every GET /settings — each hit previously
+# triggered a live httpx call which showed as 4-5 "Automatically synced"
+# log lines per session. After the activation-code plan is in place this
+# whole function can be removed; until then cap it at once per 30 min.
+_SUB_SYNC_COOLDOWN_SECS = 1800  # 30 minutes
+_sub_sync_last: dict[int, float] = {}  # business_id → last sync epoch
 
 
 class LoginRequest(BaseModel):
@@ -768,20 +777,27 @@ def _is_premium(user: User, db: Session = None) -> bool:
 def _sync_subscription_from_cloud(user: User, db: Session):
     if _DB_MODE != "local" or not db:
         return
- 
+
     # Check if hosting mode is hybrid
     s = _get_user_settings(user, db)
     if s.get("general", {}).get("hosting_mode") != "hybrid":
         return
- 
+
+    # ── Cooldown guard: skip cloud call if checked recently ──────────────────
+    business_id = user.parent_business_id or user.id
+    now = time.time()
+    if now - _sub_sync_last.get(business_id, 0) < _SUB_SYNC_COOLDOWN_SECS:
+        logger.debug(f"[SETTINGS] Subscription cloud sync skipped (cooldown) for business {business_id}")
+        return
+    _sub_sync_last[business_id] = now
+    # ─────────────────────────────────────────────────────────────────────────
     from services.sync_worker import CLOUD_URL, _get_cloud_token
     import httpx
- 
-    business_id = user.parent_business_id or user.id
+
     token = _get_cloud_token(business_id)
     if not token:
         return
- 
+
     try:
         # Fetch latest settings/subscription from the cloud
         resp = httpx.get(

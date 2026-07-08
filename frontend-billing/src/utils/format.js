@@ -1,21 +1,90 @@
 // src/utils/format.js — shared formatting helpers.
 // =================================================
-// These were defined inline inside Sales.jsx (and copied around other pages).
 // Centralised here so money/date/words formatting is consistent everywhere and
-// there's ONE place to fix a rounding or locale bug. Logic is unchanged.
+// there's ONE place to fix a rounding or locale bug.
 
 /** Indian-rupee money string, e.g. 1234.5 → "₹1,234.5". Null/undefined → "—". */
 export const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
 
-/** Today as local date string "YYYY-MM-DD". */
-export const getTodayDateStr = () => {
-  const d = new Date()
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+// ── Timezone helpers ────────────────────────────────────────────────────────
+// All timestamps from the backend are UTC (or naive local on older records).
+// formatIST / formatISTDate convert them to IST (Asia/Kolkata, UTC+5:30) for
+// display. Applied to: invoice lists, sync logs, reports, sync health pill.
+
+const IST_LOCALE = 'en-IN'
+const IST_TZ     = 'Asia/Kolkata'
+
+/**
+ * Full IST datetime, e.g. "08/07/2026, 11:30:45 PM"
+ * Pass any value parseable by `new Date()` — ISO string, Unix ms, or Date.
+ * Returns "—" on invalid input.
+ */
+export const formatIST = (ts) => {
+  if (!ts) return '—'
+  try {
+    const d = ts instanceof Date ? ts : new Date(ts)
+    if (isNaN(d.getTime())) return '—'
+    return d.toLocaleString(IST_LOCALE, {
+      timeZone: IST_TZ,
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: true,
+    })
+  } catch { return '—' }
 }
+
+/**
+ * Short IST date only, e.g. "08/07/2026".
+ */
+export const formatISTDate = (ts) => {
+  if (!ts) return '—'
+  try {
+    const d = ts instanceof Date ? ts : new Date(ts)
+    if (isNaN(d.getTime())) return '—'
+    return d.toLocaleDateString(IST_LOCALE, {
+      timeZone: IST_TZ,
+      day: '2-digit', month: '2-digit', year: 'numeric',
+    })
+  } catch { return '—' }
+}
+
+/**
+ * Short IST time only, e.g. "11:30 PM".
+ */
+export const formatISTTime = (ts) => {
+  if (!ts) return '—'
+  try {
+    const d = ts instanceof Date ? ts : new Date(ts)
+    if (isNaN(d.getTime())) return '—'
+    return d.toLocaleTimeString(IST_LOCALE, {
+      timeZone: IST_TZ,
+      hour: '2-digit', minute: '2-digit', hour12: true,
+    })
+  } catch { return '—' }
+}
+
+/** Today's date as IST "YYYY-MM-DD" string — for API query params. */
+export const getTodayDateStr = () => {
+  // Use Intl to get today in IST, not local machine timezone.
+  const now = new Date()
+  const ist = new Intl.DateTimeFormat('en-CA', { timeZone: IST_TZ,
+    year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)
+  return ist // en-CA locale gives YYYY-MM-DD naturally
+}
+
+/**
+ * "YYYY-MM-DD" for N days before today in IST — used for the rolling invoice window.
+ * getFromDateStr(7) → last 7 days including today.
+ */
+export const getFromDateStr = (days = 7) => {
+  const now = new Date()
+  now.setDate(now.getDate() - days + 1)
+  return new Intl.DateTimeFormat('en-CA', { timeZone: IST_TZ,
+    year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)
+}
+
+
 
 /**
  * Amount → Indian-numbering words for invoice footers, e.g.

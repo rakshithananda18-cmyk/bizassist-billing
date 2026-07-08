@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useLock } from '../contexts/LockContext'
 import { API_BASE, IS_LOCAL_APP } from '../config'
 import { logger } from '../utils/logger'
+import { formatIST } from '../utils/format'
 import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
 import { IS_DESKTOP_APP, openDownloadPage } from '../config/downloadApp'
 import { BuildingMark } from '../components/Logo'
@@ -175,6 +176,9 @@ export default function AppLayout({ children, title }) {
             }
           } catch (e) {}
           setFlushing(false)
+          // Notify the queue-depth effect listener so it refreshes immediately
+          // without waiting for the next 30s poll tick.
+          window.dispatchEvent(new CustomEvent('sync-flushed'))
         }, 1500)
       } else {
         setFlushing(false)
@@ -203,8 +207,15 @@ export default function AppLayout({ children, title }) {
     }
 
     fetchQueueDepth()
-    const interval = setInterval(fetchQueueDepth, 10000)
-    return () => clearInterval(interval)
+    // Poll every 30s (reduced from 10s) — the 'sync-flushed' event triggers an
+    // immediate refresh after a manual flush so the counter doesn't feel stale.
+    const interval = setInterval(fetchQueueDepth, 30000)
+    const handleSyncFlushed = () => { fetchQueueDepth() }
+    window.addEventListener('sync-flushed', handleSyncFlushed)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('sync-flushed', handleSyncFlushed)
+    }
   }, [effectiveMode, token])
 
   const [syncHealth, setSyncHealth] = React.useState(() => {
@@ -268,10 +279,13 @@ export default function AppLayout({ children, title }) {
       }
     }
 
+    // Minimum timer: was 1000ms which forced a 1s splash even when local data
+    // is already cached (typical refresh). 200ms is enough for a smooth transition
+    // without making every refresh feel sluggish.
     const minTimer = setTimeout(() => {
       minElapsed = true
       checkReady()
-    }, 1000)
+    }, 200)
 
     const maxTimer = setTimeout(() => {
       maxElapsed = true
@@ -686,7 +700,13 @@ export default function AppLayout({ children, title }) {
                     </>
                   ) : effectiveMode === 'hybrid' ? (
                     <>
-                      {queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? (
+                      {/* Offline is the highest priority — shown before pending/error */}
+                      {!syncHealth.isOnline ? (
+                        <>
+                          <AlertIcon size={10} strokeWidth={2.5} />
+                          <span>Sync Offline</span>
+                        </>
+                      ) : queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? (
                         <>
                           <AlertIcon size={10} strokeWidth={2.5} />
                           <span>Sync Error</span>
@@ -695,11 +715,6 @@ export default function AppLayout({ children, title }) {
                         <>
                           <span className="sync-spinner-small" />
                           <span>{queueDepth.pending_count} pending</span>
-                        </>
-                      ) : !syncHealth.isOnline ? (
-                        <>
-                          <AlertIcon size={10} strokeWidth={2.5} />
-                          <span>Sync Offline</span>
                         </>
                       ) : (
                         <>
@@ -726,6 +741,13 @@ export default function AppLayout({ children, title }) {
                         <>
                           <AlertIcon size={10} strokeWidth={2.5} />
                           <span>Sync Error</span>
+                        </>
+                      )}
+                      {/* 'offline' is a dedicated status emitted by handleOffline */}
+                      {syncHealth.status === 'offline' && (
+                        <>
+                          <AlertIcon size={10} strokeWidth={2.5} />
+                          <span>Offline</span>
                         </>
                       )}
                       {syncHealth.status === 'disconnected' && (
@@ -862,9 +884,7 @@ export default function AppLayout({ children, title }) {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderTop: '1px solid var(--border)', paddingTop: '6px' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Last Synced At</span>
                       <span style={{ fontWeight: '500', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
-                        {new Date(queueDepth.last_sync_time).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                        {' '}
-                        ({new Date(queueDepth.last_sync_time).toLocaleDateString()})
+                        {formatIST(queueDepth.last_sync_time)}
                       </span>
                     </div>
                   )}
@@ -873,9 +893,7 @@ export default function AppLayout({ children, title }) {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderTop: '1px solid var(--border)', paddingTop: '6px' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Last Synced At</span>
                       <span style={{ fontWeight: '500', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
-                        {new Date(syncHealth.lastSyncTime).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                        {' '}
-                        ({new Date(syncHealth.lastSyncTime).toLocaleDateString()})
+                        {formatIST(syncHealth.lastSyncTime)}
                       </span>
                     </div>
                   )}

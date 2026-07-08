@@ -349,7 +349,7 @@ export default function Register() {
                 <label>Where should your data live?</label>
                 <div data-testid="hosting-choice" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 4 }}>
                   {[
-                    { key: 'local',  title: 'Local',          desc: 'On this device. Fast, fully offline. Free.' },
+                    { key: 'local',  title: 'Local',          desc: 'On this device. Fast, fully offline.' },
                     { key: 'hybrid', title: 'Local + Cloud',  desc: 'Local speed + automatic cloud sync, backup & multi-device.' },
                   ].map(opt => (
                     <button

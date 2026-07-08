@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { LockProvider } from './contexts/LockContext'
@@ -9,6 +9,7 @@ import { syncManager } from './sync/syncManager'
 import { API_BASE } from './config'
 import { logger } from './utils/logger'
 import { useRealtimeLeader } from './hooks/useRealtimeLeader'
+import { IS_LOCAL_APP } from './config'
 
 // Pages
 import Login     from './pages/Login'
@@ -72,6 +73,149 @@ function AppRoutes() {
     </Routes>
   )
 }
+
+// ── Sync Prompt Banner ──────────────────────────────────────────────────────
+// Non-blocking slide-in banner that surfaces two actionable sync states:
+//   OFFLINE_PENDING  — bills saved offline are waiting to push to cloud
+//   MULTI_DEVICE     — same user logged in on another device/tab simultaneously
+//
+// Shown only in hybrid mode. Dismissed by syncing or "Remind Later".
+
+const BANNER_STATES = {
+  OFFLINE_PENDING: 'offline_pending',
+  MULTI_DEVICE:    'multi_device',
+  NONE:            null,
+}
+
+function SyncPromptBanner() {
+  const { user, authFetch, settings } = useAuth()
+  const [bannerState, setBannerState] = useState(BANNER_STATES.NONE)
+  const [pendingCount, setPendingCount] = useState(0)
+  const [syncing, setSyncing] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
+
+  const hostingMode = settings?.general?.hosting_mode || localStorage.getItem('bizassist_hosting_mode') || 'local'
+  const isHybrid = IS_LOCAL_APP && hostingMode === 'hybrid'
+
+  // Check outbox on mount and after sync-flushed events
+  const checkOutbox = useCallback(async () => {
+    if (!user || !isHybrid || dismissed) return
+    try {
+      const count = await syncManager.pendingCount()
+      setPendingCount(count)
+      if (count > 0) setBannerState(BANNER_STATES.OFFLINE_PENDING)
+      else setBannerState(BANNER_STATES.NONE)
+    } catch { /* best-effort */ }
+  }, [user, isHybrid, dismissed])
+
+  useEffect(() => {
+    if (!isHybrid || !user) return
+    // Small delay so app finishes initialising before we check
+    const t = setTimeout(checkOutbox, 3000)
+    const onFlushed = () => checkOutbox()
+    window.addEventListener('sync-flushed', onFlushed)
+    return () => { clearTimeout(t); window.removeEventListener('sync-flushed', onFlushed) }
+  }, [checkOutbox, isHybrid, user])
+
+  // Detect same-user on another tab via BroadcastChannel
+  useEffect(() => {
+    if (!isHybrid || !user || typeof BroadcastChannel === 'undefined') return
+    const ch = new BroadcastChannel('bizassist_session')
+    ch.postMessage({ type: 'session_ping', userId: user.id })
+    ch.onmessage = (e) => {
+      if (e.data?.type === 'session_ping' && e.data?.userId === user.id) {
+        setBannerState(prev => prev === BANNER_STATES.OFFLINE_PENDING ? prev : BANNER_STATES.MULTI_DEVICE)
+      }
+    }
+    return () => ch.close()
+  }, [isHybrid, user])
+
+  const handleSyncNow = async () => {
+    setSyncing(true)
+    try {
+      await syncManager.flushOutbox()
+      window.dispatchEvent(new CustomEvent('sync-flushed'))
+      setBannerState(BANNER_STATES.NONE)
+    } catch { /* will retry */ }
+    finally { setSyncing(false) }
+  }
+
+  const handleRemindLater = () => {
+    setDismissed(true)
+    setBannerState(BANNER_STATES.NONE)
+    // Re-check after 10 minutes
+    setTimeout(() => setDismissed(false), 10 * 60 * 1000)
+  }
+
+  if (!bannerState || !user) return null
+
+  const isPending = bannerState === BANNER_STATES.OFFLINE_PENDING
+  const color     = isPending ? '#f59e0b' : '#3b82f6'
+  const bg        = isPending ? 'rgba(245,158,11,0.12)' : 'rgba(59,130,246,0.12)'
+  const border    = isPending ? 'rgba(245,158,11,0.35)' : 'rgba(59,130,246,0.35)'
+
+  return (
+    <div style={{
+      position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+      zIndex: 9999, maxWidth: 480, width: 'calc(100% - 40px)',
+      background: 'var(--card-bg, #1a1a2e)',
+      border: `1px solid ${border}`,
+      borderLeft: `4px solid ${color}`,
+      borderRadius: 12, padding: '14px 18px',
+      display: 'flex', alignItems: 'flex-start', gap: 14,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+      animation: 'slideUpBanner 0.3s ease',
+    }}>
+      <span style={{ fontSize: 22, marginTop: 1 }}>
+        {isPending ? '⚡' : '📡'}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: color, marginBottom: 2 }}>
+          {isPending
+            ? `${pendingCount} bill${pendingCount !== 1 ? 's' : ''} saved offline — not yet synced`
+            : 'Same account open on another device'}
+        </div>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted, #888)', lineHeight: 1.4 }}>
+          {isPending
+            ? 'Sync now to prevent data loss and keep cloud up to date.'
+            : 'Bills may take longer to sync. Consider closing the other session.'}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <button
+            onClick={handleSyncNow}
+            disabled={syncing}
+            style={{
+              padding: '6px 16px', borderRadius: 8, border: 'none',
+              background: color, color: '#fff', fontWeight: 600,
+              fontSize: '0.82rem', cursor: syncing ? 'not-allowed' : 'pointer',
+              opacity: syncing ? 0.7 : 1, transition: 'opacity 0.2s',
+            }}
+          >
+            {syncing ? '⏳ Syncing…' : '↑ Sync Now'}
+          </button>
+          <button
+            onClick={handleRemindLater}
+            style={{
+              padding: '6px 14px', borderRadius: 8,
+              border: `1px solid ${border}`, background: 'transparent',
+              color: 'var(--text-muted, #888)', fontSize: '0.82rem',
+              cursor: 'pointer',
+            }}
+          >
+            Remind Later
+          </button>
+        </div>
+      </div>
+      <button
+        onClick={handleRemindLater}
+        style={{ background: 'none', border: 'none', color: 'var(--text-muted, #888)',
+          cursor: 'pointer', fontSize: 18, padding: '0 0 0 4px', lineHeight: 1 }}
+        aria-label="Dismiss"
+      >×</button>
+    </div>
+  )
+}
+
 
 function RealtimeSyncListener() {
   const { user, token, settings, fetchSettings } = useAuth()
@@ -149,6 +293,8 @@ export default function App() {
           {/* Lock screen intercepts entire UI when session is locked */}
           <LockScreen />
           <RealtimeSyncListener />
+          {/* Slide-in banner: offline bills pending sync + same-user multi-device warning */}
+          <SyncPromptBanner />
           <AppRoutes />
         </LockProvider>
       </AuthProvider>

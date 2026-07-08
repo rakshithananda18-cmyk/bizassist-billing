@@ -102,6 +102,7 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+
   /**
    * Standard device provisioning (no shared secrets): with the credentials the
    * user just typed, obtain a CLOUD-issued 24 h token scoped to this business

@@ -11,6 +11,26 @@ export function useRealtimeLeader(token, settings, user) {
   const reconnectTimeoutRef = useRef(null)
   const consecutiveFailureCountRef = useRef(0)
 
+  // ── Derive STABLE PRIMITIVES outside the effect ─────────────────────────────
+  // CRITICAL: do NOT put the whole `settings` object in the useEffect deps array.
+  // Settings is refreshed every ~2s by the cloud subscription sync, creating a
+  // new object reference each time. That triggers the effect to re-run, tearing
+  // down the SSE connection and immediately reconnecting — causing the "thrashing"
+  // visible in logs as rapid subscribe/unsubscribe every 3-4 seconds.
+  //
+  // Instead, extract only the two primitives that actually control SSE behaviour.
+  // A string and a boolean are compared by value, so the effect only re-runs
+  // when the user genuinely changes their hosting mode or disables realtime sync.
+  const clientMode = (typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_hosting_mode')) || null
+  const hostingMode = !IS_LOCAL_APP
+    ? 'cloud'
+    : (clientMode || settings?.general?.hosting_mode || 'local')
+  // In hybrid mode, SSE is the sync heartbeat backbone — always keep it on.
+  // Only pure local mode and an explicit global=false on cloud-only mode blocks SSE.
+  const isRealtimeGlobalEnabled = hostingMode === 'hybrid'
+    ? true
+    : settings?.general?.realtime_sync_global !== false
+
   useEffect(() => {
     if (!token || !user) {
       const detail = { status: 'disconnected', error: null, lastSyncTime: null, lastEntity: null, isOnline: navigator.onLine }
@@ -18,18 +38,6 @@ export function useRealtimeLeader(token, settings, user) {
       window.dispatchEvent(new CustomEvent('sync-status-change', { detail }))
       return
     }
-
-    // Use the ACTUAL backend mode (same source as config.js), NOT the account's
-    // saved `settings.general.hosting_mode` — that can be stale (e.g. you switched
-    // a desktop session to 'local', which persisted on the account, then logged
-    // into cloud / opened the web app). Web is ALWAYS cloud; a desktop app uses
-    // its own `bizassist_hosting_mode` choice. Reading the stale setting wrongly
-    // disabled SSE in cloud ("mode=local" while the account home is cloud").
-    const clientMode = (typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_hosting_mode')) || null
-    const hostingMode = !IS_LOCAL_APP
-      ? 'cloud'
-      : (clientMode || settings?.general?.hosting_mode || 'local')
-    const isRealtimeGlobalEnabled = settings?.general?.realtime_sync_global !== false
 
     if (hostingMode === 'local' || !isRealtimeGlobalEnabled) {
       logger.info(`[REALTIME] Real-time stream disabled. mode=${hostingMode}, global_enabled=${isRealtimeGlobalEnabled}`)
@@ -59,13 +67,16 @@ export function useRealtimeLeader(token, settings, user) {
     let connectionError = null
     let isCurrentLeader = false
 
-    const emitStatus = (status, errOverride = null) => {
+    // isOnlineOverride lets follower tabs pass the correct isOnline value from the
+    // broadcast message instead of reading navigator.onLine locally (which may
+    // differ from the leader's reading on some browsers).
+    const emitStatus = (status, errOverride = null, isOnlineOverride = null) => {
       const detail = {
         status,
         error: errOverride || connectionError,
         lastSyncTime,
         lastEntity,
-        isOnline: navigator.onLine
+        isOnline: isOnlineOverride !== null ? isOnlineOverride : navigator.onLine
       }
       window.__syncStatus = detail
       window.dispatchEvent(new CustomEvent('sync-status-change', { detail }))
@@ -90,14 +101,18 @@ export function useRealtimeLeader(token, settings, user) {
         }))
       }
 
-      // Only the leader triggers syncManager.pull() to avoid concurrent duplicate requests
+      // Only the leader triggers syncManager.pull() to avoid concurrent duplicate requests.
+      // Fire-and-forget with a 5s timeout so a slow/offline cloud NEVER blocks the live
+      // counter UI. The pull is best-effort — the next SSE event will try again.
       if (isLeaderOrigin && ['invoice', 'payment', 'purchase', 'product', 'party', 'order', 'godown'].includes(data.entity)) {
         logger.info('[REALTIME] Leader pulling deltas for entity:', data.entity)
-        try {
-          await syncManager.pull()
-        } catch (err) {
-          logger.error('[REALTIME] Leader pull failed:', err)
-        }
+        const pullWithTimeout = Promise.race([
+          syncManager.pull(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('pull timeout')), 5000))
+        ])
+        pullWithTimeout.catch(err => {
+          logger.warn('[REALTIME] Leader pull skipped (non-blocking):', err?.message || err)
+        })
       }
     }
 
@@ -341,7 +356,9 @@ export function useRealtimeLeader(token, settings, user) {
         }
       } else if (msg.type === 'status_change') {
         if (!isCurrentLeader) {
-          emitStatus(msg.status, msg.error)
+          // Pass isOnline from broadcast so follower shows correct Online/Offline state.
+          const broadcastIsOnline = typeof msg.isOnline === 'boolean' ? msg.isOnline : null
+          emitStatus(msg.status, msg.error, broadcastIsOnline)
           if (msg.status === 'connected') {
             window.dispatchEvent(new CustomEvent('show_toast', {
               detail: { type: 'success', msg: 'Cloud real-time sync connected.' }
@@ -349,6 +366,10 @@ export function useRealtimeLeader(token, settings, user) {
           } else if (msg.status === 'connecting') {
             window.dispatchEvent(new CustomEvent('show_toast', {
               detail: { type: 'info', msg: `Connecting to cloud sync stream (${hostingMode} mode)…` }
+            }))
+          } else if (msg.status === 'offline') {
+            window.dispatchEvent(new CustomEvent('show_toast', {
+              detail: { type: 'warning', msg: 'Network connection lost. Billing works offline.' }
             }))
           } else if (msg.status === 'error') {
             window.dispatchEvent(new CustomEvent('show_toast', {
@@ -398,16 +419,19 @@ export function useRealtimeLeader(token, settings, user) {
     const handleOffline = () => {
       logger.warn('[REALTIME] Network offline detected.')
       connectionError = 'No internet connection. Client is offline.'
-      emitStatus('error')
+      // Use 'offline' as a dedicated status so the UI can distinguish it from a
+      // genuine connection error. emitStatus uses navigator.onLine (already false).
+      emitStatus('offline')
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
         reconnectTimeoutRef.current = null
       }
       if (isCurrentLeader) {
-        safePost({ type: 'status_change', status: 'error', error: connectionError })
+        // Broadcast isOnline:false explicitly so follower tabs show "Offline" not "Error".
+        safePost({ type: 'status_change', status: 'offline', error: connectionError, isOnline: false })
       }
       window.dispatchEvent(new CustomEvent('show_toast', {
-        detail: { type: 'warning', msg: 'Network connection lost. Sync suspended.' }
+        detail: { type: 'warning', msg: 'Network connection lost. Billing works offline.' }
       }))
     }
 
@@ -458,5 +482,5 @@ export function useRealtimeLeader(token, settings, user) {
       window.removeEventListener('sync-status-request', handleStatusRequest)
       window.removeEventListener('beforeunload', releaseLeadership)
     }
-  }, [user, token, settings])
+  }, [user?.id, token, hostingMode, isRealtimeGlobalEnabled])
 }

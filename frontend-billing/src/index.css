@@ -1619,6 +1619,7 @@ img { display: block; max-width: 100%; }
 /* === ANIMATIONS === */
 @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideUpBanner { from { opacity: 0; transform: translate(-50%, 24px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @keyframes spin    { to { transform: rotate(360deg); } }
 
 .fade-in  { animation: fadeIn  200ms var(--ease); }
