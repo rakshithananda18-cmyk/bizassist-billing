@@ -106,7 +106,8 @@ class RealtimeManager:
         if business_id not in self.connections:
             self.connections[business_id] = set()
         self.connections[business_id].add(q)
-        logger.info(f"[REALTIME] Business {business_id} subscribed. Active connections: {len(self.connections[business_id])}")
+        conn_type = "LAN" if _IS_LOCAL_BACKEND else "Cloud"
+        logger.info(f"[REALTIME][{conn_type}] Business {business_id} subscribed. Active connections: {len(self.connections[business_id])}")
         return q
 
     def unsubscribe(self, business_id: int, q: asyncio.Queue):
@@ -115,7 +116,8 @@ class RealtimeManager:
             self.connections[business_id].discard(q)
             if not self.connections[business_id]:
                 del self.connections[business_id]
-            logger.info(f"[REALTIME] Business {business_id} unsubscribed.")
+            conn_type = "LAN" if _IS_LOCAL_BACKEND else "Cloud"
+            logger.info(f"[REALTIME][{conn_type}] Business {business_id} unsubscribed.")
 
     async def broadcast(self, business_id: int, event: Dict[str, Any]):
         """Broadcast an event to all connected queues for a business_id."""

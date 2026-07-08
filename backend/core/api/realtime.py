@@ -97,6 +97,12 @@ async def pos_presence(
     READ-ONLY snapshot of its activity — which counter, who, current cart total —
     so the owner's Live Counters view can watch each till live."""
     bid = current_user.get("parent_business_id") or current_user.get("id")
+    logger.info(
+        "[REALTIME] Presence received from counter %s (%s) - Mode: %s",
+        req.get("counter"),
+        current_user.get("username"),
+        str(req.get("network_mode", "local")).upper()
+    )
     await realtime_manager.broadcast(
         bid,
         {
