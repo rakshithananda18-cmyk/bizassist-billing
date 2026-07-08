@@ -355,18 +355,26 @@ export default function POSLiveCounter() {
 
     // 2. Overlay any active presence messages received over SSE
     Object.values(sessions).forEach(s => {
-      const prefix = (s.counter || '').trim()
+      const rawPrefix = (s.counter || '').trim()
+      const prefix = rawPrefix.replace(/^LCL-/, '')
       if (!prefix || prefix.toUpperCase() === 'OW') return
 
       const isStale = now - (s._recv || 0) > STALE_MS
 
       if (configuredCounters.has(prefix)) {
         if (!isStale) {
-          configuredCounters.set(prefix, { ...s, offline: false, idle: false })
+          configuredCounters.set(prefix, {
+            ...configuredCounters.get(prefix),
+            ...s,
+            counter: prefix,
+            offline: false,
+            idle: false
+          })
         } else {
           configuredCounters.set(prefix, {
             ...configuredCounters.get(prefix),
             ...s,
+            counter: prefix,
             offline: true,
             idle: true,
           })
@@ -374,6 +382,7 @@ export default function POSLiveCounter() {
       } else {
         configuredCounters.set(prefix, {
           ...s,
+          counter: prefix,
           offline: isStale,
           idle: isStale,
         })

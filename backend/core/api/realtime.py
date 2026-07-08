@@ -110,6 +110,7 @@ async def pos_presence(
             "cart_total": req.get("cart_total"),
             "active_bill": req.get("active_bill"),         # current invoice no on screen
             "status": req.get("status", "active"),         # "active" | "idle" | "closed"
+            "network_mode": req.get("network_mode"),       # "local" | "cloud"
             "timestamp": req.get("timestamp"),
         }
     )
