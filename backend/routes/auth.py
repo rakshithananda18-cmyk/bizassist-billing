@@ -194,16 +194,18 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         # `user_id` keeps the staff member's own identity.
         business_id = user.parent_business_id or user.id
         business_name = user.business_name
+        owner_public_id = user.public_id
         if user.parent_business_id:
             owner = db.query(User).filter(User.id == user.parent_business_id).first()
             if owner:
                 business_name = owner.business_name
+                owner_public_id = owner.public_id
 
         token = create_access_token({
             "id": business_id,
             "user_id": user.id,
             "username": user.username,
-            "public_id": user.public_id,   # BizID — the stable cross-DB identity spine (D9)
+            "public_id": owner_public_id,   # BizID — the stable cross-DB identity spine (D9)
             "business_name": business_name,
             "role": user.role
         })
@@ -222,7 +224,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             "id": business_id,
             "user_id": user.id,
             "username": user.username,
-            "public_id": user.public_id,   # BizID — lets the client confirm/unify identity
+            "public_id": owner_public_id,   # BizID — lets the client confirm/unify identity
             "business_name": business_name,
             "role": user.role,
             "counter_prefix": user.counter_prefix,   # POS counter series for this login (§9.3a)
@@ -306,7 +308,7 @@ def staff_login(req: StaffLoginRequest, request: Request, db: Session = Depends(
             "id": business_id,
             "user_id": staff.id,
             "username": staff.username,          # internal global-unique → route resolution
-            "public_id": staff.public_id,
+            "public_id": owner.public_id,
             "business_name": owner.business_name,
             "role": staff.role,
         })
@@ -316,7 +318,7 @@ def staff_login(req: StaffLoginRequest, request: Request, db: Session = Depends(
             "id": business_id,
             "user_id": staff.id,
             "username": staff.staff_login_name or staff.username,   # bare name for display
-            "public_id": staff.public_id,
+            "public_id": owner.public_id,
             "business_name": owner.business_name,
             "role": staff.role,
             "counter_prefix": staff.counter_prefix,
@@ -473,16 +475,18 @@ def redeem_ticket(req: RedeemTicketRequest, request: Request, db: Session = Depe
 
         business_id = user_row.parent_business_id or user_row.id
         business_name = user_row.business_name
+        owner_public_id = user_row.public_id
         if user_row.parent_business_id:
             owner = db.query(User).filter(User.id == user_row.parent_business_id).first()
             if owner:
                 business_name = owner.business_name
+                owner_public_id = owner.public_id
 
         token = create_access_token({
             "id": business_id,
             "user_id": user_row.id,
             "username": user_row.username,
-            "public_id": user_row.public_id,
+            "public_id": owner_public_id,
             "business_name": business_name,
             "role": user_row.role
         })
@@ -493,7 +497,7 @@ def redeem_ticket(req: RedeemTicketRequest, request: Request, db: Session = Depe
             "id": business_id,
             "user_id": user_row.id,
             "username": user_row.username,
-            "public_id": user_row.public_id,
+            "public_id": owner_public_id,
             "business_name": business_name,
             "role": user_row.role,
             "counter_prefix": user_row.counter_prefix,
