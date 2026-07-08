@@ -812,7 +812,7 @@ def _is_premium(user: User, db: Session = None) -> bool:
     return bool(getattr(user, "is_premium", False))
 
 
-def _sync_subscription_from_cloud(user: User, db: Session):
+def _sync_subscription_from_cloud(user: User, db: Session, force: bool = False):
     if _DB_MODE != "local" or not db:
         return
 
@@ -824,7 +824,7 @@ def _sync_subscription_from_cloud(user: User, db: Session):
     # ── Cooldown guard: skip cloud call if checked recently ──────────────────
     business_id = user.parent_business_id or user.id
     now = time.time()
-    if now - _sub_sync_last.get(business_id, 0) < _SUB_SYNC_COOLDOWN_SECS:
+    if not force and now - _sub_sync_last.get(business_id, 0) < _SUB_SYNC_COOLDOWN_SECS:
         logger.debug(f"[SETTINGS] Subscription cloud sync skipped (cooldown) for business {business_id}")
         return
     _sub_sync_last[business_id] = now
@@ -864,12 +864,12 @@ def _sync_subscription_from_cloud(user: User, db: Session):
         logger.debug(f"[SETTINGS] Background cloud subscription check skipped/failed: {e}")
 
 
-def _subscription_view(user: User, db: Session = None) -> dict:
+def _subscription_view(user: User, db: Session = None, force: bool = False) -> dict:
     """Read-only subscription info for the client (Phase B.5). Staff inherit the
     owner's plan. Admin-managed only — PUT /settings can never modify this."""
     if db:
         try:
-            _sync_subscription_from_cloud(user, db)
+            _sync_subscription_from_cloud(user, db, force=force)
         except Exception:
             pass
     from services.admin_service import effective_plan, _settings_dict
@@ -891,16 +891,16 @@ def _subscription_view(user: User, db: Session = None) -> dict:
 
 
 @router.get("/settings")
-def get_settings(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def get_settings(force: bool = False, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
     """Return current user's app settings (merged with defaults) + read-only
     subscription info (frontend flips AI/PRO gating off the real plan)."""
-    logger.info(f"[SETTINGS] GET /settings requested by user '{current_user.get('username')}' (ID {current_user.get('id')})")
+    logger.info(f"[SETTINGS] GET /settings requested by user '{current_user.get('username')}' (ID {current_user.get('id')}) force={force}")
     user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
         logger.warning(f"[SETTINGS] User with ID {current_user.get('id')} not found")
         raise HTTPException(status_code=404, detail="User not found")
     merged = _get_user_settings(user, db)
-    merged["subscription"] = _subscription_view(user, db)
+    merged["subscription"] = _subscription_view(user, db, force=force)
     return merged
 
 

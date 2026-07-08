@@ -663,10 +663,11 @@ export function AuthProvider({ children }) {
 
   const [settings, setSettings] = useState(null)
 
-  const fetchSettings = useCallback(async () => {
+  const fetchSettings = useCallback(async (force = false) => {
     if (!token) return
     try {
-      const res = await fetch(`${API_BASE}/settings`, {
+      const url = force ? `${API_BASE}/settings?force=true` : `${API_BASE}/settings`
+      const res = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`
         }

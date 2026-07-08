@@ -108,7 +108,7 @@ export default function AppLayout({ children, title }) {
     if (e && e.stopPropagation) e.stopPropagation()
     setCheckingPlan(true)
     try {
-      await fetchSettings()
+      await fetchSettings(true)
     } catch (err) {
       console.error('[SETTINGS] Failed to refresh plan status:', err)
     } finally {
