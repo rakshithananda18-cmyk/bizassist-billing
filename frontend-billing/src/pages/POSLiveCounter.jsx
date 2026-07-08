@@ -2,12 +2,14 @@
 // Page: POSLiveCounter.jsx
 // Description: Owner Live Counters view. Shows active POS cashier sessions,
 //              their active cart status, and live connection tracking.
-//              Enables counter control and monitoring for store owners.
+//              Displays network mode (LAN vs cloud) per counter with clear
+//              visual badges. Includes Settings shortcut for configuration.
 // ============================================================================
 import React, { useEffect, useMemo, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
+import { useReadinessProbe } from '../hooks/useReadinessProbe'
 import { logger } from '../utils/logger'
 import { IS_LOCAL_APP } from '../config'
 
@@ -24,8 +26,244 @@ function relTime(ts) {
   return m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`
 }
 
+// ── Network badge component ───────────────────────────────────────────────────
+function NetworkBadge({ networkMode }) {
+  if (!networkMode) return null
+  const isLocal = networkMode === 'local'
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 4,
+      padding: '2px 8px',
+      borderRadius: 20,
+      fontSize: '0.65rem',
+      fontWeight: 700,
+      letterSpacing: '0.03em',
+      background: isLocal
+        ? 'rgba(34,197,94,0.13)'
+        : 'rgba(99,102,241,0.13)',
+      color: isLocal
+        ? 'var(--success, #22c55e)'
+        : '#818cf8',
+      border: `1px solid ${isLocal ? 'rgba(34,197,94,0.3)' : 'rgba(99,102,241,0.3)'}`,
+    }}>
+      <span style={{
+        width: 5, height: 5, borderRadius: '50%',
+        background: isLocal ? 'var(--success, #22c55e)' : '#818cf8',
+        display: 'inline-block',
+        flexShrink: 0,
+      }} />
+      {isLocal ? 'LAN' : 'Cloud'}
+    </span>
+  )
+}
+
+// ── Connection status strip ───────────────────────────────────────────────────
+function ConnectionStrip({ sseProbe, networkMode }) {
+  const isConnected = sseProbe?.status === 'online'
+  const isChecking  = sseProbe?.status === 'checking'
+  const isLocal     = IS_LOCAL_APP || networkMode === 'local'
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+      padding: '8px 16px',
+      borderRadius: 10,
+      background: isConnected
+        ? 'rgba(34,197,94,0.07)'
+        : isChecking
+          ? 'rgba(234,179,8,0.07)'
+          : 'rgba(239,68,68,0.07)',
+      border: `1px solid ${isConnected ? 'rgba(34,197,94,0.25)' : isChecking ? 'rgba(234,179,8,0.25)' : 'rgba(239,68,68,0.25)'}`,
+      marginBottom: 20,
+    }}>
+      {/* Animated pulse dot */}
+      <span style={{
+        position: 'relative',
+        width: 10,
+        height: 10,
+        flexShrink: 0,
+      }}>
+        <span style={{
+          position: 'absolute',
+          inset: 0,
+          borderRadius: '50%',
+          background: isConnected ? 'var(--success, #22c55e)' : isChecking ? '#eab308' : '#ef4444',
+          animation: isConnected ? 'pulse-dot 2s infinite' : 'none',
+        }} />
+      </span>
+
+      <div style={{ flex: 1 }}>
+        <span style={{
+          fontSize: '0.78rem',
+          fontWeight: 600,
+          color: isConnected ? 'var(--success, #22c55e)' : isChecking ? '#eab308' : '#ef4444',
+        }}>
+          {isConnected ? 'Live feed connected' : isChecking ? 'Connecting…' : 'Live feed disconnected'}
+        </span>
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginLeft: 8 }}>
+          {isLocal ? 'Direct LAN connection — ultra-low latency' : 'Relayed via cloud SSE'}
+        </span>
+      </div>
+
+      {/* Network path indicator */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        <span style={{
+          fontSize: '0.65rem',
+          fontWeight: 700,
+          padding: '2px 8px',
+          borderRadius: 20,
+          background: isLocal ? 'rgba(34,197,94,0.13)' : 'rgba(99,102,241,0.13)',
+          color: isLocal ? 'var(--success, #22c55e)' : '#818cf8',
+          border: `1px solid ${isLocal ? 'rgba(34,197,94,0.3)' : 'rgba(99,102,241,0.3)'}`,
+        }}>
+          {isLocal ? '⚡ LAN' : '☁ Cloud'}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// ── Counter tile ──────────────────────────────────────────────────────────────
+function CounterTile({ s, highlight, onClick }) {
+  const isOffline = s.offline || s.idle
+
+  return (
+    <div
+      onClick={() => !isOffline && onClick(s)}
+      style={{
+        padding: '16px',
+        borderRadius: 12,
+        border: highlight
+          ? '2px solid var(--primary, #c0612a)'
+          : `1px solid var(--border)`,
+        opacity: isOffline ? 0.55 : 1,
+        cursor: isOffline ? 'default' : 'pointer',
+        background: isOffline ? 'rgba(255,255,255,0.015)' : 'var(--card-bg, inherit)',
+        borderStyle: isOffline ? 'dashed' : 'solid',
+        transition: 'transform 0.18s, border-color 0.18s, box-shadow 0.18s',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+      onMouseEnter={(e) => {
+        if (isOffline) return
+        e.currentTarget.style.transform = 'translateY(-2px) scale(1.015)'
+        e.currentTarget.style.borderColor = 'var(--accent)'
+        e.currentTarget.style.boxShadow = '0 6px 24px rgba(0,0,0,0.12)'
+      }}
+      onMouseLeave={(e) => {
+        if (isOffline) return
+        e.currentTarget.style.transform = ''
+        e.currentTarget.style.borderColor = highlight ? 'var(--primary, #c0612a)' : 'var(--border)'
+        e.currentTarget.style.boxShadow = ''
+      }}
+    >
+      {/* Top row: counter label + status */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <span style={{
+          fontSize: '0.75rem',
+          fontWeight: 800,
+          letterSpacing: '0.05em',
+          padding: '2px 10px',
+          borderRadius: 20,
+          background: 'var(--accent-muted, rgba(192,97,42,0.12))',
+          color: 'var(--accent, #c0612a)',
+        }}>
+          {s.counter || '—'}
+        </span>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* Network mode badge */}
+          {!isOffline && s.network_mode && <NetworkBadge networkMode={s.network_mode} />}
+
+          {/* Online/offline pill */}
+          <span style={{
+            fontSize: '0.68rem',
+            fontWeight: 700,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            color: isOffline ? 'var(--text-muted)' : 'var(--success, #22c55e)',
+          }}>
+            <span style={{
+              width: 7, height: 7, borderRadius: '50%',
+              background: isOffline ? 'var(--text-muted)' : 'var(--success, #22c55e)',
+              display: 'inline-block',
+              animation: isOffline ? 'none' : 'pulse-dot 2s infinite',
+            }} />
+            {isOffline ? 'Offline' : 'Live'}
+          </span>
+        </div>
+      </div>
+
+      {/* Cashier name + role */}
+      <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 10 }}>
+        {s.username || 'Unknown'}
+        {s.role && (
+          <span style={{ fontSize: '0.68rem', fontWeight: 500, color: 'var(--text-muted)', marginLeft: 6 }}>
+            ({s.role})
+          </span>
+        )}
+      </div>
+
+      {/* Cart stats */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+        <span style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>
+          {s.item_count || 0} item{(s.item_count || 0) === 1 ? '' : 's'}
+        </span>
+        <span style={{
+          fontSize: '1.2rem',
+          fontWeight: 800,
+          color: isOffline ? 'var(--text-muted)' : 'var(--text-primary)',
+        }}>
+          {isOffline ? '—' : money(s.cart_total)}
+        </span>
+      </div>
+
+      {/* Footer: bill no + last seen */}
+      <div style={{
+        paddingTop: 10,
+        borderTop: '1px solid var(--border)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        fontSize: '0.68rem',
+        color: 'var(--text-muted)',
+      }}>
+        <span>Bill: {s.active_bill || '—'}</span>
+        <span>{isOffline ? '—' : relTime(s._recv)}</span>
+      </div>
+
+      {/* Click hint for online counters */}
+      {!isOffline && (
+        <div style={{
+          position: 'absolute',
+          bottom: 0, left: 0, right: 0,
+          padding: '6px',
+          textAlign: 'center',
+          fontSize: '0.63rem',
+          fontWeight: 600,
+          color: 'var(--accent)',
+          opacity: 0,
+          transition: 'opacity 0.18s',
+          background: 'var(--card-bg, inherit)',
+          borderTop: '1px solid var(--border)',
+        }}
+          className="tile-hint"
+        >
+          Click to view live cart →
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function POSLiveCounter() {
-  const { user, authFetch, settings } = useAuth()
+  const { user, authFetch, settings, networkMode } = useAuth()
+  const { sseProbe } = useReadinessProbe()
   const isOwner = (user?.role || '').toLowerCase() !== 'cashier'
   const [params] = useSearchParams()
   const focusCounter = params.get('counter')
@@ -43,7 +281,6 @@ export default function POSLiveCounter() {
 
   // Fetch staff list to get all configured counters
   useEffect(() => {
-    // Hybrid mode has cloud SSE — live counters work in both cloud and hybrid.
     if (isOwner && (hostingMode === 'cloud' || hostingMode === 'hybrid')) {
       authFetch('/staff')
         .then(r => r.ok ? r.json() : [])
@@ -84,6 +321,7 @@ export default function POSLiveCounter() {
           active_bill: '—',
           offline: true,
           client_id: null,
+          network_mode: null,
           _recv: null
         })
       }
@@ -98,26 +336,20 @@ export default function POSLiveCounter() {
 
       if (configuredCounters.has(prefix)) {
         if (!isStale) {
-          configuredCounters.set(prefix, {
-            ...s,
-            offline: false,
-            idle: false
-          })
+          configuredCounters.set(prefix, { ...s, offline: false, idle: false })
         } else {
-          // Keep metadata but mark as offline
           configuredCounters.set(prefix, {
             ...configuredCounters.get(prefix),
             ...s,
             offline: true,
-            idle: true
+            idle: true,
           })
         }
       } else {
-        // If not in staff list but active, add it dynamically
         configuredCounters.set(prefix, {
           ...s,
           offline: isStale,
-          idle: isStale
+          idle: isStale,
         })
       }
     })
@@ -126,136 +358,196 @@ export default function POSLiveCounter() {
       .sort((a, b) => String(a.counter || '').localeCompare(String(b.counter || '')))
   }, [sessions, staffList])
 
+  const onlineCount = tiles.filter(t => !t.offline && !t.idle).length
+  const totalCount  = tiles.length
+
+  const handleTileClick = (s) => {
+    logger.info(`[COUNTERS] Owner clicking tile to view Counter ${s.counter} (client: ${s.client_id})`)
+    navigate(`/live-view?live_counter=${encodeURIComponent(s.counter)}&client_id=${encodeURIComponent(s.client_id)}`)
+  }
+
   return (
     <AppLayout title="POS Counters">
+      <style>{`
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%       { opacity: 0.6; transform: scale(1.4); }
+        }
+        .counter-tile:hover .tile-hint { opacity: 1 !important; }
+      `}</style>
+
       <div className="slide-up">
         <div className="page-header">
           <div className="page-header-left">
             <h1 className="page-title">POS Counters</h1>
             <p className="page-subtitle">
-              Watch each till in real time — click any counter to view its live cart or edit items.
+              Watch each till in real time — click any counter to view its live cart.
             </p>
           </div>
+
+          {/* Summary chips */}
+          {isOwner && tiles.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+              <span style={{
+                padding: '4px 14px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 700,
+                background: 'rgba(34,197,94,0.12)', color: 'var(--success, #22c55e)',
+                border: '1px solid rgba(34,197,94,0.25)',
+              }}>
+                {onlineCount} Live
+              </span>
+              <span style={{
+                padding: '4px 14px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600,
+                background: 'var(--bg-muted, rgba(255,255,255,0.05))', color: 'var(--text-muted)',
+                border: '1px solid var(--border)',
+              }}>
+                {totalCount} Total
+              </span>
+            </div>
+          )}
         </div>
 
-        <div style={{ maxWidth: 1080, margin: '0 auto', padding: '0 4px 24px' }}>
+        <div style={{ maxWidth: 1080, margin: '0 auto', padding: '0 4px 40px' }}>
+          {/* Non-owner warning */}
           {!isOwner && (
             <div className="alert alert-warning">Only the business owner can view live counters.</div>
           )}
 
-          {/* Only pure local mode (no SSE) can't show live counters */}
+          {/* Local-only mode: cloud upgrade needed */}
           {isOwner && hostingMode === 'local' && (
-            <div className="card" style={{ padding: '40px 24px', textAlign: 'center', maxWidth: 600, margin: '40px auto', borderRadius: 16, border: '1px solid var(--border)' }}>
+            <div className="card" style={{
+              padding: '48px 32px', textAlign: 'center',
+              maxWidth: 560, margin: '48px auto',
+              borderRadius: 18,
+              border: '1px solid var(--border)',
+            }}>
               <div style={{ fontSize: '3rem', marginBottom: 16 }}>☁️</div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>Live Counters needs cloud sync</h2>
-              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: 24, lineHeight: 1.5 }}>
-                Real-time counter monitoring uses cloud SSE. Switch to <strong>Local + Cloud</strong> mode in Settings to enable it — billing stays fast and local, only the live view connects to the cloud.
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 10 }}>
+                Live Counters needs cloud sync
+              </h2>
+              <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: 28, lineHeight: 1.6 }}>
+                Real-time counter monitoring uses cloud SSE. Switch to <strong>Local + Cloud</strong> mode
+                in Settings to enable it — billing stays fast and local, only the live view connects to the cloud.
               </p>
               <button
                 onClick={() => navigate('/settings?tab=hosting')}
                 style={{
-                  background: 'var(--accent)',
-                  color: '#fff',
-                  border: 'none',
-                  padding: '10px 20px',
-                  borderRadius: 6,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  fontSize: '0.88rem',
-                  transition: 'background 0.2s'
+                  background: 'var(--accent)', color: '#fff', border: 'none',
+                  padding: '10px 24px', borderRadius: 8, fontWeight: 700,
+                  cursor: 'pointer', fontSize: '0.88rem', transition: 'opacity 0.2s',
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-hover, var(--accent))'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
+                onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                onMouseLeave={e => e.currentTarget.style.opacity = '1'}
               >
                 Go to Settings
               </button>
             </div>
           )}
 
-          {isOwner && (hostingMode === 'cloud' || hostingMode === 'hybrid') && tiles.length === 0 && (
-            <div className="card" style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)' }}>
-              No cashier counters configured. A till appears here when you add cashiers with counter prefixes under Staff settings.
-            </div>
-          )}
+          {/* Active counter view */}
+          {isOwner && (hostingMode === 'cloud' || hostingMode === 'hybrid') && (
+            <>
+              {/* Connection status strip */}
+              <ConnectionStrip sseProbe={sseProbe} networkMode={networkMode} />
 
-          {isOwner && (hostingMode === 'cloud' || hostingMode === 'hybrid') && tiles.length > 0 && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
-              {tiles.map(s => {
-                const highlight = focusCounter && String(s.counter) === String(focusCounter)
-                const isOffline = s.offline || s.idle
+              {/* Network legend */}
+              <div style={{
+                display: 'flex', gap: 14, alignItems: 'center',
+                marginBottom: 20, flexWrap: 'wrap',
+              }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                  Connection mode:
+                </span>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  fontSize: '0.7rem', fontWeight: 700,
+                  color: 'var(--success, #22c55e)',
+                }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--success, #22c55e)', display: 'inline-block' }} />
+                  LAN — same WiFi/network, ultra-low latency
+                </span>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  fontSize: '0.7rem', fontWeight: 700, color: '#818cf8',
+                }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#818cf8', display: 'inline-block' }} />
+                  Cloud — different network, relayed via internet
+                </span>
+              </div>
 
-                return (
-                  <div
-                    key={s.client_id || s.counter}
-                    className="card"
-                    onClick={() => {
-                      if (isOffline) {
-                        logger.info(`[COUNTERS] Clicked offline counter ${s.counter} — no action`)
-                        return
-                      }
-                      logger.info(`[COUNTERS] Owner clicking tile to view Counter ${s.counter} (client: ${s.client_id})`)
-                      navigate(`/live-view?live_counter=${encodeURIComponent(s.counter)}&client_id=${encodeURIComponent(s.client_id)}`)
-                    }}
-                    style={{
-                      padding: 16, borderRadius: 10,
-                      border: highlight ? '2px solid var(--primary, #c0612a)' : '1px solid var(--border)',
-                      opacity: isOffline ? 0.55 : 1,
-                      cursor: isOffline ? 'default' : 'pointer',
-                      background: isOffline ? 'rgba(255,255,255,0.015)' : 'var(--card-bg, inherit)',
-                      borderStyle: isOffline ? 'dashed' : 'solid',
-                      transition: 'transform 0.2s, border-color 0.2s',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (isOffline) return
-                      e.currentTarget.style.transform = 'scale(1.02)'
-                      e.currentTarget.style.borderColor = 'var(--accent)'
-                    }}
-                    onMouseLeave={(e) => {
-                      if (isOffline) return
-                      e.currentTarget.style.transform = 'scale(1)'
-                      e.currentTarget.style.borderColor = highlight ? 'var(--primary, #c0612a)' : 'var(--border)'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                      <span className="badge badge-muted" style={{ fontSize: '0.8rem', fontWeight: 700 }}>
-                        {s.counter || '—'}
-                      </span>
-                      <span style={{
-                        fontSize: '0.7rem', fontWeight: 600,
-                        color: isOffline ? 'var(--text-muted)' : 'var(--success, #22c55e)',
-                        display: 'inline-flex', alignItems: 'center', gap: 5,
-                      }}>
-                        <span style={{
-                          width: 8, height: 8, borderRadius: '50%',
-                          background: isOffline ? 'var(--text-muted)' : 'var(--success, #22c55e)',
-                          display: 'inline-block',
-                        }} />
-                        {isOffline ? 'Offline' : 'Connected'}
-                      </span>
-                    </div>
-
-                    <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      {s.username || 'Unknown'}
-                      {s.role && <span style={{ fontSize: '0.7rem', fontWeight: 500, color: 'var(--text-muted)', marginLeft: 6 }}>({s.role})</span>}
-                    </div>
-
-                    <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                        {s.item_count || 0} item{(s.item_count || 0) === 1 ? '' : 's'}
-                      </span>
-                      <span style={{ fontSize: '1.15rem', fontWeight: 800, color: isOffline ? 'var(--text-muted)' : 'var(--text-primary)' }}>
-                        {isOffline ? '—' : money(s.cart_total)}
-                      </span>
-                    </div>
-
-                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                      <span>Bill: {s.active_bill || '—'}</span>
-                      <span>{isOffline ? '—' : relTime(s._recv)}</span>
-                    </div>
+              {tiles.length === 0 ? (
+                <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', borderRadius: 12 }}>
+                  <div style={{ fontSize: '2rem', marginBottom: 12 }}>🏪</div>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>No cashier counters configured</div>
+                  <div style={{ fontSize: '0.83rem' }}>
+                    A till appears here when you add cashiers with counter prefixes under{' '}
+                    <span
+                      onClick={() => navigate('/settings')}
+                      style={{ color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline' }}
+                    >
+                      Staff settings
+                    </span>.
                   </div>
-                )
-              })}
-            </div>
+                </div>
+              ) : (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))',
+                  gap: 16,
+                }}>
+                  {tiles.map(s => (
+                    <div key={s.client_id || s.counter} className="counter-tile">
+                      <CounterTile
+                        s={s}
+                        highlight={focusCounter && String(s.counter) === String(focusCounter)}
+                        onClick={handleTileClick}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Settings shortcut */}
+              <div style={{
+                marginTop: 32,
+                padding: '14px 20px',
+                borderRadius: 10,
+                background: 'var(--bg-muted, rgba(255,255,255,0.03))',
+                border: '1px solid var(--border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Configure counters &amp; discovery
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                    Add cashier staff with counter prefixes, or change network / hosting settings.
+                  </div>
+                </div>
+                <button
+                  onClick={() => navigate('/settings?tab=hosting')}
+                  style={{
+                    background: 'transparent', border: '1px solid var(--border)',
+                    color: 'var(--text-secondary)', padding: '6px 16px',
+                    borderRadius: 6, cursor: 'pointer', fontSize: '0.78rem',
+                    fontWeight: 600, flexShrink: 0,
+                    transition: 'border-color 0.2s, color 0.2s',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = 'var(--accent)'
+                    e.currentTarget.style.color = 'var(--accent)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = 'var(--border)'
+                    e.currentTarget.style.color = 'var(--text-secondary)'
+                  }}
+                >
+                  Settings →
+                </button>
+              </div>
+            </>
           )}
         </div>
       </div>

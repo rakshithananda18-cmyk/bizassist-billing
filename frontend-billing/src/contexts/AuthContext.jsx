@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { API_BASE, updateApiBase, IS_LOCAL_APP, CLOUD_URL, LOCAL_URL } from '../config'
 import { logger, setBizId } from '../utils/logger'
 import { reconcileBizIdOnLogin } from '../utils/loginSync'
+import { discoverLocalBackend, getNetworkMode, clearDiscoveryCache } from '../utils/networkDiscovery'
 
 const AuthContext = createContext(null)
 
@@ -26,6 +27,10 @@ export function AuthProvider({ children }) {
   const [businessConfig, setBusinessConfig] = useState(null)
   const [attributesSchema, setAttributesSchema] = useState([])
   const [appReady, setAppReady] = useState(false)
+  // 'local' — connected to owner's backend on same LAN (fast, offline capable)
+  // 'cloud' — connected via cloud (different network or cloud-only mode)
+  const [networkMode, setNetworkMode] = useState(() => getNetworkMode())
+
 
   // Restore session from localStorage on mount
   useEffect(() => {
@@ -100,7 +105,30 @@ export function AuthProvider({ children }) {
         logger.info(`[AUTH] Account home mode confirmed: ${data.db_mode}`)
       }
     }
-  }, [])
+
+    // LAN discovery (non-blocking, cloud URL only): check if the owner's local
+    // backend is reachable on the same WiFi/LAN. If so, switch API_BASE to the
+    // local URL for lower latency and offline capability.
+    // This doesn't block login — it runs in the background after session is saved.
+    const bizId = userObj.public_id || String(userObj.id)
+    discoverLocalBackend(bizId).then(localUrl => {
+      if (localUrl) {
+        // Same LAN — switch to local backend for all subsequent requests
+        try {
+          localStorage.setItem('bizassist_use_lan_db', 'true')
+          localStorage.setItem('bizassist_local_backend_url', localUrl)
+        } catch { /* ignore */ }
+        setNetworkMode('local')
+        logger.info(`[AUTH] Same-network local backend detected: ${localUrl} — switching API_BASE`)
+      } else {
+        setNetworkMode('cloud')
+      }
+    }).catch(err => {
+      logger.debug('[AUTH] LAN discovery failed:', err?.message)
+      setNetworkMode('cloud')
+    })
+  }, [setNetworkMode])
+
 
 
   /**
@@ -806,7 +834,8 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider value={{
       user, token, loading, login, staffLogin, logout, signup, switchMode, setHostingMode, authFetch, profile, fetchProfile, setProfile,
       businessConfig, attributesSchema, fetchBusinessConfig, appReady, setAppReady,
-      settings, fetchSettings
+      settings, fetchSettings,
+      networkMode,   // 'local' | 'cloud' — whether this device is on the same LAN as the owner's backend
     }}>
       {children}
     </AuthContext.Provider>

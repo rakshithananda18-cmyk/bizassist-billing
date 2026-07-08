@@ -1,9 +1,20 @@
 import asyncio
 import logging
+import os
 from typing import Dict, Set, Any, Optional
 from fastapi import HTTPException
 
 logger = logging.getLogger("bizassist.realtime")
+
+# ── Cross-network relay config ─────────────────────────────────────────────────
+# Local (SQLite) backend only: relay pos.* events to the cloud so cashiers
+# on different networks receive them in real time via cloud SSE.
+_CLOUD_URL = os.getenv("CLOUD_URL", "https://rakshit-dev-bizassist.hf.space")
+_DATABASE_URL = os.getenv("DATABASE_URL", "")
+_IS_LOCAL_BACKEND = not _DATABASE_URL.startswith("postgresql")
+
+# Relay events only for these type prefixes — never relay relay events themselves
+_RELAY_PREFIXES = ("pos.",)
 
 
 def delta_event(
@@ -108,14 +119,20 @@ class RealtimeManager:
 
     async def broadcast(self, business_id: int, event: Dict[str, Any]):
         """Broadcast an event to all connected queues for a business_id."""
-        if business_id not in self.connections:
-            return
-            
         event_type = event.get('type')
         if event_type == 'pos.presence':
             logger.debug(f"[REALTIME] Broadcasting to Business {business_id}: {event_type}")
         else:
             logger.info(f"[REALTIME] Broadcasting to Business {business_id}: {event_type}")
+
+        # Cross-network relay: mirror pos.* events to cloud SSE (fire-and-forget).
+        # Only fires on local backends; cloud-connected clients receive the event
+        # via cloud SSE even when on a different network than the owner.
+        if any(event_type.startswith(p) for p in _RELAY_PREFIXES):
+            asyncio.ensure_future(self._relay_to_cloud(business_id, event))
+
+        if business_id not in self.connections:
+            return
         
         # Gather active queues to write
         queues = list(self.connections[business_id])
@@ -146,6 +163,41 @@ class RealtimeManager:
                 # Discard slow reader
                 logger.warning(f"[REALTIME] Queue full for Business {business_id}, dropping connection.")
                 self.unsubscribe(business_id, q)
+
+    async def _relay_to_cloud(self, business_id: int, event: Dict[str, Any]) -> None:
+        """Fire-and-forget relay of a local pos.* event to the cloud SSE hub.
+
+        Only runs on the local (SQLite) backend. Skips events that already came
+        from the cloud (relay_source='local') to prevent echo loops.
+        """
+        if not _IS_LOCAL_BACKEND:
+            return   # we ARE the cloud — no relay needed
+        if event.get("relay_source") == "local":
+            return   # already relayed — don't echo back
+        event_type = event.get("type", "")
+        if not any(event_type.startswith(p) for p in _RELAY_PREFIXES):
+            return   # only relay pos.* events
+
+        try:
+            # Import here to avoid circular deps and keep startup fast
+            import httpx
+            from services.sync_worker import _get_cloud_token
+            cloud_token = _get_cloud_token(business_id)
+            if not cloud_token:
+                return   # no cloud token — hybrid not configured
+
+            relay_payload = dict(event)
+            relay_payload["relay_source"] = "local"
+
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                await client.post(
+                    f"{_CLOUD_URL}/realtime/relay",
+                    json=relay_payload,
+                    headers={"Authorization": f"Bearer {cloud_token}"},
+                )
+        except Exception as e:
+            # Best-effort — never break local SSE if relay fails
+            logger.debug("[REALTIME] Cloud relay failed for %s: %s", event_type, e)
 
     def shutdown(self):
         """Push a shutdown event to all queues to unblock SSE responses during server restart."""

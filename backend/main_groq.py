@@ -33,6 +33,8 @@ from routes.sync import router as sync_router
 from routes.shifts import router as shifts_router   # shift & cash-drawer management (Phase 3)
 from routes.public import router as public_router
 from routes.telemetry import router as telemetry_router  # testing-phase install diagnostics
+from routes.discovery import router as discovery_router  # LAN auto-discovery (Phase 5)
+from routes.realtime_relay import router as relay_router  # cross-network SSE relay (Phase 5)
 from core.api import core_router          # billing ecosystem — wired from core/
 
 from database.db import engine, SessionLocal, DATABASE_URL
@@ -86,6 +88,69 @@ async def lifespan(_app):
                     
     watcher_task = asyncio.create_task(watch_uvicorn_shutdown())
 
+    # ── LAN Discovery: register this backend's IP with the cloud registry ──────
+    # Runs only on the local SQLite backend (not cloud). Best-effort — never
+    # blocks startup. Repeats every 30min to renew the TTL in the cloud registry.
+    async def _discovery_registration_loop():
+        """Register local IP with cloud discovery endpoint every 30 minutes."""
+        import socket, httpx, json as _json, time as _time
+        _db_url = DATABASE_URL or ""
+        if _db_url.startswith("postgresql"):
+            return   # Cloud backend — skip (we ARE the registry, not a registrant)
+
+        CLOUD_URL = os.getenv("CLOUD_URL", "https://rakshit-dev-bizassist.hf.space")
+        INTERVAL = 30 * 60   # renew every 30 minutes
+
+        async def _register_once():
+            try:
+                # Resolve LAN IP
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.connect(("8.8.8.8", 80))
+                    local_ip = s.getsockname()[0]
+
+                # Find the first user's biz public_id from the local DB
+                db = SessionLocal()
+                try:
+                    rows = db.execute(text("SELECT id, settings FROM users LIMIT 5")).fetchall()
+                    biz_ids = []
+                    for row in rows:
+                        uid = row[0]
+                        settings_str = row[1]
+                        if settings_str:
+                            try:
+                                s_dict = _json.loads(settings_str)
+                                pub_id = s_dict.get("public_id") or str(uid)
+                                biz_ids.append(pub_id)
+                            except Exception:
+                                biz_ids.append(str(uid))
+                        else:
+                            biz_ids.append(str(uid))
+                finally:
+                    db.close()
+
+                for biz_id in biz_ids:
+                    try:
+                        async with httpx.AsyncClient(timeout=5.0) as client:
+                            resp = await client.post(
+                                f"{CLOUD_URL}/discover/register",
+                                json={"ip": local_ip, "port": 8001, "biz_id": biz_id}
+                            )
+                        logger.info("[DISCOVER] Registered %s for biz %s → %s", local_ip, biz_id, resp.status_code)
+                    except Exception as e:
+                        logger.debug("[DISCOVER] Registration failed for biz %s: %s", biz_id, e)
+
+            except Exception as e:
+                logger.debug("[DISCOVER] Discovery registration skipped: %s", e)
+
+        # Initial registration at startup
+        await _register_once()
+        # Renew every 30 minutes to keep TTL alive
+        while True:
+            await asyncio.sleep(INTERVAL)
+            await _register_once()
+
+    asyncio.create_task(_discovery_registration_loop())
+
     start_scheduler()
     preload_model_async()
     yield
@@ -93,6 +158,7 @@ async def lifespan(_app):
     watcher_task.cancel()
     realtime_manager.shutdown()
     stop_scheduler()
+
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
 # NOTE: the "null" origin (file:// pages) is intentionally NOT in the defaults —
@@ -233,6 +299,17 @@ def health_check():
     db_type = "postgresql" if _db_url.startswith("postgresql") else "sqlite"
     mode    = "cloud" if db_type == "postgresql" else "local"
 
+    # Expose the local machine's LAN IP so cashier devices can confirm they're
+    # talking to the right backend and so the frontend can display the LAN address.
+    import socket
+    local_ip = None
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as _s:
+            _s.connect(("8.8.8.8", 80))
+            local_ip = _s.getsockname()[0]
+    except Exception:
+        pass
+
     # Probe DB with a cheap round-trip
     try:
         db = SessionLocal()
@@ -262,9 +339,10 @@ def health_check():
             "db_type": db_type,
             "mode":    mode,
             "version": "1.0.0",
+            "local_ip": local_ip,
         }
     except Exception:
-        return {"status": "error", "db": "disconnected"}
+        return {"status": "error", "db": "disconnected", "local_ip": local_ip}
 
 
 # ── Routers ───────────────────────────────────────────────────────────────────
@@ -283,4 +361,6 @@ app.include_router(data_transfer_router)  # Phase 1 – hosting-mode data migrat
 app.include_router(sync_router)           # Phase 2 – hosting-mode synchronization
 app.include_router(shifts_router)         # Phase 3 – shift & cash-drawer management
 app.include_router(public_router)         # Phase 4 - Public share links
+app.include_router(discovery_router)      # Phase 5 - LAN auto-discovery
+app.include_router(relay_router)          # Phase 5 - Cross-network SSE relay
 app.include_router(core_router)           # billing ecosystem (sales + business templates + future)

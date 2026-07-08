@@ -5,7 +5,7 @@
 //              hosting mode transitions (Local/Cloud/Hybrid data migrations).
 // ============================================================================
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { formatIST } from '../utils/format'
@@ -23,6 +23,7 @@ import MigrationModal from '../components/hosting/MigrationModal'
 import BackupModal from '../components/hosting/BackupModal'
 import CustomSelect from '../components/common/CustomSelect'
 import { clearBillingProfileCache } from '../hooks/useBillingProfile'
+import { clearDiscoveryCache } from '../utils/networkDiscovery'
 
 // Sample content shown for each draggable header line in the live preview.
 const PREVIEW_HEADER_CONTENT = {
@@ -140,15 +141,201 @@ function SectionHeader({ title }) {
   )
 }
 
+// ─── Network & Discovery Section ───────────────────────────────────────────────
+function NetworkDiscoverySection({ networkMode, navigate }) {
+  const isLocal   = IS_LOCAL_APP
+  const [cachedUrl, setCachedUrl]   = React.useState(() => {
+    try {
+      const raw = localStorage.getItem('bizassist_discovered_local_url')
+      if (!raw) return null
+      const { url, ts } = JSON.parse(raw)
+      return (url && Date.now() - ts < 10 * 60 * 1000) ? url : null
+    } catch { return null }
+  })
+  const [probing, setProbing] = React.useState(false)
+  const [probeResult, setProbeResult] = React.useState(null)
+
+  const handleTest = async () => {
+    if (!cachedUrl) return
+    setProbing(true)
+    setProbeResult(null)
+    try {
+      const t0 = Date.now()
+      const res = await fetch(`${cachedUrl}/health`, { mode: 'cors', signal: AbortSignal.timeout(3000) })
+      const ms = Date.now() - t0
+      if (res.ok) {
+        const data = await res.json()
+        setProbeResult({ ok: true, ms, mode: data.mode, version: data.version })
+      } else {
+        setProbeResult({ ok: false, error: `HTTP ${res.status}` })
+      }
+    } catch (err) {
+      setProbeResult({ ok: false, error: err?.message || 'Unreachable' })
+    } finally {
+      setProbing(false)
+    }
+  }
+
+  const handleClear = () => {
+    clearDiscoveryCache()
+    setCachedUrl(null)
+    setProbeResult(null)
+    try {
+      localStorage.removeItem('bizassist_use_lan_db')
+      localStorage.removeItem('bizassist_local_backend_url')
+    } catch { /* ignore */ }
+  }
+
+  const modeLabel   = isLocal ? 'Owner Device (local backend)' : (networkMode === 'local' ? 'Same LAN — direct local' : 'Cloud — different network')
+  const modeBadge   = isLocal ? { bg: 'rgba(99,102,241,0.12)', color: '#818cf8', label: '🖥 Owner PC' }
+    : networkMode === 'local' ? { bg: 'rgba(34,197,94,0.12)', color: '#22c55e', label: '⚡ LAN' }
+    : { bg: 'rgba(99,102,241,0.12)', color: '#818cf8', label: '☁ Cloud' }
+
+  return (
+    <>
+      <SectionHeader title="Network & Discovery" />
+
+      {/* Current connection mode */}
+      <div className="card" style={{ padding: 20, marginBottom: 16, borderRadius: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Current Connection Mode
+          </div>
+          <span style={{
+            padding: '4px 14px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700,
+            background: modeBadge.bg, color: modeBadge.color,
+            border: `1px solid ${modeBadge.color}44`,
+          }}>
+            {modeBadge.label}
+          </span>
+        </div>
+        <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
+          {isLocal
+            ? 'You are on the owner\'s device. The local backend runs on this machine — no discovery needed.'
+            : networkMode === 'local'
+              ? 'This device is on the same WiFi/LAN as the owner\'s machine. All data is fetched directly from the local backend for maximum speed.'
+              : 'This device is on a different network. Data is fetched via the cloud backend. Real-time events are relayed via cloud SSE.'}
+        </p>
+      </div>
+
+      {/* Discovered local backend */}
+      {!isLocal && (
+        <div className="card" style={{ padding: 20, marginBottom: 16, borderRadius: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: 12 }}>
+            Discovered Local Backend
+          </div>
+
+          {cachedUrl ? (
+            <>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '10px 14px', borderRadius: 8,
+                background: 'var(--bg-muted, rgba(255,255,255,0.04))',
+                border: '1px solid var(--border)', marginBottom: 12,
+              }}>
+                <span style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--text-primary)', wordBreak: 'break-all' }}>
+                  {cachedUrl}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  className="btn"
+                  onClick={handleTest}
+                  disabled={probing}
+                  style={{ fontSize: '0.8rem', padding: '6px 16px' }}
+                >
+                  {probing ? 'Testing…' : 'Test Connection'}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={handleClear}
+                  style={{ fontSize: '0.8rem', padding: '6px 16px' }}
+                >
+                  Clear & Rediscover
+                </button>
+              </div>
+
+              {probeResult && (
+                <div style={{
+                  marginTop: 10, padding: '8px 14px', borderRadius: 8,
+                  background: probeResult.ok ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
+                  border: `1px solid ${probeResult.ok ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                  fontSize: '0.8rem', color: probeResult.ok ? '#22c55e' : '#ef4444',
+                }}>
+                  {probeResult.ok
+                    ? `✅ Reachable — ${probeResult.ms}ms · mode: ${probeResult.mode} · v${probeResult.version}`
+                    : `❌ Unreachable — ${probeResult.error}`}
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+              <div style={{ marginBottom: 10 }}>
+                No local backend discovered yet. Discovery runs automatically when you log in.
+                If you're on the same WiFi as the owner's machine, it will be detected within a few seconds.
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                Tip: Make sure the owner's machine is running BizAssist and is on the same WiFi network.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* POS Live Counters shortcut */}
+      <div className="card" style={{ padding: 20, marginBottom: 16, borderRadius: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: 4 }}>
+              POS Live Counters
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              Watch all cashier tills in real time — cart values, item counts, and network mode per counter.
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/pos-live-counter')}
+            className="btn"
+            style={{ fontSize: '0.8rem', padding: '6px 16px', flexShrink: 0, marginLeft: 16 }}
+          >
+            Open →
+          </button>
+        </div>
+      </div>
+
+      {/* How it works */}
+      <div style={{
+        padding: '14px 18px', borderRadius: 10,
+        background: 'var(--bg-muted, rgba(255,255,255,0.03))',
+        border: '1px solid var(--border)',
+      }}>
+        <div style={{ fontWeight: 600, fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 8 }}>
+          How LAN discovery works
+        </div>
+        <ul style={{ fontSize: '0.77rem', color: 'var(--text-muted)', lineHeight: 1.7, margin: 0, paddingLeft: 20 }}>
+          <li>Owner's machine registers its LAN IP with the cloud registry on startup</li>
+          <li>Cashier devices query the registry after login and probe the IP directly</li>
+          <li>If reachable on same WiFi → connects locally (ultra-low latency, offline capable)</li>
+          <li>If not reachable → falls back to cloud backend automatically</li>
+          <li>Works on any WiFi — no router configuration or static IP needed</li>
+          <li>Cross-network cashiers still receive real-time events via cloud SSE relay</li>
+        </ul>
+      </div>
+    </>
+  )
+}
+
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: 'general',      label: 'General',       icon: <SettingsIcon size={16} /> },
-  { id: 'transactions', label: 'Transactions',  icon: <BillsIcon size={16} /> },
-  { id: 'inventory',    label: 'Items & Stock', icon: <InventoryIcon size={16} /> },
-  { id: 'print',        label: 'Print & PDF',   icon: <PrinterIcon size={16} /> },
-  { id: 'labels',       label: 'Custom Labels', icon: <TagIcon size={16} /> },
-  { id: 'staff',        label: 'Staff Management',  icon: <ShieldIcon size={16} /> },
-  { id: 'advanced',     label: 'Advanced',      icon: <ZapIcon size={16} /> },
+  { id: 'general',      label: 'General',              icon: <SettingsIcon size={16} /> },
+  { id: 'transactions', label: 'Transactions',          icon: <BillsIcon size={16} /> },
+  { id: 'inventory',    label: 'Items & Stock',         icon: <InventoryIcon size={16} /> },
+  { id: 'print',        label: 'Print & PDF',           icon: <PrinterIcon size={16} /> },
+  { id: 'labels',       label: 'Custom Labels',         icon: <TagIcon size={16} /> },
+  { id: 'staff',        label: 'Staff Management',      icon: <ShieldIcon size={16} /> },
+  { id: 'network',      label: 'Network & Discovery',   icon: <ZapIcon size={16} /> },
+  { id: 'advanced',     label: 'Advanced',              icon: <ZapIcon size={16} /> },
 ]
 
 // ── Global Modal Style Constants ───────────────────────────────────────────
@@ -776,7 +963,8 @@ function HostingModeSection({ currentMode, onModeChange, token, autoSwitchTarget
 // ── 3. MAIN SETTINGS STATE INITIALIZATION ──
 // ============================================================================
 export default function Settings() {
-  const { authFetch, user, token, fetchSettings, switchMode, setHostingMode } = useAuth()
+  const { authFetch, user, token, fetchSettings, switchMode, setHostingMode, networkMode } = useAuth()
+  const navigate = useNavigate()
   const { config, refreshConfig } = useBusinessConfig()
   const { hasLock, setupPasscode, clearPasscode } = useLock()
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
@@ -784,12 +972,15 @@ export default function Settings() {
   const [showPasscodeModal, setShowPasscodeModal] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState(() => {
-    const tabParam = new URLSearchParams(window.location.search).get('tab')
+    let tabParam = new URLSearchParams(window.location.search).get('tab')
+    // Redirect legacy 'hosting' deep-link to the new network tab
+    if (tabParam === 'hosting') tabParam = 'network'
     return (tabParam && TABS.some(t => t.id === tabParam)) ? tabParam : 'general'
   })
 
   useEffect(() => {
-    const tabParam = searchParams.get('tab')
+    let tabParam = searchParams.get('tab')
+    if (tabParam === 'hosting') tabParam = 'network'
     if (tabParam && TABS.some(t => t.id === tabParam) && tabParam !== activeTab) {
       setActiveTab(tabParam)
     }
@@ -2435,6 +2626,12 @@ export default function Settings() {
               </div>
 
             </div>
+          )}
+
+
+          {/* ════════════════════ NETWORK & DISCOVERY ════════════════════════ */}
+          {activeTab === 'network' && !isCashier && (
+            <NetworkDiscoverySection networkMode={networkMode} navigate={navigate} />
           )}
 
           {/* ═══════════════════════════ ADVANCED ═════════════════════════════ */}

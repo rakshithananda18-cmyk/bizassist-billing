@@ -87,7 +87,7 @@ function effectiveHostingMode() {
 // ── 3. STATE INITIALIZATION (COUNTER & DB DATA) ──
 // ============================================================================
 export default function Sales(props = {}) {
-  const { authFetch, profile, user } = useAuth()
+  const { authFetch, profile, user, networkMode } = useAuth()
   // Business-type billing profile (Phase 2) — follows the counter-mode switcher
   // live; FAIL-OPEN (null when offline → no behavior change).
   const { profile: billingProfile } = useBillingProfile()
@@ -1661,11 +1661,13 @@ export default function Sales(props = {}) {
 
   // Live Counters presence (plan §9.2 Stage 1): publish a lightweight READ-ONLY
   // snapshot (counter, item count, cart total, current bill) so the owner's Live
-  // Counters view can watch this till live. Cloud only; this is NOT cart sync —
-  // no cart contents are applied anywhere, just metrics. Debounced on cart edits,
-  // plus a heartbeat; the consumer marks a counter idle when the heartbeat stops.
+  // Counters view can watch this till live.
+  // Fires in cloud mode AND hybrid mode (hybrid = local billing + cloud SSE relay).
+  // network_mode tells the owner's Live Counters view whether this cashier is on
+  // the same LAN ('local') or connecting remotely via cloud ('cloud').
   useEffect(() => {
-    if (effectiveHostingMode() !== 'cloud') return
+    const mode = effectiveHostingMode()
+    if (mode !== 'cloud' && mode !== 'hybrid') return
     if (settingsRef.current?.general?.realtime_sync_sales === false) return
     const counter = getCounterPrefix().replace(/-$/, '')
     const items = (form?.items || []).filter(it => it.product)
@@ -1679,6 +1681,7 @@ export default function Sales(props = {}) {
           cart_total: grandTotal || 0,
           active_bill: activeTab?.name || null,
           status: 'active',
+          network_mode: IS_LOCAL_APP ? 'local' : (networkMode || 'cloud'),
           timestamp: Date.now(),
         }),
       }).catch(() => {})
@@ -1686,7 +1689,7 @@ export default function Sales(props = {}) {
     const t = setTimeout(publish, 600)        // debounce rapid cart edits
     const hb = setInterval(publish, 20000)    // heartbeat while idle
     return () => { clearTimeout(t); clearInterval(hb) }
-  }, [form?.items, grandTotal, activeTab?.name, clientId, getCounterPrefix, authFetch])
+  }, [form?.items, grandTotal, activeTab?.name, clientId, getCounterPrefix, authFetch, networkMode])
 
   // Entry mode: the RESOLVED billing profile wins (it follows the device's
   // counter-mode switcher for multi-type businesses); config is the fallback.
