@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from database.db import get_db
 from database.models import User
-from services.auth import get_current_user
+from services.auth import get_active_user
 
 logger = logging.getLogger("bizassist.sync.staff")
 router = APIRouter(tags=["sync"])
@@ -51,7 +51,7 @@ class StaffPushRequest(BaseModel):
 @router.post("/api/sync/staff-push")
 def sync_staff_push(
     req: StaffPushRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
 ):
     """
