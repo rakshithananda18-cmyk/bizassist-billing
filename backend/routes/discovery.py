@@ -28,6 +28,7 @@ router = APIRouter(tags=["discovery"])
 # { biz_id: [ {ip, port, registered_at, last_seen} ] }
 _REGISTRY: Dict[str, List[dict]] = {}
 _TTL_SECONDS = 2 * 60 * 60   # 2 hours
+TTL_SECONDS = _TTL_SECONDS   # Public alias for tests
 
 
 def _prune(biz_id: str) -> None:
@@ -100,6 +101,7 @@ async def get_local_backends(biz_id: str):
     """
     _prune(biz_id)
     entries = _REGISTRY.get(str(biz_id), [])
+    logger.debug("[DISCOVER] Query biz %s → %d active backend(s)", biz_id, len(entries))
     # Return sorted newest-first so the freshest entry is tried first
     sorted_entries = sorted(entries, key=lambda e: e["last_seen"], reverse=True)
     return {

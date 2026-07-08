@@ -278,10 +278,22 @@ function NetworkDiscoverySection({ networkMode, navigate }) {
                   background: probeResult.ok ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.08)',
                   border: `1px solid ${probeResult.ok ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
                   fontSize: '0.8rem', color: probeResult.ok ? '#22c55e' : '#ef4444',
+                  display: 'flex', alignItems: 'center', gap: 7,
                 }}>
-                  {probeResult.ok
-                    ? `✅ Reachable — ${probeResult.ms}ms · mode: ${probeResult.mode} · v${probeResult.version}`
-                    : `❌ Unreachable — ${probeResult.error}`}
+                  {probeResult.ok ? (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  ) : (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>
+                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  )}
+                  <span>
+                    {probeResult.ok
+                      ? `Reachable — ${probeResult.ms}ms · mode: ${probeResult.mode} · v${probeResult.version}`
+                      : `Unreachable — ${probeResult.error}`}
+                  </span>
                 </div>
               )}
             </>

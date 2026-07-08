@@ -430,7 +430,11 @@ export default function POSLiveCounter() {
               borderRadius: 18,
               border: '1px solid var(--border)',
             }}>
-              <div style={{ fontSize: '3rem', marginBottom: 16 }}>☁️</div>
+              <div style={{ marginBottom: 16, color: 'var(--accent, #c0612a)' }}>
+                <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+                </svg>
+              </div>
               <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 10 }}>
                 Live Counters needs cloud sync
               </h2>
@@ -439,7 +443,7 @@ export default function POSLiveCounter() {
                 in Settings to enable it — billing stays fast and local, only the live view connects to the cloud.
               </p>
               <button
-                onClick={() => navigate('/settings?tab=hosting')}
+                onClick={() => navigate('/settings?tab=network')}
                 style={{
                   background: 'var(--accent)', color: '#fff', border: 'none',
                   padding: '10px 24px', borderRadius: 8, fontWeight: 700,
@@ -484,11 +488,40 @@ export default function POSLiveCounter() {
               </div>
 
               {tiles.length === 0 ? (
-                <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', borderRadius: 12 }}>
-                  <div style={{ fontSize: '2rem', marginBottom: 12 }}>🏪</div>
-                  <div style={{ fontWeight: 600, marginBottom: 6 }}>No cashier counters configured</div>
-                  <div style={{ fontSize: '0.83rem' }}>
-                    A till appears here when you add cashiers with counter prefixes under{' '}
+                <div className="card" style={{ padding: '36px 32px', textAlign: 'center', color: 'var(--text-muted)', borderRadius: 12 }}>
+                  {/* Monitor + LAN network arcs + disconnected X badge */}
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+                    <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      {/* Monitor body */}
+                      <rect x="10" y="26" width="52" height="32" rx="3.5" stroke="currentColor" strokeWidth="2.2"/>
+                      {/* Monitor stand neck */}
+                      <line x1="36" y1="58" x2="36" y2="65" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+                      {/* Monitor stand base */}
+                      <line x1="26" y1="65" x2="46" y2="65" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+                      {/* Screen inner bezel */}
+                      <rect x="15" y="30" width="42" height="22" rx="1.5" stroke="currentColor" strokeWidth="1.4" strokeDasharray="2 1.5" opacity="0.4"/>
+
+                      {/* LAN/WiFi arcs above monitor — 3 concentric signal arcs */}
+                      {/* Outer arc */}
+                      <path d="M20 21 C24 13 48 13 52 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.35"/>
+                      {/* Middle arc */}
+                      <path d="M25 23.5 C28.5 18 43.5 18 47 23.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.55"/>
+                      {/* Inner arc */}
+                      <path d="M30 26 C32.5 22.5 39.5 22.5 42 26" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.8"/>
+                      {/* WiFi dot at base */}
+                      <circle cx="36" cy="27.5" r="2" fill="currentColor" opacity="0.8"/>
+
+                      {/* Disconnected X badge — red circle + X in top-right corner */}
+                      <circle cx="56" cy="16" r="10" fill="var(--danger, #ef4444)" opacity="0.15"/>
+                      <circle cx="56" cy="16" r="10" stroke="var(--danger, #ef4444)" strokeWidth="1.5"/>
+                      <line x1="51.5" y1="11.5" x2="60.5" y2="20.5" stroke="var(--danger, #ef4444)" strokeWidth="2.2" strokeLinecap="round"/>
+                      <line x1="60.5" y1="11.5" x2="51.5" y2="20.5" stroke="var(--danger, #ef4444)" strokeWidth="2.2" strokeLinecap="round"/>
+                    </svg>
+                  </div>
+                  <div style={{ fontWeight: 700, marginBottom: 6, color: 'var(--text-primary)', fontSize: '0.95rem' }}>No cashier counters connected</div>
+                  <div style={{ fontSize: '0.83rem', lineHeight: 1.6 }}>
+                    A counter appears here when a cashier logs in and starts billing.
+                    Make sure cashiers have counter prefixes under{' '}
                     <span
                       onClick={() => navigate('/settings')}
                       style={{ color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline' }}
@@ -497,6 +530,7 @@ export default function POSLiveCounter() {
                     </span>.
                   </div>
                 </div>
+
               ) : (
                 <div style={{
                   display: 'grid',
