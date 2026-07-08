@@ -187,9 +187,23 @@ function NetworkDiscoverySection({ networkMode, navigate }) {
   }
 
   const modeLabel   = isLocal ? 'Owner Device (local backend)' : (networkMode === 'local' ? 'Same LAN — direct local' : 'Cloud — different network')
-  const modeBadge   = isLocal ? { bg: 'rgba(99,102,241,0.12)', color: '#818cf8', label: '🖥 Owner PC' }
-    : networkMode === 'local' ? { bg: 'rgba(34,197,94,0.12)', color: '#22c55e', label: '⚡ LAN' }
-    : { bg: 'rgba(99,102,241,0.12)', color: '#818cf8', label: '☁ Cloud' }
+  const modeBadge   = isLocal
+    ? { bg: 'rgba(99,102,241,0.12)', color: '#818cf8', label: 'Owner PC', icon: (
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+      ) }
+    : networkMode === 'local'
+      ? { bg: 'rgba(34,197,94,0.12)', color: '#22c55e', label: 'LAN', icon: (
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/>
+          </svg>
+        ) }
+      : { bg: 'rgba(99,102,241,0.12)', color: '#818cf8', label: 'Cloud', icon: (
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+          </svg>
+        ) }
 
   return (
     <>
@@ -205,7 +219,9 @@ function NetworkDiscoverySection({ networkMode, navigate }) {
             padding: '4px 14px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700,
             background: modeBadge.bg, color: modeBadge.color,
             border: `1px solid ${modeBadge.color}44`,
+            display: 'inline-flex', alignItems: 'center', gap: 5,
           }}>
+            {modeBadge.icon}
             {modeBadge.label}
           </span>
         </div>

@@ -119,8 +119,18 @@ function ConnectionStrip({ sseProbe, networkMode }) {
           background: isLocal ? 'rgba(34,197,94,0.13)' : 'rgba(99,102,241,0.13)',
           color: isLocal ? 'var(--success, #22c55e)' : '#818cf8',
           border: `1px solid ${isLocal ? 'rgba(34,197,94,0.3)' : 'rgba(99,102,241,0.3)'}`,
+          display: 'inline-flex', alignItems: 'center', gap: 4,
         }}>
-          {isLocal ? '⚡ LAN' : '☁ Cloud'}
+          {isLocal ? (
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/>
+            </svg>
+          ) : (
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+            </svg>
+          )}
+          {isLocal ? 'LAN' : 'Cloud'}
         </span>
       </div>
     </div>
@@ -457,19 +467,18 @@ export default function POSLiveCounter() {
                 <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
                   Connection mode:
                 </span>
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                  fontSize: '0.7rem', fontWeight: 700,
-                  color: 'var(--success, #22c55e)',
-                }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--success, #22c55e)', display: 'inline-block' }} />
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
+                  fontSize: '0.7rem', fontWeight: 700, color: 'var(--success, #22c55e)' }}>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/>
+                  </svg>
                   LAN — same WiFi/network, ultra-low latency
                 </span>
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                  fontSize: '0.7rem', fontWeight: 700, color: '#818cf8',
-                }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#818cf8', display: 'inline-block' }} />
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
+                  fontSize: '0.7rem', fontWeight: 700, color: '#818cf8' }}>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+                  </svg>
                   Cloud — different network, relayed via internet
                 </span>
               </div>
