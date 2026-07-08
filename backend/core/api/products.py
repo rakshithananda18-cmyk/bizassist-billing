@@ -268,6 +268,8 @@ def create_product(
             raise HTTPException(status_code=409, detail=str(e))
 
     db.commit()
+    from services.immediate_sync import trigger_data_sync
+    trigger_data_sync(bid, db)
     background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "product"})
     db.refresh(p)
     logger.info("[PRODUCTS] created product %s (biz=%s)", p.id, bid)
@@ -333,6 +335,8 @@ def update_product(
         p.attributes = json.dumps(attrs)
 
     db.commit()
+    from services.immediate_sync import trigger_data_sync
+    trigger_data_sync(bid, db)
     background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "product"})
     db.refresh(p)
     barcodes = PB.list_barcodes(db, bid, p.id)
@@ -363,6 +367,8 @@ def add_product_barcode(
             source="manual",
         )
         db.commit()
+        from services.immediate_sync import trigger_data_sync
+        trigger_data_sync(bid, db)
         background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "product"})
     except PB.BarcodeConflict as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -461,6 +467,8 @@ def stock_adjustment(
             note=req.note or "manual adjustment",
         )
         db.commit()
+        from services.immediate_sync import trigger_data_sync
+        trigger_data_sync(bid, db)
         background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "product"})
     except Exception as e:
         db.rollback()
@@ -519,6 +527,8 @@ def bulk_opening_stock(
                 "balance_after": movement.balance_after,
             })
         db.commit()
+        from services.immediate_sync import trigger_data_sync
+        trigger_data_sync(bid, db)
         background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "product"})
     except HTTPException:
         db.rollback()

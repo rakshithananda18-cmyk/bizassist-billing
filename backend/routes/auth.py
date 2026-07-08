@@ -578,6 +578,20 @@ def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(get_a
 
     db.commit()
     db.refresh(user)
+
+    # Immediately push profile changes to the cloud
+    from services.immediate_sync import push_profile_to_cloud
+    push_profile_to_cloud(user.id, {
+        "business_name": req.business_name,
+        "gstin": req.gstin,
+        "phone": req.phone,
+        "email": req.email,
+        "address": req.address,
+        "state_code": req.state_code,
+        "pan": req.pan,
+        "logo": req.logo,
+        "upi_vpa": req.upi_vpa,
+    })
     
     return {
         "id": user.id,

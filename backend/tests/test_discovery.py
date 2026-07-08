@@ -60,7 +60,7 @@ class TestDiscoveryRegister:
         })
         assert resp.status_code == 200
         data = resp.json()
-        assert data["status"] == "ok"
+        assert data["status"] == "registered"
         assert "BA-TEST01" in _REGISTRY
 
     def test_register_overwrites_existing_ip(self):
@@ -130,7 +130,8 @@ class TestDiscoveryList:
             "ip": "10.0.0.99",
             "port": 8001,
             "url": "http://10.0.0.99:8001",
-            "registered_at": time.time() - TTL_SECONDS - 10   # expired
+            "registered_at": time.time() - TTL_SECONDS - 10,  # expired
+            "last_seen": time.time() - TTL_SECONDS - 10
         }]
 
         resp = client.get("/discover/BA-TTL")
@@ -168,7 +169,7 @@ class TestDiscoveryDeregister:
         client = TC(app)
 
         client.post("/discover/register", json={"ip": "192.168.5.5", "port": 8001, "biz_id": "BA-DEL"})
-        resp = client.delete("/discover/register", json={"ip": "192.168.5.5", "biz_id": "BA-DEL"})
+        resp = client.request("DELETE", "/discover/register", json={"ip": "192.168.5.5", "port": 8001, "biz_id": "BA-DEL"})
         assert resp.status_code == 200
 
         remaining = _REGISTRY.get("BA-DEL", [])
@@ -182,9 +183,9 @@ class TestDiscoveryDeregister:
 class TestRealtimeRelayEchoSuppression:
     """Unit tests for RealtimeManager._relay_to_cloud echo suppression logic."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_relay_skips_cloud_backend(self):
-        """If DATABASE_URL starts with postgresql, relay should be a no-op."""
+        """Cloud instances should not relay to another cloud instance."""
         import services.realtime as rt
         original = rt._IS_LOCAL_BACKEND
         rt._IS_LOCAL_BACKEND = False
@@ -195,7 +196,7 @@ class TestRealtimeRelayEchoSuppression:
         finally:
             rt._IS_LOCAL_BACKEND = original
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_relay_skips_echoed_events(self):
         """Events tagged relay_source='local' must not be relayed again."""
         import services.realtime as rt
@@ -213,7 +214,7 @@ class TestRealtimeRelayEchoSuppression:
         finally:
             rt._IS_LOCAL_BACKEND = original
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_relay_skips_non_pos_events(self):
         """Only pos.* events should be relayed; billing.* events must not be."""
         import services.realtime as rt
@@ -226,7 +227,7 @@ class TestRealtimeRelayEchoSuppression:
         finally:
             rt._IS_LOCAL_BACKEND = original
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_relay_calls_cloud_for_pos_events(self):
         """For a valid pos.* event on a local backend with a cloud token, httpx should be called."""
         import services.realtime as rt

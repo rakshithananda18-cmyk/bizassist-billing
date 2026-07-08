@@ -235,6 +235,8 @@ def create_customer(
     )
     db.add(c)
     db.commit()
+    from services.immediate_sync import trigger_data_sync
+    trigger_data_sync(bid, db)
     db.refresh(c)
     dto = _customer_out(c)
     background_tasks.add_task(
@@ -284,6 +286,8 @@ def update_customer(
             setattr(c, field, val)
 
     db.commit()
+    from services.immediate_sync import trigger_data_sync
+    trigger_data_sync(bid, db)
     db.refresh(c)
     outstanding, last_date = _compute_customer_stats(db, bid, customer_id)
     dto = _customer_out(c, outstanding, last_date)
@@ -394,6 +398,8 @@ def create_vendor(
     )
     db.add(v)
     db.commit()
+    from services.immediate_sync import trigger_data_sync
+    trigger_data_sync(bid, db)
     db.refresh(v)
     dto = _vendor_out(v, 0.0, None)
     background_tasks.add_task(
@@ -443,6 +449,8 @@ def update_vendor(
             setattr(v, field, val)
 
     db.commit()
+    from services.immediate_sync import trigger_data_sync
+    trigger_data_sync(bid, db)
     db.refresh(v)
     outstanding, last_date = _compute_vendor_stats(db, bid, vendor_id)
     dto = _vendor_out(v, outstanding, last_date)

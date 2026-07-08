@@ -154,5 +154,10 @@ def patch_config(req: ConfigPatch,
 
     row.overrides = json.dumps(merged)
     db.commit()
+
+    # Immediately push settings to cloud
+    from services.immediate_sync import trigger_data_sync
+    trigger_data_sync(bid, db)
+
     logger.info("[BUSINESS] biz=%s overrides updated (keys=%s)", bid, sorted(req.overrides.keys()))
     return {"template_key": row.template_key, "config": resolved}
