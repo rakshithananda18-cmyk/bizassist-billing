@@ -35,6 +35,7 @@ from routes.public import router as public_router
 from routes.telemetry import router as telemetry_router  # testing-phase install diagnostics
 from routes.discovery import router as discovery_router  # LAN auto-discovery (Phase 5)
 from routes.realtime_relay import router as relay_router  # cross-network SSE relay (Phase 5)
+from routes.sync_staff import router as sync_staff_router  # immediate staff sync to cloud
 from core.api import core_router          # billing ecosystem — wired from core/
 
 from database.db import engine, SessionLocal, DATABASE_URL
@@ -363,4 +364,5 @@ app.include_router(shifts_router)         # Phase 3 – shift & cash-drawer mana
 app.include_router(public_router)         # Phase 4 - Public share links
 app.include_router(discovery_router)      # Phase 5 - LAN auto-discovery
 app.include_router(relay_router)          # Phase 5 - Cross-network SSE relay
+app.include_router(sync_staff_router)     # Phase 5 - Immediate staff sync
 app.include_router(core_router)           # billing ecosystem (sales + business templates + future)

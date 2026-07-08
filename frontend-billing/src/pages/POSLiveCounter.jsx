@@ -281,27 +281,43 @@ export default function POSLiveCounter() {
   const [, tick] = useState(0)
   const navigate = useNavigate()
 
-  // Resolve hosting mode preference
+  // Resolve hosting mode —————————————————————————————————————————————————————
+  // Source of truth priority:
+  //   1. If cloud URL (IS_LOCAL_APP=false) → always 'cloud'
+  //   2. Stored localStorage key (set by MigrationModal on mode change)
+  //   3. Settings from backend (general.hosting_mode)
+  //   4. Fallback: if SSE is connected, treat as capable ('hybrid')
+  //   5. Last resort: 'local'
   const clientMode = (typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_hosting_mode')) || null
+  const settingsMode = settings?.general?.hosting_mode || null
+  const sseConnected = sseProbe?.sse?.status === 'online'
   const hostingMode = !IS_LOCAL_APP
     ? 'cloud'
-    : (clientMode || settings?.general?.hosting_mode || 'local')
+    : (clientMode || settingsMode || (sseConnected ? 'hybrid' : 'local'))
+
+  // Whether we can show the live counter view
+  // True for cloud, hybrid, OR local app with active SSE (user just hasn't set the mode yet)
+  const canShowCounters = hostingMode !== 'local' || sseConnected
 
   const [staffList, setStaffList] = useState([])
 
-  // Fetch staff list to get all configured counters
+  // Always fetch staff list for owners — we need it to show configured counter tiles
+  // even before any cashier sends a presence event
   useEffect(() => {
-    if (isOwner && (hostingMode === 'cloud' || hostingMode === 'hybrid')) {
-      authFetch('/staff')
-        .then(r => r.ok ? r.json() : [])
-        .then(data => setStaffList(data || []))
-        .catch(err => logger.error('[COUNTERS] failed to fetch staff list', err))
-    }
-  }, [isOwner, hostingMode, authFetch])
+    if (!isOwner) return
+    authFetch('/staff')
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        logger.debug('[COUNTERS] staff list loaded:', (data || []).length, 'members')
+        setStaffList(data || [])
+      })
+      .catch(err => logger.error('[COUNTERS] failed to fetch staff list', err))
+  }, [isOwner, authFetch])
 
-  // Listen to SSE presence updates (cloud and hybrid both have SSE)
+  // Always listen to SSE presence events for owners
+  // (SSE is connected whenever the app is in cloud or hybrid mode)
   useEffect(() => {
-    if (hostingMode === 'local') return
+    if (!isOwner) return
 
     const onSync = (e) => {
       const d = e.detail
@@ -311,7 +327,7 @@ export default function POSLiveCounter() {
     window.addEventListener('sync-event', onSync)
     const iv = setInterval(() => tick(t => t + 1), 5000)   // refresh "last seen" / idle
     return () => { window.removeEventListener('sync-event', onSync); clearInterval(iv) }
-  }, [hostingMode])
+  }, [isOwner])
 
   // Merge configured staff counter prefixes with active presence snapshots
   const tiles = useMemo(() => {
@@ -422,8 +438,8 @@ export default function POSLiveCounter() {
             <div className="alert alert-warning">Only the business owner can view live counters.</div>
           )}
 
-          {/* Local-only mode: cloud upgrade needed */}
-          {isOwner && hostingMode === 'local' && (
+          {/* Local-only mode: cloud upgrade needed — only when SSE is genuinely not available */}
+          {isOwner && !canShowCounters && (
             <div className="card" style={{
               padding: '48px 32px', textAlign: 'center',
               maxWidth: 560, margin: '48px auto',
@@ -458,7 +474,7 @@ export default function POSLiveCounter() {
           )}
 
           {/* Active counter view */}
-          {isOwner && (hostingMode === 'cloud' || hostingMode === 'hybrid') && (
+          {isOwner && canShowCounters && (
             <>
               {/* Connection status strip */}
               <ConnectionStrip sseProbe={sseProbe} networkMode={networkMode} />

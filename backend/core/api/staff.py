@@ -10,12 +10,14 @@ All routes here are owner-only (`restrict_cashier`) and scoped to the caller's
 business — owner A can never see or touch owner B's staff.
 """
 import logging
+import threading
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+import os
 
 from database.db import get_db
 from database.models import User
@@ -49,6 +51,43 @@ def _norm_prefix(p: Optional[str]) -> Optional[str]:
     import re
     token = re.sub(r"[^A-Za-z0-9_]", "", p.strip()).rstrip("-")[:8]
     return token or None
+
+
+def _push_staff_to_cloud(business_id: int, staff_records: list) -> None:
+    """
+    Fire-and-forget: push staff records to cloud immediately after a CRUD op.
+    Runs in a background thread so the local API response is never blocked.
+    Only active on the local (SQLite) backend.
+    """
+    # Only run on local backends (SQLite DB). Cloud instances push to themselves.
+    _db_url = os.environ.get("DATABASE_URL", "sqlite")
+    if not _db_url.startswith("sqlite"):
+        return
+
+    def _run():
+        try:
+            import httpx
+            from services.sync_worker import _get_cloud_token, CLOUD_URL
+            token = _get_cloud_token(business_id)
+            if not token:
+                logger.warning("[STAFF-SYNC] No cloud token available for business %s — staff push skipped", business_id)
+                return
+            resp = httpx.post(
+                f"{CLOUD_URL}/api/sync/staff-push",
+                json={"staff": staff_records},
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=8.0,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                logger.info("[STAFF-SYNC] Pushed %d staff record(s) to cloud (upserted=%s deleted=%s)",
+                            len(staff_records), data.get("upserted"), data.get("deleted"))
+            else:
+                logger.warning("[STAFF-SYNC] Cloud returned %s: %s", resp.status_code, resp.text[:200])
+        except Exception as e:
+            logger.warning("[STAFF-SYNC] Push failed (non-critical): %s", e)
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def _staff_out(u: User) -> dict:
@@ -145,6 +184,15 @@ def create_staff(req: CreateStaff, current_user: dict = Depends(restrict_cashier
     db.refresh(staff)
     logger.info("[STAFF] created '%s' (internal=%s, role=%s) under business %s",
                 bare_name, staff.username, role, bid)
+    # Immediately sync to cloud so the cashier can log in from any device
+    _push_staff_to_cloud(bid, [{
+        "staff_login_name": staff.staff_login_name,
+        "internal_username": staff.username,
+        "hashed_password": staff.password,
+        "role": staff.role,
+        "counter_prefix": staff.counter_prefix,
+        "deleted": False,
+    }])
     return _staff_out(staff)
 
 
@@ -166,6 +214,15 @@ def update_staff(staff_id: int, req: UpdateStaff,
     db.commit()
     db.refresh(staff)
     logger.info("[STAFF] updated %s under business %s", staff_id, bid)
+    # Re-sync to cloud so password/role/counter changes are immediately available
+    _push_staff_to_cloud(bid, [{
+        "staff_login_name": staff.staff_login_name,
+        "internal_username": staff.username,
+        "hashed_password": staff.password,
+        "role": staff.role,
+        "counter_prefix": staff.counter_prefix,
+        "deleted": False,
+    }])
     return _staff_out(staff)
 
 
@@ -176,7 +233,17 @@ def delete_staff(staff_id: int, current_user: dict = Depends(restrict_cashier), 
     staff = db.query(User).filter(User.id == staff_id, User.parent_business_id == bid).first()
     if not staff:
         raise HTTPException(status_code=404, detail="Staff member not found")
+    bare = staff.staff_login_name or staff.username
     db.delete(staff)
     db.commit()
     logger.info("[STAFF] deleted %s under business %s", staff_id, bid)
+    # Immediately remove from cloud so deleted cashiers can no longer log in
+    _push_staff_to_cloud(bid, [{
+        "staff_login_name": bare,
+        "internal_username": "",
+        "hashed_password": "",
+        "role": "",
+        "counter_prefix": None,
+        "deleted": True,
+    }])
     return {"deleted": staff_id}
