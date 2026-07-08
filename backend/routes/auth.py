@@ -127,6 +127,26 @@ def reclaim_local(req: ReclaimLocalRequest, db: Session = Depends(get_db)):
     user.password = hash_password(req.password)
     if req.business_name:
         user.business_name = req.business_name
+
+    # If the BizID changed, the cloud tenant was recreated from scratch.
+    # Wipe the local database tables for this business so we start fresh and don't push old data to the new cloud account.
+    if old_bizid and old_bizid != req.public_id:
+        logger.warning(
+            f"[AUTH] Reclaimed account '{uname}' has a new BizID ({old_bizid} -> {req.public_id}). "
+            f"Clearing stale local transactional and master data for local business ID {user.id}..."
+        )
+        from sqlalchemy import text
+        from database.db import Base
+        
+        # 1. Delete staff members associated with the business
+        db.execute(text("DELETE FROM users WHERE parent_business_id = :bid"), {"bid": user.id})
+        
+        # 2. Delete all rows in other tables having a business_id column
+        for table_name, table in Base.metadata.tables.items():
+            if "business_id" in table.columns and table_name != "users":
+                logger.info(f"[AUTH] Wiping table: {table_name}")
+                db.execute(text(f"DELETE FROM {table_name} WHERE business_id = :bid"), {"bid": user.id})
+
     db.commit()
     db.refresh(user)
     logger.warning(
