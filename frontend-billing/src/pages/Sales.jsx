@@ -1306,6 +1306,10 @@ export default function Sales(props = {}) {
         invalidateCache('customers', uid)
         clearTimeout(syncDebounceTimer)
         syncDebounceTimer = setTimeout(() => load(), 800)
+      } else if (e.detail?.type === 'sync.reconnect') {
+        // On reconnect, do a full reload to catch any changes missed while offline.
+        clearTimeout(syncDebounceTimer)
+        syncDebounceTimer = setTimeout(() => load(), 800)
       }
     }
     // On reconnect: push outbox to backend, no data pull needed (local is truth).

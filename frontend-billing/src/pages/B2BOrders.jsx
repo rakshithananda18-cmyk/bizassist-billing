@@ -167,7 +167,7 @@ export default function B2BOrders() {
       const isRealtimeGlobalEnabled = currentSettings?.general?.realtime_sync_global !== false
       if (!isRealtimeGlobalEnabled) return
       logger.debug('[ORDERS] Real-time sync event received:', e.detail)
-      if (['order', 'party', 'product'].includes(e.detail.entity)) {
+      if (['order', 'party', 'product'].includes(e.detail.entity) || e.detail?.type === 'sync.reconnect') {
         loadOrders()
       }
     }

@@ -417,9 +417,24 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         # timeout on chunk N still banks chunks 1..N-1 (the outbox shrinks each
         # cycle) instead of the all-or-nothing batch that stalled at "N pending".
         total_pushed = 0
-        for start in range(0, len(pairs), _PUSH_CHUNK_SIZE):
+        total_pairs  = len(pairs)
+        for start in range(0, total_pairs, _PUSH_CHUNK_SIZE):
             chunk = pairs[start:start + _PUSH_CHUNK_SIZE]
             chunk_changes = [c for (_it, c) in chunk]
+
+            # Collect entity names in this chunk for the progress broadcast
+            chunk_entities = sorted({c["entity"] for c in chunk_changes})
+
+            # Broadcast progress BEFORE sending so UI reflects "in flight" state
+            _safe_broadcast(business_id, {
+                "type":          "sync.progress",
+                "phase":         "push",
+                "entities":      chunk_entities,
+                "done":          total_pushed,
+                "total":         total_pairs,
+                "chunk_size":    len(chunk_changes),
+            })
+
             try:
                 resp = httpx.post(
                     f"{CLOUD_URL}/api/sync/push",
@@ -437,6 +452,16 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                     it.error = None
                 db.commit()
                 total_pushed += len(chunk_changes)
+
+                # Broadcast progress AFTER success so UI reflects shrinking queue
+                _safe_broadcast(business_id, {
+                    "type":    "sync.progress",
+                    "phase":   "push",
+                    "entities": chunk_entities,
+                    "done":    total_pushed,
+                    "total":   total_pairs,
+                    "chunk_size": len(chunk_changes),
+                })
             except Exception as e:
                 err_msg = str(e)
 
@@ -494,40 +519,34 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 # chunks already committed above stay synced (progress preserved).
                 return
 
-        if total_pushed:
-            log = SyncLog(
-                business_id=business_id,
-                status="success",
-                synced_at=datetime.utcnow()
+        unsynced_count = (
+            db.query(SyncQueue)
+            .filter(SyncQueue.business_id == business_id, SyncQueue.synced_at.is_(None))
+            .count()
+        )
+        if total_pushed or unsynced_count == 0:
+            last_success = (
+                db.query(SyncLog)
+                .filter(SyncLog.business_id == business_id, SyncLog.status == "success")
+                .order_by(SyncLog.synced_at.desc())
+                .first()
             )
-            db.add(log)
-            db.commit()
-            logger.info("[SYNC_WORKER] Successfully pushed %s changes for business_id=%s", total_pushed, business_id)
-        else:
-            # If we didn't push any changes (queue is empty or already synced), check if
-            # there are 0 pending items. If so, and our previous run was a failure,
-            # write a success log to clear the error state on the UI.
-            unsynced_count = (
-                db.query(SyncQueue)
-                .filter(SyncQueue.business_id == business_id, SyncQueue.synced_at.is_(None))
-                .count()
-            )
-            if unsynced_count == 0:
-                last_log = (
-                    db.query(SyncLog)
-                    .filter(SyncLog.business_id == business_id)
-                    .order_by(SyncLog.synced_at.desc())
-                    .first()
+            if last_success:
+                last_success.synced_at = datetime.utcnow()
+                last_success.error = None
+            else:
+                last_success = SyncLog(
+                    business_id=business_id,
+                    status="success",
+                    synced_at=datetime.utcnow()
                 )
-                if last_log and last_log.status == "failed":
-                    log = SyncLog(
-                        business_id=business_id,
-                        status="success",
-                        synced_at=datetime.utcnow()
-                    )
-                    db.add(log)
-                    db.commit()
-                    logger.info("[SYNC_WORKER] Cleared previous sync error for business_id=%s (now online & fully synced)", business_id)
+                db.add(last_success)
+            db.commit()
+
+            if total_pushed:
+                logger.info("[SYNC_WORKER] Successfully pushed %s changes for business_id=%s", total_pushed, business_id)
+            else:
+                logger.info("[SYNC_WORKER] Already fully in sync for business_id=%s. Updated last synced timestamp.", business_id)
 
     # The hybrid worker is PUSH-ONLY (local → cloud backup). Cloud data is
     # subscription-gated, so we never auto-pull it down. A cloud→local data sync
@@ -591,10 +610,26 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                     "stock_ledger", "b2b_ledgers", "shift_cash_movements",
                 )
                 _ordered = sorted(pulled.items(), key=lambda kv: 1 if kv[0] in _child_last else 0)
+
+                # Pre-compute total for progress reporting
+                _pull_total    = sum(len(recs) for _, recs in _ordered if recs)
+                _pull_done     = 0
+
                 for table_name, records in _ordered:
                     model_cls = _MODEL_MAP.get(table_name)
                     if not model_cls:
                         continue
+
+                    if records:
+                        # Broadcast progress at the start of each entity batch
+                        _safe_broadcast(business_id, {
+                            "type":     "sync.progress",
+                            "phase":    "pull",
+                            "entities": [table_name],
+                            "done":     _pull_done,
+                            "total":    _pull_total,
+                            "chunk_size": len(records),
+                        })
                     
                     for record in records:
                         rec_uid = record.get("uid")
@@ -611,6 +646,167 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                                 )
                                 continue
                             existing = db.query(model_cls).filter(model_cls.uid == rec_uid).first()
+
+                            # (DEDUP) If uid lookup found nothing, try a natural-key fallback
+                            # before inserting a new row. This prevents duplicates when:
+                            #   • A local row was created before uid backfill (uid=NULL).
+                            #   • A cloud→local pull fires after data was already created locally
+                            #     and pushed up, but the local row's uid was not yet recorded.
+                            # On a match we UPDATE the existing row AND write the cloud uid to it
+                            # so future pulls use the fast uid path.
+                            if existing is None:
+                                cols = {c.name for c in model_cls.__table__.columns}
+                                biz_id_val = record.get("business_id") or business_id
+
+                                if table_name == "invoices" and "invoice_id" in cols:
+                                    # Invoices: match by human-readable invoice number
+                                    inv_id_str = record.get("invoice_id")
+                                    if inv_id_str:
+                                        existing = (
+                                            db.query(model_cls)
+                                            .filter(
+                                                model_cls.business_id == biz_id_val,
+                                                model_cls.invoice_id  == inv_id_str,
+                                            )
+                                            .first()
+                                        )
+                                        if existing:
+                                            logger.info(
+                                                "[SYNC_WORKER] Dedup pull: matched invoices.invoice_id=%s — updating uid %s→%s",
+                                                inv_id_str,
+                                                getattr(existing, "uid", None),
+                                                rec_uid,
+                                            )
+
+                                elif table_name == "invoice_payments" and "idempotency_key" in cols:
+                                    # Payments: match by idempotency key (exact-once guarantee)
+                                    idem = record.get("idempotency_key")
+                                    if idem:
+                                        existing = (
+                                            db.query(model_cls)
+                                            .filter(
+                                                model_cls.business_id     == biz_id_val,
+                                                model_cls.idempotency_key == idem,
+                                            )
+                                            .first()
+                                        )
+                                        if existing:
+                                            logger.info(
+                                                "[SYNC_WORKER] Dedup pull: matched invoice_payments.idempotency_key=%s — updating uid",
+                                                idem,
+                                            )
+
+                                elif table_name == "customers" and "phone" in cols:
+                                    # Customers: match by (business_id, phone) — phone is
+                                    # the most stable unique identifier for a customer.
+                                    phone = record.get("phone")
+                                    name  = record.get("name")
+                                    if phone:
+                                        existing = (
+                                            db.query(model_cls)
+                                            .filter(
+                                                model_cls.business_id == biz_id_val,
+                                                model_cls.phone       == phone,
+                                            )
+                                            .first()
+                                        )
+                                    elif name:
+                                        # Fallback: name match (less reliable but better than dup)
+                                        existing = (
+                                            db.query(model_cls)
+                                            .filter(
+                                                model_cls.business_id == biz_id_val,
+                                                model_cls.name        == name,
+                                            )
+                                            .first()
+                                        )
+                                    if existing:
+                                        logger.info(
+                                            "[SYNC_WORKER] Dedup pull: matched customers id=%s by phone/name — updating uid",
+                                            existing.id,
+                                        )
+
+                                elif table_name == "vendors" and "phone" in cols:
+                                    # Vendors: match by (business_id, phone) same logic as customers
+                                    phone = record.get("phone")
+                                    name  = record.get("name")
+                                    if phone:
+                                        existing = (
+                                            db.query(model_cls)
+                                            .filter(
+                                                model_cls.business_id == biz_id_val,
+                                                model_cls.phone       == phone,
+                                            )
+                                            .first()
+                                        )
+                                    elif name:
+                                        existing = (
+                                            db.query(model_cls)
+                                            .filter(
+                                                model_cls.business_id == biz_id_val,
+                                                model_cls.name        == name,
+                                            )
+                                            .first()
+                                        )
+                                    if existing:
+                                        logger.info(
+                                            "[SYNC_WORKER] Dedup pull: matched vendors id=%s by phone/name — updating uid",
+                                            existing.id,
+                                        )
+
+                                elif table_name == "products" and "name" in cols:
+                                    # Products: match by (business_id, name) — product names
+                                    # within a business are typically unique.
+                                    pname = record.get("name")
+                                    if pname:
+                                        existing = (
+                                            db.query(model_cls)
+                                            .filter(
+                                                model_cls.business_id == biz_id_val,
+                                                model_cls.name        == pname,
+                                            )
+                                            .first()
+                                        )
+                                    if existing:
+                                        logger.info(
+                                            "[SYNC_WORKER] Dedup pull: matched products id=%s by name='%s' — updating uid",
+                                            existing.id, pname,
+                                        )
+
+                                elif table_name == "purchase_invoices" and "invoice_number" in cols:
+                                    # Purchase bills: match by invoice number from supplier
+                                    inv_num = record.get("invoice_number")
+                                    if inv_num:
+                                        existing = (
+                                            db.query(model_cls)
+                                            .filter(
+                                                model_cls.business_id    == biz_id_val,
+                                                model_cls.invoice_number == inv_num,
+                                            )
+                                            .first()
+                                        )
+                                    if existing:
+                                        logger.info(
+                                            "[SYNC_WORKER] Dedup pull: matched purchase_invoices.invoice_number=%s — updating uid",
+                                            inv_num,
+                                        )
+
+                                elif table_name == "expenses" and "idempotency_key" in cols:
+                                    # Expenses: match by idempotency key if present
+                                    idem = record.get("idempotency_key")
+                                    if idem:
+                                        existing = (
+                                            db.query(model_cls)
+                                            .filter(
+                                                model_cls.business_id     == biz_id_val,
+                                                model_cls.idempotency_key == idem,
+                                            )
+                                            .first()
+                                        )
+                                    if existing:
+                                        logger.info(
+                                            "[SYNC_WORKER] Dedup pull: matched expenses by idempotency_key — updating uid",
+                                        )
                         else:
                             if rec_id:
                                 existing = db.query(model_cls).filter(model_cls.id == rec_id).first()
@@ -678,7 +874,22 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                                 table_name, rec_id, str(orig).strip().splitlines()[0],
                             )
 
+                    if records:
+                            _pull_done += len(records)
+
                 db.commit()
+
+                # Final progress event — done == total clears the banner in 2.5 s
+                if _pull_total > 0:
+                    _safe_broadcast(business_id, {
+                        "type":     "sync.progress",
+                        "phase":    "pull",
+                        "entities": [],
+                        "done":     _pull_total,
+                        "total":    _pull_total,
+                        "chunk_size": 0,
+                    })
+
                 
                 # Broadcast local SSE sync triggers to update browser tabs!
                 entities_to_broadcast = set()

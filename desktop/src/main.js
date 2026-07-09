@@ -95,6 +95,25 @@ function createMainWindow() {
       mainWindow.webContents.toggleDevTools();
       e.preventDefault();
     }
+    // Ctrl+R -> Reload/Refresh
+    if (input.control && input.key.toLowerCase() === 'r') {
+      if (input.shift) {
+        // Ctrl+Shift+R -> Hard Reload (clear cache first)
+        mainWindow.webContents.session.clearCache().then(() => {
+          mainWindow.webContents.reloadIgnoringCache();
+        });
+      } else {
+        mainWindow.webContents.reload();
+      }
+      e.preventDefault();
+    }
+    // Ctrl+F5 -> Hard Reload
+    if (input.control && input.key === 'F5') {
+      mainWindow.webContents.session.clearCache().then(() => {
+        mainWindow.webContents.reloadIgnoringCache();
+      });
+      e.preventDefault();
+    }
   });
 
   // "Dashboard BIZASSIST" (frontend-ai) opens in its own window;
@@ -135,6 +154,37 @@ function openAiWindow(url) {
     icon: path.join(__dirname, '..', 'build', 'icon.png'),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
+  
+  aiWindow.webContents.on('before-input-event', (e, input) => {
+    if (input.type !== 'keyDown') return;
+    if (input.key === 'F11') {
+      aiWindow.setFullScreen(!aiWindow.isFullScreen());
+      e.preventDefault();
+    }
+    if (input.control && input.shift && input.key.toLowerCase() === 'i') {
+      aiWindow.webContents.toggleDevTools();
+      e.preventDefault();
+    }
+    // Ctrl+R -> Reload/Refresh
+    if (input.control && input.key.toLowerCase() === 'r') {
+      if (input.shift) {
+        aiWindow.webContents.session.clearCache().then(() => {
+          aiWindow.webContents.reloadIgnoringCache();
+        });
+      } else {
+        aiWindow.webContents.reload();
+      }
+      e.preventDefault();
+    }
+    // Ctrl+F5 -> Hard Reload
+    if (input.control && input.key === 'F5') {
+      aiWindow.webContents.session.clearCache().then(() => {
+        aiWindow.webContents.reloadIgnoringCache();
+      });
+      e.preventDefault();
+    }
+  });
+
   aiWindow.loadURL(url || AI_URL);
   aiWindow.on('closed', () => { aiWindow = null; });
 }

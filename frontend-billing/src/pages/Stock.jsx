@@ -106,7 +106,7 @@ export default function Stock() {
       const isStockSyncEnabled = currentSettings?.general?.realtime_sync_stock !== false
       if (!isStockSyncEnabled) return
       logger.debug('[STOCK] Real-time sync event received:', e.detail)
-      if (['product', 'invoice', 'purchase', 'godown'].includes(e.detail.entity)) {
+      if (['product', 'invoice', 'purchase', 'godown'].includes(e.detail.entity) || e.detail?.type === 'sync.reconnect') {
         load()
       }
     }

@@ -450,24 +450,10 @@ def list_invoices(
     q = db.query(Invoice).filter(Invoice.business_id == bid)
 
     if from_date:
-        try:
-            # IST midnight → UTC
-            ist_start = datetime.strptime(from_date, "%Y-%m-%d").replace(tzinfo=IST)
-            utc_start = ist_start.astimezone(timezone.utc).replace(tzinfo=None)
-            q = q.filter(Invoice.invoice_date >= utc_start)
-        except ValueError:
-            pass  # malformed date — ignore, return all
+        q = q.filter(Invoice.invoice_date >= from_date)
 
     if to_date:
-        try:
-            # IST end-of-day (23:59:59) → UTC
-            ist_end = datetime.strptime(to_date, "%Y-%m-%d").replace(
-                hour=23, minute=59, second=59, tzinfo=IST
-            )
-            utc_end = ist_end.astimezone(timezone.utc).replace(tzinfo=None)
-            q = q.filter(Invoice.invoice_date <= utc_end)
-        except ValueError:
-            pass
+        q = q.filter(Invoice.invoice_date <= to_date)
 
     order = Invoice.invoice_date.desc() if sort != "asc" else Invoice.invoice_date.asc()
     q = q.order_by(order, Invoice.id.desc())

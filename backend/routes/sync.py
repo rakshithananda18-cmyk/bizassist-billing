@@ -471,16 +471,29 @@ def get_queue_depth(
     Local Endpoint. Returns number of pending queue items and latest execution stats.
     """
     business_id = _resolve_business_id_by_username(current_user, db)
-    
-    # Query pending counts
+
+    # Query pending items — fetch entity column too for breakdown
     try:
-        pending_count = (
-            db.query(SyncQueue)
+        pending_items = (
+            db.query(SyncQueue.entity, SyncQueue.operation)
             .filter(SyncQueue.business_id == business_id, SyncQueue.synced_at.is_(None))
-            .count()
+            .order_by(SyncQueue.created_at.asc())
+            .all()
         )
+        pending_count = len(pending_items)
+
+        # Build per-entity counts, e.g. {"invoices": 3, "payments": 1}
+        entity_counts: dict = {}
+        for row in pending_items:
+            entity_counts[row.entity] = entity_counts.get(row.entity, 0) + 1
+
+        # The "next" entity is the oldest unsynced one (first in FIFO order)
+        next_entity = pending_items[0].entity if pending_items else None
+
     except Exception:
-        pending_count = 0
+        pending_count  = 0
+        entity_counts  = {}
+        next_entity    = None
 
     # Query last run log
     try:
@@ -494,10 +507,12 @@ def get_queue_depth(
         last_log = None
 
     return {
-        "pending_count": pending_count,
+        "pending_count":  pending_count,
+        "entity_counts":  entity_counts,   # {"invoices": 3, "customers": 1, ...}
+        "next_entity":    next_entity,      # entity currently at front of queue
         "last_sync_time": last_log.synced_at.isoformat() if last_log else None,
-        "last_status": last_log.status if last_log else "idle",
-        "last_error": last_log.error if last_log else None,
+        "last_status":    last_log.status if last_log else "idle",
+        "last_error":     last_log.error  if last_log else None,
     }
 
 

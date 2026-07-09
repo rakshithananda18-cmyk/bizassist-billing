@@ -314,6 +314,126 @@ def _backfill_null_uids(conn):
     conn.commit()
 
 
+# ---------------------------------------------------------------------------
+# UID DEDUP + UNIQUE INDEX
+#
+# Dedup runs ONCE per table — only when the partial unique index doesn't exist
+# yet (first boot after this code shipped).  Once the index is in place the DB
+# itself prevents duplicates, so the table scan is never repeated.
+# ---------------------------------------------------------------------------
+
+# Financially meaningful tables where uid duplicates must be cleaned first.
+_DEDUP_TABLES = [
+    "invoices", "invoice_payments", "customers", "vendors", "products",
+    "purchase_invoices", "expenses", "inventory", "godowns",
+    "stock_transfers", "purchase_orders",
+]
+
+
+def _ensure_uid_unique_indexes(conn):
+    """For every UID-tracked table:
+
+    1. If the partial unique index does NOT yet exist → run dedup first (once,
+       this boot only), then create the index.
+    2. If the index already exists → skip entirely (zero table scans).
+
+    The partial index (`WHERE uid IS NOT NULL`) means NULL uids produced during
+    backfill never conflict with each other.  Works on SQLite and PostgreSQL.
+    """
+    from sqlalchemy import inspect as sa_inspect
+    inspector = sa_inspect(conn)
+    existing  = set(inspector.get_table_names())
+    is_pg     = conn.dialect.name == "postgresql"
+
+    for table in _UID_TABLES:
+        if table not in existing:
+            continue
+        try:
+            cols = {c["name"] for c in inspector.get_columns(table)}
+            if "uid" not in cols:
+                continue
+
+            idx_name = f"uix_{table}_uid_notnull"
+
+            # ── Check whether the index already exists ──────────────────────
+            if is_pg:
+                already = conn.execute(text(
+                    "SELECT 1 FROM pg_indexes WHERE indexname = :n"
+                ), {"n": idx_name}).fetchone()
+            else:
+                already = conn.execute(text(
+                    "SELECT 1 FROM sqlite_master WHERE type='index' AND name=:n"
+                ), {"n": idx_name}).fetchone()
+
+            if already:
+                continue  # Index present — DB already enforces uniqueness, nothing to do
+
+            # ── Index absent: dedup first (once), then create index ─────────
+            if table in _DEDUP_TABLES and "business_id" in cols:
+                try:
+                    if is_pg:
+                        result = conn.execute(text(f"""
+                            WITH ranked AS (
+                                SELECT id,
+                                       ROW_NUMBER() OVER (
+                                           PARTITION BY uid, business_id
+                                           ORDER BY id DESC
+                                       ) AS rn
+                                FROM   \"{table}\"
+                                WHERE  uid IS NOT NULL
+                            )
+                            DELETE FROM \"{table}\"
+                            WHERE  id IN (SELECT id FROM ranked WHERE rn > 1)
+                        """))
+                        removed = result.rowcount
+                    else:
+                        dup_ids = conn.execute(text(f"""
+                            SELECT id FROM {table}
+                            WHERE uid IS NOT NULL
+                              AND id NOT IN (
+                                  SELECT MAX(id) FROM {table}
+                                  WHERE uid IS NOT NULL
+                                  GROUP BY uid, business_id
+                              )
+                        """)).fetchall()
+                        removed = len(dup_ids)
+                        for (dup_id,) in dup_ids:
+                            conn.execute(
+                                text(f"DELETE FROM {table} WHERE id = :i"),
+                                {"i": dup_id},
+                            )
+                    if removed:
+                        logger.info(
+                            "[Migration] Dedup uid: removed %s duplicate rows from %s",
+                            removed, table,
+                        )
+                    conn.commit()
+                except Exception as dedup_err:
+                    logger.error("[Migration] Dedup uid %s: %s", table, dedup_err)
+
+            # ── Create the partial unique index ─────────────────────────────
+            try:
+                if is_pg:
+                    conn.execute(text(f"""
+                        CREATE UNIQUE INDEX IF NOT EXISTS {idx_name}
+                        ON \"{table}\" (uid)
+                        WHERE uid IS NOT NULL
+                    """))
+                else:
+                    conn.execute(text(f"""
+                        CREATE UNIQUE INDEX {idx_name}
+                        ON {table} (uid)
+                        WHERE uid IS NOT NULL
+                    """))
+                logger.info("[Migration] Created partial uid unique index on %s", table)
+                conn.commit()
+            except Exception as idx_err:
+                logger.warning("[Migration] uid unique index for %s: %s", table, idx_err)
+
+        except Exception as e:
+            logger.error("[Migration] _ensure_uid_unique_indexes %s: %s", table, e)
+
+
 def _migrate_session_nulls(conn):
     try:
         conn.execute(text(
@@ -398,6 +518,7 @@ def run_migrations_and_seed():
     with engine.connect() as conn:
         _backfill_null_business_ids(conn)
         _backfill_null_uids(conn)
+        _ensure_uid_unique_indexes(conn)  # dedup once + create partial unique index (no-op after first boot)
         _backfill_staff_login_name(conn)
         _migrate_session_nulls(conn)
 

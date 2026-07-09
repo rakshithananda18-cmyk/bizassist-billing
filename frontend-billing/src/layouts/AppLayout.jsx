@@ -218,12 +218,13 @@ export default function AppLayout({ children, title }) {
     }
   }, [effectiveMode, token])
 
+  const userId = user?.id || 'default'
+
   const [syncHealth, setSyncHealth] = React.useState(() => {
     if (window.__syncStatus) {
       return window.__syncStatus
     }
     const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true
-    const userId = user?.id || 'default'
     return {
       status: isOnline ? 'connecting' : 'error',
       error: isOnline ? null : 'No internet connection. Client is offline.',
@@ -232,6 +233,17 @@ export default function AppLayout({ children, title }) {
       isOnline
     }
   })
+
+  // Live sync progress from SSE sync.progress events
+  // { entities: ['invoices','customers'], done: 3, total: 7 } | null
+  const [syncProgress, setSyncProgress] = React.useState(null)
+  const syncProgressTimerRef = React.useRef(null)
+
+  const [lastAutoRefresh, setLastAutoRefresh] = React.useState(() => {
+    return localStorage.getItem(`sync_last_autorefresh_${userId}`) || null
+  })
+  const [showRefreshFlash, setShowRefreshFlash] = React.useState(false)
+
   const [showSyncPopover, setShowSyncPopover] = React.useState(false)
   const syncPopoverRef = React.useRef(null)
   const syncBtnRef = React.useRef(null)
@@ -240,7 +252,26 @@ export default function AppLayout({ children, title }) {
     const handleStatusChange = (e) => {
       setSyncHealth(e.detail)
     }
+    // Consume sync.progress SSE events (emitted by sync_worker per chunk)
+    const handleSyncProgress = (e) => {
+      const d = e.detail || {}
+      if (d.type === 'sync.progress') {
+        setSyncProgress({ entities: d.entities || [], done: d.done || 0, total: d.total || 0, phase: d.phase || 'push' })
+        // Auto-clear progress banner 2.5s after the batch completes
+        if (d.done >= d.total && d.total > 0) {
+          clearTimeout(syncProgressTimerRef.current)
+          syncProgressTimerRef.current = setTimeout(() => setSyncProgress(null), 2500)
+        }
+      } else if (d.type === 'sync.reconnect') {
+        const nowStr = new Date().toISOString()
+        localStorage.setItem(`sync_last_autorefresh_${userId}`, nowStr)
+        setLastAutoRefresh(nowStr)
+        setShowRefreshFlash(true)
+        setTimeout(() => setShowRefreshFlash(false), 4000)
+      }
+    }
     window.addEventListener('sync-status-change', handleStatusChange)
+    window.addEventListener('sync-event', handleSyncProgress)
 
     // Request fresh status from active listener on mount
     window.dispatchEvent(new CustomEvent('sync-status-request'))
@@ -258,9 +289,34 @@ export default function AppLayout({ children, title }) {
     }
     document.addEventListener('mousedown', handleOutsideClick)
 
+    // ── Tab visibility refresh ──────────────────────────────────────────────
+    // When user comes back to a tab hidden for > 5 min, silently re-fetch all
+    // page list data (invoices, stock, etc.). Draft/form state is never reset
+    // — pages only call their fetchData() when they receive sync.reconnect.
+    // This mirrors the behaviour of Google Docs, Notion, and most modern apps.
+    const STALE_THRESHOLD_MS = 5 * 60 * 1000   // 5 minutes
+    let hiddenAt = null
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now()
+      } else if (document.visibilityState === 'visible' && hiddenAt) {
+        const hiddenFor = Date.now() - hiddenAt
+        hiddenAt = null
+        if (hiddenFor >= STALE_THRESHOLD_MS) {
+          window.dispatchEvent(new CustomEvent('sync-event', {
+            detail: { type: 'sync.reconnect' }
+          }))
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     return () => {
       window.removeEventListener('sync-status-change', handleStatusChange)
+      window.removeEventListener('sync-event', handleSyncProgress)
       document.removeEventListener('mousedown', handleOutsideClick)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      clearTimeout(syncProgressTimerRef.current)
     }
   }, [])
 
@@ -650,113 +706,157 @@ export default function AppLayout({ children, title }) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="brand-name">{profile?.business_name || user?.business_name || 'BizAssist'}</div>
               {isSyncOn && (
-                <div
-                  ref={syncBtnRef}
-                  className={`brand-tag sync-health-pill ${syncHealth.status}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setShowSyncPopover(!showSyncPopover)
-                  }}
-                  style={{
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    padding: '2px 8px',
-                    borderRadius: '12px',
-                    fontSize: '0.68rem',
-                    fontWeight: '600',
-                    marginTop: '4px',
-                    width: 'fit-content',
-                    transition: 'all 0.2s ease',
-                    backgroundColor: isSyncPaused
-                      ? 'rgba(245, 158, 11, 0.1)'
-                      : (effectiveMode === 'hybrid'
-                          ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'rgba(239, 68, 68, 0.1)' :
-                             queueDepth.pending_count > 0 ? 'rgba(245, 158, 11, 0.1)' :
-                             !syncHealth.isOnline ? 'rgba(255, 255, 255, 0.05)' : 'rgba(34, 197, 94, 0.1)')
-                          : (syncHealth.status === 'connected' ? 'rgba(34, 197, 94, 0.1)' :
-                             syncHealth.status === 'connecting' ? 'rgba(245, 158, 11, 0.1)' :
-                             'rgba(239, 68, 68, 0.1)')),
-                    color: isSyncPaused
-                      ? 'var(--warning, #f59e0b)'
-                      : (effectiveMode === 'hybrid'
-                          ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger, #ef4444)' :
-                             queueDepth.pending_count > 0 ? 'var(--warning, #f59e0b)' :
-                             !syncHealth.isOnline ? 'var(--text-muted)' : 'var(--success, #22c55e)')
-                          : (syncHealth.status === 'connected' ? 'var(--success, #22c55e)' :
-                             syncHealth.status === 'connecting' ? 'var(--warning, #f59e0b)' :
-                             'var(--danger, #ef4444)')),
-                    border: '1px solid currentColor',
-                    textTransform: 'none',
-                    letterSpacing: 'normal'
-                  }}
-                  title="Click to view sync health check details"
-                >
-                  {isSyncPaused ? (
-                    <>
-                      <AlertIcon size={10} strokeWidth={2.5} />
-                      <span>Sync Paused</span>
-                    </>
-                  ) : effectiveMode === 'hybrid' ? (
-                    <>
-                      {/* Offline is the highest priority — shown before pending/error */}
-                      {!syncHealth.isOnline ? (
-                        <>
-                          <AlertIcon size={10} strokeWidth={2.5} />
-                          <span>Sync Offline</span>
-                        </>
-                      ) : queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? (
-                        <>
-                          <AlertIcon size={10} strokeWidth={2.5} />
-                          <span>Sync Error</span>
-                        </>
-                      ) : queueDepth.pending_count > 0 ? (
-                        <>
-                          <span className="sync-spinner-small" />
-                          <span>{queueDepth.pending_count} pending</span>
-                        </>
-                      ) : (
-                        <>
-                          <CheckIcon size={10} strokeWidth={2.5} />
-                          <span>Sync Live</span>
-                        </>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      {syncHealth.status === 'connected' && (
-                        <>
-                          <CheckIcon size={10} strokeWidth={2.5} />
-                          <span>Sync Live</span>
-                        </>
-                      )}
-                      {syncHealth.status === 'connecting' && (
-                        <>
-                          <span className="sync-spinner-small" />
-                          <span>Connecting...</span>
-                        </>
-                      )}
-                      {syncHealth.status === 'error' && (
-                        <>
-                          <AlertIcon size={10} strokeWidth={2.5} />
-                          <span>Sync Error</span>
-                        </>
-                      )}
-                      {/* 'offline' is a dedicated status emitted by handleOffline */}
-                      {syncHealth.status === 'offline' && (
-                        <>
-                          <AlertIcon size={10} strokeWidth={2.5} />
-                          <span>Offline</span>
-                        </>
-                      )}
-                      {syncHealth.status === 'disconnected' && (
-                        <>
-                          <span>Disconnected</span>
-                        </>
-                      )}
-                    </>
-                  )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div
+                    ref={syncBtnRef}
+                    className={`brand-tag sync-health-pill ${syncHealth.status}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setShowSyncPopover(!showSyncPopover)
+                    }}
+                    style={{
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      fontSize: '0.68rem',
+                      fontWeight: '600',
+                      marginTop: '4px',
+                      width: 'fit-content',
+                      transition: 'all 0.2s ease',
+                      backgroundColor: isSyncPaused
+                        ? 'rgba(245, 158, 11, 0.1)'
+                        : (effectiveMode === 'hybrid'
+                            ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'rgba(239, 68, 68, 0.1)' :
+                               queueDepth.pending_count > 0 ? 'rgba(245, 158, 11, 0.1)' :
+                               !syncHealth.isOnline ? 'rgba(255, 255, 255, 0.05)' : 'rgba(34, 197, 94, 0.1)')
+                            : (syncHealth.status === 'connected' ? 'rgba(34, 197, 94, 0.1)' :
+                               syncHealth.status === 'connecting' ? 'rgba(245, 158, 11, 0.1)' :
+                               'rgba(239, 68, 68, 0.1)')),
+                      color: isSyncPaused
+                        ? 'var(--warning, #f59e0b)'
+                        : (effectiveMode === 'hybrid'
+                            ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger, #ef4444)' :
+                               queueDepth.pending_count > 0 ? 'var(--warning, #f59e0b)' :
+                               !syncHealth.isOnline ? 'var(--text-muted)' : 'var(--success, #22c55e)')
+                            : (syncHealth.status === 'connected' ? 'var(--success, #22c55e)' :
+                               syncHealth.status === 'connecting' ? 'var(--warning, #f59e0b)' :
+                               'var(--danger, #ef4444)')),
+                      border: '1px solid currentColor',
+                      textTransform: 'none',
+                      letterSpacing: 'normal'
+                    }}
+                    title="Click to view sync health check details"
+                  >
+                    {isSyncPaused ? (
+                      <>
+                        <AlertIcon size={10} strokeWidth={2.5} />
+                        <span>Sync Paused</span>
+                      </>
+                    ) : effectiveMode === 'hybrid' ? (
+                      <>
+                        {/* Offline is the highest priority — shown before pending/error */}
+                        {!syncHealth.isOnline ? (
+                          <>
+                            <AlertIcon size={10} strokeWidth={2.5} />
+                            <span>Sync Offline</span>
+                          </>
+                        ) : queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? (
+                          <>
+                            <AlertIcon size={10} strokeWidth={2.5} />
+                            <span>Sync Error</span>
+                          </>
+                        ) : queueDepth.pending_count > 0 ? (
+                          <>
+                            <span className="sync-spinner-small" />
+                            <span>{queueDepth.pending_count} pending</span>
+                          </>
+                        ) : (
+                          <>
+                            {showRefreshFlash ? (
+                              <span className="sync-spinner-small" style={{ borderTopColor: 'var(--success)' }} />
+                            ) : (
+                              <CheckIcon size={10} strokeWidth={2.5} />
+                            )}
+                            <span>{showRefreshFlash ? 'Sync Refreshed' : 'Sync Live'}</span>
+                          </>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {syncHealth.status === 'connected' && (
+                          <>
+                            {showRefreshFlash ? (
+                              <span className="sync-spinner-small" style={{ borderTopColor: 'var(--success)' }} />
+                            ) : (
+                              <CheckIcon size={10} strokeWidth={2.5} />
+                            )}
+                            <span>{showRefreshFlash ? 'Sync Refreshed' : 'Sync Live'}</span>
+                          </>
+                        )}
+                        {syncHealth.status === 'connecting' && (
+                          <>
+                            <span className="sync-spinner-small" />
+                            <span>Connecting...</span>
+                          </>
+                        )}
+                        {syncHealth.status === 'error' && (
+                          <>
+                            <AlertIcon size={10} strokeWidth={2.5} />
+                            <span>Sync Error</span>
+                          </>
+                        )}
+                        {/* 'offline' is a dedicated status emitted by handleOffline */}
+                        {syncHealth.status === 'offline' && (
+                          <>
+                            <AlertIcon size={10} strokeWidth={2.5} />
+                            <span>Offline</span>
+                          </>
+                        )}
+                        {syncHealth.status === 'disconnected' && (
+                          <>
+                            <span>Disconnected</span>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {/* Manual Refresh App Content button (especially useful in windows desktop app wrapper) */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      window.dispatchEvent(new CustomEvent('sync-event', {
+                        detail: { type: 'sync.reconnect' }
+                      }))
+                    }}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid var(--border)',
+                      padding: '3px',
+                      color: 'var(--text-muted, #718096)',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '50%',
+                      transition: 'all 0.2s',
+                      marginTop: '4px'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = 'var(--text-primary)'
+                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = 'var(--text-muted)'
+                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'
+                    }}
+                    title="Refresh Page Content"
+                  >
+                    <SyncIcon size={11} className={showRefreshFlash ? 'sync-spinner-small' : ''} />
+                  </button>
                 </div>
               )}
             </div>
@@ -859,17 +959,151 @@ export default function AppLayout({ children, title }) {
                     </span>
                   </div>
 
-                  {effectiveMode === 'hybrid' && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Sync Outbox</span>
-                      <span style={{
-                        fontWeight: '600',
-                        color: isSyncPaused ? 'var(--warning, #f59e0b)' : (queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)')
-                      }}>
-                        {isSyncPaused ? 'Paused — Pro Required' : (queueDepth.pending_count > 0 ? `${queueDepth.pending_count} pending` : 'Fully Synced')}
-                      </span>
-                    </div>
-                  )}
+                  {effectiveMode === 'hybrid' && (() => {
+                      // Human-friendly entity label map
+                      const ENTITY_LABEL = {
+                        invoices:                 'Invoices',
+                        invoice_payments:         'Payments',
+                        customers:                'Customers',
+                        products:                 'Products',
+                        inventory:                'Inventory',
+                        stock_ledger:             'Stock Ledger',
+                        product_barcodes:         'Barcodes',
+                        purchase_invoices:        'Purchase Bills',
+                        purchase_invoice_items:   'Purchase Items',
+                        expenses:                 'Expenses',
+                        godowns:                  'Godowns',
+                        vendors:                  'Vendors',
+                        b2b_ledger:               'B2B Ledger',
+                      }
+                      const fmtEntity = (e) => ENTITY_LABEL[e] || (e ? e.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '')
+
+                      const isActivelySyncing = !!(syncProgress && syncProgress.total > 0 && syncProgress.done < syncProgress.total)
+                      const pct = syncProgress && syncProgress.total > 0
+                        ? Math.round((syncProgress.done / syncProgress.total) * 100)
+                        : 0
+
+                      // When not actively syncing but queue is non-empty, show next_entity
+                      const nextEntityLabel = !isActivelySyncing && queueDepth.next_entity
+                        ? fmtEntity(queueDepth.next_entity)
+                        : null
+
+                      // Per-entity pills from entity_counts
+                      const entityPills = queueDepth.entity_counts && Object.keys(queueDepth.entity_counts).length > 0
+                        ? Object.entries(queueDepth.entity_counts)
+                        : null
+
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+
+                          {/* Outbox summary row */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>Sync Outbox</span>
+                            <span style={{
+                              fontWeight: '600',
+                              color: isSyncPaused ? 'var(--warning, #f59e0b)' : (queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)')
+                            }}>
+                              {isSyncPaused ? 'Paused — Pro Required' : (queueDepth.pending_count > 0 ? `${queueDepth.pending_count} pending` : 'Fully Synced')}
+                            </span>
+                          </div>
+
+                          {/* Per-entity pills — visible when idle with pending items */}
+                          {!isActivelySyncing && entityPills && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', paddingLeft: 2 }}>
+                              {entityPills.map(([ent, cnt]) => (
+                                <span key={ent} style={{
+                                  fontSize: '0.7rem', fontWeight: 600,
+                                  background: 'rgba(245,158,11,0.12)',
+                                  border: '1px solid rgba(245,158,11,0.3)',
+                                  borderRadius: 10, padding: '2px 7px',
+                                  color: 'var(--warning, #f59e0b)',
+                                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                                }}>
+                                  {fmtEntity(ent)} <span style={{ opacity: 0.75 }}>×{cnt}</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* LIVE: Syncing Now banner — visible while sync.progress SSE arrives */}
+                          {isActivelySyncing && (() => {
+                            const isPush  = (syncProgress.phase || 'push') === 'push'
+                            const accent  = isPush ? '#68d391' : '#63b3ed'  // green=up, blue=down
+                            const accentA = isPush ? 'rgba(104,211,145,' : 'rgba(99,179,237,'
+                            const dirLabel = isPush
+                              ? '↑ Local → Cloud'
+                              : '↓ Cloud → Local'
+                            return (
+                              <div style={{
+                                background: `${accentA}0.07)`,
+                                border: `1px solid ${accentA}0.25)`,
+                                borderRadius: 8, padding: '8px 10px',
+                                display: 'flex', flexDirection: 'column', gap: 6,
+                              }}>
+                                {/* Header row: spinner + direction + count */}
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.73rem', color: accent, fontWeight: 700 }}>
+                                    <span className="sync-spinner-small" style={{ borderColor: `${accentA}0.25)`, borderTopColor: accent }} />
+                                    Syncing
+                                  </span>
+                                  {/* Direction badge */}
+                                  <span style={{
+                                    fontSize: '0.67rem', fontWeight: 700,
+                                    background: `${accentA}0.13)`,
+                                    border: `1px solid ${accentA}0.3)`,
+                                    borderRadius: 10, padding: '2px 8px',
+                                    color: accent, letterSpacing: '0.01em',
+                                  }}>
+                                    {dirLabel}
+                                  </span>
+                                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                    {syncProgress.done} / {syncProgress.total}
+                                  </span>
+                                </div>
+
+                                {/* Entity pills for current chunk */}
+                                {(syncProgress.entities || []).length > 0 && (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                    {(syncProgress.entities || []).map(e => (
+                                      <span key={e} style={{
+                                        fontSize: '0.69rem', fontWeight: 700,
+                                        background: `${accentA}0.15)`,
+                                        border: `1px solid ${accentA}0.35)`,
+                                        borderRadius: 10, padding: '2px 8px',
+                                        color: accent,
+                                      }}>
+                                        {fmtEntity(e)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Progress bar */}
+                                <div style={{ background: `${accentA}0.12)`, borderRadius: 4, height: 4, overflow: 'hidden' }}>
+                                  <div style={{
+                                    height: '100%',
+                                    width: `${pct}%`,
+                                    background: accent,
+                                    borderRadius: 4,
+                                    transition: 'width 0.4s ease',
+                                  }} />
+                                </div>
+                              </div>
+                            )
+                          })()}
+
+                          {/* Up next hint when idle but pending */}
+                          {nextEntityLabel && !isActivelySyncing && (
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', paddingLeft: 2 }}>
+                              Up next: <strong style={{ color: 'var(--text-secondary)' }}>{nextEntityLabel}</strong>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()
+                  }
+
+
 
                   {effectiveMode !== 'hybrid' && (
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -894,6 +1128,15 @@ export default function AppLayout({ children, title }) {
                       <span style={{ color: 'var(--text-secondary)' }}>Last Synced At</span>
                       <span style={{ fontWeight: '500', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
                         {formatIST(syncHealth.lastSyncTime)}
+                      </span>
+                    </div>
+                  )}
+
+                  {lastAutoRefresh && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderTop: '1px solid var(--border)', paddingTop: '6px' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Last Auto-Refreshed At</span>
+                      <span style={{ fontWeight: '500', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                        {formatIST(lastAutoRefresh)}
                       </span>
                     </div>
                   )}
@@ -999,6 +1242,45 @@ export default function AppLayout({ children, title }) {
                     <SyncIcon size={12} /> Force Reconnect
                   </button>
                 )}
+
+                {/* Refresh Page Content Button — always visible in the popover */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    window.dispatchEvent(new CustomEvent('sync-event', {
+                      detail: { type: 'sync.reconnect' }
+                    }))
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '6px 12px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-primary)',
+                    borderRadius: 'var(--radius-sm, 4px)',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    fontSize: '0.75rem',
+                    transition: 'all 0.2s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    marginTop: '6px'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
+                    e.currentTarget.style.borderColor = 'var(--text-muted)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'
+                    e.currentTarget.style.borderColor = 'var(--border)'
+                  }}
+                  title="Refresh Page Content"
+                >
+                  <SyncIcon size={12} className={showRefreshFlash ? 'sync-spinner-small' : ''} />
+                  Refresh Page Data
+                </button>
               </div>
             )}
 

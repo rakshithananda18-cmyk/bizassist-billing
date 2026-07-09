@@ -15,6 +15,20 @@ export const fmt = (n) =>
 const IST_LOCALE = 'en-IN'
 const IST_TZ     = 'Asia/Kolkata'
 
+export const parseAsUTCDate = (ts) => {
+  if (!ts) return new Date(NaN)
+  if (ts instanceof Date) return ts
+  if (typeof ts === 'string') {
+    // If it's a naive ISO timestamp (e.g., "2026-07-08T19:14:12" or "2026-07-08 19:14:12")
+    // without timezone suffix ('Z', '+00:00', etc.), append 'Z' to treat it as UTC.
+    if (ts.includes('-') && !ts.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(ts)) {
+      const formatted = ts.includes('T') ? ts : ts.replace(' ', 'T')
+      return new Date(formatted + 'Z')
+    }
+  }
+  return new Date(ts)
+}
+
 /**
  * Full IST datetime, e.g. "08/07/2026, 11:30:45 PM"
  * Pass any value parseable by `new Date()` — ISO string, Unix ms, or Date.
@@ -23,7 +37,7 @@ const IST_TZ     = 'Asia/Kolkata'
 export const formatIST = (ts) => {
   if (!ts) return '—'
   try {
-    const d = ts instanceof Date ? ts : new Date(ts)
+    const d = parseAsUTCDate(ts)
     if (isNaN(d.getTime())) return '—'
     return d.toLocaleString(IST_LOCALE, {
       timeZone: IST_TZ,
@@ -40,7 +54,7 @@ export const formatIST = (ts) => {
 export const formatISTDate = (ts) => {
   if (!ts) return '—'
   try {
-    const d = ts instanceof Date ? ts : new Date(ts)
+    const d = parseAsUTCDate(ts)
     if (isNaN(d.getTime())) return '—'
     return d.toLocaleDateString(IST_LOCALE, {
       timeZone: IST_TZ,
@@ -55,7 +69,7 @@ export const formatISTDate = (ts) => {
 export const formatISTTime = (ts) => {
   if (!ts) return '—'
   try {
-    const d = ts instanceof Date ? ts : new Date(ts)
+    const d = parseAsUTCDate(ts)
     if (isNaN(d.getTime())) return '—'
     return d.toLocaleTimeString(IST_LOCALE, {
       timeZone: IST_TZ,

@@ -84,6 +84,15 @@ export function useRealtimeLeader(token, settings, user) {
 
     // Process an SSE event (pull changes locally, update localStorage, notify other components/tabs)
     const processEvent = async (data, isLeaderOrigin = false) => {
+      // Dispatch to all window listeners immediately (includes sync.progress for the popover).
+      window.dispatchEvent(new CustomEvent('sync-event', { detail: data }))
+
+      // Progress and reconnect events are tracking/control-only — don't update
+      // lastSyncTime, don't toast. Progress fires many times per batch; reconnect
+      // is a silent re-fetch signal. Both still get dispatched to window listeners.
+      if (data.type === 'sync.progress' || data.type === 'sync.reconnect') return
+
+
       lastSyncTime = new Date().toISOString()
       localStorage.setItem(`sync_last_time_${user.id}`, lastSyncTime)
       if (data.entity) {
@@ -93,8 +102,6 @@ export function useRealtimeLeader(token, settings, user) {
       connectionError = null
       emitStatus('connected')
 
-      // Dispatch local window level event
-      window.dispatchEvent(new CustomEvent('sync-event', { detail: data }))
       if (data.entity) {
         window.dispatchEvent(new CustomEvent('show_toast', {
           detail: { type: 'info', msg: `Syncing remote ${data.entity} updates…` }
@@ -231,6 +238,7 @@ export function useRealtimeLeader(token, settings, user) {
 
         es.onopen = () => {
           logger.info('[REALTIME] SSE connection established.')
+          const wasDisconnected = consecutiveFailureCountRef.current > 0
           connectionError = null
           consecutiveFailureCountRef.current = 0 // Reset failure counter on success
           emitStatus('connected')
@@ -238,6 +246,15 @@ export function useRealtimeLeader(token, settings, user) {
           window.dispatchEvent(new CustomEvent('show_toast', {
             detail: { type: 'success', msg: 'Cloud real-time sync connected.' }
           }))
+          // If we just recovered from a drop, silently refresh all page data.
+          // This catches any changes that arrived while we were offline.
+          // Draft/form state is never touched — pages only re-fetch their list data.
+          if (wasDisconnected) {
+            logger.info('[REALTIME] Reconnected after failure — dispatching sync.reconnect for stale-data refresh')
+            window.dispatchEvent(new CustomEvent('sync-event', {
+              detail: { type: 'sync.reconnect' }
+            }))
+          }
         }
 
         es.onmessage = async (e) => {

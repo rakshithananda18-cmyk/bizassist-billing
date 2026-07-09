@@ -94,7 +94,7 @@ export default function Parties() {
         return
       }
 
-      if (['party', 'invoice', 'purchase', 'payment'].includes(e.detail.entity)) {
+      if (['party', 'invoice', 'purchase', 'payment'].includes(e.detail.entity) || e.detail?.type === 'sync.reconnect') {
         load()
       }
     }
