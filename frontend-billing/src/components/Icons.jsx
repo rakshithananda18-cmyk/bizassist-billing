@@ -206,6 +206,15 @@ export function PlusIcon({ size, strokeWidth, className }) {
   )
 }
 
+export function SidebarIcon({ size, strokeWidth, className }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth, className)}>
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <line x1="15" y1="3" x2="15" y2="21" />
+    </svg>
+  )
+}
+
 export function EditIcon({ size, strokeWidth, className }) {
   return (
     <svg {...defaultSvgProps(size, strokeWidth, className)}>

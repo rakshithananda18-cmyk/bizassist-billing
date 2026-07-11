@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
-import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon, ExpandIcon } from '../components/Icons'
+import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon, ExpandIcon, SidebarIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import CustomSelect from '../components/common/CustomSelect'
 import LabelPrintModal from '../components/stock/LabelPrintModal'
@@ -447,6 +447,19 @@ export default function Stock() {
   })
   const [editingRowKey, setEditingRowKey] = useState(null)
 
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bizassist_intake_sidebar_collapsed')
+      return saved ? JSON.parse(saved) : false
+    } catch (e) {
+      return false
+    }
+  })
+
+  useEffect(() => {
+    localStorage.setItem('bizassist_intake_sidebar_collapsed', JSON.stringify(isSidebarCollapsed))
+  }, [isSidebarCollapsed])
+
   const [intakeDistributor, setIntakeDistributor] = useState(() => {
     const todayISO = new Date().toISOString().slice(0, 10)
     try {
@@ -656,13 +669,24 @@ export default function Stock() {
             disabled={exporting} onClick={handleExport}>
             <DownloadIcon size={13} /> {exporting ? 'Exporting…' : 'Export'}
           </button>
-          <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-            onClick={() => { setEditProduct(null); setShowAddModal(true) }}>
-            <PlusIcon size={13} /> New Product
-          </button>
-
-          {/* Window controls */}
-          <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 4px' }} />
+           <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+             onClick={() => { setEditProduct(null); setShowAddModal(true) }}>
+             <PlusIcon size={13} /> New Product
+           </button>
+ 
+           {activeView === 'intake' && intakeRows.length > 0 && (
+             <button
+               className={`btn btn-secondary btn-sm ${isSidebarCollapsed ? 'active' : ''}`}
+               style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '0 8px', height: 28 }}
+               onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+               title={isSidebarCollapsed ? "Expand right panel" : "Collapse right panel"}
+             >
+               <SidebarIcon size={14} />
+             </button>
+           )}
+ 
+           {/* Window controls */}
+           <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 4px' }} />
           <button
             title="Minimize — go back"
             onClick={() => navigate(-1)}
@@ -710,6 +734,9 @@ export default function Stock() {
                 setRows={setIntakeRows}
                 distributor={intakeDistributor}
                 setDistributor={setIntakeDistributor}
+                adjustments={intakeAdjustments}
+                isSidebarCollapsed={isSidebarCollapsed}
+                setIsSidebarCollapsed={setIsSidebarCollapsed}
                 editingRowKey={editingRowKey}
                 setEditingRowKey={setEditingRowKey}
                 onSaved={(n) => {
@@ -907,7 +934,33 @@ export default function Stock() {
           </div>
 
           {/* ── RIGHT sidebar — always visible ──────────────────────────── */}
-          <div className="inv-sidebar" style={{ overflowY: editingRowKey ? 'hidden' : 'auto' }}>
+          <div className="inv-sidebar" style={{ display: isSidebarCollapsed ? 'none' : 'flex', overflowY: editingRowKey ? 'hidden' : 'auto' }}>
+            {activeView === 'intake' && intakeRows.length > 0 && (
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '10px 14px', borderBottom: '1px solid var(--border)',
+                background: 'var(--bg-3)', flexShrink: 0
+              }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>
+                  {editingRowKey ? 'Product Details' : 'Purchase Summary'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsSidebarCollapsed(true)}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: 'var(--text-muted)', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', padding: 4, borderRadius: 4,
+                    transition: 'background .15s, color .15s'
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-4)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-muted)' }}
+                  title="Collapse right panel"
+                >
+                  <SidebarIcon size={16} />
+                </button>
+              </div>
+            )}
             {activeView === 'intake' && editingRowKey && intakeRows.find(r => r._key === editingRowKey) ? (
               (() => {
                 const editingRow = intakeRows.find(r => r._key === editingRowKey)
@@ -1079,7 +1132,7 @@ export default function Stock() {
 
                 {/* Purchase panel (distributor · tax breakdown · summary · payment · print) */}
                 {activeView === 'intake' && intakeRows.length > 0 && (
-                  <IntakePurchasePanel rows={intakeRows} authFetch={authFetch} distributor={intakeDistributor} setDistributor={setIntakeDistributor} />
+                  <IntakePurchasePanel rows={intakeRows} authFetch={authFetch} distributor={intakeDistributor} setDistributor={setIntakeDistributor} adjustments={intakeAdjustments} setAdjustments={setIntakeAdjustments} payment={intakePayment} setPayment={setIntakePayment} />
                 )}
               </>
             )}

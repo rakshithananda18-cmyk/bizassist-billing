@@ -216,7 +216,7 @@ function TextCell({ value, onChange, disabled, placeholder = '' }) {
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function StockIntakeSheet({ products = [], onSaved, onExit, prefillProduct, rows = [], setRows, distributor, setDistributor, editingRowKey, setEditingRowKey }) {
+export default function StockIntakeSheet({ products = [], onSaved, onExit, prefillProduct, rows = [], setRows, distributor, setDistributor, editingRowKey, setEditingRowKey, adjustments, isSidebarCollapsed, setIsSidebarCollapsed }) {
   const { authFetch } = useAuth()
 
   const [globalRef, setGlobalRef] = useState('')   // bill reference, fills all empty reasons
@@ -232,6 +232,14 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
 
   const scanRef  = useRef(null)
   const fileRef  = useRef(null)
+
+  const gross = rows.reduce((s, r) => s + (num(r.qty) * num(r.cost_price)), 0)
+  const getRowGst = (r) => (num(r.cgst_rate) + num(r.sgst_rate)) || num(r.igst_rate)
+  const taxTotal = rows.reduce((s, r) => s + (num(r.qty) * num(r.cost_price) * getRowGst(r) / 100), 0)
+  const itemDisc = parseFloat(adjustments?.item_disc) || 0
+  const cess = parseFloat(adjustments?.cess) || 0
+  const cashDisc = parseFloat(adjustments?.cash_disc) || 0
+  const payable = gross - itemDisc + taxTotal + cess - cashDisc
 
   // Focus scan bar on mount
   useEffect(() => {
@@ -1128,6 +1136,43 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
             `${readyRows.length} item${readyRows.length !== 1 ? 's' : ''} ready · ${rows.filter(r => r._status === 'ok').length} already saved`
           )}
         </span>
+
+        {isSidebarCollapsed && rows.length > 0 && (
+          <div
+            onClick={() => setIsSidebarCollapsed(false)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 14,
+              padding: '6px 12px', background: 'var(--bg-3)',
+              border: '1px solid var(--border)', borderRadius: 6,
+              fontSize: '0.78rem', cursor: 'pointer',
+              transition: 'background .15s, border-color .15s',
+              marginRight: 6
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-4)'; e.currentTarget.style.borderColor = 'var(--accent)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+            title="Click to expand distributor & summary details"
+          >
+            {distributor?.name && (
+              <div>
+                <span style={{ color: 'var(--text-muted)' }}>Distributor:</span>{' '}
+                <strong style={{ color: 'var(--accent)' }}>{distributor.name}</strong>
+              </div>
+            )}
+            {distributor?.invoice_no && (
+              <div>
+                <span style={{ color: 'var(--text-muted)' }}>Inv:</span>{' '}
+                <strong>{distributor.invoice_no}</strong>
+              </div>
+            )}
+            <div>
+              <span style={{ color: 'var(--text-muted)' }}>Payable:</span>{' '}
+              <strong style={{ color: '#22c55e' }}>₹{payable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            </div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 4 }}>
+              Expand ↗
+            </div>
+          </div>
+        )}
 
         {onExit && (
           <button className="btn btn-secondary" disabled={saving} onClick={onExit}>
