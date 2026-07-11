@@ -447,10 +447,24 @@ export default function Stock() {
   })
   const [editingRowKey, setEditingRowKey] = useState(null)
 
-  // Persist intakeRows draft to localStorage
+  const [intakeDistributor, setIntakeDistributor] = useState(() => {
+    const todayISO = new Date().toISOString().slice(0, 10)
+    try {
+      const saved = localStorage.getItem('bizassist_intake_distributor')
+      return saved ? JSON.parse(saved) : { vendor_id: null, name: '', gstin: '', pan: '', fssai: '', phone: '', address: '', invoice_no: '', invoice_date: todayISO }
+    } catch (e) {
+      return { vendor_id: null, name: '', gstin: '', pan: '', fssai: '', phone: '', address: '', invoice_no: '', invoice_date: todayISO }
+    }
+  })
+
+  // Persist drafts to localStorage
   useEffect(() => {
     localStorage.setItem('bizassist_intake_rows', JSON.stringify(intakeRows))
   }, [intakeRows])
+
+  useEffect(() => {
+    localStorage.setItem('bizassist_intake_distributor', JSON.stringify(intakeDistributor))
+  }, [intakeDistributor])
 
   const lowStockItems = products.filter(p => getStatus(p) !== 'In Stock').slice(0, 10)
 
@@ -694,6 +708,8 @@ export default function Stock() {
                 prefillProduct={prefillProduct}
                 rows={intakeRows}
                 setRows={setIntakeRows}
+                distributor={intakeDistributor}
+                setDistributor={setIntakeDistributor}
                 editingRowKey={editingRowKey}
                 setEditingRowKey={setEditingRowKey}
                 onSaved={(n) => {
@@ -896,14 +912,15 @@ export default function Stock() {
               (() => {
                 const editingRow = intakeRows.find(r => r._key === editingRowKey)
                 const isNew = editingRow._type === 'new'
-                const p = isNew ? null : {
-                  id: editingRow.product_id,
+                const p = {
+                  id: isNew ? undefined : editingRow.product_id,
                   name: editingRow.name || '',
                   description: editingRow.description || '',
                   brand: editingRow.brand || '',
                   category: editingRow.category || '',
                   unit: editingRow.unit || 'pcs',
                   sku: editingRow.sku || '',
+                  barcode: editingRow.barcode || '',
                   hsn_sac: editingRow.hsn_sac || '',
                   selling_price: editingRow.selling_price || '',
                   wholesale_price: editingRow.wholesale_price || '',
@@ -917,6 +934,7 @@ export default function Stock() {
 
                 return (
                   <ProductFormModal
+                    key={editingRowKey}
                     inline={true}
                     open={true}
                     product={p}
@@ -1061,7 +1079,7 @@ export default function Stock() {
 
                 {/* Purchase panel (distributor · tax breakdown · summary · payment · print) */}
                 {activeView === 'intake' && intakeRows.length > 0 && (
-                  <IntakePurchasePanel rows={intakeRows} authFetch={authFetch} />
+                  <IntakePurchasePanel rows={intakeRows} authFetch={authFetch} distributor={intakeDistributor} setDistributor={setIntakeDistributor} />
                 )}
               </>
             )}

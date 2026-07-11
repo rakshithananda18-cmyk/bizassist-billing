@@ -215,7 +215,7 @@ function TextCell({ value, onChange, disabled, placeholder = '' }) {
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function StockIntakeSheet({ products = [], onSaved, onExit, prefillProduct, rows = [], setRows, editingRowKey, setEditingRowKey }) {
+export default function StockIntakeSheet({ products = [], onSaved, onExit, prefillProduct, rows = [], setRows, distributor, setDistributor, editingRowKey, setEditingRowKey }) {
   const { authFetch } = useAuth()
 
   const [globalRef, setGlobalRef] = useState('')   // bill reference, fills all empty reasons
@@ -436,6 +436,20 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
       const data = await res.json()
       const billRef = data.invoice_number || data.supplier_name || ''
       if (billRef && !globalRef) setGlobalRef(billRef)
+
+      if (setDistributor) {
+        setDistributor({
+          vendor_id: null,
+          name: data.supplier_name || '',
+          gstin: data.supplier_gstin || '',
+          pan: data.supplier_pan || '',
+          fssai: data.supplier_fssai || '',
+          phone: data.supplier_phone || '',
+          address: data.supplier_address || '',
+          invoice_no: data.invoice_number || '',
+          invoice_date: data.invoice_date || todayISO(),
+        })
+      }
 
       const parsed = data.items || []
       const newRows = parsed.map(item => {

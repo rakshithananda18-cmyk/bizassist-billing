@@ -68,7 +68,7 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
     if (!open && !inline) return
     setError(null)
     setNewBarcode('')
-    if (isEdit) {
+    if (product) {
       setForm({
         ...EMPTY_PRODUCT,
         ...Object.fromEntries(Object.entries({
@@ -79,13 +79,18 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
           distributor_price: product.distributor_price, cost_price: product.cost_price,
           mrp: product.mrp, cgst_rate: product.cgst_rate, sgst_rate: product.sgst_rate,
           min_stock: product.min_stock,
+          barcode: product.barcode || prefillBarcode || '',
         }).map(([k, v]) => [k, v ?? ''])),
       })
-      // Load the full record for the barcode list.
-      authFetch(`/billing/products/${product.id}`)
-        .then(r => (r.ok ? r.json() : null))
-        .then(d => { if (d?.barcodes) setBarcodes(d.barcodes) })
-        .catch(err => logger.debug('[STOCK] barcode load skipped', err))
+      if (isEdit) {
+        // Load the full record for the barcode list.
+        authFetch(`/billing/products/${product.id}`)
+          .then(r => (r.ok ? r.json() : null))
+          .then(d => { if (d?.barcodes) setBarcodes(d.barcodes) })
+          .catch(err => logger.debug('[STOCK] barcode load skipped', err))
+      } else {
+        setBarcodes([])
+      }
     } else {
       // Add mode — an unknown scan from Scan Stock-In prefills its barcode.
       setForm({ ...EMPTY_PRODUCT, barcode: prefillBarcode || '' })

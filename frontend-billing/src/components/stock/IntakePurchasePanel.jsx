@@ -72,13 +72,23 @@ function Row({ l, v, muted, strong, big }) {
 
 // ── main panel ───────────────────────────────────────────────────────────────
 
-export default function IntakePurchasePanel({ rows = [], authFetch }) {
+export default function IntakePurchasePanel({ rows = [], authFetch, distributor: propDistributor, setDistributor: propSetDistributor }) {
   const [open, setOpen] = useState({ distributor: true, tax: false, summary: true, payment: false })
   const toggle = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }))
 
   const [vendors, setVendors] = useState([])
   const [vendorQuery, setVendorQuery] = useState('')
-  const [dist, setDist] = useState({ vendor_id: null, name: '', gstin: '', phone: '', invoice_no: '', invoice_date: todayISO() })
+
+  const [localDist, setLocalDist] = useState({ vendor_id: null, name: '', gstin: '', pan: '', fssai: '', phone: '', address: '', invoice_no: '', invoice_date: todayISO() })
+  const dist = propDistributor || localDist
+  const setDist = (val) => {
+    const setter = propSetDistributor || setLocalDist
+    if (typeof val === 'function') {
+      setter(prev => val(prev))
+    } else {
+      setter(val)
+    }
+  }
   const [pay, setPay] = useState({ mode: 'Credit', due_date: '' })
   const [adj, setAdj] = useState({ item_disc: '', cess: '', freight: '', cash_disc: '' })
 
@@ -122,11 +132,29 @@ export default function IntakePurchasePanel({ rows = [], authFetch }) {
   const exactMatch = vendors.some((v) => (v.name || '').toLowerCase() === vendorQuery.trim().toLowerCase())
 
   const pickVendor = (v) => {
-    setDist((d) => ({ ...d, vendor_id: v.id, name: v.name || '', gstin: v.gstin || '', phone: v.phone || '' }))
+    setDist((d) => ({
+      ...d,
+      vendor_id: v.id,
+      name: v.name || '',
+      gstin: v.gstin || '',
+      pan: v.pan || '',
+      fssai: v.fssai || '',
+      phone: v.phone || '',
+      address: v.address || '',
+    }))
     setVendorQuery('')
   }
   const useAsNew = () => {
-    setDist((d) => ({ ...d, vendor_id: null, name: vendorQuery.trim() }))
+    setDist((d) => ({
+      ...d,
+      vendor_id: null,
+      name: vendorQuery.trim(),
+      gstin: '',
+      pan: '',
+      fssai: '',
+      phone: '',
+      address: '',
+    }))
     setVendorQuery('')
   }
 
@@ -158,8 +186,13 @@ export default function IntakePurchasePanel({ rows = [], authFetch }) {
       <div style="color:#555">${new Date().toLocaleString('en-IN')}</div>
       <div class="grid">
         <div><h2>Distributor</h2>
-          <div>${dist.name || '—'}</div><div>GSTIN: ${dist.gstin || '—'}</div>
-          <div>Phone: ${dist.phone || '—'}</div></div>
+          <div>${dist.name || '—'}</div>
+          <div>GSTIN: ${dist.gstin || '—'}</div>
+          <div>PAN: ${dist.pan || '—'}</div>
+          <div>FSSAI: ${dist.fssai || '—'}</div>
+          <div>Phone: ${dist.phone || '—'}</div>
+          <div>Address: ${dist.address || '—'}</div>
+        </div>
         <div><h2>Invoice / Payment</h2>
           <div>Invoice No: ${dist.invoice_no || '—'}</div><div>Invoice Date: ${dist.invoice_date || '—'}</div>
           <div>Payment: ${pay.mode}${pay.due_date ? ' · due ' + pay.due_date : ''}</div></div>
@@ -226,15 +259,39 @@ export default function IntakePurchasePanel({ rows = [], authFetch }) {
             {dist.gstin && <span style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>{dist.gstin}</span>}
           </div>
         )}
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
           <div style={{ flex: 1 }}>
             <label style={label}>Invoice No</label>
-            <input style={field} value={dist.invoice_no} onChange={(e) => setDist((d) => ({ ...d, invoice_no: e.target.value }))} />
+            <input style={field} value={dist.invoice_no || ''} onChange={(e) => setDist((d) => ({ ...d, invoice_no: e.target.value }))} />
           </div>
           <div style={{ flex: 1 }}>
             <label style={label}>Invoice Date</label>
-            <input type="date" style={field} value={dist.invoice_date} onChange={(e) => setDist((d) => ({ ...d, invoice_date: e.target.value }))} />
+            <input type="date" style={field} value={dist.invoice_date || ''} onChange={(e) => setDist((d) => ({ ...d, invoice_date: e.target.value }))} />
           </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <div style={{ flex: 1 }}>
+            <label style={label}>GSTIN</label>
+            <input style={field} value={dist.gstin || ''} onChange={(e) => setDist((d) => ({ ...d, gstin: e.target.value }))} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={label}>PAN</label>
+            <input style={field} value={dist.pan || ''} onChange={(e) => setDist((d) => ({ ...d, pan: e.target.value }))} />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <div style={{ flex: 1 }}>
+            <label style={label}>FSSAI</label>
+            <input style={field} value={dist.fssai || ''} onChange={(e) => setDist((d) => ({ ...d, fssai: e.target.value }))} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label style={label}>Phone</label>
+            <input style={field} value={dist.phone || ''} onChange={(e) => setDist((d) => ({ ...d, phone: e.target.value }))} />
+          </div>
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <label style={label}>Address</label>
+          <input style={field} value={dist.address || ''} onChange={(e) => setDist((d) => ({ ...d, address: e.target.value }))} />
         </div>
       </Section>
 
