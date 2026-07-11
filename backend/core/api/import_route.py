@@ -150,14 +150,20 @@ async def import_products(
 @router.post("/import/customers")
 async def import_customers(
     request: Request,
+    preview: bool = False,
     current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
-    """Bulk import customers via JSON array or CSV file upload."""
+    """Bulk import customers via JSON array or CSV file upload.
+
+    APPROVAL FLOW (parity with /import/products): with `?preview=1` the file
+    is parsed and normalized but NOTHING is written — the rows come back for
+    the review table, duplicates flagged. The client then POSTs the (possibly
+    edited) rows as JSON without the flag to commit. Nothing lands silently."""
     bid = current_user["id"]
     content_type = request.headers.get("content-type", "")
     items = []
-    
+
     if "application/json" in content_type:
         try:
             body = await request.json()
@@ -176,7 +182,43 @@ async def import_customers(
             raise HTTPException(status_code=400, detail="Invalid CSV format")
     else:
         raise HTTPException(status_code=415, detail="Unsupported media type")
-        
+
+    if preview:
+        existing_names = {
+            (n or "").strip().lower() for (n,) in db.query(Customer.name)
+            .filter(Customer.business_id == bid).all()
+        }
+        existing_phones = {
+            (p or "").strip() for (p,) in db.query(Customer.phone)
+            .filter(Customer.business_id == bid, Customer.phone.isnot(None)).all() if p
+        }
+        out = []
+        for idx, it in enumerate(items):
+            name = str(it.get("name") or "").strip()
+            phone = (str(it.get("phone")).strip() or None) if it.get("phone") is not None else None
+            problems = []
+            if not name:
+                problems.append("name required")
+            elif name.lower() in existing_names:
+                problems.append("a customer with this name already exists")
+            if phone and phone in existing_phones:
+                problems.append(f"phone '{phone}' already exists")
+            out.append({
+                "row": idx + 1,
+                "name": name,
+                "phone": phone,
+                "email": it.get("email") or None,
+                "address": it.get("address") or None,
+                "gstin": it.get("gstin") or None,
+                "state_code": it.get("state_code") or None,
+                "pan": it.get("pan") or None,
+                "credit_limit": it.get("credit_limit") or 0,
+                "credit_days": it.get("credit_days") or 30,
+                "opening_dues": it.get("opening_dues") or 0,
+                "problems": problems,
+            })
+        return {"preview": True, "count": len(out), "items": out}
+
     try:
         res = import_data.import_customers_bulk(db, bid, items)
         return res
@@ -188,14 +230,19 @@ async def import_customers(
 @router.post("/import/vendors")
 async def import_vendors(
     request: Request,
+    preview: bool = False,
     current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
-    """Bulk import vendors via JSON array or CSV file upload."""
+    """Bulk import vendors via JSON array or CSV file upload.
+
+    APPROVAL FLOW (parity with /import/products): with `?preview=1` the file
+    is parsed and normalized but NOTHING is written — rows come back for the
+    review table with duplicates flagged; commit happens on a flag-less POST."""
     bid = current_user["id"]
     content_type = request.headers.get("content-type", "")
     items = []
-    
+
     if "application/json" in content_type:
         try:
             body = await request.json()
@@ -214,7 +261,41 @@ async def import_vendors(
             raise HTTPException(status_code=400, detail="Invalid CSV format")
     else:
         raise HTTPException(status_code=415, detail="Unsupported media type")
-        
+
+    if preview:
+        existing_names = {
+            (n or "").strip().lower() for (n,) in db.query(Vendor.name)
+            .filter(Vendor.business_id == bid).all()
+        }
+        existing_phones = {
+            (p or "").strip() for (p,) in db.query(Vendor.phone)
+            .filter(Vendor.business_id == bid, Vendor.phone.isnot(None)).all() if p
+        }
+        out = []
+        for idx, it in enumerate(items):
+            name = str(it.get("name") or "").strip()
+            phone = (str(it.get("phone")).strip() or None) if it.get("phone") is not None else None
+            problems = []
+            if not name:
+                problems.append("name required")
+            elif name.lower() in existing_names:
+                problems.append("a vendor with this name already exists")
+            if phone and phone in existing_phones:
+                problems.append(f"phone '{phone}' already exists")
+            out.append({
+                "row": idx + 1,
+                "name": name,
+                "phone": phone,
+                "email": it.get("email") or None,
+                "address": it.get("address") or None,
+                "gstin": it.get("gstin") or None,
+                "state_code": it.get("state_code") or None,
+                "pan": it.get("pan") or None,
+                "payment_terms_days": it.get("payment_terms_days") or 30,
+                "problems": problems,
+            })
+        return {"preview": True, "count": len(out), "items": out}
+
     try:
         res = import_data.import_vendors_bulk(db, bid, items)
         return res

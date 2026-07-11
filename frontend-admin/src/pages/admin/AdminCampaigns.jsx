@@ -79,6 +79,23 @@ export default function AdminCampaigns() {
 
   useEffect(() => { loadAll() }, [])
 
+  // Win-back loop (REVIEW_1 §4.4): arriving from the Metrics churn-risk table
+  // with ?winback=<BizID> opens the create modal pre-targeted to that merchant.
+  useEffect(() => {
+    const wb = new URLSearchParams(window.location.search).get('winback')
+    if (!wb) return
+    setCampaignForm({
+      ...EMPTY_CAMPAIGN,
+      title: 'We miss you — a little something to come back',
+      body_md: "It's been a while since your last invoice. Here's a special offer to welcome you back — redeem the code in your billing app.",
+      bizids: wb.toUpperCase(),
+      channel: 'in_app',
+    })
+    setShowCampaignModal(true)
+    // Clean the URL so a refresh doesn't reopen the modal.
+    window.history.replaceState({}, '', '/admin/campaigns')
+  }, [])
+
   async function loadAll() {
     setLoading(true)
     try {

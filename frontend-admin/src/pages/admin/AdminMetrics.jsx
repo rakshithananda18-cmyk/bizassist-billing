@@ -136,8 +136,9 @@ export default function AdminMetrics() {
                       <td>{r.invoice_count}</td>
                       <td style={{ color: '#c53030', fontWeight: 700 }}>{r.days_silent} days</td>
                       <td>
-                        <Link to="/admin/campaigns" className="btn-flush" style={{ textDecoration: 'none' }}
-                          title="Create a win-back campaign targeting this BizID">
+                        <Link to={r.bizid ? `/admin/campaigns?winback=${encodeURIComponent(r.bizid)}` : '/admin/campaigns'}
+                          className="btn-flush" style={{ textDecoration: 'none' }}
+                          title="Create a win-back campaign pre-targeted to this BizID">
                           Send offer
                         </Link>
                       </td>

@@ -210,16 +210,19 @@ function ExportCard({ icon, title, description, endpoint, filename, authFetch })
 export default function Import() {
   const { authFetch } = useAuth()
 
-  // Products approval flow (owner requirement): parse-only preview → editable
-  // review table → explicit approve → commit. Nothing lands silently.
+  // Approval flow (owner requirement): parse-only preview → editable review
+  // table → explicit approve → commit. Nothing lands silently. Same flow now
+  // covers products, customers AND vendors (column schema per entity).
   const [reviewItems, setReviewItems] = useState(null)   // rows awaiting approval
+  const [reviewCtx, setReviewCtx] = useState(null)       // {endpoint, columns, label}
   const [committing, setCommitting] = useState(false)
   const [commitResult, setCommitResult] = useState(null)
 
   const commitApproved = async (approvedRows) => {
+    const ctx = reviewCtx || { endpoint: '/billing/import/products', label: 'product' }
     setCommitting(true)
     try {
-      const res = await authFetch('/billing/import/products', {
+      const res = await authFetch(ctx.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: approvedRows }),
@@ -227,7 +230,7 @@ export default function Import() {
       const data = await res.json().catch(() => ({}))
       if (res.ok) {
         const errs = data.errors?.length ? ` (${data.errors.length} row(s) skipped: ${data.errors.slice(0, 3).join('; ')}${data.errors.length > 3 ? '…' : ''})` : ''
-        setCommitResult({ type: 'success', msg: `Imported ${data.created ?? data.count ?? approvedRows.length} product(s).${errs}` })
+        setCommitResult({ type: 'success', msg: `Imported ${data.created ?? data.count ?? approvedRows.length} ${ctx.label}(s).${errs}` })
         setReviewItems(null)
       } else {
         setCommitResult({ type: 'danger', msg: data.detail || 'Import failed — nothing was saved.' })
@@ -239,6 +242,29 @@ export default function Import() {
     }
   }
 
+  const openReview = (endpoint, columns, label) => (items) => {
+    setCommitResult(null)
+    setReviewCtx({ endpoint, columns, label })
+    setReviewItems(items)
+  }
+
+  const CUSTOMER_COLUMNS = [
+    { field: 'name', label: 'Name *' }, { field: 'phone', label: 'Phone' },
+    { field: 'email', label: 'Email' }, { field: 'address', label: 'Address' },
+    { field: 'gstin', label: 'GSTIN' }, { field: 'state_code', label: 'State' },
+    { field: 'pan', label: 'PAN' },
+    { field: 'credit_limit', label: 'Credit ₹', num: true },
+    { field: 'credit_days', label: 'Cr. days', num: true },
+    { field: 'opening_dues', label: 'Op. dues ₹', num: true },
+  ]
+  const VENDOR_COLUMNS = [
+    { field: 'name', label: 'Name *' }, { field: 'phone', label: 'Phone' },
+    { field: 'email', label: 'Email' }, { field: 'address', label: 'Address' },
+    { field: 'gstin', label: 'GSTIN' }, { field: 'state_code', label: 'State' },
+    { field: 'pan', label: 'PAN' },
+    { field: 'payment_terms_days', label: 'Pay terms (d)', num: true },
+  ]
+
   const IMPORT_CONFIGS = [
     {
       icon: <InventoryIcon size={18} />,
@@ -247,21 +273,25 @@ export default function Import() {
       endpoint: '/billing/import/products',
       templateHref: '#',
       reviewFlow: true,
-      onPreviewReady: (items) => { setCommitResult(null); setReviewItems(items) },
+      onPreviewReady: openReview('/billing/import/products', undefined, 'product'),
     },
     {
       icon: <ContactsIcon size={18} />,
       title: 'Customers',
-      description: 'Import customer list with contact info and GSTIN.',
+      description: 'Import customer list with contact info and GSTIN. Reviewed before anything is saved — duplicates flagged.',
       endpoint: '/billing/import/customers',
       templateHref: '#',
+      reviewFlow: true,
+      onPreviewReady: openReview('/billing/import/customers', CUSTOMER_COLUMNS, 'customer'),
     },
     {
       icon: <BillsIcon size={18} />,
       title: 'Vendors',
-      description: 'Import supplier / vendor list with payment terms.',
+      description: 'Import supplier / vendor list with payment terms. Reviewed before anything is saved — duplicates flagged.',
       endpoint: '/billing/import/vendors',
       templateHref: '#',
+      reviewFlow: true,
+      onPreviewReady: openReview('/billing/import/vendors', VENDOR_COLUMNS, 'vendor'),
     },
   ]
 
@@ -312,10 +342,12 @@ export default function Import() {
           <div className={`alert alert-${commitResult.type} mb-4`}>{commitResult.msg}</div>
         )}
 
-        {/* Products approval table — shown after a preview parse */}
+        {/* Approval table — shown after a preview parse (products/customers/vendors) */}
         <ImportReviewModal
           open={reviewItems != null}
           items={reviewItems || []}
+          columns={reviewCtx?.columns}
+          entityLabel={reviewCtx?.label || 'row'}
           committing={committing}
           onCancel={() => setReviewItems(null)}
           onCommit={commitApproved}
