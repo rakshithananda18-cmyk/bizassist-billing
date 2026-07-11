@@ -92,6 +92,7 @@ def redeem_join_code(req: RedeemRequest, current_user: dict = Depends(restrict_c
         raise HTTPException(status_code=500, detail="Could not redeem connection code")
 
 @router.post("/connections/accept")
+@router.post("/connections/connect")
 def connect_via_bizid(req: ConnectRequest, current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     """Connect directly to a business using their BizID."""
     try:

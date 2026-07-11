@@ -1,7 +1,7 @@
 // ============================================================================
 // Page: Stock.jsx  [fullscreen POS-style inventory — v2]
 // Description: Inventory & Catalog Manager. Handles product item catalog creation,
-//              stock adjustments, barcode bindings, and stock transfers between godowns — v8.
+//              stock adjustments, barcode bindings, and stock transfers between godowns — v9.
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
