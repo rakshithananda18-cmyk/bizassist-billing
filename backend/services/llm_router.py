@@ -40,7 +40,7 @@ from typing import Optional
 logger = logging.getLogger("bizassist.llm_router")
 
 MODEL = os.getenv("GROQ_MODEL_ROUTER",
-                  os.getenv("GROQ_MODEL_SIMPLE", "llama-3.1-8b-instant"))
+                  os.getenv("GROQ_MODEL_SIMPLE", "meta-llama/llama-4-scout-17b-16e-instruct"))
 
 # ── The vocabulary (mirrors the live registries; update together) ───────────
 # Intents = direct_query_handler.HANDLERS keys (kept as a literal list so this

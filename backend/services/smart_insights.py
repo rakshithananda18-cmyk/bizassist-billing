@@ -29,7 +29,7 @@ from services.dates import parse_date
 
 logger = logging.getLogger("bizassist.smart_insights")
 
-MODEL_COMPLEX = os.getenv("GROQ_MODEL_COMPLEX", "qwen/qwen3-32b")
+MODEL_COMPLEX = os.getenv("GROQ_MODEL_COMPLEX", "openai/gpt-oss-120b")
 
 
 def _sf(v) -> float:

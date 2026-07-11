@@ -58,6 +58,7 @@ const BLANK_NEW_ROW = (barcode = '') => ({
   mrp: '',
   // intake fields
   qty: '',
+  free: '',
   cost_price: '',
   selling_price: '',
   batch: today(),
@@ -93,6 +94,7 @@ const ROW_FROM_PRODUCT = (product) => ({
   current_cost:  product.cost_price    ?? null,
   unit: product.unit || 'pcs',
   qty: '',
+  free: '',
   cost_price: product.cost_price != null ? String(product.cost_price) : '',
   selling_price: product.selling_price != null ? String(product.selling_price) : '',
   batch: today(),
@@ -336,7 +338,11 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
               return prev
             }
             setScanCode('')
-            return [...prev, ROW_FROM_PRODUCT(p)]
+            // The /sales/barcode payload is lean (no stock/cost). Enrich from
+            // the full catalogue record we already hold so Current + Cost + the
+            // "was ₹" reference show correctly instead of 0.
+            const full = products.find(x => x.id === p.id)
+            return [...prev, ROW_FROM_PRODUCT(full ? { ...p, ...full } : p)]
           })
           return
         }
@@ -351,7 +357,7 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
       setSearching(false)
       setTimeout(() => scanRef.current?.focus(), 60)
     }
-  }, [scanCode, authFetch, addNewRow])
+  }, [scanCode, authFetch, addNewRow, products])
 
   // ── Product search dropdown ─────────────────────────────────────────────
 
@@ -470,7 +476,7 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
 
   const readyRows = rows.filter(r => {
     if (r._status === 'ok') return false
-    if (num(r.qty) <= 0) return false
+    if (num(r.qty) + num(r.free) <= 0) return false
     if (r._type === 'existing') return true
     return r.name?.trim()
   })
@@ -529,7 +535,7 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
         // Stock adjustment
         const adjRes = await authFetch(`/billing/products/${pid}/stock/adjustment`, {
           method: 'POST',
-          body: JSON.stringify({ qty_delta: num(row.qty), note }),
+          body: JSON.stringify({ qty_delta: num(row.qty) + num(row.free), note }),
         })
         if (!adjRes.ok) {
           const err = await adjRes.json().catch(() => ({}))
@@ -737,7 +743,7 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
       )}
 
       {/* ── Table ────────────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         {rows.length === 0 ? (
           <div style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -750,25 +756,63 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
             </div>
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+          <>
+          {/* Match the POS cart table look */}
+          <style>{`
+            .intake-grid { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; }
+            .intake-grid thead tr { background: var(--bg-3); }
+            .intake-grid th {
+              padding: 6px 7px; font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
+              text-transform: uppercase; color: var(--text-secondary); white-space: nowrap;
+              border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
+            }
+            .intake-grid td {
+              padding: 3px 5px; font-size: 12px; vertical-align: middle;
+              border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
+            }
+            .intake-grid th:last-child, .intake-grid td:last-child { border-right: none; }
+            .intake-grid tbody tr:hover { background: var(--accent-glow); }
+            .intake-grid .form-input {
+              border: 1px solid var(--border) !important; border-radius: 4px !important;
+              background: var(--bg-2) !important; height: 27px !important;
+              padding: 3px 4px !important; text-align: center; box-shadow: none !important;
+            }
+            .intake-grid .form-input:focus {
+              border-color: var(--accent) !important; background: var(--bg) !important;
+            }
+            .intake-grid .row-del { display: none; }
+            .intake-grid tbody tr:hover .row-sno { display: none; }
+            .intake-grid tbody tr:hover .row-del { display: inline-flex; }
+          `}</style>
+          <table className="intake-grid" style={{ fontSize: '0.78rem', minWidth: 1760 }}>
             <thead>
               <tr>
-                <ColHead style={{ width: 200 }}>Product</ColHead>
-                <ColHead style={{ width: 72 }}>Type</ColHead>
-                <ColHead style={{ width: 68, textAlign: 'right' }}>Current</ColHead>
-                <ColHead style={{ width: 80, textAlign: 'right' }}>+ Qty *</ColHead>
-                <ColHead style={{ width: 96, textAlign: 'right' }}>Cost ₹</ColHead>
-                <ColHead style={{ width: 96, textAlign: 'right' }}>Sell ₹</ColHead>
-                <ColHead style={{ width: 110 }}>Batch / Lot</ColHead>
-                <ColHead style={{ width: 104 }}>Expiry</ColHead>
-                <ColHead style={{ width: 170 }}>Reason</ColHead>
-                <ColHead style={{ width: 80 }}>Status</ColHead>
-                <ColHead style={{ width: 24 }} />
-                <ColHead style={{ width: 24 }} />
+                <ColHead style={{ width: 32 }}>#</ColHead>
+                <ColHead style={{ width: 148 }}>Product</ColHead>
+                <ColHead style={{ width: 56 }}>Type</ColHead>
+                <ColHead style={{ width: 58, textAlign: 'right' }}>Current</ColHead>
+                <ColHead style={{ width: 64, textAlign: 'right' }}>+ Qty *</ColHead>
+                <ColHead style={{ width: 52, textAlign: 'right' }} title="Free units received (added to stock, no cost)">Free</ColHead>
+                <ColHead style={{ width: 84, textAlign: 'right' }} title="Purchase rate per unit (before tax)">Cost ₹</ColHead>
+                <ColHead style={{ width: 84, textAlign: 'right' }} title="Selling price per unit">Sell ₹</ColHead>
+                <ColHead style={{ width: 96, textAlign: 'right' }}>MRP ₹</ColHead>
+                <ColHead style={{ width: 52, textAlign: 'right' }} title="Discount off MRP">Disc%</ColHead>
+                <ColHead style={{ width: 70, textAlign: 'right' }} title="MRP − Sell, per unit">Disc Amt</ColHead>
+                <ColHead style={{ width: 48, textAlign: 'right' }} title="GST rate on this item">Tax%</ColHead>
+                <ColHead style={{ width: 76, textAlign: 'right' }} title="GST on the amount">Tax Amt</ColHead>
+                <ColHead style={{ width: 82, textAlign: 'right' }} title="Qty × Cost (before tax)">Amount ₹</ColHead>
+                <ColHead style={{ width: 98, textAlign: 'right' }} title="Amount + Tax (payable to supplier)">Net Amt ₹</ColHead>
+                <ColHead style={{ width: 54, textAlign: 'right' }} title="Return on cost = (Sell−Cost)/Cost">ROI%</ColHead>
+                <ColHead style={{ width: 58, textAlign: 'right' }} title="Margin on selling = (Sell−Cost)/Sell">Profit%</ColHead>
+                <ColHead style={{ width: 82, textAlign: 'right' }} title="Landed cost incl. GST">NetCost</ColHead>
+                <ColHead style={{ width: 92 }}>Batch / Lot</ColHead>
+                <ColHead style={{ width: 96 }}>Expiry</ColHead>
+                <ColHead style={{ width: 120 }}>Reason</ColHead>
+                <ColHead style={{ width: 70 }}>Status</ColHead>
               </tr>
             </thead>
             <tbody>
-              {rows.map(r => {
+              {rows.map((r, _idx) => {
                 const done = r._status === 'ok'
                 const rowStyle = {
                   opacity: done ? 0.5 : 1,
@@ -777,28 +821,93 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                 }
                 const cellDisabled = done || saving
 
+                // Live figures for the reference-style columns (all computed).
+                const _q = parseFloat(r.qty) || 0
+                const _c = parseFloat(r.cost_price) || 0
+                const _s = parseFloat(r.selling_price) || 0
+                const _m = parseFloat(r.mrp) || 0
+                const _f = parseFloat(r.free) || 0
+                const _gst = (parseFloat(r.cgst_rate) || 0) + (parseFloat(r.sgst_rate) || 0) || (parseFloat(r.igst_rate) || 0)
+                const _amount = _q * _c                       // taxable value (cost is before-tax)
+                const _taxAmt = _amount * _gst / 100
+                const _netAmt = _amount + _taxAmt             // amount incl. GST (payable to supplier)
+                const _disc = _m > 0 && _s > 0 ? ((_m - _s) / _m) * 100 : null
+                const _discAmt = _m > 0 && _s > 0 && _m > _s ? (_m - _s) : null
+                const _roi = _s > 0 && _c > 0 ? ((_s - _c) / _c) * 100 : null
+                const _profit = _s > 0 && _c > 0 ? ((_s - _c) / _s) * 100 : null
+                const _netCost = _c > 0 ? _c * (1 + _gst / 100) : null   // landed cost incl. GST
+                const _money2 = n => (n != null && n !== 0 ? n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—')
+
                 return (
                   <React.Fragment key={r._key}>
                     <tr style={rowStyle}>
-                      {/* Product name / identifier */}
+                      {/* # serial (delete on hover, POS-style) */}
+                      <TCell style={{ textAlign: 'center', verticalAlign: 'middle', padding: '0 2px' }}>
+                        <span className="row-sno" style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{_idx + 1}</span>
+                        <button className="row-del" type="button" onClick={() => removeRow(r._key)} disabled={saving}
+                          title="Remove this row"
+                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '1rem', lineHeight: 1, padding: 0, alignItems: 'center', justifyContent: 'center' }}>×</button>
+                      </TCell>
+
+                      {/* Product name + inline edit pencil (edit/delete no longer own columns) */}
                       <TCell>
-                        {r._type === 'existing' ? (
-                          <div>
-                            <div style={{ fontWeight: 600, fontSize: '0.82rem', lineHeight: 1.2 }}>{r.name}</div>
-                            {r._confidence != null && r._confidence < 0.95 && (
-                              <div style={{ fontSize: '0.63rem', color: '#eab308' }}>
-                                ⚠ {Math.round(r._confidence * 100)}% match from bill
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {r._type === 'existing' ? (
+                              <div>
+                                <div style={{ fontWeight: 600, fontSize: '0.82rem', lineHeight: 1.2 }}>{r.name}</div>
+                                {r._confidence != null && r._confidence < 0.95 && (
+                                  <div style={{ fontSize: '0.63rem', color: '#eab308' }}>
+                                    ⚠ {Math.round(r._confidence * 100)}% match from bill
+                                  </div>
+                                )}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+                                  {(r.current_cost != null || r.current_sell != null) && (
+                                    <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                      was{r.current_cost != null ? ` cost ₹${r.current_cost}` : ''}{r.current_sell != null ? ` · sell ₹${r.current_sell}` : ''}
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    title={r._price_mode === 'update'
+                                      ? 'Mode: Update product price (click to switch to New Batch)'
+                                      : 'Mode: New Batch — old price kept (click to switch to Update)'}
+                                    onClick={() => setRow(r._key, { _price_mode: r._price_mode === 'update' ? 'new_batch' : 'update' })}
+                                    style={{
+                                      fontSize: '0.56rem', fontWeight: 700, lineHeight: 1,
+                                      padding: '2px 5px', borderRadius: 4, cursor: 'pointer', border: 'none',
+                                      background: r._price_mode === 'update' ? 'rgba(192,97,42,.15)' : 'rgba(99,102,241,.15)',
+                                      color: r._price_mode === 'update' ? 'var(--accent)' : '#818cf8',
+                                    }}
+                                  >
+                                    {r._price_mode === 'update' ? '↑ Update price' : '⊕ New Batch'}
+                                  </button>
+                                </div>
                               </div>
+                            ) : (
+                              <TextCell
+                                value={r.name}
+                                placeholder="Product name *"
+                                disabled={cellDisabled}
+                                onChange={v => setRow(r._key, { name: v })}
+                              />
                             )}
                           </div>
-                        ) : (
-                          <TextCell
-                            value={r.name}
-                            placeholder="Product name *"
-                            disabled={cellDisabled}
-                            onChange={v => setRow(r._key, { name: v })}
-                          />
-                        )}
+                          <button
+                            type="button"
+                            onClick={() => setEditingRowKey(editingRowKey === r._key ? null : r._key)}
+                            title={r._type === 'new' ? 'More fields' : 'Edit details'}
+                            style={{
+                              flexShrink: 0, marginTop: 1,
+                              background: editingRowKey === r._key ? 'var(--accent-muted, rgba(192,97,42,.14))' : 'transparent',
+                              border: '1px solid var(--border)', borderRadius: 5, cursor: 'pointer',
+                              padding: '3px 6px', fontSize: '0.72rem', lineHeight: 1,
+                              color: editingRowKey === r._key ? 'var(--accent)' : 'var(--text-muted)',
+                            }}
+                          >
+                            {editingRowKey === r._key ? '✎ Editing' : '✎'}
+                          </button>
+                        </div>
                       </TCell>
 
                       {/* Type badge */}
@@ -832,7 +941,17 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                         />
                       </TCell>
 
-                      {/* Cost price */}
+                      {/* Free units (added to stock, no cost) */}
+                      <TCell>
+                        <NumCell
+                          value={r.free}
+                          onChange={v => setRow(r._key, { free: v })}
+                          disabled={cellDisabled}
+                          placeholder="0"
+                        />
+                      </TCell>
+
+                      {/* Cost price (Rate — before tax) */}
                       <TCell>
                         <NumCell
                           value={r.cost_price}
@@ -840,14 +959,9 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                           disabled={cellDisabled}
                           placeholder="cost"
                         />
-                        {r._type === 'existing' && r.current_cost != null && (
-                          <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 2, textAlign: 'center' }}>
-                            was ₹{r.current_cost}
-                          </div>
-                        )}
                       </TCell>
 
-                      {/* Selling price + price-mode toggle */}
+                      {/* Selling price */}
                       <TCell>
                         <NumCell
                           value={r.selling_price}
@@ -855,33 +969,72 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                           disabled={cellDisabled}
                           placeholder="sell"
                         />
-                        {r._type === 'existing' && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 3 }}>
-                            {/* mode toggle */}
-                            <button
-                              type="button"
-                              title={r._price_mode === 'update'
-                                ? 'Mode: Update product price (click to switch to New Batch)'
-                                : 'Mode: New Batch — old price kept (click to switch to Update)'}
-                              onClick={() => setRow(r._key, { _price_mode: r._price_mode === 'update' ? 'new_batch' : 'update' })}
-                              style={{
-                                fontSize: '0.58rem', fontWeight: 700, lineHeight: 1,
-                                padding: '2px 5px', borderRadius: 4, cursor: 'pointer', border: 'none',
-                                background: r._price_mode === 'update'
-                                  ? 'rgba(192,97,42,.15)' : 'rgba(99,102,241,.15)',
-                                color: r._price_mode === 'update'
-                                  ? 'var(--accent)' : '#818cf8',
-                              }}
-                            >
-                              {r._price_mode === 'update' ? '↑ Update' : '⊕ New Batch'}
-                            </button>
-                            {r.current_sell != null && (
-                              <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>
-                                was ₹{r.current_sell}
-                              </span>
-                            )}
-                          </div>
-                        )}
+                      </TCell>
+
+                      {/* MRP (editable — persists with the row) */}
+                      <TCell>
+                        <NumCell
+                          value={r.mrp}
+                          onChange={v => setRow(r._key, { mrp: v })}
+                          disabled={cellDisabled}
+                          placeholder="mrp"
+                        />
+                      </TCell>
+
+                      {/* Disc% off MRP (computed) */}
+                      <TCell style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                        <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                          {_disc != null ? `${_disc.toFixed(1)}%` : '—'}
+                        </span>
+                      </TCell>
+
+                      {/* Disc Amt (MRP − Sell per unit) */}
+                      <TCell style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                        <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{_money2(_discAmt)}</span>
+                      </TCell>
+
+                      {/* Tax% (GST rate) */}
+                      <TCell style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                        <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{_gst ? `${_gst.toFixed(0)}%` : '—'}</span>
+                      </TCell>
+
+                      {/* Tax Amt (GST on amount) */}
+                      <TCell style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                        <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{_money2(_taxAmt)}</span>
+                      </TCell>
+
+                      {/* Amount = Qty × Cost (before tax) */}
+                      <TCell style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                          {_amount > 0 ? _amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                        </span>
+                      </TCell>
+
+                      {/* Net Amt = Amount + Tax (payable to supplier) */}
+                      <TCell style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{_money2(_netAmt)}</span>
+                      </TCell>
+
+                      {/* ROI% return on cost (computed) */}
+                      <TCell style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                        <span style={{ fontSize: '0.76rem', fontVariantNumeric: 'tabular-nums', color: _roi == null ? 'var(--text-muted)' : _roi >= 0 ? 'var(--success, #16a34a)' : '#ef4444' }}>
+                          {_roi != null ? `${_roi.toFixed(1)}%` : '—'}
+                        </span>
+                      </TCell>
+
+                      {/* Profit% margin (computed) */}
+                      <TCell style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                        <span style={{
+                          fontSize: '0.76rem', fontVariantNumeric: 'tabular-nums',
+                          color: _profit == null ? 'var(--text-muted)' : _profit >= 0 ? 'var(--success, #16a34a)' : '#ef4444',
+                        }}>
+                          {_profit != null ? `${_profit.toFixed(1)}%` : '—'}
+                        </span>
+                      </TCell>
+
+                      {/* NetCost = cost incl. GST (computed) */}
+                      <TCell style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                        <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{_money2(_netCost)}</span>
                       </TCell>
 
                       {/* Batch */}
@@ -921,45 +1074,6 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                         <StatusChip status={r._status} />
                       </TCell>
 
-                      {/* Edit Details sidebar toggle */}
-                      <TCell style={{ textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                        <button
-                          type="button"
-                          onClick={() => setEditingRowKey(editingRowKey === r._key ? null : r._key)}
-                          title={r._type === 'new' ? "Edit product details in right sidebar" : "Edit product details in right sidebar"}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            background: editingRowKey === r._key ? 'var(--accent-muted, rgba(192,97,42,.12))' : 'var(--bg-3)',
-                            border: '1px solid var(--border)', borderRadius: 5,
-                            cursor: 'pointer', padding: '4px 10px',
-                            color: editingRowKey === r._key ? 'var(--accent)' : 'var(--text-secondary)',
-                            fontSize: '0.7rem', fontWeight: 700,
-                          }}
-                        >
-                          {editingRowKey === r._key ? (
-                            <>Active in Sidebar</>
-                          ) : (
-                            r._type === 'new' ? <>More Fields</> : <>Edit Details</>
-                          )}
-                        </button>
-                      </TCell>
-
-                      {/* Remove */}
-                      <TCell style={{ textAlign: 'center', verticalAlign: 'middle' }}>
-                        <button
-                          type="button"
-                          onClick={() => removeRow(r._key)}
-                          disabled={saving}
-                          style={{
-                            background: 'transparent', border: 'none', cursor: 'pointer',
-                            color: 'var(--text-muted)', fontSize: '1rem', padding: '2px 4px',
-                            lineHeight: 1,
-                          }}
-                          title="Remove this row"
-                        >
-                          ×
-                        </button>
-                      </TCell>
                     </tr>
 
                   </React.Fragment>
@@ -967,6 +1081,7 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
               })}
             </tbody>
           </table>
+          </>
         )}
       </div>
 

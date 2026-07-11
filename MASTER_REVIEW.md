@@ -143,6 +143,7 @@ Month-end pre-flight: runs existing GSTR builders, cross-checks the hash-chained
 ### 3.6 Phase 4 (Weeks 14–20) — Back-Office Autopilot
 
 - **Purchase ingestion**: photo/PDF → `purchase_ocr` → mapped draft → one-tap commit; agent adds the review loop + learning from corrections.
+  - **Vision-model OCR upgrade (planned).** Today the image path uses Tesseract (classic OCR) → text-LLM. On a real distributor bill photo (angled, glare, 26 dense multi-column rows, pen marks) Tesseract misreads digits and merges columns, so quantities/rates come out wrong — and if `pytesseract`/tesseract isn't installed the upload errors outright (`OCR dependencies not installed`). Fix: for image uploads, send the image **directly to a vision LLM** (Gemini / Claude / Groq-vision) via the new provider-fallback layer (`services/llm_provider.py`); keep Tesseract as the offline/no-key fallback. Digital PDFs already work well (pypdf → text-LLM). This is the single biggest accuracy win for photo-based bill capture and the foundation of the purchase-OCR autopilot.
 - **Daily digest agent** (WhatsApp, 8pm): sales vs same-day-last-week, cash position, top action for tomorrow. Numbers from 0-token DIRECT handlers; one small LLM call for the narrative. Cheap daily touchpoint = habit.
 - **Margin/pricing advisor**: flags SKUs sold below target margin; suggests price updates (owner approves).
 
@@ -223,7 +224,7 @@ Hygiene is an afternoon. The dependency-free engineering makes the current produ
 
 **Ops (your side, no code):** rotate `.env` keys · `SENTRY_DSN` · UptimeRobot · code-signing cert · Vercel admin protection · move off HF before paying customers · label-printer hardware test (3 sizes).
 
-**Engineering next:** WhatsApp + payment links (gate collections) · customer/vendor import preview parity · delete dead legacy add-modal in `Stock.jsx` · per-business staff username scheme · supply-adder shift-gate decision · async LLM + provider fallback + eval set + write rails.
+**Engineering next:** WhatsApp + payment links (gate collections) · customer/vendor import preview parity · delete dead legacy add-modal in `Stock.jsx` · per-business staff username scheme · supply-adder shift-gate decision · async LLM + provider fallback + eval set + write rails · **vision-model bill OCR** for image uploads (Gemini/Claude/Groq-vision via `llm_provider.py`, Tesseract fallback — see §3.6) · persist distributor + payment onto a purchase/GRN record from the intake panel.
 
 **Product decisions pending:** shift summary auto-print setting · supply-adder shift exemption · Agents-tier pricing finalization.
 

@@ -35,8 +35,8 @@ from services.tools import execute_tool
 logger = logging.getLogger("bizassist.agent_graph")
 
 client        = make_groq_client()
-MODEL_PLANNER = os.getenv("GROQ_MODEL_SIMPLE",  "llama-3.1-8b-instant")    # planner only needs JSON routing
-MODEL_SYNTH   = os.getenv("GROQ_MODEL_COMPLEX", "qwen/qwen3-32b") # synthesizer needs reasoning
+MODEL_PLANNER = os.getenv("GROQ_MODEL_SIMPLE",  "meta-llama/llama-4-scout-17b-16e-instruct")    # planner only needs JSON routing
+MODEL_SYNTH   = os.getenv("GROQ_MODEL_COMPLEX", "openai/gpt-oss-120b") # synthesizer needs reasoning
 
 
 # ── State ─────────────────────────────────────────────────────────────

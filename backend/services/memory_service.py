@@ -31,7 +31,7 @@ logger = logging.getLogger("bizassist.memory")
 # ── Groq client (reuses existing API key via env; timeout via groq_client) ───
 import os
 _groq = make_groq_client(os.environ.get("GROQ_API_KEY", ""))
-_MODEL = os.environ.get("GROQ_MODEL_SIMPLE", "llama-3.1-8b-instant")
+_MODEL = os.environ.get("GROQ_MODEL_SIMPLE", "meta-llama/llama-4-scout-17b-16e-instruct")
 
 
 # ── Prompt ───────────────────────────────────────────────────────────────────

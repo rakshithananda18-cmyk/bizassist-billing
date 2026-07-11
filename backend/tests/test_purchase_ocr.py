@@ -184,3 +184,49 @@ def test_parse_purchase_file_image(mock_extract, mock_img_text):
     assert res == {"supplier_name": "Test Image"}
     mock_img_text.assert_called_once_with(b"image bytes")
     mock_extract.assert_called_once_with("Image Raw Text")
+
+
+# ── JSON Loose Parsing & Self-Healing Repair ──────────────────────────────────
+
+def test_parse_json_loose_with_repair():
+    from services.purchase_ocr import _parse_json_loose
+    from unittest.mock import patch
+
+    # 1. Test case where JSON is already valid
+    valid_json = '{"supplier_name": "Test Valid"}'
+    assert _parse_json_loose(valid_json) == {"supplier_name": "Test Valid"}
+
+    # 2. Test case where JSON is invalid but repaired successfully
+    broken_json = '{"supplier_name": "Test Broken" '
+    repaired_json = '{"supplier_name": "Test Broken"}'
+
+    with patch("services.purchase_ocr._repair_json_with_llm", return_value=repaired_json) as mock_repair:
+        res = _parse_json_loose(broken_json)
+        assert res == {"supplier_name": "Test Broken"}
+        mock_repair.assert_called_once_with(broken_json.strip())
+
+    # 3. Test case where repair fails and raises JSONDecodeError
+    with patch("services.purchase_ocr._repair_json_with_llm", return_value="") as mock_repair:
+        import pytest
+        import json
+        with pytest.raises(json.JSONDecodeError):
+            _parse_json_loose(broken_json)
+
+
+@patch("services.purchase_ocr.os.getenv")
+def test_repair_json_with_llm_success(mock_getenv):
+    from services.purchase_ocr import _repair_json_with_llm
+    from unittest.mock import MagicMock, patch
+
+    mock_getenv.side_effect = lambda k, d=None: "mock_key" if k == "GROQ_API_KEY" else d
+
+    mock_client = MagicMock()
+    mock_completion = MagicMock()
+    mock_completion.choices = [MagicMock()]
+    mock_completion.choices[0].message.content = '{"supplier_name": "Repaired"}'
+    mock_client.chat.completions.create.return_value = mock_completion
+
+    with patch("services.groq_client.make_groq_client", return_value=mock_client):
+        res = _repair_json_with_llm('{"supplier_name": "Repaired"')
+        assert res == '{"supplier_name": "Repaired"}'
+

@@ -201,7 +201,7 @@ class ColumnMapper:
     Followed by optional Groq AI fallback for remaining unmapped columns.
     """
 
-    def __init__(self, groq_client=None, model: str = "llama-3.1-8b-instant"):
+    def __init__(self, groq_client=None, model: str = "meta-llama/llama-4-scout-17b-16e-instruct"):
         self._groq   = groq_client   # injected; None = skip AI layer
         self._model  = model
 

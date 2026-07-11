@@ -15,9 +15,44 @@ import ProductFormModal, { EMPTY_PRODUCT } from '../components/stock/ProductForm
 import ScanStockInModal from '../components/stock/ScanStockInModal'
 import BulkAddProductsModal from '../components/stock/BulkAddProductsModal'
 import StockIntakeSheet from '../components/stock/StockIntakeSheet'
+import IntakePurchasePanel from '../components/stock/IntakePurchasePanel'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
+
+// Compact numeric (no symbol — the header carries ₹) and percent formatters for
+// the dense inventory grid.
+const num = (n) =>
+  n != null && !Number.isNaN(Number(n))
+    ? Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : '—'
+const pct = (n) => (n != null && !Number.isNaN(n) ? `${n.toFixed(1)}%` : '—')
+
+// Total GST rate for a product (intra-state CGST+SGST, else inter-state IGST).
+const gstOf = (p) =>
+  (Number(p.cgst_rate) || 0) + (Number(p.sgst_rate) || 0) || (Number(p.igst_rate) || 0)
+
+// Derived cost/margin figures shown in the grid (all computed, nothing stored):
+//   ROI%     = (sell-cost)/cost   · return on cost
+//   Profit%  = (sell-cost)/sell   · margin on selling price
+//   Disc%    = (mrp-sell)/mrp     · discount off MRP
+//   NetCost  = cost × (1+gst)     · landed cost incl. GST
+//   NetMRP   = mrp ÷ (1+gst)      · MRP net of GST (taxable value)
+function deriveInv(p) {
+  const gst = gstOf(p)
+  const cost = Number(p.cost_price) || 0
+  const sell = Number(p.selling_price) || 0
+  const mrp = Number(p.mrp) || 0
+  return {
+    gst,
+    cost, sell, mrp,
+    roi: cost > 0 ? ((sell - cost) / cost) * 100 : null,
+    profit: sell > 0 ? ((sell - cost) / sell) * 100 : null,
+    discPct: mrp > 0 ? ((mrp - sell) / mrp) * 100 : null,
+    netCost: cost > 0 ? cost * (1 + gst / 100) : null,
+    netMrp: mrp > 0 ? mrp / (1 + gst / 100) : null,
+  }
+}
 
 const defaultProduct = {
   name: '', sku: '', barcode: '', category: '', unit: 'pcs',
@@ -696,45 +731,70 @@ export default function Stock() {
                 </div>
 
                 <div className="inv-table-wrap">
+                  {/* Dense inventory grid — reference-style columns, compact spacing.
+                      Money columns drop the ₹ (header carries it); %/cost figures
+                      are computed (deriveInv), nothing new is stored. Barcode,
+                      category, brand, wholesale/distributor prices etc. live in the
+                      edit panel. */}
+                  <style>{`
+                    .data-table.inv-dense th { padding: 6px 7px; font-size: 10px; letter-spacing: .02em; }
+                    .data-table.inv-dense td { padding: 4px 7px; font-size: 11.5px; }
+                    .data-table.inv-dense .td-primary { font-size: 11.5px; line-height: 1.2; }
+                    .data-table.inv-dense .td-mono { font-size: 10.5px; }
+                  `}</style>
                   {loading ? (
                     <div className="page-loader"><span className="spinner" /> Loading…</div>
                   ) : (
-                    <table className="data-table" style={{ fontSize: '0.82rem' }}>
+                    <table className="data-table inv-dense">
                       <thead><tr>
-                        <th>Product</th>
-                        <th>SKU / Barcode</th>
-                        <th>Category</th>
+                        <th style={{ textAlign: 'left' }}>Code</th>
+                        <th style={{ textAlign: 'left' }}>Name</th>
+                        <th>HSN</th>
                         <th style={{ textAlign: 'right' }}>Stock</th>
                         <th>Unit</th>
-                        <th style={{ textAlign: 'right' }}>Sell ₹</th>
-                        <th style={{ textAlign: 'right' }}>Cost ₹</th>
                         <th style={{ textAlign: 'right' }}>MRP ₹</th>
+                        <th style={{ textAlign: 'right' }}>Cost ₹</th>
+                        <th style={{ textAlign: 'right' }}>Sell ₹</th>
+                        <th style={{ textAlign: 'right' }} title="Total GST rate">Tax%</th>
+                        <th style={{ textAlign: 'right' }} title="Discount off MRP">Disc%</th>
+                        <th style={{ textAlign: 'right' }} title="Return on cost = (Sell−Cost)/Cost">ROI%</th>
+                        <th style={{ textAlign: 'right' }} title="Margin on selling = (Sell−Cost)/Sell">Profit%</th>
+                        <th style={{ textAlign: 'right' }} title="Landed cost incl. GST">NetCost</th>
+                        <th style={{ textAlign: 'right' }} title="MRP net of GST (taxable value)">NetMRP</th>
                         <th>Status</th>
-                        <th style={{ width: 110 }}>Actions</th>
+                        <th style={{ width: 88 }}>Actions</th>
                       </tr></thead>
                       <tbody>
                         {filtered.length === 0 ? (
-                          <tr><td colSpan={10}>
+                          <tr><td colSpan={16}>
                             <div className="empty-state"><div className="empty-icon"><InventoryIcon size={22} /></div><h3>No products found</h3></div>
                           </td></tr>
                         ) : filtered.map(p => {
                           const status = getStatus(p)
                           const isLow = status !== 'In Stock'
+                          const d = deriveInv(p)
+                          const good = 'var(--success, #16a34a)'
                           return (
                             <tr key={p.id} style={{ background: isLow ? 'rgba(239,68,68,.03)' : undefined }}>
-                              <td className="td-primary">{p.name}</td>
-                              <td className="td-mono" style={{ fontSize: '0.74rem' }}>
-                                <div>{p.sku || '—'}</div>
-                                {p.barcode && <div style={{ color: 'var(--text-muted)' }}>{p.barcode}</div>}
+                              <td className="td-mono" style={{ textAlign: 'left' }}>{p.sku || '—'}</td>
+                              <td className="td-primary" style={{ textAlign: 'left' }}>
+                                {p.name}
+                                {p.barcode && <div style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.66rem' }}>{p.barcode}</div>}
                               </td>
-                              <td>{p.category ? <span className="badge badge-muted">{p.category}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                              <td className="td-mono">{p.hsn_sac || '—'}</td>
                               <td style={{ textAlign: 'right', fontWeight: 700, color: isLow ? 'var(--danger)' : 'inherit' }}>
                                 {p.stock_qty ?? p.quantity ?? 0}
                               </td>
                               <td style={{ color: 'var(--text-muted)' }}>{p.unit || 'pcs'}</td>
-                              <td style={{ textAlign: 'right' }}>{fmt(p.selling_price)}</td>
-                              <td style={{ textAlign: 'right' }}>{fmt(p.cost_price)}</td>
-                              <td style={{ textAlign: 'right' }}>{fmt(p.mrp)}</td>
+                              <td style={{ textAlign: 'right' }}>{num(d.mrp || null)}</td>
+                              <td style={{ textAlign: 'right' }}>{num(d.cost || null)}</td>
+                              <td style={{ textAlign: 'right', fontWeight: 600 }}>{num(d.sell || null)}</td>
+                              <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{d.gst ? `${d.gst.toFixed(0)}%` : '—'}</td>
+                              <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{pct(d.discPct)}</td>
+                              <td style={{ textAlign: 'right', color: d.roi == null ? 'var(--text-muted)' : d.roi >= 0 ? good : 'var(--danger)' }}>{pct(d.roi)}</td>
+                              <td style={{ textAlign: 'right', color: d.profit == null ? 'var(--text-muted)' : d.profit >= 0 ? good : 'var(--danger)' }}>{pct(d.profit)}</td>
+                              <td style={{ textAlign: 'right' }}>{num(d.netCost)}</td>
+                              <td style={{ textAlign: 'right' }}>{num(d.netMrp)}</td>
                               <td><span className={`badge ${status === 'In Stock' ? 'badge-success' : status === 'Low' ? 'badge-warning' : 'badge-danger'}`}>{status}</span></td>
                               <td>
                                 <div style={{ display: 'flex', gap: 4 }}>
@@ -998,6 +1058,11 @@ export default function Stock() {
                     </div>
                   )}
                 </div>
+
+                {/* Purchase panel (distributor · tax breakdown · summary · payment · print) */}
+                {activeView === 'intake' && intakeRows.length > 0 && (
+                  <IntakePurchasePanel rows={intakeRows} authFetch={authFetch} />
+                )}
               </>
             )}
           </div>
