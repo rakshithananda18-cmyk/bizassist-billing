@@ -10,34 +10,34 @@
 // logic and test hooks are unchanged.
 import { inr, n2, qty, pct, has } from '../formatters'
 
-const INK = '#111'          // primary ink
-const MUTED = '#555'        // secondary ink
-const RULE = '#c9c9c9'      // light inner rules
-const FRAME = '#111'        // strong outer frame + section rules
-const HEAD_BG = '#f4f4f2'   // header fill (prints as very light grey)
+const INK = '#111'
+const MUTED = '#555'
+const RULE = '#bbb'
+const FRAME = '#333'
+const HEAD_BG = '#eee'
 
 const S = {
   page: {
     background: '#fff', color: INK, width: '100%', maxWidth: '210mm',
     margin: '0 auto', padding: '10mm 9mm', boxSizing: 'border-box',
-    fontFamily: "'DM Sans', Arial, sans-serif", fontSize: 12, lineHeight: 1.5,
+    fontFamily: "Arial, sans-serif", fontSize: 12, lineHeight: 1.5,
     fontVariantNumeric: 'tabular-nums',
   },
-  box: { border: `1px solid ${FRAME}` },
+  box: { border: 'none' },
   th: {
-    borderBottom: `1.5px solid ${FRAME}`, borderRight: `1px solid ${RULE}`,
-    padding: '5px 7px', fontWeight: 700, fontSize: 10.5, textAlign: 'left',
+    border: '1px solid #bbb',
+    padding: '5px 7px', fontWeight: 700, fontSize: 11, textAlign: 'left',
     background: HEAD_BG, textTransform: 'uppercase', letterSpacing: '0.03em',
     whiteSpace: 'nowrap',
   },
   td: {
-    borderBottom: `1px solid ${RULE}`, borderRight: `1px solid ${RULE}`,
-    padding: '5px 7px', verticalAlign: 'top',
+    border: '1px solid #bbb',
+    padding: '5px 7px', verticalAlign: 'top', fontSize: 11,
   },
   right: { textAlign: 'right' },
   label: {
-    fontSize: 9.5, textTransform: 'uppercase', letterSpacing: '0.06em',
-    fontWeight: 700, color: MUTED, marginBottom: 2,
+    fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em',
+    fontWeight: 700, color: MUTED, marginBottom: 4, borderBottom: '1px solid #999', paddingBottom: 3
   },
 }
 
@@ -61,7 +61,7 @@ export default function ClassicA4({ payload }) {
   return (
     <div style={S.page} data-testid="invoice-classic">
       {/* ── A. Header ── */}
-      <div style={{ ...S.box, padding: '10px 12px', display: 'flex', gap: 14, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 12, borderBottom: `2px solid ${FRAME}`, paddingBottom: 10 }}>
         {seller.logo_url ? (
           <img src={seller.logo_url} alt="logo" style={{ maxHeight: 54, maxWidth: 110, objectFit: 'contain' }} />
         ) : null}
@@ -84,16 +84,16 @@ export default function ClassicA4({ payload }) {
 
       {/* title strip */}
       <div style={{
-        ...S.box, borderTop: 'none', padding: '4px 12px', textAlign: 'center',
-        fontWeight: 800, fontSize: 12.5, letterSpacing: '0.14em',
-        textTransform: 'uppercase', background: HEAD_BG,
+        padding: '4px 12px', textAlign: 'center',
+        fontWeight: 800, fontSize: 14, letterSpacing: '0.14em',
+        textTransform: 'uppercase', borderBottom: `1px solid ${RULE}`, marginBottom: 12
       }}>
         {invoice.title}
       </div>
 
       {/* ── meta + B. buyer ── */}
-      <div style={{ display: 'flex', border: `1px solid ${FRAME}`, borderTop: 'none' }}>
-        <div style={{ flex: 1.2, padding: '8px 12px', borderRight: `1px solid ${RULE}` }}>
+      <div style={{ display: 'flex', gap: 32, marginBottom: 12 }}>
+        <div style={{ flex: 1.2, padding: '0' }}>
           <div style={S.label}>Billed To</div>
           <div style={{ fontWeight: 700, fontSize: 12.5 }}>{buyer.name}</div>
           {buyer.billing_address ? <div style={{ color: MUTED, fontSize: 11.5 }}>{buyer.billing_address}</div> : null}
@@ -101,7 +101,7 @@ export default function ClassicA4({ payload }) {
           {gst && buyer.gstin ? <div style={{ fontSize: 11.5 }}>GSTIN: <b>{buyer.gstin}</b></div> : null}
           {gst && buyer.state ? <div style={{ fontSize: 11.5, color: MUTED }}>State: {buyer.state} ({buyer.state_code})</div> : null}
         </div>
-        <div style={{ flex: 1, padding: '8px 12px' }}>
+        <div style={{ flex: 1, padding: '0' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 11.5 }}><tbody>
             <MetaRow k="Invoice No.">{invoice.number}</MetaRow>
             <MetaRow k="Date">{invoice.date}{invoice.time ? ` · ${invoice.time}` : ''}</MetaRow>
@@ -114,8 +114,7 @@ export default function ClassicA4({ payload }) {
 
       {/* ── C. Item table ── */}
       <table style={{
-        borderCollapse: 'collapse', width: '100%',
-        borderLeft: `1px solid ${FRAME}`, borderRight: `1px solid ${FRAME}`,
+        borderCollapse: 'collapse', width: '100%', marginTop: 6, marginBottom: 12
       }}>
         <thead>
           <tr>
@@ -167,8 +166,8 @@ export default function ClassicA4({ payload }) {
       </table>
 
       {/* ── D. Totals + words ── */}
-      <div style={{ display: 'flex', border: `1px solid ${FRAME}` }}>
-        <div style={{ flex: 1.3, padding: '8px 12px', borderRight: `1px solid ${RULE}` }}>
+      <div style={{ display: 'flex', gap: 32, marginTop: 12 }}>
+        <div style={{ flex: 1.3, padding: '0' }}>
           <div style={S.label}>Amount in Words</div>
           <div style={{ fontStyle: 'italic', fontSize: 11.5 }}>{totals.amount_in_words}</div>
 
@@ -186,7 +185,7 @@ export default function ClassicA4({ payload }) {
           {gst && tax_summary.length > 0 ? (
             <div style={{ marginTop: 10 }}>
               <div style={S.label}>Tax Summary (HSN-wise)</div>
-              <table style={{ borderCollapse: 'collapse', marginTop: 3, border: `1px solid ${RULE}` }}>
+              <table style={{ borderCollapse: 'collapse', width: '100%', marginTop: 6 }}>
                 <thead>
                   <tr>
                     <Th>HSN</Th><Th right>Taxable</Th><Th right>Rate</Th>
@@ -206,7 +205,7 @@ export default function ClassicA4({ payload }) {
           ) : null}
         </div>
 
-        <div style={{ flex: 1, padding: '8px 12px' }}>
+        <div style={{ flex: 1, padding: '0' }}>
           <table style={{ borderCollapse: 'collapse', width: '100%' }}><tbody>
             <Row k="Sub Total (Taxable)" v={inr(totals.taxable_amount)} />
             {totals.total_discount ? <Row k="Discount" v={`− ${inr(totals.total_discount)}`} /> : null}
