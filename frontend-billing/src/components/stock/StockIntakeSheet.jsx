@@ -27,7 +27,8 @@ import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
 import {
   SearchIcon, PlusIcon, UploadIcon, CloseIcon, CheckIcon,
-  ZapIcon, InventoryIcon, AlertIcon, SyncIcon, PackageIcon
+  ZapIcon, InventoryIcon, AlertIcon, SyncIcon, PackageIcon,
+  EditIcon
 } from '../Icons'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -744,15 +745,19 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
 
       {/* Error bars */}
       {scanErr && (
-        <div className="alert alert-danger" style={{ margin: '6px 0', padding: '6px 12px', fontSize: '0.8rem' }}>
-          {scanErr}
-          <button onClick={() => setScanErr(null)} style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}>×</button>
+        <div className="alert alert-danger" style={{ margin: '6px 0', padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>{scanErr}</span>
+          <button onClick={() => setScanErr(null)} style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', display: 'inline-flex', alignItems: 'center' }}>
+            <CloseIcon size={10} strokeWidth={2.5} />
+          </button>
         </div>
       )}
       {uploadErr && (
-        <div className="alert alert-danger" style={{ margin: '6px 0', padding: '6px 12px', fontSize: '0.8rem' }}>
-          {uploadErr}
-          <button onClick={() => setUploadErr(null)} style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}>×</button>
+        <div className="alert alert-danger" style={{ margin: '6px 0', padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>{uploadErr}</span>
+          <button onClick={() => setUploadErr(null)} style={{ marginLeft: 8, background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', display: 'inline-flex', alignItems: 'center' }}>
+            <CloseIcon size={10} strokeWidth={2.5} />
+          </button>
         </div>
       )}
 
@@ -860,7 +865,9 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                         <span className="row-sno" style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{_idx + 1}</span>
                         <button className="row-del" type="button" onClick={() => removeRow(r._key)} disabled={saving}
                           title="Remove this row"
-                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '1rem', lineHeight: 1, padding: 0, alignItems: 'center', justifyContent: 'center' }}>×</button>
+                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
+                          <CloseIcon size={12} strokeWidth={2.5} />
+                        </button>
                       </TCell>
 
                       {/* Product name + inline edit pencil (edit/delete no longer own columns) */}
@@ -915,11 +922,13 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                               flexShrink: 0, marginTop: 1,
                               background: editingRowKey === r._key ? 'var(--accent-muted, rgba(192,97,42,.14))' : 'transparent',
                               border: '1px solid var(--border)', borderRadius: 5, cursor: 'pointer',
-                              padding: '3px 6px', fontSize: '0.72rem', lineHeight: 1,
+                              padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                               color: editingRowKey === r._key ? 'var(--accent)' : 'var(--text-muted)',
+                              borderColor: editingRowKey === r._key ? 'var(--accent)' : 'var(--border)',
+                              height: 28, width: 28
                             }}
                           >
-                            {editingRowKey === r._key ? '✎ Editing' : '✎'}
+                            <EditIcon size={13} />
                           </button>
                         </div>
                       </TCell>
