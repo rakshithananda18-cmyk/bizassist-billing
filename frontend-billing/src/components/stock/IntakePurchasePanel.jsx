@@ -72,7 +72,7 @@ function Row({ l, v, muted, strong, big }) {
 
 // ── main panel ───────────────────────────────────────────────────────────────
 
-export default function IntakePurchasePanel({ rows = [], authFetch, distributor: propDistributor, setDistributor: propSetDistributor }) {
+export default function IntakePurchasePanel({ rows = [], authFetch, distributor: propDistributor, setDistributor: propSetDistributor, adjustments: propAdjustments, setAdjustments: propSetAdjustments, payment: propPayment, setPayment: propSetPayment, onPrint }) {
   const [open, setOpen] = useState({ distributor: true, tax: false, summary: true, payment: false })
   const toggle = (k) => setOpen((o) => ({ ...o, [k]: !o[k] }))
 
@@ -89,8 +89,12 @@ export default function IntakePurchasePanel({ rows = [], authFetch, distributor:
       setter(val)
     }
   }
-  const [pay, setPay] = useState({ mode: 'Credit', due_date: '' })
-  const [adj, setAdj] = useState({ item_disc: '', cess: '', cash_disc: '' })
+  const [localPay, setLocalPay] = useState({ mode: 'Credit', due_date: '' })
+  const [localAdj, setLocalAdj] = useState({ item_disc: '', cess: '', cash_disc: '' })
+  const pay = propPayment || localPay
+  const setPay = propSetPayment || setLocalPay
+  const adj = propAdjustments || localAdj
+  const setAdj = propSetAdjustments || setLocalAdj
 
   useEffect(() => {
     if (!authFetch) return
@@ -380,7 +384,7 @@ export default function IntakePurchasePanel({ rows = [], authFetch, distributor:
 
       {/* Print */}
       <div style={{ padding: '10px 12px' }}>
-        <button type="button" onClick={printGRN} disabled={rows.length === 0}
+        <button type="button" onClick={onPrint || printGRN} disabled={rows.length === 0}
           style={{ width: '100%', padding: '8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-3)', color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.8rem', cursor: rows.length === 0 ? 'not-allowed' : 'pointer', opacity: rows.length === 0 ? 0.5 : 1 }}>
           🖨 Print Purchase / GRN Summary
         </button>

@@ -28,7 +28,7 @@ import { logger } from '../../utils/logger'
 import {
   SearchIcon, PlusIcon, UploadIcon, CloseIcon, CheckIcon,
   ZapIcon, InventoryIcon, AlertIcon, SyncIcon, PackageIcon,
-  EditIcon
+  EditIcon, PrinterIcon
 } from '../Icons'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -216,7 +216,7 @@ function TextCell({ value, onChange, disabled, placeholder = '' }) {
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function StockIntakeSheet({ products = [], onSaved, onExit, prefillProduct, rows = [], setRows, distributor, setDistributor, editingRowKey, setEditingRowKey, adjustments, isSidebarCollapsed, setIsSidebarCollapsed }) {
+export default function StockIntakeSheet({ products = [], onSaved, onExit, prefillProduct, rows = [], setRows, distributor, setDistributor, editingRowKey, setEditingRowKey, adjustments, isSidebarCollapsed, setIsSidebarCollapsed, onPrint }) {
   const { authFetch } = useAuth()
 
   const [globalRef, setGlobalRef] = useState('')   // bill reference, fills all empty reasons
@@ -928,7 +928,13 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                           <button
                             type="button"
                             className={`row-edit-btn ${editingRowKey === r._key ? 'is-active' : ''}`}
-                            onClick={() => setEditingRowKey(editingRowKey === r._key ? null : r._key)}
+                            onClick={() => {
+                              const nextKey = editingRowKey === r._key ? null : r._key
+                              setEditingRowKey(nextKey)
+                              if (nextKey && isSidebarCollapsed) {
+                                setIsSidebarCollapsed(false)
+                              }
+                            }}
                             title={r._type === 'new' ? 'More fields' : 'Edit details'}
                             style={{
                               flexShrink: 0, marginTop: 2,
@@ -1138,39 +1144,49 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
         </span>
 
         {isSidebarCollapsed && rows.length > 0 && (
-          <div
-            onClick={() => setIsSidebarCollapsed(false)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 14,
-              padding: '6px 12px', background: 'var(--bg-3)',
-              border: '1px solid var(--border)', borderRadius: 6,
-              fontSize: '0.78rem', cursor: 'pointer',
-              transition: 'background .15s, border-color .15s',
-              marginRight: 6
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-4)'; e.currentTarget.style.borderColor = 'var(--accent)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.style.borderColor = 'var(--border)' }}
-            title="Click to expand distributor & summary details"
-          >
-            {distributor?.name && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div
+              onClick={() => setIsSidebarCollapsed(false)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 14,
+                padding: '6px 12px', background: 'var(--bg-3)',
+                border: '1px solid var(--border)', borderRadius: 6,
+                fontSize: '0.78rem', cursor: 'pointer',
+                transition: 'background .15s, border-color .15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-4)'; e.currentTarget.style.borderColor = 'var(--accent)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+              title="Click to expand distributor & summary details"
+            >
+              {distributor?.name && (
+                <div>
+                  <span style={{ color: 'var(--text-muted)' }}>Distributor:</span>{' '}
+                  <strong style={{ color: 'var(--accent)' }}>{distributor.name}</strong>
+                </div>
+              )}
+              {distributor?.invoice_no && (
+                <div>
+                  <span style={{ color: 'var(--text-muted)' }}>Inv:</span>{' '}
+                  <strong>{distributor.invoice_no}</strong>
+                </div>
+              )}
               <div>
-                <span style={{ color: 'var(--text-muted)' }}>Distributor:</span>{' '}
-                <strong style={{ color: 'var(--accent)' }}>{distributor.name}</strong>
+                <span style={{ color: 'var(--text-muted)' }}>Payable:</span>{' '}
+                <strong style={{ color: '#22c55e' }}>₹{payable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
               </div>
-            )}
-            {distributor?.invoice_no && (
-              <div>
-                <span style={{ color: 'var(--text-muted)' }}>Inv:</span>{' '}
-                <strong>{distributor.invoice_no}</strong>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 4 }}>
+                Expand ↗
               </div>
-            )}
-            <div>
-              <span style={{ color: 'var(--text-muted)' }}>Payable:</span>{' '}
-              <strong style={{ color: '#22c55e' }}>₹{payable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
             </div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 4 }}>
-              Expand ↗
-            </div>
+            <button
+              className="btn btn-secondary"
+              type="button"
+              style={{ height: 32, padding: '0 10px', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.76rem', fontWeight: 600, marginRight: 6 }}
+              onClick={onPrint}
+              title="Print Purchase / GRN Summary"
+            >
+              <PrinterIcon size={12} /> Print
+            </button>
           </div>
         )}
 

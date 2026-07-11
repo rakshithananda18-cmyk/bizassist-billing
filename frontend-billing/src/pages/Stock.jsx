@@ -512,6 +512,98 @@ export default function Stock() {
     setIntakeRows(prev => prev.map(r => r._key === editingRowKey ? { ...r, [field]: value, _status: null } : r))
   }
 
+  const printGRN = () => {
+    const gstOfLocal = (r) => (parseFloat(r.cgst_rate) || 0) + (parseFloat(r.sgst_rate) || 0) || (parseFloat(r.igst_rate) || 0)
+    const money = (n) =>
+      n != null
+        ? `₹${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : '—'
+
+    const gross = intakeRows.reduce((s, r) => {
+      const q = parseFloat(r.qty) || 0
+      const c = parseFloat(r.cost_price) || 0
+      return s + q * c
+    }, 0)
+
+    const slabMap = {}
+    intakeRows.forEach((r) => {
+      const q = parseFloat(r.qty) || 0
+      const c = parseFloat(r.cost_price) || 0
+      if (q <= 0 || c <= 0) return
+      const rate = gstOfLocal(r)
+      const amt = q * c
+      const tax = amt * rate / 100
+      if (!slabMap[rate]) slabMap[rate] = { rate, taxable: 0, tax: 0 }
+      slabMap[rate].taxable += amt
+      slabMap[rate].tax += tax
+    })
+    const slabList = Object.values(slabMap).sort((a, b) => a.rate - b.rate)
+    const taxTotal = slabList.reduce((s, x) => s + x.tax, 0)
+    
+    const itemDisc = parseFloat(intakeAdjustments?.item_disc) || 0
+    const cess = parseFloat(intakeAdjustments?.cess) || 0
+    const cashDisc = parseFloat(intakeAdjustments?.cash_disc) || 0
+    const taxable = gross - itemDisc
+    const payable = taxable + taxTotal + cess - cashDisc
+
+    const w = window.open('', '_blank', 'width=800,height=900')
+    if (!w) return
+    const rowsHtml = intakeRows.map((r, i) => {
+      const q = parseFloat(r.qty) || 0, f = parseFloat(r.free) || 0
+      const c = parseFloat(r.cost_price) || 0, g = gstOfLocal(r)
+      const amt = q * c, taxAmt = amt * g / 100
+      return `<tr>
+        <td>${i + 1}</td><td>${r.name || ''}</td><td style="text-align:right">${q}</td>
+        <td style="text-align:right">${f}</td><td style="text-align:right">${c.toFixed(2)}</td>
+        <td style="text-align:right">${g}%</td><td style="text-align:right">${taxAmt.toFixed(2)}</td>
+        <td style="text-align:right">${(amt + taxAmt).toFixed(2)}</td></tr>`
+    }).join('')
+    const slabHtml = slabList.map((s) =>
+      `<tr><td>GST ${s.rate}%</td><td style="text-align:right">${s.taxable.toFixed(2)}</td><td style="text-align:right">${s.tax.toFixed(2)}</td></tr>`).join('')
+    w.document.write(`<!doctype html><html><head><title>Purchase / GRN Summary</title>
+      <style>
+        body{font-family:Arial,sans-serif;color:#111;padding:24px;font-size:12px}
+        h1{font-size:18px;margin:0 0 4px} h2{font-size:13px;margin:18px 0 6px;border-bottom:1px solid #999;padding-bottom:3px}
+        table{width:100%;border-collapse:collapse;margin-top:6px} th,td{border:1px solid #bbb;padding:5px 7px;font-size:11px}
+        th{background:#eee;text-align:left} .tot{display:flex;justify-content:space-between;padding:3px 0}
+        .tot.big{font-size:15px;font-weight:800;border-top:2px solid #333;margin-top:6px;padding-top:6px}
+        .grid{display:flex;gap:32px} .grid>div{flex:1}
+      </style></head><body>
+      <h1>Purchase / GRN Summary</h1>
+      <div style="color:#555">${new Date().toLocaleString('en-IN')}</div>
+      <div class="grid">
+        <div><h2>Distributor</h2>
+          <div>${intakeDistributor.name || '—'}</div>
+          <div>GSTIN: ${intakeDistributor.gstin || '—'}</div>
+          <div>PAN: ${intakeDistributor.pan || '—'}</div>
+          <div>FSSAI: ${intakeDistributor.fssai || '—'}</div>
+          <div>Phone: ${intakeDistributor.phone || '—'}</div>
+          <div>Address: ${intakeDistributor.address || '—'}</div>
+        </div>
+        <div><h2>Invoice / Payment</h2>
+          <div>Invoice No: ${intakeDistributor.invoice_no || '—'}</div><div>Invoice Date: ${intakeDistributor.invoice_date || '—'}</div>
+          <div>Payment: ${intakePayment.mode}${intakePayment.due_date ? ' · due ' + intakePayment.due_date : ''}</div></div>
+      </div>
+      <h2>Items</h2>
+      <table><thead><tr><th>#</th><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Free</th>
+        <th style="text-align:right">Cost</th><th style="text-align:right">Tax%</th><th style="text-align:right">Tax</th><th style="text-align:right">Net</th></tr></thead>
+        <tbody>${rowsHtml}</tbody></table>
+      <h2>Tax Breakdown</h2>
+      <table><thead><tr><th>Slab</th><th style="text-align:right">Taxable</th><th style="text-align:right">Tax</th></tr></thead><tbody>${slabHtml || '<tr><td colspan=3>—</td></tr>'}</tbody></table>
+      <h2>Summary</h2>
+      <div class="tot"><span>Gross Amount</span><span>${money(gross)}</span></div>
+      <div class="tot"><span>Item Disc</span><span>${money(itemDisc)}</span></div>
+      <div class="tot"><span>Taxable</span><span>${money(taxable)}</span></div>
+      <div class="tot"><span>Tax</span><span>${money(taxTotal)}</span></div>
+      <div class="tot"><span>Cess</span><span>${money(cess)}</span></div>
+      <div class="tot"><span>Cash Disc</span><span>-${money(cashDisc)}</span></div>
+      <div class="tot big"><span>Payable Amount</span><span>${money(payable)}</span></div>
+      </body></html>`)
+    w.document.close()
+    w.focus()
+    setTimeout(() => { w.print() }, 250)
+  }
+
   // Helper to add barcode to editing row from the sidebar
   const addBarcodeToEditingRow = async () => {
     const editingRow = intakeRows.find(r => r._key === editingRowKey)
@@ -765,6 +857,7 @@ export default function Stock() {
                 setIsSidebarCollapsed={setIsSidebarCollapsed}
                 editingRowKey={editingRowKey}
                 setEditingRowKey={setEditingRowKey}
+                onPrint={printGRN}
                 onSaved={(n) => {
                   setAlert({ type: 'success', msg: `✓ ${n} item${n !== 1 ? 's' : ''} recorded` })
                   setPrefillProduct(null)
@@ -1158,7 +1251,7 @@ export default function Stock() {
 
                 {/* Purchase panel (distributor · tax breakdown · summary · payment · print) */}
                 {activeView === 'intake' && intakeRows.length > 0 && (
-                  <IntakePurchasePanel rows={intakeRows} authFetch={authFetch} distributor={intakeDistributor} setDistributor={setIntakeDistributor} adjustments={intakeAdjustments} setAdjustments={setIntakeAdjustments} payment={intakePayment} setPayment={setIntakePayment} />
+                  <IntakePurchasePanel rows={intakeRows} authFetch={authFetch} distributor={intakeDistributor} setDistributor={setIntakeDistributor} adjustments={intakeAdjustments} setAdjustments={setIntakeAdjustments} payment={intakePayment} setPayment={setIntakePayment} onPrint={printGRN} />
                 )}
               </>
             )}
