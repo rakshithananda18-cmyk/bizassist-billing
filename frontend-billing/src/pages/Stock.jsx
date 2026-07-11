@@ -1,14 +1,20 @@
 // ============================================================================
-// Page: Stock.jsx
+// Page: Stock.jsx  [fullscreen POS-style inventory — v2]
 // Description: Inventory & Catalog Manager. Handles product item catalog creation,
-//              stock adjustments, barcode bindings, and stock transfers between godowns.
+//              stock adjustments, barcode bindings, and stock transfers between godowns — v8.
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon, ExpandIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import CustomSelect from '../components/common/CustomSelect'
+import LabelPrintModal from '../components/stock/LabelPrintModal'
+import ProductFormModal, { EMPTY_PRODUCT } from '../components/stock/ProductFormModal'
+import ScanStockInModal from '../components/stock/ScanStockInModal'
+import BulkAddProductsModal from '../components/stock/BulkAddProductsModal'
+import StockIntakeSheet from '../components/stock/StockIntakeSheet'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -46,6 +52,7 @@ function getStatus(product) {
 export default function Stock() {
   const { authFetch, settings } = useAuth()
   const { attributesSchema } = useBusinessConfig()
+  const navigate = useNavigate()
 
   const settingsRef = useRef(settings)
   useEffect(() => {
@@ -58,9 +65,50 @@ export default function Stock() {
   const [loading, setLoading]               = useState(true)
   const [search, setSearch]                 = useState('')
   const [catFilter, setCatFilter]           = useState('')
-  const [activeTab, setActiveTab]           = useState('catalogue') // 'catalogue' | 'godowns'
+  const [activeTab, setActiveTab]           = useState('catalogue') // 'catalogue' | 'intake' | 'godowns'
   const [isFullScreen, setIsFullScreen] = useState(false)
   const [showAddModal, setShowAddModal]     = useState(false)
+  const [showLabelModal, setShowLabelModal] = useState(false)
+  const [showScanModal, setShowScanModal]   = useState(false)
+  const [scanInitialCode, setScanInitialCode] = useState('')   // scan typed into the smart search box
+  const [showBulkAdd, setShowBulkAdd]       = useState(false)
+  const [editProduct, setEditProduct]       = useState(null)   // product row → edit mode
+  const [prefillBarcode, setPrefillBarcode] = useState('')     // unknown scan → add flow
+  const [selectedIds, setSelectedIds]       = useState(new Set())  // row selection → label printing
+  const [exporting, setExporting]           = useState(false)
+
+  const toggleSelected = (id) => setSelectedIds(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const res = await authFetch('/billing/export/products')
+      if (!res.ok) throw new Error(res.status === 403 ? 'Export is owner-only.' : 'Export failed.')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = 'products_export.csv'
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+    } catch (err) {
+      setAlert({ type: 'danger', msg: err.message || 'Export failed.' })
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  // Smart search box doubles as the scanner input: Enter on a scanned code
+  // opens the stock-in flow with the code already looked up.
+  const handleSearchEnter = () => {
+    const code = search.trim()
+    if (!code) return
+    setScanInitialCode(code)
+    setShowScanModal(true)
+  }
   const [showAdjustModal, setShowAdjustModal] = useState(false)
   const [showTransferModal, setShowTransferModal] = useState(false)
   const [form, setForm]                     = useState(defaultProduct)
@@ -236,17 +284,29 @@ export default function Stock() {
       setAlert({ type: 'danger', msg: 'Please select a product.' })
       return
     }
+    const q = parseFloat(adjustForm.quantity) || 0
+    if (q <= 0) {
+      setAlert({ type: 'danger', msg: 'Enter a quantity greater than 0.' })
+      return
+    }
+    // ANTI-TAMPER: a reason is mandatory — the backend rejects blank notes and
+    // every adjustment is attributed in the owner's activity feed.
+    if (!(adjustForm.reason || '').trim()) {
+      setAlert({ type: 'danger', msg: 'A reason is required (e.g. "damaged goods", "count correction").' })
+      return
+    }
     setSubmitting(true)
     try {
-      const res = await authFetch('/billing/stock/adjust', {
+      // BUGFIX (2026-07): this used to POST /billing/stock/adjust — an endpoint
+      // that never existed (silent 404, the whole modal was dead). The real
+      // route is per-product with a signed qty_delta.
+      const pid = parseInt(adjustForm.product_id, 10)
+      const delta = adjustForm.movement_type === 'stock_out' ? -q : q
+      const noteBits = [adjustForm.reason.trim()]
+      if (adjustForm.reference) noteBits.push(`ref: ${adjustForm.reference}`)
+      const res = await authFetch(`/billing/products/${pid}/stock/adjustment`, {
         method: 'POST',
-        body: JSON.stringify({
-          product_id: parseInt(adjustForm.product_id, 10),
-          movement_type: adjustForm.movement_type,
-          quantity: parseFloat(adjustForm.quantity) || 0,
-          reason: adjustForm.reason || null,
-          reference: adjustForm.reference || null,
-        }),
+        body: JSON.stringify({ qty_delta: delta, note: noteBits.join(' — ') }),
       })
       if (res.ok) {
         setAlert({ type: 'success', msg: 'Stock adjusted successfully!' })
@@ -338,439 +398,631 @@ export default function Stock() {
     }
   }
 
+
+  // ─── View state ─────────────────────────────────────────────────────────────
+  const [activeView, setActiveView] = useState('intake')  // 'intake' | 'catalogue' | 'godowns'
+  const [prefillProduct, setPrefillProduct] = useState(null)  // product to pre-load in intake
+  const [intakeRows, setIntakeRows] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bizassist_intake_rows')
+      return saved ? JSON.parse(saved) : []
+    } catch (e) {
+      return []
+    }
+  })
+  const [editingRowKey, setEditingRowKey] = useState(null)
+
+  // Persist intakeRows draft to localStorage
+  useEffect(() => {
+    localStorage.setItem('bizassist_intake_rows', JSON.stringify(intakeRows))
+  }, [intakeRows])
+
+  const lowStockItems = products.filter(p => getStatus(p) !== 'In Stock').slice(0, 10)
+
+  // Helper to update fields on the currently editing row in parent state
+  const setEditingRowField = (field, value) => {
+    setIntakeRows(prev => prev.map(r => r._key === editingRowKey ? { ...r, [field]: value, _status: null } : r))
+  }
+
+  // Helper to add barcode to editing row from the sidebar
+  const addBarcodeToEditingRow = async () => {
+    const editingRow = intakeRows.find(r => r._key === editingRowKey)
+    if (!editingRow) return
+    const code = (editingRow._newBarcode || '').trim()
+    if (!code) return
+    if (editingRow._type === 'existing') {
+      try {
+        const res = await authFetch(`/billing/products/${editingRow.product_id}/barcodes`, {
+          method: 'POST', body: JSON.stringify({ barcode: code }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.detail || 'Could not add barcode.')
+        
+        setIntakeRows(prev => prev.map(r => r._key === editingRowKey ? {
+          ...r,
+          barcodes: [...(r.barcodes || []), data.barcode ? data : { barcode: code }],
+          _newBarcode: ''
+        } : r))
+      } catch (err) {
+        setAlert({ type: 'danger', msg: err.message })
+      }
+    }
+  }
+
+  // ── Tab switch helpers ───────────────────────────────────────────────────────
+  const goIntake = (product = null) => {
+    if (product) setPrefillProduct({ ...product, _seed: Date.now() }) // new ref each time
+    setActiveView('intake')
+  }
+
+  // Inline SVG icons for warehouse / tag (not in Icons.jsx)
+  const WarehouseIcon = ({ size = 14 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+    </svg>
+  )
+  const TagIcon = ({ size = 14 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>
+    </svg>
+  )
+
+  // Tab definitions
+  const TABS = [
+    { key: 'intake',    label: 'Stock Intake', icon: <ZapIcon size={14} /> },
+    { key: 'catalogue', label: 'Catalogue',    icon: <InventoryIcon size={14} /> },
+    { key: 'godowns',  label: 'Godowns',       icon: <WarehouseIcon size={14} /> },
+  ]
+
   return (
     <AppLayout title="Stock & Inventory">
-      <div className="slide-up">
+      <style>{`
+        .inv-shell { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+        .inv-top-bar {
+          height: 48px; background: var(--bg-2); border-bottom: 1px solid var(--border);
+          display: flex; align-items: center; padding: 0 12px; gap: 6px; flex-shrink: 0;
+        }
+        .inv-tab {
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.82rem;
+          font-weight: 600; border: none; background: transparent; color: var(--text-secondary);
+          transition: background .15s, color .15s;
+        }
+        .inv-tab:hover { background: var(--bg-3); color: var(--text-primary); }
+        .inv-tab.active {
+          background: var(--accent-muted, rgba(192,97,42,.12));
+          color: var(--accent, #c0612a);
+          border: 1px solid rgba(192,97,42,.25);
+        }
+        .inv-body { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+        .inv-main { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; padding: 0 16px 12px; overflow: hidden; }
+        .inv-sidebar {
+          width: 340px; flex-shrink: 0; height: 100%; display: flex; flex-direction: column;
+          border-left: 1px solid var(--border); background: var(--bg-2); overflow-y: auto;
+        }
+        .inv-action-btn {
+          display: flex; align-items: center; gap: 9px; width: 100%;
+          padding: 9px 14px; background: transparent; border: none; border-radius: 6px;
+          cursor: pointer; color: var(--text-primary); font-size: 0.82rem; font-weight: 600;
+          text-align: left; transition: background .12s;
+        }
+        .inv-action-btn:hover { background: var(--bg-3); }
+        .inv-btn-icon {
+          display: flex; align-items: center; justify-content: center;
+          width: 28px; height: 28px; border-radius: 6px;
+          background: var(--bg-4, var(--bg-3)); flex-shrink: 0;
+          color: var(--accent);
+        }
+        .inv-stat-chip {
+          display: flex; flex-direction: column; align-items: center; flex: 1;
+          padding: 11px 6px; cursor: pointer; border-radius: 0; transition: background .12s;
+          border: none; background: transparent;
+        }
+        .inv-stat-chip:hover { background: var(--bg-3); }
+        .inv-alert-row {
+          display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+          border-radius: 7px; border: 1px solid var(--border);
+          cursor: pointer; transition: background .12s;
+        }
+        .inv-alert-row:hover { background: var(--bg-3); }
+        .inv-full-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 14px 16px; overflow: hidden; }
+        .inv-panel-toolbar {
+          display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+          padding-bottom: 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; margin-bottom: 12px;
+        }
+        .inv-table-wrap { flex: 1; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+      `}</style>
 
-        {alert && (
-          <div className={`alert alert-${alert.type} mb-4`}>
-            {alert.type === 'success' ? '✅' : '❌'} {alert.msg}
-            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }} aria-label="Close"><CloseIcon size={16} /></button>
-          </div>
-        )}
+      <div className="inv-shell">
+        {/* ── Top bar ──────────────────────────────────────────────────────── */}
+        <div className="inv-top-bar">
 
-        {/* Header */}
-        <div className="page-header">
-          <div className="page-header-left">
-            <h1 className="page-title">Stock & Inventory</h1>
-            <p className="page-subtitle">Manage your product catalogue, pricing tiers, and warehouse locations</p>
-          </div>
-          <div className="page-actions">
-            {activeTab === 'catalogue' ? (
-              <>
-                <button className="btn btn-secondary" onClick={() => { setAdjustForm(defaultAdjust); setShowAdjustModal(true) }}>
-                  <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Adjust Stock
-                </button>
-                <button className="btn btn-primary" onClick={() => { setForm(defaultProduct); setShowAddModal(true) }}>
-                  <PlusIcon size={14} /> Add Product
-                </button>
-              </>
-            ) : (
-              <button className="btn btn-primary" onClick={() => { setTransferForm(defaultTransfer); setShowTransferModal(true) }}>
-                <PlusIcon size={14} /> Transfer Stock
+          {/* Brand / home ─ always goes back to intake */}
+          <button
+            className="inv-tab"
+            style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--text-primary)', marginRight: 4 }}
+            onClick={() => goIntake()}
+            title="Stock Intake — main screen"
+          >
+            <InventoryIcon size={16} /> Inventory
+          </button>
+          <span className="page-title-placeholder" style={{ display: 'inline-flex', alignItems: 'center', marginRight: 6 }}></span>
+
+          <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
+
+          {/* Main tabs */}
+          {TABS.map(tab => (
+            <button
+              key={tab.key}
+              className={`inv-tab ${activeView === tab.key ? 'active' : ''}`}
+              onClick={() => setActiveView(tab.key)}
+            >
+              {tab.icon} {tab.label}
+            </button>
+          ))}
+
+          <div style={{ flex: 1 }} />
+
+          {/* Alert flash */}
+          {alert && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', borderRadius: 6,
+              fontSize: '0.78rem', fontWeight: 600,
+              background: alert.type === 'success' ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)',
+              color: alert.type === 'success' ? '#22c55e' : '#ef4444',
+              border: `1px solid ${alert.type === 'success' ? 'rgba(34,197,94,.3)' : 'rgba(239,68,68,.3)'}`,
+              maxWidth: 340, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {alert.msg}
+              <button onClick={() => setAlert(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', lineHeight: 1, padding: '0 0 0 4px', flexShrink: 0 }}>
+                <CloseIcon size={12} />
               </button>
+            </div>
+          )}
+
+          {/* Quick adjustments */}
+          <button
+            className="btn btn-secondary btn-sm"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+            onClick={() => { setAdjustForm(defaultAdjust); setShowAdjustModal(true) }}
+          >
+            <ZapIcon size={13} /> Adjust Stock
+          </button>
+          <button
+            className="btn btn-secondary btn-sm"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+            onClick={() => { setTransferForm(defaultTransfer); setShowTransferModal(true) }}
+          >
+            <SyncIcon size={13} /> Transfer Stock
+          </button>
+
+          <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 4px' }} />
+
+          {/* Utility buttons */}
+          <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+            onClick={() => setShowLabelModal(true)}>
+            <TagIcon size={13} /> Labels
+          </button>
+          <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+            disabled={exporting} onClick={handleExport}>
+            <DownloadIcon size={13} /> {exporting ? 'Exporting…' : 'Export'}
+          </button>
+          <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+            onClick={() => { setEditProduct(null); setShowAddModal(true) }}>
+            <PlusIcon size={13} /> New Product
+          </button>
+
+          {/* Window controls */}
+          <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 4px' }} />
+          <button
+            title="Minimize — go back"
+            onClick={() => navigate(-1)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)',
+              background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)',
+              transition: 'background .12s, color .12s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
+          >
+            {/* Minimize — horizontal bar */}
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="5.5" width="10" height="1.5" rx="0.75" fill="currentColor"/></svg>
+          </button>
+          <button
+            title="Close — go to dashboard"
+            onClick={() => navigate('/')}
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)',
+              background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)',
+              transition: 'background .12s, color .12s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,.12)'; e.currentTarget.style.color = '#ef4444' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
+          >
+            <CloseIcon size={13} />
+          </button>
+        </div>
+
+        {/* ── Body ─────────────────────────────────────────────────────────── */}
+        <div className="inv-body">
+
+          {/* ── LEFT main area — switches by activeView ─────────────────── */}
+          <div className="inv-main">
+
+            {/* ── INTAKE ─────────────────────────────────────────────────── */}
+            {/* Keep mounted always so rows aren't lost when switching tabs */}
+            <div style={{ display: activeView === 'intake' ? 'flex' : 'none', flexDirection: 'column', height: '100%', paddingTop: 12 }}>
+              <StockIntakeSheet
+                products={products}
+                prefillProduct={prefillProduct}
+                rows={intakeRows}
+                setRows={setIntakeRows}
+                editingRowKey={editingRowKey}
+                setEditingRowKey={setEditingRowKey}
+                onSaved={(n) => {
+                  setAlert({ type: 'success', msg: `✓ ${n} item${n !== 1 ? 's' : ''} recorded` })
+                  setPrefillProduct(null)
+                  load()
+                }}
+              />
+            </div>
+
+            {/* ── CATALOGUE ──────────────────────────────────────────────── */}
+            {activeView === 'catalogue' && (
+              <div className="inv-full-panel">
+                <div className="inv-panel-toolbar">
+                  <div className="search-bar" style={{ minWidth: 220, height: 34 }}>
+                    <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={15} /></span>
+                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search products…" autoFocus />
+                  </div>
+                  <CustomSelect className="form-select" style={{ height: 34, fontSize: '0.82rem', minWidth: 140 }}
+                    value={catFilter} onChange={e => setCatFilter(e.target.value)}>
+                    <option value="">All Categories</option>
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </CustomSelect>
+                  <CustomSelect className="form-select" style={{ height: 34, fontSize: '0.82rem', minWidth: 130 }}
+                    value={stockStatusFilter} onChange={e => setStockStatusFilter(e.target.value)}>
+                    <option value="">All Status</option>
+                    <option value="in">In Stock</option>
+                    <option value="low">Low Stock</option>
+                    <option value="out">Out of Stock</option>
+                  </CustomSelect>
+                  <div style={{ flex: 1 }} />
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    {filtered.length} of {products.length} products
+                  </span>
+                </div>
+
+                <div className="inv-table-wrap">
+                  {loading ? (
+                    <div className="page-loader"><span className="spinner" /> Loading…</div>
+                  ) : (
+                    <table className="data-table" style={{ fontSize: '0.82rem' }}>
+                      <thead><tr>
+                        <th>Product</th>
+                        <th>SKU / Barcode</th>
+                        <th>Category</th>
+                        <th style={{ textAlign: 'right' }}>Stock</th>
+                        <th>Unit</th>
+                        <th style={{ textAlign: 'right' }}>Sell ₹</th>
+                        <th style={{ textAlign: 'right' }}>Cost ₹</th>
+                        <th style={{ textAlign: 'right' }}>MRP ₹</th>
+                        <th>Status</th>
+                        <th style={{ width: 110 }}>Actions</th>
+                      </tr></thead>
+                      <tbody>
+                        {filtered.length === 0 ? (
+                          <tr><td colSpan={10}>
+                            <div className="empty-state"><div className="empty-icon"><InventoryIcon size={22} /></div><h3>No products found</h3></div>
+                          </td></tr>
+                        ) : filtered.map(p => {
+                          const status = getStatus(p)
+                          const isLow = status !== 'In Stock'
+                          return (
+                            <tr key={p.id} style={{ background: isLow ? 'rgba(239,68,68,.03)' : undefined }}>
+                              <td className="td-primary">{p.name}</td>
+                              <td className="td-mono" style={{ fontSize: '0.74rem' }}>
+                                <div>{p.sku || '—'}</div>
+                                {p.barcode && <div style={{ color: 'var(--text-muted)' }}>{p.barcode}</div>}
+                              </td>
+                              <td>{p.category ? <span className="badge badge-muted">{p.category}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                              <td style={{ textAlign: 'right', fontWeight: 700, color: isLow ? 'var(--danger)' : 'inherit' }}>
+                                {p.stock_qty ?? p.quantity ?? 0}
+                              </td>
+                              <td style={{ color: 'var(--text-muted)' }}>{p.unit || 'pcs'}</td>
+                              <td style={{ textAlign: 'right' }}>{fmt(p.selling_price)}</td>
+                              <td style={{ textAlign: 'right' }}>{fmt(p.cost_price)}</td>
+                              <td style={{ textAlign: 'right' }}>{fmt(p.mrp)}</td>
+                              <td><span className={`badge ${status === 'In Stock' ? 'badge-success' : status === 'Low' ? 'badge-warning' : 'badge-danger'}`}>{status}</span></td>
+                              <td>
+                                <div style={{ display: 'flex', gap: 4 }}>
+                                  <button
+                                    className="btn btn-primary btn-sm"
+                                    style={{ padding: '3px 10px', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                                    onClick={() => goIntake(p)}
+                                    title={`Switch to Stock Intake and add stock for ${p.name}`}
+                                  >
+                                    <ZapIcon size={11} /> ± Stock
+                                  </button>
+                                  <button
+                                    className="btn btn-secondary btn-sm"
+                                    style={{ padding: '3px 9px', fontSize: '0.72rem' }}
+                                    onClick={() => setEditProduct(p)}
+                                    title="Edit product details"
+                                  >
+                                    <EditIcon size={11} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── GODOWNS ────────────────────────────────────────────────── */}
+            {activeView === 'godowns' && (
+              <div className="inv-full-panel">
+                <div className="inv-panel-toolbar" style={{ justifyContent: 'space-between' }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.95rem', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                    <WarehouseIcon size={15} /> Godowns &amp; Stock Transfers
+                  </span>
+                  <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                    onClick={() => { setTransferForm(defaultTransfer); setShowTransferModal(true) }}>
+                    <SyncIcon size={12} /> Transfer Stock
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 16, flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                  {/* Left: Locations list + add form */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Locations</div>
+                    {godowns.length === 0 ? (
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>No godowns registered. Add one below.</p>
+                    ) : godowns.map(g => (
+                      <div key={g.id} style={{ padding: '12px 14px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 10 }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.88rem' }}>{g.name}</div>
+                        {g.address && <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: 3 }}>{g.address}</div>}
+                        <span className="badge badge-success" style={{ fontSize: '0.65rem', marginTop: 6, display: 'inline-block' }}>Active</span>
+                      </div>
+                    ))}
+
+                    <form onSubmit={handleAddGodown} style={{ display: 'flex', flexDirection: 'column', gap: 8, background: 'var(--bg-3)', padding: 14, borderRadius: 10, border: '1px solid var(--border)', marginTop: 4 }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.82rem', marginBottom: 2 }}>Register New Godown</div>
+                      <input className="form-input" style={{ height: 34, fontSize: '0.82rem' }} placeholder="Godown name *" value={newGodownName} onChange={e => setNewGodownName(e.target.value)} required />
+                      <input className="form-input" style={{ height: 34, fontSize: '0.82rem' }} placeholder="Address / location" value={newGodownAddress} onChange={e => setNewGodownAddress(e.target.value)} />
+                      <button type="submit" className="btn btn-primary btn-sm" disabled={submitting} style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        <PlusIcon size={12} /> {submitting ? 'Saving…' : 'Register Godown'}
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Right: Transfer log */}
+                  <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>Transfer Log</div>
+                    <div className="inv-table-wrap">
+                      <table className="data-table" style={{ fontSize: '0.8rem' }}>
+                        <thead><tr><th>Date</th><th>From</th><th>To</th><th>Item</th><th>Qty</th></tr></thead>
+                        <tbody>
+                          {transfers.length === 0 ? (
+                            <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '28px 0' }}>No stock transfers recorded yet.</td></tr>
+                          ) : transfers.map(t => (
+                            <tr key={t.id}>
+                              <td>{t.transfer_date}</td>
+                              <td style={{ color: '#ef4444', fontWeight: 600 }}>{t.from_godown_name}</td>
+                              <td style={{ color: '#22c55e', fontWeight: 600 }}>{t.to_godown_name}</td>
+                              <td>{(t.items || []).map(it => <div key={it.id}>{it.product_name}</div>)}</td>
+                              <td style={{ fontWeight: 700 }}>{(t.items || []).map(it => <div key={it.id}>{it.quantity}</div>)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── RIGHT sidebar — always visible ──────────────────────────── */}
+          <div className="inv-sidebar" style={{ overflowY: editingRowKey ? 'hidden' : 'auto' }}>
+            {activeView === 'intake' && editingRowKey && intakeRows.find(r => r._key === editingRowKey) ? (
+              (() => {
+                const editingRow = intakeRows.find(r => r._key === editingRowKey)
+                const isNew = editingRow._type === 'new'
+                const p = isNew ? null : {
+                  id: editingRow.product_id,
+                  name: editingRow.name || '',
+                  description: editingRow.description || '',
+                  brand: editingRow.brand || '',
+                  category: editingRow.category || '',
+                  unit: editingRow.unit || 'pcs',
+                  sku: editingRow.sku || '',
+                  hsn_sac: editingRow.hsn_sac || '',
+                  selling_price: editingRow.selling_price || '',
+                  wholesale_price: editingRow.wholesale_price || '',
+                  distributor_price: editingRow.distributor_price || '',
+                  cost_price: editingRow.cost_price || '',
+                  mrp: editingRow.mrp || '',
+                  cgst_rate: editingRow.cgst_rate || '',
+                  sgst_rate: editingRow.sgst_rate || '',
+                  min_stock: editingRow.min_stock || '',
+                }
+
+                return (
+                  <ProductFormModal
+                    inline={true}
+                    open={true}
+                    product={p}
+                    prefillBarcode={isNew ? editingRow.barcode : ''}
+                    onClose={() => setEditingRowKey(null)}
+                    onChange={(field, value) => {
+                      setIntakeRows(prev => prev.map(r => {
+                        if (r._key === editingRowKey) {
+                          return {
+                            ...r,
+                            [field]: value,
+                            ...(field === 'name' ? { name: value } : {}),
+                            ...(field === 'selling_price' ? { selling_price: String(value) } : {}),
+                            ...(field === 'cost_price' ? { cost_price: String(value) } : {}),
+                          }
+                        }
+                        return r
+                      }))
+                    }}
+                    onSaved={(type, data) => {
+                      load()
+                      if (type === 'updated' && data) {
+                        setIntakeRows(prev => prev.map(r => {
+                          if (r.product_id === data.id) {
+                            return {
+                              ...r,
+                              name: data.name || '',
+                              sku: data.sku || '',
+                              category: data.category || '',
+                              unit: data.unit || 'pcs',
+                              brand: data.brand || '',
+                              hsn_sac: data.hsn_sac || '',
+                              cgst_rate: data.cgst_rate != null ? String(data.cgst_rate) : '',
+                              sgst_rate: data.sgst_rate != null ? String(data.sgst_rate) : '',
+                              min_stock: data.min_stock != null ? String(data.min_stock) : '',
+                              description: data.description || '',
+                              wholesale_price: data.wholesale_price != null ? String(data.wholesale_price) : '',
+                              distributor_price: data.distributor_price != null ? String(data.distributor_price) : '',
+                              mrp: data.mrp != null ? String(data.mrp) : '',
+                              barcodes: data.barcodes || [],
+                              current_sell: data.selling_price ?? null,
+                              current_cost: data.cost_price ?? null,
+                              selling_price: data.selling_price != null ? String(data.selling_price) : r.selling_price,
+                              cost_price: data.cost_price != null ? String(data.cost_price) : r.cost_price,
+                            }
+                          }
+                          return r
+                        }))
+                      } else if (type === 'created' && data) {
+                        setIntakeRows(prev => prev.map(r => {
+                          if (r._key === editingRowKey) {
+                            return {
+                              ...r,
+                              _type: 'existing',
+                              product_id: data.id,
+                              name: data.name || '',
+                              barcode: data.barcode || '',
+                              sku: data.sku || '',
+                              category: data.category || '',
+                              unit: data.unit || 'pcs',
+                              brand: data.brand || '',
+                              hsn_sac: data.hsn_sac || '',
+                              cgst_rate: data.cgst_rate != null ? String(data.cgst_rate) : '',
+                              sgst_rate: data.sgst_rate != null ? String(data.sgst_rate) : '',
+                              min_stock: data.min_stock != null ? String(data.min_stock) : '',
+                              description: data.description || '',
+                              wholesale_price: data.wholesale_price != null ? String(data.wholesale_price) : '',
+                              distributor_price: data.distributor_price != null ? String(data.distributor_price) : '',
+                              mrp: data.mrp != null ? String(data.mrp) : '',
+                              current_stock: 0,
+                              current_sell: data.selling_price ?? null,
+                              current_cost: data.cost_price ?? null,
+                              selling_price: data.selling_price != null ? String(data.selling_price) : r.selling_price,
+                              cost_price: data.cost_price != null ? String(data.cost_price) : r.cost_price,
+                            }
+                          }
+                          return r
+                        }))
+                      }
+                      setEditingRowKey(null)
+                      setAlert({ type: 'success', msg: `Product successfully ${type}!` })
+                    }}
+                  />
+                )
+              })()
+            ) : (
+              <>
+                {/* Stats */}
+                <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+                  {[
+                    { label: 'Products', value: totalProducts, color: 'var(--accent)', tab: 'catalogue' },
+                    { label: 'Low',      value: lowStock,      color: '#d97706',        tab: 'catalogue', filter: 'low' },
+                    { label: 'Out',      value: outStock,      color: '#ef4444',        tab: 'catalogue', filter: 'out' },
+                  ].map(s => (
+                    <button key={s.label} className="inv-stat-chip" onClick={() => {
+                      if (s.filter) setStockStatusFilter(s.filter)
+                      setActiveView(s.tab)
+                    }}>
+                      <span style={{ fontSize: '1.45rem', fontWeight: 800, color: s.color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{s.value}</span>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginTop: 3 }}>{s.label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Stock alerts */}
+                <div style={{ flex: 1, padding: '10px 10px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ fontSize: '0.58rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 8 }}>
+                    Stock Alerts
+                  </div>
+                  {loading ? (
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Loading…</div>
+                  ) : lowStockItems.length === 0 ? (
+                    <div style={{ color: '#22c55e', fontSize: '0.78rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <CheckIcon size={14} /> All products have stock
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, overflowY: 'auto' }}>
+                      {lowStockItems.map(p => {
+                        const st = getStatus(p)
+                        return (
+                          <div key={p.id} className="inv-alert-row"
+                            style={{ background: st === 'Out' ? 'rgba(239,68,68,.05)' : 'rgba(217,119,6,.04)' }}
+                            onClick={() => goIntake(p)}
+                            title={`Click to update stock for ${p.name}`}
+                          >
+                            <span style={{ flex: 1, fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.25 }}>{p.name}</span>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: st === 'Out' ? '#ef4444' : '#d97706', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                              {p.stock_qty ?? p.quantity ?? 0} {p.unit || 'pcs'}
+                            </span>
+                          </div>
+                        )
+                      })}
+                      {products.filter(p => getStatus(p) !== 'In Stock').length > 10 && (
+                        <button className="btn btn-secondary btn-sm" style={{ marginTop: 4 }}
+                          onClick={() => { setStockStatusFilter('low'); setActiveView('catalogue') }}>
+                          View all alerts →
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </div>
         </div>
-
-        {/* Tab Navigation */}
-        <div className="page-subbar" style={{ display: 'flex', gap: 16, borderBottom: '1px solid var(--border)' }}>
-          <button
-            onClick={() => setActiveTab('catalogue')}
-            style={{
-              padding: '10px 16px',
-              fontWeight: 600,
-              fontSize: '0.95rem',
-              color: activeTab === 'catalogue' ? 'var(--text-primary)' : 'var(--text-muted)',
-              borderBottom: activeTab === 'catalogue' ? '2px solid var(--accent)' : '2px solid transparent',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              marginBottom: -1
-            }}
-          >
-            Product Catalogue
-          </button>
-          <button
-            onClick={() => setActiveTab('godowns')}
-            style={{
-              padding: '10px 16px',
-              fontWeight: 600,
-              fontSize: '0.95rem',
-              color: activeTab === 'godowns' ? 'var(--text-primary)' : 'var(--text-muted)',
-              borderBottom: activeTab === 'godowns' ? '2px solid var(--accent)' : '2px solid transparent',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              marginBottom: -1
-            }}
-          >
-            Godowns & Transfers
-          </button>
-        </div>
-
-        {/* Stat cards */}
-        <div className="vsummary-strip-three mb-6">
-          <div className="vsummary-card" style={{ borderLeftColor: 'var(--accent)' }}>
-            <div className="vsummary-label">Total Products</div>
-            <div className="vsummary-value">{totalProducts}</div>
-            <div className="vsummary-sub">active catalogue items</div>
-          </div>
-          <div className="vsummary-card" style={{ borderLeftColor: '#c97c22' }}>
-            <div className="vsummary-label">Low Stock</div>
-            <div className="vsummary-value">{lowStock}</div>
-            <div className="vsummary-sub">below minimum threshold</div>
-          </div>
-          <div className="vsummary-card" style={{ borderLeftColor: '#c02a2a' }}>
-            <div className="vsummary-label">Out of Stock</div>
-            <div className="vsummary-value" style={{ color: '#c02a2a' }}>{outStock}</div>
-            <div className="vsummary-sub">needs immediate restock</div>
-          </div>
-        </div>
-
-        {activeTab === 'catalogue' ? (
-          <>
-            {/* Filters */}
-            <div className="flex items-center gap-3 mb-4" style={{ flexWrap: 'wrap' }}>
-              <div className="search-bar">
-                <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search products…" />
-              </div>
-              <CustomSelect
-                className="form-select"
-                style={{ width: 'auto', minWidth: 160 }}
-                value={catFilter}
-                onChange={e => setCatFilter(e.target.value)}
-              >
-                <option value="">All Categories</option>
-                {categories.map(c => <option key={c} value={c}>{c}</option>)}
-              </CustomSelect>
-              <CustomSelect
-                className="form-select"
-                style={{ width: 'auto', minWidth: 160 }}
-                value={stockStatusFilter}
-                onChange={e => setStockStatusFilter(e.target.value)}
-              >
-                <option value="">All Statuses</option>
-                <option value="in">In Stock</option>
-                <option value="low">Low Stock</option>
-                <option value="out">Out of Stock</option>
-              </CustomSelect>
-            </div>
-
-            {/* Table */}
-            {(() => {
-              const tableContent = (
-                <table className="data-table">
-                  <thead><tr>
-                    <th className="sortable" onClick={() => handleSort('name')}>
-                      Product
-                      <span className={`sort-indicator ${sortConfig.key === 'name' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'name' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('sku')}>
-                      SKU / Barcode
-                      <span className={`sort-indicator ${sortConfig.key === 'sku' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'sku' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('category')}>
-                      Category
-                      <span className={`sort-indicator ${sortConfig.key === 'category' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'category' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('stock_qty')}>
-                      Stock Qty
-                      <span className={`sort-indicator ${sortConfig.key === 'stock_qty' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'stock_qty' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th>Unit</th>
-                    <th>Min Stock</th>
-                    <th className="sortable" onClick={() => handleSort('selling_price')}>
-                      Selling Price
-                      <span className={`sort-indicator ${sortConfig.key === 'selling_price' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'selling_price' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('wholesale_price')}>
-                      Wholesale Price
-                      <span className={`sort-indicator ${sortConfig.key === 'wholesale_price' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'wholesale_price' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('distributor_price')}>
-                      Distributor Price
-                      <span className={`sort-indicator ${sortConfig.key === 'distributor_price' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'distributor_price' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('cost_price')}>
-                      Cost Price
-                      <span className={`sort-indicator ${sortConfig.key === 'cost_price' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'cost_price' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('status')}>
-                      Status
-                      <span className={`sort-indicator ${sortConfig.key === 'status' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'status' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                  </tr></thead>
-                  <tbody>
-                    {filtered.length === 0 ? (
-                      <tr><td colSpan={11}>
-                        <div className="empty-state">
-                          <div className="empty-icon"><InventoryIcon size={24} /></div>
-                          <h3>No products found</h3>
-                          <p>{search ? 'Try a different search.' : 'Add your first product using the button above.'}</p>
-                        </div>
-                      </td></tr>
-                    ) : filtered.map(p => {
-                      const status = getStatus(p)
-                      const isLow = status === 'Low' || status === 'Out'
-                      return (
-                        <tr key={p.id} style={isLow ? { background: 'rgba(239,68,68,0.03)' } : {}}>
-                          <td className="td-primary">{p.name}</td>
-                          <td className="td-mono" style={{ fontSize: '0.78rem' }}>
-                            <div>{p.sku || '—'}</div>
-                            {p.barcode && <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{p.barcode}</div>}
-                          </td>
-                          <td>{p.category ? <span className="badge badge-muted">{p.category}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                          <td style={{ fontWeight: 700, color: isLow ? 'var(--danger)' : 'var(--text-primary)' }}>{p.stock_qty ?? p.quantity ?? 0}</td>
-                          <td style={{ color: 'var(--text-muted)' }}>{p.unit || 'pcs'}</td>
-                          <td style={{ color: 'var(--text-muted)' }}>{p.min_stock ?? 0}</td>
-                          <td>{fmt(p.selling_price)}</td>
-                          <td>{fmt(p.wholesale_price)}</td>
-                          <td>{fmt(p.distributor_price)}</td>
-                          <td>{fmt(p.cost_price)}</td>
-                          <td><span className={`badge ${status === 'In Stock' ? 'badge-success' : status === 'Low' ? 'badge-warning' : 'badge-danger'}`}>{status}</span></td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              )
-              if (loading) return <div className="page-loader"><span className="spinner" /> Loading products…</div>
-              if (isFullScreen) return (
-                <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>
-                  <div className="table-fullscreen-panel">
-                    <div className="table-fullscreen-header">
-                      <h3>Inventory Catalog</h3>
-                      <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(false)}>✕ Close</button>
-                    </div>
-                    <div className="data-table-wrap">{tableContent}</div>
-                  </div>
-                </div>
-              )
-              return (
-                <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                  <button type="button" onClick={() => setIsFullScreen(true)} style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }} title="Full Screen">
-                    <ExpandIcon size={14} />
-                  </button>
-                  <div className="data-table-wrap">{tableContent}</div>
-                </div>
-              )
-            })()}
-
-          </>
-        ) : (
-          /* Godowns & Stock Transfers View */
-          <div className="grid grid-2 gap-4">
-            {/* Left side: Godowns listing & Add Godown form */}
-            <div>
-              <h3 style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: 12 }}>Godown Locations</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
-                {godowns.length === 0 ? (
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>No godown locations registered. List is auto-seeded when billing counter starts.</p>
-                ) : (
-                  godowns.map(g => (
-                    <div key={g.id} style={{ background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px', boxShadow: 'var(--shadow-sm)' }}>
-                      <div style={{ display: 'flex', justifycontent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.92rem' }}>{g.name}</span>
-                        <span className="badge badge-success" style={{ fontSize: '0.68rem' }}>Active</span>
-                      </div>
-                      {g.address && <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 4, marginBottom: 0 }}>{g.address}</p>}
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Add Godown Form */}
-              <div style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px' }}>
-                <h4 style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.85rem', marginBottom: 10 }}>Register New Godown Location</h4>
-                <form onSubmit={handleAddGodown} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontSize: '0.72rem' }}>Godown Name *</label>
-                    <input className="form-input" style={{ height: 35, fontSize: '0.82rem' }} placeholder="e.g. Outlet Store, Cold Storage" value={newGodownName} onChange={e => setNewGodownName(e.target.value)} required />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label" style={{ fontSize: '0.72rem' }}>Address / Location</label>
-                    <input className="form-input" style={{ height: 35, fontSize: '0.82rem' }} placeholder="e.g. Ground Floor, Sector 4" value={newGodownAddress} onChange={e => setNewGodownAddress(e.target.value)} />
-                  </div>
-                  <button type="submit" className="btn btn-primary btn-sm" disabled={submitting} style={{ alignSelf: 'flex-start' }}>
-                    {submitting ? 'Registering…' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Register Godown</span>}
-                  </button>
-                </form>
-              </div>
-            </div>
-
-            {/* Right side: Stock Transfer History */}
-            <div>
-              <h3 style={{ color: '#0f172a', fontWeight: 800, marginBottom: 12 }}><ZapIcon size={14} style={{ color: 'var(--accent)', marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Stock Transfer Log</h3>
-              <div className="data-table-wrap" style={{ maxHeight: '420px', overflowY: 'auto' }}>
-                <table className="data-table" style={{ fontSize: '0.8rem' }}>
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>From Godown</th>
-                      <th>To Godown</th>
-                      <th>Item</th>
-                      <th>Qty</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {transfers.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} style={{ textAlign: 'center', color: '#64748b', padding: '20px 0' }}>
-                          No stock transfers recorded yet.
-                        </td>
-                      </tr>
-                    ) : (
-                      transfers.map(t => (
-                        <tr key={t.id}>
-                          <td>{t.transfer_date}</td>
-                          <td style={{ fontWeight: 600, color: '#b91c1c' }}>{t.from_godown_name}</td>
-                          <td style={{ fontWeight: 600, color: '#15803d' }}>{t.to_godown_name}</td>
-                          <td>
-                            {t.items && t.items.map(it => (
-                              <div key={it.id}>{it.product_name}</div>
-                            ))}
-                          </td>
-                          <td style={{ fontWeight: 700 }}>
-                            {t.items && t.items.map(it => (
-                              <div key={it.id}>{it.quantity} {it.unit || 'pcs'}</div>
-                            ))}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Add Product Modal */}
-      {showAddModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowAddModal(false)}>
-          <div className="modal modal-lg">
-            <div className="modal-header">
-              <span className="modal-title" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <InventoryIcon size={16} />
-                <span>Add Product</span>
-              </span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowAddModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
-            </div>
-            <form onSubmit={handleAddProduct}>
-              <div className="modal-body">
-                <div className="grid grid-2 gap-3 mb-4">
-                  <div className="form-group">
-                    <label className="form-label">Product Name *</label>
-                    <input className="form-input" placeholder="e.g. Basmati Rice 1kg" value={form.name} onChange={e => setField('name', e.target.value)} required />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Category</label>
-                    <input className="form-input" placeholder="e.g. Groceries, Electronics…" value={form.category} onChange={e => setField('category', e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">SKU</label>
-                    <input className="form-input" placeholder="e.g. RICE-1KG-001" value={form.sku} onChange={e => setField('sku', e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Barcode</label>
-                    <input className="form-input" placeholder="e.g. 8901234567890" value={form.barcode} onChange={e => setField('barcode', e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Unit</label>
-                    <CustomSelect className="form-select" value={form.unit} onChange={e => setField('unit', e.target.value)}>
-                      <option value="pcs">Pieces</option>
-                      <option value="kg">Kilograms</option>
-                      <option value="g">Grams</option>
-                      <option value="L">Litres</option>
-                      <option value="mL">mL</option>
-                      <option value="box">Box</option>
-                      <option value="set">Set</option>
-                      <option value="pair">Pair</option>
-                    </CustomSelect>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Minimum Stock Level</label>
-                    <input type="number" className="form-input" placeholder="0" min="0" value={form.min_stock} onChange={e => setField('min_stock', e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Selling Price (₹)</label>
-                    <input type="number" className="form-input" placeholder="0.00" min="0" step="any" value={form.selling_price} onChange={e => setField('selling_price', e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Cost Price (₹)</label>
-                    <input type="number" className="form-input" placeholder="0.00" min="0" step="any" value={form.cost_price} onChange={e => setField('cost_price', e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Opening Stock Qty</label>
-                    <input type="number" className="form-input" placeholder="0" min="0" value={form.opening_stock} onChange={e => setField('opening_stock', e.target.value)} />
-                  </div>
-                  {attributesSchema && attributesSchema.map(field => (
-                    <div className="form-group" key={field.attr}>
-                      <label className="form-label">{field.label}{field.required ? ' *' : ''}</label>
-                      {field.type === 'enum' ? (
-                        <CustomSelect
-                          className="form-select"
-                          value={form.attributes?.[field.attr] || ''}
-                          onChange={e => setAttributeField(field.attr, e.target.value)}
-                          required={field.required}
-                        >
-                          {field.options && field.options.map(opt => (
-                            <option key={opt} value={opt}>{opt || 'Select Option'}</option>
-                          ))}
-                        </CustomSelect>
-                      ) : (
-                        <input
-                          type={field.type === 'number' ? 'number' : 'text'}
-                          className="form-input"
-                          placeholder={`Enter ${field.label.toLowerCase()}`}
-                          value={form.attributes?.[field.attr] || ''}
-                          onChange={e => setAttributeField(field.attr, e.target.value)}
-                          required={field.required}
-                        />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={submitting}>
-                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Saving…</> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Add Product</span>}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* ── Modals ──────────────────────────────────────────────────────────── */}
+      <LabelPrintModal open={showLabelModal} onClose={() => setShowLabelModal(false)} products={products} preselectIds={[...selectedIds]} />
+      <BulkAddProductsModal open={showBulkAdd} existingProducts={products} onClose={() => setShowBulkAdd(false)} onSaved={(n) => { setAlert({ type: 'success', msg: `${n} product(s) added!` }); load() }} />
+      <ProductFormModal
+        open={showAddModal || !!editProduct} product={editProduct} prefillBarcode={prefillBarcode}
+        onClose={() => { setShowAddModal(false); setEditProduct(null) }}
+        onSaved={(what) => { setShowAddModal(false); setEditProduct(null); setAlert({ type: 'success', msg: `Product ${what} successfully!` }); load() }}
+      />
+      <ScanStockInModal open={showScanModal} initialCode={scanInitialCode}
+        onClose={() => { setShowScanModal(false); setScanInitialCode(''); setSearch('') }}
+        onStocked={() => load()} onAddNew={(code) => { setPrefillBarcode(code); setEditProduct(null); setShowAddModal(true) }} />
 
       {/* Adjust Stock Modal */}
       {showAdjustModal && (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowAdjustModal(false)}>
           <div className="modal">
             <div className="modal-header">
-              <span className="modal-title"><SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Adjust Stock</span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowAdjustModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
+              <span className="modal-title"><ZapIcon size={14} style={{ marginRight: 6 }} /> Adjust Stock</span>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowAdjustModal(false)}><CloseIcon size={16} /></button>
             </div>
             <form onSubmit={handleAdjust}>
               <div className="modal-body">
@@ -778,18 +1030,16 @@ export default function Stock() {
                   <label className="form-label">Select Product *</label>
                   <CustomSelect className="form-select" value={adjustForm.product_id} onChange={e => setAdjField('product_id', e.target.value)} required>
                     <option value="">Choose a product…</option>
-                    {products.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} (Stock: {p.stock_qty ?? p.quantity ?? 0} {p.unit || ''})</option>
-                    ))}
+                    {products.map(p => <option key={p.id} value={p.id}>{p.name} (Stock: {p.stock_qty ?? p.quantity ?? 0} {p.unit || ''})</option>)}
                   </CustomSelect>
                 </div>
                 <div className="grid grid-2 gap-3 mb-4">
                   <div className="form-group">
                     <label className="form-label">Movement Type</label>
                     <CustomSelect className="form-select" value={adjustForm.movement_type} onChange={e => setAdjField('movement_type', e.target.value)}>
-                      <option value="stock_in"><DownloadIcon size={32} style={{ color: 'var(--accent)' }} /> Stock In</option>
-                      <option value="stock_out"><UploadIcon size={32} style={{ color: 'var(--accent)' }} /> Stock Out</option>
-                      <option value="adjustment"><EditIcon size={14} /> Adjustment</option>
+                      <option value="stock_in">Stock In</option>
+                      <option value="stock_out">Stock Out</option>
+                      <option value="adjustment">Adjustment</option>
                     </CustomSelect>
                   </div>
                   <div className="form-group">
@@ -798,18 +1048,18 @@ export default function Stock() {
                   </div>
                 </div>
                 <div className="form-group mb-4">
-                  <label className="form-label">Reason</label>
-                  <input className="form-input" placeholder="e.g. Damaged goods, Physical count correction…" value={adjustForm.reason} onChange={e => setAdjField('reason', e.target.value)} />
+                  <label className="form-label">Reason *</label>
+                  <input className="form-input" required placeholder="e.g. Damaged goods, count correction…" value={adjustForm.reason} onChange={e => setAdjField('reason', e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Reference</label>
-                  <input className="form-input" placeholder="PO number, GRN number…" value={adjustForm.reference} onChange={e => setAdjField('reference', e.target.value)} />
+                  <input className="form-input" placeholder="PO / GRN number…" value={adjustForm.reference} onChange={e => setAdjField('reference', e.target.value)} />
                 </div>
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowAdjustModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={submitting}>
-                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Adjusting…</> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Apply Adjustment</span>}
+                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Adjusting…</> : <><CheckIcon size={14} /> Apply</>}
                 </button>
               </div>
             </form>
@@ -822,11 +1072,8 @@ export default function Stock() {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowTransferModal(false)}>
           <div className="modal">
             <div className="modal-header">
-              <span className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <SyncIcon size={16} />
-                <span>Transfer Stock</span>
-              </span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowTransferModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
+              <span className="modal-title"><SyncIcon size={14} style={{ marginRight: 6 }} /> Transfer Stock</span>
+              <button className="btn btn-ghost btn-icon" onClick={() => setShowTransferModal(false)}><CloseIcon size={16} /></button>
             </div>
             <form onSubmit={handleTransferStock}>
               <div className="modal-body">
@@ -834,9 +1081,7 @@ export default function Stock() {
                   <label className="form-label">Select Product *</label>
                   <CustomSelect className="form-select" value={transferForm.product_id} onChange={e => setTrsfField('product_id', e.target.value)} required>
                     <option value="">Choose a product…</option>
-                    {products.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} (Total Stock: {p.stock_qty ?? p.quantity ?? 0} {p.unit || ''})</option>
-                    ))}
+                    {products.map(p => <option key={p.id} value={p.id}>{p.name} (Total Stock: {p.stock_qty ?? p.quantity ?? 0} {p.unit || ''})</option>)}
                   </CustomSelect>
                 </div>
                 <div className="grid grid-2 gap-3 mb-4">
@@ -844,18 +1089,14 @@ export default function Stock() {
                     <label className="form-label">From Godown *</label>
                     <CustomSelect className="form-select" value={transferForm.from_godown_id} onChange={e => setTrsfField('from_godown_id', e.target.value)} required>
                       <option value="">Select source…</option>
-                      {godowns.map(g => (
-                        <option key={g.id} value={g.id}>{g.name}</option>
-                      ))}
+                      {godowns.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                     </CustomSelect>
                   </div>
                   <div className="form-group">
                     <label className="form-label">To Godown *</label>
                     <CustomSelect className="form-select" value={transferForm.to_godown_id} onChange={e => setTrsfField('to_godown_id', e.target.value)} required>
                       <option value="">Select destination…</option>
-                      {godowns.map(g => (
-                        <option key={g.id} value={g.id}>{g.name}</option>
-                      ))}
+                      {godowns.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                     </CustomSelect>
                   </div>
                 </div>
@@ -864,14 +1105,14 @@ export default function Stock() {
                   <input type="number" className="form-input" placeholder="0" min="0.001" step="any" value={transferForm.quantity} onChange={e => setTrsfField('quantity', e.target.value)} required />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Notes / Remarks</label>
-                  <input className="form-input" placeholder="Reason for transfer, vehicle details etc." value={transferForm.notes} onChange={e => setTrsfField('notes', e.target.value)} />
+                  <label className="form-label">Notes</label>
+                  <input className="form-input" placeholder="Reason for transfer…" value={transferForm.notes} onChange={e => setTrsfField('notes', e.target.value)} />
                 </div>
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowTransferModal(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={submitting}>
-                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Transferring…</> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Transfer Stock</span>}
+                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Transferring…</> : <><CheckIcon size={14} /> Transfer Stock</>}
                 </button>
               </div>
             </form>

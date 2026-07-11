@@ -202,6 +202,9 @@ export default function B2BNetwork() {
           </div>
         </div>
 
+        {/* "How it works" lives in the ⓘ help button (top-right) — see
+            config/helpContent.js entry for /b2b-network. */}
+
         {/* Top Cards Section: My ID + Operations */}
         <div className="grid grid-2 gap-4 mb-5">
           {/* My BizID Display */}
@@ -248,31 +251,39 @@ export default function B2BNetwork() {
                 </span>
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Enter the BizID of the supplier you restock from or customer you sell to.
+                Enter the other business's BizID, then pick what they are to you.
               </div>
             </div>
-            
-            <form onSubmit={handleConnect} className="mt-auto flex" style={{ gap: 'var(--sp-3)' }}>
-              <input
-                className="form-input td-mono"
-                style={{ textTransform: 'uppercase', letterSpacing: '0.5px', flex: 1 }}
-                placeholder="E.G. BA-ABC123"
-                value={connectBizId}
-                onChange={e => setConnectBizId(e.target.value)}
-                required
-              />
-              <CustomSelect
-                className="form-select"
-                value={connectAs}
-                onChange={e => setConnectAs(e.target.value)}
-                style={{ width: 140 }}
-              >
-                <option value="buyer">As Buyer</option>
-                <option value="seller">As Seller</option>
-              </CustomSelect>
-              <button type="submit" className="btn btn-primary" disabled={connecting} style={{ height: 38 }}>
-                {connecting ? '...' : <span style={{ display: 'inline-flex', alignItems: 'center' }}><ConnectionIcon size={16} /></span>}
-              </button>
+
+            <form onSubmit={handleConnect} className="mt-auto" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+              <div className="flex" style={{ gap: 'var(--sp-3)' }}>
+                <input
+                  className="form-input td-mono"
+                  style={{ textTransform: 'uppercase', letterSpacing: '0.5px', flex: 1 }}
+                  placeholder="E.G. BA-ABC123"
+                  value={connectBizId}
+                  onChange={e => setConnectBizId(e.target.value)}
+                  required
+                />
+                <CustomSelect
+                  className="form-select"
+                  value={connectAs}
+                  onChange={e => setConnectAs(e.target.value)}
+                  style={{ width: 200 }}
+                >
+                  <option value="buyer">They're my Supplier</option>
+                  <option value="seller">They're my Customer</option>
+                </CustomSelect>
+                <button type="submit" className="btn btn-primary" disabled={connecting} style={{ height: 38 }} title="Connect">
+                  {connecting ? '...' : <span style={{ display: 'inline-flex', alignItems: 'center' }}><ConnectionIcon size={16} /></span>}
+                </button>
+              </div>
+              {/* Plain-language preview of what this connection will do */}
+              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                {connectAs === 'buyer'
+                  ? <>You'll <b>buy from</b> this business — they appear under <b>My Suppliers</b>, you can place purchase orders to them, and their price tier for you applies automatically.</>
+                  : <>You'll <b>sell to</b> this business — they appear under <b>My Customers</b>, they can order from your catalog, and you control their pricing, discount and stock visibility.</>}
+              </div>
             </form>
           </div>
         </div>

@@ -11,16 +11,26 @@ export default function AdminLogin() {
   const [showPw,   setShowPw]   = useState(false)
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(false)
+  const [needsOtp, setNeedsOtp] = useState(false)   // server asked for a 2FA code
+  const [otp,      setOtp]      = useState('')
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
     setLoading(true)
     try {
-      await adminLogin(username, password)
+      await adminLogin(username, password, needsOtp ? otp : undefined)
       navigate('/admin/dashboard')
     } catch (err) {
-      setError(err.message)
+      // Backend signals "2FA code required" after a correct password —
+      // reveal the OTP field instead of treating it as a failure.
+      if (/2FA code required/i.test(err.message)) {
+        setNeedsOtp(true)
+        setError('')
+      } else {
+        setError(err.message)
+        if (/2FA/i.test(err.message)) setOtp('')
+      }
     } finally {
       setLoading(false)
     }
@@ -101,6 +111,27 @@ export default function AdminLogin() {
               </button>
             </div>
           </div>
+
+          {/* 2FA code — appears only after the server asks for it */}
+          {needsOtp && (
+            <div className="form-group">
+              <label htmlFor="admin-otp">Authenticator Code</label>
+              <input
+                type="text"
+                id="admin-otp"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                placeholder="6-digit code"
+                value={otp}
+                onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
+                required
+                autoFocus
+                autoComplete="one-time-code"
+                style={{ letterSpacing: '0.35em', fontFamily: "'Geist Mono', monospace", textAlign: 'center' }}
+              />
+            </div>
+          )}
 
           {/* Error */}
           {error && (

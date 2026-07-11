@@ -85,6 +85,15 @@ export default function Purchases() {
     })
   }
 
+  // Approval-table completeness: a row the owner does NOT approve must be
+  // removable before commit — a wrongly-extracted line never reaches the books.
+  const handleRemoveItem = (index) => {
+    setExtracted(prev => {
+      if (!prev) return null
+      return { ...prev, items: prev.items.filter((_, i) => i !== index) }
+    })
+  }
+
   const handleItemChange = (index, field, value) => {
     setExtracted(prev => {
       if (!prev) return null
@@ -654,6 +663,7 @@ export default function Purchases() {
                             <th>Expiry</th>
                             <th>Barcode</th>
                             <th style={{ textAlign: 'right' }}>Total</th>
+                            <th style={{ width: 36 }}></th>
                           </tr>
                         </thead>
                         <tbody>
@@ -780,10 +790,21 @@ export default function Purchases() {
                                 <td style={{ fontWeight: 600, color: 'var(--text-primary)', textAlign: 'right', fontSize: '0.82rem' }}>
                                   {fmt(item.line_total)}
                                 </td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-icon"
+                                    title="Remove this line — it will NOT be added"
+                                    onClick={() => handleRemoveItem(index)}
+                                    style={{ color: 'var(--danger, #ef4444)', padding: 4, fontSize: 16, lineHeight: 1 }}
+                                  >
+                                    ×
+                                  </button>
+                                </td>
                               </tr>
                             );
                           }) : (
-                            <tr><td colSpan={11} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No items extracted</td></tr>
+                            <tr><td colSpan={12} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No items extracted</td></tr>
                           )}
                         </tbody>
                       </table>

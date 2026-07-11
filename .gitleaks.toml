@@ -1,0 +1,27 @@
+# gitleaks config — secret scanning for BizAssist (REVIEW_1 GAP-8).
+# Run locally:  gitleaks protect --staged   (or via pre-commit, see .pre-commit-config.yaml)
+# CI: add a gitleaks step to .github/workflows/ci.yml when ready.
+
+[extend]
+# Start from gitleaks' built-in rules (AWS, GCP, Slack, generic API keys, JWTs…)
+useDefault = true
+
+[[rules]]
+id = "groq-api-key"
+description = "Groq API key"
+regex = '''gsk_[A-Za-z0-9]{20,}'''
+keywords = ["gsk_"]
+
+[[rules]]
+id = "supabase-postgres-url"
+description = "Postgres connection string with credentials"
+regex = '''postgres(?:ql)?://[^\s:]+:[^\s@]+@[^\s/]+'''
+keywords = ["postgresql://", "postgres://"]
+
+[allowlist]
+description = "Files that legitimately contain placeholder examples"
+paths = [
+    '''.env.example''',
+    '''docs/.*''',
+    '''.*\.md''',
+]

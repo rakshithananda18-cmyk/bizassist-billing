@@ -31,6 +31,7 @@ import CartItemRow from '../components/sales/CartItemRow'
 import CartFooterRow from '../components/sales/CartFooterRow'
 import { PosCounterSettingsModal } from '../components/sales/PosSettingsModals'
 import { OpenShiftModal, CloseShiftModal, CashMovementModal } from '../components/sales/ShiftModals'
+import ShiftSummaryModal from '../components/sales/ShiftSummary'
 import usePaymentFlow from '../hooks/usePaymentFlow'
 import { syncManager } from '../sync/syncManager'
 import { pendingInvoiceRows } from '../sync/pendingInvoices'
@@ -144,6 +145,7 @@ export default function Sales(props = {}) {
   // shift, not the viewer's.
   const [shift, setShift] = useState(undefined)
   const [showCloseShiftModal, setShowCloseShiftModal] = useState(false)
+  const [shiftSummary, setShiftSummary] = useState(null)   // closed shift → printable summary
   const [showCashMovementModal, setShowCashMovementModal] = useState(false)
 
   const refreshShift = useCallback(async () => {
@@ -954,18 +956,23 @@ export default function Sales(props = {}) {
     if ((user?.role || '').toLowerCase() === 'cashier') return []
     const ownerPrefix = (user?.counter_prefix || '').trim() || 'OW'
     const tag = effectiveHostingMode() === 'cloud' ? '' : 'LCL-'
-    const prefixes = [ownerPrefix]
+    // Carry the OPERATOR's friendly name alongside the counter code so the
+    // menu reads "LCL-C1 — counter_1" instead of a bare code. The code itself
+    // differs between local (LCL-) and cloud entry points by design (separate
+    // invoice number series) — the name is what stays recognisable.
+    const counters = [{ prefix: ownerPrefix, name: 'Owner' }]
     staffList.forEach(s => {
       if ((s.role || '').toLowerCase() === 'cashier') {
         const p = (s.counter_prefix || '').trim()
-        if (p && !prefixes.includes(p)) {
-          prefixes.push(p)
+        if (p && !counters.some(c => c.prefix === p)) {
+          counters.push({ prefix: p, name: s.username || '' })
         }
       }
     })
-    return prefixes.map(p => ({
-      label: `${tag}${p}`,
-      value: p
+    return counters.map(c => ({
+      label: `${tag}${c.prefix}`,
+      value: c.prefix,
+      name: c.name,
     }))
   }, [user?.role, user?.counter_prefix, staffList])
 
@@ -1011,23 +1018,44 @@ export default function Sales(props = {}) {
     })
   }, [getCounterPrefix])
 
+  // Load business settings once on mount. ROOT-CAUSE FIX: `settings` was local
+  // state that nothing ever populated — it stayed null forever, so
+  // handleToggleColumnSetting's null-guard silently swallowed every click and
+  // the Table Columns checkboxes appeared "not editable".
+  useEffect(() => {
+    let cancelled = false
+    authFetch('/settings')
+      .then(r => (r.ok ? r.json() : null))
+      .then(s => { if (!cancelled && s) setSettings(s) })
+      .catch(err => logger.warn('[SALES] settings load failed — column toggles fall back to defaults', err))
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const handleToggleColumnSetting = async (key, val) => {
-    if (!settings) return
+    // Works even if the initial /settings fetch hasn't landed yet — we PATCH
+    // just the transactions section (the backend merge-updates per section).
     const updated = {
-      ...settings,
+      ...(settings || {}),
       transactions: {
-        ...settings.transactions,
+        ...(settings?.transactions || {}),
         [key]: val
       }
     }
     setSettings(updated)
     try {
-      await authFetch('/settings', {
+      const res = await authFetch('/settings', {
         method: 'PUT',
-        body: JSON.stringify(updated)
+        body: JSON.stringify({ transactions: updated.transactions })
       })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
     } catch (err) {
       logger.error('[SALES] failed to save settings', err)
+      // Roll back the optimistic flip so the UI never lies about what's saved.
+      setSettings(prev => ({
+        ...(prev || {}),
+        transactions: { ...(prev?.transactions || {}), [key]: !val }
+      }))
     }
   }
 
@@ -2462,7 +2490,16 @@ export default function Sales(props = {}) {
           shift={shift && !shift.offline ? shift : null}
           onClose={() => setShowCloseShiftModal(false)}
           onClosed={() => { setShowCloseShiftModal(false); setShift(null) }}
+          onSummary={(closedShift) => setShiftSummary(closedShift)}
         />
+        {shiftSummary && (
+          <ShiftSummaryModal
+            shift={shiftSummary}
+            authFetch={authFetch}
+            operatorName={user?.username}
+            onClose={() => setShiftSummary(null)}
+          />
+        )}
         <CashMovementModal
           open={showCashMovementModal}
           authFetch={authFetch}

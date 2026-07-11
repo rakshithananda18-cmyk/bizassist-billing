@@ -21,6 +21,7 @@ import PreflightModal from '../components/hosting/PreflightModal'
 import ConsequenceModal from '../components/hosting/ConsequenceModal'
 import MigrationModal from '../components/hosting/MigrationModal'
 import BackupModal from '../components/hosting/BackupModal'
+import FileBackupCard from '../components/hosting/FileBackupCard'
 import CustomSelect from '../components/common/CustomSelect'
 import { clearBillingProfileCache } from '../hooks/useBillingProfile'
 import { clearDiscoveryCache } from '../utils/networkDiscovery'
@@ -923,6 +924,9 @@ function HostingModeSection({ currentMode, onModeChange, token, autoSwitchTarget
           </div>
         )
       })()}
+
+      {/* Offline file backup & restore (REVIEW_1 GAP-6) — works in every mode */}
+      <FileBackupCard token={token} />
 
       {/* Sync modal */}
       {backupDir && (

@@ -6,6 +6,7 @@
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
+import ActivityFeed from '../components/ActivityFeed'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { logger } from '../utils/logger'
@@ -150,53 +151,42 @@ export default function Dashboard() {
           <div className="page-loader"><span className="spinner" />Loading business summary…</div>
         ) : (
           <>
-            {/* KPI Summary Strip 1 */}
-            <div className="vsummary-strip mb-6">
-              <div className="vsummary-card" style={{ borderLeftColor: 'var(--accent)' }}>
-                <div className="vsummary-label">Total Revenue</div>
-                <div className="vsummary-value">{fmt(s.total_revenue)}</div>
-                <div className="vsummary-sub">{s.invoice_count || 0} invoices</div>
-              </div>
-              <div className="vsummary-card" style={{ borderLeftColor: '#c97c22' }}>
-                <div className="vsummary-label">Pending</div>
-                <div className="vsummary-value">{s.pending_count ?? 0}</div>
-                <div className="vsummary-sub">{s.pending_amount ? `${fmt(s.pending_amount)} outstanding` : 'invoices awaiting'}</div>
-              </div>
-              <div className="vsummary-card" style={{ borderLeftColor: '#c02a2a' }}>
-                <div className="vsummary-label">Overdue</div>
-                <div className="vsummary-value" style={{ color: '#c02a2a' }}>{fmt(s.overdue_amount)}</div>
-                <div className="vsummary-sub">{s.overdue_count ?? 0} invoices at risk</div>
-              </div>
-              <div className="vsummary-card" style={{ borderLeftColor: '#3a9a5c' }}>
-                <div className="vsummary-label">Inventory</div>
-                <div className="vsummary-value">{s.inventory_count ?? 0}</div>
-                <div className="vsummary-sub">products tracked</div>
-              </div>
-            </div>
-
-            {/* KPI Summary Strip 2 */}
-            <div className="vsummary-strip mb-6">
-              <div className="vsummary-card" style={{ borderLeftColor: '#c97c22' }}>
-                <div className="vsummary-label">Low Stock Items</div>
-                <div className="vsummary-value">{s.low_stock_count ?? 0}</div>
-                <div className="vsummary-sub">need restocking</div>
-              </div>
-              <div className="vsummary-card" style={{ borderLeftColor: 'var(--accent)' }}>
-                <div className="vsummary-label">Purchases (30d)</div>
-                <div className="vsummary-value">{fmt(s.purchases_30d)}</div>
-                <div className="vsummary-sub">total purchase value</div>
-              </div>
-              <div className="vsummary-card" style={{ borderLeftColor: '#3a9a5c' }}>
-                <div className="vsummary-label">Active Customers</div>
-                <div className="vsummary-value">{s.active_customers ?? 0}</div>
-                <div className="vsummary-sub">in last 30 days</div>
-              </div>
-              <div className="vsummary-card" style={{ borderLeftColor: 'var(--accent)' }}>
-                <div className="vsummary-label">Gross Margin</div>
-                <div className="vsummary-value">{s.gross_margin ? `${s.gross_margin}%` : '—'}</div>
-                <div className="vsummary-sub">estimated margin</div>
-              </div>
-            </div>
+            {/* KPI Summary Strip 1 — every card is CLICKABLE and jumps to its data */}
+            {(() => {
+              const kpiCard = (label, value, sub, color, to, valueStyle = {}) => (
+                <div
+                  className="vsummary-card"
+                  style={{ borderLeftColor: color, cursor: to ? 'pointer' : 'default' }}
+                  role={to ? 'button' : undefined}
+                  tabIndex={to ? 0 : undefined}
+                  title={to ? 'Click to open the underlying data' : undefined}
+                  onClick={() => to && navigate(to)}
+                  onKeyDown={e => { if (to && (e.key === 'Enter' || e.key === ' ')) navigate(to) }}
+                  onMouseEnter={e => { if (to) e.currentTarget.style.transform = 'translateY(-1px)' }}
+                  onMouseLeave={e => { if (to) e.currentTarget.style.transform = 'none' }}
+                >
+                  <div className="vsummary-label">{label}</div>
+                  <div className="vsummary-value" style={valueStyle}>{value}</div>
+                  <div className="vsummary-sub">{sub}</div>
+                </div>
+              )
+              return (
+                <>
+                  <div className="vsummary-strip mb-6">
+                    {kpiCard('Total Revenue', fmt(s.total_revenue), `${s.invoice_count || 0} invoices — view all`, 'var(--accent)', '/payments')}
+                    {kpiCard('Pending', s.pending_count ?? 0, s.pending_amount ? `${fmt(s.pending_amount)} outstanding` : 'invoices awaiting', '#c97c22', '/payments')}
+                    {kpiCard('Overdue', fmt(s.overdue_amount), `${s.overdue_count ?? 0} invoices at risk`, '#c02a2a', '/payments', { color: '#c02a2a' })}
+                    {kpiCard('Inventory', s.inventory_count ?? 0, 'products tracked — open', '#3a9a5c', '/stock')}
+                  </div>
+                  <div className="vsummary-strip mb-6">
+                    {kpiCard('Low Stock Items', s.low_stock_count ?? 0, 'need restocking — open', '#c97c22', '/stock')}
+                    {kpiCard('Purchases (30d)', fmt(s.purchases_30d), 'total purchase value — open', 'var(--accent)', '/purchases')}
+                    {kpiCard('Active Customers', s.active_customers ?? 0, 'in last 30 days — open', '#3a9a5c', '/parties')}
+                    {kpiCard('Gross Margin', s.gross_margin ? `${s.gross_margin}%` : '—', 'estimated margin — reports', 'var(--accent)', '/reports')}
+                  </div>
+                </>
+              )
+            })()}
 
             {/* Feed & Alerts grid */}
             <div className="dashboard-grid">
@@ -317,6 +307,11 @@ export default function Dashboard() {
                 </div>
 
               </div>
+            </div>
+
+            {/* Business activity — compact card + wide "View full" button (v2) */}
+            <div style={{ marginTop: 20 }}>
+              <ActivityFeed compact recentCount={6} />
             </div>
           </>
         )}

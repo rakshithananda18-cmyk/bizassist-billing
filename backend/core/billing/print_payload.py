@@ -30,6 +30,32 @@ logger = logging.getLogger("bizassist.invoice_render")
 
 PAYLOAD_VERSION = 1
 
+# ── Local-time rendering ─────────────────────────────────────────────────────
+# Timestamps are STORED as naive UTC (TimestampMixin/datetime.utcnow). Printing
+# them raw put UTC on invoices — 5h30 behind the merchant's wall clock. Render
+# in the business timezone (env-tunable; the scheduler already assumes IST).
+try:
+    from zoneinfo import ZoneInfo
+    _BIZ_TZ = ZoneInfo(os.getenv("BIZ_TIMEZONE", "Asia/Kolkata"))
+except Exception:                                    # pragma: no cover
+    _BIZ_TZ = None
+
+from datetime import timezone as _utc_tz
+
+
+def _local_time_str(dt) -> str:
+    """Naive-UTC datetime → merchant-local 'hh:mm AM/PM'. None-safe."""
+    if not dt:
+        return None
+    try:
+        if _BIZ_TZ is not None:
+            aware = dt.replace(tzinfo=_utc_tz.utc) if dt.tzinfo is None else dt
+            local = aware.astimezone(_BIZ_TZ)
+            return local.strftime("%I:%M %p").lstrip("0")
+    except Exception:
+        pass
+    return dt.strftime("%H:%M")
+
 # GST state codes (CBIC list) — code → state name.
 GST_STATES = {
     "01": "Jammu & Kashmir", "02": "Himachal Pradesh", "03": "Punjab",
@@ -343,7 +369,7 @@ def build_print_payload(db, *, business_id: int, invoice_no: str, user_id=None) 
         "invoice": {
             "id": inv.id, "uid": getattr(inv, "uid", None), "number": inv.invoice_id,
             "title": _resolve_title(inv, seller_gstin, tx),
-            "date": dt, "time": (inv.created_at.strftime("%H:%M") if inv.created_at else None),
+            "date": dt, "time": _local_time_str(inv.created_at),
             "place_of_supply": inv.place_of_supply, "due_date": inv.due_date,
             "notes": inv.notes, "status": inv.status,
             "is_credit": bool((inv.total_amount or 0) < 0),

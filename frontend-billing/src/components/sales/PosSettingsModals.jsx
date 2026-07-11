@@ -25,22 +25,31 @@ export function PosCounterSettingsModal({
   const [bindingKey, setBindingKey] = useState(null)
   const modalRef = useRef(null)
 
-  // Focus trap for settings modal
+  // Focus trap for settings modal.
+  // IMPORTANT: CustomSelect renders its option list through a portal on
+  // document.body (id="custom-dropdown-…"), i.e. OUTSIDE modalRef. The old
+  // trap yanked focus back to the first input the instant the dropdown (or
+  // any portaled element) received focus — instantly closing the dropdown and
+  // making the settings feel un-editable. Treat portaled pickers as inside,
+  // and never fight a transient body focus.
   useEffect(() => {
     const focusable = modalRef.current?.querySelectorAll('input, select, button, textarea')
     if (focusable && focusable.length > 0) {
       focusable[0].focus()
     }
 
+    const isInsidePortalPicker = (el) =>
+      !!(el && el.closest && el.closest('[id^="custom-dropdown-"], .custom-select-dropdown'))
+
     const handleFocusIn = (e) => {
-      if (modalRef.current && !modalRef.current.contains(e.target)) {
-        e.preventDefault()
-        e.stopPropagation()
-        const focusable = modalRef.current?.querySelectorAll('input, select, button, textarea')
-        if (focusable && focusable.length > 0) {
-          focusable[0].focus()
-        }
-      }
+      if (!modalRef.current) return
+      if (modalRef.current.contains(e.target)) return
+      if (isInsidePortalPicker(e.target)) return          // portaled dropdown = inside
+      if (e.target === document.body) return              // transient blur — don't fight it
+      e.preventDefault()
+      e.stopPropagation()
+      const els = modalRef.current.querySelectorAll('input, select, button, textarea')
+      if (els.length > 0) els[0].focus()
     }
 
     document.addEventListener('focusin', handleFocusIn)
@@ -161,13 +170,43 @@ export function PosCounterSettingsModal({
                       localStorage.setItem('pos_merchant_state', e.target.value)
                     }}
                   >
-                    <option value="37">37 - Andhra Pradesh (AP)</option>
-                    <option value="29">29 - Karnataka (KA)</option>
-                    <option value="33">33 - Tamil Nadu (TN)</option>
-                    <option value="27">27 - Maharashtra (MH)</option>
-                    <option value="07">07 - Delhi (DL)</option>
-                    <option value="09">09 - Uttar Pradesh (UP)</option>
-                    <option value="19">19 - West Bengal (WB)</option>
+                    {/* Full CBIC GST state-code list — every merchant can pick theirs */}
+                    <option value="01">01 - Jammu & Kashmir</option>
+                    <option value="02">02 - Himachal Pradesh</option>
+                    <option value="03">03 - Punjab</option>
+                    <option value="04">04 - Chandigarh</option>
+                    <option value="05">05 - Uttarakhand</option>
+                    <option value="06">06 - Haryana</option>
+                    <option value="07">07 - Delhi</option>
+                    <option value="08">08 - Rajasthan</option>
+                    <option value="09">09 - Uttar Pradesh</option>
+                    <option value="10">10 - Bihar</option>
+                    <option value="11">11 - Sikkim</option>
+                    <option value="12">12 - Arunachal Pradesh</option>
+                    <option value="13">13 - Nagaland</option>
+                    <option value="14">14 - Manipur</option>
+                    <option value="15">15 - Mizoram</option>
+                    <option value="16">16 - Tripura</option>
+                    <option value="17">17 - Meghalaya</option>
+                    <option value="18">18 - Assam</option>
+                    <option value="19">19 - West Bengal</option>
+                    <option value="20">20 - Jharkhand</option>
+                    <option value="21">21 - Odisha</option>
+                    <option value="22">22 - Chhattisgarh</option>
+                    <option value="23">23 - Madhya Pradesh</option>
+                    <option value="24">24 - Gujarat</option>
+                    <option value="26">26 - Dadra & Nagar Haveli and Daman & Diu</option>
+                    <option value="27">27 - Maharashtra</option>
+                    <option value="29">29 - Karnataka</option>
+                    <option value="30">30 - Goa</option>
+                    <option value="31">31 - Lakshadweep</option>
+                    <option value="32">32 - Kerala</option>
+                    <option value="33">33 - Tamil Nadu</option>
+                    <option value="34">34 - Puducherry</option>
+                    <option value="35">35 - Andaman & Nicobar Islands</option>
+                    <option value="36">36 - Telangana</option>
+                    <option value="37">37 - Andhra Pradesh</option>
+                    <option value="38">38 - Ladakh</option>
                   </CustomSelect>
                 </div>
               </div>

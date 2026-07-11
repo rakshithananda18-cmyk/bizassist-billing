@@ -7,6 +7,8 @@ import { Icon } from '../components/icons'
 const ADMIN_NAV = [
   { to: '/admin/dashboard',  icon: 'dashboard', label: 'Overview' },
   { to: '/admin/businesses', icon: 'users',     label: 'Businesses' },
+  { to: '/admin/campaigns',  icon: 'rocket',    label: 'Campaigns' },
+  { to: '/admin/metrics',    icon: 'sparkle',   label: 'Metrics' },
   { to: '/admin/usage',      icon: 'chart',     label: 'Usage & Limits' },
   { to: '/admin/health',     icon: 'alert',     label: 'Health & Audits' },
   { to: '/admin/telemetry',  icon: 'file',      label: 'Telemetry & Logs' },

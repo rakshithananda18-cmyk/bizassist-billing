@@ -5,13 +5,16 @@ import { AdminProtectedRoute } from './components/ProtectedRoute'
 
 import AdminLayout from './layouts/AdminLayout'
 
-import AdminLogin      from './pages/admin/AdminLogin'
-import AdminDashboard  from './pages/admin/AdminDashboard'
-import AdminBusinesses from './pages/admin/AdminBusinesses'
-import AdminUsage      from './pages/admin/AdminUsage'
-import AdminCache      from './pages/admin/AdminCache'
-import AdminTelemetry  from './pages/admin/AdminTelemetry'
-import AdminHealth     from './pages/admin/AdminHealth'
+import AdminLogin          from './pages/admin/AdminLogin'
+import AdminDashboard      from './pages/admin/AdminDashboard'
+import AdminBusinesses     from './pages/admin/AdminBusinesses'
+import AdminBusinessDetail from './pages/admin/AdminBusinessDetail'
+import AdminCampaigns      from './pages/admin/AdminCampaigns'
+import AdminMetrics        from './pages/admin/AdminMetrics'
+import AdminUsage          from './pages/admin/AdminUsage'
+import AdminCache          from './pages/admin/AdminCache'
+import AdminTelemetry      from './pages/admin/AdminTelemetry'
+import AdminHealth         from './pages/admin/AdminHealth'
 
 import { DialogProvider } from './contexts/DialogContext'
 
@@ -41,6 +44,9 @@ export default function App() {
             <Route path="/admin"              element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="/admin/dashboard"    element={<AdminDashboard />} />
             <Route path="/admin/businesses"   element={<AdminBusinesses />} />
+            <Route path="/admin/businesses/:id" element={<AdminBusinessDetail />} />
+            <Route path="/admin/campaigns"    element={<AdminCampaigns />} />
+            <Route path="/admin/metrics"      element={<AdminMetrics />} />
             <Route path="/admin/usage"        element={<AdminUsage />} />
             <Route path="/admin/cache"        element={<AdminCache />} />
             <Route path="/admin/health"       element={<AdminHealth />} />

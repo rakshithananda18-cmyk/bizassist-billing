@@ -125,11 +125,13 @@ def test_extract_structured_purchase_invoice_groq_success():
     mock_client = MagicMock()
     mock_client.chat.completions.create.return_value = mock_completion
     
-    with patch("services.purchase_ocr.Groq", return_value=mock_client) as mock_groq_cls:
+    # Groq clients are now built through the shared timeout-guarded factory
+    # (services/groq_client.make_groq_client, REVIEW_1 GAP-3) — patch that.
+    with patch("services.groq_client.make_groq_client", return_value=mock_client) as mock_factory:
         res = extract_structured_purchase_invoice("Raw Text")
         assert res["supplier_name"] == "Groq Supplier"
         assert res["invoice_number"] == "G-100"
-        mock_groq_cls.assert_called_once_with(api_key="mock_key")
+        mock_factory.assert_called_once_with("mock_key")
 
 @patch.dict(os.environ, {"GROQ_API_KEY": "mock_key", "CLAUDE_API_KEY": "claude_key"})
 def test_extract_structured_purchase_invoice_groq_fail_claude_success():
@@ -145,7 +147,7 @@ def test_extract_structured_purchase_invoice_groq_fail_claude_success():
     mock_claude_client = MagicMock()
     mock_claude_client.messages.create.return_value = mock_claude_msg
     
-    with patch("services.purchase_ocr.Groq", return_value=mock_groq_client), \
+    with patch("services.groq_client.make_groq_client", return_value=mock_groq_client), \
          patch("services.purchase_ocr.anthropic.Anthropic", return_value=mock_claude_client) as mock_claude_cls:
         
         res = extract_structured_purchase_invoice("Raw Text")

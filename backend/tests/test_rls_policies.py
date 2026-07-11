@@ -46,10 +46,11 @@ def test_get_db_postgresql_rls_execution():
         db_yielded = next(generator)
         assert db_yielded == mock_db
         
-        # Verify that SET app.current_business_id was executed on the session
-        # (It gets executed during get_db startup before yield)
+        # Verify the RLS GUC was set via parameterized set_config() (REVIEW_1
+        # P2 hardening: SET can't take bound params, set_config can).
         mock_db.execute.assert_any_call(
-            pytest.approx(sa_text_expr("SET app.current_business_id = '123'"))
+            pytest.approx(sa_text_expr("SELECT set_config('app.current_business_id', :bid, false)")),
+            {"bid": "123"},
         )
         
         # Complete get_db generator (executes finally block)
@@ -99,17 +100,28 @@ class sa_text_expr:
 
 
 def test_get_active_user_query_param():
+    """REVIEW_1 GAP-1: generic ?token= auth is OFF by default (tokens leak into
+    logs/proxies/history). It only works when ALLOW_QUERY_TOKEN_AUTH=1."""
+    import services.auth as auth_mod
     from services.auth import get_active_user
-    with patch("services.auth.decode_access_token") as mock_decode:
-        mock_decode.return_value = {"id": 99, "username": "test"}
-        
-        # Test query parameter token fallback
-        res = get_active_user(authorization=None, token="query-param-token")
-        assert res == {"id": 99, "username": "test"}
-        mock_decode.assert_called_with("query-param-token")
+    from fastapi import HTTPException
 
-        # Test missing both raises HTTPException
-        from fastapi import HTTPException
+    with patch("services.auth.decode_access_token") as mock_decode, \
+         patch("services.auth._validate_token_version"):
+        mock_decode.return_value = {"id": 99, "username": "test"}
+
+        # Default: query token is rejected exactly like a missing header
+        with pytest.raises(HTTPException) as exc:
+            get_active_user(authorization=None, token="query-param-token")
+        assert exc.value.status_code == 401
+
+        # Opt-in flag restores the old fallback for legacy integrations
+        with patch.object(auth_mod, "ALLOW_QUERY_TOKEN_AUTH", True):
+            res = get_active_user(authorization=None, token="query-param-token")
+            assert res == {"id": 99, "username": "test"}
+            mock_decode.assert_called_with("query-param-token")
+
+        # Missing both always raises
         with pytest.raises(HTTPException) as exc:
             get_active_user(authorization=None, token=None)
         assert exc.value.status_code == 401

@@ -10,6 +10,43 @@ import CounterMenu from './CounterMenu'
 import CounterModeSwitcher from './CounterModeSwitcher'
 import { IS_LOCAL_APP } from '../../config'
 
+// ── Live IST clock ───────────────────────────────────────────────────────────
+// Real-time date + ticking time in the POS top bar. Always Asia/Kolkata so the
+// counter clock matches what gets printed on invoices, regardless of a
+// mis-configured machine timezone.
+const CLOCK_TZ = 'Asia/Kolkata'
+
+function LiveClock() {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(t)
+  }, [])
+  const time = now.toLocaleTimeString('en-IN', {
+    timeZone: CLOCK_TZ, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
+  }).toUpperCase()
+  const date = now.toLocaleDateString('en-IN', {
+    timeZone: CLOCK_TZ, weekday: 'short', day: '2-digit', month: 'short',
+  })
+  return (
+    <div
+      title={`Business time (${CLOCK_TZ})`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 7,
+        fontSize: '0.74rem', fontWeight: 600, padding: '2px 9px',
+        borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)',
+        color: 'var(--text-muted)', whiteSpace: 'nowrap', userSelect: 'none',
+      }}
+    >
+      <span>{date}</span>
+      <span style={{
+        fontVariantNumeric: 'tabular-nums', fontWeight: 700,
+        color: 'var(--text, inherit)', letterSpacing: '0.02em',
+      }}>{time}</span>
+    </div>
+  )
+}
+
 export default function PosTopBar({
   tabs,
   activeTabId,
@@ -189,6 +226,8 @@ export default function PosTopBar({
           </div>
         )}
 
+        <LiveClock />
+        <span className="pos-divider">|</span>
         <CounterModeSwitcher />
         <CounterMenu
           prefix={counterPrefix}

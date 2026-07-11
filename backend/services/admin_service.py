@@ -180,6 +180,147 @@ def list_businesses(db: Session) -> list:
     return result
 
 
+# ── Sync doctor (REVIEW_1 §4.2) ──────────────────────────────────────────────
+
+def sync_doctor(db: Session) -> list:
+    """Automated per-business sync health: red / amber / green with reasons.
+    The v1.1.1 sync-duplication incident showed these checks must be permanent.
+
+    green — no pending ops, or pending ops all younger than 15 min
+    amber — pending ops older than 15 min, or last push had failures
+    red   — pending ops older than 60 min, or repeated failures on the
+            newest 20 log rows, or errors recorded on queued ops
+    """
+    now = datetime.utcnow()
+    out = []
+    for b in db.query(User).filter(User.role == "enterprise").all():
+        pending = db.query(SyncQueue).filter(
+            SyncQueue.business_id == b.id, SyncQueue.synced_at.is_(None))
+        pending_count = pending.count()
+        oldest_pending = pending.order_by(SyncQueue.created_at.asc()).first()
+        errored_pending = pending.filter(SyncQueue.error.isnot(None)).count()
+
+        recent = (db.query(SyncLog)
+                  .filter(SyncLog.business_id == b.id)
+                  .order_by(SyncLog.id.desc()).limit(20).all())
+        recent_failures = sum(1 for r in recent if r.status == "failed")
+        last_sync = recent[0].synced_at if recent else None
+
+        reasons, status = [], "green"
+        stuck_minutes = None
+        if oldest_pending is not None and oldest_pending.created_at:
+            stuck_minutes = int((now - oldest_pending.created_at).total_seconds() // 60)
+            if stuck_minutes >= 60:
+                status = "red"; reasons.append(f"oldest queued op stuck {stuck_minutes} min")
+            elif stuck_minutes >= 15:
+                status = "amber"; reasons.append(f"queue waiting {stuck_minutes} min")
+        if errored_pending:
+            status = "red"; reasons.append(f"{errored_pending} queued op(s) carry errors")
+        if recent_failures >= 5:
+            status = "red"; reasons.append(f"{recent_failures}/20 recent pushes failed")
+        elif recent_failures > 0 and status == "green":
+            status = "amber"; reasons.append(f"{recent_failures}/20 recent pushes failed")
+
+        out.append({
+            "business_id": b.id, "bizid": b.public_id,
+            "business_name": b.business_name,
+            "status": status, "reasons": reasons,
+            "pending_ops": pending_count,
+            "oldest_pending_minutes": stuck_minutes,
+            "recent_failures": recent_failures,
+            "last_sync_at": last_sync.isoformat() if last_sync else None,
+        })
+    # Worst first so the fleet monitor surfaces problems at the top.
+    order = {"red": 0, "amber": 1, "green": 2}
+    out.sort(key=lambda r: (order.get(r["status"], 3), -(r["pending_ops"] or 0)))
+    return out
+
+
+# ── Business metrics (REVIEW_1 §4.4) ─────────────────────────────────────────
+
+def business_metrics(db: Session) -> dict:
+    """One read for the console's Metrics page: plan mix, activation funnel,
+    activity cohorts, churn-risk flags. Grouped queries — no per-business N+1
+    on the heavy tables."""
+    now = datetime.utcnow()
+    owners = db.query(User).filter(User.role == "enterprise").all()
+    owner_ids = [b.id for b in owners]
+
+    # Grouped aggregates: invoices count + last activity per business
+    inv_rows = {}
+    if owner_ids:
+        for bid, cnt, last in (
+            db.query(Invoice.business_id, func.count(Invoice.id), func.max(Invoice.created_at))
+            .filter(Invoice.business_id.in_(owner_ids))
+            .group_by(Invoice.business_id).all()
+        ):
+            inv_rows[bid] = {"count": cnt or 0, "last": last}
+
+    ai_users = set()
+    if owner_ids:
+        ai_users = {r[0] for r in (
+            db.query(TokenUsage.business_id).filter(TokenUsage.business_id.in_(owner_ids))
+            .distinct().all()
+        )}
+
+    plan_mix = {"free": 0, "pro": 0}
+    expiring_14d = []
+    funnel = {"registered": len(owners), "first_invoice": 0, "ten_invoices": 0,
+              "sync_enabled": 0, "used_ai": 0}
+    active_7d = active_30d = 0
+    churn_risk = []
+
+    for b in owners:
+        plan = effective_plan(b)
+        plan_mix[plan] = plan_mix.get(plan, 0) + 1
+
+        sub = _settings_dict(b).get("subscription") or {}
+        if plan == "pro" and sub.get("expires_at"):
+            try:
+                exp = datetime.fromisoformat(str(sub["expires_at"]).replace("Z", "+00:00")).replace(tzinfo=None)
+                if now < exp <= now + timedelta(days=14):
+                    expiring_14d.append({"business_id": b.id, "business_name": b.business_name,
+                                         "bizid": b.public_id, "expires_at": exp.isoformat()})
+            except Exception:
+                pass
+
+        inv = inv_rows.get(b.id, {"count": 0, "last": None})
+        if inv["count"] >= 1:
+            funnel["first_invoice"] += 1
+        if inv["count"] >= 10:
+            funnel["ten_invoices"] += 1
+        if (_settings_dict(b).get("general") or {}).get("hosting_mode") in ("hybrid", "cloud"):
+            funnel["sync_enabled"] += 1
+        if b.id in ai_users:
+            funnel["used_ai"] += 1
+
+        last = inv["last"]
+        if last:
+            if now - last <= timedelta(days=7):
+                active_7d += 1
+            if now - last <= timedelta(days=30):
+                active_30d += 1
+            # Churn risk: real usage history, then silence for 14+ days.
+            if inv["count"] >= 5 and (now - last) > timedelta(days=14):
+                churn_risk.append({
+                    "business_id": b.id, "business_name": b.business_name,
+                    "bizid": b.public_id, "plan": plan,
+                    "invoice_count": inv["count"],
+                    "days_silent": int((now - last).total_seconds() // 86400),
+                })
+
+    churn_risk.sort(key=lambda r: -r["days_silent"])
+    return {
+        "generated_at": now.isoformat(),
+        "plan_mix": plan_mix,
+        "expiring_within_14d": expiring_14d,
+        "funnel": funnel,
+        "activity": {"active_7d": active_7d, "active_30d": active_30d,
+                     "total": len(owners)},
+        "churn_risk": churn_risk[:25],
+    }
+
+
 # ── Telemetry / logs viewer (Phase B.2 + B.3) ────────────────────────────────
 
 def _telemetry_path() -> str:
@@ -536,6 +677,100 @@ def set_subscription(business_id: int, body, admin: User, db: Session) -> dict:
     db.commit()
     invalidate_user_cache(business_id)
     return get_subscription(business_id, db)
+
+
+def force_logout(business_id: int, db: Session) -> dict:
+    """Instant session revocation (REVIEW_1 GAP-1): bump token_version on the
+    owner row AND every staff row of the business. All outstanding JWTs become
+    invalid within the auth cache TTL (~30s)."""
+    target = require_target_user(business_id, db)
+    rows = db.query(User).filter(
+        (User.id == business_id) | (User.parent_business_id == business_id)
+    ).all()
+    for r in rows:
+        r.token_version = (r.token_version or 0) + 1
+    db.commit()
+    try:
+        from services.auth import clear_token_version_cache
+        for r in rows:
+            clear_token_version_cache(r.id)
+    except Exception:
+        pass
+    logger.info("[ADMIN] force_logout business=%s revoked_accounts=%d", business_id, len(rows))
+    return {"status": "success",
+            "message": f"All sessions revoked for '{target.business_name}' ({len(rows)} account(s)). "
+                       "Users must log in again.",
+            "revoked_accounts": len(rows)}
+
+
+# ── Admin TOTP 2FA (§4.1) ────────────────────────────────────────────────────
+# Secret lives in the admin's settings JSON under the reserved "totp" key
+# (schema-free, stripped+preserved by PUT /settings like `subscription`).
+# Flow: setup → returns secret + otpauth URI (pending) → confirm with a live
+# code → enabled → /login demands the code for this admin from then on.
+
+def totp_status(admin: User) -> dict:
+    cfg = _settings_dict(admin).get("totp") or {}
+    return {"enabled": bool(cfg.get("enabled")),
+            "pending": bool(cfg.get("secret") and not cfg.get("enabled")),
+            "confirmed_at": cfg.get("confirmed_at")}
+
+
+def totp_setup(admin: User, db: Session) -> dict:
+    """Generate a fresh secret (pending until confirmed). Re-running setup
+    replaces an unconfirmed secret; an ENABLED secret must be disabled first."""
+    from services.totp import generate_secret, provisioning_uri
+    s = _settings_dict(admin)
+    cfg = s.get("totp") or {}
+    if cfg.get("enabled"):
+        raise HTTPException(status_code=400, detail="2FA is already enabled — disable it first to re-enroll.")
+    secret = generate_secret()
+    s["totp"] = {"secret": secret, "enabled": False, "confirmed_at": None}
+    admin.settings = json.dumps(s)
+    db.commit()
+    return {"secret": secret,
+            "otpauth_uri": provisioning_uri(secret, admin.username),
+            "message": "Add this key to your authenticator app, then confirm with a code."}
+
+
+def totp_confirm(admin: User, code: str, db: Session) -> dict:
+    from services.totp import verify_code
+    s = _settings_dict(admin)
+    cfg = s.get("totp") or {}
+    if not cfg.get("secret"):
+        raise HTTPException(status_code=400, detail="Run 2FA setup first.")
+    if cfg.get("enabled"):
+        return {"status": "success", "message": "2FA is already enabled."}
+    if not verify_code(cfg["secret"], code):
+        raise HTTPException(status_code=400, detail="That code didn't match — check your authenticator app and try again.")
+    cfg["enabled"] = True
+    cfg["confirmed_at"] = datetime.utcnow().isoformat()
+    s["totp"] = cfg
+    admin.settings = json.dumps(s)
+    db.commit()
+    logger.info("[ADMIN] 2FA enabled for admin '%s'", admin.username)
+    return {"status": "success", "message": "2FA enabled — your next login will ask for a code."}
+
+
+def totp_disable(admin: User, code: str, db: Session) -> dict:
+    """Disabling requires a valid current code (a stolen session can't silently
+    strip the second factor)."""
+    from services.totp import verify_code
+    s = _settings_dict(admin)
+    cfg = s.get("totp") or {}
+    if not cfg.get("enabled"):
+        # Also clears a stale pending secret.
+        s.pop("totp", None)
+        admin.settings = json.dumps(s)
+        db.commit()
+        return {"status": "success", "message": "2FA was not enabled."}
+    if not verify_code(cfg.get("secret"), code):
+        raise HTTPException(status_code=400, detail="Enter a valid current code to disable 2FA.")
+    s.pop("totp", None)
+    admin.settings = json.dumps(s)
+    db.commit()
+    logger.info("[ADMIN] 2FA disabled for admin '%s'", admin.username)
+    return {"status": "success", "message": "2FA disabled."}
 
 
 def effective_plan(user: User) -> str:

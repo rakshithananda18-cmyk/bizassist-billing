@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
 import { BuildingMark } from '../components/Logo'
+import AnnouncementsCard from '../components/AnnouncementsCard'
 import {
   CounterIcon,
   DashboardIcon,
@@ -115,8 +116,11 @@ export default function Home() {
             ))}
           </div>
 
+          {/* In-app announcements + offer codes (owner-only, fail-quiet) */}
+          <AnnouncementsCard />
+
           {/* Powered by footer directly below chips */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '0.72rem', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '0.72rem', justifyContent: 'center', marginTop: 16 }}>
             <div style={{ color: 'var(--accent)', opacity: 0.7, display: 'flex', alignItems: 'center' }}>
               <BuildingMark size={16} strokeWidth={2.2} />
             </div>

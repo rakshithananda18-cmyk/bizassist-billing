@@ -79,7 +79,7 @@ export default function ThermalReceipt({
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span><b>Date:</b> {getTodayDateStr()}</span>
-          <span><b>Time:</b> {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+          <span><b>Time:</b> {new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })}</span>
         </div>
         {(() => {
           const c = customers.find(x => String(x.id) === String(form.customer_id))

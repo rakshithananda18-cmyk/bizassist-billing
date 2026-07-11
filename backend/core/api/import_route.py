@@ -65,14 +65,20 @@ def _to_csv_stream(headers: List[str], rows: List[List[Any]]):
 @router.post("/import/products")
 async def import_products(
     request: Request,
+    preview: bool = False,
     current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
-    """Bulk import products via JSON array or CSV file upload."""
+    """Bulk import products via JSON array or CSV file upload.
+
+    APPROVAL FLOW: with `?preview=1` the file is parsed and normalized but
+    NOTHING is written — the rows come back for the review table in the UI.
+    The client then POSTs the (possibly edited) rows as JSON without the
+    flag to actually commit. Products never land silently from a file."""
     bid = current_user["id"]
     content_type = request.headers.get("content-type", "")
     items = []
-    
+
     if "application/json" in content_type:
         try:
             body = await request.json()
@@ -91,7 +97,48 @@ async def import_products(
             raise HTTPException(status_code=400, detail="Invalid CSV format")
     else:
         raise HTTPException(status_code=415, detail="Unsupported media type")
-        
+
+    if preview:
+        # Parse-only: normalize the fields the importer understands and flag
+        # duplicates so the review table can warn before commit.
+        from database.models import Product as _Product
+        existing_skus = {
+            s for (s,) in db.query(_Product.sku)
+            .filter(_Product.business_id == bid, _Product.sku.isnot(None)).all()
+        }
+        existing_names = {
+            (n or "").strip().lower() for (n,) in db.query(_Product.name)
+            .filter(_Product.business_id == bid).all()
+        }
+        out = []
+        for idx, it in enumerate(items):
+            name = str(it.get("name") or "").strip()
+            sku = (str(it.get("sku")).strip() or None) if it.get("sku") is not None else None
+            problems = []
+            if not name:
+                problems.append("name required")
+            elif name.lower() in existing_names:
+                problems.append("a product with this name already exists")
+            if sku and sku in existing_skus:
+                problems.append(f"SKU '{sku}' already exists")
+            out.append({
+                "row": idx + 1,
+                "name": name,
+                "sku": sku,
+                "barcode": it.get("barcode") or None,
+                "unit": it.get("unit") or "Nos",
+                "category": it.get("category") or None,
+                "brand": it.get("brand") or None,
+                "selling_price": it.get("selling_price") or 0,
+                "cost_price": it.get("cost_price") or 0,
+                "mrp": it.get("mrp") or None,
+                "cgst_rate": it.get("cgst_rate") or 0,
+                "sgst_rate": it.get("sgst_rate") or 0,
+                "opening_stock": it.get("opening_stock") or 0,
+                "problems": problems,
+            })
+        return {"preview": True, "count": len(out), "items": out}
+
     try:
         res = import_data.import_products_bulk(db, bid, items)
         return res

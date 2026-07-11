@@ -37,6 +37,8 @@ from routes.discovery import router as discovery_router  # LAN auto-discovery (P
 from routes.realtime_relay import router as relay_router  # cross-network SSE relay (Phase 5)
 from routes.sync_staff import router as sync_staff_router  # immediate staff sync to cloud
 from routes.sync_profile import router as sync_profile_router  # immediate profile sync to cloud
+from routes.campaigns import router as campaigns_router  # promotions/offers + sync doctor (Admin Console growth half)
+from routes.activity import router as activity_router  # owner activity feed (audit trail → human summaries)
 from core.api import core_router          # billing ecosystem — wired from core/
 
 from database.db import engine, SessionLocal, DATABASE_URL
@@ -50,6 +52,26 @@ load_dotenv()
 from logging_config import configure_logging, get_logger
 configure_logging()                       # one clean, env-tunable (LOG_LEVEL) config
 logger = get_logger("app")
+
+# ── Error tracking (optional, env-gated) ─────────────────────────────────────
+# Set SENTRY_DSN to enable. Zero-cost when unset; import is guarded so the
+# sentry-sdk package is only required if you actually turn this on.
+_sentry_dsn = os.getenv("SENTRY_DSN", "").strip()
+if _sentry_dsn:
+    try:
+        import sentry_sdk
+        sentry_sdk.init(
+            dsn=_sentry_dsn,
+            environment=os.getenv("SENTRY_ENV", "production"),
+            release=os.getenv("APP_VERSION") or None,
+            traces_sample_rate=float(os.getenv("SENTRY_TRACES_RATE", "0")),
+            send_default_pii=False,   # never ship usernames/payloads by default
+        )
+        logger.info("[OBS] Sentry error tracking enabled (env=%s)", os.getenv("SENTRY_ENV", "production"))
+    except ImportError:
+        logger.warning("[OBS] SENTRY_DSN set but sentry-sdk not installed — pip install sentry-sdk")
+    except Exception as _se:
+        logger.warning("[OBS] Sentry init failed: %s", _se)
 
 # ── Single-worker guard ───────────────────────────────────────────────────────
 # Caches, rate-limit windows, and the APScheduler are process-local (C5). With
@@ -74,19 +96,49 @@ async def lifespan(_app):
     from services.realtime import realtime_manager
     realtime_manager.set_loop(asyncio.get_running_loop())
 
+    # ── Threadpool sizing (REVIEW_1 GAP-3 part 1) ─────────────────────────────
+    # Sync routes + sync SSE generators run in AnyIO's threadpool (default 40
+    # slots). LLM calls hold a slot for their full duration, so under load 40
+    # concurrent slow calls would starve every other request. Raise the cap —
+    # threads are cheap; slots pinned by hung upstreams are handled by the
+    # Groq client timeout (services/groq_client.py).
+    try:
+        import anyio.to_thread
+        _limit = int(os.getenv("THREADPOOL_LIMIT", "80"))
+        anyio.to_thread.current_default_thread_limiter().total_tokens = _limit
+        logger.info(f"[ADMIN] threadpool limit set to {_limit}")
+    except Exception as _tp_e:
+        logger.warning(f"[ADMIN] could not set threadpool limit: {_tp_e}")
+
     # Start a background task to watch for Uvicorn's should_exit flag.
     # Uvicorn waits for active connections (like our SSE streams) to close
     # *before* calling the lifespan yield teardown. This watcher detects
     # the shutdown signal early and closes SSE queues so Uvicorn can reload.
     async def watch_uvicorn_shutdown():
+        # Locate the uvicorn Server instance ONCE (bounded gc scans at startup),
+        # then poll only that cached reference. The previous version walked the
+        # entire Python heap every second — measurable CPU burn and event-loop
+        # pauses on a loaded process (REVIEW_1 BUG-2).
         import gc
+        server = None
+        for _attempt in range(30):   # the Server object exists within seconds of boot
+            for obj in gc.get_objects():
+                if type(obj).__name__ == "Server" and hasattr(obj, "should_exit"):
+                    server = obj
+                    break
+            if server is not None:
+                break
+            await asyncio.sleep(1.0)
+        if server is None:
+            logger.warning("[LIFESPAN] Uvicorn Server not found — SSE shutdown watcher disabled "
+                           "(normal under TestClient / non-uvicorn hosts).")
+            return
         while True:
             await asyncio.sleep(1.0)
-            for obj in gc.get_objects():
-                if type(obj).__name__ == "Server" and getattr(obj, "should_exit", False):
-                    logger.info("[LIFESPAN] Uvicorn shutdown detected — closing realtime SSE connections...")
-                    realtime_manager.shutdown()
-                    return
+            if getattr(server, "should_exit", False):
+                logger.info("[LIFESPAN] Uvicorn shutdown detected — closing realtime SSE connections...")
+                realtime_manager.shutdown()
+                return
                     
     watcher_task = asyncio.create_task(watch_uvicorn_shutdown())
 
@@ -361,4 +413,6 @@ app.include_router(discovery_router)      # Phase 5 - LAN auto-discovery
 app.include_router(relay_router)          # Phase 5 - Cross-network SSE relay
 app.include_router(sync_staff_router)     # Phase 5 - Immediate staff sync
 app.include_router(sync_profile_router)   # Phase 5 - Immediate profile sync
+app.include_router(campaigns_router)      # Promotions & offers + sync doctor (REVIEW_1 §4.2-4.3)
+app.include_router(activity_router)       # Owner activity feed — every action, human-readable
 app.include_router(core_router)           # billing ecosystem (sales + business templates + future)

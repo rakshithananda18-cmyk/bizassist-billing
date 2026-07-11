@@ -1,7 +1,7 @@
 {
   "name": "bizassist-landing",
   "private": true,
-  "version": "1.1.1",
+  "version": "1.1.2",
   "type": "module",
   "description": "BizAssist public landing page — deploy to Vercel / Cloudflare Pages",
   "scripts": {

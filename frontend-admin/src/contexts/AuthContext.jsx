@@ -163,12 +163,12 @@ export function AuthProvider({ children }) {
     setUser(null)
   }, [])
 
-  // ── Admin login ───────────────────────────────────────────────
-  const adminLogin = useCallback(async (username, password) => {
+  // ── Admin login (optional TOTP code when 2FA is enabled, §4.1) ─
+  const adminLogin = useCallback(async (username, password, otp = undefined) => {
     const res = await fetch(`${API_BASE}/login`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ username, password })
+      body:    JSON.stringify(otp ? { username, password, otp } : { username, password })
     })
     if (!res.ok) {
       const data = await res.json()

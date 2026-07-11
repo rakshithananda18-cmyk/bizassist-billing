@@ -30,6 +30,7 @@ _sub_sync_last: dict[int, float] = {}  # business_id → last sync epoch
 class LoginRequest(BaseModel):
     username: str
     password: str
+    otp: Optional[str] = None   # TOTP code — required only for admins with 2FA enabled (§4.1)
 
 
 class IdentityCheckRequest(BaseModel):
@@ -161,6 +162,7 @@ def reclaim_local(req: ReclaimLocalRequest, db: Session = Depends(get_db)):
         "public_id": user.public_id,
         "business_name": user.business_name,
         "role": user.role,
+        "tv": user.token_version or 0,
     })
     return {
         "token": token,
@@ -201,6 +203,24 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             logger.warning(f"[AUTH] Failed login for username '{req.username}': invalid credentials")
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
+        # ── Admin 2FA gate (§4.1) ─────────────────────────────────────────────
+        # Enforced ONLY when this admin has confirmed a TOTP secret. The
+        # distinct "2FA code required" detail tells the console to show the
+        # OTP field and re-submit — a wrong code reads differently on purpose.
+        if (user.role or "").lower() == "admin":
+            try:
+                _totp_cfg = (json.loads(user.settings) if user.settings else {}).get("totp") or {}
+            except Exception:
+                _totp_cfg = {}
+            if _totp_cfg.get("enabled") and _totp_cfg.get("secret"):
+                from services.totp import verify_code as _verify_totp
+                if not req.otp:
+                    logger.info(f"[AUTH] Admin '{req.username}' password OK — awaiting 2FA code")
+                    raise HTTPException(status_code=401, detail="2FA code required")
+                if not _verify_totp(_totp_cfg["secret"], req.otp):
+                    logger.warning(f"[AUTH] Admin '{req.username}' failed 2FA verification")
+                    raise HTTPException(status_code=401, detail="Invalid 2FA code")
+
         # (§9.5) Staff are not OFFERED a direct login in the UI — the login screen
         # is owner-gated (owner username → Owner / Staff buttons → /login/staff),
         # and a staff name that collides cross-business gets an internal username
@@ -227,7 +247,8 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             "username": user.username,
             "public_id": owner_public_id,   # BizID — the stable cross-DB identity spine (D9)
             "business_name": business_name,
-            "role": user.role
+            "role": user.role,
+            "tv": user.token_version or 0,  # session revocation (GAP-1)
         })
 
         logger.info(f"[AUTH] User '{req.username}' authenticated (role={user.role}, business={business_id}).")
@@ -331,6 +352,7 @@ def staff_login(req: StaffLoginRequest, request: Request, db: Session = Depends(
             "public_id": owner.public_id,
             "business_name": owner.business_name,
             "role": staff.role,
+            "tv": staff.token_version or 0,      # session revocation (GAP-1)
         })
         logger.info(f"[AUTH] Staff '{staff.staff_login_name}' logged into business {business_id} (owner {owner.username}).")
         return {
@@ -415,7 +437,8 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             "username": user.username,
             "public_id": user.public_id,   # BizID — stable cross-DB identity spine (D9)
             "business_name": user.business_name,
-            "role": user.role
+            "role": user.role,
+            "tv": user.token_version or 0,  # session revocation (GAP-1)
         })
 
         logger.info(f"[AUTH] User '{req.username}' registered and authenticated.")
@@ -508,7 +531,8 @@ def redeem_ticket(req: RedeemTicketRequest, request: Request, db: Session = Depe
             "username": user_row.username,
             "public_id": owner_public_id,
             "business_name": business_name,
-            "role": user_row.role
+            "role": user_row.role,
+            "tv": user_row.token_version or 0,   # session revocation (GAP-1)
         })
 
         logger.info(f"[AUTH] Ticket redeemed successfully for user '{user_row.username}'. Issued new session.")
@@ -530,6 +554,55 @@ def redeem_ticket(req: RedeemTicketRequest, request: Request, db: Session = Depe
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@router.post("/auth/refresh")
+def refresh_session(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """Sliding-session refresh (REVIEW_1 GAP-1): exchange a valid, unexpired
+    token for a fresh one. Claims are RE-READ from the DB — a role change,
+    plan change, or token_version bump since login is reflected (a revoked
+    token never reaches this handler; get_active_user rejects it first).
+    This is what lets ACCESS_TOKEN_TTL_MINUTES drop below 24h without
+    logging users out mid-shift."""
+    try:
+        uid = current_user.get("user_id") or current_user.get("id")
+        user = db.query(User).filter(User.id == uid).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Account no longer exists")
+
+        business_id = user.parent_business_id or user.id
+        business_name = user.business_name
+        owner_public_id = user.public_id
+        if user.parent_business_id:
+            owner = db.query(User).filter(User.id == user.parent_business_id).first()
+            if owner:
+                business_name = owner.business_name
+                owner_public_id = owner.public_id
+
+        token = create_access_token({
+            "id": business_id,
+            "user_id": user.id,
+            "username": user.username,
+            "public_id": owner_public_id,
+            "business_name": business_name,
+            "role": user.role,
+            "tv": user.token_version or 0,
+        })
+        logger.info(f"[AUTH] Session refreshed for '{user.username}' (business={business_id}).")
+        return {
+            "token": token,
+            "id": business_id,
+            "user_id": user.id,
+            "username": user.username,
+            "public_id": owner_public_id,
+            "business_name": business_name,
+            "role": user.role,
+            "counter_prefix": user.counter_prefix,
+            "db_mode": _DB_MODE,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[AUTH] Error refreshing session: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -956,15 +1029,20 @@ def update_settings(
             logger.debug(f"[SETTINGS] Patching section '{section}' for user '{user.username}': {patch}")
             current[section].update(patch)
 
-    # Preserve the admin-managed `subscription` key across saves and strip any
-    # client-supplied value (Phase B.5 guard: subscription is server-authoritative;
-    # the SettingsUpdateRequest schema already rejects unknown sections, and the
-    # merged view never includes it, so re-attach from what's on disk).
+    # Preserve the server-authoritative reserved keys across saves and strip any
+    # client-supplied values (Phase B.5 guard + §4.1 2FA: `subscription` and
+    # `totp` are server-managed; the SettingsUpdateRequest schema already
+    # rejects unknown sections and the merged view never includes them, so
+    # re-attach from what's on disk).
     current.pop("subscription", None)
+    current.pop("totp", None)
     try:
         prev = json.loads(user.settings) if user.settings else {}
-        if isinstance(prev, dict) and "subscription" in prev:
-            current["subscription"] = prev["subscription"]
+        if isinstance(prev, dict):
+            if "subscription" in prev:
+                current["subscription"] = prev["subscription"]
+            if "totp" in prev:
+                current["totp"] = prev["totp"]
     except Exception:
         pass
 
@@ -973,6 +1051,8 @@ def update_settings(
     logger.info(f"[SETTINGS] Settings successfully updated and committed for user '{user.username}'")
     logger.debug(f"[SETTINGS] New settings structure: {current}")
     resp = dict(current)
+    # Never echo the TOTP secret back to any client — it lives server-side only.
+    resp.pop("totp", None)
     resp["subscription"] = _subscription_view(user, db)
     return resp
 

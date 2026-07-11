@@ -167,7 +167,8 @@ def extract_structured_purchase_invoice(raw_text: str) -> dict:
     if groq_key:
         try:
             logger.info("Extracting purchase invoice using Groq (qwen/qwen3-32b)...")
-            client = Groq(api_key=groq_key)
+            from services.groq_client import make_groq_client
+            client = make_groq_client(groq_key)
             completion = client.chat.completions.create(
                 model=os.getenv("GROQ_MODEL_COMPLEX", "qwen/qwen3-32b"),
                 messages=[

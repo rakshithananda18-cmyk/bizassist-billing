@@ -203,22 +203,31 @@ export function CashMovementModal({ open, onClose, onRecorded, authFetch }) {
           <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 6 }}>
             Non-sale cash movement — it adjusts what the system expects in the drawer.
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
+
+          {/* Staff-friendly: ONE dropdown instead of four radio cards. The
+              selected reason's plain-language hint shows just below it. */}
+          <label style={labelStyle}>What is this? *</label>
+          <select
+            className="form-input" style={{ width: '100%', fontWeight: 600 }}
+            value={optKey} onChange={e => setOptKey(e.target.value)} autoFocus
+          >
             {MOVEMENT_OPTIONS.map(o => (
-              <label key={o.key} style={{
-                display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px',
-                borderRadius: 8, cursor: 'pointer', fontSize: '0.82rem',
-                border: `1px solid ${optKey === o.key ? 'var(--accent)' : 'var(--border)'}`,
-                background: optKey === o.key ? 'var(--bg-2)' : 'transparent',
-              }}>
-                <input type="radio" name="mv" checked={optKey === o.key} onChange={() => setOptKey(o.key)} style={{ marginTop: 2 }} />
-                <span>
-                  <strong>{o.label}</strong>
-                  <span style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.72rem' }}>{o.hint}</span>
-                </span>
-              </label>
+              <option key={o.key} value={o.key}>{o.label}</option>
             ))}
+          </select>
+          <div style={{
+            fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 6,
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <span style={{
+              flexShrink: 0, fontWeight: 800, fontSize: '0.66rem', padding: '1px 8px',
+              borderRadius: 999, textTransform: 'uppercase', letterSpacing: '0.04em',
+              background: opt.type === 'paid_in' ? 'rgba(34,197,94,0.14)' : 'rgba(239,68,68,0.12)',
+              color: opt.type === 'paid_in' ? '#22c55e' : '#ef4444',
+            }}>{opt.type === 'paid_in' ? '+ into drawer' : '− out of drawer'}</span>
+            {opt.hint}
           </div>
+
           {optKey === 'expense' && (
             <>
               <label style={labelStyle}>Expense Category</label>
@@ -228,9 +237,9 @@ export function CashMovementModal({ open, onClose, onRecorded, authFetch }) {
               </select>
             </>
           )}
-          <label style={labelStyle}>Amount (₹)</label>
+          <label style={labelStyle}>Amount (₹) *</label>
           <input type="number" min="0" step="any" className="form-input" style={inputStyle}
-                 placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} autoFocus />
+                 placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
           <label style={labelStyle}>Note (optional)</label>
           <input type="text" className="form-input" style={{ width: '100%' }}
                  placeholder="e.g. tea & snacks, deposit slip #123"
@@ -266,7 +275,7 @@ function DiffRow({ label, expected, actual }) {
   )
 }
 
-export function CloseShiftModal({ open, onClose, onClosed, authFetch, shift }) {
+export function CloseShiftModal({ open, onClose, onClosed, onSummary, authFetch, shift }) {
   const [cashActual, setCashActual] = useState('')
   const [upiActual, setUpiActual] = useState('')
   const [leaveInDrawer, setLeaveInDrawer] = useState('')
@@ -434,13 +443,23 @@ export function CloseShiftModal({ open, onClose, onClosed, authFetch, shift }) {
                 Saved. The left-in-drawer amount will prefill the next shift's opening
                 float. Full history: Reports → Shift Reconciliations.
               </p>
-              <button
-                className="btn btn-primary"
-                style={{ width: '100%', marginTop: 12, fontWeight: 700 }}
-                onClick={() => onClosed?.(result)}
-              >
-                Done
-              </button>
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <button
+                  className="btn btn-secondary"
+                  style={{ flex: 1, fontWeight: 700 }}
+                  onClick={() => onClosed?.(result)}
+                >
+                  Done
+                </button>
+                <button
+                  className="btn btn-primary"
+                  style={{ flex: 1.4, fontWeight: 700 }}
+                  onClick={() => { onSummary?.(result); onClosed?.(result) }}
+                  title="Full shift report with every invoice — printable"
+                >
+                  View &amp; Print Summary
+                </button>
+              </div>
             </>
           )}
         </div>

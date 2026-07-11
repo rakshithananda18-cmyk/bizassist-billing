@@ -4,6 +4,7 @@ import { logger } from '../../utils/logger'
 import { useDialog } from '../../contexts/DialogContext'
 import { API_BASE } from '../../config'
 import { Icon } from '../../components/icons'
+import TwoFactorCard from '../../components/TwoFactorCard'
 
 export default function AdminHealth() {
   const { authFetch } = useAuth()
@@ -107,6 +108,9 @@ export default function AdminHealth() {
           </button>
         </div>
       </div>
+
+      {/* Admin sign-in 2FA (REVIEW_1 §4.1) */}
+      <TwoFactorCard />
 
       {loading && !health ? (
         <div className="vskel" style={{ marginTop: 24 }}></div>

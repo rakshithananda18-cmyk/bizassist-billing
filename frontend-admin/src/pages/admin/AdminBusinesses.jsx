@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
 import { useDialog } from '../../contexts/DialogContext'
@@ -335,7 +336,12 @@ export default function AdminBusinesses() {
                     <tr key={b.id}>
                       <td style={{ fontFamily: "'Geist Mono',monospace", opacity: 0.75 }}>{b.id}</td>
                       <td style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, opacity: 0.85 }} title="Stable identity across cloud & local databases">{b.bizid || '—'}</td>
-                      <td style={{ fontWeight: 600, color: 'var(--accent-color)' }}>{b.business_name}</td>
+                      <td style={{ fontWeight: 600 }}>
+                        <Link to={`/admin/businesses/${b.id}`} title="Open drill-down: sync health, telemetry, logs, force logout"
+                          style={{ color: 'var(--accent-color)', textDecoration: 'none' }}>
+                          {b.business_name}
+                        </Link>
+                      </td>
                       <td>{b.username}</td>
                       <td><span className="tag">{b.hosting_mode || 'local'}</span></td>
                       <td>
@@ -360,6 +366,7 @@ export default function AdminBusinesses() {
                       <td>{b.upload_count} datasets</td>
                       <td>
                         <div style={{ display: 'flex', gap: 6 }}>
+                          <Link to={`/admin/businesses/${b.id}`} className="btn-flush" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>Open</Link>
                           <button className="btn-flush" onClick={() => openInspectModal(b)}>Inspect</button>
                           <button className="btn-flush" onClick={() => openEditModal(b)}>Edit</button>
                           <button className="btn-flush" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => openLimitsModal(b)}><Icon name="settings" size={12} /> Limits</button>

@@ -129,8 +129,29 @@ def _resolve_business_id_by_username(user: dict, db: Session) -> int:
             ).first()
             if row:
                 return int(row[1]) if row[1] is not None else int(row[0])
+
+            # STAFF FIX (2026-07): staff tokens carry the OWNER's BizID with the
+            # STAFF member's username — when the staff row was never mirrored to
+            # this DB (or was mirrored under a different derived username), the
+            # pair-lookup above misses even though the business itself is
+            # unambiguous. The BizID is the identity spine: if an OWNER row with
+            # this public_id exists, route to that business directly. This ends
+            # the "BizID mismatch for username 'counter_1'" refusal loop where a
+            # DIFFERENT business's staff happened to share the generic username.
+            owner_row = db.execute(
+                text('SELECT id FROM "users" WHERE public_id = :p AND parent_business_id IS NULL'),
+                {"p": public_id},
+            ).first()
+            if owner_row:
+                logger.info(
+                    "sync: resolved business by owner BizID %s for staff '%s' "
+                    "(staff row not mirrored on this DB — consider re-running staff sync)",
+                    public_id, username,
+                )
+                return int(owner_row[0])
+
             # IDENTITY GUARD: the token carries a BizID but this DB has no user
-            # with that BizID+username pair. Falling through to the username-only
+            # with that BizID at all. Falling through to the username-only
             # match could write one business's data into a DIFFERENT business
             # that happens to share the username (e.g. independently-created
             # local & cloud accounts). Refuse instead — the user must link

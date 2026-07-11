@@ -12,6 +12,7 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from database.db import get_db
 from services.auth import get_active_user
@@ -138,6 +139,81 @@ def wipe_user_data(user_id: int, current_user: dict = Depends(get_active_user), 
     except Exception as e:
         db.rollback(); logger.error("admin/wipe-user-data/%s: %s", user_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/admin/force-logout/{user_id}")
+def force_logout_business(user_id: int, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """Revoke every outstanding session (owner + staff) for a business.
+    Stolen laptop / fired staff / stale token — takes effect within ~30s."""
+    try:
+        svc.require_admin(current_user["id"], db, action="force_logout", details={"target": user_id})
+        return svc.force_logout(user_id, db)
+    except HTTPException: db.rollback(); raise
+    except Exception as e:
+        db.rollback(); logger.error("admin/force-logout/%s: %s", user_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/admin/metrics")
+def get_business_metrics(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """Growth metrics: plan mix, activation funnel, activity cohorts, churn risk (§4.4)."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        return svc.business_metrics(db)
+    except HTTPException: raise
+    except Exception as e:
+        logger.error("admin/metrics: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ── Admin TOTP 2FA (§4.1) ────────────────────────────────────────────────────
+
+class TotpCodeRequest(BaseModel):
+    code: str
+
+
+@router.get("/admin/2fa/status")
+def get_2fa_status(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    try:
+        admin = svc.require_admin(current_user["id"], db)
+        return svc.totp_status(admin)
+    except HTTPException: raise
+    except Exception as e:
+        logger.error("admin/2fa/status: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/admin/2fa/setup")
+def setup_2fa(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    try:
+        admin = svc.require_admin(current_user["id"], db, action="totp_setup")
+        return svc.totp_setup(admin, db)
+    except HTTPException: db.rollback(); raise
+    except Exception as e:
+        db.rollback(); logger.error("admin/2fa/setup: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/admin/2fa/confirm")
+def confirm_2fa(body: TotpCodeRequest, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    try:
+        admin = svc.require_admin(current_user["id"], db, action="totp_confirm")
+        return svc.totp_confirm(admin, body.code, db)
+    except HTTPException: db.rollback(); raise
+    except Exception as e:
+        db.rollback(); logger.error("admin/2fa/confirm: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/admin/2fa/disable")
+def disable_2fa(body: TotpCodeRequest, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    try:
+        admin = svc.require_admin(current_user["id"], db, action="totp_disable")
+        return svc.totp_disable(admin, body.code, db)
+    except HTTPException: db.rollback(); raise
+    except Exception as e:
+        db.rollback(); logger.error("admin/2fa/disable: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 
 @router.get("/admin/token-usage")
 def get_token_usage(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
@@ -518,3 +594,4 @@ def get_admin_table_alterations(limit: int = Query(100, ge=1, le=1000), current_
     except Exception as e:
         logger.error("admin/table-alterations: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+# (end of admin routes)

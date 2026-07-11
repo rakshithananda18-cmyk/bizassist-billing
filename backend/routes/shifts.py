@@ -160,6 +160,63 @@ def shift_tally(shift_id: int,
     return {"tally": shifts.compute_tally(db, shift)}
 
 
+@router.get("/shifts/{shift_id}/invoices")
+def shift_invoices(shift_id: int,
+                   current_user: dict = Depends(get_active_user),
+                   db: Session = Depends(get_db)):
+    """Invoices that took a payment during this shift — powers the printable
+    shift summary and the shift-history drill-down. Grouped per invoice with
+    the amount collected IN THIS SHIFT (an invoice part-paid across two shifts
+    shows its per-shift slice in each). Same visibility rule as /tally."""
+    shift = (
+        db.query(RegisterShift)
+        .filter(RegisterShift.id == shift_id,
+                RegisterShift.business_id == current_user["id"])
+        .first()
+    )
+    if shift is None:
+        raise HTTPException(status_code=404, detail=f"Shift {shift_id} not found")
+    role = (current_user.get("role") or "").lower()
+    if role in ("cashier", "supply adder") and shift.user_id != _safe_uid(current_user, db):
+        raise HTTPException(status_code=403, detail="You can only view your own shift.")
+
+    from core.models import InvoicePayment
+    from database.models import Invoice
+    rows = (
+        db.query(InvoicePayment, Invoice)
+        .join(Invoice, InvoicePayment.invoice_id == Invoice.id)
+        .filter(InvoicePayment.business_id == current_user["id"],
+                InvoicePayment.shift_id == shift.id)
+        .order_by(InvoicePayment.id.asc())
+        .all()
+    )
+    by_invoice = {}
+    for pay, inv in rows:
+        e = by_invoice.setdefault(inv.id, {
+            "invoice_no": inv.invoice_id,
+            "customer": inv.customer,
+            "invoice_total": round(float(inv.total_amount or inv.amount or 0.0), 2),
+            "status": inv.status,
+            "collected_in_shift": 0.0,
+            "modes": set(),
+            "first_payment_at": None,
+        })
+        e["collected_in_shift"] = round(e["collected_in_shift"] + float(pay.amount_paid or 0.0), 2)
+        if pay.payment_mode:
+            e["modes"].add(str(pay.payment_mode).lower())
+        ts = getattr(pay, "created_at", None)
+        if ts and (e["first_payment_at"] is None or ts < e["first_payment_at"]):
+            e["first_payment_at"] = ts
+    out = []
+    for e in by_invoice.values():
+        e["modes"] = sorted(e["modes"])
+        e["first_payment_at"] = e["first_payment_at"].isoformat() if e["first_payment_at"] else None
+        out.append(e)
+    out.sort(key=lambda r: r["first_payment_at"] or "")
+    return {"shift_id": shift.id, "invoices": out,
+            "total_collected": round(sum(r["collected_in_shift"] for r in out), 2)}
+
+
 @router.post("/shifts/close")
 def close_shift(req: CloseShiftRequest,
                 current_user: dict = Depends(get_active_user),

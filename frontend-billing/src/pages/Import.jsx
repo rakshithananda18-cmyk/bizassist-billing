@@ -6,6 +6,7 @@
 import React, { useRef, useState } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
+import ImportReviewModal from '../components/ImportReviewModal'
 import {
   ImportIcon,
   DownloadIcon,
@@ -30,7 +31,7 @@ function triggerDownload(blob, filename) {
 }
 
 /* ── DragDropCard ───────────────────────────────── */
-function DragDropCard({ icon, title, description, templateHref, endpoint, onSuccess, onError, authFetch }) {
+function DragDropCard({ icon, title, description, templateHref, endpoint, onSuccess, onError, authFetch, reviewFlow = false, onPreviewReady }) {
   const fileRef = useRef()
   const [dragOver, setDragOver] = useState(false)
   const [file, setFile] = useState(null)
@@ -46,13 +47,22 @@ function DragDropCard({ icon, title, description, templateHref, endpoint, onSucc
     const fd = new FormData()
     fd.append('file', file)
     try {
-      const res = await authFetch(endpoint, { method: 'POST', headers: {}, body: fd })
+      // Approval flow: with reviewFlow the file is only PARSED (?preview=1) —
+      // the parent shows the editable review table and commits separately.
+      const url = reviewFlow ? `${endpoint}?preview=1` : endpoint
+      const res = await authFetch(url, { method: 'POST', headers: {}, body: fd })
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
-        const count = data.count ?? data.imported ?? data.rows ?? '?'
-        setResult({ type: 'success', msg: `Imported ${count} records successfully!` })
-        setFile(null)
-        if (onSuccess) onSuccess(data)
+        if (reviewFlow && data.preview) {
+          setResult({ type: 'success', msg: `${data.count} row(s) parsed — review before anything is saved.` })
+          setFile(null)
+          onPreviewReady?.(data.items || [])
+        } else {
+          const count = data.count ?? data.imported ?? data.rows ?? '?'
+          setResult({ type: 'success', msg: `Imported ${count} records successfully!` })
+          setFile(null)
+          if (onSuccess) onSuccess(data)
+        }
       } else {
         const err = await res.json().catch(() => ({}))
         setResult({ type: 'danger', msg: `${err.detail || 'Import failed.'}` })
@@ -200,13 +210,44 @@ function ExportCard({ icon, title, description, endpoint, filename, authFetch })
 export default function Import() {
   const { authFetch } = useAuth()
 
+  // Products approval flow (owner requirement): parse-only preview → editable
+  // review table → explicit approve → commit. Nothing lands silently.
+  const [reviewItems, setReviewItems] = useState(null)   // rows awaiting approval
+  const [committing, setCommitting] = useState(false)
+  const [commitResult, setCommitResult] = useState(null)
+
+  const commitApproved = async (approvedRows) => {
+    setCommitting(true)
+    try {
+      const res = await authFetch('/billing/import/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: approvedRows }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        const errs = data.errors?.length ? ` (${data.errors.length} row(s) skipped: ${data.errors.slice(0, 3).join('; ')}${data.errors.length > 3 ? '…' : ''})` : ''
+        setCommitResult({ type: 'success', msg: `Imported ${data.created ?? data.count ?? approvedRows.length} product(s).${errs}` })
+        setReviewItems(null)
+      } else {
+        setCommitResult({ type: 'danger', msg: data.detail || 'Import failed — nothing was saved.' })
+      }
+    } catch {
+      setCommitResult({ type: 'danger', msg: 'Network error — nothing was saved.' })
+    } finally {
+      setCommitting(false)
+    }
+  }
+
   const IMPORT_CONFIGS = [
     {
       icon: <InventoryIcon size={18} />,
       title: 'Products',
-      description: 'Import product catalogue with SKU, price, and stock levels.',
+      description: 'Import product catalogue with SKU, price, and stock levels. Every file goes through an editable review table — nothing is saved without your approval.',
       endpoint: '/billing/import/products',
       templateHref: '#',
+      reviewFlow: true,
+      onPreviewReady: (items) => { setCommitResult(null); setReviewItems(items) },
     },
     {
       icon: <ContactsIcon size={18} />,
@@ -266,6 +307,19 @@ export default function Import() {
             <p className="page-subtitle">Bulk import data from CSV or export records for backup and analysis</p>
           </div>
         </div>
+
+        {commitResult && (
+          <div className={`alert alert-${commitResult.type} mb-4`}>{commitResult.msg}</div>
+        )}
+
+        {/* Products approval table — shown after a preview parse */}
+        <ImportReviewModal
+          open={reviewItems != null}
+          items={reviewItems || []}
+          committing={committing}
+          onCancel={() => setReviewItems(null)}
+          onCommit={commitApproved}
+        />
 
         <div className="grid grid-2 gap-4">
           {/* ── Import section ── */}

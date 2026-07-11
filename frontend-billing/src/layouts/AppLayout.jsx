@@ -10,6 +10,7 @@ import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
 import { IS_DESKTOP_APP, openDownloadPage } from '../config/downloadApp'
 import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
+import PageHelp from '../components/PageHelp'
 import SyncNudgeModal from '../components/hosting/SyncNudgeModal'
 import WebLocalOnlyNotice from '../components/hosting/WebLocalOnlyNotice'
 // HostingOnboardingModal removed: hosting is now chosen once, in Register.
@@ -357,23 +358,38 @@ export default function AppLayout({ children, title }) {
   }, [appReady, setAppReady, token, profile, businessConfig])
 
   // Role gating (defense-in-depth — the backend restrict_cashier guard is the
-  // real authority; this just hides owner-only destinations from cashiers).
-  const isCashier = (user?.role || '').toLowerCase() === 'cashier'
+  // real authority; this just hides off-role destinations from staff).
+  // Two staff sectors (owner requirement, 2026-07):
+  //   cashier      → the SALES sector: billing counter + what billing needs.
+  //   supply adder → the STOCK sector: inventory, labels, purchase bills —
+  //                  their whole job lives under Inventory + Purchases.
+  const staffRole = (user?.role || '').toLowerCase()
+  const isCashier = staffRole === 'cashier'
+  const isSupplyAdder = staffRole === 'supply adder'
   const OWNER_ONLY_PATHS = React.useMemo(() => new Set(['/purchases', '/b2b-network', '/b2b-orders', '/reports', '/import', '/staff', '/dashboard', '/pos-live-counter']), [])
+  // What each staff sector is allowed to SEE (backend still enforces writes).
+  const SUPPLY_ADDER_PATHS = React.useMemo(() => new Set(['/', '/stock', '/purchases', '/profile', '/support', '/settings']), [])
 
   React.useEffect(() => {
     if (isCashier && OWNER_ONLY_PATHS.has(location.pathname)) {
       navigate('/sales', { replace: true })
+    } else if (isSupplyAdder && !SUPPLY_ADDER_PATHS.has(location.pathname)
+               && !location.pathname.startsWith('/invoice/')) {
+      navigate('/stock', { replace: true })
     }
-  }, [isCashier, location.pathname, navigate, OWNER_ONLY_PATHS])
+  }, [isCashier, isSupplyAdder, location.pathname, navigate, OWNER_ONLY_PATHS, SUPPLY_ADDER_PATHS])
 
   const visibleNav = isCashier
     ? NAV.map(s => ({ ...s, items: s.items.filter(i => !OWNER_ONLY_PATHS.has(i.to) && !i.ownerOnly) })).filter(s => s.items.length > 0)
-    : NAV
+    : isSupplyAdder
+      ? NAV.map(s => ({ ...s, items: s.items.filter(i => SUPPLY_ADDER_PATHS.has(i.to)) })).filter(s => s.items.length > 0)
+      : NAV
 
   const visibleSubnav = isCashier
     ? SUBNAV.filter(item => !OWNER_ONLY_PATHS.has(item.to))
-    : SUBNAV
+    : isSupplyAdder
+      ? SUBNAV.filter(item => SUPPLY_ADDER_PATHS.has(item.to))
+      : SUBNAV
 
   // Track collapsed state per section with localStorage persistence
   const [collapsed, setCollapsed] = React.useState(() => {
@@ -665,7 +681,7 @@ export default function AppLayout({ children, title }) {
     ? user.username.slice(0, 2).toUpperCase()
     : 'BZ'
 
-  const isSalesPage = location.pathname === '/sales'
+  const isSalesPage = location.pathname === '/sales' || location.pathname === '/stock'
   const pageTitle = title || PAGE_TITLES[location.pathname] || 'BizAssist'
 
   return (
@@ -1682,7 +1698,9 @@ export default function AppLayout({ children, title }) {
       <div className="main-area">
 
         {/* ── Page content ── */}
-        <main className="page-content">
+        <main className="page-content" style={{ position: 'relative' }}>
+          {/* ⓘ page help — one mount point, per-route content (config/helpContent.js) */}
+          <PageHelp />
           {children}
         </main>
       </div>

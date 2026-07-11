@@ -195,8 +195,8 @@ def classify(query: str, client=None, business_id: int = None) -> Optional[Route
         return None
     try:
         if client is None:
-            from groq import Groq
-            client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+            from services.groq_client import make_groq_client
+            client = make_groq_client()
         resp = client.chat.completions.create(
             model=MODEL,
             temperature=0.0,

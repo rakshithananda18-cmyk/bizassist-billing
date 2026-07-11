@@ -100,6 +100,10 @@ class User(Base, TimestampMixin):
     # Editable UPI VPA (e.g. "name@upi") for POS collection QR + invoices. Distinct
     # from `phone` — a merchant's UPI handle is often NOT number@upi.
     upi_vpa       = Column(String, nullable=True)
+    # Session revocation (REVIEW_1 GAP-1): JWTs carry a `tv` claim checked against
+    # this counter. Bumping it invalidates every outstanding token for the account
+    # within the auth-cache TTL (~30s). Admin "force logout" bumps owner + staff.
+    token_version = Column(Integer, default=0, nullable=False, server_default="0")
 
 
 class UploadedFile(Base, TimestampMixin):
@@ -1025,6 +1029,81 @@ class UserFeedback(Base):
     created_at    = Column(DateTime, default=datetime.utcnow)
 
 
+# ── CAMPAIGNS / ANNOUNCEMENTS / OFFERS (Admin Console growth half) ──────────
+# REVIEW_1 §4.3: admin-authored promotions delivered in-app (channel "in_app"
+# ships first; "email"/"whatsapp" ride on the notifier when those land).
+# Cloud-only tables — written via /admin/* (ADMIN_API_ENABLED gate) and read
+# by merchants through GET /announcements. Never part of merchant sync.
+
+class Campaign(Base):
+    """One promotion/announcement authored in the Admin Console."""
+    __tablename__ = "campaigns"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    title         = Column(String, nullable=False)
+    body_md       = Column(Text,   nullable=False)             # markdown body
+    channel       = Column(String, nullable=False, default="in_app")  # in_app|email|whatsapp
+    # Audience filter JSON: {"plans": ["free","pro"], "business_types": [...],
+    #                        "bizids": ["BA-XXXXXX", ...]}  — empty/missing = everyone
+    audience      = Column(Text,   nullable=True)
+    # Optional attached offer code (rendered as a redeem button in the client)
+    offer_code    = Column(String, nullable=True)
+    status        = Column(String, nullable=False, default="draft")   # draft|active|paused|done
+    starts_at     = Column(DateTime, nullable=True)
+    ends_at       = Column(DateTime, nullable=True)
+    created_by    = Column(String, nullable=True)              # admin username
+    created_at    = Column(DateTime, default=datetime.utcnow)
+    updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CampaignDelivery(Base):
+    """Per-business delivery/engagement record — powers the campaign funnel
+    (delivered → seen → clicked/dismissed) in the Admin Console."""
+    __tablename__ = "campaign_deliveries"
+    __table_args__ = (
+        UniqueConstraint("campaign_id", "business_id", name="uq_campaign_delivery"),
+    )
+
+    id            = Column(Integer, primary_key=True, index=True)
+    campaign_id   = Column(Integer, ForeignKey("campaigns.id"), index=True, nullable=False)
+    business_id   = Column(Integer, index=True, nullable=False)
+    delivered_at  = Column(DateTime, default=datetime.utcnow)
+    seen_at       = Column(DateTime, nullable=True)
+    clicked_at    = Column(DateTime, nullable=True)
+    dismissed_at  = Column(DateTime, nullable=True)
+
+
+class Offer(Base):
+    """Redeemable offer code. `effect` describes what redemption grants —
+    v1: {"plan": "pro", "days": 30}. Applied through the same
+    users.settings.subscription machinery the Admin Console uses."""
+    __tablename__ = "offers"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    code            = Column(String, unique=True, index=True, nullable=False)
+    description     = Column(String, nullable=True)
+    effect          = Column(Text,   nullable=False)           # JSON effect payload
+    max_redemptions = Column(Integer, nullable=True)           # NULL = unlimited
+    redeemed_count  = Column(Integer, nullable=False, default=0, server_default="0")
+    redeem_by       = Column(DateTime, nullable=True)          # NULL = no deadline
+    active          = Column(Boolean, nullable=False, default=True, server_default="1")
+    created_by      = Column(String, nullable=True)
+    created_at      = Column(DateTime, default=datetime.utcnow)
+
+
+class OfferRedemption(Base):
+    """Who redeemed what, when — audit + max_redemptions enforcement."""
+    __tablename__ = "offer_redemptions"
+    __table_args__ = (
+        UniqueConstraint("offer_id", "business_id", name="uq_offer_redemption_once"),
+    )
+
+    id           = Column(Integer, primary_key=True, index=True)
+    offer_id     = Column(Integer, ForeignKey("offers.id"), index=True, nullable=False)
+    business_id  = Column(Integer, index=True, nullable=False)
+    redeemed_at  = Column(DateTime, default=datetime.utcnow)
+
+
 # ── TABLE ALTERATION AUDITING ───────────────────────────────────────────────
 
 class TableAlteration(Base):
@@ -1050,10 +1129,12 @@ from sqlalchemy import inspect
 import json
 
 EXCLUDED_TABLES = {
-    "table_alterations", "action_log", "action_logs", "token_usage", 
-    "chat_messages", "document_embeddings", "alembic_version", 
-    "uploaded_files", "sync_queue", "sync_logs", "conflict_logs", 
-    "telemetry_events"
+    "table_alterations", "action_log", "action_logs", "token_usage",
+    "chat_messages", "document_embeddings", "alembic_version",
+    "uploaded_files", "sync_queue", "sync_logs", "conflict_logs",
+    "telemetry_events",
+    # Campaign system data — high-churn, admin-owned, not business books
+    "campaigns", "campaign_deliveries", "offers", "offer_redemptions",
 }
 
 def serialize_val(val):

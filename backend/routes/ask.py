@@ -10,18 +10,22 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
-from groq import Groq
 import os
 
 from services.auth import get_active_user, restrict_cashier, require_plan
+from services.groq_client import make_groq_client
 
 router = APIRouter()
 
 # Optional: desktop installs may ship without an AI key — the app must still
 # boot (Groq() raises at construction when api_key is None). AI endpoints
 # return 503 below; billing/POS is unaffected.
+# NOTE: these routes are sync `def` and the SSE generator is a sync generator —
+# Starlette runs BOTH in its threadpool, so LLM latency never blocks the event
+# loop. The groq_client timeout keeps a hung upstream call from pinning a
+# threadpool slot forever (REVIEW_1 GAP-3 part 1).
 _GROQ_KEY = os.getenv("GROQ_API_KEY")
-_client = Groq(api_key=_GROQ_KEY) if _GROQ_KEY else None
+_client = make_groq_client(_GROQ_KEY) if _GROQ_KEY else None
 
 
 def _require_ai_client():

@@ -420,8 +420,8 @@ def generate_insights(user_id: int, client=None) -> dict:
 
     if client is None:
         try:
-            from groq import Groq
-            client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+            from services.groq_client import make_groq_client
+            client = make_groq_client()
         except Exception as e:
             logger.warning("[ADVISOR] no Groq client: %s", e)
             return {"insights": _deterministic_headline(snap), "snapshot": snap, "source": "deterministic"}

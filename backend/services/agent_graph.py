@@ -29,12 +29,12 @@ import logging
 import os
 from typing import TypedDict, Optional
 
-from groq import Groq
+from services.groq_client import make_groq_client
 from services.tools import execute_tool
 
 logger = logging.getLogger("bizassist.agent_graph")
 
-client        = Groq(api_key=os.getenv("GROQ_API_KEY"))
+client        = make_groq_client()
 MODEL_PLANNER = os.getenv("GROQ_MODEL_SIMPLE",  "llama-3.1-8b-instant")    # planner only needs JSON routing
 MODEL_SYNTH   = os.getenv("GROQ_MODEL_COMPLEX", "qwen/qwen3-32b") # synthesizer needs reasoning
 

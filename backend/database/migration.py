@@ -111,6 +111,8 @@ _COLUMN_MIGRATIONS = [
     {"table": "users", "column": "staff_login_name", "ddl": "ALTER TABLE users ADD COLUMN staff_login_name TEXT"},
     {"table": "users", "column": "is_premium",       "ddl": "ALTER TABLE users ADD COLUMN is_premium BOOLEAN DEFAULT 0 NOT NULL"},
     {"table": "users", "column": "upi_vpa",           "ddl": "ALTER TABLE users ADD COLUMN upi_vpa TEXT"},
+    # users — session revocation counter (REVIEW_1 GAP-1: force logout / token revoke)
+    {"table": "users", "column": "token_version",     "ddl": "ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0 NOT NULL"},
     # invoices additions
     {"table": "invoices", "column": "godown_id",        "ddl": "ALTER TABLE invoices ADD COLUMN godown_id INTEGER"},
     {"table": "invoices", "column": "reverse_charge",   "ddl": "ALTER TABLE invoices ADD COLUMN reverse_charge BOOLEAN DEFAULT FALSE"},
@@ -327,6 +329,10 @@ _DEDUP_TABLES = [
     "invoices", "invoice_payments", "customers", "vendors", "products",
     "purchase_invoices", "expenses", "inventory", "godowns",
     "stock_transfers", "purchase_orders",
+    # stock_ledger rows were duplicated by the pre-v1.1.1 sync bug; without
+    # dedup its uid unique index fails (WARN) on every boot, leaving the table
+    # unguarded against future duplicates. Same keep-newest (MAX id) rule.
+    "stock_ledger",
 ]
 
 

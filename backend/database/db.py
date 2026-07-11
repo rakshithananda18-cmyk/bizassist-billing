@@ -100,7 +100,10 @@ def get_db():
     
     if business_id is not None and db.bind.dialect.name == "postgresql":
         try:
-            db.execute(text(f"SET app.current_business_id = '{int(business_id)}'"))
+            # set_config() takes bound parameters (SET does not) — defense in
+            # depth even though business_id is already int()-cast upstream.
+            db.execute(text("SELECT set_config('app.current_business_id', :bid, false)"),
+                       {"bid": str(int(business_id))})
         except Exception:
             # We fail silently or log, but do not block request startup unless database is totally down
             pass

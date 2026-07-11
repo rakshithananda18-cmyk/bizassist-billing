@@ -454,6 +454,14 @@ def stock_adjustment(
         raise HTTPException(status_code=404, detail=f"Product {product_id} not found")
     if req.qty_delta == 0:
         raise HTTPException(status_code=422, detail="qty_delta cannot be zero")
+    # ANTI-TAMPER (owner req 2026-07): every manual adjustment must say WHY.
+    # Combined with the audit trail (who + when + before/after in the owner's
+    # activity feed), staff can't quietly shrink stock — each movement is
+    # attributed, reasoned, and owner-visible.
+    if not (req.note or "").strip():
+        raise HTTPException(status_code=422,
+                            detail="A reason is required for stock adjustments "
+                                   "(e.g. 'damaged in transit', 'count correction').")
 
     try:
         movement = SL.record_movement(
@@ -464,7 +472,7 @@ def stock_adjustment(
             product_id=product_id,
             product_name=p.name,
             reference_type="manual",
-            note=req.note or "manual adjustment",
+            note=req.note.strip(),
         )
         db.commit()
         from services.immediate_sync import trigger_data_sync

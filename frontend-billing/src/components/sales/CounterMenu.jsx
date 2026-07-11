@@ -118,7 +118,12 @@ export default function CounterMenu({
                   if (!isCurrent) e.currentTarget.style.background = 'transparent'
                 }}
               >
-                <span>{c.label}</span>
+                <span>
+                  {c.label}
+                  {c.name && (
+                    <span style={{ color: 'var(--text-muted, #9ca3af)', fontWeight: 400 }}> — {c.name}</span>
+                  )}
+                </span>
                 {isCurrent && <span style={{ fontSize: '0.7rem' }}>✓</span>}
               </button>
             )
