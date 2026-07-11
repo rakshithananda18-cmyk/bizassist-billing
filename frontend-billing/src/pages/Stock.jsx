@@ -470,6 +470,24 @@ export default function Stock() {
     }
   })
 
+  const [intakeAdjustments, setIntakeAdjustments] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bizassist_intake_adjustments')
+      return saved ? JSON.parse(saved) : { item_disc: '', cess: '', cash_disc: '' }
+    } catch (e) {
+      return { item_disc: '', cess: '', cash_disc: '' }
+    }
+  })
+
+  const [intakePayment, setIntakePayment] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bizassist_intake_payment')
+      return saved ? JSON.parse(saved) : { mode: 'Credit', due_date: '' }
+    } catch (e) {
+      return { mode: 'Credit', due_date: '' }
+    }
+  })
+
   // Persist drafts to localStorage
   useEffect(() => {
     localStorage.setItem('bizassist_intake_rows', JSON.stringify(intakeRows))
@@ -478,6 +496,14 @@ export default function Stock() {
   useEffect(() => {
     localStorage.setItem('bizassist_intake_distributor', JSON.stringify(intakeDistributor))
   }, [intakeDistributor])
+
+  useEffect(() => {
+    localStorage.setItem('bizassist_intake_adjustments', JSON.stringify(intakeAdjustments))
+  }, [intakeAdjustments])
+
+  useEffect(() => {
+    localStorage.setItem('bizassist_intake_payment', JSON.stringify(intakePayment))
+  }, [intakePayment])
 
   const lowStockItems = products.filter(p => getStatus(p) !== 'In Stock').slice(0, 10)
 
