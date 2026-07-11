@@ -175,7 +175,7 @@ def _repair_json_with_llm(broken_json: str) -> str:
     try:
         from services.groq_client import make_groq_client
         client = make_groq_client(groq_key)
-        model = os.getenv("GROQ_MODEL_SIMPLE", "llama3-8b-8192")
+        model = os.getenv("GROQ_MODEL_SIMPLE", "meta-llama/llama-4-scout-17b-16e-instruct")
         logger.info(f"[Purchase Image] Attempting JSON repair using model {model}...")
 
         system_content = (
