@@ -90,7 +90,7 @@ export default function IntakePurchasePanel({ rows = [], authFetch, distributor:
     }
   }
   const [pay, setPay] = useState({ mode: 'Credit', due_date: '' })
-  const [adj, setAdj] = useState({ item_disc: '', cess: '', freight: '', cash_disc: '' })
+  const [adj, setAdj] = useState({ item_disc: '', cess: '', cash_disc: '' })
 
   useEffect(() => {
     if (!authFetch) return
@@ -121,10 +121,9 @@ export default function IntakePurchasePanel({ rows = [], authFetch, distributor:
   const taxTotal = slabList.reduce((s, x) => s + x.tax, 0)
   const itemDisc = parseFloat(adj.item_disc) || 0
   const cess = parseFloat(adj.cess) || 0
-  const freight = parseFloat(adj.freight) || 0
   const cashDisc = parseFloat(adj.cash_disc) || 0
   const taxable = gross - itemDisc
-  const payable = taxable + taxTotal + cess + freight - cashDisc
+  const payable = taxable + taxTotal + cess - cashDisc
 
   const vfiltered = vendorQuery.trim()
     ? vendors.filter((v) => (v.name || '').toLowerCase().includes(vendorQuery.trim().toLowerCase()))
@@ -209,7 +208,6 @@ export default function IntakePurchasePanel({ rows = [], authFetch, distributor:
       <div class="tot"><span>Taxable</span><span>${money(taxable)}</span></div>
       <div class="tot"><span>Tax</span><span>${money(taxTotal)}</span></div>
       <div class="tot"><span>Cess</span><span>${money(cess)}</span></div>
-      <div class="tot"><span>Freight</span><span>${money(freight)}</span></div>
       <div class="tot"><span>Cash Disc</span><span>-${money(cashDisc)}</span></div>
       <div class="tot big"><span>Payable Amount</span><span>${money(payable)}</span></div>
       </body></html>`)
@@ -230,12 +228,45 @@ export default function IntakePurchasePanel({ rows = [], authFetch, distributor:
       <Section title="Distributor" open={open.distributor} onToggle={() => toggle('distributor')}>
         <div style={{ position: 'relative', marginBottom: 8 }}>
           <label style={label}>Supplier</label>
-          <input
-            style={field}
-            placeholder={dist.name || 'Search vendor or type new…'}
-            value={vendorQuery}
-            onChange={(e) => setVendorQuery(e.target.value)}
-          />
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input
+              style={{ ...field, flex: 1 }}
+              placeholder="Search vendor or type distributor name…"
+              value={dist.name || ''}
+              onChange={(e) => {
+                const val = e.target.value
+                setDist((d) => ({ ...d, name: val, vendor_id: null }))
+                setVendorQuery(val)
+              }}
+            />
+            {dist.name && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDist({
+                    vendor_id: null,
+                    name: '',
+                    gstin: '',
+                    pan: '',
+                    fssai: '',
+                    phone: '',
+                    address: '',
+                    invoice_no: dist.invoice_no,
+                    invoice_date: dist.invoice_date,
+                  })
+                  setVendorQuery('')
+                }}
+                style={{
+                  background: 'rgba(239, 68, 68, 0.1)', border: 'none', color: '#ef4444',
+                  cursor: 'pointer', fontSize: '0.72rem', fontWeight: 800, height: 26, width: 26,
+                  borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}
+                title="Clear distributor"
+              >
+                ✕
+              </button>
+            )}
+          </div>
           {vendorQuery.trim() && (
             <div style={{ position: 'absolute', zIndex: 20, left: 0, right: 0, background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 6, marginTop: 2, maxHeight: 160, overflowY: 'auto', boxShadow: 'var(--shadow-md)' }}>
               {vfiltered.map((v) => (
@@ -244,19 +275,18 @@ export default function IntakePurchasePanel({ rows = [], authFetch, distributor:
                   {v.name}{v.gstin ? <span style={{ color: 'var(--text-muted)', fontSize: '0.66rem' }}> · {v.gstin}</span> : ''}
                 </div>
               ))}
-              {!exactMatch && (
-                <div onClick={useAsNew} style={{ padding: '6px 9px', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--accent)', fontWeight: 700 }}>
-                  ＋ Use “{vendorQuery.trim()}” as new distributor
-                </div>
-              )}
             </div>
           )}
         </div>
         {dist.name && (
-          <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 700 }}>{dist.name}</span>
-            {dist.vendor_id == null && <span style={{ fontSize: '0.58rem', color: 'var(--accent)', fontWeight: 800 }}>NEW</span>}
-            {dist.gstin && <span style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>{dist.gstin}</span>}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center' }}>
+            <span style={{
+              fontSize: '0.58rem', fontWeight: 800, padding: '2px 6px', borderRadius: 4,
+              background: dist.vendor_id ? 'rgba(20,184,166,.15)' : 'rgba(249,115,22,.15)',
+              color: dist.vendor_id ? '#14b8a6' : '#f97316', letterSpacing: '0.04em'
+            }}>
+              {dist.vendor_id ? 'SAVED DISTRIBUTOR' : 'NEW DISTRIBUTOR'}
+            </span>
           </div>
         )}
         <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -325,9 +355,6 @@ export default function IntakePurchasePanel({ rows = [], authFetch, distributor:
         <Row l="Tax Amount" v={money(taxTotal)} muted />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
           <span>Cess</span>{numField('cess', '0')}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-          <span>Freight</span>{numField('freight', '0')}
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
           <span>Cash Disc</span>{numField('cash_disc', '0')}

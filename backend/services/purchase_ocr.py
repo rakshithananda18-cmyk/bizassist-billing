@@ -18,6 +18,7 @@ _SYSTEM_PROMPT = (
     "You are a precise data extraction agent. Extract structured purchase invoice information "
     "from the provided supplier bill. You must output a JSON object only. Do NOT output markdown code blocks (e.g. ```json), "
     "preamble, or explanations. Read EVERY line item in the table carefully, column by column. "
+    "IMPORTANT: You must carefully distinguish between the Supplier/Seller (the entity selling the goods, e.g., 'SRI TIRUMALA VENKATESWARA AG') and the Buyer (the entity purchasing the goods, e.g., 'M R TRADERS'). Do NOT extract the buyer's name, buyer's GSTIN, buyer's PAN, or buyer's address into the supplier fields. The supplier fields must strictly contain the seller's information. "
     "The JSON output must strictly conform to the following schema:\n\n"
     "{\n"
     "  \"supplier_name\": \"string (name of the company/vendor selling the items)\",\n"
