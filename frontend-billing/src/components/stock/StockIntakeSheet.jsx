@@ -802,7 +802,10 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
             .intake-grid .row-del { display: none; }
             .intake-grid tbody tr:hover .row-sno { display: none; }
             .intake-grid tbody tr:hover .row-del { display: inline-flex; }
-          `}</style>
+            .intake-grid .row-edit-btn { display: none; }
+            .intake-grid tbody tr:hover .row-edit-btn { display: inline-flex; }
+            .intake-grid .row-edit-btn.is-active { display: inline-flex; }
+           `}</style>
           <table className="intake-grid" style={{ fontSize: '0.78rem', minWidth: 1760 }}>
             <thead>
               <tr>
@@ -865,8 +868,8 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                         <span className="row-sno" style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{_idx + 1}</span>
                         <button className="row-del" type="button" onClick={() => removeRow(r._key)} disabled={saving}
                           title="Remove this row"
-                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
-                          <CloseIcon size={12} strokeWidth={2.5} />
+                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#ef4444', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
+                          <CloseIcon size={10} strokeWidth={2} />
                         </button>
                       </TCell>
 
@@ -916,19 +919,20 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                           </div>
                           <button
                             type="button"
+                            className={`row-edit-btn ${editingRowKey === r._key ? 'is-active' : ''}`}
                             onClick={() => setEditingRowKey(editingRowKey === r._key ? null : r._key)}
                             title={r._type === 'new' ? 'More fields' : 'Edit details'}
                             style={{
-                              flexShrink: 0, marginTop: 1,
+                              flexShrink: 0, marginTop: 2,
                               background: editingRowKey === r._key ? 'var(--accent-muted, rgba(192,97,42,.14))' : 'transparent',
-                              border: '1px solid var(--border)', borderRadius: 5, cursor: 'pointer',
-                              padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                              border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer',
+                              padding: 0, alignItems: 'center', justifyContent: 'center',
                               color: editingRowKey === r._key ? 'var(--accent)' : 'var(--text-muted)',
                               borderColor: editingRowKey === r._key ? 'var(--accent)' : 'var(--border)',
-                              height: 28, width: 28
+                              height: 22, width: 22
                             }}
                           >
-                            <EditIcon size={13} />
+                            <EditIcon size={11} />
                           </button>
                         </div>
                       </TCell>
