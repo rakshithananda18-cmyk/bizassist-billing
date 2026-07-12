@@ -2763,6 +2763,7 @@ export default function Sales(props = {}) {
                   gstAmt={gstAmt}
                   grandTotal={grandTotal}
                   onPay={openPaymentFlow}
+                  funcKeys={funcKeys}
                 />
               </div>
             )}

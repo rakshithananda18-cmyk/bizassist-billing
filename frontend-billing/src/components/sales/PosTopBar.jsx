@@ -3,7 +3,7 @@
 // Inventory-shell–style top bar for the POS counter.
 // Layout mirrors Stock.jsx inv-top-bar exactly:
 //   [Brand]  [|]  [bill-tabs + +New Bill]  [flex spacer]  [clock] [counter] [settings] [|] [minimize] [close]
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { CloseIcon, PlusIcon, SettingsIcon, CounterIcon } from '../../components/Icons'
 import CounterMenu from './CounterMenu'
 import CounterModeSwitcher from './CounterModeSwitcher'
@@ -71,7 +71,7 @@ function WinBtn({ onClick, title, danger = false, children }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        display: 'inline-flex', alignItems: 'center', justifycontent: 'center',
         width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)',
         background: danger && hovered ? 'rgba(239,68,68,.12)' : hovered ? 'var(--bg-3)' : 'transparent',
         cursor: 'pointer',
@@ -114,6 +114,113 @@ function LiveClock() {
   )
 }
 
+// ── Shift operations dropdown menu ──
+function ShiftMenu({ shift, onCashMovement, onCloseShift }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsOpen(false)
+      }
+    }
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isOpen])
+
+  if (!shift || shift.offline) return null
+
+  const timeStr = shift.start_time
+    ? new Date(shift.start_time + (shift.start_time.endsWith('Z') ? '' : 'Z'))
+        .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : 'Open'
+
+  return (
+    <div ref={menuRef} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          fontSize: '0.78rem', fontWeight: 700,
+          color: 'var(--accent, #c0612a)',
+          padding: '4px 12px',
+          border: '1px solid rgba(192,97,42,.25)',
+          borderRadius: 6,
+          background: 'var(--accent-muted, rgba(192,97,42,.12))',
+          cursor: 'pointer',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <span style={{ color: '#22c55e', fontSize: '0.65rem' }}>●</span>
+        Shift: {timeStr} (₹{Number(shift.opening_cash || 0).toFixed(0)})
+        <span style={{ fontSize: '0.55rem', opacity: 0.7, marginLeft: 2 }}>▼</span>
+      </button>
+
+      {isOpen && (
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          right: 0,
+          marginTop: 6,
+          background: 'var(--bg-2, #ffffff)',
+          border: '1px solid var(--border, #e5e7eb)',
+          borderRadius: 8,
+          boxShadow: '0 4px 14px rgba(0, 0, 0, 0.25)',
+          zIndex: 1000,
+          minWidth: 150,
+          padding: '6px 0',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'stretch'
+        }}>
+          <button
+            onClick={() => { onCashMovement(); setIsOpen(false); }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-primary)',
+              padding: '8px 12px',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              textAlign: 'left',
+              cursor: 'pointer',
+              outline: 'none',
+              width: '100%',
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-3)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          >
+            Cash In / Out
+          </button>
+          <button
+            onClick={() => { onCloseShift(); setIsOpen(false); }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-primary)',
+              padding: '8px 12px',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              textAlign: 'left',
+              cursor: 'pointer',
+              outline: 'none',
+              width: '100%',
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-3)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+          >
+            Close Register
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function PosTopBar({
   tabs,
@@ -131,6 +238,10 @@ export default function PosTopBar({
   availableCounters = [],
   onSelectCounter,
   liveModeStatus = null,
+  // Shift
+  shift = null,
+  onCashMovement,
+  onCloseShift,
 }) {
   const [lanStatus, setLanStatus] = useState(() => {
     const useLanDb = typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_use_lan_db') === 'true'
@@ -206,80 +317,68 @@ export default function PosTopBar({
       {/* Divider */}
       <div style={dividerStyle} />
 
-      {/* ── Bill tabs (flat pills) ── */}
-      {tabs.map(tab => {
-        const isActive = tab.id === activeTabId
-        return (
-          <div key={tab.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
-            <TabPill isActive={isActive} onClick={() => onSelectTab(tab.id)}>
-              {tab.name}
-            </TabPill>
-            {/* Close tab X — only visible on hover via opacity trick */}
-            <button
-              type="button"
-              title="Close tab (Ctrl+W)"
-              onClick={(e) => onCloseTab(tab.id, e)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                width: 18, height: 18, borderRadius: 4, border: 'none',
-                background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)',
-                marginLeft: -4,
-                transition: 'background .12s, color .12s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,.12)'; e.currentTarget.style.color = '#ef4444' }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
-            >
-              <CloseIcon size={10} />
-            </button>
-          </div>
-        )
-      })}
+      {/* ── Bill tabs scroll container (solves no scroll issue) ── */}
+      <div
+        className="pos-tabs-scroll-container"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          overflowX: 'auto',
+          flex: '1 1 auto',
+          minWidth: 0,
+          marginRight: '12px',
+        }}
+      >
+        {tabs.map(tab => {
+          const isActive = tab.id === activeTabId
+          return (
+            <div key={tab.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+              <TabPill isActive={isActive} onClick={() => onSelectTab(tab.id)}>
+                {tab.name}
+              </TabPill>
+              {/* Close tab X */}
+              <button
+                type="button"
+                title="Close tab (Ctrl+W)"
+                onClick={(e) => onCloseTab(tab.id, e)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: 18, height: 18, borderRadius: 4, border: 'none',
+                  background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)',
+                  marginLeft: -4,
+                  transition: 'background .12s, color .12s',
+                  flexShrink: 0,
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,.12)'; e.currentTarget.style.color = '#ef4444' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
+              >
+                <CloseIcon size={10} />
+              </button>
+            </div>
+          )
+        })}
 
-      {/* ── + New Bill ── */}
-      <TabPill isActive={false} onClick={onNewBill} style={{ gap: 5 }}>
-        <PlusIcon size={13} /> New Bill
-      </TabPill>
-
-      {/* ── Flex spacer ── */}
-      <div style={{ flex: 1 }} />
-
-      {/* ── Keyboard shortcuts hover pill ── */}
-      <div className="pos-help-hover-container">
-        <div className="pos-help-pill-bar">
-          <div className="pos-help-item"><kbd className="pos-kbd">{funcKeys?.barcodeFocus || 'F9'}</kbd><span className="pos-kbd-label">Search</span></div>
-          <span className="pos-kbd-divider">•</span>
-          <div className="pos-help-item"><kbd className="pos-kbd">{funcKeys?.customerFocus || 'F11'}</kbd><span className="pos-kbd-label">Customer</span></div>
-          <span className="pos-kbd-divider">•</span>
-          <div className="pos-help-item"><kbd className="pos-kbd">Ctrl+S</kbd><span className="pos-kbd-label">Save</span></div>
-          <span className="pos-kbd-divider">•</span>
-          <div className="pos-help-item"><kbd className="pos-kbd">Ctrl+P</kbd><span className="pos-kbd-label">Print</span></div>
-          <span className="pos-kbd-divider">•</span>
-          <div className="pos-help-item"><kbd className="pos-kbd">Ctrl+T</kbd><span className="pos-kbd-label">New Tab</span></div>
-          <span className="pos-kbd-divider">•</span>
-          <div className="pos-help-item"><kbd className="pos-kbd">Ctrl+W</kbd><span className="pos-kbd-label">Close Tab</span></div>
-        </div>
-        <button type="button" className="pos-help-trigger-btn" title="Keyboard Shortcuts">?</button>
+        {/* ── + New Bill ── */}
+        <TabPill isActive={false} onClick={onNewBill} style={{ gap: 5, flexShrink: 0 }}>
+          <PlusIcon size={13} /> New Bill
+        </TabPill>
       </div>
 
-      {/* ── LAN status (local app only) ── */}
-      {IS_LOCAL_APP && (
-        <div
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4,
-            fontSize: '0.74rem', fontWeight: 600, padding: '3px 8px',
-            borderRadius: 6,
-            background: lanStatus.useLanDb ? 'rgba(34,197,94,.12)' : 'var(--bg-3)',
-            border: lanStatus.useLanDb ? '1px solid rgba(34,197,94,.3)' : '1px solid var(--border)',
-            color: lanStatus.useLanDb ? '#22c55e' : 'var(--text-muted)',
-          }}
-          title={lanStatus.useLanDb
-            ? `Connected to Master PC at ${localStorage.getItem('bizassist_local_backend_url')}`
-            : 'Running on this device locally'}
-        >
-          <span style={{ width: 6, height: 6, borderRadius: '50%', display: 'inline-block', background: lanStatus.useLanDb ? '#22c55e' : 'var(--text-muted)' }} />
-          {lanStatus.useLanDb ? `LAN: ${lanStatus.host}` : 'Standalone'}
-        </div>
+      {/* ── Shift details custom dropdown (accent colored pill) ── */}
+      {shift && !shift.offline && (
+        <>
+          <div style={dividerStyle} />
+          <ShiftMenu
+            shift={shift}
+            onCashMovement={onCashMovement}
+            onCloseShift={onCloseShift}
+          />
+        </>
       )}
+
+      {/* Divider */}
+      <div style={dividerStyle} />
 
       {/* ── Clock ── */}
       <LiveClock />
@@ -287,7 +386,7 @@ export default function PosTopBar({
       {/* Divider */}
       <div style={dividerStyle} />
 
-      {/* ── Counter menu ── */}
+      {/* ── Counter menu (integrated with LAN status dot) ── */}
       <CounterModeSwitcher />
       <CounterMenu
         prefix={counterPrefix}
@@ -295,6 +394,7 @@ export default function PosTopBar({
         availableCounters={availableCounters}
         onSelectCounter={onSelectCounter}
         onAddCounter={onManageCounters}
+        lanStatus={IS_LOCAL_APP ? lanStatus : null}
       />
 
       {/* Divider */}
@@ -308,7 +408,7 @@ export default function PosTopBar({
       {/* Divider */}
       <div style={dividerStyle} />
 
-      {/* ── Minimize + Close (identical to Stock.jsx) ── */}
+      {/* ── Minimize + Close ── */}
       <WinBtn onClick={onMinimize} title="Minimize — go back">
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
           <rect x="1" y="5.5" width="10" height="1.5" rx="0.75" fill="currentColor"/>

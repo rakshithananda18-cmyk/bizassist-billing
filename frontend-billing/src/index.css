@@ -1834,8 +1834,13 @@ img { display: block; max-width: 100%; }
   width: 100% !important;
   overflow: hidden !important;
 }
-
-
+.pos-tabs-scroll-container {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.pos-tabs-scroll-container::-webkit-scrollbar {
+  display: none;
+}
 
 .pos-top-bar {
   height: 48px;

@@ -11,7 +11,8 @@ export default function CounterMenu({
   isOwner = false,
   availableCounters = [],
   onSelectCounter,
-  onAddCounter
+  onAddCounter,
+  lanStatus = null
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef(null)
@@ -57,9 +58,13 @@ export default function CounterMenu({
       <span
         className="pos-counter-badge"
         onClick={handleToggle}
-        title={isOwner
-          ? 'Click to switch counter or manage staff assignments'
-          : 'Your billing counter — assigned by the owner in Staff management'}
+        title={
+          lanStatus
+            ? (lanStatus.useLanDb ? `LAN Mode (Master PC: ${lanStatus.host})` : 'Standalone Mode (Local Device DB)')
+            : isOwner
+              ? 'Click to switch counter or manage staff assignments'
+              : 'Your billing counter'
+        }
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
           fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)',
@@ -69,6 +74,15 @@ export default function CounterMenu({
           userSelect: 'none'
         }}
       >
+        {lanStatus && (
+          <span style={{
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: lanStatus.useLanDb ? '#22c55e' : '#8e8e93',
+            display: 'inline-block'
+          }} />
+        )}
         <span style={{ color: 'var(--text-muted)' }}>Counter:</span> {label}
         {isOwner && <span style={{ fontSize: '0.55rem', opacity: 0.7, marginLeft: 2 }}>▼</span>}
       </span>
