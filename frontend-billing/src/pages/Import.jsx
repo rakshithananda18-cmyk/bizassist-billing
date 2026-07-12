@@ -271,7 +271,7 @@ export default function Import() {
       title: 'Products',
       description: 'Import product catalogue with SKU, price, and stock levels. Every file goes through an editable review table — nothing is saved without your approval.',
       endpoint: '/billing/import/products',
-      templateHref: 'data:text/csv;charset=utf-8,name,sku,barcode,unit,description,brand,manufacturer,category,selling_price,cost_price,mrp,cgst_rate,sgst_rate,igst_rate,opening_stock',
+      templateHref: 'data:text/csv;charset=utf-8,name,sku,barcode,hsn_sac,unit,description,brand,manufacturer,category,selling_price,wholesale_price,distributor_price,cost_price,mrp,cgst_rate,sgst_rate,igst_rate,opening_stock',
       reviewFlow: true,
       onPreviewReady: openReview('/billing/import/products', undefined, 'product'),
     },
