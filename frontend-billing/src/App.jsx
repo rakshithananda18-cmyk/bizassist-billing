@@ -241,7 +241,7 @@ function RealtimeSyncListener() {
   return (
     <Modal
       open={modalOpen}
-      title="⚠️ Real-Time Sync Suspended"
+      title="⚠️ Real-Time Sync Paused"
       onClose={() => setModalOpen(false)}
       footer={
         <button 
@@ -255,7 +255,7 @@ function RealtimeSyncListener() {
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 0' }}>
         <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: '1.4', color: 'var(--text-primary)' }}>
-          Real-time sync has been <strong>automatically disabled</strong> due to repeated connection failures.
+          Real-time sync was <strong>automatically paused</strong> after repeated connection failures.
         </p>
         
         <div style={{ 
@@ -273,7 +273,7 @@ function RealtimeSyncListener() {
         </div>
 
         <p style={{ margin: 0, fontSize: '0.8rem', lineHeight: '1.4', color: 'var(--text-muted)' }}>
-          To prevent excessive server load, sync has been turned off. You can re-enable it under <strong>Settings &gt; General</strong> once your connection is stable.
+          This is a temporary, session-only pause to avoid hammering the server — your setting was <strong>not</strong> changed. It resumes automatically when you refresh the page or your connection stabilises, or use <strong>Reconnect</strong> in the sync status menu.
         </p>
       </div>
     </Modal>

@@ -1,14 +1,14 @@
 # MASTER REVIEW — BizAssist Billing
 
 > Unified synthesis of **REVIEW_1** (design, bugs, gaps, admin portal) and **REVIEW_2** (AI agent plan, owner pain, moat), reconciled against `REVIEW_1_IMPLEMENTATION_NOTES.md` (batches 1–5).
-> Date: 2026-07-11. Theme: **make billing bulletproof, then make it agentic** — one robust substrate, agents that own outcomes on top of it.
+> Date: 2026-07-11 (fix cycle 2: 2026-07-12). Theme: **make billing bulletproof, then make it agentic** — one robust substrate, agents that own outcomes on top of it.
 > Verdict in one line: *the controllable code debt is paid; what remains is production ops + the two product gaps (payments, WhatsApp) that gate every autonomous agent.*
 
 ---
 
 ## 0. TL;DR
 
-- **Where you are:** a sophisticated *question-answering* billing/POS with genuinely rare depth (hash-chained journal, 4-tier 0-token AI router, per-business memory, B2B graph). Overall **6.9/10**, up from 6.3 after one intense fix cycle.
+- **Where you are:** a sophisticated *question-answering* billing/POS with genuinely rare depth (hash-chained journal, 4-tier 0-token AI router, per-business memory, B2B graph). Overall **7.0/10** (6.3 → 6.9 → 7.0 across two fix cycles; cycle 2 hardened data integrity + tenant isolation + sync reliability).
 - **What's blocking the next level:** not code quality — it's (a) production infrastructure (HF free tier, single worker, unsigned installer, no live monitoring) and (b) two missing channels: **payment links** and **WhatsApp**. Both are prerequisites for the flagship Collections Agent.
 - **The move:** do the ~2-hour ops hygiene now → 2–3 weeks of dependency-free engineering hardening → build WhatsApp + payments → ship **one** agent (Collections) with a provable "₹ recovered" number → expand.
 - **Honest moat:** no code moat exists. Defensibility = per-business memory compounding + outcome track record + the B2B network graph + compliance depth + cost architecture. Sell **agents-as-staff**, not "AI features."
@@ -24,15 +24,15 @@
 | Code quality & hygiene | 8.5 | 8.5 | already strong; new code follows house patterns + tests |
 | Domain depth (GST/accounting) | 8 | 8 | genuinely deep; under-marketed |
 | Security | 6.5 | **7.5** | unsigned installer, admin 2FA now shipped, live keys in `.env` await rotation |
-| Reliability / production readiness | 5 | **5.5** | HF free tier, no active uptime monitor, no backup drill run |
+| Reliability / production readiness | 5 | **6.0** | cycle 2: multi-tenant data leak fixed on local **and** cloud, fail-closed test-DB guard, clean orphan purge, sync auto-disable de-fanged, tombstone + cascade. Still capped by HF free tier, no active uptime monitor, no backup drill |
 | Scalability | 4.5 | 4.5 | single worker + in-memory shared state (SSE tickets, rate limits) |
 | Frontend architecture | 5.5 | 5.5 | `Sales.jsx` monolith (~3,000 lines) remains |
 | Distribution & operability | 5 | **6.5** | admin portal now has drill-down, sync doctor, force-logout, campaigns/offers funnel |
 | **AI architecture** | — | **7/10** | excellent router/memory/loop; blocking calls + single provider + no eval harness |
 | **AI product impact** | — | **4/10** | nothing runs autonomously; write-side thin; email-only reach |
-| **Overall** | 6.3 | **6.9/10** | infra + the two product gaps |
+| **Overall** | 6.3 | **7.0/10** | infra + the two product gaps |
 
-Honest framing: a fix cycle can't move *infrastructure* ratings. Scalability/reliability stay capped until the HF tier, single worker and unsigned installer change. The security and operability gains are real and customer-visible.
+Honest framing: two fix cycles can't move *infrastructure* ratings. Scalability/reliability stay capped until the HF tier, single worker and unsigned installer change. The security and operability gains are real and customer-visible.
 
 ### 1.2 What's already solid (don't rebuild)
 
@@ -65,6 +65,20 @@ The order below is deliberate: **hygiene (hours) → dependency-free engineering
 | Batch 3–5 ops | shift summary printable + `/shifts/{id}/invoices`, Code128 label printing, import preview/approval gate, inventory revamp (full product form + edit + multi-barcode + scan stock-in), adjustment note REQUIRED (anti-tamper), Activity feed over audit, single-table Stock page, dual-mode bulk add |
 | Batch 4 sync | BizID-mismatch refusal loop fixed (owner-row fallback by BizID) |
 
+### 2.1b Fix cycle 2 (2026-07-12) — data integrity, tenant isolation & sync reliability (front+back tests green)
+
+| Item | What shipped |
+|---|---|
+| Multi-tenant data leak (P0) | Test fixtures (`c_XXXX`/`cash_XXXX` cashiers) had polluted **both** the local dev DB (21 rows under a live business) and the **cloud Postgres tenant** (36 rows) — surfaced as phantom counters in the staff-login dropdown. Cleaned both tiers. |
+| Fail-closed test-DB guard | Root cause: tests use `os.environ.setdefault("DATABASE_URL", …)`, which does **not** override an inherited/exported URL, so runs launched outside pytest/conftest wrote to real data. `database/db.py` now refuses to build an engine in any test context (`pytest` in modules · `PYTEST_CURRENT_TEST` · `BIZASSIST_TESTING=1` · `test_*` argv) unless the URL contains `test`; `conftest.py` sets the flag + a `pytest_configure` backstop. Can't recur. |
+| Centralized purge | Extracted `purge_business_data(user_id, db, delete_owner, delete_staff)` as the single source of truth; `wipe_user_data` (admin) and `reclaim_local` (orphan re-key) both call it. Killed the drift where reclaim's crude `DELETE FROM {table}` loop missed child line-items and stranded staff — the phantom-counter cause. |
+| Login reclaim path | On login, an "Identity mismatch" (local mirror holds the OLD BizID of a deleted-and-recreated cloud account) now auto re-keys via `reclaim_local` instead of dead-ending. Same-username re-registration is a clean re-key. |
+| Account-lifecycle tombstone | New `deleted_businesses` table + `DeletedBusiness` model; a tombstone is written on admin wipe (`admin_wipe`) and reclaim re-key (`reclaim_rekey`) — "was this account deleted?" is now a recorded fact, not a guess inferred from a signup 400 / reconcile mismatch. |
+| `parent_business_id` cascade | FK now `ON DELETE CASCADE` (native on fresh installs; Alembic `d1f4a2c8e6b0` applies it on Postgres; SQLite table-rebuild deliberately skipped). Defense-in-depth behind the app-level purge. FK cascade on the `business_id` data tables was **not** added — those columns aren't FKs and existing orphan data would make the constraint fail. |
+| Reconciliation sweep | `scripts/reconcile_orphans.py` (read-only by default) finds staff whose owner is gone + data rows whose `business_id` has no live owner. Already surfaced 21 stray load-test rows under `business_id=5`. |
+| Cloud cleanup tool | `scripts/cloud_cleanup_counters.py` — the cloud Postgres isn't directly reachable, so this authenticates over the cloud API and deletes junk cashiers (strict `^(c|cash)_[0-9a-f]{8}$`, no counter_prefix); `--report-json` snapshots. Used to clean the 36 cloud rows. |
+| Realtime-sync one-way-door | `useRealtimeLeader` no longer persists `realtime_sync_global=false` after 5 SSE failures (which stranded sync as "Disconnected" forever — the SSE actually connects fine on the HF Space). Now a **session-only** pause that auto-clears on refresh / network-online / manual reconnect; modal copy updated to match. |
+
 ### 2.2 Open — do now (ops hygiene, ~2 hours, zero code)
 
 1. **Activate Sentry** — free account → set `SENTRY_DSN` in HF secrets. Hook already in code.
@@ -90,7 +104,7 @@ The order below is deliberate: **hygiene (hours) → dependency-free engineering
 ### 2.5 Structural debt (opportunistic, as you touch the files)
 
 - **Split `Sales.jsx`** (~3,000 lines) into cart state machine + checkout + settings; **split `ai_router.py`** (1,364) into route-decision / cache / execution. Every future billing bug is born in that monolith.
-- Delete the dead-coded legacy add-product modal in `Stock.jsx`.
+- Delete the dead-coded legacy add-product modal in `Stock.jsx`. *(Purge-logic drift between admin-wipe and reclaim is now resolved — centralized in `purge_business_data`.)*
 - Migrate `datetime.utcnow()` → `datetime.now(timezone.utc)`; per-business staff username scheme (schema project); customer/vendor import preview parity (~1h each).
 - Read-only PWA companion ("today's sales, who owes me, low stock" + AI chat) — closes 80% of the mobile gap cheaply since APIs exist.
 
@@ -222,11 +236,114 @@ Hygiene is an afternoon. The dependency-free engineering makes the current produ
 
 ## 8. Open Items Ledger
 
-**Ops (your side, no code):** rotate `.env` keys · `SENTRY_DSN` · UptimeRobot · code-signing cert · Vercel admin protection · move off HF before paying customers · label-printer hardware test (3 sizes).
+**Ops (your side, no code):** rotate `.env` keys · `SENTRY_DSN` · UptimeRobot · code-signing cert · Vercel admin protection · move off HF before paying customers · label-printer hardware test (3 sizes) · **cycle 2:** re-enable "Global Real-Time Sync" in Settings once (server still holds the old persisted `false`) · **redeploy `frontend-billing`** for the session-only sync-pause fix · **`alembic upgrade head`** on cloud (tombstone + parent-cascade) · review/purge the 21 `business_id=5` orphans (`scripts/reconcile_orphans.py --purge`).
 
 **Engineering next:** WhatsApp + payment links (gate collections) · customer/vendor import preview parity · delete dead legacy add-modal in `Stock.jsx` · per-business staff username scheme · supply-adder shift-gate decision · async LLM + provider fallback + eval set + write rails · **vision-model bill OCR** for image uploads (Gemini/Claude/Groq-vision via `llm_provider.py`, Tesseract fallback — see §3.6) · persist distributor + payment onto a purchase/GRN record from the intake panel.
 
 **Product decisions pending:** shift summary auto-print setting · supply-adder shift exemption · Agents-tier pricing finalization.
+
+---
+
+## 9. Detailed Recommendations — topic-wise · agentic · phase-wise
+
+> Trackable actions. **Priority:** P0 = now · P1 = next 2–3 wks · P2 = spend/scale-gated · P3 = opportunistic. **Effort:** S <½d · M ½–2d · L >2d. **Done when** = acceptance criteria.
+
+### 9.A Topic-wise
+
+**T1 · Data integrity & tenant isolation**  *(cycle-2 focus — mostly closed; finish the tail)*
+
+| ID | Pri | Eff | Action | Done when |
+|---|---|---|---|---|
+| T1.1 | P0 | S | Purge the 21 `business_id=5` orphan rows the sweep found — `python scripts/reconcile_orphans.py --purge` after eyeballing them | sweep reports 0 orphans on local |
+| T1.2 | P0 | S | `alembic upgrade head` on cloud (tombstone + `parent_business_id` cascade) after a cloud backup | `d1f4a2c8e6b0` at head on Postgres |
+| T1.3 | P1 | S | Add a reclaim regression test: delete → re-register same username → login → assert clean re-key + 0 stale staff + tombstone row | test in `test_reclaim_local.py` green |
+| T1.4 | P1 | M | Schedule `reconcile_orphans.py` (read-only) weekly (cron/CI); alert if >0 orphans | recurring job green, alert wired |
+| T1.5 | P2 | L | Give `business_id` real FKs to `users(id)` (currently plain ints) → true DB-level cascade. Blocked until all orphan data cleaned | FKs added; `PRAGMA integrity_check` clean both tiers |
+
+**T2 · Reliability / production readiness**
+
+| ID | Pri | Eff | Action | Done when |
+|---|---|---|---|---|
+| T2.1 | P0 | S | Re-enable **Settings → Global Real-Time Sync** once (server still holds old persisted `false`); redeploy `frontend-billing` with the session-only sync-pause fix | badge green on web; refresh keeps it green |
+| T2.2 | P0 | S | Activate Sentry (`SENTRY_DSN` in HF secrets — hook already in code) | errors landing in Sentry |
+| T2.3 | P0 | S | UptimeRobot on `/health` → email/Telegram alert | monitor live, test alert received |
+| T2.4 | P1 | M | Backup/restore **drill**: export via `FileBackupCard`, wipe a scratch DB, restore, diff | documented runbook + one successful restore |
+| T2.5 | P1 | S | Run realtime relay / sync tests ×10 in CI to confirm determinism (BUG-3) | 10/10 green, no flake |
+| T2.6 | P2 | M | Externalize SSE tickets + rate-limit windows (Redis/Postgres) — in-memory today, dropped on every HF restart (BUG-4) | survives a worker restart |
+
+**T3 · Security**
+
+| ID | Pri | Eff | Action | Done when |
+|---|---|---|---|---|
+| T3.1 | P0 | S | Rotate all `.env` keys (Groq/OpenAI/Gemini/Claude + `JWT_SECRET`); prod values only in HF secrets; then `pre-commit install` | gitleaks guards commits; old keys revoked |
+| T3.2 | P1 | S | Vercel access-protection on the admin project (password / allowed emails) | admin URL not publicly loadable |
+| T3.3 | P1 | S | Confirm PyInstaller spec **excludes** `.env` — desktop backend must ship no AI key | build audited, no key in bundle |
+| T3.4 | P2 | M | Code-signing cert (OV / Azure Trusted Signing) — kills SmartScreen "unknown app"; secures auto-update | signed installer + updates |
+
+**T4 · Scalability / performance**
+
+| ID | Pri | Eff | Action | Done when |
+|---|---|---|---|---|
+| T4.1 | P1 | M | Async LLM calls / guaranteed threadpool + hard timeouts so one slow 70B call can't pin threads (= AI Phase-0 #1) | p95 latency stable under a slow-provider test |
+| T4.2 | P2 | L | Move cloud off HF free tier (Railway/Fly/Render ~$5–10/mo); uploads/telemetry/logs → Supabase Storage/S3 | prod on durable infra before paid onboarding |
+| T4.3 | P2 | M | Enable >1 worker once shared state is externalized (T2.6) | horizontal scale possible |
+
+**T5 · Frontend architecture**
+
+| ID | Pri | Eff | Action | Done when |
+|---|---|---|---|---|
+| T5.1 | P3 | L | Split `Sales.jsx` (~3,000 lines) → cart state machine / checkout / settings | no single POS file >800 lines |
+| T5.2 | P3 | M | Split `ai_router.py` (1,364) → route-decision / cache / execution | modules unit-testable in isolation |
+| T5.3 | P3 | S | Delete dead-coded legacy add-product modal in `Stock.jsx` | removed, build green |
+| T5.4 | P2 | L | Read-only PWA companion (today's sales / who owes me / low stock + AI chat) | installable, closes ~80% of mobile gap |
+
+**T6 · Testing & CI**
+
+| ID | Pri | Eff | Action | Done when |
+|---|---|---|---|---|
+| T6.1 | P1 | S | CI job that runs the suite with a **prod-like** `DATABASE_URL` set, asserting the new fail-closed guard trips (proves T-isolation can't regress) | CI red if guard removed |
+| T6.2 | P1 | S | Wire backend (~865) + frontend vitest (224+13) into CI on every PR | required check on merge |
+| T6.3 | P2 | M | Coverage gate on `services/admin_service.py` purge paths + `auth.py` reclaim | ≥80% on those files |
+
+**T7 · Admin / ops & data model**
+
+| ID | Pri | Eff | Action | Done when |
+|---|---|---|---|---|
+| T7.1 | P1 | M | Business-metrics polish (§4.4): MRR/plan-mix, retention cohorts → wire churn list to a win-back campaign | churn→campaign loop live |
+| T7.2 | P2 | M | Per-business staff-username scheme (schema project) — remove global-unique collision namespacing | staff names unique per business only |
+| T7.3 | P3 | S | Product decisions: shift-summary auto-print · supply-adder shift-gate exemption · Agents-tier pricing | decisions recorded |
+
+### 9.B AI-agentic — per-agent precise spec
+
+**Phase-0 shared prerequisites (blocking for every agent):** async LLM · provider fallback (Groq→Gemini Flash→local) · eval golden-set in CI (30–50 Q→expected pairs) · write-tool rails (preview object · confirm token · idempotency via `X-Client-Request-Id` · journal/audit entry · per-agent daily caps) · one **Agent Runtime** (`agent_loop.py` extended; agents = configs, not microservices).
+
+| Agent | Extra prereqs | Trigger | Read tools | Write tools (all gated) | Guardrails | Success metric | Autonomy ladder |
+|---|---|---|---|---|---|---|---|
+| **Collections** (Phase 1, ship first) | Payment link + WhatsApp (§4) | Daily aging scan | overdue/aging, party ledger, triage 0-60/61-180/180+ | send WhatsApp/SMS reminder (+PDF +UPI link); mark-paid on webhook; journal post | auto-send gentle only; approval-gate firm; never contact flagged parties; daily send cap | **DSO before/after; "₹X recovered/week"** | suggest → approve-send → auto-send gentle tier |
+| **Inventory** (Phase 2) | — | Daily/weekly velocity scan | stock ledger, velocity, B2B supplier graph | draft PO to known supplier; draft clearance discount + promo to category's top customers | never auto-order; FEFO/expiry per sector template; owner approves POs | stock-out days ↓, dead-stock ratio ↓ | suggest reorder → one-tap approve → auto-draft PO for repeat suppliers |
+| **Compliance** (Phase 3) | — | Month-end + deadline countdown | GSTR-1/3B builders, hash-chained journal, e-invoice validator | generate CA-ready export; deadline WhatsApp | read-mostly; never files on behalf; lists exact blockers (missing HSN, B2B buyer w/o GSTIN) | on-time filing rate; blocker list → 0 | pre-flight report → guided fixes → CA export |
+| **Back-office autopilot** (Phase 4) | Vision-OCR upgrade (below) | On upload + daily 8pm | `purchase_ocr`, DIRECT 0-token handlers | commit mapped purchase draft; send daily digest | one-tap commit; learns from corrections; digest is read-only | purchase-entry time ↓; daily-open rate | OCR draft → one-tap commit → auto-commit high-confidence |
+| **Digest / pricing** (Phase 4) | — | Daily 8pm | margin/insights layer | suggest price update (owner approves) | never auto-reprice | daily touchpoint habit; margin leaks flagged | flag → suggest → owner applies |
+| **Cross-merchant** (Phase 5, research) | ≥300–500 merchants; opt-in | Periodic | anonymized aggregates | benchmark report only | opt-in only; anonymized | peer benchmarks shipped | report-only |
+
+**Vision-OCR upgrade (unblocks Back-office autopilot):** image uploads currently go Tesseract→text-LLM and misread real distributor-bill photos (angled/glare/dense multi-column) — and error outright if `pytesseract` is absent. Send the image **directly to a vision LLM** (Gemini/Claude/Groq-vision via `services/llm_provider.py`), Tesseract as offline fallback. Digital PDFs already fine.
+
+### 9.C Phase-wise consolidated plan (entry / exit criteria)
+
+| Phase | When | Track | Entry criteria | Exit criteria (measurable) |
+|---|---|---|---|---|
+| **Cycle-2 tail** | this week, ~1h | Data integrity | fixes merged, tests green | T1.1–T1.2 done; sweep = 0; cloud at migration head |
+| **Ops hygiene** | this week, ~2h | Reliability/Security | — | T2.2, T2.3, T3.1, T3.2 done (Sentry+uptime+keys+admin-lock) |
+| **Phase 0** | Wks 1–3 | AI substrate + Robustness | ops hygiene done | async LLM + provider fallback + eval set + write rails; T2.4 backup drill; T6.1 guard-in-CI |
+| **Gates** | Wks 3–8 | Critical path | Phase 0 underway | WhatsApp Business API live; payment link + auto-reconcile webhook live |
+| **Phase 1 — Collections** | Wks 3–6 (after gates) | AI flagship | gates open + write rails | agent runs daily; first "₹X recovered" report; DSO measured |
+| **Phase 2 — Inventory** | Wks 6–10 | AI | Phase 1 shipping a real number | reorder suggestions + PO drafts live; dead-stock flagged |
+| **Phase 3 — Compliance** | Wks 10–14 | AI | GSTR builders stable | month-end pre-flight + CA export live |
+| **Phase 4 — Back-office** | Wks 14–20 | AI | vision-OCR upgrade done | OCR one-tap commit + daily WhatsApp digest live |
+| **Spend-gated infra** | as $ justifies | Robustness | first paying merchant / distribution push | off HF (T4.2); code-signing (T3.4); >1 worker (T4.3); monoliths split |
+| **Phase 5 — Benchmarks** | ≥300–500 merchants | AI research | merchant base reached | opt-in anonymized peer benchmarks |
+
+**Sequencing rule:** hygiene (hours) → dependency-free hardening = AI Phase-0 substrate (do once, both tracks win) → open the two gates → ship **one** agent with a provable number before starting the next. Never parallelize agents; never run autonomy on an unmonitored single worker.
 
 ---
 

@@ -24,7 +24,8 @@ from database.models import (
     DocumentEmbedding, ChatMessage, TokenUsage, RateLimitConfig,
     Customer, Vendor, Product, PurchaseOrder, PurchaseOrderLineItem,
     PurchaseInvoice, PurchaseInvoiceLineItem, AIFeedback, AIQueryOverride,
-    BusinessFact, AlertConfig, SyncQueue, SyncLog, RegisterShift, ShiftCashMovement
+    BusinessFact, AlertConfig, SyncQueue, SyncLog, RegisterShift, ShiftCashMovement,
+    DeletedBusiness
 )
 from core.models import (
     StockLedger, ProductBarcode, BusinessSettings, InvoicePayment,
@@ -804,9 +805,34 @@ def wipe_all_data(db: Session) -> dict:
     return {"status": "success", "message": "All business data deleted and cache flushed."}
 
 
-def wipe_user_data(user_id: int, db: Session) -> dict:
-    target = require_target_user(user_id, db)
+def record_business_tombstone(db: Session, *, public_id: str = None, username: str = None,
+                             business_name: str = None, reason: str = None) -> None:
+    """Write a DeletedBusiness tombstone (orphan-safety). Best-effort and never
+    raises — recording that an account was retired must not block the delete/
+    re-key that triggered it. Caller owns the commit."""
+    try:
+        db.add(DeletedBusiness(public_id=public_id, username=username,
+                               business_name=business_name, reason=reason))
+        logger.info("[TOMBSTONE] recorded reason=%s bizid=%s username=%s", reason, public_id, username)
+    except Exception as e:
+        logger.warning("[TOMBSTONE] failed to record (non-fatal): %s", e)
 
+
+def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False,
+                        delete_staff: bool = True) -> dict:
+    """Thorough, dependency-ordered purge of ALL data owned by business `user_id`.
+
+    Single source of truth for erasing a business's rows so callers can't drift:
+      • admin "wipe user data"      → delete_owner=True  (account gone, username freed)
+      • reclaim_local (orphan re-key)→ delete_owner=False (owner row kept & re-keyed)
+
+    Deletes child line-items first, then parents, NULLifies dangling customer/vendor
+    FKs, clears B2B relationships, purges the Chroma vector store, and (optionally)
+    the staff sub-accounts. The owner row is removed only when delete_owner=True.
+    Does NOT commit — the caller owns the transaction boundary so the whole purge
+    (and any re-key the caller performs) commits or rolls back atomically.
+    Returns a summary dict.
+    """
     # 1. Delete child lines that do NOT have business_id directly
     db.query(InvoiceLineItem).filter(
         InvoiceLineItem.invoice_id.in_(
@@ -911,26 +937,54 @@ def wipe_user_data(user_id: int, db: Session) -> dict:
     except Exception as e:
         logger.error("Chroma purge failed for user %s: %s", user_id, e, exc_info=True)
 
-    # 5. Delete the owner's STAFF sub-accounts too. They belong to this business
+    # 5. Delete the owner's STAFF sub-accounts. They belong to this business
     #    (parent_business_id == owner id) and share the owner's data (already
-    #    wiped above); leaving them would orphan their parent_business_id AND keep
-    #    their globally-unique usernames reserved forever.
-    staff_deleted = (
-        db.query(User)
-          .filter(User.parent_business_id == user_id)
-          .delete(synchronize_session=False)
-    )
+    #    wiped above); leaving them orphans their parent_business_id AND keeps
+    #    their globally-unique usernames reserved forever. This is exactly the
+    #    class of leftover that produced the July 2026 "phantom counters" bug on
+    #    a re-keyed orphan, so reclaim runs this path too (delete_staff=True).
+    staff_deleted = 0
+    if delete_staff:
+        staff_deleted = (
+            db.query(User)
+              .filter(User.parent_business_id == user_id)
+              .delete(synchronize_session=False)
+        )
 
-    # 6. Delete the target owner and invalidate cache. Removing the User rows frees
-    #    the (unique) usernames so the business can be registered again cleanly.
-    db.delete(target)
+    # 6. Optionally delete the owner row itself. Admin "wipe" frees the username
+    #    for clean re-registration; reclaim keeps the row so it can be re-keyed.
+    owner_deleted = False
+    if delete_owner:
+        target = db.query(User).filter(User.id == user_id).first()
+        if target is not None:
+            db.delete(target)
+            owner_deleted = True
+
+    logger.warning(
+        "[PURGE] business %s — data purged; %d staff account(s) deleted; owner_deleted=%s.",
+        user_id, staff_deleted or 0, owner_deleted,
+    )
+    return {
+        "status": "success",
+        "business_id": user_id,
+        "staff_deleted": staff_deleted or 0,
+        "owner_deleted": owner_deleted,
+    }
+
+
+def wipe_user_data(user_id: int, db: Session) -> dict:
+    """Admin action: erase a business AND its owner account, freeing the username.
+    Thin wrapper over the shared purge so admin-wipe and reclaim can never drift."""
+    target = require_target_user(user_id, db)
+    uname = target.username
+    _pub, _bn = target.public_id, target.business_name
+    purge_business_data(user_id, db, delete_owner=True, delete_staff=True)
+    record_business_tombstone(db, public_id=_pub, username=uname,
+                              business_name=_bn, reason="admin_wipe")
     db.commit()
     invalidate_user_cache(user_id)
-    logger.warning(
-        "[ADMIN] Wiped business %s ('%s') — data + owner account + %d staff account(s) deleted; usernames freed.",
-        user_id, target.username, staff_deleted or 0,
-    )
-    return {"status": "success", "message": "All data for " + target.username + " deleted."}
+    logger.warning("[ADMIN] Wiped business %s ('%s') — data + owner + staff deleted; username freed.", user_id, uname)
+    return {"status": "success", "message": "All data for " + uname + " deleted."}
 
 
 def token_usage(db: Session) -> list:

@@ -295,6 +295,36 @@ export function AuthProvider({ children }) {
                 }
               } else {
                 const recErr = await reconcileRes.json().catch(() => ({}))
+                // Identity mismatch = the local mirror still holds the OLD BizID
+                // (its cloud account was deleted and re-registered with a new one).
+                // reconcile_password refuses this on purpose. The correct recovery
+                // is to RE-KEY the orphaned local row onto the new cloud BizID —
+                // exactly what the signup flow does. Do it here too so a returning
+                // owner logging in isn't dead-ended (and the reclaim's staff-wipe
+                // clears any stale cashiers left under the old identity).
+                if (recErr.detail && recErr.detail.includes('Identity mismatch')) {
+                  logger.warn('[LOGIN] Local account is an orphan on a stale BizID — reclaiming onto the new cloud BizID.')
+                  const reclaimRes = await fetch(`${LOCAL_URL}/api/auth/reclaim_local`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      username,
+                      password,
+                      public_id: cloudData.public_id,
+                      business_name: cloudData.business_name,
+                    }),
+                  })
+                  if (reclaimRes.ok) {
+                    const reclaimData = await reclaimRes.json()
+                    logger.info('[LOGIN] Orphan reclaimed onto new cloud BizID — logged in locally.')
+                    _saveSession(reclaimData)
+                    _provisionCloudSyncToken(username, password, reclaimData.token || reclaimData.access_token, cloudData.token)
+                      .then(cloudTok => reconcileBizIdOnLogin(reclaimData.token || reclaimData.access_token, cloudTok))
+                    return
+                  }
+                  const rcErr = await reclaimRes.json().catch(() => ({}))
+                  throw new Error(rcErr.detail || recErr.detail)
+                }
                 if (recErr.detail) {
                   throw new Error(recErr.detail)
                 }

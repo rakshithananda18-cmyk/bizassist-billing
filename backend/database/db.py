@@ -1,4 +1,5 @@
 import os
+import sys
 import uuid
 from datetime import datetime
 from dotenv import load_dotenv
@@ -21,6 +22,26 @@ _NAMING_CONVENTION = {
 load_dotenv()
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./bizassist.db")
+
+# ── Fail-closed test-isolation guard ──
+# History (July 2026): the test suite seeded ~21 fixture cashiers ("c_XXXX" /
+# "cash_XXXX") into the real dev DB (bizassist.db) under a live business, because
+# every test file uses os.environ.setdefault("DATABASE_URL", ".../test_bizassist.db")
+# and setdefault does NOT override a DATABASE_URL already exported in the shell
+# (or the db.py default) when tests are launched outside pytest/conftest. This
+# guard makes that impossible: in any test context the DB URL MUST be a test DB.
+_IN_TEST = ("pytest" in sys.modules
+            or "PYTEST_CURRENT_TEST" in os.environ
+            or os.environ.get("BIZASSIST_TESTING") == "1"
+            or any(os.path.basename(a).startswith("test_") for a in sys.argv))
+if _IN_TEST and "test" not in DATABASE_URL.lower():
+    raise RuntimeError(
+        "Refusing to run tests against a non-test database. "
+        "DATABASE_URL=%r . A test context was detected but the DB is not a test "
+        "DB. Point DATABASE_URL at a URL containing 'test' (e.g. "
+        "sqlite:///./test_bizassist.db) or unset the exported DATABASE_URL. This "
+        "guard stops test fixtures polluting real data." % DATABASE_URL
+    )
 
 if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(

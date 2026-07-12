@@ -66,6 +66,11 @@ export function useRealtimeLeader(token, settings, user) {
     let lastEntity = localStorage.getItem(`sync_last_entity_${user.id}`) || null
     let connectionError = null
     let isCurrentLeader = false
+    // Session-only pause: set after repeated SSE failures so we stop hammering the
+    // cloud WITHOUT persisting realtime_sync_global=false to the server. Resets on
+    // page refresh, network re-online, or an explicit reconnect — so the sync can
+    // never get permanently stuck off from a transient blip (the old behaviour).
+    let sessionPaused = false
 
     // isOnlineOverride lets follower tabs pass the correct isOnline value from the
     // broadcast message instead of reading navigator.onLine locally (which may
@@ -125,6 +130,7 @@ export function useRealtimeLeader(token, settings, user) {
 
     const scheduleReconnect = () => {
       if (!isCurrentLeader) return
+      if (sessionPaused) return   // paused this session after repeated failures — wait for refresh/online/manual reconnect
       if (reconnectTimeoutRef.current) return
       
       logger.info('[REALTIME] Scheduling reconnect in 5 seconds...')
@@ -143,52 +149,29 @@ export function useRealtimeLeader(token, settings, user) {
       logger.warn(`[REALTIME] SSE connection failure count: ${consecutiveFailureCountRef.current}/5. Reason: ${reason}`)
 
       if (consecutiveFailureCountRef.current >= 5) {
-        logger.error(`[REALTIME] SSE connection failed 5 consecutive times.`)
+        logger.error('[REALTIME] SSE failed 5 consecutive times — pausing reconnects for THIS session only (no server change).')
         consecutiveFailureCountRef.current = 0
 
-        const isCashier = (user?.role || '').toLowerCase() === 'cashier'
-        if (isCashier) {
-          logger.info('[REALTIME] Cashier account: skipping server-side auto-disable.')
-          window.dispatchEvent(new CustomEvent('realtime-sync-auto-disabled', { detail: { reason } }))
-          return
+        // SESSION-ONLY pause. We deliberately no longer persist
+        // realtime_sync_global=false to the server. That made the auto-disable a
+        // one-way door: a transient blip (or the reclaim/login churn) would
+        // silently disable sync forever, leaving a permanent red "Disconnected"
+        // pill even after the connection fully recovered — the user had to hunt
+        // down a Settings toggle to fix it. Now we simply stop hammering the cloud
+        // for this session and surface a clear, resumable state. It auto-recovers
+        // on a page refresh, when the network comes back online, or on an explicit
+        // reconnect (Sync popover "Reconnect"). Owners and cashiers behave the same.
+        sessionPaused = true
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current)
+          reconnectTimeoutRef.current = null
         }
-
-        logger.info(`[REALTIME] Automatically disabling real-time sync on server for owner.`)
-        try {
-          const updatedSettings = {
-            ...settings,
-            general: {
-              ...(settings?.general || {}),
-              realtime_sync_global: false
-            }
-          }
-
-          const res = await fetch(`${API_BASE}/settings`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(updatedSettings)
-          })
-
-          if (res.ok) {
-            logger.info('[REALTIME] Automatically disabled real-time sync on backend settings.')
-            
-            // Dispatch local event to show modal
-            window.dispatchEvent(new CustomEvent('realtime-sync-auto-disabled', { detail: { reason } }))
-            
-            // Broadcast to follower tabs
-            safePost({ type: 'settings_updated_auto_disable', reason })
-            
-            // Trigger local settings reload
-            window.dispatchEvent(new CustomEvent('refresh-settings'))
-          } else {
-            logger.error('[REALTIME] Failed to auto-disable real-time sync on backend:', res.status)
-          }
-        } catch (err) {
-          logger.error('[REALTIME] Error auto-disabling real-time sync:', err)
-        }
+        connectionError = 'Real-time sync paused after repeated connection errors. It retries automatically on refresh, or use Reconnect.'
+        emitStatus('error')
+        // Notify the UI. sessionOnly=true tells the modal to show a "paused,
+        // resumable" message rather than "disabled in settings".
+        window.dispatchEvent(new CustomEvent('realtime-sync-auto-disabled', { detail: { reason, sessionOnly: true } }))
+        safePost({ type: 'status_change', status: 'error', error: connectionError })
       }
     }
 
@@ -422,6 +405,8 @@ export function useRealtimeLeader(token, settings, user) {
 
     const handleOnline = () => {
       logger.info('[REALTIME] Network online detected.')
+      sessionPaused = false                     // network recovered — allow reconnects again
+      consecutiveFailureCountRef.current = 0
       connectionError = null
       emitStatus('connecting')
       if (reconnectTimeoutRef.current) {
@@ -454,6 +439,8 @@ export function useRealtimeLeader(token, settings, user) {
 
     const handleReconnectRequest = () => {
       logger.info('[REALTIME] Reconnect requested.')
+      sessionPaused = false                     // explicit user reconnect clears the pause
+      consecutiveFailureCountRef.current = 0
       if (isCurrentLeader) {
         connectSSE()
       } else {

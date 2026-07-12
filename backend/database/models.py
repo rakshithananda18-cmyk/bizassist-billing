@@ -72,7 +72,7 @@ class User(Base, TimestampMixin):
     role          = Column(String, default="enterprise")  # enterprise|admin (owner-level) | cashier (staff)
     # Staff sub-accounts: NULL for an owner (this row IS the business); for a
     # staff login it points to the owner's user id — the business they belong to.
-    parent_business_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    parent_business_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     public_id     = Column(String, unique=True, index=True, nullable=True)  # BizID (BA-XXXXXX)
     # Business GST identity (Phase 3)
     gstin         = Column(String, nullable=True)
@@ -104,6 +104,28 @@ class User(Base, TimestampMixin):
     # this counter. Bumping it invalidates every outstanding token for the account
     # within the auth-cache TTL (~30s). Admin "force logout" bumps owner + staff.
     token_version = Column(Integer, default=0, nullable=False, server_default="0")
+
+
+class DeletedBusiness(Base):
+    """Tombstone for a retired business account (orphan-safety).
+
+    Written whenever an owner account is erased (admin wipe) or re-keyed onto a
+    new cloud identity (reclaim). It turns "was this account deleted?" from a
+    guess — previously inferred from a signup 400 or a reconcile "Identity
+    mismatch" — into a recorded fact any device or the cloud can consult.
+
+    Deliberately standalone: no foreign keys, so recording a tombstone can never
+    block or fail a delete, and the tombstone survives after the owning row is
+    gone. Purely additive.
+    """
+    __tablename__ = "deleted_businesses"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    public_id     = Column(String, index=True, nullable=True)   # retired BizID (BA-XXXXXX)
+    username      = Column(String, index=True, nullable=True)   # freed owner username
+    business_name = Column(String, nullable=True)
+    reason        = Column(String, nullable=True)               # 'admin_wipe' | 'reclaim_rekey'
+    deleted_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class UploadedFile(Base, TimestampMixin):

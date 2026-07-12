@@ -49,6 +49,10 @@ os.unlink = secure_unlink
 # Since load_dotenv(override=False) is called by db.py, pre-setting it here
 # guarantees it won't be overridden by the .env file.
 os.environ["DATABASE_URL"] = "sqlite:///./test_bizassist.db"
+# Explicit signal for database/db.py's fail-closed guard: even on an odd entry
+# path, this marks the process as a test run so the DB layer refuses any
+# non-test DATABASE_URL.
+os.environ["BIZASSIST_TESTING"] = "1"
 
 # Clean up test database file immediately on module load to prevent cross-run pollution
 _root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -72,6 +76,20 @@ os.environ["ADMIN_API_ENABLED"] = "1"
 os.environ.setdefault("SUBSCRIPTION_ENFORCED", "0")
 
 import pytest
+
+
+def pytest_configure(config):
+    """Fail the whole session immediately if the resolved DB isn't a test DB.
+    Backstop to the db.py guard: gives a clear, early error instead of letting
+    fixtures write into real data (the July 2026 c_/cash_ pollution incident)."""
+    db_url = os.environ.get("DATABASE_URL", "")
+    if "test" not in db_url.lower():
+        raise pytest.UsageError(
+            f"Test suite resolved a non-test DATABASE_URL ({db_url!r}). "
+            "Refusing to run so fixtures cannot pollute real data. Unset any "
+            "exported DATABASE_URL before running the tests."
+        )
+
 
 def _clear_sqlite_sidecars():
     """Delete stale -wal/-shm sidecars of the test DB. On Windows a leftover
