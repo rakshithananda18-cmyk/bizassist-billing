@@ -217,13 +217,17 @@ export default function Sales(props = {}) {
     flowBack: 'Shift+Enter',
     // Key to move from item scanning → payment flow (customer → amount → mode)
     proceedToPayment: 'Escape',
+    saveInvoice: 'Ctrl+S',
+    printInvoice: 'Ctrl+P',
+    newBill: 'Ctrl+T',
+    closeTab: 'Ctrl+W',
   }
 
   const [funcKeys, setFuncKeys] = useState(() => {
     const saved = localStorage.getItem('pos_func_keys')
     if (saved) {
       try {
-        return JSON.parse(saved)
+        return { ...defaultFuncKeys, ...JSON.parse(saved) }
       } catch (e) {
         logger.error('[SALES] failed to parse pos_func_keys', e)
       }
@@ -2153,26 +2157,26 @@ export default function Sales(props = {}) {
         return
       }
 
-      // New Bill (Ctrl+T)
-      if (e.ctrlKey && e.key.toLowerCase() === 't') {
+      // New Bill
+      if (matchesKey(e, funcKeys.newBill) || (e.ctrlKey && e.key.toLowerCase() === 't')) {
         e.preventDefault()
         handleNewBill()
       }
 
-      // Close Bill Tab (Ctrl+W)
-      if (e.ctrlKey && e.key.toLowerCase() === 'w') {
+      // Close Bill Tab
+      if (matchesKey(e, funcKeys.closeTab) || (e.ctrlKey && e.key.toLowerCase() === 'w')) {
         e.preventDefault()
         closeTab(activeTabId)
       }
 
-      // Save & Print Bill (Ctrl+P / F10)
-      if ((e.ctrlKey && e.key.toLowerCase() === 'p') || e.key === 'F10') {
+      // Save & Print Bill
+      if (matchesKey(e, funcKeys.printInvoice) || (e.ctrlKey && e.key.toLowerCase() === 'p') || e.key === 'F10') {
         e.preventDefault()
         handleSaveInvoice(true)
       }
 
-      // Save Bill Only (Ctrl+S)
-      if (e.ctrlKey && e.key.toLowerCase() === 's') {
+      // Save Bill Only
+      if (matchesKey(e, funcKeys.saveInvoice) || (e.ctrlKey && e.key.toLowerCase() === 's')) {
         e.preventDefault()
         handleSaveInvoice(false)
       }
@@ -2216,19 +2220,8 @@ export default function Sales(props = {}) {
         }
       }
 
-      // Check which action is mapped to e.key
-      const getActionForKey = (key) => {
-        return Object.keys(funcKeys).find(action => {
-          const boundKey = funcKeys[action]
-          if (!boundKey || !key) return false
-          if (boundKey.length === 1 && key.length === 1) {
-            return boundKey.toLowerCase() === key.toLowerCase()
-          }
-          return boundKey === key
-        })
-      }
-
-      const action = getActionForKey(e.key)
+      // Check which action matches the key event
+      const action = Object.keys(funcKeys).find(act => matchesKey(e, funcKeys[act]))
       if (action) {
         e.preventDefault()
         if (action === 'qtyFocus') focusLastQty()

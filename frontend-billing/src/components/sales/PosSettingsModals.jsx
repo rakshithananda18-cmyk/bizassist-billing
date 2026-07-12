@@ -456,6 +456,54 @@ export function PosCounterSettingsModal({
                       )
                     })}
                   </div>
+
+                  {/* Document & Tab Hotkeys container */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: 'var(--bg-3)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+                      Document & Tab Hotkeys
+                    </div>
+                    {[
+                      { label: 'Save Invoice (only)', key: 'saveInvoice' },
+                      { label: 'Save & Print Invoice', key: 'printInvoice' },
+                      { label: 'New Invoice Tab', key: 'newBill' },
+                      { label: 'Close Invoice Tab', key: 'closeTab' }
+                    ].map(item => {
+                      const isBinding = bindingKey && bindingKey.action === item.key
+                      const currentVal = funcKeys[item.key] || 'Not set'
+                      return (
+                        <div key={item.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px' }}>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{item.label}</span>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{
+                              width: '120px',
+                              height: '28px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              background: isBinding ? 'var(--accent)' : 'var(--bg-2)',
+                              color: isBinding ? '#ffffff' : 'var(--text-primary)',
+                              border: isBinding ? '1px solid var(--accent)' : '1px solid var(--border)',
+                              borderRadius: 'var(--radius-md)',
+                              cursor: 'pointer',
+                              textAlign: 'center',
+                              outline: 'none',
+                              boxShadow: 'var(--shadow-sm)'
+                            }}
+                            onClick={() => {
+                              if (isBinding) {
+                                      setBindingKey(null)
+                              } else {
+                                      setBindingKey({ action: item.key })
+                              }
+                            }}
+                          >
+                            {isBinding ? 'Press key...' : currentVal}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
 
                 {/* Standard Fixed Controls section */}
@@ -463,10 +511,6 @@ export function PosCounterSettingsModal({
                   <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Standard Control Shortcuts (Fixed)</label>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', background: 'var(--bg-3)', padding: '10px 12px', borderRadius: '6px', border: '1px solid var(--border)' }}>
                     {[
-                      { label: 'Save & Print Bill', key: 'Ctrl+P' },
-                      { label: 'Save Bill Only', key: 'Ctrl+S' },
-                      { label: 'New Active Tab', key: 'Ctrl+T' },
-                      { label: 'Close Active Tab', key: 'Ctrl+W' },
                       { label: 'Toggle Breakup', key: 'Ctrl+F' },
                       { label: 'Credit Payment', key: 'Ctrl+M' }
                     ].map(item => (

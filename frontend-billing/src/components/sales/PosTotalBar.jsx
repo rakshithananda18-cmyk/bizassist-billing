@@ -14,6 +14,10 @@ export default function PosTotalBar({
 }) {
   const searchKey = funcKeys?.barcodeFocus || 'F9'
   const customerKey = funcKeys?.customerFocus || 'F11'
+  const saveKey = funcKeys?.saveInvoice || 'Ctrl+S'
+  const printKey = funcKeys?.printInvoice || 'Ctrl+P'
+  const newBillKey = funcKeys?.newBill || 'Ctrl+T'
+  const closeTabKey = funcKeys?.closeTab || 'Ctrl+W'
 
   return (
     <div className="pos-totals-bar" style={{
@@ -68,19 +72,19 @@ export default function PosTotalBar({
           <span style={{ fontWeight: 500 }}>Customer</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <kbd style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderBottom: '2px solid var(--border)', borderRadius: '4px', padding: '1px 5px', fontSize: '0.66rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>Ctrl+S</kbd>
+          <kbd style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderBottom: '2px solid var(--border)', borderRadius: '4px', padding: '1px 5px', fontSize: '0.66rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>{saveKey}</kbd>
           <span style={{ fontWeight: 500 }}>Save</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <kbd style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderBottom: '2px solid var(--border)', borderRadius: '4px', padding: '1px 5px', fontSize: '0.66rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>Ctrl+P</kbd>
+          <kbd style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderBottom: '2px solid var(--border)', borderRadius: '4px', padding: '1px 5px', fontSize: '0.66rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>{printKey}</kbd>
           <span style={{ fontWeight: 500 }}>Print</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <kbd style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderBottom: '2px solid var(--border)', borderRadius: '4px', padding: '1px 5px', fontSize: '0.66rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>Ctrl+T</kbd>
+          <kbd style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderBottom: '2px solid var(--border)', borderRadius: '4px', padding: '1px 5px', fontSize: '0.66rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>{newBillKey}</kbd>
           <span style={{ fontWeight: 500 }}>New Tab</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <kbd style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderBottom: '2px solid var(--border)', borderRadius: '4px', padding: '1px 5px', fontSize: '0.66rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>Ctrl+W</kbd>
+          <kbd style={{ background: 'var(--bg-3)', border: '1px solid var(--border)', borderBottom: '2px solid var(--border)', borderRadius: '4px', padding: '1px 5px', fontSize: '0.66rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>{closeTabKey}</kbd>
           <span style={{ fontWeight: 500 }}>Close Tab</span>
         </div>
       </div>
