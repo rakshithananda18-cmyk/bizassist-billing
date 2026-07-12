@@ -1854,7 +1854,6 @@ img { display: block; max-width: 100%; }
   color: var(--text-primary);
   user-select: none;
   flex-shrink: 0;
-  overflow: hidden;
 }
 
 .pos-top-bar-left {

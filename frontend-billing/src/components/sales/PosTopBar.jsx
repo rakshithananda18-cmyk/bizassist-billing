@@ -20,7 +20,6 @@ const topBarStyle = {
   gap: 4,
   flexShrink: 0,
   userSelect: 'none',
-  overflow: 'hidden',
 }
 
 const dividerStyle = {
