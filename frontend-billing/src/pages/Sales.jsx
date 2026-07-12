@@ -2442,39 +2442,10 @@ export default function Sales(props = {}) {
           availableCounters={availableCounters}
           onSelectCounter={handleSelectCounter}
           liveModeStatus={isLiveView ? { counter: liveCounter, isEditing: editState === 'granted' } : null}
+          shift={!isLiveView ? shift : null}
+          onCashMovement={() => setShowCashMovementModal(true)}
+          onCloseShift={async () => { await refreshShift(); setShowCloseShiftModal(true) }}
         />
-
-        {/* ── Shift status strip — slim bar below PosTopBar ── */}
-        {!isLiveView && shift && !shift.offline && (
-          <div className="pos-shift-strip">
-            <span className="pos-shift-strip-status">
-              <span className="pos-shift-dot">●</span>
-              Shift open
-              {shift.start_time && (
-                <span className="pos-shift-time">
-                  since {new Date(shift.start_time + (shift.start_time.endsWith('Z') ? '' : 'Z')).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              )}
-              <span className="pos-shift-float">· float ₹{Number(shift.opening_cash || 0).toFixed(2)}</span>
-            </span>
-            <span className="pos-shift-strip-actions">
-              <button
-                type="button"
-                className="pos-shift-btn"
-                onClick={() => setShowCashMovementModal(true)}
-              >
-                Cash In / Out
-              </button>
-              <button
-                type="button"
-                className="pos-shift-btn"
-                onClick={async () => { await refreshShift(); setShowCloseShiftModal(true) }}
-              >
-                Close Register
-              </button>
-            </span>
-          </div>
-        )}
 
         {/* ── Shift gatekeeper (Phase 3): no open shift → billing stays locked ── */}
         <OpenShiftModal
