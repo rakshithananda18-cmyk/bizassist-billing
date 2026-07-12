@@ -63,6 +63,10 @@ export default function PosTopBar({
   availableCounters = [],
   onSelectCounter,
   liveModeStatus = null,
+  // Shift strip props
+  shift = null,
+  onCashMovement,
+  onCloseShift,
 }) {
   const [lanStatus, setLanStatus] = useState(() => {
     const useLanDb = typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_use_lan_db') === 'true'
@@ -160,6 +164,52 @@ export default function PosTopBar({
           </div>
         </div>
       </div>
+
+      {/* ── Shift status strip — inline in top bar ── */}
+      {shift && !shift.offline && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '0 10px', borderLeft: '1px solid var(--border)',
+          borderRight: '1px solid var(--border)',
+          fontSize: '0.72rem', color: 'var(--text-muted)', flexShrink: 0,
+          height: '100%',
+        }}>
+          <span style={{ color: '#22c55e', fontWeight: 800, fontSize: '0.7rem' }}>● Shift open</span>
+          {shift.start_time && (
+            <span>
+              since {new Date(shift.start_time + (shift.start_time.endsWith('Z') ? '' : 'Z')).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+          <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>
+            · float ₹{Number(shift.opening_cash || 0).toFixed(2)}
+          </span>
+          <button
+            type="button"
+            style={{
+              fontSize: '0.68rem', padding: '2px 8px',
+              background: 'var(--bg-3)', border: '1px solid var(--border)',
+              borderRadius: 4, cursor: 'pointer', color: 'var(--text-primary)',
+              fontWeight: 600, whiteSpace: 'nowrap',
+            }}
+            onClick={onCashMovement}
+          >
+            Cash In / Out
+          </button>
+          <button
+            type="button"
+            style={{
+              fontSize: '0.68rem', padding: '2px 8px',
+              background: 'var(--bg-3)', border: '1px solid var(--border)',
+              borderRadius: 4, cursor: 'pointer', color: 'var(--text-primary)',
+              fontWeight: 600, whiteSpace: 'nowrap',
+            }}
+            onClick={onCloseShift}
+          >
+            Close Register
+          </button>
+        </div>
+      )}
+
       <div className="pos-top-bar-right">
         <div className="pos-help-hover-container">
           <div className="pos-help-pill-bar">
@@ -240,10 +290,40 @@ export default function PosTopBar({
         <span className="pos-settings-trigger" onClick={onOpenSettings} title="Settings">
           <SettingsIcon size={16} />
         </span>
+
+        {/* ── Inventory-style window controls ── */}
         <span className="pos-divider">|</span>
-        <div className="pos-window-controls">
-          <span className="pos-window-control-btn" onClick={onMinimize} title="Minimize to Sidebar">—</span>
-          <span className="pos-window-control-btn close-btn" onClick={onClose} title="Close POS"><CloseIcon size={12} /></span>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <button
+            type="button"
+            title="Minimize to Sidebar"
+            onClick={onMinimize}
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 26, height: 26, borderRadius: 5, border: '1px solid var(--border)',
+              background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)',
+              transition: 'background .12s, color .12s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
+          >
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><rect x="1" y="5.5" width="10" height="1.5" rx="0.75" fill="currentColor"/></svg>
+          </button>
+          <button
+            type="button"
+            title="Close POS"
+            onClick={onClose}
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 26, height: 26, borderRadius: 5, border: '1px solid var(--border)',
+              background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)',
+              transition: 'background .12s, color .12s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,.12)'; e.currentTarget.style.color = '#ef4444' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
+          >
+            <CloseIcon size={12} />
+          </button>
         </div>
       </div>
     </div>

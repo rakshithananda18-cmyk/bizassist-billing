@@ -2442,40 +2442,12 @@ export default function Sales(props = {}) {
           availableCounters={availableCounters}
           onSelectCounter={handleSelectCounter}
           liveModeStatus={isLiveView ? { counter: liveCounter, isEditing: editState === 'granted' } : null}
+          shift={!isLiveView ? shift : null}
+          onCashMovement={() => setShowCashMovementModal(true)}
+          onCloseShift={async () => { await refreshShift(); setShowCloseShiftModal(true) }}
         />
 
-        {/* ── Shift status strip (Phase 3) — visible whenever a shift is open ── */}
-        {!isLiveView && shift && !shift.offline && (
-          <div style={{
-            background: 'var(--bg-3)', borderBottom: '1px solid var(--border)',
-            padding: '4px 16px', display: 'flex', alignItems: 'center',
-            justifyContent: 'space-between', fontSize: '0.76rem', color: 'var(--text-muted)',
-          }}>
-            <span>
-              <span style={{ color: '#22c55e', fontWeight: 800 }}>● Shift open</span>
-              {shift.start_time && <> since {new Date(shift.start_time + (shift.start_time.endsWith('Z') ? '' : 'Z')).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</>}
-              {' '}· float ₹{Number(shift.opening_cash || 0).toFixed(2)}
-            </span>
-            <span style={{ display: 'flex', gap: 6 }}>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                style={{ fontSize: '0.72rem', padding: '2px 10px' }}
-                onClick={() => setShowCashMovementModal(true)}
-              >
-                Cash In / Out
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                style={{ fontSize: '0.72rem', padding: '2px 10px' }}
-                onClick={async () => { await refreshShift(); setShowCloseShiftModal(true) }}
-              >
-                Close Register / End Shift
-              </button>
-            </span>
-          </div>
-        )}
+        {/* Shift strip is now embedded inside PosTopBar */}
 
         {/* ── Shift gatekeeper (Phase 3): no open shift → billing stays locked ── */}
         <OpenShiftModal

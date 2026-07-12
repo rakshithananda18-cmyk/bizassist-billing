@@ -154,11 +154,11 @@ function StatusChip({ status }) {
   return <span style={{ color: '#ef4444', fontSize: '0.71rem' }} title={status}>{String(status).slice(0, 38)}</span>
 }
 
-function ColHead({ children, style = {} }) {
+function ColHead({ children, style = {}, title }) {
   return (
-    <th style={{
-      padding: '7px 8px', fontSize: '0.64rem', fontWeight: 800, textTransform: 'uppercase',
-      letterSpacing: '0.07em', color: 'var(--text-muted)', textAlign: 'left',
+    <th title={title} style={{
+      padding: '7px 8px', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase',
+      letterSpacing: '0.06em', color: 'var(--text-secondary)', textAlign: 'left',
       whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)',
       background: 'var(--bg-2, rgba(0,0,0,.03))',
       ...style,
