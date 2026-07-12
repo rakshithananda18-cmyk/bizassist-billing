@@ -16,14 +16,21 @@ const PRODUCT_COLUMNS = [
   { field: 'name', label: 'Name *' },
   { field: 'sku', label: 'SKU' },
   { field: 'barcode', label: 'Barcode' },
+  { field: 'hsn_sac', label: 'HSN/SAC' },
   { field: 'unit', label: 'Unit' },
   { field: 'category', label: 'Category' },
+  { field: 'brand', label: 'Brand' },
+  { field: 'manufacturer', label: 'Manufacturer' },
   { field: 'selling_price', label: 'Sell ₹', num: true },
+  { field: 'wholesale_price', label: 'Wholesale ₹', num: true },
+  { field: 'distributor_price', label: 'Distributor ₹', num: true },
   { field: 'cost_price', label: 'Cost ₹', num: true },
   { field: 'mrp', label: 'MRP', num: true, nullable: true },
   { field: 'cgst_rate', label: 'CGST%', num: true },
   { field: 'sgst_rate', label: 'SGST%', num: true },
+  { field: 'igst_rate', label: 'IGST%', num: true },
   { field: 'opening_stock', label: 'Open. stock', num: true },
+  { field: 'description', label: 'Description' },
 ]
 
 export default function ImportReviewModal({

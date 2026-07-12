@@ -31,6 +31,7 @@ def import_products_bulk(db: Session, business_id: int, items: List[Dict[str, An
             
         sku = item.get("sku")
         barcode = item.get("barcode")
+        hsn_sac = item.get("hsn_sac") or item.get("hsn")
         unit = item.get("unit") or "Nos"
         description = item.get("description")
         brand = item.get("brand")
@@ -39,6 +40,8 @@ def import_products_bulk(db: Session, business_id: int, items: List[Dict[str, An
         
         try:
             selling_price = float(item.get("selling_price") or 0.0)
+            wholesale_price = float(item.get("wholesale_price") or 0.0)
+            distributor_price = float(item.get("distributor_price") or 0.0)
             cost_price = float(item.get("cost_price") or 0.0)
             mrp = float(item.get("mrp")) if item.get("mrp") else None
             cgst_rate = float(item.get("cgst_rate") or 0.0)
@@ -60,12 +63,15 @@ def import_products_bulk(db: Session, business_id: int, items: List[Dict[str, An
             business_id=business_id,
             name=name,
             description=description,
+            hsn_sac=hsn_sac,
             unit=unit,
             sku=sku,
             brand=brand,
             manufacturer=manufacturer,
             category=category,
             selling_price=selling_price,
+            wholesale_price=wholesale_price,
+            distributor_price=distributor_price,
             cost_price=cost_price,
             mrp=mrp,
             cgst_rate=cgst_rate,
