@@ -131,7 +131,7 @@ function DragDropCard({ icon, title, description, templateHref, endpoint, onSucc
         {templateHref && (
           <a
             href={templateHref}
-            download
+            download={`${title.toLowerCase()}_template.csv`}
             className="btn btn-secondary btn-sm"
             style={{ flex: 1, justifyContent: 'center' }}
             onClick={e => e.stopPropagation()}
@@ -271,7 +271,7 @@ export default function Import() {
       title: 'Products',
       description: 'Import product catalogue with SKU, price, and stock levels. Every file goes through an editable review table — nothing is saved without your approval.',
       endpoint: '/billing/import/products',
-      templateHref: '#',
+      templateHref: 'data:text/csv;charset=utf-8,name,sku,barcode,unit,description,brand,manufacturer,category,selling_price,cost_price,mrp,cgst_rate,sgst_rate,igst_rate,opening_stock',
       reviewFlow: true,
       onPreviewReady: openReview('/billing/import/products', undefined, 'product'),
     },
@@ -280,7 +280,7 @@ export default function Import() {
       title: 'Customers',
       description: 'Import customer list with contact info and GSTIN. Reviewed before anything is saved — duplicates flagged.',
       endpoint: '/billing/import/customers',
-      templateHref: '#',
+      templateHref: 'data:text/csv;charset=utf-8,name,phone,email,address,gstin,state_code,pan,credit_limit,credit_days,opening_dues',
       reviewFlow: true,
       onPreviewReady: openReview('/billing/import/customers', CUSTOMER_COLUMNS, 'customer'),
     },
@@ -289,7 +289,7 @@ export default function Import() {
       title: 'Vendors',
       description: 'Import supplier / vendor list with payment terms. Reviewed before anything is saved — duplicates flagged.',
       endpoint: '/billing/import/vendors',
-      templateHref: '#',
+      templateHref: 'data:text/csv;charset=utf-8,name,phone,email,address,gstin,state_code,pan,payment_terms_days',
       reviewFlow: true,
       onPreviewReady: openReview('/billing/import/vendors', VENDOR_COLUMNS, 'vendor'),
     },
