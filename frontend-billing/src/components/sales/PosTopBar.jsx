@@ -341,6 +341,7 @@ export default function PosTopBar({
               {/* Close tab X */}
               <button
                 type="button"
+                className="pos-tab-close"
                 title="Close tab (Ctrl+W)"
                 onClick={(e) => onCloseTab(tab.id, e)}
                 style={{

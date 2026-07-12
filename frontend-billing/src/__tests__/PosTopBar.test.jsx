@@ -25,12 +25,11 @@ const base = {
 }
 
 describe('PosTopBar', () => {
-  it('renders every tab, the New Bill button, and the Help ? button', () => {
+  it('renders every tab and the New Bill button', () => {
     render(<PosTopBar {...base} />)
     expect(screen.getByText('Invoice #1001')).toBeInTheDocument()
     expect(screen.getByText('Invoice #1002')).toBeInTheDocument()
     expect(screen.getByText(/New Bill/)).toBeInTheDocument()
-    expect(screen.getByText('?')).toBeInTheDocument()
   })
 
   it('fires onSelectTab when an inactive tab is clicked', () => {
@@ -47,7 +46,7 @@ describe('PosTopBar', () => {
     const onOpenSettings = vi.fn()
     render(<PosTopBar {...base} onNewBill={onNewBill} onMinimize={onMinimize} onClose={onClose} onOpenSettings={onOpenSettings} />)
     fireEvent.click(screen.getByText(/New Bill/))
-    fireEvent.click(screen.getByTitle('Minimize to Sidebar'))
+    fireEvent.click(screen.getByTitle('Minimize — go back'))
     fireEvent.click(screen.getByTitle('Close POS'))
     fireEvent.click(screen.getByTitle('Settings'))
     expect(onNewBill).toHaveBeenCalledTimes(1)

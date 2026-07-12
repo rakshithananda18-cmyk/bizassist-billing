@@ -1956,7 +1956,7 @@ img { display: block; max-width: 100%; }
   color: var(--text-muted);
   padding: 4px;
   border-radius: 4px;
-  transition: color .12s, background .12s;
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 
 .pos-settings-trigger:hover {
@@ -2123,7 +2123,7 @@ img { display: block; max-width: 100%; }
   background: var(--bg-3);
   color: var(--text-primary);
   cursor: pointer;
-  transition: background .12s, border-color .12s;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 
 .pos-shift-btn:hover {
