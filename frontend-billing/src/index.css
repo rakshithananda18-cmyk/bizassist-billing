@@ -1835,17 +1835,20 @@ img { display: block; max-width: 100%; }
   overflow: hidden !important;
 }
 
+
+
 .pos-top-bar {
-  height: 44px;
+  height: 48px;
   background: var(--bg-2);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 8px 0 0;
-  font-size: 0.8rem;
+  padding: 0 12px;
+  gap: 4px;
+  font-size: 0.82rem;
   color: var(--text-primary);
   user-select: none;
+  flex-shrink: 0;
   overflow: hidden;
 }
 
@@ -2055,10 +2058,73 @@ img { display: block; max-width: 100%; }
 
 .pos-workspace {
   display: flex;
-  height: calc(100% - 44px);
+  height: calc(100% - 48px);
   width: 100%;
   overflow: hidden;
   background: var(--bg);
+}
+
+/* Shift status strip below top bar */
+.pos-shift-strip {
+  height: 30px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  gap: 10px;
+  flex-shrink: 0;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.pos-shift-strip-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 500;
+}
+
+.pos-shift-dot {
+  color: #22c55e;
+  font-size: 0.65rem;
+  line-height: 1;
+}
+
+.pos-shift-time {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.pos-shift-float {
+  color: var(--text-muted);
+}
+
+.pos-shift-strip-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pos-shift-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  font-size: 0.73rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--bg-3);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background .12s, border-color .12s;
+}
+
+.pos-shift-btn:hover {
+  background: var(--bg-4, var(--bg-3));
+  border-color: var(--border);
 }
 
 .pos-left-pane {
