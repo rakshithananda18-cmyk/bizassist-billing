@@ -409,214 +409,226 @@ export default function POSLiveCounter() {
           50%       { opacity: 0.6; transform: scale(1.4); }
         }
         .counter-tile:hover .tile-hint { opacity: 1 !important; }
+
+        /* ── Inventory-shell layout (mirrored from Stock.jsx) ── */
+        .pos-shell { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+        .pos-top-bar {
+          height: 48px; background: var(--bg-2); border-bottom: 1px solid var(--border);
+          display: flex; align-items: center; padding: 0 12px; gap: 6px; flex-shrink: 0;
+        }
+        .pos-tab {
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.82rem;
+          font-weight: 600; border: none; background: transparent; color: var(--text-secondary);
+          transition: background .15s, color .15s;
+        }
+        .pos-tab:hover { background: var(--bg-3); color: var(--text-primary); }
+        .pos-stat-chip {
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 700;
+          border: 1px solid; flex-shrink: 0;
+        }
+        .pos-body { flex: 1; overflow-y: auto; padding: 20px 20px 40px; }
       `}</style>
 
-      <div className="slide-up">
-        <div className="page-header">
-          <div className="page-header-left">
-            <h1 className="page-title">POS Counters</h1>
-            <p className="page-subtitle">
-              Watch each till in real time — click any counter to view its live cart.
-            </p>
-          </div>
+      <div className="pos-shell">
+        {/* ── Top bar ── */}
+        <div className="pos-top-bar">
+          {/* Brand */}
+          <button
+            className="pos-tab"
+            style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--text-primary)', marginRight: 4 }}
+            title="POS Live Counters"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            POS Counters
+          </button>
 
-          {/* Summary chips */}
+          <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
+
+          {/* Subtitle label */}
+          <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+            Watch each till in real time — click any counter to view its live cart.
+          </span>
+
+          <div style={{ flex: 1 }} />
+
+          {/* Stat chips */}
           {isOwner && tiles.length > 0 && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-              <span style={{
-                padding: '4px 14px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 700,
+            <>
+              <span className="pos-stat-chip" style={{
                 background: 'rgba(34,197,94,0.12)', color: 'var(--success, #22c55e)',
-                border: '1px solid rgba(34,197,94,0.25)',
+                borderColor: 'rgba(34,197,94,0.25)',
               }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--success, #22c55e)', display: 'inline-block', animation: 'pulse-dot 2s infinite' }} />
                 {onlineCount} Live
               </span>
-              <span style={{
-                padding: '4px 14px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600,
-                background: 'var(--bg-muted, rgba(255,255,255,0.05))', color: 'var(--text-muted)',
-                border: '1px solid var(--border)',
+              <span className="pos-stat-chip" style={{
+                background: 'var(--bg-3)', color: 'var(--text-muted)',
+                borderColor: 'var(--border)',
               }}>
                 {totalCount} Total
               </span>
-            </div>
-          )}
-        </div>
-
-        <div style={{ maxWidth: 1080, margin: '0 auto', padding: '0 4px 40px' }}>
-          {/* Non-owner warning */}
-          {!isOwner && (
-            <div className="alert alert-warning">Only the business owner can view live counters.</div>
-          )}
-
-          {/* Local-only mode: cloud upgrade needed — only when SSE is genuinely not available */}
-          {isOwner && !canShowCounters && (
-            <div className="card" style={{
-              padding: '48px 32px', textAlign: 'center',
-              maxWidth: 560, margin: '48px auto',
-              borderRadius: 18,
-              border: '1px solid var(--border)',
-            }}>
-              <div style={{ marginBottom: 16, color: 'var(--accent, #c0612a)' }}>
-                <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
-                </svg>
-              </div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 10 }}>
-                Live Counters needs cloud sync
-              </h2>
-              <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: 28, lineHeight: 1.6 }}>
-                Real-time counter monitoring uses cloud SSE. Switch to <strong>Local + Cloud</strong> mode
-                in Settings to enable it — billing stays fast and local, only the live view connects to the cloud.
-              </p>
-              <button
-                onClick={() => navigate('/settings?tab=network')}
-                style={{
-                  background: 'var(--accent)', color: '#fff', border: 'none',
-                  padding: '10px 24px', borderRadius: 8, fontWeight: 700,
-                  cursor: 'pointer', fontSize: '0.88rem', transition: 'opacity 0.2s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
-                onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-              >
-                Go to Settings
-              </button>
-            </div>
-          )}
-
-          {/* Active counter view */}
-          {isOwner && canShowCounters && (
-            <>
-              {/* Connection status strip */}
-              <ConnectionStrip sseProbe={sseProbe} networkMode={networkMode} />
-
-              {/* Network legend */}
-              <div style={{
-                display: 'flex', gap: 14, alignItems: 'center',
-                marginBottom: 20, flexWrap: 'wrap',
-              }}>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                  Connection mode:
-                </span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
-                  fontSize: '0.7rem', fontWeight: 700, color: 'var(--success, #22c55e)' }}>
-                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/>
-                  </svg>
-                  LAN — same WiFi/network, ultra-low latency
-                </span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
-                  fontSize: '0.7rem', fontWeight: 700, color: '#818cf8' }}>
-                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
-                  </svg>
-                  Cloud — different network, relayed via internet
-                </span>
-              </div>
-
-              {tiles.length === 0 ? (
-                <div className="card" style={{ padding: '36px 32px', textAlign: 'center', color: 'var(--text-muted)', borderRadius: 12 }}>
-                  {/* Monitor + LAN network arcs + disconnected X badge */}
-                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-                    <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      {/* Monitor body */}
-                      <rect x="10" y="26" width="52" height="32" rx="3.5" stroke="currentColor" strokeWidth="2.2"/>
-                      {/* Monitor stand neck */}
-                      <line x1="36" y1="58" x2="36" y2="65" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
-                      {/* Monitor stand base */}
-                      <line x1="26" y1="65" x2="46" y2="65" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
-                      {/* Screen inner bezel */}
-                      <rect x="15" y="30" width="42" height="22" rx="1.5" stroke="currentColor" strokeWidth="1.4" strokeDasharray="2 1.5" opacity="0.4"/>
-
-                      {/* LAN/WiFi arcs above monitor — 3 concentric signal arcs */}
-                      {/* Outer arc */}
-                      <path d="M20 21 C24 13 48 13 52 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.35"/>
-                      {/* Middle arc */}
-                      <path d="M25 23.5 C28.5 18 43.5 18 47 23.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.55"/>
-                      {/* Inner arc */}
-                      <path d="M30 26 C32.5 22.5 39.5 22.5 42 26" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.8"/>
-                      {/* WiFi dot at base */}
-                      <circle cx="36" cy="27.5" r="2" fill="currentColor" opacity="0.8"/>
-
-                      {/* Disconnected X badge — red circle + X in top-right corner */}
-                      <circle cx="56" cy="16" r="10" fill="var(--danger, #ef4444)" opacity="0.15"/>
-                      <circle cx="56" cy="16" r="10" stroke="var(--danger, #ef4444)" strokeWidth="1.5"/>
-                      <line x1="51.5" y1="11.5" x2="60.5" y2="20.5" stroke="var(--danger, #ef4444)" strokeWidth="2.2" strokeLinecap="round"/>
-                      <line x1="60.5" y1="11.5" x2="51.5" y2="20.5" stroke="var(--danger, #ef4444)" strokeWidth="2.2" strokeLinecap="round"/>
-                    </svg>
-                  </div>
-                  <div style={{ fontWeight: 700, marginBottom: 6, color: 'var(--text-primary)', fontSize: '0.95rem' }}>No cashier counters connected</div>
-                  <div style={{ fontSize: '0.83rem', lineHeight: 1.6 }}>
-                    A counter appears here when a cashier logs in and starts billing.
-                    Make sure cashiers have counter prefixes under{' '}
-                    <span
-                      onClick={() => navigate('/settings')}
-                      style={{ color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline' }}
-                    >
-                      Staff settings
-                    </span>.
-                  </div>
-                </div>
-
-              ) : (
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))',
-                  gap: 16,
-                }}>
-                  {tiles.map(s => (
-                    <div key={s.client_id || s.counter} className="counter-tile">
-                      <CounterTile
-                        s={s}
-                        highlight={focusCounter && String(s.counter) === String(focusCounter)}
-                        onClick={handleTileClick}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Settings shortcut */}
-              <div style={{
-                marginTop: 32,
-                padding: '14px 20px',
-                borderRadius: 10,
-                background: 'var(--bg-muted, rgba(255,255,255,0.03))',
-                border: '1px solid var(--border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 12,
-              }}>
-                <div>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Configure counters &amp; discovery
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                    Add cashier staff with counter prefixes, or change network / hosting settings.
-                  </div>
-                </div>
-                <button
-                  onClick={() => navigate('/settings?tab=hosting')}
-                  style={{
-                    background: 'transparent', border: '1px solid var(--border)',
-                    color: 'var(--text-secondary)', padding: '6px 16px',
-                    borderRadius: 6, cursor: 'pointer', fontSize: '0.78rem',
-                    fontWeight: 600, flexShrink: 0,
-                    transition: 'border-color 0.2s, color 0.2s',
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.borderColor = 'var(--accent)'
-                    e.currentTarget.style.color = 'var(--accent)'
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.borderColor = 'var(--border)'
-                    e.currentTarget.style.color = 'var(--text-secondary)'
-                  }}
-                >
-                  Settings →
-                </button>
-              </div>
             </>
           )}
+
+          <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 4px' }} />
+
+          {/* Settings shortcut */}
+          <button
+            className="btn btn-secondary btn-sm"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+            onClick={() => navigate('/settings?tab=hosting')}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            Configure
+          </button>
+
+          {/* Window controls */}
+          <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 4px' }} />
+          <button
+            title="Close — go to dashboard"
+            onClick={() => navigate('/')}
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)',
+              background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)',
+              transition: 'background .12s, color .12s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,.12)'; e.currentTarget.style.color = '#ef4444' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        {/* ── Body ── */}
+        <div className="pos-body">
+          <div style={{ maxWidth: 1080, margin: '0 auto' }}>
+
+            {/* Non-owner warning */}
+            {!isOwner && (
+              <div className="alert alert-warning">Only the business owner can view live counters.</div>
+            )}
+
+            {/* Local-only mode: cloud upgrade needed */}
+            {isOwner && !canShowCounters && (
+              <div className="card" style={{
+                padding: '48px 32px', textAlign: 'center',
+                maxWidth: 560, margin: '48px auto',
+                borderRadius: 18, border: '1px solid var(--border)',
+              }}>
+                <div style={{ marginBottom: 16, color: 'var(--accent, #c0612a)' }}>
+                  <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+                  </svg>
+                </div>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 10 }}>
+                  Live Counters needs cloud sync
+                </h2>
+                <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: 28, lineHeight: 1.6 }}>
+                  Real-time counter monitoring uses cloud SSE. Switch to <strong>Local + Cloud</strong> mode
+                  in Settings to enable it — billing stays fast and local, only the live view connects to the cloud.
+                </p>
+                <button
+                  onClick={() => navigate('/settings?tab=network')}
+                  style={{
+                    background: 'var(--accent)', color: '#fff', border: 'none',
+                    padding: '10px 24px', borderRadius: 8, fontWeight: 700,
+                    cursor: 'pointer', fontSize: '0.88rem', transition: 'opacity 0.2s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                >
+                  Go to Settings
+                </button>
+              </div>
+            )}
+
+            {/* Active counter view */}
+            {isOwner && canShowCounters && (
+              <>
+                {/* Connection status strip */}
+                <ConnectionStrip sseProbe={sseProbe} networkMode={networkMode} />
+
+                {/* Network legend */}
+                <div style={{
+                  display: 'flex', gap: 14, alignItems: 'center',
+                  marginBottom: 20, flexWrap: 'wrap',
+                }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    Connection mode:
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
+                    fontSize: '0.7rem', fontWeight: 700, color: 'var(--success, #22c55e)' }}>
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/>
+                    </svg>
+                    LAN — same WiFi/network, ultra-low latency
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
+                    fontSize: '0.7rem', fontWeight: 700, color: '#818cf8' }}>
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+                    </svg>
+                    Cloud — different network, relayed via internet
+                  </span>
+                </div>
+
+                {tiles.length === 0 ? (
+                  <div className="card" style={{ padding: '36px 32px', textAlign: 'center', color: 'var(--text-muted)', borderRadius: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+                      <svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="10" y="26" width="52" height="32" rx="3.5" stroke="currentColor" strokeWidth="2.2"/>
+                        <line x1="36" y1="58" x2="36" y2="65" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+                        <line x1="26" y1="65" x2="46" y2="65" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/>
+                        <rect x="15" y="30" width="42" height="22" rx="1.5" stroke="currentColor" strokeWidth="1.4" strokeDasharray="2 1.5" opacity="0.4"/>
+                        <path d="M20 21 C24 13 48 13 52 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.35"/>
+                        <path d="M25 23.5 C28.5 18 43.5 18 47 23.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.55"/>
+                        <path d="M30 26 C32.5 22.5 39.5 22.5 42 26" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.8"/>
+                        <circle cx="36" cy="27.5" r="2" fill="currentColor" opacity="0.8"/>
+                        <circle cx="56" cy="16" r="10" fill="var(--danger, #ef4444)" opacity="0.15"/>
+                        <circle cx="56" cy="16" r="10" stroke="var(--danger, #ef4444)" strokeWidth="1.5"/>
+                        <line x1="51.5" y1="11.5" x2="60.5" y2="20.5" stroke="var(--danger, #ef4444)" strokeWidth="2.2" strokeLinecap="round"/>
+                        <line x1="60.5" y1="11.5" x2="51.5" y2="20.5" stroke="var(--danger, #ef4444)" strokeWidth="2.2" strokeLinecap="round"/>
+                      </svg>
+                    </div>
+                    <div style={{ fontWeight: 700, marginBottom: 6, color: 'var(--text-primary)', fontSize: '0.95rem' }}>No cashier counters connected</div>
+                    <div style={{ fontSize: '0.83rem', lineHeight: 1.6 }}>
+                      A counter appears here when a cashier logs in and starts billing.
+                      Make sure cashiers have counter prefixes under{' '}
+                      <span
+                        onClick={() => navigate('/settings')}
+                        style={{ color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline' }}
+                      >
+                        Staff settings
+                      </span>.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))',
+                    gap: 16,
+                  }}>
+                    {tiles.map(s => (
+                      <div key={s.client_id || s.counter} className="counter-tile">
+                        <CounterTile
+                          s={s}
+                          highlight={focusCounter && String(s.counter) === String(focusCounter)}
+                          onClick={handleTileClick}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
     </AppLayout>
