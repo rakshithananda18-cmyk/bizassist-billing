@@ -71,12 +71,14 @@ function WinBtn({ onClick, title, danger = false, children }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: 'inline-flex', alignItems: 'center', justifycontent: 'center',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)',
         background: danger && hovered ? 'rgba(239,68,68,.12)' : hovered ? 'var(--bg-3)' : 'transparent',
         cursor: 'pointer',
         color: danger && hovered ? '#ef4444' : hovered ? 'var(--text-primary)' : 'var(--text-muted)',
         transition: 'background .12s, color .12s',
+        padding: 0,
+        boxSizing: 'border-box',
       }}
     >
       {children}
@@ -139,7 +141,7 @@ function ShiftMenu({ shift, onCashMovement, onCloseShift }) {
     : 'Open'
 
   return (
-    <div ref={menuRef} style={{ position: 'relative', display: 'inline-block' }}>
+    <div ref={menuRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}

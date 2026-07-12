@@ -54,7 +54,7 @@ export default function CounterMenu({
   }
 
   return (
-    <div ref={menuRef} style={{ position: 'relative', display: 'inline-block' }}>
+    <div ref={menuRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
       <span
         className="pos-counter-badge"
         onClick={handleToggle}
