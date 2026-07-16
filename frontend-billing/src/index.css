@@ -104,6 +104,7 @@
 
 .dark-mode {
   --bg:            #1a1915;
+  --bg-1:          #26251f; /* was MISSING — dark mode inherited the light #f4f4f1, washing out every var(--bg-1) card */
   --bg-2:          #22211c;
   --bg-3:          #2a2923;
   --bg-4:          #32312b;

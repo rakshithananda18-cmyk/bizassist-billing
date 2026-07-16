@@ -4,6 +4,7 @@
 //              and outflows, records general expenses, and tracks credit note returns.
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
 import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, WarehouseIcon, SearchIcon, ExpandIcon, SummaryIcon, SparkleIcon, InfoIcon, AlertIcon } from '../components/Icons'
@@ -11,6 +12,10 @@ import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, Warehou
 import { logger } from '../utils/logger'
 import CustomSelect from '../components/common/CustomSelect'
 import { formatISTDate } from '../utils/format'
+import InvoiceViewer from '../invoice/InvoiceViewer'
+import { buildWhatsAppLink, buildPublicInvoiceLink } from '../invoice/share'
+
+
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '₹0'
@@ -38,14 +43,13 @@ export default function Payments() {
   const [expenses, setExpenses]     = useState([])
   const [pendingDues, setPendingDues] = useState([])
   const [creditNotes, setCreditNotes] = useState([])
-  const [selectedInvoice, setSelectedInvoice] = useState(null)
-  const [loadingInvoice, setLoadingInvoice] = useState(false)
   const [loading, setLoading]       = useState(true)
   const [activeTab, setActiveTab]   = useState('All')
   const [isFullScreen, setIsFullScreen] = useState(false)
   const [showModal, setShowModal]   = useState(false)
   const [showExpenseModal, setShowExpenseModal] = useState(false)
-  const [showOverview, setShowOverview] = useState(false)
+  // In-page invoice viewer (full InvoiceViewer feature set, no route change)
+  const [viewingInvoiceNo, setViewingInvoiceNo] = useState(null)
   const [form, setForm]             = useState(defaultForm)
   
   const defaultExpenseForm = {
@@ -59,25 +63,6 @@ export default function Payments() {
   const [expenseForm, setExpenseForm] = useState(defaultExpenseForm)
   const [submitting, setSubmitting] = useState(false)
   const [alert, setAlert]           = useState(null)
-
-  const handleViewInvoice = async (invNo) => {
-    if (!invNo) return
-    const idStr = String(invNo).replace(/^#/, '')
-    setLoadingInvoice(true)
-    try {
-      const res = await authFetch(`/billing/sales/${idStr}`)
-      if (res.ok) {
-        const data = await res.json()
-        setSelectedInvoice(data)
-      } else {
-        setAlert({ type: 'error', message: 'Invoice not found or deleted.' })
-      }
-    } catch (e) {
-      setAlert({ type: 'error', message: 'Failed to fetch invoice details.' })
-    } finally {
-      setLoadingInvoice(false)
-    }
-  }
 
   const load = useCallback(() => {
     setLoading(true)
@@ -507,7 +492,9 @@ export default function Payments() {
 
   return (
     <AppLayout title="Payments">
+      <>
       <div className="slide-up">
+
 
         {alert && (
           <div className={`alert alert-${alert.type} mb-4`}>
@@ -526,10 +513,30 @@ export default function Payments() {
                 : 'Track all money received and payments made'}
             </p>
           </div>
-          <div className="page-actions" style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary" onClick={() => setShowOverview(true)}>
-              Overview
-            </button>
+          <div className="page-actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {/* Group switch — lives in the header; sub-filters sit next to search */}
+            <div style={{
+              background: 'var(--bg-3)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-lg)', padding: 3,
+              display: 'flex', gap: 3, alignItems: 'center',
+            }}>
+              {[
+                { key: 'general', label: 'General Operations', firstTab: 'All' },
+                { key: 'expenses', label: 'Expenses & Purchases', firstTab: 'Made' },
+              ].map(g => {
+                const active = (g.key === 'expenses') === ['Made', 'Expenses'].includes(activeTab)
+                return (
+                  <button
+                    key={g.key}
+                    className={`tab${active ? ' active' : ''}`}
+                    onClick={() => { if (!active) setActiveTab(g.firstTab) }}
+                    style={{ margin: 0, padding: '5px 12px', fontSize: '0.8rem', fontWeight: 600 }}
+                  >
+                    {g.label}
+                  </button>
+                )
+              })}
+            </div>
             {activeTab === 'Expenses' ? (
               <button className="btn btn-primary" onClick={() => { setExpenseForm(defaultExpenseForm); setShowExpenseModal(true) }}>
                 <PlusIcon size={14} /> Log Expense
@@ -542,48 +549,118 @@ export default function Payments() {
           </div>
         </div>
 
-        {/* Tabs & Search/Filter */}
-        <div className="flex items-center justify-between page-subbar" style={{ display: 'flex', flexFlow: 'row wrap', gap: 12, alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-            {/* General / Day-to-Day Operations Container */}
-            <div style={{
-              background: 'var(--bg-3)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-lg)',
-              padding: '3px 6px',
-              display: 'flex',
-              gap: 4,
-              alignItems: 'center',
-              boxShadow: 'var(--shadow-sm)'
-            }}>
-              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', padding: '0 8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>General Operations</span>
-              {['All', 'Received', 'Pending Dues', 'Credit Notes'].map(t => (
-                <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)} style={{ margin: 0, padding: '4px 10px', fontSize: '0.8rem' }}>
-                  {t}
-                </button>
-              ))}
-            </div>
+        {/* Cash Flow Summary Cards */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: 16,
+          marginBottom: 20
+        }}>
+          {/* Card 1: Received */}
+          <div style={{
+            background: 'var(--bg-1)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-lg, 12px)',
+            padding: '16px 20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+            boxShadow: 'var(--shadow-sm)'
+          }}>
+            <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-muted)', fontWeight: 700 }}>Total Received</div>
+            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--success)', marginTop: 2 }}>{fmt(totalReceived)}</div>
+          </div>
 
-            {/* Purchases & Expenses Container */}
+          {/* Card 2: Spent */}
+          <div style={{
+            background: 'var(--bg-1)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-lg, 12px)',
+            padding: '16px 20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+            boxShadow: 'var(--shadow-sm)'
+          }}>
+            <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-muted)', fontWeight: 700 }}>Total Outflow</div>
+            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--danger)', marginTop: 2 }}>{fmt(totalMade)}</div>
+          </div>
+
+          {/* Card 3: Net Balance */}
+          <div style={{
+            background: 'var(--bg-1)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-lg, 12px)',
+            padding: '16px 20px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            boxShadow: 'var(--shadow-sm)'
+          }}>
+            <div>
+              <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-muted)', fontWeight: 700, marginBottom: 2 }}>Net Balance</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: net >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                {net >= 0 ? '+' : ''}{fmt(net)}
+              </div>
+            </div>
             <div style={{
-              background: 'var(--bg-3)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-lg)',
-              padding: '3px 6px',
-              display: 'flex',
-              gap: 4,
-              alignItems: 'center',
-              boxShadow: 'var(--shadow-sm)'
+              textTransform: 'uppercase', fontSize: '0.65rem', fontWeight: 700,
+              padding: '4px 10px', borderRadius: '99px',
+              background: net >= 0 ? 'var(--success-dim)' : 'var(--danger-dim)',
+              color: net >= 0 ? 'var(--success)' : 'var(--danger)',
+              border: '1px solid currentColor',
             }}>
-              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', padding: '0 8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Expenses & Purchases</span>
-              {['Made', 'Expenses'].map(t => (
-                <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)} style={{ margin: 0, padding: '4px 10px', fontSize: '0.8rem' }}>
-                  {t}
-                </button>
-              ))}
+              {net >= 0 ? 'Surplus' : 'Deficit'}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+
+          {/* Card 4: Ratio & Distribution */}
+          <div style={{
+            background: 'var(--bg-1)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-lg, 12px)',
+            padding: '16px 20px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            gap: 6,
+            boxShadow: 'var(--shadow-sm)'
+          }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+              <span>Inflow Distribution</span>
+              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                {totalReceived + totalMade > 0 ? Math.round((totalReceived / (totalReceived + totalMade)) * 100) : 0}% Inflow
+              </span>
+            </div>
+            <div style={{ height: 6, background: 'var(--bg-3)', borderRadius: '99px', overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%', borderRadius: '99px', background: 'var(--success)',
+                  width: `${totalReceived + totalMade > 0 ? (totalReceived / (totalReceived + totalMade)) * 100 : 0}%`,
+                  transition: 'width 0.4s ease',
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+              <span>Received ({fmt(totalReceived)})</span>
+              <span>Outflow ({fmt(totalMade)})</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Sub-filters (left of search) & Search/Filter */}
+        <div className="flex items-center justify-between page-subbar" style={{ display: 'flex', flexFlow: 'row wrap', gap: 12, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              {(['Made', 'Expenses'].includes(activeTab)
+                ? ['Made', 'Expenses']
+                : ['All', 'Received', 'Pending Dues', 'Credit Notes']
+              ).map(t => (
+                <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)} style={{ margin: 0, padding: '4px 10px', fontSize: '0.8rem' }}>
+                  {t}
+                </button>
+              ))}
+            </div>
             <div className="search-bar" style={{ width: 180, margin: 0 }}>
               <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
               <input 
@@ -785,14 +862,13 @@ export default function Payments() {
                         </div>
                       </td></tr>
                     ) : filteredPendingDues.map(d => (
-                      <tr key={d.id}>
+                      <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => setViewingInvoiceNo(d.invoice_id)}>
                         <td>{d.due_date ? formatISTDate(d.due_date) : '—'}</td>
                         <td className="td-mono">
                           {d.invoice_id ? (
                             <span 
                               className="link" 
-                              onClick={(e) => { e.stopPropagation(); handleViewInvoice(d.invoice_id) }}
-                              style={{ cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline' }}
+                              style={{ color: 'var(--accent)', textDecoration: 'underline' }}
                             >
                               {d.invoice_id}
                             </span>
@@ -877,14 +953,13 @@ export default function Payments() {
                         </div>
                       </td></tr>
                     ) : filteredCreditNotes.map(cn => (
-                      <tr key={cn.id}>
+                      <tr key={cn.id} style={{ cursor: 'pointer' }} onClick={() => setViewingInvoiceNo(cn.invoice_id)}>
                         <td>{cn.date ? formatISTDate(cn.date) : '—'}</td>
                         <td className="td-mono">
                           {cn.invoice_id ? (
                             <span 
                               className="link" 
-                              onClick={(e) => { e.stopPropagation(); handleViewInvoice(cn.invoice_id) }}
-                              style={{ cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline' }}
+                              style={{ color: 'var(--accent)', textDecoration: 'underline' }}
                             >
                               {cn.invoice_id}
                             </span>
@@ -894,7 +969,7 @@ export default function Payments() {
                           {cn.reference_invoice ? (
                             <span 
                               className="link" 
-                              onClick={(e) => { e.stopPropagation(); handleViewInvoice(cn.reference_invoice) }}
+                              onClick={(e) => { e.stopPropagation(); setViewingInvoiceNo(cn.reference_invoice) }}
                               style={{ cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline' }}
                             >
                               {cn.reference_invoice}
@@ -990,14 +1065,13 @@ export default function Payments() {
                         </div>
                       </td></tr>
                     ) : filtered.map(p => (
-                      <tr key={p.id}>
+                      <tr key={p.id} style={{ cursor: (p.invoice_number || p.invoice_ref) ? 'pointer' : 'default' }} onClick={() => { if (p.invoice_number || p.invoice_ref) setViewingInvoiceNo(p.invoice_number || p.invoice_ref) }}>
                         <td>{p.date ? formatISTDate(p.date) : '—'}</td>
                         <td className="td-mono">
                           {(p.invoice_number || p.invoice_ref) ? (
                             <span 
                               className="link" 
-                              onClick={(e) => { e.stopPropagation(); handleViewInvoice(p.invoice_number || p.invoice_ref) }}
-                              style={{ cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline' }}
+                              style={{ color: 'var(--accent)', textDecoration: 'underline' }}
                             >
                               {p.invoice_number || p.invoice_ref}
                             </span>
@@ -1175,236 +1249,79 @@ export default function Payments() {
         </div>
       )}
 
-      {/* Smart Cash Flow Overview Modal */}
-      {showOverview && (
-        <div className="modal-overlay" onClick={() => setShowOverview(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <SummaryIcon size={18} />
-                <span>Cash Flow Overview</span>
-              </span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowOverview(false)} aria-label="Close">
-                <CloseIcon size={16} />
-              </button>
-            </div>
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              {/* Stats Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: 16 }}>
-                  <div className="stat-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Received</div>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--success)', marginTop: 4 }}>{fmt(totalReceived)}</div>
-                </div>
-                <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: 16 }}>
-                  <div className="stat-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Made</div>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--danger)', marginTop: 4 }}>{fmt(totalMade)}</div>
-                </div>
-              </div>
 
-              {/* Net Balance Card */}
-              <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div className="stat-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Net Balance</div>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 800, color: net >= 0 ? 'var(--success)' : 'var(--danger)', marginTop: 4 }}>
-                    {net >= 0 ? '+' : ''}{fmt(Math.abs(net))}
-                  </div>
-                </div>
-                <div style={{ textTransform: 'uppercase', fontSize: '0.65rem', fontWeight: 700, padding: '4px 8px', borderRadius: '4px', background: net >= 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: net >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                  {net >= 0 ? 'Surplus' : 'Deficit'}
-                </div>
-              </div>
 
-              {/* Inflow vs Outflow Ratio */}
-              <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: 16 }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Inflow vs Outflow Ratio</span>
-                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                    {totalReceived + totalMade > 0 ? Math.round((totalReceived / (totalReceived + totalMade)) * 100) : 0}% Received
-                  </span>
-                </div>
-                <div className="progress" style={{ height: 10, background: 'var(--bg-3)', borderRadius: '4px', overflow: 'hidden' }}>
-                  <div
-                    className="progress-bar success"
-                    style={{ width: `${totalReceived + totalMade > 0 ? (totalReceived / (totalReceived + totalMade)) * 100 : 0}%` }}
-                  />
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 8 }}>
-                  <span>Received ({fmt(totalReceived)})</span>
-                  <span>Made ({fmt(totalMade)})</span>
-                </div>
-              </div>
+      {/* ── Invoice modal portal ────────────────────────────────────── */}
+      {viewingInvoiceNo && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Invoice viewer"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1200,
+            display: 'flex', flexDirection: 'column',
+            background: 'rgba(0,0,0,0.55)',
+            backdropFilter: 'blur(4px)',
+            animation: 'fadeInBackdrop 0.18s ease',
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setViewingInvoiceNo(null) }}
+        >
+          <style>{`
+            @keyframes fadeInBackdrop { from { opacity: 0 } to { opacity: 1 } }
+            @keyframes slideUpModal { from { transform: translateY(32px); opacity: 0 } to { transform: none; opacity: 1 } }
+          `}</style>
 
-              {/* Smart Insights Section */}
-              <div style={{ marginTop: 8 }}>
-                <h3 style={{ fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <SparkleIcon size={16} />
-                  <span>Smart Insights</span>
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {generateCashFlowInsights().map((insight, idx) => {
-                    const iconColor = insight.type === 'danger' ? 'var(--danger)' : insight.type === 'warning' ? 'var(--warning)' : insight.type === 'success' ? 'var(--success)' : 'var(--accent)'
-                    const iconMap = {
-                      danger: <AlertIcon size={16} style={{ color: iconColor }} />,
-                      warning: <AlertIcon size={16} style={{ color: iconColor }} />,
-                      success: <CheckIcon size={16} style={{ color: iconColor }} />,
-                      info: <InfoIcon size={16} style={{ color: iconColor }} />,
-                      expense: <BillsIcon size={16} style={{ color: iconColor }} />
-                    }
-                    return (
-                      <div key={idx} style={{ display: 'flex', gap: 12, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: 12, alignItems: 'flex-start' }}>
-                        <div style={{ marginTop: 2, flexShrink: 0 }}>
-                          {iconMap[insight.type] || <InfoIcon size={16} style={{ color: iconColor }} />}
-                        </div>
-                        <div style={{ textAlign: 'left' }}>
-                          <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>{insight.title}</div>
-                          <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2, lineHeight: 1.4 }}>{insight.text}</div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button type="button" className="btn btn-secondary" onClick={() => setShowOverview(false)}>Close</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Invoice Details Modal */}
-      {selectedInvoice && (
-        <div className="modal-overlay" onClick={() => setSelectedInvoice(null)}>
-          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">
-                {selectedInvoice.invoice_type === 'credit_note' ? '⟲ Credit Note Details' : '📄 Invoice Details'}
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 400, marginLeft: 10 }}>
-                  ({selectedInvoice.invoice_no} • {selectedInvoice.invoice_date ? new Date(selectedInvoice.invoice_date).toLocaleDateString('en-IN') : ''})
-                </span>
-              </span>
+          {/* Modal shell */}
+          <div style={{
+            margin: 'auto',
+            width: '96vw', maxWidth: 1200,
+            height: '92vh',
+            background: 'var(--bg-2)',
+            borderRadius: 'var(--radius-lg, 14px)',
+            border: '1px solid var(--border)',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
+            display: 'flex', flexDirection: 'column',
+            overflow: 'hidden',
+            animation: 'slideUpModal 0.22s cubic-bezier(0.34,1.56,0.64,1)',
+          }}>
+            {/* Close strip */}
+            <div style={{
+              display: 'flex', justifyContent: 'flex-end', alignItems: 'center',
+              padding: '6px 10px 0',
+              flexShrink: 0,
+            }}>
               <button
-                className="btn"
-                style={{ marginRight: 8 }}
-                onClick={() => { window.location.href = `/invoice/${encodeURIComponent(selectedInvoice.invoice_no)}/view` }}
-                title="Open the printable invoice (Classic / BizAssist templates)"
+                onClick={() => setViewingInvoiceNo(null)}
+                aria-label="Close invoice viewer"
+                style={{
+                  background: 'var(--bg-3)', border: '1px solid var(--border)',
+                  borderRadius: '50%', width: 28, height: 28,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: 'var(--text-secondary)',
+                  fontSize: '1.1rem', lineHeight: 1, flexShrink: 0,
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-dim)'; e.currentTarget.style.color = 'var(--danger)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
               >
-                View / Print
-              </button>
-              <button className="btn btn-ghost btn-icon" onClick={() => setSelectedInvoice(null)} aria-label="Close">
-                <CloseIcon size={16} />
+                ×
               </button>
             </div>
-            <div className="modal-body">
-              {/* Split Column Layout */}
-              <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-                
-                {/* Left Column: Details & Items */}
-                <div style={{ flex: 1, minWidth: '320px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <div>
-                    <h3 style={{ fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: '8px' }}>Billing Information</h3>
-                    <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '12px' }}>
-                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{selectedInvoice.customer || 'Walk-in Customer'}</div>
-                      {selectedInvoice.place_of_supply && <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '4px' }}>Place of Supply: {selectedInvoice.place_of_supply}</div>}
-                      {selectedInvoice.payment_mode && <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '2px' }}>Default Payment Mode: {selectedInvoice.payment_mode}</div>}
-                    </div>
-                  </div>
 
-                  <div>
-                    <h3 style={{ fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: '8px' }}>Items</h3>
-                    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-                      <table className="data-table" style={{ margin: 0, width: '100%', fontSize: '0.85rem' }}>
-                        <thead style={{ background: 'var(--bg-1)' }}>
-                          <tr>
-                            <th>Item Name</th>
-                            <th className="text-right">Qty</th>
-                            <th className="text-right">Price</th>
-                            <th className="text-right">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(selectedInvoice.lines || []).map((line, i) => (
-                            <tr key={i}>
-                              <td>{line.product_name}</td>
-                              <td className="text-right">{line.quantity} {line.unit || 'Nos'}</td>
-                              <td className="text-right">₹{fmt(line.unit_price)}</td>
-                              <td className="text-right" style={{ fontWeight: 600 }}>₹{fmt(line.line_total)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right Column: Invoice Breakdown Card & Payment status */}
-                <div style={{ width: '300px', display: 'flex', flexDirection: 'column', gap: '16px', flexShrink: 0 }}>
-                  <h3 style={{ fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: '4px' }}>Invoice Summary</h3>
-                  
-                  {/* Breakdown Card */}
-                  <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                      <span>Subtotal:</span>
-                      <span>₹{fmt(selectedInvoice.subtotal)}</span>
-                    </div>
-                    {selectedInvoice.discount_total > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--success)' }}>
-                        <span>Discount:</span>
-                        <span>-₹{fmt(selectedInvoice.discount_total)}</span>
-                      </div>
-                    )}
-                    {selectedInvoice.cgst_total > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                        <span>CGST:</span>
-                        <span>₹{fmt(selectedInvoice.cgst_total)}</span>
-                      </div>
-                    )}
-                    {selectedInvoice.sgst_total > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                        <span>SGST:</span>
-                        <span>₹{fmt(selectedInvoice.sgst_total)}</span>
-                      </div>
-                    )}
-                    {selectedInvoice.igst_total > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                        <span>IGST:</span>
-                        <span>₹{fmt(selectedInvoice.igst_total)}</span>
-                      </div>
-                    )}
-                    {selectedInvoice.round_off !== 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                        <span>Round Off:</span>
-                        <span>{selectedInvoice.round_off > 0 ? '+' : ''}₹{fmt(selectedInvoice.round_off)}</span>
-                      </div>
-                    )}
-                    <div style={{ height: '1px', borderTop: '1px dashed var(--border)', margin: '4px 0' }} />
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem', fontWeight: 800, color: 'var(--accent)' }}>
-                      <span>Grand Total:</span>
-                      <span>₹{fmt(selectedInvoice.total_amount)}</span>
-                    </div>
-                  </div>
-
-                  {/* Paid & Balance Card */}
-                  <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--success)', fontWeight: 600 }}>
-                      <span>Amount Paid:</span>
-                      <span>₹{fmt(selectedInvoice.paid_amount || 0)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: (selectedInvoice.total_amount - (selectedInvoice.paid_amount || 0)) > 0 ? 'var(--danger)' : 'var(--text-secondary)', fontWeight: 700 }}>
-                      <span>Balance Due:</span>
-                      <span>₹{fmt(Math.max(0, selectedInvoice.total_amount - (selectedInvoice.paid_amount || 0)))}</span>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button type="button" className="btn btn-secondary" onClick={() => setSelectedInvoice(null)}>Close</button>
+            {/* The full InvoiceViewer — embedded mode so Back/× both close the modal */}
+            <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+              <InvoiceViewer
+                key={viewingInvoiceNo}
+                invoiceNo={viewingInvoiceNo}
+                embedded
+                onBack={() => setViewingInvoiceNo(null)}
+              />
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
+      </>
     </AppLayout>
   )
 }

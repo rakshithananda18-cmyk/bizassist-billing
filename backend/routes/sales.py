@@ -92,6 +92,8 @@ def _invoice_out(inv: Invoice) -> dict:
         "igst_total": inv.igst_total, "cess_total": inv.cess_total,
         "round_off": inv.round_off, "total_amount": inv.total_amount,
         "paid_amount": inv.paid_amount, "payment_mode": inv.payment_mode,
+        "uid_token": getattr(inv, "uid_token", None),
+        "customer_phone": inv.customer_ref.phone if inv.customer_ref else None,
         "lines": [_line_out(li) for li in inv.line_items],
     }
 

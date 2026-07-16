@@ -242,6 +242,19 @@ export default function ThermalReceipt({
             <span>₹{changeToReturn.toFixed(2)}</span>
           </div>
         )}
+        {(() => {
+          // Credit sales: the amount still owed MUST print on the receipt —
+          // it's the customer's record of the udhaar (bugfix: due was omitted).
+          const received = parseFloat(form.amount_received || 0)
+          const due = Math.max(0, (payable || 0) - received)
+          if (due < 0.005) return null
+          return (
+            <div className="receipt-row" style={{ fontWeight: 700 }}>
+              <span>BALANCE DUE:</span>
+              <span>₹{due.toFixed(2)}</span>
+            </div>
+          )
+        })()}
         <div className="receipt-row" style={{ marginTop: 4 }}>
           <span>Qty: {colFooter.qty}</span>
           <span>Items: {form.items.length}</span>

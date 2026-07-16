@@ -3,6 +3,7 @@ import { API_BASE, updateApiBase, IS_LOCAL_APP, CLOUD_URL, LOCAL_URL } from '../
 import { logger, setBizId } from '../utils/logger'
 import { reconcileBizIdOnLogin } from '../utils/loginSync'
 import { discoverLocalBackend, getNetworkMode, clearDiscoveryCache } from '../utils/networkDiscovery'
+import { reconcileDeviceModeOnLogin } from '../utils/deviceMode'
 
 const AuthContext = createContext(null)
 
@@ -86,6 +87,19 @@ export function AuthProvider({ children }) {
       counter_prefix: data.counter_prefix || null,   // POS counter series for this login (§9.3a)
     }
     localStorage.setItem('billing_user', JSON.stringify(userObj))
+
+    // ── Per-account device-mode guard ────────────────────────────────────────
+    // `bizassist_hosting_mode` is device-global. If a DIFFERENT account logs in
+    // (e.g. free user first, then the Pro owner), the previous account's stale
+    // mode (usually 'local') must not override the incoming account's saved
+    // hosting_mode — it hid the sidebar sync/refresh panel for Pro users and
+    // the fetchSettings reconcile then PUT the stale mode onto their account.
+    // 'cloud' is preserved (device routing; see utils/deviceMode.js).
+    const clearedMode = reconcileDeviceModeOnLogin(userObj.public_id || userObj.username || userObj.id)
+    if (clearedMode) {
+      logger.info(`[AUTH] Account switch — dropped previous account's device hosting mode '${clearedMode}'; this account's saved hosting_mode now applies.`)
+    }
+
     setToken(tok)
     setUser(userObj)
     setBizId(userObj.public_id)   // stamp every subsequent log line with [BizId=…]

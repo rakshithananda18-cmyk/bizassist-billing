@@ -32,6 +32,7 @@ import POSLiveCounter from './pages/POSLiveCounter'
 import InvoiceViewer  from './invoice/InvoiceViewer'
 import PublicInvoiceViewer from './pages/PublicInvoiceViewer'
 import Support from './pages/Support'
+import AppLayout from './layouts/AppLayout'
 
 
 function ProtectedRoute({ children }) {
@@ -64,7 +65,7 @@ function AppRoutes() {
       <Route path="/settings"    element={<ProtectedRoute><Settings    /></ProtectedRoute>} />
       <Route path="/support"     element={<ProtectedRoute><Support     /></ProtectedRoute>} />
       <Route path="/pos-live-counter"    element={<ProtectedRoute><POSLiveCounter    /></ProtectedRoute>} />
-      <Route path="/invoice/:invoiceNo/view" element={<ProtectedRoute><InvoiceViewer /></ProtectedRoute>} />
+      <Route path="/invoice/:invoiceNo/view" element={<ProtectedRoute><AppLayout title="Invoice"><InvoiceViewer /></AppLayout></ProtectedRoute>} />
       <Route path="/staff"       element={<Navigate to="/settings?tab=staff" replace />} />
 
 

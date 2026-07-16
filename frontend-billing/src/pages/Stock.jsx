@@ -54,12 +54,6 @@ function deriveInv(p) {
   }
 }
 
-const defaultProduct = {
-  name: '', sku: '', barcode: '', category: '', unit: 'pcs',
-  min_stock: '', selling_price: '', wholesale_price: '', distributor_price: '', cost_price: '', opening_stock: '',
-  attributes: {},
-}
-
 const defaultAdjust = {
   product_id: '',
   movement_type: 'stock_in',
@@ -146,7 +140,6 @@ export default function Stock() {
   }
   const [showAdjustModal, setShowAdjustModal] = useState(false)
   const [showTransferModal, setShowTransferModal] = useState(false)
-  const [form, setForm]                     = useState(defaultProduct)
   const [adjustForm, setAdjustForm]         = useState(defaultAdjust)
   const [transferForm, setTransferForm]     = useState(defaultTransfer)
   
@@ -269,49 +262,11 @@ export default function Stock() {
   const lowStock  = products.filter(p => getStatus(p) === 'Low').length
   const outStock  = products.filter(p => getStatus(p) === 'Out').length
 
-  const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
-  const setAttributeField = (attr, v) => setForm(f => ({
-    ...f,
-    attributes: {
-      ...(f.attributes || {}),
-      [attr]: v
-    }
-  }))
   const setAdjField = (k, v) => setAdjustForm(f => ({ ...f, [k]: v }))
   const setTrsfField = (k, v) => setTransferForm(f => ({ ...f, [k]: v }))
 
-  const handleAddProduct = async (e) => {
-    e.preventDefault()
-    setSubmitting(true)
-    try {
-      const res = await authFetch('/billing/products', {
-        method: 'POST',
-        body: JSON.stringify({
-          ...form,
-          min_stock: parseFloat(form.min_stock) || 0,
-          selling_price: parseFloat(form.selling_price) || 0,
-          wholesale_price: parseFloat(form.wholesale_price) || 0,
-          distributor_price: parseFloat(form.distributor_price) || 0,
-          cost_price: parseFloat(form.cost_price) || 0,
-          opening_stock: parseFloat(form.opening_stock) || 0,
-          attributes: form.attributes || {},
-        }),
-      })
-      if (res.ok) {
-        setAlert({ type: 'success', msg: 'Product added successfully!' })
-        setShowAddModal(false)
-        setForm(defaultProduct)
-        load()
-      } else {
-        const err = await res.json().catch(() => ({}))
-        setAlert({ type: 'danger', msg: formatError(err, 'Failed to add product.') })
-      }
-    } catch {
-      setAlert({ type: 'danger', msg: 'Network error.' })
-    } finally {
-      setSubmitting(false)
-    }
-  }
+  // NOTE: the legacy inline add-product handler/form was removed (T5.3) —
+  // adding/editing products is owned by <ProductFormModal /> below.
 
   const handleAdjust = async (e) => {
     e.preventDefault()

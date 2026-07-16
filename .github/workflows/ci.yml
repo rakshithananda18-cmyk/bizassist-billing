@@ -81,7 +81,9 @@ jobs:
           DATABASE_URL: sqlite:///./test_bizassist.db
         run: |
           cd backend
-          MODULES="tests/test_discovery.py tests/test_routing_tiers.py tests/test_token_accounting.py tests/test_auth_logging.py"
+          # T2.5: realtime relay + sync modules included — these are the ones
+          # that hide real data-loss bugs when they flake.
+          MODULES="tests/test_discovery.py tests/test_routing_tiers.py tests/test_token_accounting.py tests/test_auth_logging.py tests/test_realtime_delta.py tests/test_realtime_sync.py tests/test_sync.py tests/test_sync_idempotency.py tests/test_sync_pull.py"
           echo "== 5x fixed order (pytest-randomly disabled) =="
           for i in $(seq 1 5); do
             echo "--- fixed run $i ---"

@@ -11,7 +11,7 @@ sys.path.insert(0, backend_path)
 from fastapi.testclient import TestClient
 from main_groq import app
 from database.db import SessionLocal
-from database.models import Customer, Product
+from database.models import Customer, Product, Invoice, InvoiceLineItem
 
 client = TestClient(app)
 
@@ -92,3 +92,74 @@ def test_migration_lifecycle():
     counts_after = r_count_after.json()
     assert counts_after.get("customers") == 1
     assert counts_after.get("products") == 1
+
+
+def test_migration_includes_invoice_line_items():
+    """Regression (July 2026, 'invoices arrive with empty products'): line-item
+    tables have no business_id column and used to export as [] — every
+    cloud→local / device migration silently dropped invoice items. They must
+    now be scoped through their parent document."""
+    owner = _signup("Line Item Source Shop")
+
+    db = SessionLocal()
+    try:
+        inv = Invoice(business_id=owner["bid"], invoice_id="LCL-OW-0001",
+                      customer="Walk-in", amount=120.0, status="paid",
+                      invoice_date="2026-07-16")
+        db.add(inv)
+        db.flush()
+        db.add(InvoiceLineItem(invoice_id=inv.id, product_name="Brownie Slab",
+                               quantity=2.0, unit_price=60.0))
+        db.commit()
+        inv_pk = inv.id
+    finally:
+        db.close()
+
+    # Export must contain the line item, scoped through its parent invoice.
+    r_export = client.get("/api/data-transfer/export", headers=owner["headers"])
+    assert r_export.status_code == 200, r_export.text
+    tables = r_export.json()["tables"]
+    assert len(tables.get("invoices", [])) == 1
+    lines = tables.get("invoice_line_items", [])
+    assert len(lines) == 1, "invoice_line_items missing from export"
+    assert lines[0]["product_name"] == "Brownie Slab"
+    assert lines[0]["invoice_id"] == inv_pk
+
+    # Count endpoint agrees.
+    r_count = client.get("/api/data-transfer/count", headers=owner["headers"])
+    assert r_count.status_code == 200
+    assert r_count.json().get("invoice_line_items") == 1
+
+    # Import into a clean business → the invoice arrives WITH its items.
+    owner_clean = _signup("Line Item Destination Shop")
+    imported_tables = {}
+    for table_name, rows in tables.items():
+        clean_rows = []
+        for r in rows:
+            new_row = dict(r)
+            if "business_id" in new_row:
+                new_row["business_id"] = owner_clean["bid"]
+            if table_name == "users":
+                new_row["id"] = owner_clean["bid"]
+            clean_rows.append(new_row)
+        imported_tables[table_name] = clean_rows
+
+    r_import = client.post("/api/data-transfer/import",
+                           headers=owner_clean["headers"],
+                           json={"tables": imported_tables})
+    assert r_import.status_code == 200, r_import.text
+
+    db = SessionLocal()
+    try:
+        dest_inv = (db.query(Invoice)
+                      .filter(Invoice.business_id == owner_clean["bid"],
+                              Invoice.invoice_id == "LCL-OW-0001")
+                      .first())
+        assert dest_inv is not None
+        items = (db.query(InvoiceLineItem)
+                   .filter(InvoiceLineItem.invoice_id == dest_inv.id)
+                   .all())
+        assert len(items) == 1, "imported invoice has no line items"
+        assert items[0].product_name == "Brownie Slab"
+    finally:
+        db.close()

@@ -3,8 +3,12 @@
  * Helpers for sharing public invoice links via WhatsApp or clipboard.
  */
 
+import { PUBLIC_WEB_URL } from '../config'
+
 export function buildPublicInvoiceLink(uid_token) {
-  return `${window.location.origin}/public/invoice/${uid_token}`
+  // ALWAYS the public web origin — on the desktop app window.location.origin
+  // is localhost/LAN, which the customer receiving the link cannot open.
+  return `${PUBLIC_WEB_URL}/public/invoice/${uid_token}`
 }
 
 export function buildWhatsAppLink(phone, message) {

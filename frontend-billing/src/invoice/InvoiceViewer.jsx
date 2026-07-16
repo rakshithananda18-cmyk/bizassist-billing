@@ -10,7 +10,7 @@ import { api } from '../api/client'
 import { logger } from '../utils/logger'
 import { resolveTemplate, templateOptions, FALLBACK_TEMPLATE } from './registry'
 import PrintPortal, { triggerPrint } from './PrintPortal'
-import { shareInvoice, buildWhatsAppLink } from './share'
+import { shareInvoice, buildWhatsAppLink, buildPublicInvoiceLink } from './share'
 import PageLoader from '../components/PageLoader'
 const LAST_USED_KEY = (bizId) => `invoice.template.${bizId || 'default'}`
 
@@ -59,9 +59,18 @@ class TemplateBoundary extends Component {
   }
 }
 
-export default function InvoiceViewer() {
-  const { invoiceNo } = useParams()
+export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedded = false, onBack = null }) {
+  // Embedded mode (e.g. inside the Payments page): the invoice number comes in
+  // as a prop and Back returns to the host page instead of navigating away.
+  // ALL toolbar functionality (templates, duplicate, credit note, set default,
+  // WhatsApp, share, PDF, print) is identical in both modes.
+  const params = useParams()
+  const invoiceNo = invoiceNoProp || params.invoiceNo
   const navigate = useNavigate()
+  const goBack = useCallback(() => {
+    if (onBack) onBack()
+    else navigate(-1)
+  }, [onBack, navigate])
   const [payload, setPayload] = useState(null)
   const [error, setError] = useState(null)
   const [template, setTemplate] = useState(null)   // resolved after payload load
@@ -74,8 +83,11 @@ export default function InvoiceViewer() {
     api.get(`/sales/${encodeURIComponent(invoiceNo)}/print-payload`)
       .then((data) => {
         if (!alive) return
-        if (data?.invoice?.public_url && data.invoice.public_url.startsWith('/')) {
-          data.invoice.public_url = `${window.location.origin}${data.invoice.public_url}`
+        if (data?.invoice?.uid_token) {
+          // Always rebuild against the PUBLIC web origin — the backend's
+          // FRONTEND_URL may be unset (relative path) and on the desktop app
+          // window.location.origin is localhost, which customers can't open.
+          data.invoice.public_url = buildPublicInvoiceLink(data.invoice.uid_token)
         }
         deepFreeze(data)
         setPayload(data)
@@ -141,7 +153,7 @@ export default function InvoiceViewer() {
 
   const onShareWhatsApp = useCallback(() => {
     if (!payload?.invoice?.uid_token) return alert("Invoice doesn't have a public link.")
-    const link = `${window.location.origin}/public/invoice/${payload.invoice.uid_token}`
+    const link = buildPublicInvoiceLink(payload.invoice.uid_token)
     const text = `Here is your invoice ${invoiceNo} for ${payload.totals?.total_amount}.\nView it here: ${link}`
     // If we had the customer phone we could pre-fill it here
     const waLink = buildWhatsAppLink(payload.buyer?.phone || '', text)
@@ -174,7 +186,7 @@ export default function InvoiceViewer() {
     return (
       <div className="invoice-viewer" data-testid="invoice-viewer-error" style={{ padding: 24 }}>
         <p>{error}</p>
-        <button className="btn" onClick={() => navigate(-1)}>Go back</button>
+        <button className="btn" onClick={goBack}>Go back</button>
       </div>
     )
   }
@@ -190,58 +202,259 @@ export default function InvoiceViewer() {
   )
 
   return (
-    <div className="invoice-viewer" data-testid="invoice-viewer">
+    <div className="invoice-viewer" data-testid="invoice-viewer" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* toolbar (hidden in print via .no-print) */}
       <div className="invoice-viewer-toolbar no-print" style={{
-        display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
-        padding: '10px 16px', position: 'sticky', top: 0, zIndex: 5,
-        background: 'var(--bg, #fdfdfc)', borderBottom: '1px solid var(--border, #c8c5be)',
+        display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap',
+        padding: '8px 14px', position: 'sticky', top: 0, zIndex: 5,
+        background: 'var(--bg-3)', borderBottom: '1px solid var(--border)',
       }}>
-        <button className="btn" onClick={() => navigate(-1)} aria-label="Back">←</button>
-        <strong style={{ marginRight: 8 }}>{payload.invoice.title} {payload.invoice.number}</strong>
+        {/* ← Back + title */}
+        <button className="btn btn-ghost btn-icon" onClick={goBack} aria-label="Back" style={{ flexShrink: 0 }}>←</button>
+        <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }}>
+          {payload.invoice.title} {payload.invoice.number}
+        </span>
 
-        <div role="tablist" aria-label="Invoice template" style={{ display: 'flex', gap: 4 }}>
+        {/* divider */}
+        <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
+
+        {/* Template tabs */}
+        <div role="tablist" aria-label="Invoice template" style={{ display: 'flex', gap: 3, background: 'var(--bg-4, var(--bg-1))', borderRadius: 'var(--radius-sm)', padding: '3px' }}>
           {templateOptions().map((opt) => (
-            <button key={opt.key} role="tab" aria-selected={entry.key === opt.key}
-                    className="btn" title={opt.description}
-                    onClick={() => selectTemplate(opt.key)}
-                    style={entry.key === opt.key ? {
-                      background: 'var(--accent, #c15f3c)', color: '#fff',
-                    } : undefined}>
+            <button
+              key={opt.key} role="tab" aria-selected={entry.key === opt.key}
+              title={opt.description}
+              onClick={() => selectTemplate(opt.key)}
+              style={{
+                fontSize: '0.78rem', fontWeight: 600, padding: '4px 10px',
+                borderRadius: 'calc(var(--radius-sm) - 2px)',
+                border: 'none', cursor: 'pointer',
+                background: entry.key === opt.key ? 'var(--accent)' : 'transparent',
+                color: entry.key === opt.key ? '#fff' : 'var(--text-secondary)',
+                transition: 'background 0.15s, color 0.15s',
+              }}>
               {opt.label}
             </button>
           ))}
         </div>
 
         <span style={{ flex: 1 }} />
-        <button className="btn" onClick={onDuplicate}>Duplicate</button>
-        <button className="btn" onClick={onCreditNote}>Credit Note</button>
-        <button className="btn" onClick={onSetDefault} disabled={savingDefault}>
-          {savingDefault ? 'Saving…' : 'Set as default'}
-        </button>
-        <button className="btn" onClick={onShareWhatsApp} style={{ background: '#25D366', color: '#fff', border: 'none' }}>WhatsApp</button>
-        <button className="btn" onClick={onShare}>Share Link</button>
-        <button className="btn" onClick={onDownloadPdf}>Download PDF</button>
-        <button className="btn" data-testid="invoice-print-btn" onClick={onPrint}
-                style={{ background: 'var(--accent, #c15f3c)', color: '#fff' }}>
+
+        {/* Secondary actions */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button className="btn btn-ghost btn-sm" onClick={onDuplicate}>Duplicate</button>
+          <button className="btn btn-ghost btn-sm" onClick={onCreditNote}>Credit Note</button>
+          <button className="btn btn-ghost btn-sm" onClick={onSetDefault} disabled={savingDefault}>
+            {savingDefault ? 'Saving…' : 'Set as default'}
+          </button>
+        </div>
+
+        {/* divider */}
+        <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
+
+        {/* Share actions */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            className="btn btn-sm"
+            onClick={onShareWhatsApp}
+            style={{ background: '#25D366', color: '#fff', border: 'none', fontWeight: 600 }}>
+            WhatsApp
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={onShare}>Share Link</button>
+          <button className="btn btn-ghost btn-sm" onClick={onDownloadPdf}>Download PDF</button>
+        </div>
+
+        {/* Primary: Print */}
+        <button
+          className="btn btn-primary btn-sm"
+          data-testid="invoice-print-btn"
+          onClick={onPrint}>
           Print
         </button>
       </div>
 
-      {/* on-screen preview */}
-      <div className="invoice-viewer-preview no-print" style={{
-        padding: '20px 8px', display: 'flex', justifyContent: 'flex-start', // Use flex-start so it doesn't get cut off on left when scrolling
-        background: 'var(--bg-3, #f4f4f1)', minHeight: '80vh',
-        overflowX: 'auto', WebkitOverflowScrolling: 'touch',
-      }}>
+      {/* ── Body: preview + side panel ────────────────────────────────────────── */}
+      <div className="no-print" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+
+        {/* Invoice preview (scrollable) */}
         <div style={{
-          boxShadow: '0 4px 16px rgba(26,23,20,0.10)', background: '#fff',
-          width: '100%', maxWidth: 820,
-          minWidth: entry.key.includes('thermal') ? 'auto' : '800px',
-          margin: '0 auto', // Centers the item if the screen is wider than minWidth
+          flex: 1, overflowY: 'auto', overflowX: 'auto',
+          padding: '24px 20px', background: 'var(--bg)',
+          WebkitOverflowScrolling: 'touch',
         }}>
-          {body}
+          <div style={{
+            boxShadow: 'var(--shadow-md)', background: '#fff',
+            width: '100%', maxWidth: 820,
+            minWidth: entry.key.includes('thermal') ? 'auto' : '800px',
+            margin: '0 auto', borderRadius: 'var(--radius-sm)',
+          }}>
+            {body}
+          </div>
         </div>
+
+        {/* ── Right side panel (standalone mode only) ── */}
+        {!embedded && (() => {
+          const tot = payload.totals || {}
+          const buyer = payload.buyer || {}
+          const lines = payload.lines || []
+          const fmtAmt = (n) => n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '₹0'
+          const balance = Math.max(0, (tot.total_amount || 0) - (tot.paid_amount || 0))
+          const isPaid = balance <= 0
+          return (
+            <div style={{
+              width: 'min(340px, 38vw)', flexShrink: 0,
+              borderLeft: '1px solid var(--border)',
+              background: 'var(--bg-2)',
+              display: 'flex', flexDirection: 'column',
+              overflowY: 'auto',
+            }}>
+              <style>{`
+                .ivp-label { font-size: 0.67rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 8px; display: flex; align-items: center; gap: 5px; }
+                .ivp-label::after { content: ''; flex: 1; height: 1px; background: var(--border); margin-left: 4px; }
+                .ivp-card { background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 13px 15px; display: flex; flex-direction: column; gap: 5px; }
+                .ivp-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; padding: 2px 0; }
+                .ivp-row .lbl { color: var(--text-secondary); }
+                .ivp-row .val { font-weight: 600; color: var(--text-primary); }
+              `}</style>
+
+              <div style={{ padding: '16px 16px 20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+                {/* — Customer — */}
+                <div>
+                  <div className="ivp-label">Customer</div>
+                  <div className="ivp-card" style={{ gap: 5 }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                      {buyer.name || 'Walk-in Customer'}
+                    </div>
+                    {buyer.phone && (
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>📞 {buyer.phone}</div>
+                    )}
+                    {buyer.place_of_supply && (
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>📍 {buyer.place_of_supply}</div>
+                    )}
+                    {payload.invoice?.payment_mode && (
+                      <div style={{ marginTop: 4 }}>
+                        <span style={{
+                          fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px',
+                          borderRadius: '99px', background: 'var(--accent-dim)',
+                          color: 'var(--accent)', border: '1px solid var(--border-subtle)',
+                          textTransform: 'uppercase', letterSpacing: '0.5px',
+                        }}>
+                          {payload.invoice.payment_mode}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* — Items — */}
+                <div>
+                  <div className="ivp-label">
+                    Items
+                    {lines.length > 0 && (
+                      <span style={{
+                        fontSize: '0.64rem', fontWeight: 700, padding: '1px 6px',
+                        borderRadius: '99px', background: 'var(--bg-3)',
+                        color: 'var(--text-muted)', border: '1px solid var(--border)',
+                      }}>{lines.length}</span>
+                    )}
+                  </div>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                    {lines.length === 0 ? (
+                      <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '18px 12px', fontSize: '0.8rem', background: 'var(--bg-1)' }}>
+                        No items on this invoice
+                      </div>
+                    ) : (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.79rem' }}>
+                        <thead>
+                          <tr style={{ background: 'var(--bg-3)', borderBottom: '1px solid var(--border)' }}>
+                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Item</th>
+                            <th style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Qty</th>
+                            <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lines.map((line, i) => (
+                            <tr key={i} style={{ borderBottom: i < lines.length - 1 ? '1px solid var(--border)' : 'none', background: i % 2 === 0 ? 'var(--bg-1)' : 'var(--bg-2)' }}>
+                              <td style={{ padding: '8px 10px', color: 'var(--text-primary)', fontWeight: 500, lineHeight: 1.3 }}>
+                                <div>{line.product_name}</div>
+                                {line.unit_price && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 1 }}>{fmtAmt(line.unit_price)} / {line.unit || 'Nos'}</div>}
+                              </td>
+                              <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{line.quantity} {line.unit || 'Nos'}</td>
+                              <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>{fmtAmt(line.line_total)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+
+                {/* — Summary — */}
+                <div>
+                  <div className="ivp-label">Summary</div>
+                  <div className="ivp-card">
+                    {tot.subtotal > 0 && (
+                      <div className="ivp-row"><span className="lbl">Subtotal</span><span className="val">{fmtAmt(tot.subtotal)}</span></div>
+                    )}
+                    {tot.discount_total > 0 && (
+                      <div className="ivp-row"><span className="lbl">Discount</span><span style={{ fontWeight: 600, color: 'var(--success)' }}>−{fmtAmt(tot.discount_total)}</span></div>
+                    )}
+                    {tot.cgst_total > 0 && (
+                      <div className="ivp-row"><span className="lbl">CGST</span><span className="val">{fmtAmt(tot.cgst_total)}</span></div>
+                    )}
+                    {tot.sgst_total > 0 && (
+                      <div className="ivp-row"><span className="lbl">SGST</span><span className="val">{fmtAmt(tot.sgst_total)}</span></div>
+                    )}
+                    {tot.igst_total > 0 && (
+                      <div className="ivp-row"><span className="lbl">IGST</span><span className="val">{fmtAmt(tot.igst_total)}</span></div>
+                    )}
+                    {tot.round_off != null && tot.round_off !== 0 && (
+                      <div className="ivp-row"><span className="lbl">Round Off</span><span className="val">{tot.round_off > 0 ? '+' : ''}{fmtAmt(tot.round_off)}</span></div>
+                    )}
+                    <div style={{ height: 1, background: 'var(--border)', margin: '5px 0' }} />
+                    {/* Grand total strip */}
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      background: 'var(--accent-dim)', border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-sm)', padding: '9px 12px', margin: '2px -1px 0',
+                    }}>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>Grand Total</span>
+                      <span style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--accent)' }}>{fmtAmt(tot.total_amount)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* — Payment status — */}
+                {tot.total_amount > 0 && (
+                  <div>
+                    <div className="ivp-label">Payment</div>
+                    <div className="ivp-card" style={{ gap: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Amount Paid</span>
+                        <span style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--success)' }}>{fmtAmt(tot.paid_amount || 0)}</span>
+                      </div>
+                      <div style={{ height: 5, background: 'var(--bg-3)', borderRadius: '99px', overflow: 'hidden' }}>
+                        <div style={{
+                          height: '100%', borderRadius: '99px', transition: 'width 0.4s ease',
+                          width: `${Math.min(100, ((tot.paid_amount || 0) / tot.total_amount) * 100)}%`,
+                          background: isPaid ? 'var(--success)' : 'var(--warning)',
+                        }} />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Balance Due</span>
+                        <span style={{ fontSize: '0.86rem', fontWeight: 700, color: isPaid ? 'var(--success)' : 'var(--danger)' }}>
+                          {isPaid ? '✓ Paid' : fmtAmt(balance)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            </div>
+          )
+        })()}
       </div>
 
       {/* print-only copy (portal outside the app layout) */}

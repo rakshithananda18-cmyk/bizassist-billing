@@ -56,6 +56,69 @@ def test_reclaim_rekeys_orphan_and_logs_in():
     assert client.post("/login", json={"username": uname, "password": "TestPass123!"}).status_code == 401
 
 
+def test_reclaim_rekey_purges_staff_and_data_and_writes_tombstone():
+    """T1.3 (MASTER_REVIEW §9.A): delete-and-recreate lifecycle must leave a
+    CLEAN business — re-key + 0 stale staff + 0 stale data + a tombstone row
+    recording the retired BizID."""
+    uname = f"own_{uuid.uuid4().hex[:8]}"
+    r = _signup(uname, public_id="BA-T13-OLD")
+    assert r.status_code == 200, r.text
+    owner_tok = r.json()["token"]
+    auth = {"Authorization": f"Bearer {owner_tok}"}
+
+    # Seed a staff sub-account + a data row under the OLD identity.
+    rs = client.post("/staff", json={
+        "username": "counter_1", "password": "StaffPass123!", "role": "cashier",
+    }, headers=auth)
+    assert rs.status_code == 201, rs.text
+    rp = client.post("/products", json={
+        "name": "Stale Widget", "selling_price": 10.0,
+    }, headers=auth)
+    assert rp.status_code in (200, 201), rp.text
+
+    # Cloud account deleted + re-registered → reclaim onto the NEW BizID.
+    rc = client.post("/api/auth/reclaim_local", json={
+        "username": uname,
+        "password": "NewPass456!",
+        "public_id": "BA-T13-NEW",
+        "business_name": "Clean Slate Co",
+    })
+    assert rc.status_code == 200, rc.text
+    assert rc.json()["public_id"] == "BA-T13-NEW"
+    new_tok = rc.json()["token"]
+    new_auth = {"Authorization": f"Bearer {new_tok}"}
+
+    # Clean re-key: new password works, old refused.
+    assert client.post("/login", json={"username": uname, "password": "NewPass456!"}).status_code == 200
+    assert client.post("/login", json={"username": uname, "password": "TestPass123!"}).status_code == 401
+
+    # 0 stale staff — the sub-account was purged with the old tenant.
+    staff_list = client.get("/staff", headers=new_auth)
+    assert staff_list.status_code == 200, staff_list.text
+    assert staff_list.json() == []
+
+    # 0 stale data — no product from the old identity survives.
+    prods = client.get("/products", headers=new_auth)
+    assert prods.status_code == 200, prods.text
+    page = prods.json()
+    assert page["total"] == 0, f"stale products survived the re-key: {page['items']}"
+
+    # Tombstone row records the RETIRED BizID with reason 'reclaim_rekey'.
+    from database.db import SessionLocal
+    from database.models import DeletedBusiness
+    s = SessionLocal()
+    try:
+        tomb = (s.query(DeletedBusiness)
+                  .filter(DeletedBusiness.public_id == "BA-T13-OLD")
+                  .order_by(DeletedBusiness.id.desc())
+                  .first())
+        assert tomb is not None, "expected a DeletedBusiness tombstone for the retired BizID"
+        assert tomb.reason == "reclaim_rekey"
+        assert tomb.username == uname
+    finally:
+        s.close()
+
+
 def test_reclaim_requires_public_id_and_existing_account():
     # Missing public_id → 400.
     r = client.post("/api/auth/reclaim_local", json={

@@ -890,10 +890,13 @@ def _sync_subscription_from_cloud(user: User, db: Session, force: bool = False):
     if _DB_MODE != "local" or not db:
         return
 
-    # Check if hosting mode is hybrid
-    s = _get_user_settings(user, db)
-    if s.get("general", {}).get("hosting_mode") != "hybrid":
-        return
+    # NOTE (bugfix 2026-07-16): this used to bail unless the LOCAL record's
+    # `general.hosting_mode == "hybrid"`. But a fresh-device mirror created by
+    # the login fallback keeps the default 'local' (only the signup path PUTs
+    # 'hybrid'), so the Pro plan never propagated to the desktop even though a
+    # cloud sync token was provisioned at login. A stored cloud token is the
+    # real "this business is cloud-linked" signal — pure-local accounts have no
+    # token and return below without any network call.
 
     # ── Cooldown guard: skip cloud call if checked recently ──────────────────
     business_id = user.parent_business_id or user.id

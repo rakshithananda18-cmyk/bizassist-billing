@@ -63,6 +63,19 @@ jobs:
           mkdir -p desktop/resources
           cp -R backend/dist/bizassist-backend desktop/resources/backend
 
+      # T3.3 guard: the desktop bundle must NEVER ship a .env (AI keys,
+      # JWT_SECRET). CI checkouts can't contain one (.env is gitignored), but
+      # this keeps local/laptop builds honest too and fails loudly on regress.
+      - name: Assert no .env in packaged backend
+        shell: bash
+        run: |
+          FOUND=$(find desktop/resources/backend -name ".env*" -not -name "*.example" | tee /dev/stderr | wc -l)
+          if [ "$FOUND" -ne 0 ]; then
+            echo "::error::.env file(s) found inside the packaged backend — secrets must not ship in the installer"
+            exit 1
+          fi
+          echo "OK: no .env in the desktop backend bundle"
+
       # Boot the frozen exe with a CLEAN env (no .env, no secrets) exactly like
       # a fresh user install — catches import-time crashes (JWT_SECRET,
       # GROQ_API_KEY, ...) that dev machines mask because their .env exists.

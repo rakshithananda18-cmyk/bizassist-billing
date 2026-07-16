@@ -180,6 +180,19 @@ def _row_to_dict(row) -> dict:
     return d
 
 
+# Child line-item tables have NO business_id column — they are scoped through
+# their parent document. Without this map they exported as [] and every
+# cloud→local / device-to-device migration silently dropped invoice products
+# (bug: "invoices arrive with empty items", July 2026).
+# table → (parent table, FK column on the child pointing at parent.id)
+_CHILD_SCOPES: dict[str, tuple[str, str]] = {
+    "invoice_line_items":          ("invoices",          "invoice_id"),
+    "purchase_invoice_line_items": ("purchase_invoices", "purchase_invoice_id"),
+    "purchase_order_line_items":   ("purchase_orders",   "purchase_order_id"),
+    "stock_transfer_line_items":   ("stock_transfers",   "transfer_id"),
+}
+
+
 def _fetch_table(db: Session, table_name: str, business_id: int) -> list[dict]:
     """
     Fetch all rows belonging to `business_id` from `table_name`.
@@ -187,7 +200,8 @@ def _fetch_table(db: Session, table_name: str, business_id: int) -> list[dict]:
     Strategy (in order):
       1. Table is `users` → id = business_id OR parent_business_id = business_id.
       2. Table has a `business_id` column → filter by it.
-      3. No usable filter → return empty list (system/global table).
+      3. Table is a child line-item table → scope through its parent document.
+      4. No usable filter → return empty list (system/global table).
     """
     try:
         insp = inspect(db.bind)
@@ -209,6 +223,18 @@ def _fetch_table(db: Session, table_name: str, business_id: int) -> list[dict]:
                 {"bid": business_id},
             )
             return [_row_to_dict(r) for r in result]
+
+        if table_name in _CHILD_SCOPES:
+            parent, fk = _CHILD_SCOPES[table_name]
+            if parent in _existing_tables(db) and fk in cols:
+                result = db.execute(
+                    text(
+                        f'SELECT * FROM "{table_name}" WHERE "{fk}" IN '
+                        f'(SELECT id FROM "{parent}" WHERE business_id = :bid)'
+                    ),
+                    {"bid": business_id},
+                )
+                return [_row_to_dict(r) for r in result]
 
         # No business_id column – skip
         return []
@@ -898,7 +924,21 @@ def count_records(
                 )
                 counts[table_name] = result.scalar() or 0
 
-            # Tables without business_id are not counted (system/global)
+            elif table_name in _CHILD_SCOPES:
+                # Line-item children: count through the parent document, same
+                # scoping as _fetch_table (they have no business_id column).
+                parent, fk = _CHILD_SCOPES[table_name]
+                if parent in existing and fk in col_names:
+                    result = db.execute(
+                        text(
+                            f'SELECT COUNT(*) FROM "{table_name}" WHERE "{fk}" IN '
+                            f'(SELECT id FROM "{parent}" WHERE business_id = :bid)'
+                        ),
+                        {"bid": business_id},
+                    )
+                    counts[table_name] = result.scalar() or 0
+
+            # Other tables without business_id are not counted (system/global)
 
         except Exception as exc:
             logger.warning(
