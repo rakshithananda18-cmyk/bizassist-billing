@@ -1,7 +1,7 @@
 {
   "name": "bizassist-desktop",
   "productName": "BizAssist",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "BizAssist — Offline-first Billing & POS",
   "main": "src/main.js",
   "author": "BizAssist",
@@ -34,8 +34,14 @@
       "package.json"
     ],
     "extraResources": [
-      { "from": "resources/backend", "to": "backend" },
-      { "from": "resources/renderer", "to": "renderer" }
+      {
+        "from": "resources/backend",
+        "to": "backend"
+      },
+      {
+        "from": "resources/renderer",
+        "to": "renderer"
+      }
     ],
     "asar": true,
     "publish": [
@@ -47,7 +53,14 @@
       }
     ],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "build/icon.png",
       "artifactName": "BizAssist-Setup-${version}.${ext}"
     },
@@ -63,15 +76,29 @@
     },
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] },
-        { "target": "zip", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "icon": "build/icon.png",
       "category": "public.app-category.business",
       "artifactName": "BizAssist-${version}-${arch}.${ext}"
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "icon": "build/icon.png",
       "category": "Office"
     }
