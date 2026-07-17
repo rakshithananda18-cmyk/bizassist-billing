@@ -3,6 +3,7 @@ core/order/service.py
 =====================
 Domain service logic for B2B Ordering and Catalog visibility.
 """
+from services.dates import utc_now
 import logging
 import random
 from datetime import datetime
@@ -112,7 +113,7 @@ def create_order(
         raise ValueError("Order must contain at least one item")
         
     # Generate unique order number (e.g. ORD-20260616-XXXX)
-    date_str = datetime.utcnow().strftime("%Y%m%d")
+    date_str = utc_now().strftime("%Y%m%d")
     chars = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
     while True:
         suffix = "".join(random.choice(chars) for _ in range(4))
@@ -190,7 +191,7 @@ def create_order(
         buyer_business_id=buyer_business_id,
         seller_business_id=seller_business_id,
         order_number=order_num,
-        order_date=datetime.utcnow().strftime("%Y-%m-%d"),
+        order_date=utc_now().strftime("%Y-%m-%d"),
         status="pending",
         subtotal=subtotal,
         cgst_total=cgst_total,
@@ -239,7 +240,7 @@ def transition_order_status(db: Session, business_id: int, order_id: int, new_st
             raise PermissionError("Sellers reject orders; buyers cancel them")
             
     order.status = new_status
-    order.updated_at = datetime.utcnow()
+    order.updated_at = utc_now()
     db.commit()
     db.refresh(order)
 

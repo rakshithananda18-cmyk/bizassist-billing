@@ -30,6 +30,7 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta
+from services.dates import utc_now
 
 logger = logging.getLogger("bizassist.telemetry_maintenance")
 
@@ -88,7 +89,7 @@ def build_archive(db, batch: int = 5000):
 
     buf = io.BytesIO()
     max_id = 0
-    stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    stamp = utc_now().strftime("%Y%m%d-%H%M%S")
     with gzip.GzipFile(fileobj=buf, mode="wb", filename=f"telemetry-{stamp}.jsonl") as gz:
         last_id = 0
         while True:
@@ -185,7 +186,7 @@ def run_telemetry_db_maintenance():
     db = SessionLocal()
     try:
         # 1. Retention purge
-        cutoff = datetime.utcnow() - timedelta(days=RETENTION_DAYS)
+        cutoff = utc_now() - timedelta(days=RETENTION_DAYS)
         n = (db.query(TelemetryEvent)
                .filter(TelemetryEvent.received_at < cutoff)
                .delete(synchronize_session=False))

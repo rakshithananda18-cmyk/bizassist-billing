@@ -11,7 +11,7 @@ in a dozen places (H3). This is the single source of truth: every caller uses
 Returns a naive `datetime` (most callers do date arithmetic like `(today - due)
 .days` or `today <= exp <= soon`). Use `parse_date_only()` when you want a `date`.
 """
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Optional
 
 # Order matters for separator-ambiguous inputs: ISO first, then day-first
@@ -50,3 +50,16 @@ def parse_date_only(value) -> Optional[date]:
     """Like parse_date() but returns a `date` (or None)."""
     dt = parse_date(value)
     return dt.date() if dt else None
+
+
+def utc_now() -> datetime:
+    """Naive UTC "now" — drop-in replacement for the deprecated `datetime.utcnow()`.
+
+    Deliberately NAIVE: every stored timestamp and comparison in the app is
+    naive-UTC (SQLite hands back naive datetimes; all column defaults are
+    naive), so returning an aware datetime here would raise on the first
+    aware-vs-naive comparison. This helper isolates the Python-3.12+
+    deprecation in ONE place; the aware-everywhere migration is a schema
+    project (MASTER_REVIEW §2.5), not a find-and-replace.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)

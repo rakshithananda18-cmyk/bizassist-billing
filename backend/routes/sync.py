@@ -10,6 +10,7 @@ Exposes:
   - POST /api/sync/flush       (Local) Trigger immediate outbox sync flush
 """
 
+from services.dates import utc_now
 import logging
 import json
 from datetime import datetime, timezone
@@ -345,7 +346,7 @@ def push_changes(
                         cloud_updated_at=cloud_updated_at,
                         local_payload=json.dumps(data, default=str),
                         cloud_payload=json.dumps(_row_to_dict(existing), default=str),
-                        resolved_at=datetime.utcnow(),
+                        resolved_at=utc_now(),
                         resolution="cloud_won"
                     )
                     db.add(conflict)

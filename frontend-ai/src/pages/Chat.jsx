@@ -364,7 +364,10 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
       })
       if (!res.ok) throw new Error('preview unavailable')
       const preview = await res.json()
-      setActionPreview({ ...preview, _action: actionKey, _label: label, _params: params })
+      // _rid: one stable idempotency key per confirm intent — a double-clicked
+      // confirm or a retried request replays the stored response server-side.
+      const rid = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : `${Date.now()}-${Math.random()}`
+      setActionPreview({ ...preview, _action: actionKey, _label: label, _params: params, _rid: rid })
     } catch {
       showAlert('Could not prepare that action. Please try again.')
     } finally {
@@ -379,10 +382,14 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
     try {
       const res = await authFetch(`${API_BASE}/action/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: p._action, params: p._params, session_id: activeId, question: p._label || p.title }),
+        headers: { 'Content-Type': 'application/json', 'X-Client-Request-Id': p._rid },
+        body: JSON.stringify({ action: p._action, params: p._params, session_id: activeId, question: p._label || p.title, confirm_token: p.confirm_token }),
       })
-      if (!res.ok) throw new Error('execute failed')
+      if (!res.ok) {
+        let detail = ''
+        try { detail = (await res.json()).detail || '' } catch { /* non-JSON */ }
+        throw new Error(detail || 'execute failed')
+      }
       const data = await res.json()
       if (data.session_id && data.session_id !== activeId) {
         setActiveId(data.session_id)
@@ -397,8 +404,10 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
         { role: 'assistant', content: data.markdown || 'Done.', source: 'action' },
       ])
       setActionPreview(null)
-    } catch {
-      showAlert('The action could not be completed. Please try again.')
+    } catch (e) {
+      showAlert(e && e.message && e.message !== 'execute failed'
+        ? e.message
+        : 'The action could not be completed. Please try again.')
     } finally {
       setActionBusy(false)
     }

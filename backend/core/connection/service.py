@@ -3,6 +3,7 @@ core/connection/service.py
 ==========================
 Domain service logic for B2B Connections and Codes.
 """
+from services.dates import utc_now
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from core.models import B2BConnection, B2BInviteCode
@@ -12,7 +13,7 @@ from database.models import User
 def create_connection_code(db: Session, seller_business_id: int, expires_in_hours: int = 24) -> B2BInviteCode:
     """Generate a temporary single-use connection code for a seller."""
     code_str = generate_connection_code(db)
-    expires_at = datetime.utcnow() + timedelta(hours=expires_in_hours)
+    expires_at = utc_now() + timedelta(hours=expires_in_hours)
     
     code_obj = B2BInviteCode(
         seller_business_id=seller_business_id,
@@ -37,7 +38,7 @@ def redeem_connection_code(db: Session, buyer_business_id: int, code: str) -> B2
     if code_obj.is_used:
         raise ValueError("This connection code has already been used")
         
-    if code_obj.expires_at < datetime.utcnow():
+    if code_obj.expires_at < utc_now():
         raise ValueError("This connection code has expired")
         
     seller_id = code_obj.seller_business_id
@@ -52,7 +53,7 @@ def redeem_connection_code(db: Session, buyer_business_id: int, code: str) -> B2
     
     if conn:
         conn.status = "accepted"
-        conn.updated_at = datetime.utcnow()
+        conn.updated_at = utc_now()
     else:
         conn = B2BConnection(
             seller_business_id=seller_id,
@@ -102,7 +103,7 @@ def update_connection_policy(
     conn.credit_limit = max(0.0, float(credit_limit))
     conn.stock_visibility = stock_visibility
     conn.catalog_category = catalog_category
-    conn.updated_at = datetime.utcnow()
+    conn.updated_at = utc_now()
     
     db.commit()
     db.refresh(conn)
@@ -120,7 +121,7 @@ def revoke_connection(db: Session, business_id: int, connection_id: int) -> B2BC
         raise PermissionError("Not authorized to revoke this connection")
         
     conn.status = "revoked"
-    conn.updated_at = datetime.utcnow()
+    conn.updated_at = utc_now()
     
     db.commit()
     db.refresh(conn)
@@ -159,7 +160,7 @@ def create_direct_connection(
     
     if conn:
         conn.status = "accepted"
-        conn.updated_at = datetime.utcnow()
+        conn.updated_at = utc_now()
     else:
         conn = B2BConnection(
             seller_business_id=seller_id,

@@ -16,6 +16,7 @@ Contract rules (plan §Phase-1):
     same invoice hash identically (the e2e "switching never mutates" check)
   • every build emits one structured `payload_built` log line
 """
+from services.dates import utc_now
 import hashlib
 import json
 import logging
@@ -31,7 +32,7 @@ logger = logging.getLogger("bizassist.invoice_render")
 PAYLOAD_VERSION = 1
 
 # ── Local-time rendering ─────────────────────────────────────────────────────
-# Timestamps are STORED as naive UTC (TimestampMixin/datetime.utcnow). Printing
+# Timestamps are STORED as naive UTC (TimestampMixin/utc_now). Printing
 # them raw put UTC on invoices — 5h30 behind the merchant's wall clock. Render
 # in the business timezone (env-tunable; the scheduler already assumes IST).
 try:
@@ -445,7 +446,7 @@ def build_print_payload(db, *, business_id: int, invoice_no: str, user_id=None) 
         "meta": {
             "business_type": business_type,
             "template_default": pr.get("invoice_template", "classic"),
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": utc_now().isoformat() + "Z",
             "payload_hash": _payload_hash(inv.invoice_id, totals, lines),
         },
     }

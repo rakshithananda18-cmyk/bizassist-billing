@@ -1,0 +1,41 @@
+{"q": "hi", "tier": "CONVERSATIONAL", "handler": null}
+{"q": "thanks!", "tier": "CONVERSATIONAL", "handler": null}
+{"q": "good morning", "tier": "CONVERSATIONAL", "handler": null}
+{"q": "what is my total revenue", "tier": "DIRECT", "handler": "total_revenue"}
+{"q": "how much revenue did I make", "tier": "DIRECT", "handler": "total_revenue"}
+{"q": "total overdue amount", "tier": "DIRECT", "handler": "overdue_amount"}
+{"q": "how much is overdue", "tier": "DIRECT", "handler": "overdue_amount"}
+{"q": "show all overdue invoices", "tier": "DIRECT", "handler": "overdue_list"}
+{"q": "list pending invoices", "tier": "DIRECT", "handler": "pending_list"}
+{"q": "who are my top customers", "tier": "DIRECT", "handler": "top_customers"}
+{"q": "top 5 customers by revenue", "tier": "DIRECT", "handler": "top_customers"}
+{"q": "who owes me the most money", "tier": "DIRECT", "handler": "top_debtors"}
+{"q": "biggest debtors", "tier": "DIRECT", "handler": "top_debtors"}
+{"q": "how many invoices do I have", "tier": "DIRECT", "handler": "invoice_count"}
+{"q": "how many products are in stock", "tier": "DIRECT", "handler": "inventory_count"}
+{"q": "which products are low on stock", "tier": "DIRECT", "handler": "low_stock"}
+{"q": "what needs reordering", "tier": "DIRECT", "handler": "low_stock"}
+{"q": "what is expiring soon", "tier": "DIRECT", "handler": "expiring_soon"}
+{"q": "items expiring in 30 days", "tier": "DIRECT", "handler": "expiring_soon"}
+{"q": "business summary", "tier": "DIRECT", "handler": "business_summary"}
+{"q": "what are my profit margins", "tier": "DIRECT", "handler": "profit_summary"}
+{"q": "tell me about customer Sharma & Sons", "tier": "DIRECT", "handler": "client_summary"}
+{"q": "why did sales drop this month", "tier": "AI_COMPLEX", "handler": null}
+{"q": "analyze my business performance and suggest improvements", "tier": "AI_COMPLEX", "handler": null}
+{"q": "what should I do to improve cash flow", "tier": "AI_COMPLEX", "handler": null}
+{"q": "compare this month vs last month and explain the trend", "tier": "AI_COMPLEX", "handler": null}
+{"q": "draft a polite payment reminder for Acme", "tier": "AI_SIMPLE", "handler": null}
+{"q": "write a whatsapp message announcing a diwali offer", "tier": "AI_SIMPLE", "handler": null}
+{"q": "what were my sales on 15 January 2025", "tier": "AI_SIMPLE", "handler": null}
+{"q": "did invoice 4521 get paid", "tier": "AI_SIMPLE", "handler": null}
+{"q": "good evening", "tier": "CONVERSATIONAL", "handler": null}
+{"q": "why has revenue dropped compared to diwali season", "tier": "AI_COMPLEX", "handler": null}
+{"q": "what is my sales growth", "tier": "DIRECT", "handler": "sales_growth"}
+{"q": "what is my dso", "tier": "DIRECT", "handler": "dso_summary"}
+{"q": "which customers stopped buying", "tier": "DIRECT", "handler": "dormant_customers"}
+{"q": "best selling products", "tier": "DIRECT", "handler": "product_performance"}
+{"q": "which products are slow-moving", "tier": "DIRECT", "handler": "product_performance"}
+{"q": "customers by profit", "tier": "DIRECT", "handler": "customer_margins"}
+{"q": "forecast next month sales", "tier": "AI_COMPLEX", "handler": null}
+{"q": "give me a growth plan for next quarter", "tier": "AI_COMPLEX", "handler": null}
+{"q": "recommend how to reduce dead stock capital", "tier": "AI_COMPLEX", "handler": null}

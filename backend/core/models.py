@@ -23,6 +23,7 @@ Tables here:
   ProductBarcode    one product → many codes   (Phase 1)
   BusinessSettings  per-vertical template config (Phase 1B)
 """
+from services.dates import utc_now
 import uuid
 from datetime import datetime
 
@@ -88,7 +89,7 @@ class StockLedger(Base, TimestampMixin):
     batch_no       = Column(String,  nullable=True, index=True)
     expiry_date    = Column(String,  nullable=True)
 
-    created_at     = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at     = Column(DateTime, default=utc_now, index=True)
 
     __table_args__ = (
         Index("ix_stock_ledger_biz_product", "business_id", "product_id"),
@@ -133,7 +134,7 @@ class ProductBarcode(Base, TimestampMixin):
     label       = Column(String,  nullable=True)         # e.g. "old pack", "2025 carton"
     source      = Column(String,  nullable=True)         # 'manual'|'scan'|'purchase'|'import'
 
-    created_at  = Column(DateTime, default=datetime.utcnow)
+    created_at  = Column(DateTime, default=utc_now)
 
 
 # ---------------------------------------------------------------------------
@@ -170,8 +171,8 @@ class BusinessSettings(Base, TimestampMixin):
     # resolved lazily, so no backfill is needed and nothing existing breaks.
     business_types = Column(Text,  nullable=True)                       # JSON: ["supermarket", "repair", …]
 
-    created_at   = Column(DateTime, default=datetime.utcnow)
-    updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at   = Column(DateTime, default=utc_now)
+    updated_at   = Column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +217,7 @@ class InvoicePayment(Base, TimestampMixin):
     # collections during a shift count toward its drawer too. Nullable.
     shift_id        = Column(Integer, ForeignKey("register_shifts.id"), nullable=True, index=True)
 
-    created_at      = Column(DateTime, default=datetime.utcnow)
+    created_at      = Column(DateTime, default=utc_now)
 
 
 # ---------------------------------------------------------------------------
@@ -263,7 +264,7 @@ class IdempotencyKey(Base):
     status_code       = Column(Integer, nullable=False, default=200)
     response_json     = Column(Text,    nullable=False)  # stored body (JSON-in-Text)
 
-    created_at        = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at        = Column(DateTime, default=utc_now, index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -297,8 +298,8 @@ class B2BConnection(Base, TimestampMixin):
     catalog_category    = Column(String, nullable=True)                       # category filter (none=all)
     status              = Column(String, nullable=False, default="accepted")    # accepted|revoked
 
-    created_at          = Column(DateTime, default=datetime.utcnow)
-    updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at          = Column(DateTime, default=utc_now)
+    updated_at          = Column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 class B2BInviteCode(Base, TimestampMixin):
@@ -315,7 +316,7 @@ class B2BInviteCode(Base, TimestampMixin):
     code               = Column(String, unique=True, index=True, nullable=False)
     is_used            = Column(Boolean, nullable=False, default=False)
     expires_at         = Column(DateTime, nullable=False)
-    created_at         = Column(DateTime, default=datetime.utcnow)
+    created_at         = Column(DateTime, default=utc_now)
 
 
 class B2BOrder(Base, TimestampMixin):
@@ -346,8 +347,8 @@ class B2BOrder(Base, TimestampMixin):
     # order is completed). Its presence is the exactly-once guard for the sync.
     seller_invoice_id  = Column(Integer, nullable=True)
 
-    created_at         = Column(DateTime, default=datetime.utcnow)
-    updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at         = Column(DateTime, default=utc_now)
+    updated_at         = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     # Relationships
     line_items = relationship(
@@ -378,7 +379,7 @@ class B2BOrderLineItem(Base, TimestampMixin):
     sgst_rate     = Column(Float, nullable=False, default=0.0)
     igst_rate     = Column(Float, nullable=False, default=0.0)
     line_total    = Column(Float, nullable=False, default=0.0)
-    created_at    = Column(DateTime, default=datetime.utcnow)
+    created_at    = Column(DateTime, default=utc_now)
 
     order = relationship("B2BOrder", back_populates="line_items")
 
@@ -402,7 +403,7 @@ class B2BLedger(Base, TimestampMixin):
     reference_id       = Column(Integer, nullable=True)
     amount             = Column(Float, nullable=False)   # + for sales/debts, - for payments/credits
     balance_snapshot   = Column(Float, nullable=False, default=0.0)
-    created_at         = Column(DateTime, default=datetime.utcnow)
+    created_at         = Column(DateTime, default=utc_now)
 
 
 class Expense(Base, BusinessOwnedMixin):
@@ -574,7 +575,7 @@ class TelemetryEvent(Base):
     __tablename__ = "telemetry_events"
 
     id           = Column(Integer, primary_key=True, index=True)
-    received_at  = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    received_at  = Column(DateTime, nullable=False, default=utc_now, index=True)
     at           = Column(String, nullable=True)     # client-side ISO timestamp
     source       = Column(String(40),  nullable=False, default="unknown")
     device_id    = Column(String(64),  nullable=False, index=True)

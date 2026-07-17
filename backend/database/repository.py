@@ -35,7 +35,7 @@ from typing import Generic, List, Optional, Type, TypeVar
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from services.dates import parse_date
+from services.dates import parse_date, utc_now
 
 from database.models import (
     Invoice, InvoiceLineItem,
@@ -232,7 +232,7 @@ class InvoiceRepository(BaseRepository[Invoice]):
             return None
         inv.status       = "Paid"
         inv.paid_amount  = paid_amount if paid_amount is not None else inv.amount
-        inv.payment_date = datetime.utcnow().strftime("%Y-%m-%d")
+        inv.payment_date = utc_now().strftime("%Y-%m-%d")
         inv.payment_mode = payment_mode
         self._db.flush()
         return inv

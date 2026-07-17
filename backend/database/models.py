@@ -13,6 +13,7 @@ SOLID design:
 Backward compatibility: all original columns kept, new columns nullable.
 """
 from __future__ import annotations  # PEP 604 (X | Y) on Python 3.9 dev venvs
+from services.dates import utc_now
 
 import uuid
 from datetime import datetime
@@ -125,7 +126,7 @@ class DeletedBusiness(Base):
     username      = Column(String, index=True, nullable=True)   # freed owner username
     business_name = Column(String, nullable=True)
     reason        = Column(String, nullable=True)               # 'admin_wipe' | 'reclaim_rekey'
-    deleted_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    deleted_at    = Column(DateTime, default=utc_now, nullable=False)
 
 
 class UploadedFile(Base, TimestampMixin):
@@ -437,7 +438,7 @@ class RegisterShift(Base, BusinessOwnedMixin):
     # The operator (staff or owner user id) — NOT the business id; that's
     # `business_id` from BusinessOwnedMixin.
     user_id      = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    start_time   = Column(DateTime, nullable=False, default=datetime.utcnow)
+    start_time   = Column(DateTime, nullable=False, default=utc_now)
     end_time     = Column(DateTime, nullable=True)
 
     opening_cash = Column(Float, nullable=False, default=0.0)
@@ -622,7 +623,7 @@ class ChatMessage(Base, TimestampMixin):
     business_id   = Column(Integer, index=True)
     role          = Column(String)
     content       = Column(String)
-    timestamp     = Column(DateTime, default=datetime.utcnow)
+    timestamp     = Column(DateTime, default=utc_now)
     session_id    = Column(String,  index=True, nullable=True)
     session_title = Column(String,  nullable=True)
     source        = Column(String,  nullable=True)
@@ -658,7 +659,7 @@ class TokenUsage(Base, TimestampMixin):
     total_tokens  = Column(Integer, default=0)
     cached_tokens = Column(Integer, default=0)
     endpoint      = Column(String,  default="/ask")
-    timestamp     = Column(DateTime, default=datetime.utcnow)
+    timestamp     = Column(DateTime, default=utc_now)
 
 
 class RateLimitConfig(Base, TimestampMixin):
@@ -672,7 +673,7 @@ class RateLimitConfig(Base, TimestampMixin):
     max_tokens_per_day  = Column(Integer, default=50000)
     complex_per_day     = Column(Integer, default=20)
     active              = Column(Boolean, default=True)
-    updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at          = Column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 class AlertConfig(Base, TimestampMixin):
@@ -691,8 +692,8 @@ class AlertConfig(Base, TimestampMixin):
     low_stock_threshold   = Column(Integer, default=10)
     expiry_days_threshold = Column(Integer, default=30)
     active                = Column(Boolean, default=True)
-    created_at            = Column(DateTime, default=datetime.utcnow)
-    updated_at            = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at            = Column(DateTime, default=utc_now)
+    updated_at            = Column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 class ActionLog(Base, TimestampMixin):
@@ -706,7 +707,7 @@ class ActionLog(Base, TimestampMixin):
     amount      = Column(Float,  nullable=True)
     detail      = Column(Text,   nullable=True)
     status      = Column(String, default="logged")
-    created_at  = Column(DateTime, default=datetime.utcnow)
+    created_at  = Column(DateTime, default=utc_now)
 
 
 # ---------------------------------------------------------------------------
@@ -726,7 +727,7 @@ class AIFeedback(Base, TimestampMixin):
     handler_key = Column(String,  nullable=True)   # handler the answer was served from
     verdict     = Column(String)                    # 'up' | 'down'
     correction  = Column(String,  nullable=True)    # intent the user says it SHOULD be
-    created_at  = Column(DateTime, default=datetime.utcnow)
+    created_at  = Column(DateTime, default=utc_now)
 
 
 class AIQueryOverride(Base, TimestampMixin):
@@ -743,8 +744,8 @@ class AIQueryOverride(Base, TimestampMixin):
     query_norm  = Column(String,  index=True)       # lowercased, whitespace-collapsed
     route       = Column(String)                     # DIRECT | AI_SIMPLE | AI_COMPLEX | CONVERSATIONAL
     handler_key = Column(String,  nullable=True)     # for DIRECT
-    created_at  = Column(DateTime, default=datetime.utcnow)
-    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at  = Column(DateTime, default=utc_now)
+    updated_at  = Column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 # ---------------------------------------------------------------------------
@@ -813,7 +814,7 @@ class SyncQueue(Base):
     entity_id   = Column(Integer, index=True, nullable=False)       # primary key of target
     operation   = Column(String, nullable=False)                    # 'INSERT', 'UPDATE', 'DELETE'
     payload     = Column(Text, nullable=True)                       # JSON serialized columns
-    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at  = Column(DateTime, default=utc_now, nullable=False)
     synced_at   = Column(DateTime, nullable=True)
     error       = Column(Text, nullable=True)
 
@@ -826,7 +827,7 @@ class SyncLog(Base):
     entity      = Column(String, nullable=True)
     entity_id   = Column(Integer, nullable=True)
     operation   = Column(String, nullable=True)
-    synced_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+    synced_at   = Column(DateTime, default=utc_now, nullable=False)
     status      = Column(String, nullable=False)                    # 'success', 'failed'
     error       = Column(Text, nullable=True)
 
@@ -1014,7 +1015,7 @@ def _queue_change(connection, target, operation):
                 "entity_id": entity_id,
                 "operation": operation,
                 "payload": payload,
-                "created_at": datetime.utcnow()
+                "created_at": utc_now()
             }
         )
     except Exception as e:
@@ -1048,7 +1049,7 @@ class UserFeedback(Base):
     username      = Column(String, nullable=True)
     message       = Column(Text)
     log_file_path = Column(String, nullable=True)
-    created_at    = Column(DateTime, default=datetime.utcnow)
+    created_at    = Column(DateTime, default=utc_now)
 
 
 # ── CAMPAIGNS / ANNOUNCEMENTS / OFFERS (Admin Console growth half) ──────────
@@ -1074,8 +1075,8 @@ class Campaign(Base):
     starts_at     = Column(DateTime, nullable=True)
     ends_at       = Column(DateTime, nullable=True)
     created_by    = Column(String, nullable=True)              # admin username
-    created_at    = Column(DateTime, default=datetime.utcnow)
-    updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at    = Column(DateTime, default=utc_now)
+    updated_at    = Column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 class CampaignDelivery(Base):
@@ -1089,7 +1090,7 @@ class CampaignDelivery(Base):
     id            = Column(Integer, primary_key=True, index=True)
     campaign_id   = Column(Integer, ForeignKey("campaigns.id"), index=True, nullable=False)
     business_id   = Column(Integer, index=True, nullable=False)
-    delivered_at  = Column(DateTime, default=datetime.utcnow)
+    delivered_at  = Column(DateTime, default=utc_now)
     seen_at       = Column(DateTime, nullable=True)
     clicked_at    = Column(DateTime, nullable=True)
     dismissed_at  = Column(DateTime, nullable=True)
@@ -1110,7 +1111,7 @@ class Offer(Base):
     redeem_by       = Column(DateTime, nullable=True)          # NULL = no deadline
     active          = Column(Boolean, nullable=False, default=True, server_default="1")
     created_by      = Column(String, nullable=True)
-    created_at      = Column(DateTime, default=datetime.utcnow)
+    created_at      = Column(DateTime, default=utc_now)
 
 
 class OfferRedemption(Base):
@@ -1123,7 +1124,7 @@ class OfferRedemption(Base):
     id           = Column(Integer, primary_key=True, index=True)
     offer_id     = Column(Integer, ForeignKey("offers.id"), index=True, nullable=False)
     business_id  = Column(Integer, index=True, nullable=False)
-    redeemed_at  = Column(DateTime, default=datetime.utcnow)
+    redeemed_at  = Column(DateTime, default=utc_now)
 
 
 # ── TABLE ALTERATION AUDITING ───────────────────────────────────────────────
@@ -1141,7 +1142,7 @@ class TableAlteration(Base):
     record_id   = Column(String, nullable=True)
     old_values  = Column(Text, nullable=True)  # JSON-serialized old values
     new_values  = Column(Text, nullable=True)  # JSON-serialized new values
-    created_at  = Column(DateTime, default=datetime.utcnow)
+    created_at  = Column(DateTime, default=utc_now)
     # Step 3 durable UID for cross-DB sync
     uid         = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
 
@@ -1282,7 +1283,7 @@ def audit_after_flush(session, flush_context):
                 "record_id": record_id,
                 "old_values": item["old_values"],
                 "new_values": item["new_values"],
-                "created_at": datetime.utcnow(),
+                "created_at": utc_now(),
                 "uid": str(uuid.uuid4())
             }
         )

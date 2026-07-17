@@ -8,6 +8,7 @@ from database.models import User
 from services.sync_worker import _get_cloud_token, CLOUD_URL
 
 from typing import Optional
+from services.dates import utc_now
 
 logger = logging.getLogger("bizassist.log_uploader")
 
@@ -23,7 +24,7 @@ def archive_logs(business_id: int) -> Optional[str]:
     backup_dir = os.path.join(log_dir, "backups")
     os.makedirs(backup_dir, exist_ok=True)
 
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = utc_now().strftime("%Y%m%d_%H%M%S")
     archive_name = f"logs_biz_{business_id}_{timestamp}.tar.gz"
     archive_path = os.path.join(backup_dir, archive_name)
 
@@ -86,7 +87,7 @@ def run_daily_log_upload():
     if os.path.exists(backup_dir):
         try:
             # Delete backups older than 7 days to prevent disk bloat
-            now = datetime.utcnow()
+            now = utc_now()
             for f in os.listdir(backup_dir):
                 fp = os.path.join(backup_dir, f)
                 if os.path.isfile(fp):

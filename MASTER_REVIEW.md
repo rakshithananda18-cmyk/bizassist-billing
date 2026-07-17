@@ -348,3 +348,18 @@ Hygiene is an afternoon. The dependency-free engineering makes the current produ
 ---
 
 *Sources: `REVIEW_1_DESIGN_BUGS_GAPS_ADMIN_PORTAL.md`, `REVIEW_2_AI_AGENT_PLAN_AND_MOAT.md`, `REVIEW_1_IMPLEMENTATION_NOTES.md` (batches 1–5).*
+
+---
+
+## 10. Fix cycle 3 (2026-07-17) — Phase-0 substrate closed
+
+Audit finding: async LLM (`groq_client` timeouts/retries), provider fallback (`llm_provider.py`), vision-OCR, CI flaky-guard ×10, fail-closed-guard CI test (T6.1), reclaim regression (T1.3), Stock.jsx dead-modal removal (T5.3), and contact import preview parity were **already shipped** — the plan lagged the code. Newly shipped this cycle:
+
+| Item | What shipped |
+|---|---|
+| **Write-tool rails** (§3.2 #4 — the autonomy gate) | `services/action_rails.py`: (1) preview mints a stateless HMAC **confirm token** binding (business, action, exact params, 10-min TTL); execute refuses without it (**428**, `ACTION_CONFIRM_REQUIRED=0` escape hatch). (2) `/action/execute` joined the **X-Client-Request-Id ReplayGuard wall** — a double-fired confirm replays, never re-executes. (3) **Per-business daily caps** per action, enforced in the dispatcher so every entry point (HTTP today, agent runtime tomorrow) hits the same wall; `ACTION_DAILY_CAP_<ACTION>`/`_DEFAULT` overrides. Chat.jsx sends token + request-id and surfaces 428/429 details. 21 tests in `test_action_rails.py`. |
+| **Eval golden-set in CI** (§3.2 #3) | `tests/golden_set.jsonl` (41 curated merchant Q → expected tier+handler) + `tests/test_golden_set.py` — parametrized, deterministic (classify() only, no keys/models/network), fails CI with the exact re-routed question. Floor asserted at ≥30 cases. |
+| Router fixes surfaced by the golden set | "good morning/evening" → CONVERSATIONAL (was a ~300-token AI_SIMPLE call); "low **on** stock" → DIRECT low_stock; "why did/has/does…" → AI_COMPLEX (only "why is" matched before). |
+| `datetime.utcnow()` migration (§2.5) | All 99 runtime usages across 22 files → `services.dates.utc_now()` (deliberately naive-UTC — column defaults and comparisons stay consistent; aware-everywhere remains a schema project). Kills the Py3.12+ deprecation in one place. |
+
+Verified: full backend suite (101 files, ~950 tests) + frontend-ai vitest green. Remaining Phase-0 exit criteria: backup **drill** (T2.4) — everything else in the Phase-0 row of §9.C is done.

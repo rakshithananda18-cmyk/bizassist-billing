@@ -36,6 +36,7 @@ from core.models import (
 from services.auth import hash_password
 from services.context_cache import invalidate, invalidate_user_cache, get_cache_stats
 from services.rate_limiter import get_usage_summary
+from services.dates import utc_now
 
 logger = logging.getLogger("bizassist.admin_service")
 
@@ -62,7 +63,7 @@ def audit_log(admin, action: str, details: dict = None, db: Session = None):
         log_file = os.path.join(log_dir, "admin_audit.jsonl")
         with open(log_file, "a") as f:
             entry = {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": utc_now().isoformat(),
                 "admin_id": getattr(admin, "id", admin),
                 "admin_bizid": getattr(admin, "public_id", None),
                 "admin_username": getattr(admin, "username", None),
@@ -143,7 +144,7 @@ def _settings_dict(u: User) -> dict:
 def list_businesses(db: Session) -> list:
     """Per business: core stats + fleet fields (hosting mode, last sync,
     queue depth, online-in-last-24h) + subscription plan."""
-    now = datetime.utcnow()
+    now = utc_now()
     businesses = db.query(User).filter(User.role == "enterprise").all()
     result = []
     for b in businesses:
@@ -192,7 +193,7 @@ def sync_doctor(db: Session) -> list:
     red   — pending ops older than 60 min, or repeated failures on the
             newest 20 log rows, or errors recorded on queued ops
     """
-    now = datetime.utcnow()
+    now = utc_now()
     out = []
     for b in db.query(User).filter(User.role == "enterprise").all():
         pending = db.query(SyncQueue).filter(
@@ -243,7 +244,7 @@ def business_metrics(db: Session) -> dict:
     """One read for the console's Metrics page: plan mix, activation funnel,
     activity cohorts, churn-risk flags. Grouped queries — no per-business N+1
     on the heavy tables."""
-    now = datetime.utcnow()
+    now = utc_now()
     owners = db.query(User).filter(User.role == "enterprise").all()
     owner_ids = [b.id for b in owners]
 
@@ -671,7 +672,7 @@ def set_subscription(business_id: int, body, admin: User, db: Session) -> dict:
             "status":     body.status or "active",
             "expires_at": body.expires_at,
             "granted_by": admin.username,
-            "granted_at": datetime.utcnow().isoformat(),
+            "granted_at": utc_now().isoformat(),
             "note":       body.note,
         }
     target.settings = json.dumps(s)
@@ -745,7 +746,7 @@ def totp_confirm(admin: User, code: str, db: Session) -> dict:
     if not verify_code(cfg["secret"], code):
         raise HTTPException(status_code=400, detail="That code didn't match — check your authenticator app and try again.")
     cfg["enabled"] = True
-    cfg["confirmed_at"] = datetime.utcnow().isoformat()
+    cfg["confirmed_at"] = utc_now().isoformat()
     s["totp"] = cfg
     admin.settings = json.dumps(s)
     db.commit()
@@ -784,7 +785,7 @@ def effective_plan(user: User) -> str:
     exp = sub.get("expires_at")
     if exp:
         try:
-            if datetime.fromisoformat(str(exp).replace("Z", "+00:00")).replace(tzinfo=None) < datetime.utcnow():
+            if datetime.fromisoformat(str(exp).replace("Z", "+00:00")).replace(tzinfo=None) < utc_now():
                 return "free"
         except Exception:
             pass
@@ -1061,7 +1062,7 @@ def set_rate_limit_config(user_id: int, body, db: Session) -> dict:
         cfg.max_tokens_per_day  = body.max_tokens_per_day
         cfg.complex_per_day     = body.complex_per_day
         cfg.active              = body.active
-        cfg.updated_at          = datetime.utcnow()
+        cfg.updated_at          = utc_now()
     else:
         db.add(RateLimitConfig(business_id=user_id, requests_per_minute=body.requests_per_minute, requests_per_day=body.requests_per_day, max_tokens_per_day=body.max_tokens_per_day, complex_per_day=body.complex_per_day, active=body.active))
     db.commit()

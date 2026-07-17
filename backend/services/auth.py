@@ -46,9 +46,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = utc_now() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = utc_now() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return encoded_jwt
@@ -75,6 +75,7 @@ def decode_access_token(token: str) -> dict:
 # account within _TV_CACHE_TTL seconds. Legacy tokens without a `tv` claim are
 # treated as tv=0, so nothing breaks on deploy — a bump revokes those too.
 import time as _time
+from services.dates import utc_now
 
 _tv_cache: dict = {}          # user_id -> (token_version, expires_epoch)
 _TV_CACHE_TTL = 30            # seconds; the max delay before a revoke takes effect
@@ -184,7 +185,7 @@ _sse_tickets = {}
 
 def create_sse_ticket(user_payload: dict, expires_in_seconds: int = 30) -> str:
     """Generate a single-use random ticket token and save it with a short TTL."""
-    now = datetime.utcnow()
+    now = utc_now()
     # Periodic in-line cleanup of expired tickets
     for tk, val in list(_sse_tickets.items()):
         if now > val["expires"]:
@@ -204,7 +205,7 @@ def get_active_user_or_ticket(
 ) -> dict:
     """Authenticate via header JWT, query JWT, or short-lived SSE ticket."""
     if ticket:
-        now = datetime.utcnow()
+        now = utc_now()
         ticket_data = _sse_tickets.get(ticket)
         if not ticket_data:
             logger.warning("[AUTH] Ticket not found or already used")

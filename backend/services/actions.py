@@ -23,7 +23,7 @@ from sqlalchemy import func
 from database.db import SessionLocal
 from database.models import Invoice, User, ActionLog, Customer, AlertConfig, Inventory
 from services.notifier import send_email, is_configured as email_configured
-from services.dates import parse_date
+from services.dates import parse_date, utc_now
 
 logger = logging.getLogger("bizassist.actions")
 
@@ -45,7 +45,7 @@ def _owner_email(db, user_id: int) -> Optional[str]:
 
 def _action_done_today(db, user_id: int, action: str, target: str, statuses=("sent", "done")) -> bool:
     """Idempotency for once-a-day owner-facing actions."""
-    start = datetime.combine(datetime.utcnow().date(), datetime.min.time())
+    start = datetime.combine(utc_now().date(), datetime.min.time())
     return db.query(ActionLog).filter(
         ActionLog.business_id == user_id, ActionLog.action == action,
         ActionLog.target == target, ActionLog.status.in_(list(statuses)),
@@ -66,7 +66,7 @@ def _customer_email(db, user_id: int, customer_name: str) -> Optional[str]:
 
 def _already_reminded_today(db, user_id: int, customer_name: str) -> bool:
     """Idempotency: was this customer already emailed a reminder today?"""
-    start = datetime.combine(datetime.utcnow().date(), datetime.min.time())
+    start = datetime.combine(utc_now().date(), datetime.min.time())
     return db.query(ActionLog).filter(
         ActionLog.business_id == user_id,
         ActionLog.action == "send_payment_reminders",
@@ -400,7 +400,7 @@ def _escalate_preview(user_id: int, params: dict) -> dict:
     db = SessionLocal()
     try:
         business = _business_name(db, user_id)
-        now = datetime.utcnow()
+        now = utc_now()
         rows = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").all()
         agg = {}
         for r in rows:
@@ -566,6 +566,26 @@ def execute(action_key: str, user_id: int, params: dict = None) -> Optional[dict
     spec = ACTIONS.get(action_key)
     if not spec:
         return None
+    # Phase-0 write rail #3: per-business, per-action daily cap — enforced at
+    # the dispatcher so EVERY entry point (HTTP route today, agent runtime
+    # tomorrow) hits the same wall. A runaway loop can't spam customers.
+    try:
+        from services.action_rails import check_daily_cap
+        db = SessionLocal()
+        try:
+            allowed, used, cap = check_daily_cap(db, user_id, action_key)
+        finally:
+            db.close()
+        if not allowed:
+            logger.warning(f"[ACTION] daily cap reached for '{action_key}' biz={user_id} ({used}/{cap})")
+            return {
+                "ok": False, "executed": 0, "error": "daily_cap_reached",
+                "used": used, "cap": cap,
+                "markdown": (f"⛔ **Daily limit reached for this action** ({used}/{cap} today). "
+                             "It resets at midnight UTC — raise the cap in settings/env if this was intentional."),
+            }
+    except Exception as e:  # the cap must never turn into an outage
+        logger.error(f"[ACTION] cap check failed for '{action_key}': {e}", exc_info=True)
     try:
         return spec["execute"](user_id, params or {})
     except Exception as e:

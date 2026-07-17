@@ -18,6 +18,7 @@ from database.db import get_db
 from services.auth import get_active_user
 from services.context_cache import invalidate, invalidate_user_cache, get_cache_stats
 import services.admin_service as svc
+from services.dates import utc_now
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.routes.admin")
@@ -536,7 +537,7 @@ def get_admin_health_check(current_user: dict = Depends(get_active_user), db: Se
                 "size_bytes": log_size
             },
             "telemetry": telemetry_stats,
-            "server_time": datetime.utcnow().isoformat()
+            "server_time": utc_now().isoformat()
         }
     except HTTPException: raise
     except Exception as e:

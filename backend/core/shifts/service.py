@@ -27,6 +27,7 @@ Tally definition:
    tally: the entered opening cash is already the truth, and the closing
    removal happens after the count snapshot.)
 """
+from services.dates import utc_now
 import logging
 from datetime import datetime
 from typing import Optional
@@ -136,7 +137,7 @@ def open_shift(db, *, business_id: int, user_id: int,
     shift = RegisterShift(
         business_id=business_id,
         user_id=user_id,
-        start_time=datetime.utcnow(),
+        start_time=utc_now(),
         opening_cash=_round2(opening_cash),
         opening_expected=expected,
         status="OPEN",
@@ -314,7 +315,7 @@ def close_shift(db, *, business_id: int, user_id: int,
     shift.closing_cash_actual = counted
     shift.closing_upi_actual = _round2(closing_upi_actual)
     shift.closing_float = left
-    shift.end_time = datetime.utcnow()
+    shift.end_time = utc_now()
     shift.status = "CLOSED"
     if notes:
         shift.notes = f"{shift.notes}\n{notes}".strip() if shift.notes else notes

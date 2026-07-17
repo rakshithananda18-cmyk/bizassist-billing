@@ -7,6 +7,7 @@ intent the user actually wanted, which creates an instant per-query override.
   POST /feedback   {session_id?, query, route?, handler_key?, verdict, correction?}
   GET  /feedback/intents   -> the list of correctable intents (for the UI picker)
 """
+from services.dates import utc_now
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
@@ -153,7 +154,7 @@ async def submit_merchant_feedback(
                 upload_dir = os.path.join("logs", "remote_clients", str(business_id))
                 os.makedirs(upload_dir, exist_ok=True)
                 
-                timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                timestamp = utc_now().strftime("%Y%m%d_%H%M%S")
                 filename = f"feedback_{timestamp}_{file.filename}"
                 dest_path = os.path.join(upload_dir, filename)
                 
@@ -167,7 +168,7 @@ async def submit_merchant_feedback(
                 username=username,
                 message=message,
                 log_file_path=log_file_path,
-                created_at=datetime.utcnow()
+                created_at=utc_now()
             )
             db.add(feedback_row)
             db.commit()

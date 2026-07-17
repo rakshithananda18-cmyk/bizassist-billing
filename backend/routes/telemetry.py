@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
+from services.dates import utc_now
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.telemetry")
@@ -86,11 +87,11 @@ def _persist_records_to_db(records: List[Dict[str, Any]]) -> int:
 
         def _parse_dt(value):
             if not value:
-                return datetime.utcnow()
+                return utc_now()
             try:
                 return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(tzinfo=None)
             except Exception:
-                return datetime.utcnow()
+                return utc_now()
 
         db = SessionLocal()
         try:

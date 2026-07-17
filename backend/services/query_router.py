@@ -96,7 +96,7 @@ DIRECT_PATTERNS = [
     (re.compile(r"how many (products?|items?|units?)|inventory count|stock count", re.I),
      "inventory_count"),
 
-    (re.compile(r"low stock|out of stock|stock (below|under|less than)|reorder", re.I),
+    (re.compile(r"low (?:on )?stock|out of stock|stock (below|under|less than)|reorder", re.I),
      "low_stock"),
 
     (re.compile(r"expir(ing|ed|y)", re.I),
@@ -152,7 +152,7 @@ COMPLEX_PATTERNS = [
     r"\bprofitabilit(y|ies)\b",
     r"\bgrow\b", r"\bscale\b",
     r"\brecommend\b", r"\badvice\b",
-    r"\broot causes?\b", r"\bwhy is\b", r"\bdiagnos[ei]\b",
+    r"\broot causes?\b", r"\bwhy (?:is|are|did|does|has|have)\b", r"\bdiagnos[ei]\b",
     r"\bwhat should i\b", r"\bhow (can|do|should) (i|we)\b",
     r"\baction plan\b", r"\broad ?map\b",
     r"\binsight\b", r"\binsights\b",
@@ -168,6 +168,7 @@ CONVERSATIONAL_PATTERNS = [
     re.compile(r"^(hi+|hello|hey|yo|sup|hiya|howdy)\b", re.I),
     re.compile(r"^(ok|okay|ok cool|alright|got it|got that|okay got it|okay great|okay sure|understood|noted|sure|yep|yup|yeah|yes|nope|no)\s*[.!?]*$", re.I),
     re.compile(r"^(thanks?|thank you|thx|ty|cheers|great|nice|cool|awesome|good|perfect|sounds good|makes sense|that helps|very helpful|got it thanks)\s*[.!?]*$", re.I),
+    re.compile(r"^good\s+(morning|afternoon|evening|night|day)\s*[.!]*$", re.I),
     re.compile(r"^(bye|goodbye|see ya|later|cya)\s*[.!]*$", re.I),
     re.compile(r"^[.!?]{1,3}$", re.I),
 ]

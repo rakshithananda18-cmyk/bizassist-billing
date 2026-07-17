@@ -1,3 +1,4 @@
+from services.dates import utc_now
 import os
 import sys
 import uuid
@@ -78,8 +79,8 @@ Base = declarative_base(metadata=MetaData(naming_convention=_NAMING_CONVENTION))
 
 class TimestampMixin:
     """Adds created_at / updated_at. Does NOT add id or business_id."""
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
+    created_at = Column(DateTime, default=utc_now, nullable=True)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=True)
 
 
 class BusinessOwnedMixin(TimestampMixin):

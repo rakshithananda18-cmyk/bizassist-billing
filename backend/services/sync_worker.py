@@ -33,6 +33,7 @@ from database.models import (
     PurchaseOrder, PurchaseOrderLineItem, AlertConfig, RateLimitConfig
 )
 from services.auth import create_access_token
+from services.dates import utc_now
 
 logger = logging.getLogger("bizassist.sync_worker")
 
@@ -228,7 +229,7 @@ def run_hybrid_sync():
                 business_id = user.id
                 
                 last_run = _LAST_RUN.get(business_id)
-                now = datetime.utcnow()
+                now = utc_now()
                 if last_run and (now - last_run).total_seconds() < sync_interval:
                     continue
 
@@ -278,7 +279,7 @@ def trigger_sync_run(business_id: int):
             sync_business(db, user, force=True)
         finally:
             current_bizid_var.reset(_t)
-        _LAST_RUN[business_id] = datetime.utcnow()
+        _LAST_RUN[business_id] = utc_now()
     except Exception as e:
         logger.error("[SYNC_WORKER] Manual sync flush failed for business %s: %s", business_id, e)
     finally:
@@ -330,7 +331,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 business_id=business_id,
                 status="failed",
                 error=f"Cloud unreachable: {e}",
-                synced_at=datetime.utcnow()
+                synced_at=utc_now()
             )
             db.add(log)
             db.commit()
@@ -384,7 +385,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
             # synced as data). They'd be rejected by the cloud as "unknown entity";
             # mark them done so they drain from the queue instead of recycling.
             if item.entity not in _MODEL_MAP:
-                item.synced_at = datetime.utcnow()
+                item.synced_at = utc_now()
                 continue
             payload_dict = None
             if item.payload:
@@ -399,7 +400,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                         item.id, item.entity, item.entity_id, e,
                     )
                     item.error = f"Corrupt payload: {e}"
-                    item.synced_at = datetime.utcnow()  # remove from the pending window
+                    item.synced_at = utc_now()  # remove from the pending window
                     continue
             pairs.append((item, {
                 "entity": item.entity,
@@ -446,7 +447,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                     raise Exception(f"HTTP {resp.status_code}: {resp.text}")
 
                 # Chunk pushed successfully — mark just this chunk synced.
-                now = datetime.utcnow()
+                now = utc_now()
                 for (it, _c) in chunk:
                     it.synced_at = now
                     it.error = None
@@ -482,7 +483,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                         business_id=business_id,
                         status="failed",
                         error="Cloud sync requires the Pro plan — upgrade to enable Local + Cloud.",
-                        synced_at=datetime.utcnow(),
+                        synced_at=utc_now(),
                     ))
                     db.commit()
                     return
@@ -511,7 +512,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                     business_id=business_id,
                     status="failed",
                     error=f"Push failed: {err_msg}",
-                    synced_at=datetime.utcnow()
+                    synced_at=utc_now()
                 )
                 db.add(log)
                 db.commit()
@@ -532,13 +533,13 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 .first()
             )
             if last_success:
-                last_success.synced_at = datetime.utcnow()
+                last_success.synced_at = utc_now()
                 last_success.error = None
             else:
                 last_success = SyncLog(
                     business_id=business_id,
                     status="success",
-                    synced_at=datetime.utcnow()
+                    synced_at=utc_now()
                 )
                 db.add(last_success)
             db.commit()
@@ -911,7 +912,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
             business_id=business_id,
             status="failed",
             error=f"Pull failed: {e}",
-            synced_at=datetime.utcnow()
+            synced_at=utc_now()
         )
         db.add(log)
         db.commit()

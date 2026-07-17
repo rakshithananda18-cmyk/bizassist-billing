@@ -8,6 +8,7 @@ import numpy as np
 import chromadb
 from database.db import SessionLocal
 from database.models import DocumentEmbedding, Invoice, Inventory, LegacyPayment
+from services.dates import utc_now
 
 logger = logging.getLogger("bizassist.embeddings")
 
@@ -162,7 +163,7 @@ def save_chat_memory(business_id: int, session_id: str, session_title: str, user
                 "session_title": str(session_title or "Untitled Conversation"),
                 "user_query": str(user_query),
                 "assistant_response": str(assistant_response),
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": utc_now().isoformat()
             }],
             documents=[user_query]
         )

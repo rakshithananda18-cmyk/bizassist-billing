@@ -28,6 +28,7 @@ from database.models import (
     User, Campaign, CampaignDelivery, Offer, OfferRedemption,
 )
 from services.context_cache import invalidate_user_cache
+from services.dates import utc_now
 
 logger = logging.getLogger("bizassist.campaigns")
 
@@ -94,7 +95,7 @@ def matches_audience(campaign: Campaign, owner: User, db: Session) -> bool:
 
 
 def _is_live(campaign: Campaign, now: datetime = None) -> bool:
-    now = now or datetime.utcnow()
+    now = now or utc_now()
     if campaign.status != "active":
         return False
     if campaign.starts_at and campaign.starts_at > now:
@@ -277,7 +278,7 @@ def announcements_for(business_id: int, db: Session) -> list:
     if owner is None:
         return []
 
-    now = datetime.utcnow()
+    now = utc_now()
     campaigns = db.query(Campaign).filter(
         Campaign.status == "active", Campaign.channel == "in_app").all()
 
@@ -322,7 +323,7 @@ def ack_announcement(business_id: int, campaign_id: int, event: str, db: Session
     if d is None:
         d = CampaignDelivery(campaign_id=campaign_id, business_id=owner.id)
         db.add(d)
-    now = datetime.utcnow()
+    now = utc_now()
     if event == "seen" and d.seen_at is None:
         d.seen_at = now
     elif event == "clicked":
@@ -351,7 +352,7 @@ def redeem_offer(business_id: int, code: str, db: Session) -> dict:
         raise HTTPException(status_code=404, detail="Business not found")
 
     offer = db.query(Offer).filter(Offer.code == code).first()
-    now = datetime.utcnow()
+    now = utc_now()
     if not offer or not offer.active:
         raise HTTPException(status_code=404, detail="Invalid or inactive offer code.")
     if offer.redeem_by and offer.redeem_by < now:
