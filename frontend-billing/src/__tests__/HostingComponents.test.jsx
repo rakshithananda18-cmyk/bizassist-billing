@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
 import React from 'react'
 import ReadinessPanel from '../components/hosting/ReadinessPanel'
@@ -114,7 +114,13 @@ describe('ConsequenceModal', () => {
 })
 
 describe('MigrationModal', () => {
+  beforeEach(() => {
+    // Cloud legs authenticate with a CLOUD-issued token (local JWTs 401 on the
+    // cloud); the modal fails fast in step 0 if it's absent.
+    localStorage.setItem('bizassist_cloud_token', 'cloud-test-token')
+  })
   afterEach(() => {
+    localStorage.removeItem('bizassist_cloud_token')
     vi.unstubAllGlobals()
   })
 
@@ -209,13 +215,39 @@ describe('MigrationModal', () => {
       />
     )
 
-    // Wait for the migration to fail
+    // Wait for the migration to fail — the modal STAYS OPEN showing the error
+    // (unmounting on failure made the switch look like a silent no-op).
     await waitFor(() => {
-      expect(onError).toHaveBeenCalled()
+      expect(screen.getByText(/Migration Failed/i)).toBeInTheDocument()
     }, { timeout: 4500 })
 
-    expect(screen.getByText(/Migration Failed/i)).toBeInTheDocument()
     expect(screen.getByText(/Export failed: HTTP 500/i)).toBeInTheDocument()
     expect(onComplete).not.toHaveBeenCalled()
+    expect(onError).not.toHaveBeenCalled()   // parent must not unmount the error screen
+
+    // Explicit close is what hands control back to the parent.
+    fireEvent.click(screen.getByRole('button', { name: /Cancel/i }))
+    expect(onError).toHaveBeenCalled()
+  })
+
+  it('fails fast with a fix when the cloud leg has no cloud session token', async () => {
+    localStorage.removeItem('bizassist_cloud_token')
+    vi.stubGlobal('fetch', vi.fn())   // must not be reached
+
+    render(
+      <MigrationModal
+        fromMode="local"
+        toMode="cloud"
+        token="test-token"
+        onComplete={vi.fn()}
+        onError={vi.fn()}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(/Migration Failed/i)).toBeInTheDocument()
+    }, { timeout: 4500 })
+    expect(screen.getByText(/No cloud session found/i)).toBeInTheDocument()
+    expect(fetch).not.toHaveBeenCalled()
   })
 })

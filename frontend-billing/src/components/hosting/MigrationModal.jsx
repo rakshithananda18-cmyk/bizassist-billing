@@ -96,10 +96,21 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
     setProgress(base)
   }, [])
 
-  const headers = useCallback(() => ({
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  }), [token])
+  // Tokens are backend-specific: the LOCAL backend accepts the local JWT, the
+  // CLOUD backend only accepts a CLOUD-issued token (a locally signed JWT gets
+  // HTTP 401 — its JWT_SECRET differs). BackupModal carries this same fix;
+  // MigrationModal sending the local token to the cloud was the cause of the
+  // silent "Local + Cloud" switch failure (import → 401 → modal closed).
+  const CLOUD_BASE = import.meta.env.VITE_API_URL || 'https://rakshit-dev-bizassist.hf.space'
+  const headersFor = useCallback((base) => {
+    let cloudTok = null
+    try { cloudTok = localStorage.getItem('bizassist_cloud_token') } catch { /* ignore */ }
+    const t = base === CLOUD_BASE ? cloudTok : token
+    return {
+      'Content-Type': 'application/json',
+      ...(t ? { Authorization: `Bearer ${t}` } : {}),
+    }
+  }, [token, CLOUD_BASE])
 
   // ── Run migration ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -121,6 +132,16 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
     try {
       // ── Step 0: verify ────────────────────────────────────────────────────
       advanceTo(0)
+      // A cloud leg needs a CLOUD-issued token (minted from the password at
+      // login). Without it every cloud call would 401 — fail here with a fix,
+      // not three steps in with a bare HTTP status.
+      if (SOURCE_API_BASE === CLOUD_URL || DEST_API_BASE === CLOUD_URL) {
+        let cloudTok = null
+        try { cloudTok = localStorage.getItem('bizassist_cloud_token') } catch { /* ignore */ }
+        if (!cloudTok) {
+          throw new Error('No cloud session found. Log out, log back in while online (this mints a cloud session), then retry the switch.')
+        }
+      }
       await new Promise(r => setTimeout(r, 600)) // brief pause so user sees it
       if (cancelledRef.current) return
       markStep(0, 'done')
@@ -129,7 +150,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
       advanceTo(1)
       let countData = {}
       try {
-        const res = await fetch(`${SOURCE_API_BASE}/api/data-transfer/count`, { headers: headers() })
+        const res = await fetch(`${SOURCE_API_BASE}/api/data-transfer/count`, { headers: headersFor(SOURCE_API_BASE) })
         if (!res.ok) throw new Error(`Count failed: HTTP ${res.status}`)
         countData = await res.json()
       } catch (err) {
@@ -146,7 +167,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
 
       // ── Step 2: export ────────────────────────────────────────────────────
       advanceTo(2)
-      const res = await fetch(`${SOURCE_API_BASE}/api/data-transfer/export`, { headers: headers() })
+      const res = await fetch(`${SOURCE_API_BASE}/api/data-transfer/export`, { headers: headersFor(SOURCE_API_BASE) })
       if (!res.ok) throw new Error(`Export failed: HTTP ${res.status}`)
       const exportData = await res.json()
       if (cancelledRef.current) return
@@ -155,7 +176,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
       // it, downloaded as a JSON the user actually holds. Restorable via the
       // same import endpoint. (backup_path from the backend never existed.)
       try {
-        const snapRes = await fetch(`${DEST_API_BASE}/api/data-transfer/export`, { headers: headers() })
+        const snapRes = await fetch(`${DEST_API_BASE}/api/data-transfer/export`, { headers: headersFor(DEST_API_BASE) })
         if (snapRes.ok) {
           const snap = await snapRes.json()
           const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
@@ -200,7 +221,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
         // ids, rewrites FKs, and dedups by natural keys (idempotent on retry).
         const importPromise = fetch(`${DEST_API_BASE}/api/data-transfer/import?remap_ids=true`, {
           method: 'POST',
-          headers: headers(),
+          headers: headersFor(DEST_API_BASE),
           body: JSON.stringify({
             tables: exportData?.tables || {},
           }),
@@ -244,7 +265,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
       basesRef.current = { src: SOURCE_API_BASE, dest: DEST_API_BASE }
       let results = []
       try {
-        const vres = await fetch(`${DEST_API_BASE}/api/data-transfer/count`, { headers: headers() })
+        const vres = await fetch(`${DEST_API_BASE}/api/data-transfer/count`, { headers: headersFor(DEST_API_BASE) })
         if (vres.ok) {
           const destCounts = await vres.json()
           const srcTables = exportData?.tables || {}
@@ -286,7 +307,10 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
       setErrorStep(STEPS[failedIdx]?.label || 'Unknown step')
       setErrorMsg(err?.message || 'An unknown error occurred')
       logger.error(`[MIGRATION] Migration failed at step "${STEPS[failedIdx]?.label || 'unknown'}":`, err)
-      onError?.(err)
+      // Deliberately NOT calling onError here: the parent unmounts us on
+      // onError, which flashed the error screen away — the switch then looked
+      // like a silent no-op. The error UI below has Retry / Close; Close calls
+      // handleCancel → onError → parent cleanup.
     }
   }
 
@@ -305,7 +329,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
       try {
         await fetch(`${base}/settings`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          headers: headersFor(base),
           body: JSON.stringify({ general: { hosting_mode: toMode } }),
         })
       } catch (err) {

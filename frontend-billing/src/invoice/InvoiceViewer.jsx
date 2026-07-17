@@ -298,8 +298,10 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
           const buyer = payload.buyer || {}
           const lines = payload.lines || []
           const fmtAmt = (n) => n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '₹0'
-          const balance = Math.max(0, (tot.total_amount || 0) - (tot.paid_amount || 0))
-          const isPaid = balance <= 0
+          const grandTotal = tot.grand_total || 0
+          const amtPaid = tot.amount_paid || 0
+          const balanceDue = tot.balance_due ?? Math.max(0, grandTotal - amtPaid)
+          const isPaid = balanceDue <= 0
           return (
             <div style={{
               width: 'min(340px, 38vw)', flexShrink: 0,
@@ -377,10 +379,10 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
                           {lines.map((line, i) => (
                             <tr key={i} style={{ borderBottom: i < lines.length - 1 ? '1px solid var(--border)' : 'none', background: i % 2 === 0 ? 'var(--bg-1)' : 'var(--bg-2)' }}>
                               <td style={{ padding: '8px 10px', color: 'var(--text-primary)', fontWeight: 500, lineHeight: 1.3 }}>
-                                <div>{line.product_name}</div>
-                                {line.unit_price && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 1 }}>{fmtAmt(line.unit_price)} / {line.unit || 'Nos'}</div>}
+                                <div>{line.name}</div>
+                                {line.rate > 0 && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 1 }}>{fmtAmt(line.rate)} / {line.unit || 'Nos'}</div>}
                               </td>
-                              <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{line.quantity} {line.unit || 'Nos'}</td>
+                              <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{line.qty} {line.unit || 'Nos'}</td>
                               <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>{fmtAmt(line.line_total)}</td>
                             </tr>
                           ))}
@@ -397,8 +399,8 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
                     {tot.subtotal > 0 && (
                       <div className="ivp-row"><span className="lbl">Subtotal</span><span className="val">{fmtAmt(tot.subtotal)}</span></div>
                     )}
-                    {tot.discount_total > 0 && (
-                      <div className="ivp-row"><span className="lbl">Discount</span><span style={{ fontWeight: 600, color: 'var(--success)' }}>−{fmtAmt(tot.discount_total)}</span></div>
+                    {tot.total_discount > 0 && (
+                      <div className="ivp-row"><span className="lbl">Discount</span><span style={{ fontWeight: 600, color: 'var(--success)' }}>−{fmtAmt(tot.total_discount)}</span></div>
                     )}
                     {tot.cgst_total > 0 && (
                       <div className="ivp-row"><span className="lbl">CGST</span><span className="val">{fmtAmt(tot.cgst_total)}</span></div>
@@ -420,31 +422,31 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
                       borderRadius: 'var(--radius-sm)', padding: '9px 12px', margin: '2px -1px 0',
                     }}>
                       <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>Grand Total</span>
-                      <span style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--accent)' }}>{fmtAmt(tot.total_amount)}</span>
+                      <span style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--accent)' }}>{fmtAmt(grandTotal)}</span>
                     </div>
                   </div>
                 </div>
 
                 {/* — Payment status — */}
-                {tot.total_amount > 0 && (
+                {grandTotal > 0 && (
                   <div>
                     <div className="ivp-label">Payment</div>
                     <div className="ivp-card" style={{ gap: 8 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Amount Paid</span>
-                        <span style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--success)' }}>{fmtAmt(tot.paid_amount || 0)}</span>
+                        <span style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--success)' }}>{fmtAmt(amtPaid)}</span>
                       </div>
                       <div style={{ height: 5, background: 'var(--bg-3)', borderRadius: '99px', overflow: 'hidden' }}>
                         <div style={{
                           height: '100%', borderRadius: '99px', transition: 'width 0.4s ease',
-                          width: `${Math.min(100, ((tot.paid_amount || 0) / tot.total_amount) * 100)}%`,
+                          width: `${Math.min(100, (amtPaid / grandTotal) * 100)}%`,
                           background: isPaid ? 'var(--success)' : 'var(--warning)',
                         }} />
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Balance Due</span>
                         <span style={{ fontSize: '0.86rem', fontWeight: 700, color: isPaid ? 'var(--success)' : 'var(--danger)' }}>
-                          {isPaid ? '✓ Paid' : fmtAmt(balance)}
+                          {isPaid ? '✓ Paid' : fmtAmt(balanceDue)}
                         </span>
                       </div>
                     </div>

@@ -1257,6 +1257,7 @@ export default function Payments() {
           role="dialog"
           aria-modal="true"
           aria-label="Invoice viewer"
+          className="no-print"
           style={{
             position: 'fixed', inset: 0, zIndex: 1200,
             display: 'flex', flexDirection: 'column',
