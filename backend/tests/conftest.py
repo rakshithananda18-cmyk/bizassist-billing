@@ -17,7 +17,7 @@ import sys
 _orig_remove = os.remove
 _orig_unlink = os.unlink
 
-def secure_remove(path):
+def secure_remove(path, *args, **kwargs):
     path_str = str(path)
     if "test_bizassist" in path_str:
         try:
@@ -28,18 +28,18 @@ def secure_remove(path):
         for suffix in ("", "-journal", "-wal", "-shm"):
             p = path_str + suffix
             try:
-                _orig_remove(p)
+                _orig_remove(p, *args, **kwargs)
             except Exception:
                 pass
     else:
-        _orig_remove(path)
+        _orig_remove(path, *args, **kwargs)
 
-def secure_unlink(path):
+def secure_unlink(path, *args, **kwargs):
     path_str = str(path)
     if "test_bizassist" in path_str:
-        secure_remove(path)
+        secure_remove(path, *args, **kwargs)
     else:
-        _orig_unlink(path)
+        _orig_unlink(path, *args, **kwargs)
 
 os.remove = secure_remove
 os.unlink = secure_unlink
