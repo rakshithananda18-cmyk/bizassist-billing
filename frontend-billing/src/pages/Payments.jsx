@@ -699,12 +699,13 @@ export default function Payments() {
                 </button>
               ))}
             </div>
-            <div className="search-bar" style={{ width: 180, margin: 0 }}>
+            <div className="search-bar" style={{ width: 180, margin: 0, height: '34px', boxSizing: 'border-box', display: 'flex', alignItems: 'center' }}>
               <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
               <input 
                 value={search} 
                 onChange={e => setSearch(e.target.value)} 
                 placeholder={activeTab === 'Expenses' ? "Search expenses…" : "Search transactions…"} 
+                style={{ fontSize: '0.82rem' }}
               />
             </div>
             <CustomSelect
@@ -715,10 +716,14 @@ export default function Payments() {
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-md)',
                 color: 'var(--text-primary)',
-                padding: '6px 12px',
+                padding: '0 12px',
                 fontSize: '0.82rem',
                 cursor: 'pointer',
-                width: '130px'
+                width: '130px',
+                height: '34px',
+                boxSizing: 'border-box',
+                display: 'inline-flex',
+                alignItems: 'center'
               }}
             >
               <option value="">All Modes</option>
