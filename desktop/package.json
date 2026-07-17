@@ -1,7 +1,7 @@
 {
   "name": "bizassist-desktop",
   "productName": "BizAssist",
-  "version": "1.1.6",
+  "version": "1.1.8",
   "description": "BizAssist — Offline-first Billing & POS",
   "main": "src/main.js",
   "author": "BizAssist",
