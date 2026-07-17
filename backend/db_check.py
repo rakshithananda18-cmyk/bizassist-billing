@@ -1,0 +1,12 @@
+import sqlite3
+conn = sqlite3.connect('bizassist.db')
+cur = conn.cursor()
+cur.execute('SELECT COUNT(*) FROM invoices'); print('invoices:', cur.fetchone()[0])
+cur.execute('SELECT COUNT(*) FROM invoice_line_items'); print('line_items:', cur.fetchone()[0])
+cur.execute('SELECT id, invoice_id, total_amount FROM invoices ORDER BY id DESC LIMIT 8')
+print('latest invoices:')
+for r in cur.fetchall(): print(' ', r)
+cur.execute('SELECT invoice_id, product_name FROM invoice_line_items LIMIT 10')
+print('sample line items:')
+for r in cur.fetchall(): print(' ', r)
+conn.close()
