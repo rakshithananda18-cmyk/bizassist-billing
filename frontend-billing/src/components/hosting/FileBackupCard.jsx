@@ -55,7 +55,7 @@ export default function FileBackupCard({ token, bizId = '' }) {
       const text = await file.text()
       let payload
       try { payload = JSON.parse(text) } catch { throw new Error('That file is not a valid BizAssist backup (.json).') }
-      const res = await fetch(`${API_BASE}/api/data-transfer/import?merge=true`, {
+      const res = await fetch(`${API_BASE}/api/data-transfer/import?merge=true&remap_ids=true`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
