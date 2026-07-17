@@ -7,7 +7,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
-import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, WarehouseIcon, SearchIcon, ExpandIcon, SummaryIcon, SparkleIcon, InfoIcon, AlertIcon } from '../components/Icons'
+import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, WarehouseIcon, SearchIcon, ExpandIcon, SummaryIcon, SparkleIcon, InfoIcon, AlertIcon, ChevronDownIcon } from '../components/Icons'
 
 import { logger } from '../utils/logger'
 import CustomSelect from '../components/common/CustomSelect'
@@ -527,7 +527,14 @@ export default function Payments() {
                 }}
               >
                 <SummaryIcon size={12} />
-                {showStats ? 'Hide Summary ▲' : 'Show Summary ▼'}
+                <span>{showStats ? 'Hide Summary' : 'Show Summary'}</span>
+                <span style={{
+                  display: 'inline-flex',
+                  transition: 'transform 0.18s ease',
+                  transform: showStats ? 'rotate(180deg)' : 'none'
+                }}>
+                  <ChevronDownIcon size={12} />
+                </span>
               </button>
             </div>
             <p className="page-subtitle">
@@ -710,7 +717,8 @@ export default function Payments() {
                 color: 'var(--text-primary)',
                 padding: '6px 12px',
                 fontSize: '0.82rem',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                width: '130px'
               }}
             >
               <option value="">All Modes</option>
