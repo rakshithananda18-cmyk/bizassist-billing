@@ -145,7 +145,7 @@ export default function BackupModal({ token, direction = 'cloud-to-local', onCom
 
       const total = imData?.total ?? 0
       logger.info(`[SYNC] ${direction} complete: ${total} records merged`)
-      setTimeout(() => onComplete?.(imData), 700)
+      // Don't auto-dismiss — show result so the user can acknowledge it.
     } catch (err) {
       if (cancelled.current) return
       mark(idxRef.current, 'error')
@@ -246,20 +246,28 @@ export default function BackupModal({ token, direction = 'cloud-to-local', onCom
 
         {/* Buttons */}
         {(done || failed) && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
             {failed && (
               <button onClick={() => {
                 setStatuses(STEPS.map((_, i) => (i === 0 ? 'active' : 'pending')))
                 setErrorMsg(null); setProgress(0); setBreakdown(null); setExportCount(null)
                 run()
               }}
-                style={{ padding: '8px 16px', borderRadius: 8, background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <SyncIcon size={14} /> Retry
               </button>
             )}
-            <button onClick={() => onComplete?.(null)}
-              style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.82rem' }}>
-              Close
+            <button
+              onClick={() => onComplete?.(done ? { imported: breakdown, total } : null)}
+              style={{
+                padding: '8px 20px', borderRadius: 8, fontWeight: 700, fontSize: '0.84rem',
+                cursor: 'pointer',
+                ...(done
+                  ? { background: '#22c55e', color: '#fff', border: 'none' }
+                  : { background: 'transparent', color: 'var(--text-muted)', border: '1px solid rgba(255,255,255,0.15)' }
+                )
+              }}>
+              {done ? '✓ Done' : 'Close'}
             </button>
           </div>
         )}
