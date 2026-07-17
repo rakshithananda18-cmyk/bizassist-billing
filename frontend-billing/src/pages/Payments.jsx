@@ -50,6 +50,7 @@ export default function Payments() {
   const [showExpenseModal, setShowExpenseModal] = useState(false)
   // In-page invoice viewer (full InvoiceViewer feature set, no route change)
   const [viewingInvoiceNo, setViewingInvoiceNo] = useState(null)
+  const [showStats, setShowStats] = useState(false)
   const [form, setForm]             = useState(defaultForm)
   
   const defaultExpenseForm = {
@@ -506,7 +507,29 @@ export default function Payments() {
         {/* Header */}
         <div className="page-header">
           <div className="page-header-left">
-            <h1 className="page-title">{activeTab === 'Expenses' ? 'Expenses' : 'Payments'}</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <h1 className="page-title">{activeTab === 'Expenses' ? 'Expenses' : 'Payments'}</h1>
+              <button
+                onClick={() => setShowStats(!showStats)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  color: showStats ? 'var(--accent)' : 'var(--text-secondary)',
+                  padding: '4px 10px',
+                  borderRadius: '16px',
+                  background: 'var(--bg-3)',
+                  border: '1px solid var(--border)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <SummaryIcon size={12} />
+                {showStats ? 'Hide Summary ▲' : 'Show Summary ▼'}
+              </button>
+            </div>
             <p className="page-subtitle">
               {activeTab === 'Expenses' 
                 ? 'Track operational, rent, utility, and other business expenses' 
@@ -551,99 +574,107 @@ export default function Payments() {
 
         {/* Cash Flow Summary Cards */}
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: 16,
-          marginBottom: 20
+          maxHeight: showStats ? '500px' : '0px',
+          overflow: 'hidden',
+          transition: 'max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease, margin-bottom 0.3s ease',
+          opacity: showStats ? 1 : 0,
+          marginBottom: showStats ? 20 : 0,
         }}>
-          {/* Card 1: Received */}
           <div style={{
-            background: 'var(--bg-1)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-lg, 12px)',
-            padding: '16px 20px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 4,
-            boxShadow: 'var(--shadow-sm)'
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: 16,
+            paddingBottom: 4
           }}>
-            <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-muted)', fontWeight: 700 }}>Total Received</div>
-            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--success)', marginTop: 2 }}>{fmt(totalReceived)}</div>
-          </div>
+            {/* Card 1: Received */}
+            <div style={{
+              background: 'var(--bg-1)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-lg, 12px)',
+              padding: '16px 20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+              boxShadow: 'var(--shadow-sm)'
+            }}>
+              <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-muted)', fontWeight: 700 }}>Total Received</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--success)', marginTop: 2 }}>{fmt(totalReceived)}</div>
+            </div>
 
-          {/* Card 2: Spent */}
-          <div style={{
-            background: 'var(--bg-1)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-lg, 12px)',
-            padding: '16px 20px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 4,
-            boxShadow: 'var(--shadow-sm)'
-          }}>
-            <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-muted)', fontWeight: 700 }}>Total Outflow</div>
-            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--danger)', marginTop: 2 }}>{fmt(totalMade)}</div>
-          </div>
+            {/* Card 2: Spent */}
+            <div style={{
+              background: 'var(--bg-1)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-lg, 12px)',
+              padding: '16px 20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+              boxShadow: 'var(--shadow-sm)'
+            }}>
+              <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-muted)', fontWeight: 700 }}>Total Outflow</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--danger)', marginTop: 2 }}>{fmt(totalMade)}</div>
+            </div>
 
-          {/* Card 3: Net Balance */}
-          <div style={{
-            background: 'var(--bg-1)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-lg, 12px)',
-            padding: '16px 20px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            boxShadow: 'var(--shadow-sm)'
-          }}>
-            <div>
-              <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-muted)', fontWeight: 700, marginBottom: 2 }}>Net Balance</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: net >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                {net >= 0 ? '+' : ''}{fmt(net)}
+            {/* Card 3: Net Balance */}
+            <div style={{
+              background: 'var(--bg-1)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-lg, 12px)',
+              padding: '16px 20px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              boxShadow: 'var(--shadow-sm)'
+            }}>
+              <div>
+                <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-muted)', fontWeight: 700, marginBottom: 2 }}>Net Balance</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 800, color: net >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                  {net >= 0 ? '+' : ''}{fmt(net)}
+                </div>
+              </div>
+              <div style={{
+                textTransform: 'uppercase', fontSize: '0.65rem', fontWeight: 700,
+                padding: '4px 10px', borderRadius: '99px',
+                background: net >= 0 ? 'var(--success-dim)' : 'var(--danger-dim)',
+                color: net >= 0 ? 'var(--success)' : 'var(--danger)',
+                border: '1px solid currentColor',
+              }}>
+                {net >= 0 ? 'Surplus' : 'Deficit'}
               </div>
             </div>
-            <div style={{
-              textTransform: 'uppercase', fontSize: '0.65rem', fontWeight: 700,
-              padding: '4px 10px', borderRadius: '99px',
-              background: net >= 0 ? 'var(--success-dim)' : 'var(--danger-dim)',
-              color: net >= 0 ? 'var(--success)' : 'var(--danger)',
-              border: '1px solid currentColor',
-            }}>
-              {net >= 0 ? 'Surplus' : 'Deficit'}
-            </div>
-          </div>
 
-          {/* Card 4: Ratio & Distribution */}
-          <div style={{
-            background: 'var(--bg-1)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-lg, 12px)',
-            padding: '16px 20px',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            gap: 6,
-            boxShadow: 'var(--shadow-sm)'
-          }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
-              <span>Inflow Distribution</span>
-              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                {totalReceived + totalMade > 0 ? Math.round((totalReceived / (totalReceived + totalMade)) * 100) : 0}% Inflow
-              </span>
-            </div>
-            <div style={{ height: 6, background: 'var(--bg-3)', borderRadius: '99px', overflow: 'hidden' }}>
-              <div
-                style={{
-                  height: '100%', borderRadius: '99px', background: 'var(--success)',
-                  width: `${totalReceived + totalMade > 0 ? (totalReceived / (totalReceived + totalMade)) * 100 : 0}%`,
-                  transition: 'width 0.4s ease',
-                }}
-              />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-              <span>Received ({fmt(totalReceived)})</span>
-              <span>Outflow ({fmt(totalMade)})</span>
+            {/* Card 4: Ratio & Distribution */}
+            <div style={{
+              background: 'var(--bg-1)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-lg, 12px)',
+              padding: '16px 20px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              gap: 6,
+              boxShadow: 'var(--shadow-sm)'
+            }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Inflow Distribution</span>
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {totalReceived + totalMade > 0 ? Math.round((totalReceived / (totalReceived + totalMade)) * 100) : 0}% Inflow
+                </span>
+              </div>
+              <div style={{ height: 6, background: 'var(--bg-3)', borderRadius: '99px', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%', borderRadius: '99px', background: 'var(--success)',
+                    width: `${totalReceived + totalMade > 0 ? (totalReceived / (totalReceived + totalMade)) * 100 : 0}%`,
+                    transition: 'width 0.4s ease',
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                <span>Received ({fmt(totalReceived)})</span>
+                <span>Outflow ({fmt(totalMade)})</span>
+              </div>
             </div>
           </div>
         </div>

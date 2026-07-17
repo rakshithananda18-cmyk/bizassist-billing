@@ -10,6 +10,8 @@ import ActivityFeed from '../components/ActivityFeed'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { logger } from '../utils/logger'
+import { createPortal } from 'react-dom'
+import InvoiceViewer from '../invoice/InvoiceViewer'
 import {
   SummaryIcon,
   CounterIcon,
@@ -47,6 +49,7 @@ export default function Dashboard() {
   const [stats, setStats]       = useState(null)
   const [payments, setPayments] = useState([])
   const [loading, setLoading]   = useState(true)
+  const [viewingInvoiceNo, setViewingInvoiceNo] = useState(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -279,7 +282,7 @@ export default function Dashboard() {
                             <tr key={inv.id}>
                               <td className="td-mono">
                                 <span
-                                  onClick={() => { navigate(`/invoice/${encodeURIComponent(inv.invoice_number)}/view`) }}
+                                  onClick={() => setViewingInvoiceNo(inv.invoice_number)}
                                   title="View / print this invoice"
                                   style={{ cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline' }}
                                 >
@@ -316,6 +319,78 @@ export default function Dashboard() {
           </>
         )}
       </div>
+
+      {/* ── Invoice modal portal ────────────────────────────────────── */}
+      {viewingInvoiceNo && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Invoice viewer"
+          className="no-print"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1200,
+            display: 'flex', flexDirection: 'column',
+            background: 'rgba(0,0,0,0.55)',
+            backdropFilter: 'blur(4px)',
+            animation: 'fadeInBackdrop 0.18s ease',
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setViewingInvoiceNo(null) }}
+        >
+          <style>{`
+            @keyframes fadeInBackdrop { from { opacity: 0 } to { opacity: 1 } }
+            @keyframes slideUpModal { from { transform: translateY(32px); opacity: 0 } to { transform: none; opacity: 1 } }
+          `}</style>
+
+          {/* Modal shell */}
+          <div style={{
+            margin: 'auto',
+            width: '96vw', maxWidth: 1200,
+            height: '92vh',
+            background: 'var(--bg-2)',
+            borderRadius: 'var(--radius-lg, 14px)',
+            border: '1px solid var(--border)',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
+            display: 'flex', flexDirection: 'column',
+            overflow: 'hidden',
+            animation: 'slideUpModal 0.22s cubic-bezier(0.34,1.56,0.64,1)',
+          }}>
+            {/* Close strip */}
+            <div style={{
+              display: 'flex', justifyContent: 'flex-end', alignItems: 'center',
+              padding: '6px 10px 0',
+              flexShrink: 0,
+            }}>
+              <button
+                onClick={() => setViewingInvoiceNo(null)}
+                aria-label="Close invoice viewer"
+                style={{
+                  background: 'var(--bg-3)', border: '1px solid var(--border)',
+                  borderRadius: '50%', width: 28, height: 28,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', color: 'var(--text-secondary)',
+                  fontSize: '1.1rem', lineHeight: 1, flexShrink: 0,
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-dim)'; e.currentTarget.style.color = 'var(--danger)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* The full InvoiceViewer — embedded mode so Back/× both close the modal */}
+            <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+              <InvoiceViewer
+                key={viewingInvoiceNo}
+                invoiceNo={viewingInvoiceNo}
+                embedded
+                onBack={() => setViewingInvoiceNo(null)}
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </AppLayout>
   )
 }
