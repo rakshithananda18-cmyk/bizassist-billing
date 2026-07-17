@@ -116,7 +116,7 @@ export default function BackupModal({ token, direction = 'cloud-to-local', onCom
 
       // 2. Merge into destination (LWW, non-destructive). Does NOT touch hosting_mode.
       advance(1)
-      const imRes = await fetch(`${cfg.dst}/api/data-transfer/import?merge=true`, {
+      const imRes = await fetch(`${cfg.dst}/api/data-transfer/import?merge=true&remap_ids=true`, {
         method: 'POST', headers: headersFor(cfg.dst),
         body: JSON.stringify({ tables: exportData?.tables || {} }),
       })
