@@ -69,9 +69,10 @@ jobs:
       - name: Assert no .env in packaged backend
         shell: bash
         run: |
-          FOUND=$(find desktop/resources/backend -name ".env*" -not -name "*.example" | tee /dev/stderr | wc -l)
-          if [ "$FOUND" -ne 0 ]; then
-            echo "::error::.env file(s) found inside the packaged backend — secrets must not ship in the installer"
+          FILES=$(find desktop/resources/backend -name ".env*" -not -name "*.example")
+          if [ -n "$FILES" ]; then
+            echo "::error::.env file(s) found inside the packaged backend — secrets must not ship in the installer:"
+            echo "$FILES" >&2
             exit 1
           fi
           echo "OK: no .env in the desktop backend bundle"
