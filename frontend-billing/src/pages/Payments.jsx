@@ -173,7 +173,7 @@ export default function Payments() {
     }
 
     let items = baseItems.filter(p => {
-      if (modeFilter && p.method !== modeFilter) return false
+      if (modeFilter && (p.method || '').toLowerCase() !== modeFilter.toLowerCase()) return false
 
       const q = search.toLowerCase()
       const party = p.party_name || p.customer_name || p.supplier_name || ''
@@ -219,7 +219,7 @@ export default function Payments() {
 
   const getFilteredExpenses = () => {
     let items = expenses.filter(e => {
-      if (modeFilter && e.payment_mode !== modeFilter) return false
+      if (modeFilter && (e.payment_mode || '').toLowerCase() !== modeFilter.toLowerCase()) return false
 
       const q = search.toLowerCase()
       return !q || 
@@ -729,8 +729,8 @@ export default function Payments() {
               <option value="">All Modes</option>
               <option value="UPI">UPI</option>
               <option value="Cash">Cash</option>
-              <option value="Bank Transfer">Bank Transfer</option>
-              <option value="Card">Card</option>
+              <option value="Bank">Bank Transfer</option>
+              <option value="Cheque">Cheque</option>
             </CustomSelect>
           </div>
         </div>
