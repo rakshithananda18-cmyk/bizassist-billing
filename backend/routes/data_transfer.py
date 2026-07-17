@@ -290,9 +290,26 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
     dialect = db.bind.dialect.name
     count = 0
 
+    try:
+        insp = inspect(db.bind)
+        col_info = insp.get_columns("users")
+        bool_cols = {c["name"] for c in col_info if isinstance(c["type"], sa.Boolean)}
+    except Exception as exc:
+        logger.warning("migrate/import: cannot inspect users for boolean coercion — %s", exc)
+        bool_cols = set()
+
     for row in rows:
         r = dict(row)
         is_owner = not r.get("parent_business_id")
+
+        # Coerce integer/string booleans to real bools for BOOLEAN columns (e.g. is_premium).
+        for bc in bool_cols:
+            if bc in r and r[bc] is not None and not isinstance(r[bc], bool):
+                v = r[bc]
+                r[bc] = (
+                    v != 0 if isinstance(v, (int, float))
+                    else str(v).strip().lower() in ("1", "true", "t", "yes", "y")
+                )
 
         if is_owner:
             # Update only non-identity columns on the existing owner row
