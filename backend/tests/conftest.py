@@ -73,7 +73,53 @@ os.environ["LLM_ROUTER"] = "off"
 os.environ["ADMIN_API_ENABLED"] = "1"
 # Keep the paywall dormant for the suite (free users can call /ask etc.);
 # subscription tests flip it on explicitly.
-os.environ.setdefault("SUBSCRIPTION_ENFORCED", "0")
+# Dynamic mocking of ChromaDB and SentenceTransformer to prevent thread-safety
+# access violations/crashes on Windows while preserving real behavior for RAG/router tests.
+from unittest.mock import MagicMock
+import numpy as np
+import sys
+_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_backend_path = os.path.join(_root, "backend")
+if _backend_path not in sys.path:
+    sys.path.insert(0, _backend_path)
+import services.embeddings as embeddings
+
+# Save original functions
+_orig_get_chroma_client = embeddings.get_chroma_client
+_orig_get_chat_memory_collection = embeddings.get_chat_memory_collection
+_orig_get_document_embeddings_collection = embeddings.get_document_embeddings_collection
+_orig_get_embedding_model = embeddings.get_embedding_model
+_orig_save_chat_memory = embeddings.save_chat_memory
+_orig_search_chat_memories = embeddings.search_chat_memories
+
+mock_collection = MagicMock()
+mock_chroma_client = MagicMock()
+mock_chroma_client.get_or_create_collection.return_value = mock_collection
+
+mock_model = MagicMock()
+def mock_encode(texts, *args, **kwargs):
+    count = len(texts) if isinstance(texts, list) else 1
+    return np.zeros((count, 384))
+mock_model.encode = mock_encode
+
+def pytest_runtest_setup(item):
+    is_rag_or_router = "test_rag.py" in item.nodeid or "test_intent_router.py" in item.nodeid
+    if is_rag_or_router:
+        # Restore real implementations
+        embeddings.get_chroma_client = _orig_get_chroma_client
+        embeddings.get_chat_memory_collection = _orig_get_chat_memory_collection
+        embeddings.get_document_embeddings_collection = _orig_get_document_embeddings_collection
+        embeddings.get_embedding_model = _orig_get_embedding_model
+        embeddings.save_chat_memory = _orig_save_chat_memory
+        embeddings.search_chat_memories = _orig_search_chat_memories
+    else:
+        # Apply mock implementations
+        embeddings.get_chroma_client = lambda: mock_chroma_client
+        embeddings.get_chat_memory_collection = lambda: mock_collection
+        embeddings.get_document_embeddings_collection = lambda: mock_collection
+        embeddings.get_embedding_model = lambda: mock_model
+        embeddings.save_chat_memory = lambda *a, **kw: None
+        embeddings.search_chat_memories = lambda *a, **kw: []
 
 import pytest
 
