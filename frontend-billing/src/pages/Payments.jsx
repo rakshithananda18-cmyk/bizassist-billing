@@ -5,7 +5,8 @@
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import AppLayout from '../layouts/AppLayout'
+import PageShell from '../components/common/PageShell'
+import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
 import { useAuth } from '../contexts/AuthContext'
 import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, WarehouseIcon, SearchIcon, ExpandIcon, SummaryIcon, SparkleIcon, InfoIcon, AlertIcon, ChevronDownIcon } from '../components/Icons'
 
@@ -14,6 +15,9 @@ import CustomSelect from '../components/common/CustomSelect'
 import { formatISTDate } from '../utils/format'
 import InvoiceViewer from '../invoice/InvoiceViewer'
 import { buildWhatsAppLink, buildPublicInvoiceLink } from '../invoice/share'
+import { usePageLifecycle } from '../hooks/usePageLifecycle'
+import ContextMenu from '../components/common/ContextMenu'
+import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
 
 
 
@@ -31,7 +35,7 @@ const defaultForm = {
   date: new Date().toISOString().slice(0, 10),
 }
 
-export default function Payments() {
+export default function Payments({ embedded = false, headerTabs = null }) {
   const { authFetch, settings } = useAuth()
 
   const settingsRef = useRef(settings)
@@ -65,6 +69,10 @@ export default function Payments() {
   const [submitting, setSubmitting] = useState(false)
   const [alert, setAlert]           = useState(null)
 
+  // Right-click context menu
+  const [ctxMenu, setCtxMenu] = useState(null)
+
+
   const load = useCallback(() => {
     setLoading(true)
     Promise.all([
@@ -82,6 +90,13 @@ export default function Payments() {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [authFetch])
+
+  // Page lifecycle: guard form + silent refresh on tab resume
+  const { blocker, isRefreshing, dirtyMessage } = usePageLifecycle({
+    isDirty:      () => (showModal && form.amount !== '') || (showExpenseModal && expenseForm.amount !== ''),
+    dirtyMessage: 'You have an unsaved payment entry. Leave this page?',
+    onResume:     load,
+  })
 
   useEffect(() => {
     load()
@@ -492,9 +507,9 @@ export default function Payments() {
   const setExpenseField = (k, v) => setExpenseForm(f => ({ ...f, [k]: v }))
 
   return (
-    <AppLayout title="Payments">
+    <PageShell embedded={embedded} title="Payments">
       <>
-      <div className="slide-up">
+      <div className={`slide-up${headerTabs ? ' ws-embed' : ''}`}>
 
 
         {alert && (
@@ -504,7 +519,54 @@ export default function Payments() {
           </div>
         )}
 
-        {/* Header */}
+        {/* Embedded (Khata): the SAME 48px workspace bar as Godown's tabs —
+            workspace tabs · divider · group switch · actions · window controls. */}
+        {headerTabs && (
+          <WorkspaceTopBar
+            windowControls={false}
+            actions={
+              <>
+                <button
+                  onClick={() => setShowStats(!showStats)}
+                  className={`ws-tab ${showStats ? 'active' : ''}`}
+                  style={{ padding: '6px 10px' }}
+                >
+                  <SummaryIcon size={12} /> {showStats ? 'Hide Summary' : 'Show Summary'}
+                </button>
+                {activeTab === 'Expenses' ? (
+                  <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={() => { setExpenseForm(defaultExpenseForm); setShowExpenseModal(true) }}>
+                    <PlusIcon size={13} /> Log Expense
+                  </button>
+                ) : (
+                  <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={() => { setForm(defaultForm); setShowModal(true) }}>
+                    <PlusIcon size={13} /> Record Payment
+                  </button>
+                )}
+              </>
+            }
+          >
+            {headerTabs}
+            <WsDivider />
+            {[
+              { key: 'general', label: 'General Operations', firstTab: 'All' },
+              { key: 'expenses', label: 'Expenses & Purchases', firstTab: 'Made' },
+            ].map(g => {
+              const active = (g.key === 'expenses') === ['Made', 'Expenses'].includes(activeTab)
+              return (
+                <button
+                  key={g.key}
+                  className={`ws-tab ${active ? 'active' : ''}`}
+                  onClick={() => { if (!active) setActiveTab(g.firstTab) }}
+                >
+                  {g.label}
+                </button>
+              )
+            })}
+          </WorkspaceTopBar>
+        )}
+
+        {/* Standalone header (legacy /payments route only) */}
+        {!headerTabs && (
         <div className="page-header">
           <div className="page-header-left">
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -538,8 +600,8 @@ export default function Payments() {
               </button>
             </div>
             <p className="page-subtitle">
-              {activeTab === 'Expenses' 
-                ? 'Track operational, rent, utility, and other business expenses' 
+              {activeTab === 'Expenses'
+                ? 'Track operational, rent, utility, and other business expenses'
                 : 'Track all money received and payments made'}
             </p>
           </div>
@@ -578,6 +640,7 @@ export default function Payments() {
             )}
           </div>
         </div>
+        )}
 
         {/* Cash Flow Summary Cards */}
         <div style={{
@@ -694,9 +757,15 @@ export default function Payments() {
                 ? ['Made', 'Expenses']
                 : ['All', 'Received', 'Pending Dues', 'Credit Notes']
               ).map(t => (
-                <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)} style={{ margin: 0, padding: '4px 10px', fontSize: '0.8rem' }}>
-                  {t}
-                </button>
+                headerTabs ? (
+                  <button key={t} className={`ws-tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
+                    {t}
+                  </button>
+                ) : (
+                  <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)} style={{ margin: 0, padding: '4px 10px', fontSize: '0.8rem' }}>
+                    {t}
+                  </button>
+                )
               ))}
             </div>
             <div className="search-bar" style={{ width: 180, margin: 0, height: '34px', boxSizing: 'border-box', display: 'flex', alignItems: 'center' }}>
@@ -732,6 +801,11 @@ export default function Payments() {
               <option value="Bank">Bank Transfer</option>
               <option value="Cheque">Cheque</option>
             </CustomSelect>
+            {isRefreshing && (
+              <span className="toolbar-refresh-spinner">
+                <span className="spin" /> Refreshing…
+              </span>
+            )}
           </div>
         </div>
 
@@ -906,7 +980,18 @@ export default function Payments() {
                         </div>
                       </td></tr>
                     ) : filteredPendingDues.map(d => (
-                      <tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => setViewingInvoiceNo(d.invoice_id)}>
+                      <tr key={d.id}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => setViewingInvoiceNo(d.invoice_id)}
+                        onContextMenu={e => {
+                          e.preventDefault()
+                          setCtxMenu({ x: e.clientX, y: e.clientY, items: [
+                            { label: 'View Invoice', icon: <BillsIcon size={13} />, action: () => setViewingInvoiceNo(d.invoice_id) },
+                            { label: 'Copy Invoice No', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(d.invoice_id || '') },
+                            { label: 'Copy Customer Name', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(d.customer_name || '') },
+                          ]})
+                        }}
+                      >
                         <td>{d.due_date ? formatISTDate(d.due_date) : '—'}</td>
                         <td className="td-mono">
                           {d.invoice_id ? (
@@ -997,7 +1082,18 @@ export default function Payments() {
                         </div>
                       </td></tr>
                     ) : filteredCreditNotes.map(cn => (
-                      <tr key={cn.id} style={{ cursor: 'pointer' }} onClick={() => setViewingInvoiceNo(cn.invoice_id)}>
+                      <tr key={cn.id}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => setViewingInvoiceNo(cn.invoice_id)}
+                        onContextMenu={e => {
+                          e.preventDefault()
+                          setCtxMenu({ x: e.clientX, y: e.clientY, items: [
+                            { label: 'View Ref Invoice', icon: <BillsIcon size={13} />, action: () => setViewingInvoiceNo(cn.invoice_id) },
+                            { label: 'Copy CN No', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(cn.credit_note_number || cn.invoice_id || '') },
+                            { label: 'Copy Customer Name', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(cn.customer_name || '') },
+                          ]})
+                        }}
+                      >
                         <td>{cn.date ? formatISTDate(cn.date) : '—'}</td>
                         <td className="td-mono">
                           {cn.invoice_id ? (
@@ -1109,7 +1205,19 @@ export default function Payments() {
                         </div>
                       </td></tr>
                     ) : filtered.map(p => (
-                      <tr key={p.id} style={{ cursor: (p.invoice_number || p.invoice_ref) ? 'pointer' : 'default' }} onClick={() => { if (p.invoice_number || p.invoice_ref) setViewingInvoiceNo(p.invoice_number || p.invoice_ref) }}>
+                      <tr
+                        key={p.id}
+                        style={{ cursor: (p.invoice_number || p.invoice_ref) ? 'pointer' : 'default' }}
+                        onClick={() => { if (p.invoice_number || p.invoice_ref) setViewingInvoiceNo(p.invoice_number || p.invoice_ref) }}
+                        onContextMenu={e => {
+                          e.preventDefault()
+                          setCtxMenu({ x: e.clientX, y: e.clientY, items: [
+                            ...(p.invoice_number || p.invoice_ref ? [{ label: 'View Invoice', icon: <BillsIcon size={13} />, action: () => setViewingInvoiceNo(p.invoice_number || p.invoice_ref) }] : []),
+                            { label: 'Copy Reference', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(p.reference || p.invoice_number || '') },
+                            { label: 'Copy Amount', icon: <CashIcon size={13} />, action: () => navigator.clipboard.writeText(String(p.amount || '')) },
+                          ]})
+                        }}
+                      >
                         <td>{p.date ? formatISTDate(p.date) : '—'}</td>
                         <td className="td-mono">
                           {(p.invoice_number || p.invoice_ref) ? (
@@ -1367,6 +1475,8 @@ export default function Payments() {
         document.body
       )}
       </>
-    </AppLayout>
+      <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />
+      <UnsavedChangesModal blocker={blocker} message={dirtyMessage} />
+    </PageShell>
   )
 }

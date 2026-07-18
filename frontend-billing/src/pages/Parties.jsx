@@ -5,13 +5,17 @@
 //              payment reminders/UPI payment links via WhatsApp.
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
-import AppLayout from '../layouts/AppLayout'
+import PageShell from '../components/common/PageShell'
 import { useAuth } from '../contexts/AuthContext'
 import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, HandshakeIcon, InventoryIcon, MessageIcon, PlusIcon, PrinterIcon, SearchIcon, SyncIcon, UserIcon, WarehouseIcon, ExpandIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import { buildUpiUri, buildWhatsAppShareUrl, normalizePhoneIN } from '../utils/share'
 import { applyDelta, hasDelta } from '../sync/applyDelta'
 import CustomSelect from '../components/common/CustomSelect'
+import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
+import { usePageLifecycle } from '../hooks/usePageLifecycle'
+import ContextMenu from '../components/common/ContextMenu'
+import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -22,7 +26,7 @@ const defaultForm = {
   credit_limit: '', payment_terms: 'net30',
 }
 
-export default function Parties() {
+export default function Parties({ embedded = false, headerTabs = null }) {
   const { authFetch, user, settings } = useAuth()
 
   const settingsRef = useRef(settings)
@@ -46,12 +50,15 @@ export default function Parties() {
   const [selectedParty, setSelectedParty] = useState(null) // { type: 'customer'|'vendor', name: '', id: '' }
   const [partyHistory, setPartyHistory]   = useState([])
 
-  // Sales Returns / Credit Notes States
+  // Returns
   const [showReturnModal, setShowReturnModal] = useState(false)
   const [returningInvoice, setReturningInvoice] = useState(null)
   const [returnLines, setReturnLines] = useState([])
   const [returnNote, setReturnNote] = useState('')
   const [savingReturn, setSavingReturn] = useState(false)
+
+  // Right-click context menu
+  const [ctxMenu, setCtxMenu] = useState(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -71,6 +78,13 @@ export default function Parties() {
       setPurchases(purchItems)
     }).finally(() => setLoading(false))
   }, [authFetch])
+
+  // Page lifecycle: guard when form modal is open with typed data
+  const { blocker, isRefreshing, dirtyMessage } = usePageLifecycle({
+    isDirty:      () => showModal && form.name !== '',
+    dirtyMessage: 'You have an unsaved contact form. Leave this page?',
+    onResume:     load,
+  })
 
   useEffect(() => {
     load()
@@ -405,8 +419,8 @@ export default function Parties() {
   }
 
   return (
-    <AppLayout title="Parties & Invoices">
-      <div className="slide-up">
+    <PageShell embedded={embedded} title="Parties & Invoices">
+      <div className={`slide-up${headerTabs ? ' ws-embed' : ''}`}>
 
         {alert && (
           <div className={`alert alert-${alert.type} mb-4`}>
@@ -415,37 +429,71 @@ export default function Parties() {
           </div>
         )}
 
-        {/* Header */}
-        <div className="page-header">
-          <div className="page-header-left">
-            <h1 className="page-title">Parties & Invoices</h1>
-            <p className="page-subtitle">Manage CRM relationships and view customer invoices</p>
-          </div>
-          <div className="page-actions">
-            <button className="btn btn-primary" onClick={() => { setForm(defaultForm); setShowModal(true) }}>
-              <PlusIcon size={14} /> Add Party
+        {/* Embedded (Khata): the SAME 48px workspace bar as Godown's tabs —
+            workspace tabs · divider · view tabs · actions · window controls. */}
+        {headerTabs && (
+          <WorkspaceTopBar
+            windowControls={false}
+            actions={
+              <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={() => { setForm(defaultForm); setShowModal(true) }}>
+                <PlusIcon size={13} /> Add Party
+              </button>
+            }
+          >
+            {headerTabs}
+            <WsDivider />
+            <button className={`ws-tab ${activeTab === 'Customers' ? 'active' : ''}`} onClick={() => setActiveTab('Customers')}>
+              Customers <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>({customers.length})</span>
             </button>
-          </div>
-        </div>
+            <button className={`ws-tab ${activeTab === 'Vendors' ? 'active' : ''}`} onClick={() => setActiveTab('Vendors')}>
+              Vendors <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>({vendors.length})</span>
+            </button>
+            <button className={`ws-tab ${activeTab === 'Other Invoices' ? 'active' : ''}`} onClick={() => setActiveTab('Other Invoices')}>
+              Other Invoices <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>({invoices.filter(i => !i.customer_id).length})</span>
+            </button>
+          </WorkspaceTopBar>
+        )}
 
-        {/* Tabs + Search & Filters */}
-        <div className="flex items-center justify-between page-subbar" style={{ flexWrap: 'wrap', gap: 12 }}>
-          <div className="tabs" style={{ margin: 0 }}>
-            <button className={`tab${activeTab === 'Customers' ? ' active' : ''}`} onClick={() => setActiveTab('Customers')}>
-              Customers <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({customers.length})</span>
-            </button>
-            <button className={`tab${activeTab === 'Vendors' ? ' active' : ''}`} onClick={() => setActiveTab('Vendors')}>
-              Vendors <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({vendors.length})</span>
-            </button>
-            <button className={`tab${activeTab === 'Other Invoices' ? ' active' : ''}`} onClick={() => setActiveTab('Other Invoices')}>
-              Casual / Other Invoices <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({invoices.filter(i => !i.customer_id).length})</span>
-            </button>
+        {/* Standalone header (legacy /parties route only) */}
+        {!headerTabs && (
+          <div className="page-header">
+            <div className="page-header-left">
+              <h1 className="page-title">Parties & Invoices</h1>
+              <p className="page-subtitle">Manage CRM relationships and view customer invoices</p>
+            </div>
+            <div className="page-actions">
+              <button className="btn btn-primary" onClick={() => { setForm(defaultForm); setShowModal(true) }}>
+                <PlusIcon size={14} /> Add Party
+              </button>
+            </div>
           </div>
+        )}
+
+        {/* Tabs + Search & Filters (tabs live in the top bar when embedded) */}
+        <div className="flex items-center justify-between page-subbar" style={{ flexWrap: 'wrap', gap: 12 }}>
+          {!headerTabs ? (
+            <div className="tabs" style={{ margin: 0 }}>
+              <button className={`tab${activeTab === 'Customers' ? ' active' : ''}`} onClick={() => setActiveTab('Customers')}>
+                Customers <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({customers.length})</span>
+              </button>
+              <button className={`tab${activeTab === 'Vendors' ? ' active' : ''}`} onClick={() => setActiveTab('Vendors')}>
+                Vendors <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({vendors.length})</span>
+              </button>
+              <button className={`tab${activeTab === 'Other Invoices' ? ' active' : ''}`} onClick={() => setActiveTab('Other Invoices')}>
+                Casual / Other Invoices <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({invoices.filter(i => !i.customer_id).length})</span>
+              </button>
+            </div>
+          ) : <div />}
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <div className="search-bar" style={{ width: 180 }}>
               <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${activeTab.toLowerCase()}…`} />
             </div>
+            {isRefreshing && (
+              <span className="toolbar-refresh-spinner">
+                <span className="spin" /> Refreshing…
+              </span>
+            )}
             {activeTab !== 'Other Invoices' && (
               <CustomSelect
                 value={balanceFilter}
@@ -565,10 +613,21 @@ export default function Parties() {
                       <p>{search ? 'Try a different search.' : 'No transactions or details available.'}</p>
                     </div>
                   </td></tr>
-                ) : filtered.map(p => {
+                    ) : filtered.map(p => {
                   if (activeTab === 'Other Invoices') {
                     return (
-                      <tr key={p.id}>
+                      <tr key={p.id}
+                        style={{ cursor: 'context-menu' }}
+                        onContextMenu={e => {
+                          e.preventDefault()
+                          setCtxMenu({ x: e.clientX, y: e.clientY, items: [
+                            { label: 'Print Invoice', icon: <PrinterIcon size={13} />, action: () => handlePrintInvoice(p.invoice_number || p.invoice_no) },
+                            { label: 'Share on WhatsApp', icon: <MessageIcon size={13} />, action: () => handleWhatsAppShareInvoice(p) },
+                            { divider: true },
+                            { label: 'Copy Invoice No', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(p.invoice_number || p.invoice_no || '') },
+                          ]})
+                        }}
+                      >
                         <td className="td-mono td-primary">
                           {p.invoice_number || `#${p.id}`}
                           {p.invoice_type === 'credit_note' && (
@@ -596,7 +655,19 @@ export default function Parties() {
                   }
                   const outstanding = parseFloat(p.outstanding_balance ?? 0)
                   return (
-                    <tr key={p.id}>
+                    <tr key={p.id}
+                      style={{ cursor: 'context-menu' }}
+                      onContextMenu={e => {
+                        e.preventDefault()
+                        setCtxMenu({ x: e.clientX, y: e.clientY, items: [
+                          { label: 'View Invoices', icon: <BillsIcon size={13} />, action: () => handleViewInvoices(p) },
+                          { label: 'Send Payment Reminder', icon: <MessageIcon size={13} />, action: () => handleWhatsAppReminder(p) },
+                          { divider: true },
+                          { label: 'Copy Phone', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(p.phone || '') },
+                          { label: 'Copy Name', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(p.name || '') },
+                        ]})
+                      }}
+                    >
                       <td>
                         <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</div>
                         {p.address && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.address}</div>}
@@ -768,7 +839,25 @@ export default function Parties() {
                         </td>
                       </tr>
                     ) : partyHistory.map(item => (
-                      <tr key={item.id}>
+                      <tr key={item.id}
+                        style={{ cursor: 'context-menu' }}
+                        onContextMenu={e => {
+                          e.preventDefault()
+                          if (selectedParty.type === 'customer') {
+                            setCtxMenu({ x: e.clientX, y: e.clientY, items: [
+                              { label: 'Print Invoice', icon: <PrinterIcon size={13} />, action: () => handlePrintInvoice(item.invoice_number || item.invoice_no) },
+                              { label: 'Share on WhatsApp', icon: <MessageIcon size={13} />, action: () => handleWhatsAppShareInvoice(item, selectedParty) },
+                              { divider: true },
+                              { label: 'Copy Invoice No', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(item.invoice_number || item.invoice_no || '') },
+                            ]})
+                          } else {
+                            setCtxMenu({ x: e.clientX, y: e.clientY, items: [
+                              { label: 'Copy Bill No', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(item.bill_number || item.invoice_number || String(item.id)) },
+                              { label: 'Copy Amount', icon: <CashIcon size={13} />, action: () => navigator.clipboard.writeText(String(item.total_amount || '')) },
+                            ]})
+                          }
+                        }}
+                      >
                         <td className="td-mono td-primary">
                           {selectedParty.type === 'customer' ? (item.invoice_number || `#${item.id}`) : (item.bill_number || `#${item.id}`)}
                           {item.invoice_type === 'credit_note' && (
@@ -942,6 +1031,8 @@ export default function Parties() {
           </div>
         </div>
       )}
-    </AppLayout>
+      <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />
+      <UnsavedChangesModal blocker={blocker} message={dirtyMessage} />
+    </PageShell>
   )
 }

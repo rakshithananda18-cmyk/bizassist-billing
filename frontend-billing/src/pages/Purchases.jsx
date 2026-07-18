@@ -5,10 +5,14 @@
 //              new batches, and records debit note purchase returns.
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
-import AppLayout from '../layouts/AppLayout'
+import PageShell from '../components/common/PageShell'
 import { useAuth } from '../contexts/AuthContext'
 import { BillsIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIcon, ImportIcon, InfoIcon, SearchIcon, SyncIcon, UploadIcon, ExpandIcon } from '../components/Icons'
 import CustomSelect from '../components/common/CustomSelect'
+import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
+import { usePageLifecycle } from '../hooks/usePageLifecycle'
+import ContextMenu from '../components/common/ContextMenu'
+import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -16,7 +20,7 @@ const fmt = (n) =>
 // ============================================================================
 // ── 2. STATE INITIALIZATION (BILLS & MODALS) ──
 // ============================================================================
-export default function Purchases() {
+export default function Purchases({ embedded = false, headerTabs = null }) {
   const { authFetch, settings } = useAuth()
 
   const settingsRef = useRef(settings)
@@ -55,6 +59,16 @@ export default function Purchases() {
   const [selectedDetail, setSelectedDetail] = useState(null)
 
   const [sortConfig, setSortConfig] = useState({ key: '', direction: '' })
+
+  // Right-click context menu
+  const [ctxMenu, setCtxMenu] = useState(null)
+
+  // Page lifecycle: guard when OCR review is in-progress, refresh on tab resume
+  const { blocker, isRefreshing, dirtyMessage } = usePageLifecycle({
+    isDirty:      () => showModal && step === 'review' && extracted !== null,
+    dirtyMessage: 'You are reviewing a scanned bill. Leave and discard changes?',
+    onResume:     () => { /* silent refresh handled inline */ },
+  })
 
   const handleSort = (key) => {
     let direction = 'asc'
@@ -404,8 +418,40 @@ export default function Purchases() {
   // ── 5. RENDER BILLS CATALOG LAYOUT (JSX) ──
   // ============================================================================
   return (
-    <AppLayout title="Purchases">
-      <div className="slide-up">
+    <PageShell embedded={embedded} title="Purchases">
+      <div className={`slide-up${headerTabs ? ' ws-embed' : ''}`}>
+
+        {/* Embedded (Godown): the SAME 48px workspace bar as the Stock tab —
+            workspace tabs · divider · view tabs · actions · window controls. */}
+        {headerTabs && (
+          <WorkspaceTopBar
+            actions={
+              <>
+                <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={openReturnModal}>
+                  <SyncIcon size={13} /> Record Return
+                </button>
+                <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={openModal}>
+                  <UploadIcon size={13} /> Upload Bill
+                </button>
+              </>
+            }
+          >
+            {headerTabs}
+            <WsDivider />
+            {['Pending Review', 'Confirmed', 'Returns (Debit Notes)'].map(t => (
+              <button key={t} className={`ws-tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
+                {t}
+                <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>
+                  ({
+                    t === 'Returns (Debit Notes)'
+                      ? debitNotes.length
+                      : bills.filter(b => b.status === (t === 'Pending Review' ? 'pending' : 'confirmed')).length
+                  })
+                </span>
+              </button>
+            ))}
+          </WorkspaceTopBar>
+        )}
 
         {alert && (
           <div className={`alert alert-${alert.type} mb-4`}>
@@ -414,42 +460,51 @@ export default function Purchases() {
           </div>
         )}
 
-        {/* Header */}
-        <div className="page-header">
-          <div className="page-header-left">
-            <h1 className="page-title">Purchases</h1>
-            <p className="page-subtitle">Upload and manage supplier bills with AI-powered extraction</p>
-          </div>
-          <div className="page-actions">
-            <button className="btn btn-secondary" style={{ marginRight: 8 }} onClick={openReturnModal}>
-              <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Record Return
-            </button>
-            <button className="btn btn-primary" onClick={openModal}>
-              ⬆ Upload Bill
-            </button>
-          </div>
-        </div>
-
-        {/* Tabs + Search */}
-        <div className="flex items-center justify-between page-subbar" style={{ flexWrap: 'wrap', gap: 12 }}>
-          <div className="tabs">
-            {['Pending Review', 'Confirmed', 'Returns (Debit Notes)'].map(t => (
-              <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)}>
-                {t}
-                <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>
-                  ({
-                    t === 'Returns (Debit Notes)' 
-                      ? debitNotes.length 
-                      : bills.filter(b => b.status === (t === 'Pending Review' ? 'pending' : 'confirmed')).length
-                  })
-                </span>
+        {/* Standalone header (legacy /purchases route only) */}
+        {!headerTabs && (
+          <div className="page-header">
+            <div className="page-header-left">
+              <h1 className="page-title">Purchases</h1>
+              <p className="page-subtitle">Upload and manage supplier bills with AI-powered extraction</p>
+            </div>
+            <div className="page-actions">
+              <button className="btn btn-secondary" style={{ marginRight: 8 }} onClick={openReturnModal}>
+                <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Record Return
               </button>
-            ))}
+              <button className="btn btn-primary" onClick={openModal}>
+                ⬆ Upload Bill
+              </button>
+            </div>
           </div>
+        )}
+
+        {/* Tabs + Search (tabs live in the top bar when embedded) */}
+        <div className="flex items-center justify-between page-subbar" style={{ flexWrap: 'wrap', gap: 12 }}>
+          {!headerTabs ? (
+            <div className="tabs">
+              {['Pending Review', 'Confirmed', 'Returns (Debit Notes)'].map(t => (
+                <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)}>
+                  {t}
+                  <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>
+                    ({
+                      t === 'Returns (Debit Notes)'
+                        ? debitNotes.length
+                        : bills.filter(b => b.status === (t === 'Pending Review' ? 'pending' : 'confirmed')).length
+                    })
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : <div />}
           <div className="search-bar">
             <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search bills…" />
           </div>
+          {isRefreshing && (
+            <span className="toolbar-refresh-spinner">
+              <span className="spin" /> Refreshing…
+            </span>
+          )}
         </div>
 
         {/* Table */}
@@ -505,7 +560,19 @@ export default function Purchases() {
                     </div>
                   </td></tr>
                 ) : filtered.map(b => (
-                  <tr key={b.id}>
+                  <tr
+                    key={b.id}
+                    style={{ cursor: 'context-menu' }}
+                    onContextMenu={e => {
+                      e.preventDefault()
+                      setCtxMenu({ x: e.clientX, y: e.clientY, items: [
+                        { label: 'View Details', icon: <BillsIcon size={13} />, action: () => handleViewDetail(b) },
+                        { divider: true },
+                        { label: 'Copy Bill No', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(b.invoice_number || b.bill_number || String(b.id)) },
+                        { label: 'Copy Supplier', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(b.supplier_name || '') },
+                      ]})
+                    }}
+                  >
                     <td className="td-mono td-primary">{b.invoice_number || b.bill_number || `#${b.id}`}</td>
                     <td className="td-primary">{b.supplier_name || '—'}</td>
                     <td>{b.date || b.invoice_date ? new Date(b.date || b.invoice_date).toLocaleDateString('en-IN') : '—'}</td>
@@ -1163,6 +1230,8 @@ export default function Purchases() {
           </div>
         </div>
       )}
-    </AppLayout>
+      <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />
+      <UnsavedChangesModal blocker={blocker} message={dirtyMessage} />
+    </PageShell>
   )
 }

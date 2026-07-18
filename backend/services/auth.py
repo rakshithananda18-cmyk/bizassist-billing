@@ -181,22 +181,60 @@ require_owner = restrict_cashier
 
 
 # ── SSE Ticket Authentication ────────────────────────────────────────────────
-_sse_tickets = {}
+# Stateless HMAC-signed tickets (BUG-4 / MASTER_REVIEW §2.3 #9).
+# The previous in-memory dict dropped every outstanding ticket on a server
+# restart ("live counter randomly disconnects" on the HF tier) and could never
+# work with >1 worker. Tickets are now self-contained —
+#   "<exp_unix>.<payload_b64url>.<hmac_sha256_hex>"  keyed on JWT_SECRET —
+# so any worker, before or after a restart, can verify them (same pattern as
+# services/action_rails.py confirm tokens). Single-use is enforced via a
+# best-effort in-memory used-set: with a ≤30s TTL the replay window after a
+# restart is negligible, and the HMAC + expiry still gate everything.
+import hmac as _hmac
+import json as _json
+import base64 as _base64
+import hashlib as _hashlib
+
+_used_tickets: dict = {}   # ticket -> exp_unix (for cleanup)
+
+
+def _ticket_sig(b64_payload: str, exp: int) -> str:
+    msg = f"sse|{b64_payload}|{exp}".encode()
+    return _hmac.new(JWT_SECRET.encode(), msg, _hashlib.sha256).hexdigest()
+
 
 def create_sse_ticket(user_payload: dict, expires_in_seconds: int = 30) -> str:
-    """Generate a single-use random ticket token and save it with a short TTL."""
-    now = utc_now()
-    # Periodic in-line cleanup of expired tickets
-    for tk, val in list(_sse_tickets.items()):
-        if now > val["expires"]:
-            _sse_tickets.pop(tk, None)
-            
-    ticket = _secrets.token_urlsafe(32)
-    _sse_tickets[ticket] = {
-        "user": user_payload,
-        "expires": now + timedelta(seconds=expires_in_seconds)
-    }
-    return ticket
+    """Mint a short-lived, single-use, stateless (restart-proof) ticket."""
+    exp = int(_time.time()) + int(expires_in_seconds)
+    raw = _json.dumps(user_payload, sort_keys=True, separators=(",", ":"), default=str)
+    b64 = _base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+    return f"{exp}.{b64}.{_ticket_sig(b64, exp)}"
+
+
+def redeem_sse_ticket(ticket: str) -> dict | None:
+    """Verify signature + expiry, enforce single-use; return user payload or None."""
+    try:
+        exp_s, b64, sig = ticket.split(".", 2)
+        exp = int(exp_s)
+    except (ValueError, AttributeError):
+        return None
+    now = int(_time.time())
+    if now > exp:
+        return None
+    if not _hmac.compare_digest(sig, _ticket_sig(b64, exp)):
+        return None
+    if ticket in _used_tickets:   # single-use (best-effort across restarts)
+        return None
+    for tk, e in list(_used_tickets.items()):   # opportunistic cleanup
+        if e < now:
+            _used_tickets.pop(tk, None)
+    _used_tickets[ticket] = exp
+    try:
+        pad = "=" * (-len(b64) % 4)
+        return _json.loads(_base64.urlsafe_b64decode(b64 + pad).decode())
+    except Exception:
+        return None
+
 
 def get_active_user_or_ticket(
     authorization: str = Header(None),
@@ -205,21 +243,13 @@ def get_active_user_or_ticket(
 ) -> dict:
     """Authenticate via header JWT, query JWT, or short-lived SSE ticket."""
     if ticket:
-        now = utc_now()
-        ticket_data = _sse_tickets.get(ticket)
-        if not ticket_data:
-            logger.warning("[AUTH] Ticket not found or already used")
+        user = redeem_sse_ticket(ticket)
+        if user is None:
+            logger.warning("[AUTH] Ticket invalid, expired, or already used")
             raise HTTPException(status_code=401, detail="Invalid or expired ticket")
-        if now > ticket_data["expires"]:
-            _sse_tickets.pop(ticket, None)
-            logger.warning("[AUTH] Ticket expired")
-            raise HTTPException(status_code=401, detail="Invalid or expired ticket")
-        
-        # Pop to enforce single-use
-        _sse_tickets.pop(ticket, None)
-        logger.info("[AUTH] Ticket verified successfully for user %s", ticket_data["user"].get("username"))
-        return ticket_data["user"]
-    
+        logger.info("[AUTH] Ticket verified successfully for user %s", user.get("username"))
+        return user
+
     return get_active_user(authorization=authorization, token=token)
 
 def restrict_cashier_or_ticket(current_user: dict = Depends(get_active_user_or_ticket)) -> dict:

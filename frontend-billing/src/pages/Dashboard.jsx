@@ -22,6 +22,8 @@ import {
   CheckIcon,
   BillsIcon,
 } from '../components/Icons'
+import { usePageLifecycle } from '../hooks/usePageLifecycle'
+import ContextMenu from '../components/common/ContextMenu'
 
 function StatCard({ icon, label, value, sub, variant = 'accent', badge, badgeType }) {
   return (
@@ -50,6 +52,7 @@ export default function Dashboard() {
   const [payments, setPayments] = useState([])
   const [loading, setLoading]   = useState(true)
   const [viewingInvoiceNo, setViewingInvoiceNo] = useState(null)
+  const [ctxMenu, setCtxMenu]   = useState(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -61,6 +64,13 @@ export default function Dashboard() {
       setPayments(Array.isArray(paymentsData) ? paymentsData : (paymentsData?.items ?? []))
     }).finally(() => setLoading(false))
   }, [authFetch])
+
+  // Page lifecycle: refresh when tab regains focus (onResume)
+  // Must be declared AFTER load() to avoid TDZ ReferenceError.
+  const { isRefreshing } = usePageLifecycle({
+    isDirty:  () => false, // no local unsaved state on dashboard
+    onResume: load,
+  })
 
   useEffect(() => {
     load()
@@ -148,6 +158,11 @@ export default function Dashboard() {
                 : 'Live business overview — transactions, stock & payments'}
             </p>
           </div>
+          {isRefreshing && (
+            <span className="toolbar-refresh-spinner">
+              <span className="spin" /> Refreshing…
+            </span>
+          )}
         </div>
 
         {loading ? (
@@ -278,8 +293,19 @@ export default function Dashboard() {
                           <tr><th>Bill No</th><th>Amount</th><th>Status</th></tr>
                         </thead>
                         <tbody>
-                          {s.recent_invoices.slice(0, 4).map(inv => (
-                            <tr key={inv.id}>
+                           {s.recent_invoices.slice(0, 4).map(inv => (
+                             <tr key={inv.id}
+                               style={{ cursor: 'context-menu' }}
+                               onContextMenu={e => {
+                                 e.preventDefault()
+                                 setCtxMenu({ x: e.clientX, y: e.clientY, items: [
+                                   { label: 'View / Print Invoice', icon: <BillsIcon size={13} />, action: () => setViewingInvoiceNo(inv.invoice_number) },
+                                   { divider: true },
+                                   { label: 'Copy Invoice No', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(inv.invoice_number || '') },
+                                   { label: 'Copy Amount', icon: <CashIcon size={13} />, action: () => navigator.clipboard.writeText(String(inv.total_amount || '')) },
+                                 ]})
+                               }}
+                             >
                               <td className="td-mono">
                                 <span
                                   onClick={() => setViewingInvoiceNo(inv.invoice_number)}
@@ -391,6 +417,7 @@ export default function Dashboard() {
         </div>,
         document.body
       )}
+      <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />
     </AppLayout>
   )
 }

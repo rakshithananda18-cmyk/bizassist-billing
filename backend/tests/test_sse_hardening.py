@@ -17,7 +17,7 @@ sys.path.insert(0, backend_path)
 from services.auth import (
     create_sse_ticket,
     get_active_user_or_ticket,
-    _sse_tickets,
+    _used_tickets,
     restrict_cashier_or_ticket
 )
 from services.realtime import realtime_manager
@@ -25,23 +25,34 @@ from services.realtime import realtime_manager
 def test_ticket_creation_and_expiration():
     user = {"id": 10, "username": "test_user", "role": "owner"}
     ticket = create_sse_ticket(user, expires_in_seconds=2)
-    assert ticket in _sse_tickets
-    
+    # Stateless HMAC ticket: "<exp>.<payload_b64>.<sig>" — no server-side store.
+    assert ticket.count(".") == 2
+
     # Retrieve user using ticket
     resolved_user = get_active_user_or_ticket(ticket=ticket)
     assert resolved_user["id"] == 10
-    
-    # Single-use check: ticket should be removed now
-    assert ticket not in _sse_tickets
+
+    # Single-use check: ticket is now in the used-set and refused on replay
+    assert ticket in _used_tickets
     with pytest.raises(HTTPException) as exc_info:
         get_active_user_or_ticket(ticket=ticket)
     assert exc_info.value.status_code == 401
-    
+
     # Expiration check
     expired_ticket = create_sse_ticket(user, expires_in_seconds=-5)
     with pytest.raises(HTTPException) as exc_info:
         get_active_user_or_ticket(ticket=expired_ticket)
     assert exc_info.value.status_code == 401
+
+def test_ticket_tamper_rejected():
+    user = {"id": 10, "username": "test_user", "role": "owner"}
+    ticket = create_sse_ticket(user, expires_in_seconds=30)
+    exp, b64, sig = ticket.split(".", 2)
+    # Forged signature and forged payload must both be refused (401)
+    for forged in (f"{exp}.{b64}.{'0'*64}", f"{int(exp)+9999}.{b64}.{sig}", "garbage"):
+        with pytest.raises(HTTPException) as exc_info:
+            get_active_user_or_ticket(ticket=forged)
+        assert exc_info.value.status_code == 401
 
 def test_restrict_cashier_or_ticket():
     # Owner should be allowed

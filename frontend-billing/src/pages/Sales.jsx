@@ -10,6 +10,8 @@ import { IS_LOCAL_APP } from '../config'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { AlertIcon, BillsIcon, CheckIcon, ChevronRightIcon, CloseIcon, TagIcon } from '../components/Icons'
+import { usePageLifecycle } from '../hooks/usePageLifecycle'
+import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
 // Shared formatting helpers (money / today / amount-in-words) live in utils/format.
 import { fmt, getTodayDateStr, getFromDateStr } from '../utils/format'
 // Invoice money-math (line totals, intra/inter GST split, change due) — pure + tested.
@@ -35,27 +37,15 @@ import ShiftSummaryModal from '../components/sales/ShiftSummary'
 import usePaymentFlow from '../hooks/usePaymentFlow'
 import { syncManager } from '../sync/syncManager'
 import { pendingInvoiceRows } from '../sync/pendingInvoices'
+// POS logic split out of this monolith (MASTER_REVIEW §2.5) — pure + tested.
+import { colLabels, DEFAULT_COLUMN_ORDER, normalizeColumnOrder, moveColumn, getStickyLeftOffsets } from '../lib/posColumns'
+import { DEFAULT_FUNC_KEYS as defaultFuncKeys, loadFuncKeys, matchesKey } from '../lib/posKeys'
+import { getPriceOptions as buildPriceOptions, withQty as withQtyFor } from '../lib/priceOptions'
+import { nextInvoiceNo, syncTabNames as syncTabNamesFor } from '../lib/posInvoiceNumbers'
 
 // ============================================================================
 // ── 2. GLOBAL DEFAULTS & VALUE SCHEMAS ──
 // ============================================================================
-const colLabels = {
-  sku: 'Item Code',
-  name: 'Item Name',
-  batch: 'Batch',
-  serial: 'Serial / IMEI',
-  attrs: 'Item Details (Size/Color/Warranty…)',
-  price_option: 'Price Option',
-  mrp: 'MRP',
-  hsn: 'HSN',
-  qty: 'Quantity',
-  unit: 'Unit',
-  rate: 'Price Per Unit Before Tax',
-  price: 'Total Before Tax',
-  discount: 'Discount',
-  tax: 'Tax',
-  total: 'Total After Tax'
-}
 
 const emptyItem = () => ({ product_id: '', product: '', qty: 1, price: '', discount: 0, sku: '—', is_custom: false, batch_no: '', expiry_date: '', serial_no: '', attributes: {}, selected_price: '', selected_price_label: 'Standard Price' })
 
@@ -200,94 +190,21 @@ export default function Sales(props = {}) {
   // ============================================================================
   // ── 5. FUNCTION KEYS & COLUMN ORDER PERSISTENCE ──
   // ============================================================================
-  const defaultFuncKeys = {
-    qtyFocus: 'F2',
-    discountFocus: 'F3',
-    checkoutDiscountFocus: 'F7',
-    removeItem: 'F4',
-    amountReceivedFocus: 'F8',
-    barcodeFocus: 'F9',
-    customerFocus: 'F11',
-    remarksFocus: 'F12',
-    configureShortcuts: 'F1',
-    paymentProceed: 'Enter',
-    paymentCancel: 'Escape',
-    // Payment flow navigation
-    flowForward: 'Enter',
-    flowBack: 'Shift+Enter',
-    // Key to move from item scanning → payment flow (customer → amount → mode)
-    proceedToPayment: 'Escape',
-    saveInvoice: 'Ctrl+S',
-    printInvoice: 'Ctrl+P',
-    newBill: 'Ctrl+T',
-    closeTab: 'Ctrl+W',
-  }
-
-  const [funcKeys, setFuncKeys] = useState(() => {
-    const saved = localStorage.getItem('pos_func_keys')
-    if (saved) {
-      try {
-        return { ...defaultFuncKeys, ...JSON.parse(saved) }
-      } catch (e) {
-        logger.error('[SALES] failed to parse pos_func_keys', e)
-      }
-    }
-    return defaultFuncKeys
-  })
+  // Defaults + loader + matcher live in lib/posKeys.js; column model in
+  // lib/posColumns.js. This page only owns the React state + persistence.
+  const [funcKeys, setFuncKeys] = useState(loadFuncKeys)
 
   const [columnOrder, setColumnOrder] = useState(() => {
     const saved = localStorage.getItem('pos_column_order')
     if (saved) {
       try {
-        const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          if (!parsed.includes('batch')) {
-            const nameIdx = parsed.indexOf('name')
-            if (nameIdx !== -1) {
-              parsed.splice(nameIdx + 1, 0, 'batch')
-            } else {
-              parsed.push('batch')
-            }
-          }
-          if (!parsed.includes('price_option')) {
-            const batchIdx = parsed.indexOf('batch')
-            if (batchIdx !== -1) {
-              parsed.splice(batchIdx + 1, 0, 'price_option')
-            } else {
-              parsed.push('price_option')
-            }
-          }
-          if (!parsed.includes('serial')) {
-            const batchIdx = parsed.indexOf('batch')
-            if (batchIdx !== -1) {
-              parsed.splice(batchIdx + 1, 0, 'serial')
-            } else {
-              parsed.push('serial')
-            }
-          }
-          if (!parsed.includes('rate')) {
-            const qtyIdx = parsed.indexOf('qty')
-            if (qtyIdx !== -1) {
-              parsed.splice(qtyIdx + 1, 0, 'rate')
-            } else {
-              parsed.push('rate')
-            }
-          }
-          if (!parsed.includes('attrs')) {
-            const serialIdx = parsed.indexOf('serial')
-            if (serialIdx !== -1) {
-              parsed.splice(serialIdx + 1, 0, 'attrs')
-            } else {
-              parsed.push('attrs')
-            }
-          }
-          return parsed
-        }
+        const normalized = normalizeColumnOrder(JSON.parse(saved))
+        if (normalized) return normalized
       } catch (e) {
         logger.error('[SALES] failed to parse pos_column_order', e)
       }
     }
-    return ['sku', 'name', 'batch', 'serial', 'attrs', 'price_option', 'mrp', 'hsn', 'qty', 'unit', 'rate', 'price', 'discount', 'tax', 'total']
+    return DEFAULT_COLUMN_ORDER
   })
 
 
@@ -295,116 +212,16 @@ export default function Sales(props = {}) {
   const [selectedPriceOptIndex, setSelectedPriceOptIndex] = useState(0)
 
   const handleMoveColumn = (index, direction) => {
-    const nextOrder = [...columnOrder]
-    if (direction === 'up' && index > 0) {
-      const temp = nextOrder[index - 1]
-      nextOrder[index - 1] = nextOrder[index]
-      nextOrder[index] = temp
-    } else if (direction === 'down' && index < nextOrder.length - 1) {
-      const temp = nextOrder[index + 1]
-      nextOrder[index + 1] = nextOrder[index]
-      nextOrder[index] = temp
-    }
+    const nextOrder = moveColumn(columnOrder, index, direction)
     setColumnOrder(nextOrder)
     localStorage.setItem('pos_column_order', JSON.stringify(nextOrder))
-  }
-
-  const getStickyLeftOffsets = (order, visibleObj) => {
-    const offsets = {}
-    let currentOffset = 40
-    let freezeAllowed = true
-
-    for (let i = 0; i < order.length; i++) {
-      const col = order[i]
-      const isVisible = col === 'sku' ? visibleObj.sku :
-                        col === 'mrp' ? visibleObj.mrp :
-                        col === 'hsn' ? visibleObj.hsn :
-                        col === 'unit' ? visibleObj.unit :
-                        col === 'discount' ? visibleObj.discount :
-                        col === 'tax' ? visibleObj.tax :
-                        col === 'batch' ? visibleObj.batch :
-                        col === 'price_option' ? visibleObj.price_option :
-                        col === 'rate' ? visibleObj.rate :
-                        true
-
-      if (!isVisible) continue
-
-      if (freezeAllowed && (col === 'sku' || col === 'name')) {
-        offsets[col] = currentOffset
-        if (col === 'sku') {
-          currentOffset += 95
-        } else if (col === 'name') {
-          currentOffset += 180
-        }
-      } else {
-        freezeAllowed = false
-      }
-    }
-    return offsets
   }
 
   // ============================================================================
   // ── 6. BATCHES & PRICE SELECTOR RESOLVERS ──
   // ============================================================================
-  const getPriceOptions = (item) => {
-    if (!item || item.is_custom || !item.product_id) return []
-    const p = products.find(prod => prod.id === item.product_id)
-    if (!p) return []
-
-    const rawOptions = []
-
-    // Base standard prices first
-    rawOptions.push(
-      { label: 'Standard Price', price: p.selling_price, created_at: null, formatted_date: 'Base Product' },
-      { label: 'Wholesale Price', price: p.wholesale_price, created_at: null, formatted_date: 'Base Product' },
-      { label: 'Distributor Price', price: p.distributor_price, created_at: null, formatted_date: 'Base Product' },
-      { label: 'MRP', price: p.mrp, created_at: null, formatted_date: 'Base Product' }
-    )
-
-    // Gather batches and sort them by created_at descending (latest first)
-    const batches = productBatches[item.product_id] || []
-    const sortedBatches = [...batches].sort((a, b) => {
-      const dateA = a.created_at ? new Date(a.created_at) : new Date(0)
-      const dateB = b.created_at ? new Date(b.created_at) : new Date(0)
-      return dateB - dateA
-    })
-
-    sortedBatches.forEach(b => {
-      if (b.selling_price && b.selling_price > 0) {
-        rawOptions.push({
-          label: `Batch ${b.batch_no || '—'} Price`,
-          price: b.selling_price,
-          created_at: b.created_at,
-          formatted_date: b.created_at ? new Date(b.created_at).toLocaleDateString('en-GB') : '—'
-        })
-      }
-      if (b.mrp && b.mrp > 0) {
-        rawOptions.push({
-          label: `Batch ${b.batch_no || '—'} MRP`,
-          price: b.mrp,
-          created_at: b.created_at,
-          formatted_date: b.created_at ? new Date(b.created_at).toLocaleDateString('en-GB') : '—'
-        })
-      }
-    })
-
-    const seen = new Set()
-    const options = []
-    rawOptions.forEach(opt => {
-      const val = parseFloat(opt.price)
-      if (val && val > 0 && !seen.has(val)) {
-        seen.add(val)
-        options.push({
-          label: opt.label,
-          price: val,
-          created_at: opt.created_at,
-          formatted_date: opt.formatted_date
-        })
-      }
-    })
-
-    return options
-  }
+  // Pure resolver in lib/priceOptions.js — bound to current products/batches here.
+  const getPriceOptions = (item) => buildPriceOptions(item, products, productBatches)
 
   const handlePriceInputFocus = (index) => {
     // Popup selector is disabled in favor of inline dropdown and rate columns
@@ -443,34 +260,9 @@ export default function Sales(props = {}) {
     }
   }
 
-  // Update a line's quantity AND keep the auto "MRP-as-price" scheme discount in
-  // sync with qty. The discount is stored as an absolute amount = (MRP − chosen
-  // price) × qty, so it MUST rescale when qty changes — otherwise the line bills
-  // toward MRP (the overcharge bug: chose ₹200 at qty 1, raised to qty 4, was
-  // billing ₹920 instead of ₹800). Mirrors the re-add path. We only touch the
-  // discount while the line is in scheme mode (price == MRP, a chosen price at/
-  // below MRP, no manually-typed price); otherwise qty alone changes.
-  // Returns a copy of `item` with qty set and the MRP-scheme discount rescaled to
-  // the new qty. EVERY qty-change path (typing, +, arrow keys) must go through
-  // this, or the absolute discount stays at its old-qty value and the line bills
-  // toward MRP. No rescale when the cashier typed a custom price (no scheme).
-  const withQty = (item, newQty) => {
-    const updated = { ...item, qty: newQty }
-    if (updated.product_id) {
-      const p = products.find(prod => prod.id === updated.product_id)
-      const mrp = p ? (parseFloat(p.mrp) || 0) : (parseFloat(updated.mrp) || 0)
-      const selPrice = parseFloat(updated.selected_price) || 0
-      
-      if (mrp > 0 && selPrice <= mrp) {
-        updated.price = mrp
-        updated.discount = schemeDiscount(mrp, selPrice, newQty)
-      } else {
-        updated.price = selPrice
-        updated.discount = 0
-      }
-    }
-    return updated
-  }
+  // Qty change + MRP-scheme discount rescale (the overcharge-bug fix) — pure
+  // logic + rationale live in lib/priceOptions.js `withQty`, under unit test.
+  const withQty = (item, newQty) => withQtyFor(item, newQty, products)
 
   const handleQtyChange = (index, value) => {
     if (isLiveView && editState !== 'granted') return
@@ -983,44 +775,11 @@ export default function Sales(props = {}) {
   // Highest number already used WITHIN this terminal's own prefix series. We
   // must NOT mix series (the old code derived the prefix from whichever invoice
   // had the global-max number, which scrambles multi-counter numbering).
-  const maxNumInSeries = (existingInvoices, prefix) => {
-    let maxNum = 0
-    existingInvoices.forEach(inv => {
-      const invNo = inv.invoice_number || inv.invoice_no || ''
-      if (invNo && invNo.startsWith(prefix)) {
-        const m = invNo.slice(prefix.length).match(/(\d+)/)
-        if (m) { const num = parseInt(m[1]); if (num > maxNum) maxNum = num }
-      }
-    })
-    return maxNum
-  }
-
-  const syncTabNames = useCallback((currentTabs, existingInvoices) => {
-    const prefix = getCounterPrefix()
-    const nextDbVal = maxNumInSeries(existingInvoices, prefix) + 1
-
-    const usedNumbers = new Set(existingInvoices.map(inv => inv.invoice_number || inv.invoice_no || ''))
-
-    let currentNum = nextDbVal
-    return currentTabs.map(tab => {
-      const hasItems = tab.form?.items?.length > 0
-      const currentTabName = tab.name
-      
-      if (hasItems && !usedNumbers.has(currentTabName) && currentTabName !== 'Invoice #1001' && !currentTabName.startsWith('Invoice #')) {
-        usedNumbers.add(currentTabName)
-        return tab
-      } else {
-        let candidate = `${prefix}${String(currentNum).padStart(4, '0')}`
-        while (usedNumbers.has(candidate)) {
-          currentNum++
-          candidate = `${prefix}${String(currentNum).padStart(4, '0')}`
-        }
-        usedNumbers.add(candidate)
-        currentNum++
-        return { ...tab, name: candidate }
-      }
-    })
-  }, [getCounterPrefix])
+  // Series math + tab re-numbering are pure (lib/posInvoiceNumbers.js); this
+  // page only binds the current counter prefix.
+  const syncTabNames = useCallback((currentTabs, existingInvoices) =>
+    syncTabNamesFor(currentTabs, existingInvoices, getCounterPrefix()),
+  [getCounterPrefix])
 
   // Load business settings once on mount. ROOT-CAUSE FIX: `settings` was local
   // state that nothing ever populated — it stayed null forever, so
@@ -1106,31 +865,11 @@ export default function Sales(props = {}) {
     return () => ro.disconnect()
   }, [form.items.length])
 
-  const getNextInvoiceNo = useCallback((existingInvoices) => {
-    const prefix = getCounterPrefix()
-    const nextVal = maxNumInSeries(existingInvoices, prefix) + 1
-    return `${prefix}${String(nextVal).padStart(4, '0')}`
-  }, [getCounterPrefix])
+  const getNextInvoiceNo = useCallback((existingInvoices) =>
+    nextInvoiceNo(existingInvoices, getCounterPrefix()),
+  [getCounterPrefix])
 
-  /**
-   * matchesKey — checks if a keyboard event matches a configurable key descriptor.
-   * Descriptors can be plain keys like "Enter", "F5", "Escape",
-   * or modifier combos like "Shift+Enter", "Shift+F5", "Ctrl+Enter".
-   */
-  const matchesKey = (e, descriptor) => {
-    if (!descriptor) return false
-    const parts = descriptor.split('+')
-    const key = parts[parts.length - 1]          // last segment is the actual key
-    const wantsShift = parts.includes('Shift')
-    const wantsCtrl  = parts.includes('Ctrl')
-    const wantsAlt   = parts.includes('Alt')
-    return (
-      e.key === key &&
-      e.shiftKey === wantsShift &&
-      e.ctrlKey  === wantsCtrl  &&
-      e.altKey   === wantsAlt
-    )
-  }
+  // matchesKey now lives in lib/posKeys.js (imported above).
 
   // ============================================================================
   // ── 9. ON-MOUNT DATA INITIALIZERS ──
@@ -1284,6 +1023,25 @@ export default function Sales(props = {}) {
       setTimeout(() => barcodeRef.current?.focus(), 300)
     })
   }, [])
+
+  // Page lifecycle: guard when POS cart has items or unsaved fields
+  const isDirty = useCallback(() => {
+    if (cartHasItems(tabsRef.current || tabs)) return true
+    const activeTab = (tabsRef.current || tabs).find(t => t.id === activeTabId)
+    if (activeTab?.form) {
+      const f = activeTab.form
+      if (f.customer_id || f.notes || f.bill_discount_value || f.cash_discount) {
+        return true
+      }
+    }
+    return false
+  }, [tabs, activeTabId])
+
+  const { blocker, dirtyMessage } = usePageLifecycle({
+    isDirty,
+    dirtyMessage: 'You have unsaved items in your cart. Leave this page?',
+    onResume:     load,
+  })
 
   const settingsRef = useRef(settings)
   useEffect(() => {
@@ -3035,6 +2793,7 @@ export default function Sales(props = {}) {
           </div>
         </div>
       )}
+      <UnsavedChangesModal blocker={blocker} message={dirtyMessage} />
     </AppLayout>
   )
 }

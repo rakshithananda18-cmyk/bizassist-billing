@@ -22,7 +22,10 @@ from services.dates import utc_now
 
 logger = logging.getLogger("bizassist.rate_limiter")
 
-# ── In-memory sliding window for per-minute tracking ─────────────────
+# ── In-memory sliding windows (per-minute burst protection only) ─────
+# Restart-safety note (BUG-4): losing these on a restart is harmless — they
+# only guard 60-second bursts. The *daily* quotas (queries/tokens/complex) are
+# aggregated from the TokenUsage table and survive restarts already.
 # { business_id: deque of timestamps }
 _minute_window: dict = defaultdict(deque)
 
@@ -31,6 +34,19 @@ _ip_window: dict = defaultdict(deque)
 
 # ── In-memory sliding window for upload tracking (upload abuse) ──────
 _upload_window: dict = defaultdict(deque)
+
+# Keys were never removed, so these dicts grew forever — one deque per business
+# and one per *IP that ever hit /login* (internet scanners make that unbounded).
+# Prune deques whose newest entry is older than the 60s window once a dict
+# exceeds this size. O(n) prune amortized over ≥512 inserts — negligible.
+_PRUNE_THRESHOLD = 512
+
+
+def _prune_stale(windows: dict, cutoff: float) -> None:
+    if len(windows) < _PRUNE_THRESHOLD:
+        return
+    for key in [k for k, dq in windows.items() if not dq or dq[-1] < cutoff]:
+        windows.pop(key, None)
 
 # Default limits applied when no config exists for a user
 DEFAULTS = {
@@ -132,8 +148,9 @@ def check_rate_limit(business_id: int, route: str = "AI_SIMPLE") -> dict:
     now   = utc_now()
 
     # ── 1. Per-minute check (in-memory sliding window) ────────────────
-    window = _minute_window[business_id]
     cutoff = now.timestamp() - 60
+    _prune_stale(_minute_window, cutoff)
+    window = _minute_window[business_id]
     while window and window[0] < cutoff:
         window.popleft()
 
@@ -206,8 +223,9 @@ def check_ip_rate_limit(ip_address: str, limit: int = 10) -> dict:
     Default limit: 10 requests per minute.
     """
     now = utc_now().timestamp()
-    window = _ip_window[ip_address]
     cutoff = now - 60
+    _prune_stale(_ip_window, cutoff)
+    window = _ip_window[ip_address]
     while window and window[0] < cutoff:
         window.popleft()
 
@@ -230,8 +248,9 @@ def check_upload_rate_limit(business_id: int, limit: int = 5) -> dict:
     Default limit: 5 file uploads per minute.
     """
     now = utc_now().timestamp()
-    window = _upload_window[business_id]
     cutoff = now - 60
+    _prune_stale(_upload_window, cutoff)
+    window = _upload_window[business_id]
     while window and window[0] < cutoff:
         window.popleft()
 

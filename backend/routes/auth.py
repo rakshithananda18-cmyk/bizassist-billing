@@ -7,7 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from database.db import get_db, DATABASE_URL
 from database.models import User
-from services.auth import hash_password, verify_password, create_access_token, get_active_user, create_sse_ticket, require_owner, get_active_user_or_ticket, _sse_tickets
+from services.auth import hash_password, verify_password, create_access_token, get_active_user, create_sse_ticket, require_owner, get_active_user_or_ticket, redeem_sse_ticket
 from services.rate_limiter import check_ip_rate_limit
 
 router = APIRouter()
@@ -494,22 +494,14 @@ def redeem_ticket(req: RedeemTicketRequest, request: Request, db: Session = Depe
         if not rl["allowed"]:
             raise HTTPException(status_code=429, detail=rl["reason"])
 
-        # Direct ticket lookup — bypasses FastAPI DI which would be a no-op here.
+        # Direct redeem — bypasses FastAPI DI which would be a no-op here.
         # get_active_user_or_ticket uses Query(None) params; calling it directly
         # passes ticket=None, falls through to JWT auth, always raises 401.
-        from datetime import datetime as _dt
-        now = _dt.utcnow()
-        ticket_data = _sse_tickets.get(req.ticket)
-        if not ticket_data:
-            logger.warning("[AUTH] SSO ticket not found or already used")
+        # Stateless verify (BUG-4): survives server restarts and >1 worker.
+        current_user = redeem_sse_ticket(req.ticket)
+        if current_user is None:
+            logger.warning("[AUTH] SSO ticket invalid, expired, or already used")
             raise HTTPException(status_code=401, detail="Invalid or expired ticket")
-        if now > ticket_data["expires"]:
-            _sse_tickets.pop(req.ticket, None)
-            logger.warning("[AUTH] SSO ticket expired")
-            raise HTTPException(status_code=401, detail="Invalid or expired ticket")
-        # Single-use: remove immediately after validation
-        _sse_tickets.pop(req.ticket, None)
-        current_user = ticket_data["user"]
         logger.info("[AUTH] SSO ticket verified for user '%s'", current_user.get("username"))
 
         

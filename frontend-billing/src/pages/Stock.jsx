@@ -4,8 +4,8 @@
 //              stock adjustments, barcode bindings, and stock transfers between godowns — v9.
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import AppLayout from '../layouts/AppLayout'
+import PageShell from '../components/common/PageShell'
+import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon, ExpandIcon, SidebarIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
@@ -16,6 +16,9 @@ import ScanStockInModal from '../components/stock/ScanStockInModal'
 import BulkAddProductsModal from '../components/stock/BulkAddProductsModal'
 import StockIntakeSheet from '../components/stock/StockIntakeSheet'
 import IntakePurchasePanel from '../components/stock/IntakePurchasePanel'
+import { usePageLifecycle } from '../hooks/usePageLifecycle'
+import ContextMenu from '../components/common/ContextMenu'
+import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -78,11 +81,9 @@ function getStatus(product) {
   return 'In Stock'
 }
 
-export default function Stock() {
+export default function Stock({ embedded = false, headerTabs = null }) {
   const { authFetch, settings } = useAuth()
   const { attributesSchema } = useBusinessConfig()
-  const navigate = useNavigate()
-
   const settingsRef = useRef(settings)
   useEffect(() => {
     settingsRef.current = settings
@@ -392,6 +393,7 @@ export default function Stock() {
   // ─── View state ─────────────────────────────────────────────────────────────
   const [activeView, setActiveView] = useState('intake')  // 'intake' | 'catalogue' | 'godowns'
   const [prefillProduct, setPrefillProduct] = useState(null)  // product to pre-load in intake
+  const [ctxMenu, setCtxMenu] = useState(null)  // { x, y, items } for right-click context menu
   const [intakeRows, setIntakeRows] = useState(() => {
     try {
       const saved = localStorage.getItem('bizassist_intake_rows')
@@ -461,6 +463,13 @@ export default function Stock() {
   }, [intakePayment])
 
   const lowStockItems = products.filter(p => getStatus(p) !== 'In Stock').slice(0, 10)
+
+  // ─── Page lifecycle (onResume refresh + Back guard) ──────────────────────────
+  const { blocker, isRefreshing, dirtyMessage } = usePageLifecycle({
+    isDirty:      () => intakeRows.length > 0,
+    dirtyMessage: `You have ${intakeRows.length} unsaved intake row${intakeRows.length !== 1 ? 's' : ''}. Leave this page?`,
+    onResume:     load,   // silently refresh catalogue when tab regains focus
+  })
 
   // Helper to update fields on the currently editing row in parent state
   const setEditingRowField = (field, value) => {
@@ -610,25 +619,9 @@ export default function Stock() {
   ]
 
   return (
-    <AppLayout title="Stock & Inventory">
+    <PageShell embedded={embedded} title="Stock & Inventory">
       <style>{`
         .inv-shell { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
-        .inv-top-bar {
-          height: 48px; background: var(--bg-2); border-bottom: 1px solid var(--border);
-          display: flex; align-items: center; padding: 0 12px; gap: 6px; flex-shrink: 0;
-        }
-        .inv-tab {
-          display: inline-flex; align-items: center; gap: 6px;
-          padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.82rem;
-          font-weight: 600; border: none; background: transparent; color: var(--text-secondary);
-          transition: background .15s, color .15s;
-        }
-        .inv-tab:hover { background: var(--bg-3); color: var(--text-primary); }
-        .inv-tab.active {
-          background: var(--accent-muted, rgba(192,97,42,.12));
-          color: var(--accent, #c0612a);
-          border: 1px solid rgba(192,97,42,.25);
-        }
         .inv-body { flex: 1; display: flex; min-height: 0; overflow: hidden; }
         .inv-main { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; padding: 0 16px 12px; overflow: hidden; }
         .inv-sidebar {
@@ -639,7 +632,7 @@ export default function Stock() {
           display: flex; align-items: center; gap: 9px; width: 100%;
           padding: 9px 14px; background: transparent; border: none; border-radius: 6px;
           cursor: pointer; color: var(--text-primary); font-size: 0.82rem; font-weight: 600;
-          text-align: left; transition: background .12s;
+          text-align: left; transition: background var(--dur-fast) var(--ease);
         }
         .inv-action-btn:hover { background: var(--bg-3); }
         .inv-btn-icon {
@@ -650,146 +643,110 @@ export default function Stock() {
         }
         .inv-stat-chip {
           display: flex; flex-direction: column; align-items: center; flex: 1;
-          padding: 11px 6px; cursor: pointer; border-radius: 0; transition: background .12s;
+          padding: 11px 6px; cursor: pointer; border-radius: 0; transition: background var(--dur-fast) var(--ease);
           border: none; background: transparent;
         }
         .inv-stat-chip:hover { background: var(--bg-3); }
         .inv-alert-row {
           display: flex; align-items: center; gap: 8px; padding: 7px 10px;
           border-radius: 7px; border: 1px solid var(--border);
-          cursor: pointer; transition: background .12s;
+          cursor: pointer; transition: background var(--dur-fast) var(--ease);
         }
         .inv-alert-row:hover { background: var(--bg-3); }
         .inv-full-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 14px 16px; overflow: hidden; }
         .inv-panel-toolbar {
-          display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+          display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
           padding-bottom: 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; margin-bottom: 12px;
+          overflow: hidden;
         }
         .inv-table-wrap { flex: 1; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
       `}</style>
 
       <div className="inv-shell">
-        {/* ── Top bar ──────────────────────────────────────────────────────── */}
-        <div className="inv-top-bar">
-
-          {/* Brand / home ─ always goes back to intake */}
-          <button
-            className="inv-tab"
-            style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--text-primary)', marginRight: 4 }}
-            onClick={() => goIntake()}
-            title="Stock Intake — main screen"
-          >
-            <InventoryIcon size={16} /> Inventory
-          </button>
-          <span className="page-title-placeholder" style={{ display: 'inline-flex', alignItems: 'center', marginRight: 6 }}></span>
-
-          <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
-
-          {/* Main tabs */}
+        {/* ── Top bar — shared WorkspaceTopBar (identical to Purchases/Parties/Payments) ── */}
+        <WorkspaceTopBar
+          actions={
+            <>
+              {/* Alert flash */}
+              {alert && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', borderRadius: 6,
+                  fontSize: '0.78rem', fontWeight: 600,
+                  background: alert.type === 'success' ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)',
+                  color: alert.type === 'success' ? '#22c55e' : '#ef4444',
+                  border: `1px solid ${alert.type === 'success' ? 'rgba(34,197,94,.3)' : 'rgba(239,68,68,.3)'}`,
+                  maxWidth: 340, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  {alert.msg}
+                  <button onClick={() => setAlert(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', lineHeight: 1, padding: '0 0 0 4px', flexShrink: 0 }}>
+                    <CloseIcon size={12} />
+                  </button>
+                </div>
+              )}
+              <button
+                className="btn btn-secondary btn-sm"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                onClick={() => { setAdjustForm(defaultAdjust); setShowAdjustModal(true) }}
+              >
+                <ZapIcon size={13} /> Adjust Stock
+              </button>
+              <button
+                className="btn btn-secondary btn-sm"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                onClick={() => { setTransferForm(defaultTransfer); setShowTransferModal(true) }}
+              >
+                <SyncIcon size={13} /> Transfer Stock
+              </button>
+              <WsDivider />
+              <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                onClick={() => setShowLabelModal(true)}>
+                {/* TagIcon replaced with InventoryIcon to keep imports clean */}
+                Labels
+              </button>
+              <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                disabled={exporting} onClick={handleExport}>
+                <DownloadIcon size={13} /> {exporting ? 'Exporting…' : 'Export'}
+              </button>
+              <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                onClick={() => { setEditProduct(null); setShowAddModal(true) }}>
+                <PlusIcon size={13} /> New Product
+              </button>
+              {activeView === 'intake' && intakeRows.length > 0 && (
+                <button
+                  className={`btn btn-secondary btn-sm ${isSidebarCollapsed ? 'active' : ''}`}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '0 8px', height: 28 }}
+                  onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                  title={isSidebarCollapsed ? 'Expand right panel' : 'Collapse right panel'}
+                >
+                  <SidebarIcon size={14} />
+                </button>
+              )}
+            </>
+          }
+        >
+          {/* Workspace tabs (Stock | Purchase Bills) from Godown.jsx, or standalone brand */}
+          {headerTabs || (
+            <button
+              className="ws-tab"
+              style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--text-primary)', marginRight: 4 }}
+              onClick={() => setActiveView('intake')}
+              title="Stock Intake — main screen"
+            >
+              <InventoryIcon size={16} /> Inventory
+            </button>
+          )}
+          <WsDivider />
+          {/* Internal view tabs */}
           {TABS.map(tab => (
             <button
               key={tab.key}
-              className={`inv-tab ${activeView === tab.key ? 'active' : ''}`}
+              className={`ws-tab ${activeView === tab.key ? 'active' : ''}`}
               onClick={() => setActiveView(tab.key)}
             >
               {tab.icon} {tab.label}
             </button>
           ))}
-
-          <div style={{ flex: 1 }} />
-
-          {/* Alert flash */}
-          {alert && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', borderRadius: 6,
-              fontSize: '0.78rem', fontWeight: 600,
-              background: alert.type === 'success' ? 'rgba(34,197,94,.12)' : 'rgba(239,68,68,.12)',
-              color: alert.type === 'success' ? '#22c55e' : '#ef4444',
-              border: `1px solid ${alert.type === 'success' ? 'rgba(34,197,94,.3)' : 'rgba(239,68,68,.3)'}`,
-              maxWidth: 340, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            }}>
-              {alert.msg}
-              <button onClick={() => setAlert(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', lineHeight: 1, padding: '0 0 0 4px', flexShrink: 0 }}>
-                <CloseIcon size={12} />
-              </button>
-            </div>
-          )}
-
-          {/* Quick adjustments */}
-          <button
-            className="btn btn-secondary btn-sm"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-            onClick={() => { setAdjustForm(defaultAdjust); setShowAdjustModal(true) }}
-          >
-            <ZapIcon size={13} /> Adjust Stock
-          </button>
-          <button
-            className="btn btn-secondary btn-sm"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-            onClick={() => { setTransferForm(defaultTransfer); setShowTransferModal(true) }}
-          >
-            <SyncIcon size={13} /> Transfer Stock
-          </button>
-
-          <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 4px' }} />
-
-          {/* Utility buttons */}
-          <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-            onClick={() => setShowLabelModal(true)}>
-            <TagIcon size={13} /> Labels
-          </button>
-          <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-            disabled={exporting} onClick={handleExport}>
-            <DownloadIcon size={13} /> {exporting ? 'Exporting…' : 'Export'}
-          </button>
-           <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-             onClick={() => { setEditProduct(null); setShowAddModal(true) }}>
-             <PlusIcon size={13} /> New Product
-           </button>
- 
-           {activeView === 'intake' && intakeRows.length > 0 && (
-             <button
-               className={`btn btn-secondary btn-sm ${isSidebarCollapsed ? 'active' : ''}`}
-               style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '0 8px', height: 28 }}
-               onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-               title={isSidebarCollapsed ? "Expand right panel" : "Collapse right panel"}
-             >
-               <SidebarIcon size={14} />
-             </button>
-           )}
- 
-           {/* Window controls */}
-           <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 4px' }} />
-          <button
-            title="Minimize — go back"
-            onClick={() => navigate(-1)}
-            style={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)',
-              background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)',
-              transition: 'background .12s, color .12s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.style.color = 'var(--text-primary)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
-          >
-            {/* Minimize — horizontal bar */}
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="5.5" width="10" height="1.5" rx="0.75" fill="currentColor"/></svg>
-          </button>
-          <button
-            title="Close — go to dashboard"
-            onClick={() => navigate('/')}
-            style={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)',
-              background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)',
-              transition: 'background .12s, color .12s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,.12)'; e.currentTarget.style.color = '#ef4444' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
-          >
-            <CloseIcon size={13} />
-          </button>
-        </div>
+        </WorkspaceTopBar>
 
         {/* ── Body ─────────────────────────────────────────────────────────── */}
         <div className="inv-body">
@@ -829,12 +786,12 @@ export default function Stock() {
                     <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={15} /></span>
                     <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search products…" autoFocus />
                   </div>
-                  <CustomSelect className="form-select" style={{ height: 34, fontSize: '0.82rem', minWidth: 140 }}
+                  <CustomSelect className="form-select" style={{ height: 34, fontSize: '0.82rem', minWidth: 140, width: 'auto', flexShrink: 0 }}
                     value={catFilter} onChange={e => setCatFilter(e.target.value)}>
                     <option value="">All Categories</option>
                     {categories.map(c => <option key={c} value={c}>{c}</option>)}
                   </CustomSelect>
-                  <CustomSelect className="form-select" style={{ height: 34, fontSize: '0.82rem', minWidth: 130 }}
+                  <CustomSelect className="form-select" style={{ height: 34, fontSize: '0.82rem', minWidth: 120, width: 'auto', flexShrink: 0 }}
                     value={stockStatusFilter} onChange={e => setStockStatusFilter(e.target.value)}>
                     <option value="">All Status</option>
                     <option value="in">In Stock</option>
@@ -842,6 +799,11 @@ export default function Stock() {
                     <option value="out">Out of Stock</option>
                   </CustomSelect>
                   <div style={{ flex: 1 }} />
+                  {isRefreshing && (
+                    <span className="toolbar-refresh-spinner">
+                      <span className="spin" /> Refreshing…
+                    </span>
+                  )}
                   <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>
                     {filtered.length} of {products.length} products
                   </span>
@@ -892,7 +854,49 @@ export default function Stock() {
                           const d = deriveInv(p)
                           const good = 'var(--success, #16a34a)'
                           return (
-                            <tr key={p.id} style={{ background: isLow ? 'rgba(239,68,68,.03)' : undefined }}>
+                            <tr
+                              key={p.id}
+                              style={{ background: isLow ? 'rgba(239,68,68,.03)' : undefined, cursor: 'context-menu' }}
+                              onContextMenu={e => {
+                                e.preventDefault()
+                                setCtxMenu({
+                                  x: e.clientX, y: e.clientY,
+                                  items: [
+                                    {
+                                      label: 'Edit Product',
+                                      icon: <EditIcon size={13} />,
+                                      action: () => setEditProduct(p),
+                                    },
+                                    {
+                                      label: 'Add to Stock Intake',
+                                      icon: <ZapIcon size={13} />,
+                                      action: () => goIntake(p),
+                                    },
+                                    {
+                                      label: 'Adjust Stock',
+                                      icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+                                      action: () => { setAdjustForm({ ...defaultAdjust, product_id: p.id }); setShowAdjustModal(true) },
+                                    },
+                                    {
+                                      label: 'Transfer Stock',
+                                      icon: <SyncIcon size={13} />,
+                                      action: () => { setTransferForm({ ...defaultTransfer, product_id: p.id }); setShowTransferModal(true) },
+                                    },
+                                    { divider: true },
+                                    {
+                                      label: 'Copy Product Code',
+                                      icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
+                                      action: () => navigator.clipboard.writeText(p.sku || p.id),
+                                    },
+                                    {
+                                      label: 'Copy Name',
+                                      icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
+                                      action: () => navigator.clipboard.writeText(p.name),
+                                    },
+                                  ],
+                                })
+                              }}
+                            >
                               <td className="td-mono" style={{ textAlign: 'left' }}>{p.sku || '—'}</td>
                               <td className="td-primary" style={{ textAlign: 'left' }}>
                                 {p.name}
@@ -942,6 +946,10 @@ export default function Stock() {
                 </div>
               </div>
             )}
+
+            {/* ── Global portals ────────────────────────────────────────────── */}
+            <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />
+            <UnsavedChangesModal blocker={blocker} message={dirtyMessage} />
 
             {/* ── GODOWNS ────────────────────────────────────────────────── */}
             {activeView === 'godowns' && (
@@ -1329,6 +1337,6 @@ export default function Stock() {
           </div>
         </div>
       )}
-    </AppLayout>
+    </PageShell>
   )
 }

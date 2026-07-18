@@ -18,10 +18,8 @@ import Home      from './pages/Home'
 import Dashboard from './pages/Dashboard'
 import Sales     from './pages/Sales'
 import LiveView  from './pages/LiveView'
-import Purchases from './pages/Purchases'
-import Payments  from './pages/Payments'
-import Stock     from './pages/Stock'
-import Parties   from './pages/Parties'
+import Khata     from './pages/Khata'
+import Godown    from './pages/Godown'
 import Reports   from './pages/Reports'
 import Import    from './pages/Import'
 import B2BNetwork from './pages/B2BNetwork'
@@ -53,10 +51,12 @@ function AppRoutes() {
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/sales"     element={<ProtectedRoute><Sales key="sales" /></ProtectedRoute>} />
       <Route path="/live-view" element={<ProtectedRoute><LiveView /></ProtectedRoute>} />
-      <Route path="/purchases" element={<ProtectedRoute><Purchases /></ProtectedRoute>} />
-      <Route path="/payments"  element={<ProtectedRoute><Payments  /></ProtectedRoute>} />
-      <Route path="/stock"    element={<ProtectedRoute><Stock     /></ProtectedRoute>} />
-      <Route path="/parties"  element={<ProtectedRoute><Parties   /></ProtectedRoute>} />
+      {/* Merged workspaces: Parties = Contacts+Payments · Stock = Inventory+Purchases.
+          Each view is a real ROUTE (/parties/payments, /stock/inventory). */}
+      <Route path="/parties"      element={<ProtectedRoute><Khata  /></ProtectedRoute>} />
+      <Route path="/parties/:tab" element={<ProtectedRoute><Khata  /></ProtectedRoute>} />
+      <Route path="/stock"        element={<ProtectedRoute><Godown /></ProtectedRoute>} />
+      <Route path="/stock/:tab"   element={<ProtectedRoute><Godown /></ProtectedRoute>} />
       <Route path="/reports"  element={<ProtectedRoute><Reports   /></ProtectedRoute>} />
       <Route path="/import"   element={<ProtectedRoute><Import    /></ProtectedRoute>} />
       <Route path="/b2b-network" element={<ProtectedRoute><B2BNetwork /></ProtectedRoute>} />

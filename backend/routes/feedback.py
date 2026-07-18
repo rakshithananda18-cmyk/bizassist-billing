@@ -190,7 +190,6 @@ def download_diagnostics_logs(current_user: dict = Depends(get_active_user)):
     and its rotations, plus the admin audit log. No business data — only app logs.
     """
     import io, os, glob, tarfile
-    from datetime import datetime as _dt
     from fastapi.responses import StreamingResponse
 
     candidates = []
@@ -223,7 +222,7 @@ def download_diagnostics_logs(current_user: dict = Depends(get_active_user)):
             tar.addfile(info, io.BytesIO(note))
     buf.seek(0)
 
-    fname = f"bizassist-logs-{_dt.utcnow().strftime('%Y%m%d-%H%M%S')}.tar.gz"
+    fname = f"bizassist-logs-{utc_now().strftime('%Y%m%d-%H%M%S')}.tar.gz"
     logger.info("[DIAGNOSTICS] Served %d log file(s) to user '%s'", len(existing), current_user.get("username"))
     return StreamingResponse(
         buf,

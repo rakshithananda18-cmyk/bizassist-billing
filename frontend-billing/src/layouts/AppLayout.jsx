@@ -15,15 +15,15 @@ import SyncNudgeModal from '../components/hosting/SyncNudgeModal'
 import WebLocalOnlyNotice from '../components/hosting/WebLocalOnlyNotice'
 // HostingOnboardingModal removed: hosting is now chosen once, in Register.
 // The post-login onboarding pop-up duplicated that choice and was intrusive.
-import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon, DownloadIcon } from '../components/Icons'
+import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon, DownloadIcon, PlusIcon } from '../components/Icons'
 
 
 const NAV = [
   {
     section: 'Supply & Inflow',
     items: [
+      { to: '/stock',     icon: <InventoryIcon size={16} className="nav-anim-inventory" />, label: 'Stock & Purchases' },
       { to: '/b2b-orders', icon: <OrderIcon size={16} className="nav-anim-b2border" />, label: 'B2B Orders' },
-      { to: '/purchases', icon: <BillsIcon size={16} className="nav-anim-purchase" />, label: 'Purchase Bills' },
       { to: '/b2b-network', icon: <ConnectionIcon size={16} className="nav-anim-b2bnet" />, label: 'B2B Network' },
       { to: '/import', icon: <ImportIcon size={16} className="nav-anim-import" />, label: 'Data Migration' },
     ]
@@ -43,9 +43,8 @@ const NAV = [
     items: [
       { to: '/sales',    icon: <CounterIcon size={16} className="nav-anim-bill" />,   label: 'Billing Counter' },
       { to: '/pos-live-counter', icon: <MonitorIcon size={16} />,   label: 'POS Live Counter' },
-      { to: '/payments', icon: <CashIcon size={16} className="nav-anim-cash" />,      label: 'Transactions' },
-      { to: '/parties',  icon: <ContactsIcon size={16} className="nav-anim-contact" />,  label: 'Contacts & Dues' },
-      { to: '/stock',    icon: <InventoryIcon size={16} className="nav-anim-inventory" />, label: 'Inventory' },
+      // Merged workspace: Parties = Contacts+Transactions
+      { to: '/parties',  icon: <ContactsIcon size={16} className="nav-anim-contact" />,  label: 'Contacts & Payments' },
       { to: '/reports',  icon: <ReportsIcon size={16} className="nav-anim-report" />,   label: 'GST & Tax Reports' },
     ]
   }
@@ -53,32 +52,71 @@ const NAV = [
 
 // Flat list for sub-navbar (only key pages, grouped)
 const SUBNAV = [
-  { to: '/',           label: 'Home',         icon: <HomeIcon size={14} /> },
-  { to: '/dashboard',  label: 'Dashboard',    icon: <DashboardIcon size={14} /> },
-  { to: '/sales',      label: 'Billing',      icon: <CounterIcon size={14} /> },
-  { to: '/payments',   label: 'Transactions', icon: <CashIcon size={14} /> },
-  { to: '/parties',    label: 'Contacts',     icon: <ContactsIcon size={14} /> },
-  { to: '/stock',      label: 'Inventory',    icon: <InventoryIcon size={14} /> },
-  { to: '/purchases',  label: 'Purchases',    icon: <BillsIcon size={14} /> },
-  { to: '/reports',    label: 'Reports',      icon: <ReportsIcon size={14} /> },
+  { to: '/',           label: 'Home',                  icon: <HomeIcon size={14} /> },
+  { to: '/dashboard',  label: 'Dashboard',             icon: <DashboardIcon size={14} /> },
+  { to: '/sales',      label: 'Billing',               icon: <CounterIcon size={14} /> },
+  { to: '/parties',    label: 'Contacts & Payments',   icon: <ContactsIcon size={14} /> },
+  { to: '/stock',      label: 'Stock & Purchases',     icon: <InventoryIcon size={14} /> },
+  { to: '/reports',    label: 'Reports',               icon: <ReportsIcon size={14} /> },
 ]
 
 // Map route -> page title
 const PAGE_TITLES = {
-  '/':            'Home',
-  '/dashboard':   'Dashboard',
-  '/sales':       'Billing Counter',
-  '/payments':    'Transactions',
-  '/parties':     'Contacts & Dues',
-  '/stock':       'Inventory',
-  '/purchases':   'Purchase Bills',
-  '/b2b-network': 'B2B Network',
-  '/b2b-orders':  'B2B Orders',
-  '/reports':     'GST & Tax Reports',
-  '/import':      'Data Migration',
-  '/profile':     'My Profile',
-  '/staff':       'Staff & Cashiers',
-  '/settings':    'App Settings',
+  '/':              'Home',
+  '/dashboard':     'Dashboard',
+  '/sales':         'Billing Counter',
+  '/parties':       'Contacts & Payments',
+  '/stock':         'Stock & Purchases',
+  '/b2b-network':   'B2B Network',
+  '/b2b-orders':    'B2B Orders',
+  '/reports':       'GST & Tax Reports',
+  '/import':        'Data Migration',
+  '/profile':       'My Profile',
+  '/staff':         'Staff & Cashiers',
+  '/settings':      'App Settings',
+}
+
+// Quick actions surfaced in the sidebar right-click menu.
+// Each entry: { label, icon: <SvgComponent />, action(navigate) }
+const QUICK_ACTIONS = {
+  '/':            (nav) => [
+    { label: 'Go to Home',           icon: <HomeIcon size={14} />,      action: () => nav('/') },
+    { label: 'Open Billing Counter', icon: <CounterIcon size={14} />,   action: () => nav('/sales') },
+  ],
+  '/dashboard':   (nav) => [
+    { label: 'Open Dashboard',       icon: <DashboardIcon size={14} />, action: () => nav('/dashboard') },
+    { label: 'Refresh Data',         icon: <SyncIcon size={14} />,      action: () => window.dispatchEvent(new CustomEvent('sync-event', { detail: { type: 'sync.reconnect' } })) },
+  ],
+  '/sales':       (nav) => [
+    { label: 'New Invoice',          icon: <PlusIcon size={14} />,      action: () => nav('/sales') },
+    { label: "Today's Bills",        icon: <BillsIcon size={14} />,     action: () => nav('/sales?view=today') },
+  ],
+  '/stock':       (nav) => [
+    { label: 'Stock & Items',        icon: <InventoryIcon size={14} />, action: () => nav('/stock/inventory') },
+    { label: 'Purchase Bills',       icon: <BillsIcon size={14} />,     action: () => nav('/stock/purchase') },
+    { label: 'Adjust Stock',         icon: <ZapIcon size={14} />,       action: () => { nav('/stock/inventory'); setTimeout(() => window.dispatchEvent(new CustomEvent('open_adjust_stock')), 200) } },
+  ],
+  '/parties':     (nav) => [
+    { label: 'Contacts & Dues',      icon: <ContactsIcon size={14} />,  action: () => nav('/parties/contacts') },
+    { label: 'Transactions',         icon: <CashIcon size={14} />,      action: () => nav('/parties/payments') },
+    { label: 'Add Contact',          icon: <PlusIcon size={14} />,      action: () => { nav('/parties/contacts'); setTimeout(() => window.dispatchEvent(new CustomEvent('open_add_contact')), 200) } },
+  ],
+  '/reports':     (nav) => [
+    { label: 'Open Reports',         icon: <ReportsIcon size={14} />,   action: () => nav('/reports') },
+    { label: 'GST Summary',          icon: <TaxIcon size={14} />,       action: () => nav('/reports?tab=gst') },
+  ],
+  '/b2b-orders':  (nav) => [
+    { label: 'View B2B Orders',      icon: <OrderIcon size={14} />,     action: () => nav('/b2b-orders') },
+  ],
+  '/b2b-network': (nav) => [
+    { label: 'View B2B Network',     icon: <ConnectionIcon size={14} />,action: () => nav('/b2b-network') },
+  ],
+  '/import':      (nav) => [
+    { label: 'Data Migration',       icon: <ImportIcon size={14} />,    action: () => nav('/import') },
+  ],
+  '/pos-live-counter': (nav) => [
+    { label: 'Open Live Counter',    icon: <MonitorIcon size={14} />,   action: () => nav('/pos-live-counter') },
+  ],
 }
 
 export default function AppLayout({ children, title }) {
@@ -366,14 +404,18 @@ export default function AppLayout({ children, title }) {
   const staffRole = (user?.role || '').toLowerCase()
   const isCashier = staffRole === 'cashier'
   const isSupplyAdder = staffRole === 'supply adder'
-  const OWNER_ONLY_PATHS = React.useMemo(() => new Set(['/purchases', '/b2b-network', '/b2b-orders', '/reports', '/import', '/staff', '/dashboard', '/pos-live-counter']), [])
+  // '/purchases' stays listed so the legacy redirect can't be ridden into the
+  // purchases tab by a cashier; Godown.jsx additionally hides that tab by role.
+  const OWNER_ONLY_PATHS = React.useMemo(() => new Set(['/stock/purchase', '/b2b-network', '/b2b-orders', '/reports', '/import', '/staff', '/dashboard', '/pos-live-counter']), [])
   // What each staff sector is allowed to SEE (backend still enforces writes).
-  const SUPPLY_ADDER_PATHS = React.useMemo(() => new Set(['/', '/stock', '/purchases', '/profile', '/support', '/settings']), [])
+  // '/stock' is the supply adder's whole sector (stock/inventory + purchase bills).
+  const SUPPLY_ADDER_PATHS = React.useMemo(() => new Set(['/', '/stock', '/profile', '/support', '/settings']), [])
 
   React.useEffect(() => {
     if (isCashier && OWNER_ONLY_PATHS.has(location.pathname)) {
       navigate('/sales', { replace: true })
     } else if (isSupplyAdder && !SUPPLY_ADDER_PATHS.has(location.pathname)
+               && !location.pathname.startsWith('/stock')
                && !location.pathname.startsWith('/invoice/')) {
       navigate('/stock', { replace: true })
     }
@@ -407,6 +449,61 @@ export default function AppLayout({ children, title }) {
       'Supply & Inflow': false,
     }
   })
+
+  // ── Sidebar right-click context menu ─────────────────────────────────────
+  // { x, y, item: { to, label }, flatIndex: number } | null
+  const [sidebarCtxMenu, setSidebarCtxMenu] = React.useState(null)
+
+  // Flat ordered list of nav item `to` keys — user can reorder via ctx menu.
+  // Derived from visibleNav on first load; persisted to localStorage.
+  const [navOrder, setNavOrder] = React.useState(() => {
+    try {
+      const saved = localStorage.getItem('sidebar_nav_order')
+      if (saved) return JSON.parse(saved)
+    } catch { /* ignore */ }
+    return null // null = use default order from NAV
+  })
+
+  // Build the ordered nav: apply custom order if set, else fall back to visibleNav.
+  const orderedVisibleNav = React.useMemo(() => {
+    // Collect all items from visibleNav into a flat list
+    const flat = visibleNav.flatMap(s => s.items.map(item => ({ ...item, section: s.section })))
+    if (!navOrder) return flat
+    // Sort by the saved order; items not in the saved list go at the end
+    const orderMap = Object.fromEntries(navOrder.map((key, i) => [key, i]))
+    return [...flat].sort((a, b) => {
+      const ai = orderMap[a.to] ?? 9999
+      const bi = orderMap[b.to] ?? 9999
+      return ai - bi
+    })
+  }, [visibleNav, navOrder])
+
+  const saveNavOrder = (flat) => {
+    const keys = flat.map(i => i.to).filter(Boolean)
+    setNavOrder(keys)
+    try { localStorage.setItem('sidebar_nav_order', JSON.stringify(keys)) } catch { /* ignore */ }
+  }
+
+  const moveNavItem = (flatIndex, direction) => {
+    const next = [...orderedVisibleNav]
+    const targetIndex = flatIndex + direction
+    if (targetIndex < 0 || targetIndex >= next.length) return
+    ;[next[flatIndex], next[targetIndex]] = [next[targetIndex], next[flatIndex]]
+    saveNavOrder(next)
+  }
+
+  // Close ctx menu on outside click or Escape
+  React.useEffect(() => {
+    if (!sidebarCtxMenu) return
+    const close = () => setSidebarCtxMenu(null)
+    const onKey = (e) => { if (e.key === 'Escape') close() }
+    document.addEventListener('mousedown', close, true)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', close, true)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [sidebarCtxMenu])
 
   // Persist collapsed state to localStorage
   React.useEffect(() => {
@@ -681,7 +778,10 @@ export default function AppLayout({ children, title }) {
     ? user.username.slice(0, 2).toUpperCase()
     : 'BZ'
 
-  const isSalesPage = location.pathname === '/sales' || location.pathname === '/stock'
+  // Full-bleed POS layout: Billing and Stock & Purchases only. Contacts &
+  // Payments (/parties) stays in the normal app layout with the sidebar.
+  const isSalesPage = location.pathname === '/sales'
+    || location.pathname.startsWith('/stock')
   const pageTitle = title || PAGE_TITLES[location.pathname] || 'BizAssist'
 
   return (
@@ -1302,76 +1402,94 @@ export default function AppLayout({ children, title }) {
 
           </div>
 
-          {/* Nav */}
+          {/* Nav — flat ordered list, regrouped by section label */}
           <nav className="sidebar-nav">
-            {visibleNav.map(({ section, items }) => {
-              const isCollapsed = collapsed[section]
-              return (
-                <React.Fragment key={section}>
-                  <div
-                    className="nav-section-label"
-                    onClick={() => toggleSection(section)}
-                  >
-                    <span>{section}</span>
-                    <span style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      color: 'var(--text-secondary)',
-                      transition: 'transform var(--dur) var(--ease)',
-                      transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)'
-                    }}>
-                      <ChevronDownIcon size={12} />
-                    </span>
-                  </div>
+            {(() => {
+              // Group back into sections while preserving custom order
+              const groups = []
+              orderedVisibleNav.forEach((item, flatIndex) => {
+                const last = groups[groups.length - 1]
+                if (last && last.section === item.section) {
+                  last.items.push({ item, flatIndex })
+                } else {
+                  groups.push({ section: item.section, items: [{ item, flatIndex }] })
+                }
+              })
+              return groups.map(({ section, items }) => {
+                const isCollapsed = collapsed[section]
+                return (
+                  <React.Fragment key={section}>
+                    <div
+                      className="nav-section-label"
+                      onClick={() => toggleSection(section)}
+                    >
+                      <span>{section}</span>
+                      <span style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        color: 'var(--text-secondary)',
+                        transition: 'transform var(--dur) var(--ease)',
+                        transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)'
+                      }}>
+                        <ChevronDownIcon size={12} />
+                      </span>
+                    </div>
 
-                   {!isCollapsed && items.map(({ to, icon, label, external }) => {
-                    if (external) {
-                      if (!getAiDashboardUrl()) return null // no dashboard on this platform
+                    {!isCollapsed && items.map(({ item: { to, icon, label, external }, flatIndex }) => {
+                      const handleCtxMenu = (e) => {
+                        e.preventDefault()
+                        setSidebarCtxMenu({ x: e.clientX, y: e.clientY, to, label, flatIndex })
+                      }
+                      if (external) {
+                        if (!getAiDashboardUrl()) return null
+                        return (
+                          <a
+                            key={label}
+                            href={getAiDashboardUrl()}
+                            className="nav-link"
+                            onContextMenu={handleCtxMenu}
+                            onClick={(e) => {
+                              e.preventDefault()
+                              setMobileMenuOpen(false)
+                              if (aiGated) {
+                                window.alert('Dashboard BIZASSIST is part of the Pro plan. Contact your provider to upgrade.')
+                                return
+                              }
+                              openAiDashboard()
+                            }}
+                          >
+                            <span className="nav-icon">{icon}</span>
+                            {label}
+                            {aiGated && (
+                              <span style={{
+                                marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 800,
+                                letterSpacing: '0.08em', padding: '2px 6px', borderRadius: 6,
+                                background: 'var(--accent)', color: '#fff'
+                              }}>PRO</span>
+                            )}
+                          </a>
+                        )
+                      }
                       return (
-                        <a
-                          key={label}
-                          href={getAiDashboardUrl()}
-                          className="nav-link"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            setMobileMenuOpen(false)
-                            if (aiGated) {
-                              window.alert('Dashboard BIZASSIST is part of the Pro plan. Contact your provider to upgrade.')
-                              return
-                            }
-                            openAiDashboard()
-                          }}
+                        <NavLink
+                          key={to}
+                          to={to}
+                          end={to === '/'}
+                          onClick={() => setMobileMenuOpen(false)}
+                          onContextMenu={handleCtxMenu}
+                          className={({ isActive }) =>
+                            'nav-link' + (isActive ? ' active' : '')
+                          }
                         >
                           <span className="nav-icon">{icon}</span>
                           {label}
-                          {aiGated && (
-                            <span style={{
-                              marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 800,
-                              letterSpacing: '0.08em', padding: '2px 6px', borderRadius: 6,
-                              background: 'var(--accent)', color: '#fff'
-                            }}>PRO</span>
-                          )}
-                        </a>
+                        </NavLink>
                       )
-                    }
-                    return (
-                    <NavLink
-                      key={to}
-                      to={to}
-                      end={to === '/'}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={({ isActive }) =>
-                        'nav-link' + (isActive ? ' active' : '')
-                      }
-                    >
-                      <span className="nav-icon">{icon}</span>
-                      {label}
-                    </NavLink>
-                    )
-                  })}
-                </React.Fragment>
-              )
-            })}
+                    })}
+                  </React.Fragment>
+                )
+              })
+            })()}
           </nav>
 
           {/* Footer / User */}
@@ -1575,6 +1693,138 @@ export default function AppLayout({ children, title }) {
             </div>
           </div>
         </aside>
+      )}
+
+      {/* ── Sidebar right-click context menu portal ── */}
+      {sidebarCtxMenu && createPortal(
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          style={{
+            position: 'fixed',
+            top: Math.min(sidebarCtxMenu.y, window.innerHeight - 260),
+            left: sidebarCtxMenu.x + 4,
+            zIndex: 99999,
+            background: 'var(--bg-2)',
+            border: '1px solid var(--border)',
+            borderRadius: 10,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+            minWidth: 210,
+            overflow: 'hidden',
+            padding: '6px 0',
+          }}
+        >
+          {/* Header */}
+          <div style={{
+            padding: '6px 14px 8px',
+            fontSize: '0.7rem', fontWeight: 700,
+            color: 'var(--text-muted)', letterSpacing: '0.08em',
+            textTransform: 'uppercase', borderBottom: '1px solid var(--border)',
+            marginBottom: 4,
+          }}>
+            {sidebarCtxMenu.label}
+          </div>
+
+          {/* Page quick actions */}
+          {(QUICK_ACTIONS[sidebarCtxMenu.to]?.(navigate) || []).map((qa, i) => (
+            <button
+              key={i}
+              onClick={() => { qa.action(); setSidebarCtxMenu(null) }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                width: '100%', padding: '7px 14px',
+                background: 'transparent', border: 'none',
+                color: 'var(--text-primary)', fontSize: '0.82rem',
+                fontWeight: 500, cursor: 'pointer', textAlign: 'left',
+                transition: `background var(--dur-fast) var(--ease)`,
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-3)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 20, height: 20, flexShrink: 0,
+                color: 'var(--accent)',
+              }}>{qa.icon}</span>
+              {qa.label}
+            </button>
+          ))}
+
+          {/* Divider */}
+          <div style={{ height: 1, background: 'var(--border)', margin: '6px 0' }} />
+
+          {/* Reorder */}
+          <div style={{
+            padding: '4px 14px 2px',
+            fontSize: '0.68rem', fontWeight: 700,
+            color: 'var(--text-muted)', letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+          }}>Reorder</div>
+          {[
+            { label: 'Move Up',   rotateIcon: 'rotate(180deg)', dir: -1, disabled: sidebarCtxMenu.flatIndex === 0 },
+            { label: 'Move Down', rotateIcon: 'rotate(0deg)',   dir:  1, disabled: sidebarCtxMenu.flatIndex === orderedVisibleNav.length - 1 },
+          ].map(({ label, rotateIcon, dir, disabled }) => (
+            <button
+              key={label}
+              disabled={disabled}
+              onClick={() => {
+                moveNavItem(sidebarCtxMenu.flatIndex, dir)
+                setSidebarCtxMenu(prev => prev && ({ ...prev, flatIndex: prev.flatIndex + dir }))
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                width: '100%', padding: '7px 14px',
+                background: 'transparent', border: 'none',
+                color: disabled ? 'var(--text-muted)' : 'var(--text-primary)',
+                fontSize: '0.82rem', fontWeight: 500,
+                cursor: disabled ? 'not-allowed' : 'pointer', textAlign: 'left',
+                opacity: disabled ? 0.4 : 1,
+                transition: `background var(--dur-fast) var(--ease)`,
+              }}
+              onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = 'var(--bg-3)' }}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 20, height: 20, flexShrink: 0,
+                color: disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
+                transform: rotateIcon,
+              }}><ChevronDownIcon size={13} strokeWidth={2.5} /></span>
+              {label}
+            </button>
+          ))}
+
+          {/* Reset order (only if custom order is active) */}
+          {navOrder && (
+            <>
+              <div style={{ height: 1, background: 'var(--border)', margin: '6px 0' }} />
+              <button
+                onClick={() => {
+                  setNavOrder(null)
+                  try { localStorage.removeItem('sidebar_nav_order') } catch { /* ignore */ }
+                  setSidebarCtxMenu(null)
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  width: '100%', padding: '7px 14px',
+                  background: 'transparent', border: 'none',
+                  color: 'var(--danger, #ef4444)', fontSize: '0.8rem',
+                  fontWeight: 500, cursor: 'pointer', textAlign: 'left',
+                  transition: `background var(--dur-fast) var(--ease)`,
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,.08)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: 20, height: 20, flexShrink: 0,
+                  color: 'var(--danger, #ef4444)',
+                }}><SyncIcon size={13} /></span>
+                Reset to Default Order
+              </button>
+            </>
+          )}
+        </div>,
+        document.body
       )}
 
       {/* Mobile Top Header Bar */}
