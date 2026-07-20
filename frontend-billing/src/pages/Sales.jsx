@@ -9,11 +9,11 @@ import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { IS_LOCAL_APP } from '../config'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
-import { AlertIcon, BillsIcon, CheckIcon, ChevronRightIcon, CloseIcon, TagIcon } from '../components/Icons'
+import { AlertIcon, BillsIcon, CheckIcon, ChevronRightIcon, CloseIcon } from '../components/Icons'
 import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
 // Shared formatting helpers (money / today / amount-in-words) live in utils/format.
-import { fmt, getTodayDateStr, getFromDateStr } from '../utils/format'
+import { getTodayDateStr, getFromDateStr } from '../utils/format'
 // Invoice money-math (line totals, intra/inter GST split, change due) — pure + tested.
 import { lineTotal, computeInvoiceTotals, changeDue, buildInvoicePayload, columnTotals, suggestedTenders, schemeDiscount } from '../utils/invoiceMath'
 import { logger } from '../utils/logger'
@@ -33,12 +33,16 @@ import CartItemRow from '../components/sales/CartItemRow'
 import CartFooterRow from '../components/sales/CartFooterRow'
 import { PosCounterSettingsModal } from '../components/sales/PosSettingsModals'
 import { OpenShiftModal, CloseShiftModal, CashMovementModal } from '../components/sales/ShiftModals'
+import { LiveViewOverlay, LiveViewBar, RemoteEditRequestModal, ManagedModeOverlay } from '../components/sales/LiveViewChrome'
+import PriceSelectorModal from '../components/sales/PriceSelectorModal'
+import MenuCataloguePane from '../components/sales/MenuCataloguePane'
 import ShiftSummaryModal from '../components/sales/ShiftSummary'
 import usePaymentFlow from '../hooks/usePaymentFlow'
 import { syncManager } from '../sync/syncManager'
 import { pendingInvoiceRows } from '../sync/pendingInvoices'
 // POS logic split out of this monolith (MASTER_REVIEW §2.5) — pure + tested.
-import { colLabels, DEFAULT_COLUMN_ORDER, normalizeColumnOrder, moveColumn, getStickyLeftOffsets } from '../lib/posColumns'
+import { colLabels, DEFAULT_COLUMN_ORDER, normalizeColumnOrder, moveColumn, getStickyLeftOffsets, NON_COLLAPSIBLE } from '../lib/posColumns'
+import ContextMenu from '../components/common/ContextMenu'
 import { DEFAULT_FUNC_KEYS as defaultFuncKeys, loadFuncKeys, matchesKey } from '../lib/posKeys'
 import { getPriceOptions as buildPriceOptions, withQty as withQtyFor } from '../lib/priceOptions'
 import { nextInvoiceNo, syncTabNames as syncTabNamesFor } from '../lib/posInvoiceNumbers'
@@ -1194,6 +1198,11 @@ export default function Sales(props = {}) {
     hsn: settings?.transactions?.pos_show_hsn === true,
     mrp: settings?.transactions?.pos_show_mrp === true
          || (settings?.transactions?.pos_show_mrp !== false && profileLineFields.includes('mrp')),
+    // Total MRP follows the MRP toggle; Discount-per-unit follows the Discount
+    // toggle — one switch controls the pair, keeping settings simple.
+    mrp_total: settings?.transactions?.pos_show_mrp === true
+         || (settings?.transactions?.pos_show_mrp !== false && profileLineFields.includes('mrp')),
+    discount_unit: settings?.transactions?.pos_show_discount !== false,
     batch: settings?.transactions?.pos_show_batch !== false,
     serial: settings?.transactions?.pos_show_serial === true
             || (settings?.transactions?.pos_show_serial !== false && profileLineFields.includes('serial_no')),
@@ -1408,7 +1417,7 @@ export default function Sales(props = {}) {
       billDiscountValue: form.bill_discount_value,
       cashDiscount: parseFloat(form.cash_discount) || 0,
     })
-  const colFooter = columnTotals(form.items)   // per-column totals for the cart footer row
+  const colFooter = columnTotals(form.items, products)   // per-column totals for the cart footer row
 
   // Receipt header lines, rendered in the saved order + alignment (Settings → Print).
   const amountReceivedNum = parseFloat(form.amount_received) || 0
@@ -2047,7 +2056,42 @@ export default function Sales(props = {}) {
     }
   }, [showPaymentPopup, showSettingsModal, showBreakupModal])
 
-  const stickyOffsets = getStickyLeftOffsets(columnOrder, colVisible)
+  // ── Fold-collapsible columns (paper-fold strips) ──────────────────────────
+  // Collapse ≠ hide: hiding lives in Settings; collapsing is the cashier's
+  // quick per-device fold (right-click a header → Collapse; click the strip
+  // to unfold). Persisted locally so the counter reopens the way it was left.
+  const [collapsedCols, setCollapsedCols] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('pos_collapsed_columns')) || {} } catch { return {} }
+  })
+  const [headerCtxMenu, setHeaderCtxMenu] = useState(null)
+  const setColumnCollapsed = (col, val) => {
+    if (NON_COLLAPSIBLE.includes(col)) return
+    setCollapsedCols(prev => {
+      const next = { ...prev, [col]: val }
+      if (!val) delete next[col]
+      try { localStorage.setItem('pos_collapsed_columns', JSON.stringify(next)) } catch { /* ignore */ }
+      return next
+    })
+  }
+  const handleHeaderContextMenu = (col, e) => {
+    const items = []
+    if (!NON_COLLAPSIBLE.includes(col)) {
+      items.push(collapsedCols[col]
+        ? { label: `Expand "${colLabels[col] || col}"`, action: () => setColumnCollapsed(col, false) }
+        : { label: `Collapse "${colLabels[col] || col}"`, action: () => setColumnCollapsed(col, true) })
+    }
+    if (Object.keys(collapsedCols).length > 0) {
+      items.push({ label: 'Expand all columns', action: () => {
+        setCollapsedCols({})
+        try { localStorage.removeItem('pos_collapsed_columns') } catch { /* ignore */ }
+      } })
+    }
+    items.push({ divider: true })
+    items.push({ label: 'Column settings…', action: () => { setSettingsInitialTab('columns'); setShowSettingsModal(true) } })
+    setHeaderCtxMenu({ x: e.clientX, y: e.clientY, items })
+  }
+
+  const stickyOffsets = getStickyLeftOffsets(columnOrder, colVisible, collapsedCols)
 
   // ── Optimised product search ──────────────────────────────────────────────
   // Pre-lowercase the query ONCE (not 3× per product per render).
@@ -2096,81 +2140,19 @@ export default function Sales(props = {}) {
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
         
         {isLiveView && isRemoteCartLoading && (
-          <div style={{
-            position: 'absolute',
-            top: 44, // below the PosTopBar
-            left: 0, right: 0, bottom: 0,
-            background: 'var(--bg-1)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            gap: 16
-          }}>
-            {connectionStatus === 'connecting' && (
-              <>
-                <div style={{
-                  width: 40, height: 40,
-                  border: '3px solid rgba(255,255,255,0.08)',
-                  borderTopColor: 'var(--accent)',
-                  borderRadius: '50%',
-                  animation: 'spin 1s linear infinite'
-                }} />
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  Connecting to Counter <strong>{liveCounter}</strong>... Fetching active cart.
-                </div>
-              </>
-            )}
-
-            {connectionStatus === 'offline' && (
-              <>
-                <div style={{ fontSize: '2rem' }}>🔌</div>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#ef4444' }}>
-                  Counter {liveCounter} is Offline
-                </div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', maxWidth: 320, textAlign: 'center', lineHeight: 1.4 }}>
-                  This counter does not have an active session. Real-time view is only available when the cashier is online.
-                </div>
-              </>
-            )}
-
-            {connectionStatus === 'timeout' && (
-              <>
-                <div style={{ fontSize: '2rem' }}>⏳</div>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f59e0b' }}>
-                  Connection Timeout
-                </div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', maxWidth: 320, textAlign: 'center', lineHeight: 1.4 }}>
-                  No response from Counter {liveCounter}. The terminal might have closed their tab, or went to sleep/offline.
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => {
-                    setConnectionStatus('connecting')
-                    broadcastMessage({
-                      type: 'pos.request_cart',
-                      target_client_id: liveClientId,
-                      requester_client_id: clientId,
-                    })
-                  }}
-                  style={{ fontSize: '0.78rem', padding: '6px 14px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-                >
-                  Retry Connection
-                </button>
-              </>
-            )}
-
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => navigate('/pos-live-counter')}
-              style={{ fontSize: '0.78rem', padding: '6px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-primary)' }}
-            >
-              Exit Live View
-            </button>
-          </div>
+          <LiveViewOverlay
+            connectionStatus={connectionStatus}
+            liveCounter={liveCounter}
+            onRetry={() => {
+              setConnectionStatus('connecting')
+              broadcastMessage({
+                type: 'pos.request_cart',
+                target_client_id: liveClientId,
+                requester_client_id: clientId,
+              })
+            }}
+            onExit={() => navigate('/pos-live-counter')}
+          />
         )}
 
         {/* Tab-Style Bar */}
@@ -2229,92 +2211,30 @@ export default function Sales(props = {}) {
         />
 
         {isLiveView && (
-          <div style={{
-            background: 'var(--bg-3)',
-            borderBottom: '1px solid var(--border)',
-            padding: '8px 16px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            fontSize: '0.82rem',
-            color: 'var(--text-primary)',
-            zIndex: 99
-          }}>
-            <div>
-              <span>Viewing Counter: <strong>{liveCounter}</strong></span>
-              {editState === 'granted' && <span style={{ color: '#22c55e', marginLeft: 12, fontWeight: 700 }}>● Editing Active</span>}
-              {editState === 'requesting' && <span style={{ color: '#f59e0b', marginLeft: 12, fontWeight: 700 }}>● Requesting Access...</span>}
-              {editState === 'denied' && <span style={{ color: '#ef4444', marginLeft: 12, fontWeight: 700 }}>● Request Denied</span>}
-              {editState === 'idle' && <span style={{ color: 'var(--text-muted)', marginLeft: 12 }}>● View Only</span>}
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {editState === 'idle' && (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => {
-                    setEditState('requesting')
-                    broadcastMessage({
-                      type: 'pos.request_edit',
-                      target_client_id: liveClientId,
-                      requester_client_id: clientId,
-                      requester_username: user?.username || 'Owner'
-                    })
-                  }}
-                  style={{ fontSize: '0.78rem', padding: '4px 10px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-                >
-                  Request Edit Access
-                </button>
-              )}
-              {editState === 'requesting' && (
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setEditState('idle')
-                  }}
-                  style={{ fontSize: '0.78rem', padding: '4px 10px', background: 'rgba(255,255,255,0.08)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
-                >
-                  Cancel Request
-                </button>
-              )}
-              {editState === 'granted' && (
-                <button
-                  type="button"
-                  className="btn btn-success"
-                  onClick={() => {
-                    setEditState('idle')
-                    broadcastMessage({
-                      type: 'pos.release_edit',
-                      target_client_id: liveClientId,
-                      requester_client_id: clientId
-                    })
-                  }}
-                  style={{ fontSize: '0.78rem', padding: '4px 10px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-                >
-                  Release Edit & Save
-                </button>
-              )}
-              {editState === 'denied' && (
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setEditState('idle')}
-                  style={{ fontSize: '0.78rem', padding: '4px 10px', background: 'rgba(255,255,255,0.08)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
-                >
-                  Reset
-                </button>
-              )}
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => navigate('/pos-live-counter')}
-                style={{ fontSize: '0.78rem', padding: '4px 10px', background: 'rgba(255,255,255,0.08)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
-              >
-                Exit Live View
-              </button>
-            </div>
-          </div>
+          <LiveViewBar
+            liveCounter={liveCounter}
+            editState={editState}
+            onRequestEdit={() => {
+              setEditState('requesting')
+              broadcastMessage({
+                type: 'pos.request_edit',
+                target_client_id: liveClientId,
+                requester_client_id: clientId,
+                requester_username: user?.username || 'Owner'
+              })
+            }}
+            onCancelRequest={() => setEditState('idle')}
+            onReleaseEdit={() => {
+              setEditState('idle')
+              broadcastMessage({
+                type: 'pos.release_edit',
+                target_client_id: liveClientId,
+                requester_client_id: clientId
+              })
+            }}
+            onResetDenied={() => setEditState('idle')}
+            onExit={() => navigate('/pos-live-counter')}
+          />
         )}
 
         {/* Workspace body split */}
@@ -2378,6 +2298,9 @@ export default function Sales(props = {}) {
                     t={t}
                     hasItems={form.items.length > 0}
                     extraAttrFields={extraAttrFields}
+                    collapsedCols={collapsedCols}
+                    onExpandColumn={(col) => setColumnCollapsed(col, false)}
+                    onHeaderContextMenu={handleHeaderContextMenu}
                   />
                   <tbody>
                     {form.items.length === 0 ? (
@@ -2386,6 +2309,7 @@ export default function Sales(props = {}) {
                         columnOrder={columnOrder}
                         colVisible={colVisible}
                         stickyOffsets={stickyOffsets}
+                        collapsedCols={collapsedCols}
                       />
                     ) : (
                       form.items.map((item, i) => (
@@ -2395,6 +2319,8 @@ export default function Sales(props = {}) {
                           index={i}
                           columnOrder={columnOrder}
                           colVisible={colVisible}
+                          collapsedCols={collapsedCols}
+                          onExpandColumn={(col) => setColumnCollapsed(col, false)}
                           stickyOffsets={stickyOffsets}
                           products={products}
                           productBatches={productBatches}
@@ -2420,89 +2346,21 @@ export default function Sales(props = {}) {
                       colFooter={colFooter}
                       gstAmt={gstAmt}
                       grandTotal={grandTotal}
+                      collapsedCols={collapsedCols}
                     />
                   )}
                 </table>
               </div>
 
               {priceSelectorIndex !== null && (
-                <div
-                  className="modal-overlay"
-                  onClick={() => setPriceSelectorIndex(null)}
-                  style={{ zIndex: 2010 }}
-                >
-                  <div
-                    className="modal"
-                    style={{
-                      maxWidth: '580px',
-                      background: 'var(--glass-bg)',
-                      backdropFilter: 'blur(30px) saturate(190%)',
-                      WebkitBackdropFilter: 'blur(30px) saturate(190%)',
-                      border: '1px solid var(--glass-border)',
-                      color: 'var(--text-primary)',
-                      boxShadow: 'var(--shadow-lg)'
-                    }}
-                    onClick={e => e.stopPropagation()}
-                  >
-                    <div className="modal-header" style={{ borderBottom: '1px solid var(--border)' }}>
-                      <span className="modal-title" style={{ fontSize: '1.1rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--text-primary)' }}>
-                        <TagIcon size={18} style={{ color: 'var(--accent)' }} /> Price Selection — {form.items[priceSelectorIndex]?.product}
-                      </span>
-                      <button
-                        className="btn btn-ghost btn-icon"
-                        onClick={() => setPriceSelectorIndex(null)}
-                        style={{ color: 'var(--text-muted)' }}
-                       aria-label="Close"><CloseIcon size={16} /></button>
-                    </div>
-                    <div className="modal-body" style={{ padding: '16px 20px' }}>
-                      <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-                        Multiple prices found for this item. Use <kbd>↑</kbd> <kbd>↓</kbd> arrows and <kbd>Enter</kbd> / <kbd>Esc</kbd> or click a row to select.
-                      </p>
-                      
-                      <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
-                          <thead>
-                            <tr style={{ background: 'var(--bg-3)', borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-                              <th style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-muted)' }}>Price Option</th>
-                              <th style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-muted)' }}>Date Added</th>
-                              <th style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-muted)', textAlign: 'right' }}>Price</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {getPriceOptions(form.items[priceSelectorIndex]).map((opt, oIdx) => {
-                              const isSelected = oIdx === selectedPriceOptIndex;
-                              return (
-                                <tr
-                                  key={oIdx}
-                                  style={{
-                                    background: isSelected ? 'var(--accent-glow)' : 'transparent',
-                                    borderBottom: '1px solid var(--border)',
-                                    cursor: 'pointer',
-                                    transition: 'background 0.15s ease',
-                                    color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
-                                    fontWeight: isSelected ? 600 : 'normal'
-                                  }}
-                                  onClick={() => handleSelectPriceOption(opt.price, opt.label)}
-                                  onMouseEnter={() => setSelectedPriceOptIndex(oIdx)}
-                                >
-                                  <td style={{ padding: '12px' }}>
-                                    <span>{opt.label}</span>
-                                  </td>
-                                  <td style={{ padding: '12px', color: isSelected ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                                    {opt.formatted_date}
-                                  </td>
-                                  <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: isSelected ? 'var(--accent)' : 'var(--text-primary)' }}>
-                                    {fmt(opt.price)}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <PriceSelectorModal
+                  productName={form.items[priceSelectorIndex]?.product}
+                  options={getPriceOptions(form.items[priceSelectorIndex])}
+                  selectedIndex={selectedPriceOptIndex}
+                  onHoverIndex={setSelectedPriceOptIndex}
+                  onSelect={handleSelectPriceOption}
+                  onClose={() => setPriceSelectorIndex(null)}
+                />
               )}
             </div>
 
@@ -2521,83 +2379,12 @@ export default function Sales(props = {}) {
 
           </div>
 
-          {/* Right Pane (42% in menu mode) */}
+          {/* Right Pane (42% in menu mode) — extracted to components/sales/MenuCataloguePane */}
           {entryMode === 'menu' && (
-            <div
-              className="pos-right-pane"
-              style={{
-                width: '42%',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                padding: '16px',
-                background: 'var(--bg)',
-                borderLeft: '1px solid var(--border)',
-                overflowY: 'auto',
-                gap: '20px'
-              }}
-            >
-              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)', borderBottom: '2.5px solid var(--accent)', paddingBottom: '6px', marginBottom: '4px' }}>
-                <InventoryIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Menu / Catalogue
-              </div>
-              {Object.keys(groupedProducts).length === 0 ? (
-                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '40px' }}>
-                  No products found in stock.
-                </div>
-              ) : (
-                Object.entries(groupedProducts).map(([catName, items]) => (
-                  <div key={catName} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      {catName}
-                    </h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px' }}>
-                      {items.map(p => (
-                        <div
-                          key={p.id}
-                          className="menu-product-card"
-                          onClick={() => handleSelectProduct(p)}
-                          style={{
-                            background: 'var(--bg-2)',
-                            border: '1.5px solid var(--border)',
-                            borderRadius: '10px',
-                            padding: '10px',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            justifyContent: 'space-between',
-                            minHeight: '85px',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.borderColor = 'var(--accent)'
-                            e.currentTarget.style.transform = 'translateY(-2px)'
-                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(249,115,22,0.1)'
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor = 'var(--border)'
-                            e.currentTarget.style.transform = 'none'
-                            e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.02)'
-                          }}
-                        >
-                          <div style={{ fontWeight: 600, fontSize: '0.82rem', color: 'var(--text-primary)', lineHeight: 1.3 }}>
-                            {p.name}
-                          </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '6px' }}>
-                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                              {p.unit || 'pcs'}
-                            </span>
-                            <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--accent)' }}>
-                              {fmt(p.selling_price)}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+            <MenuCataloguePane
+              groupedProducts={groupedProducts}
+              onSelectProduct={handleSelectProduct}
+            />
           )}
 
         </div>
@@ -2695,104 +2482,31 @@ export default function Sales(props = {}) {
       />
 
       {showRemoteRequestModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.6)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 2000
-        }}>
-          <div className="card shadow-lg animate-fade-in" style={{
-            width: '100%',
-            maxWidth: 420,
-            padding: 24,
-            borderRadius: 12,
-            background: 'var(--bg-surface, #ffffff)',
-            border: '1px solid var(--border)',
-            textAlign: 'center'
-          }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12 }}>
-              Remote Edit Request
-            </h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 20 }}>
-              Manager <strong>{managerUsername}</strong> is requesting temporary access to view and edit your active bill. Allow?
-            </p>
-            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-              <button
-                onClick={() => {
-                  setShowRemoteRequestModal(false)
-                  setIsLockedByManager(true)
-                  broadcastMessage({
-                    type: 'pos.grant_edit',
-                    target_client_id: managerClientId,
-                    grantor_client_id: clientId,
-                  })
-                }}
-                style={{
-                  padding: '8px 20px', borderRadius: 6,
-                  background: '#22c55e', color: '#fff', border: 'none',
-                  fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer'
-                }}
-              >
-                Allow
-              </button>
-              <button
-                onClick={() => {
-                  setShowRemoteRequestModal(false)
-                  broadcastMessage({
-                    type: 'pos.deny_edit',
-                    target_client_id: managerClientId,
-                    grantor_client_id: clientId,
-                  })
-                }}
-                style={{
-                  padding: '8px 20px', borderRadius: 6,
-                  background: 'rgba(255,255,255,0.08)', color: 'var(--text-primary)',
-                  border: '1px solid var(--border)',
-                  fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer'
-                }}
-              >
-                Deny
-              </button>
-            </div>
-          </div>
-        </div>
+        <RemoteEditRequestModal
+          managerUsername={managerUsername}
+          onAllow={() => {
+            setShowRemoteRequestModal(false)
+            setIsLockedByManager(true)
+            broadcastMessage({
+              type: 'pos.grant_edit',
+              target_client_id: managerClientId,
+              grantor_client_id: clientId,
+            })
+          }}
+          onDeny={() => {
+            setShowRemoteRequestModal(false)
+            broadcastMessage({
+              type: 'pos.deny_edit',
+              target_client_id: managerClientId,
+              grantor_client_id: clientId,
+            })
+          }}
+        />
       )}
 
-      {isLockedByManager && (
-        <div style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.06)',
-          zIndex: 1999,
-          pointerEvents: 'auto',
-          userSelect: 'none'
-        }}>
-          <div style={{
-            position: 'absolute',
-            top: 20,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'var(--accent, #f97316)',
-            color: '#fff',
-            padding: '8px 18px',
-            borderRadius: 20,
-            fontSize: '0.82rem',
-            fontWeight: 700,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            animation: 'pulse 2s infinite'
-          }}>
-            <span>🔒</span>
-            <span>Managed Mode Active — Controlled by Owner</span>
-          </div>
-        </div>
-      )}
+      {isLockedByManager && <ManagedModeOverlay />}
+      {/* Right-click menu for cart column headers (fold/unfold) */}
+      <ContextMenu menu={headerCtxMenu} onClose={() => setHeaderCtxMenu(null)} />
       <UnsavedChangesModal blocker={blocker} message={dirtyMessage} />
     </AppLayout>
   )

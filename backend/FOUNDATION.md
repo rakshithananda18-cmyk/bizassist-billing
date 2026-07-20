@@ -1,6 +1,6 @@
 # BizAssist Backend — Foundation & Conventions
 
-*The rulebook for building BizAssist cleanly. Read this before adding any feature. It keeps the base strong as we stack billing → purchase → connections → sync → AI on top. Decisions trace to `../BIZASSIST_ECOSYSTEM_MASTER_PLAN.md` (§D-numbers) and `../BIZASSIST_TECH_ARCHITECTURE.md`.*
+*The rulebook for building BizAssist cleanly. Read this before adding any feature. It keeps the base strong as we stack billing → purchase → connections → sync → AI on top. Decisions trace to `../docs/plans/BIZASSIST_ECOSYSTEM_MASTER_PLAN.md` (§D-numbers) and `../docs/ARCHITECTURE.md`.*
 
 ---
 

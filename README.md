@@ -17,9 +17,15 @@ It integrates high-speed POS checkout billing, automated double-entry ledger pos
 
 ## 📖 Key Documentation
 
-*   **[SETUP.md](SETUP.md)** — Step-by-step developer environment setup, database migrations, and testing.
-*   **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** — User guide for operating the POS checkout, dashboard, spreadsheet uploads, and AI queries.
-*   **[docs/ARCHITECTURE_REVIEW_AND_PLAN.md](docs/ARCHITECTURE_REVIEW_AND_PLAN.md)** — Detailed technical design, system security reviews, and implementation milestones.
+*   **[docs/MASTER_PLAN.md](docs/MASTER_PLAN.md)** — The map: vision, settled decisions (D1–D10), build status, moats, risks. Start here.
+*   **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — Technology architecture and stack decisions, layer by layer.
+*   **[docs/SETUP_AND_DEPLOYMENT.md](docs/SETUP_AND_DEPLOYMENT.md)** — Developer environment setup, database options, and deployment (HF Spaces + Vercel).
+*   **[docs/TESTING.md](docs/TESTING.md)** — Layered test strategy (pytest, Vitest, Playwright, RLS/testcontainers) and how to run it.
+*   **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** — User guide for the POS checkout, dashboard, uploads, and AI queries.
+*   **[docs/STRATEGIC_REVIEW_JUL2026.md](docs/STRATEGIC_REVIEW_JUL2026.md)** — Current expert review: USPs, BizID moat, risks, P0–P2 recommendations, scorecard.
+*   **[backend/FOUNDATION.md](backend/FOUNDATION.md)** — Backend conventions every feature inherits (tenancy, append-only money, command handlers).
+*   `docs/plans/` — active feature plans (invoice templates, subscriptions, admin console, agentic blueprint, R5 sales decomposition…).
+*   `docs/archive/` — superseded plans, reviews, audits, and benchmarks kept for history.
 
 ---
 

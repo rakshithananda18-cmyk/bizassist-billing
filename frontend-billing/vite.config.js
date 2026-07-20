@@ -19,6 +19,9 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/__tests__/setup.js',
     css: false,
+    // 15s instead of the 5s default: on a loaded dev machine (dev server +
+    // browser running) jsdom setup alone can starve a test past 5s and flake.
+    testTimeout: 15000,
     exclude: ['**/node_modules/**', '**/dist/**', '**/e2e/**', '**/cypress/**', '**/.path/**', '**/.git/**'],
   }
 })

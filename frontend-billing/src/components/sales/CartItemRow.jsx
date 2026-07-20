@@ -19,6 +19,8 @@ export default function CartItemRow({
   index,
   columnOrder,
   colVisible,
+  collapsedCols = {},
+  onExpandColumn,
   stickyOffsets,
   products,
   productBatches,
@@ -51,8 +53,10 @@ export default function CartItemRow({
         const isVisible = col === 'attrs' ? colVisible.attrs :
                           col === 'sku' ? colVisible.sku :
                           col === 'mrp' ? colVisible.mrp :
+                          col === 'mrp_total' ? colVisible.mrp_total :
                           col === 'hsn' ? colVisible.hsn :
                           col === 'unit' ? colVisible.unit :
+                          col === 'discount_unit' ? colVisible.discount_unit :
                           col === 'discount' ? colVisible.discount :
                           col === 'tax' ? colVisible.tax :
                           col === 'batch' ? colVisible.batch :
@@ -64,6 +68,18 @@ export default function CartItemRow({
 
         const isSticky = stickyOffsets[col] !== undefined;
         const style = isSticky ? { left: stickyOffsets[col] } : {};
+
+        // Fold-collapsed → narrow strip; click to unfold.
+        if (collapsedCols[col]) {
+          return (
+            <td
+              key={col}
+              className={`pos-col-collapsed col-${col} ${isSticky ? 'pos-sticky-cell sticky-left' : ''}`.trim()}
+              style={style}
+              onClick={() => onExpandColumn && onExpandColumn(col)}
+            />
+          );
+        }
 
         const renderCell = () => {
           if (col === 'sku') {
@@ -220,13 +236,17 @@ export default function CartItemRow({
                       }
                     }}
                   >
+                    {/* Display only: strip the word "Price" and format the number
+                        like every other money cell (2dp). The option VALUE keeps
+                        the full label — it is stored on the line and used by the
+                        pricing logic, so it must not change. */}
                     {opts.map(opt => (
                       <option key={opt.label} value={opt.label}>
-                        {opt.label} (₹{opt.price})
+                        {opt.label.replace(/\s*Price$/, '')} — ₹{(parseFloat(opt.price) || 0).toFixed(2)}
                       </option>
                     ))}
                     {item.selected_price_label === 'Custom Price' && (
-                      <option value="Custom Price">Custom Price (₹{parseFloat(item.selected_price || item.price).toFixed(2)})</option>
+                      <option value="Custom Price">Custom — ₹{parseFloat(item.selected_price || item.price).toFixed(2)}</option>
                     )}
                   </CustomSelect>
                 ) : (
@@ -241,6 +261,17 @@ export default function CartItemRow({
               <td key="mrp" className="pos-align-right">
                 <span className="pos-cell-text pos-cell-secondary-text">
                   {fmt(products.find(p => p.id === item.product_id)?.mrp || item.price)}
+                </span>
+              </td>
+            );
+          }
+
+          if (col === 'mrp_total') {
+            const unitMrp = parseFloat(products.find(p => p.id === item.product_id)?.mrp ?? item.price) || 0
+            return (
+              <td key="mrp_total" className="pos-align-right">
+                <span className="pos-cell-text pos-cell-secondary-text">
+                  {fmt(unitMrp * (parseFloat(item.qty) || 0))}
                 </span>
               </td>
             );
@@ -311,6 +342,17 @@ export default function CartItemRow({
               <td key="price" className="pos-align-right">
                 <span className="pos-cell-text pos-cell-secondary-text">
                   {item.product ? fmt(lineTotal(item)) : '—'}
+                </span>
+              </td>
+            );
+          }
+
+          if (col === 'discount_unit') {
+            const qtyNum = parseFloat(item.qty) || 1
+            return (
+              <td key="discount_unit" className="pos-align-right">
+                <span className="pos-cell-text pos-cell-secondary-text">
+                  {fmt((parseFloat(item.discount) || 0) / qtyNum)}
                 </span>
               </td>
             );

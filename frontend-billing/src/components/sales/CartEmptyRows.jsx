@@ -4,7 +4,7 @@
 // the table at a stable height). Extracted VERBATIM from Sales.jsx (R5, CartTable
 // slice 2): pure presentational. Returns a fragment of <tr> so it sits directly
 // inside the existing <tbody>.
-export default function CartEmptyRows({ rowCount, columnOrder, colVisible, stickyOffsets }) {
+export default function CartEmptyRows({ rowCount, columnOrder, colVisible, stickyOffsets, collapsedCols = {} }) {
   return (
     <>
       {Array.from({ length: rowCount }).map((_, idx) => (
@@ -14,8 +14,10 @@ export default function CartEmptyRows({ rowCount, columnOrder, colVisible, stick
             const isVisible = col === 'attrs' ? colVisible.attrs :
                               col === 'sku' ? colVisible.sku :
                               col === 'mrp' ? colVisible.mrp :
+                              col === 'mrp_total' ? colVisible.mrp_total :
                               col === 'hsn' ? colVisible.hsn :
                               col === 'unit' ? colVisible.unit :
+                              col === 'discount_unit' ? colVisible.discount_unit :
                               col === 'discount' ? colVisible.discount :
                               col === 'tax' ? colVisible.tax :
                               col === 'batch' ? colVisible.batch :
@@ -34,7 +36,7 @@ export default function CartEmptyRows({ rowCount, columnOrder, colVisible, stick
                 style.boxShadow = '4px 0 4px -2px rgba(0,0,0,0.1)';
               }
             }
-            return <td key={col} className={`col-${col}`} style={style}></td>;
+            return <td key={col} className={`col-${col}${collapsedCols[col] ? ' pos-col-collapsed' : ''}`} style={style}></td>;
           })}
         </tr>
       ))}

@@ -5,8 +5,11 @@
 // CartTable): pure presentational, no handlers/refs. Returns a <thead> so it sits
 // directly inside the existing <table className="pos-cart-table">.
 import React from 'react'
+import { colLabels, colShortLabels, NON_COLLAPSIBLE } from '../../lib/posColumns'
 
-export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets, t, hasItems, extraAttrFields = [] }) {
+// collapsedCols: { [col]: true } — fold-collapsed columns render as a narrow
+// strip; click expands. onHeaderContextMenu(col, event) opens the fold menu.
+export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets, t, hasItems, extraAttrFields = [], collapsedCols = {}, onExpandColumn, onHeaderContextMenu }) {
   return (
     <thead>
       <tr>
@@ -15,8 +18,10 @@ export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets
           const isVisible = col === 'attrs' ? colVisible.attrs :
                             col === 'sku' ? colVisible.sku :
                             col === 'mrp' ? colVisible.mrp :
+                            col === 'mrp_total' ? colVisible.mrp_total :
                             col === 'hsn' ? colVisible.hsn :
                             col === 'unit' ? colVisible.unit :
+                            col === 'discount_unit' ? colVisible.discount_unit :
                             col === 'discount' ? colVisible.discount :
                             col === 'tax' ? colVisible.tax :
                             col === 'batch' ? colVisible.batch :
@@ -28,6 +33,22 @@ export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets
 
           const isSticky = stickyOffsets[col] !== undefined;
           const style = isSticky ? { left: stickyOffsets[col] } : {};
+
+          // Fold-collapsed → narrow strip; click to unfold.
+          if (collapsedCols[col] && !NON_COLLAPSIBLE.includes(col)) {
+            return (
+              <th
+                key={col}
+                className={`pos-col-collapsed col-${col} ${isSticky ? 'pos-sticky-header sticky-left' : 'pos-sticky-header'}`}
+                style={style}
+                title={`Expand "${colLabels[col] || col}"`}
+                onClick={() => onExpandColumn && onExpandColumn(col)}
+                onContextMenu={e => { if (onHeaderContextMenu) { e.preventDefault(); onHeaderContextMenu(col, e) } }}
+              >
+                <span className="pos-col-collapsed-label">{colShortLabels[col] || '›'}</span>
+              </th>
+            );
+          }
 
           const renderHeader = () => {
             if (col === 'sku') {
@@ -54,6 +75,14 @@ export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets
             if (col === 'mrp') {
               return <th key="mrp" className="pos-align-right">MRP (₹)</th>;
             }
+            if (col === 'mrp_total') {
+              return (
+                <th key="mrp_total" className="pos-align-right">
+                  TOTAL MRP<br/>
+                  <span className="pos-text-muted" style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>(₹)</span>
+                </th>
+              );
+            }
             if (col === 'hsn') {
               return <th key="hsn" className="pos-align-center">HSN</th>;
             }
@@ -79,8 +108,21 @@ export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets
                 </th>
               );
             }
+            if (col === 'discount_unit') {
+              return (
+                <th key="discount_unit" className="pos-align-right">
+                  DISCOUNT<br/>
+                  <span className="pos-text-muted" style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>PER UNIT (₹)</span>
+                </th>
+              );
+            }
             if (col === 'discount') {
-              return <th key="discount" className="pos-align-right">DISCOUNT (₹)</th>;
+              return (
+                <th key="discount" className="pos-align-right">
+                  TOTAL<br/>
+                  <span className="pos-text-muted" style={{ fontSize: '0.65rem', fontWeight: 'normal' }}>DISCOUNT (₹)</span>
+                </th>
+              );
             }
             if (col === 'tax') {
               return <th key="tax" className="pos-align-center">TAX APPLIED(%)</th>;
@@ -100,7 +142,8 @@ export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets
             const extraClasses = `col-${col} ${isSticky ? 'pos-sticky-header sticky-left' : 'pos-sticky-header'} ${col === 'name' && isSticky ? 'pos-sticky-cell-name' : ''}`.trim();
             return React.cloneElement(headerEl, {
               className: `${headerEl.props.className || ''} ${extraClasses}`.trim(),
-              style: { ...headerEl.props.style, ...style }
+              style: { ...headerEl.props.style, ...style },
+              onContextMenu: e => { if (onHeaderContextMenu) { e.preventDefault(); onHeaderContextMenu(col, e) } }
             });
           }
           return null;

@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Test reports & temp files
+playwright-report/
+test-results/
+*.timestamp-*.mjs
+

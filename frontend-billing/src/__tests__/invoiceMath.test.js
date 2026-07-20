@@ -138,10 +138,16 @@ describe('columnTotals (cart footer row)', () => {
       { qty: 3, price: 120, discount: 20 },
       { qty: 2, price: 45, discount: 0 },
     ]
-    expect(columnTotals(items)).toEqual({ qty: 7, discount: 20, total: 1230 })
+    // no catalog passed → mrp falls back to item.price: 800 + 360 + 90
+    expect(columnTotals(items)).toEqual({ qty: 7, discount: 20, total: 1230, mrpTotal: 1250 })
   })
   it('empty cart → all zero', () => {
-    expect(columnTotals([])).toEqual({ qty: 0, discount: 0, total: 0 })
+    expect(columnTotals([])).toEqual({ qty: 0, discount: 0, total: 0, mrpTotal: 0 })
+  })
+  it('uses the catalog MRP when products are passed', () => {
+    const items = [{ qty: 2, price: 400, discount: 0, product_id: 1 }]
+    const products = [{ id: 1, mrp: 450 }]
+    expect(columnTotals(items, products).mrpTotal).toBe(900)
   })
 })
 

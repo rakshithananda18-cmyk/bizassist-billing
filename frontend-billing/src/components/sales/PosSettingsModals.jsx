@@ -223,13 +223,13 @@ export function PosCounterSettingsModal({
                       { label: 'Item Name', key: 'name', toggleable: false },
                       { label: 'Batch Selector', key: 'pos_show_batch', toggleable: true },
                       { label: 'Price Option', key: 'price_option', toggleable: false },
-                      { label: 'MRP', key: 'pos_show_mrp', toggleable: true },
+                      { label: 'MRP + Total MRP', key: 'pos_show_mrp', toggleable: true },
                       { label: 'HSN/SAC Code', key: 'pos_show_hsn', toggleable: true },
                       { label: 'Quantity', key: 'qty', toggleable: false },
                       { label: 'Unit', key: 'pos_show_unit', toggleable: true },
                       { label: 'Price Per Unit Before Tax', key: 'rate', toggleable: false },
                       { label: 'Total Before Tax', key: 'price', toggleable: false },
-                      { label: 'Discount', key: 'pos_show_discount', toggleable: true },
+                      { label: 'Discount (Per Unit + Total)', key: 'pos_show_discount', toggleable: true },
                       { label: 'Tax', key: 'pos_show_tax', toggleable: true },
                       { label: 'Total After Tax', key: 'total', toggleable: false }
                     ].map(col => {

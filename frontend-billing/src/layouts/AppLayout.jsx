@@ -13,6 +13,9 @@ import PageLoader from '../components/PageLoader'
 import PageHelp from '../components/PageHelp'
 import SyncNudgeModal from '../components/hosting/SyncNudgeModal'
 import WebLocalOnlyNotice from '../components/hosting/WebLocalOnlyNotice'
+import SidebarContextMenu from '../components/layout/SidebarContextMenu'
+import ToastContainer from '../components/layout/ToastContainer'
+import SessionExpiredModal from '../components/layout/SessionExpiredModal'
 // HostingOnboardingModal removed: hosting is now chosen once, in Register.
 // The post-login onboarding pop-up duplicated that choice and was intrusive.
 import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon, DownloadIcon, PlusIcon } from '../components/Icons'
@@ -1695,136 +1698,24 @@ export default function AppLayout({ children, title }) {
         </aside>
       )}
 
-      {/* ── Sidebar right-click context menu portal ── */}
-      {sidebarCtxMenu && createPortal(
-        <div
-          onMouseDown={e => e.stopPropagation()}
-          style={{
-            position: 'fixed',
-            top: Math.min(sidebarCtxMenu.y, window.innerHeight - 260),
-            left: sidebarCtxMenu.x + 4,
-            zIndex: 99999,
-            background: 'var(--bg-2)',
-            border: '1px solid var(--border)',
-            borderRadius: 10,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
-            minWidth: 210,
-            overflow: 'hidden',
-            padding: '6px 0',
+      {/* ── Sidebar right-click context menu — extracted to components/layout/SidebarContextMenu ── */}
+      {sidebarCtxMenu && (
+        <SidebarContextMenu
+          menu={sidebarCtxMenu}
+          quickActions={QUICK_ACTIONS[sidebarCtxMenu.to]?.(navigate) || []}
+          flatCount={orderedVisibleNav.length}
+          onMove={(dir) => {
+            moveNavItem(sidebarCtxMenu.flatIndex, dir)
+            setSidebarCtxMenu(prev => prev && ({ ...prev, flatIndex: prev.flatIndex + dir }))
           }}
-        >
-          {/* Header */}
-          <div style={{
-            padding: '6px 14px 8px',
-            fontSize: '0.7rem', fontWeight: 700,
-            color: 'var(--text-muted)', letterSpacing: '0.08em',
-            textTransform: 'uppercase', borderBottom: '1px solid var(--border)',
-            marginBottom: 4,
-          }}>
-            {sidebarCtxMenu.label}
-          </div>
-
-          {/* Page quick actions */}
-          {(QUICK_ACTIONS[sidebarCtxMenu.to]?.(navigate) || []).map((qa, i) => (
-            <button
-              key={i}
-              onClick={() => { qa.action(); setSidebarCtxMenu(null) }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                width: '100%', padding: '7px 14px',
-                background: 'transparent', border: 'none',
-                color: 'var(--text-primary)', fontSize: '0.82rem',
-                fontWeight: 500, cursor: 'pointer', textAlign: 'left',
-                transition: `background var(--dur-fast) var(--ease)`,
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-3)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-            >
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                width: 20, height: 20, flexShrink: 0,
-                color: 'var(--accent)',
-              }}>{qa.icon}</span>
-              {qa.label}
-            </button>
-          ))}
-
-          {/* Divider */}
-          <div style={{ height: 1, background: 'var(--border)', margin: '6px 0' }} />
-
-          {/* Reorder */}
-          <div style={{
-            padding: '4px 14px 2px',
-            fontSize: '0.68rem', fontWeight: 700,
-            color: 'var(--text-muted)', letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-          }}>Reorder</div>
-          {[
-            { label: 'Move Up',   rotateIcon: 'rotate(180deg)', dir: -1, disabled: sidebarCtxMenu.flatIndex === 0 },
-            { label: 'Move Down', rotateIcon: 'rotate(0deg)',   dir:  1, disabled: sidebarCtxMenu.flatIndex === orderedVisibleNav.length - 1 },
-          ].map(({ label, rotateIcon, dir, disabled }) => (
-            <button
-              key={label}
-              disabled={disabled}
-              onClick={() => {
-                moveNavItem(sidebarCtxMenu.flatIndex, dir)
-                setSidebarCtxMenu(prev => prev && ({ ...prev, flatIndex: prev.flatIndex + dir }))
-              }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                width: '100%', padding: '7px 14px',
-                background: 'transparent', border: 'none',
-                color: disabled ? 'var(--text-muted)' : 'var(--text-primary)',
-                fontSize: '0.82rem', fontWeight: 500,
-                cursor: disabled ? 'not-allowed' : 'pointer', textAlign: 'left',
-                opacity: disabled ? 0.4 : 1,
-                transition: `background var(--dur-fast) var(--ease)`,
-              }}
-              onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = 'var(--bg-3)' }}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-            >
-              <span style={{
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                width: 20, height: 20, flexShrink: 0,
-                color: disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
-                transform: rotateIcon,
-              }}><ChevronDownIcon size={13} strokeWidth={2.5} /></span>
-              {label}
-            </button>
-          ))}
-
-          {/* Reset order (only if custom order is active) */}
-          {navOrder && (
-            <>
-              <div style={{ height: 1, background: 'var(--border)', margin: '6px 0' }} />
-              <button
-                onClick={() => {
-                  setNavOrder(null)
-                  try { localStorage.removeItem('sidebar_nav_order') } catch { /* ignore */ }
-                  setSidebarCtxMenu(null)
-                }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  width: '100%', padding: '7px 14px',
-                  background: 'transparent', border: 'none',
-                  color: 'var(--danger, #ef4444)', fontSize: '0.8rem',
-                  fontWeight: 500, cursor: 'pointer', textAlign: 'left',
-                  transition: `background var(--dur-fast) var(--ease)`,
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,.08)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              >
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  width: 20, height: 20, flexShrink: 0,
-                  color: 'var(--danger, #ef4444)',
-                }}><SyncIcon size={13} /></span>
-                Reset to Default Order
-              </button>
-            </>
-          )}
-        </div>,
-        document.body
+          hasCustomOrder={!!navOrder}
+          onResetOrder={() => {
+            setNavOrder(null)
+            try { localStorage.removeItem('sidebar_nav_order') } catch { /* ignore */ }
+            setSidebarCtxMenu(null)
+          }}
+          onClose={() => setSidebarCtxMenu(null)}
+        />
       )}
 
       {/* Mobile Top Header Bar */}
@@ -1955,169 +1846,19 @@ export default function AppLayout({ children, title }) {
         </main>
       </div>
 
-      {/* Toast portal — rendered at document.body to escape overflow:hidden on .app-shell */}
-      {toasts.length > 0 && createPortal(
-        <div style={{
-          position: 'fixed',
-          bottom: 24,
-          right: 24,
-          zIndex: 99999,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
-          maxWidth: 360,
-          pointerEvents: 'none'
-        }}>
-          {toasts.map(toast => (
-            <div key={toast.id} style={{
-              pointerEvents: 'auto',
-              background: 'var(--bg-3, #fff)',
-              border: '1px solid var(--border, #e2e8f0)',
-              borderLeft: `4px solid ${
-                toast.type === 'success' ? 'var(--success, #22c55e)' :
-                toast.type === 'error' ? 'var(--danger, #ef4444)' :
-                toast.type === 'warning' ? 'var(--warning, #f59e0b)' : 'var(--accent, #3b82f6)'
-              }`,
-              padding: '12px 16px',
-              borderRadius: 'var(--radius-md, 8px)',
-              boxShadow: '0 10px 30px -5px rgba(0,0,0,0.25)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              animation: 'slideIn 0.2s ease-out',
-              minWidth: 240
-            }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
-                {toast.type === 'success' ? <CheckIcon size={16} style={{ color: 'var(--success, #22c55e)' }} /> :
-                 toast.type === 'error' ? <AlertIcon size={16} style={{ color: 'var(--danger, #ef4444)' }} /> :
-                 toast.type === 'warning' ? <AlertIcon size={16} style={{ color: 'var(--warning, #f59e0b)' }} /> :
-                 <SummaryIcon size={16} style={{ color: 'var(--accent, #3b82f6)' }} />}
-              </span>
-              <span style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text, #1e293b)', lineHeight: 1.4, flex: 1 }}>
-                {toast.msg}
-              </span>
-              <button
-                onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--text-muted, #64748b)',
-                  cursor: 'pointer',
-                  marginLeft: 4,
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: 0,
-                  flexShrink: 0
-                }}
-                aria-label="Close"
-              >
-                <CloseIcon size={14} />
-              </button>
-            </div>
-          ))}
-        </div>,
-        document.body
-      )}
+      {/* Toast portal — extracted to components/layout/ToastContainer */}
+      <ToastContainer
+        toasts={toasts}
+        onDismiss={(id) => setToasts(prev => prev.filter(t => t.id !== id))}
+      />
       {sessionExpired && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 99999,
-          background: 'rgba(15, 23, 42, 0.95)',
-          backdropFilter: 'blur(16px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 24,
-        }}>
-          <div style={{
-            background: 'var(--bg-2, #1a1a1a)',
-            border: '1px solid var(--border, rgba(255, 255, 255, 0.12))',
-            borderRadius: 24,
-            padding: '40px 48px',
-            width: '100%',
-            maxWidth: 500,
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-            textAlign: 'center',
-          }}>
-            <div style={{
-              width: 80,
-              height: 80,
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 24px',
-              boxShadow: '0 8px 30px rgba(99, 102, 241, 0.3)'
-            }}>
-              <LockIcon size={40} style={{ color: '#fff' }} />
-            </div>
-
-            <h2 style={{
-              fontSize: '1.75rem',
-              fontWeight: 800,
-              color: 'var(--text-primary, #fff)',
-              marginBottom: 16,
-              letterSpacing: '-0.02em',
-              lineHeight: 1.2
-            }}>
-              Upgrade to Pro Required
-            </h2>
-
-            <p style={{
-              fontSize: '0.94rem',
-              color: 'var(--text-secondary, #ccc)',
-              lineHeight: 1.6,
-              marginBottom: 24
-            }}>
-              Your 5-minute preview of the cloud application has expired. Access to the shared cloud database, multi-device sync, and premium features require a Pro subscription.
-            </p>
-
-            <div style={{
-              background: 'rgba(99, 102, 241, 0.08)',
-              border: '1px solid rgba(99, 102, 241, 0.25)',
-              borderRadius: 12,
-              padding: '16px',
-              fontSize: '0.84rem',
-              color: 'var(--text-primary, #fff)',
-              lineHeight: 1.5,
-              marginBottom: 28,
-              textAlign: 'left'
-            }}>
-              <strong>Want to upgrade?</strong> Contact your provider or system administrator to activate the <strong>Pro Plan</strong> and resume work.
-            </div>
-
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12
-            }}>
-              <button
-                onClick={() => {
-                  sessionStorage.removeItem('bizassist_session_start_time')
-                  logout()
-                  navigate('/login')
-                }}
-                style={{
-                  padding: '14px 28px',
-                  borderRadius: 12,
-                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                  color: '#fff',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '0.9rem',
-                  fontWeight: 700,
-                  boxShadow: '0 4px 14px rgba(99, 102, 241, 0.4)',
-                  transition: 'all 0.2s',
-                  width: '100%'
-                }}
-              >
-                Sign Out
-              </button>
-            </div>
-          </div>
-        </div>
+        <SessionExpiredModal
+          onSignOut={() => {
+            sessionStorage.removeItem('bizassist_session_start_time')
+            logout()
+            navigate('/login')
+          }}
+        />
       )}
     </div>
   )

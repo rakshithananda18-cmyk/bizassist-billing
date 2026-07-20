@@ -155,18 +155,25 @@ export const changeDue = (amountReceived, grandTotal) =>
 
 /**
  * Per-column totals for the cart footer row: summed quantity, summed discount,
- * and the summed line totals (= the pre-tax subtotal). Pure so the footer can't
- * drift from the real numbers.
+ * the summed line totals (= the pre-tax subtotal), and the summed MRP value
+ * (MRP × qty per line — the "sticker value" of the cart). Pure so the footer
+ * can't drift from the real numbers.
+ * `products` is optional: when given, each line's MRP comes from the catalog
+ * (same lookup as the MRP cell); otherwise it falls back to `item.price`,
+ * which IS the MRP while the line is in scheme mode.
  */
-export function columnTotals(items = []) {
+export function columnTotals(items = [], products = null) {
   return items.reduce(
     (acc, item) => {
-      acc.qty += parseFloat(item.qty) || 0
+      const qty = parseFloat(item.qty) || 0
+      const mrp = parseFloat(products?.find?.(p => p.id === item.product_id)?.mrp ?? item.price) || 0
+      acc.qty += qty
       acc.discount += parseFloat(item.discount) || 0
       acc.total += lineTotal(item)
+      acc.mrpTotal += mrp * qty
       return acc
     },
-    { qty: 0, discount: 0, total: 0 },
+    { qty: 0, discount: 0, total: 0, mrpTotal: 0 },
   )
 }
 

@@ -8,6 +8,9 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import PageShell from '../components/common/PageShell'
 import { useAuth } from '../contexts/AuthContext'
 import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, HandshakeIcon, InventoryIcon, MessageIcon, PlusIcon, PrinterIcon, SearchIcon, SyncIcon, UserIcon, WarehouseIcon, ExpandIcon } from '../components/Icons'
+import PartyFormModal from '../components/parties/PartyFormModal'
+import PartyDetailModal from '../components/parties/PartyDetailModal'
+import SaleReturnModal from '../components/parties/SaleReturnModal'
 import { logger } from '../utils/logger'
 import { buildUpiUri, buildWhatsAppShareUrl, normalizePhoneIN } from '../utils/share'
 import { applyDelta, hasDelta } from '../sync/applyDelta'
@@ -727,309 +730,32 @@ export default function Parties({ embedded = false, headerTabs = null }) {
       </div>
 
       {/* Add Party Modal */}
+      {/* Add Party Modal — extracted to components/parties/PartyFormModal */}
       {showModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
-          <div className="modal modal-lg">
-            <div className="modal-header">
-              <span className="modal-title"><HandshakeIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Add Party</span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
-            </div>
-            <form onSubmit={handleSubmit}>
-              <div className="modal-body">
-                {/* Type toggle */}
-                <div className="flex items-center gap-2 mb-4">
-                  <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Type:</span>
-                  <div className="tabs">
-                    <button type="button" className={`tab${form.party_type === 'customer' ? ' active' : ''}`} onClick={() => setField('party_type', 'customer')}>
-                      <UserIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Customer
-                    </button>
-                    <button type="button" className={`tab${form.party_type === 'vendor' ? ' active' : ''}`} onClick={() => setField('party_type', 'vendor')}>
-                      <WarehouseIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Vendor
-                    </button>
-                  </div>
-                </div>
-                <div className="grid grid-2 gap-3 mb-4">
-                  <div className="form-group">
-                    <label className="form-label">Name *</label>
-                    <input className="form-input" placeholder="Full name or business name" value={form.name} onChange={e => setField('name', e.target.value)} required />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Phone</label>
-                    <input className="form-input" placeholder="+91 98765 43210" value={form.phone} onChange={e => setField('phone', e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Email</label>
-                    <input type="email" className="form-input" placeholder="email@example.com" value={form.email} onChange={e => setField('email', e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">GSTIN</label>
-                    <input className="form-input" placeholder="22AAAAA0000A1Z5" value={form.gstin} onChange={e => setField('gstin', e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Credit Limit (₹)</label>
-                    <input type="number" className="form-input" placeholder="e.g. 50000" min="0" step="any" value={form.credit_limit} onChange={e => setField('credit_limit', e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Payment Terms</label>
-                    <CustomSelect className="form-select" value={form.payment_terms} onChange={e => setField('payment_terms', e.target.value)}>
-                      <option value="immediate">Immediate</option>
-                      <option value="net7">Net 7 days</option>
-                      <option value="net15">Net 15 days</option>
-                      <option value="net30">Net 30 days</option>
-                      <option value="net45">Net 45 days</option>
-                      <option value="net60">Net 60 days</option>
-                    </CustomSelect>
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Address</label>
-                  <textarea className="form-textarea" style={{ minHeight: 70 }} placeholder="Full address…" value={form.address} onChange={e => setField('address', e.target.value)} />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={submitting}>
-                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Saving…</> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Add Party</span>}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <PartyFormModal form={form} setField={setField} handleSubmit={handleSubmit} submitting={submitting} setShowModal={setShowModal} />
       )}
 
       {/* Selected Party Transaction Lookup Modal */}
+      {/* Selected Party Transaction Lookup Modal — extracted to components/parties/PartyDetailModal */}
       {selectedParty && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setSelectedParty(null)}>
-          <div className="modal modal-lg">
-            <div className="modal-header">
-              <span className="modal-title" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                {selectedParty.type === 'customer' ? <BillsIcon size={16} /> : <InventoryIcon size={16} />}
-                <span>{selectedParty.type === 'customer' ? 'Invoices' : 'Purchases'} for {selectedParty.name}</span>
-              </span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setSelectedParty(null)} aria-label="Close"><CloseIcon size={16} /></button>
-            </div>
-            <div className="modal-body">
-              <div className="data-table-wrap" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-                <table className="data-table">
-                  <thead>
-                    {selectedParty.type === 'customer' ? (
-                      <tr>
-                        <th>Invoice #</th>
-                        <th>Date</th>
-                        <th>Items</th>
-                        <th>Total</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                      </tr>
-                    ) : (
-                      <tr>
-                        <th>Bill #</th>
-                        <th>Date</th>
-                        <th>Items</th>
-                        <th>Total</th>
-                        <th>Status</th>
-                      </tr>
-                    )}
-                  </thead>
-                  <tbody>
-                    {partyHistory.length === 0 ? (
-                      <tr>
-                        <td colSpan={selectedParty.type === 'customer' ? 6 : 5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>
-                          No transactions found for this party.
-                        </td>
-                      </tr>
-                    ) : partyHistory.map(item => (
-                      <tr key={item.id}
-                        style={{ cursor: 'context-menu' }}
-                        onContextMenu={e => {
-                          e.preventDefault()
-                          if (selectedParty.type === 'customer') {
-                            setCtxMenu({ x: e.clientX, y: e.clientY, items: [
-                              { label: 'Print Invoice', icon: <PrinterIcon size={13} />, action: () => handlePrintInvoice(item.invoice_number || item.invoice_no) },
-                              { label: 'Share on WhatsApp', icon: <MessageIcon size={13} />, action: () => handleWhatsAppShareInvoice(item, selectedParty) },
-                              { divider: true },
-                              { label: 'Copy Invoice No', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(item.invoice_number || item.invoice_no || '') },
-                            ]})
-                          } else {
-                            setCtxMenu({ x: e.clientX, y: e.clientY, items: [
-                              { label: 'Copy Bill No', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(item.bill_number || item.invoice_number || String(item.id)) },
-                              { label: 'Copy Amount', icon: <CashIcon size={13} />, action: () => navigator.clipboard.writeText(String(item.total_amount || '')) },
-                            ]})
-                          }
-                        }}
-                      >
-                        <td className="td-mono td-primary">
-                          {selectedParty.type === 'customer' ? (item.invoice_number || `#${item.id}`) : (item.bill_number || `#${item.id}`)}
-                          {item.invoice_type === 'credit_note' && (
-                            <span style={{ fontSize: '0.65rem', display: 'block', color: 'var(--accent)' }}>
-                              <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> RETURN (CN)
-                            </span>
-                          )}
-                        </td>
-                        <td>
-                          {item.date ? new Date(item.date).toLocaleDateString('en-IN') : '—'}
-                        </td>
-                        <td style={{ color: 'var(--text-muted)' }}>
-                          {item.item_count ?? item.items?.length ?? '—'}
-                        </td>
-                        <td style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-                          {fmt(item.total_amount)}
-                        </td>
-                        <td>
-                          <span className={`badge ${item.status === 'paid' || item.status === 'confirmed' ? 'badge-success' : 'badge-warning'}`}>
-                            {item.status || 'pending'}
-                          </span>
-                        </td>
-                        {selectedParty.type === 'customer' && (
-                          <td>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                onClick={() => handlePrintInvoice(item.invoice_number || item.invoice_no)}
-                              >
-                                <PrinterIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Print
-                              </button>
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                onClick={() => handleWhatsAppShareInvoice(item, selectedParty)}
-                                title="Share invoice on WhatsApp"
-                              >
-                                <MessageIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Share
-                              </button>
-                              {item.invoice_type !== 'credit_note' && (
-                                <button
-                                  className="btn btn-secondary btn-sm"
-                                  onClick={() => handleOpenReturn(item)}
-                                  title="Record Sales Return / Credit Note"
-                                >
-                                  <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Return
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setSelectedParty(null)}>Close</button>
-            </div>
-          </div>
-        </div>
+        <PartyDetailModal
+          selectedParty={selectedParty} setSelectedParty={setSelectedParty}
+          partyHistory={partyHistory}
+          handleOpenReturn={handleOpenReturn}
+          handlePrintInvoice={handlePrintInvoice}
+          handleWhatsAppShareInvoice={handleWhatsAppShareInvoice}
+          setCtxMenu={setCtxMenu}
+        />
       )}
+      {/* Sale Return (Credit Note) Modal — extracted to components/parties/SaleReturnModal */}
       {showReturnModal && returningInvoice && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowReturnModal(false)}>
-          <div className="modal modal-lg" style={{ maxWidth: '850px', width: '95%' }}>
-            <div className="modal-header">
-              <span className="modal-title"><SyncIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Record Sales Return (Credit Note)</span>
-              <button className="btn btn-ghost btn-icon" onClick={() => { setShowReturnModal(false); setReturningInvoice(null); }} aria-label="Close"><CloseIcon size={16} /></button>
-            </div>
-            <div className="modal-body">
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', borderBottom: '1px solid var(--border)', paddingBottom: 10, marginBottom: 15 }}>
-                <div><strong>Customer:</strong> {returningInvoice.customer || 'Walk-in / Casual'}</div>
-                <div><strong>Original Invoice:</strong> {returningInvoice.invoice_no} ({returningInvoice.invoice_date})</div>
-              </div>
-
-              <div className="data-table-wrap" style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: 15 }}>
-                <table className="data-table" style={{ fontSize: '0.82rem' }}>
-                  <thead>
-                    <tr>
-                      <th>Item Name</th>
-                      <th style={{ width: 100, textAlign: 'center' }}>Original Qty</th>
-                      <th style={{ width: 120, textAlign: 'center' }}>Return Qty</th>
-                      <th style={{ width: 100, textAlign: 'right' }}>Unit Price</th>
-                      <th style={{ width: 100, textAlign: 'right' }}>GST Rate</th>
-                      <th style={{ width: 120, textAlign: 'right' }}>Refund Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {returnLines.map((line, idx) => {
-                      const taxRate = (line.cgst_rate || 0) + (line.sgst_rate || 0) + (line.igst_rate || 0)
-                      const returnQty = parseFloat(line.quantity) || 0
-                      const price = parseFloat(line.unit_price) || 0
-                      const refundLineTotal = returnQty * price * (1 + taxRate / 100)
-
-                      return (
-                        <tr key={idx}>
-                          <td className="td-primary">{line.product_name}</td>
-                          <td style={{ textAlign: 'center' }}>{line.max_quantity}</td>
-                          <td style={{ textAlign: 'center' }}>
-                            <input
-                              type="number"
-                              className="form-input"
-                              style={{ padding: '4px 6px', fontSize: '0.8rem', width: '80px', textAlign: 'center', margin: '0 auto' }}
-                              min="0"
-                              max={line.max_quantity}
-                              step="any"
-                              value={line.quantity || ''}
-                              onChange={e => {
-                                const val = Math.min(Math.max(parseFloat(e.target.value) || 0, 0), line.max_quantity)
-                                setReturnLines(prev => {
-                                  const updated = [...prev]
-                                  updated[idx].quantity = val
-                                  return updated
-                                })
-                              }}
-                              placeholder="0"
-                            />
-                          </td>
-                          <td style={{ textAlign: 'right' }}>{fmt(line.unit_price)}</td>
-                          <td style={{ textAlign: 'right' }}>{taxRate}%</td>
-                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(refundLineTotal)}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Summary */}
-              {(() => {
-                let sub = 0, tax = 0
-                returnLines.forEach(l => {
-                  const qty = parseFloat(l.quantity) || 0
-                  const p = parseFloat(l.unit_price) || 0
-                  const taxRate = (l.cgst_rate || 0) + (l.sgst_rate || 0) + (l.igst_rate || 0)
-                  const taxable = qty * p
-                  sub += taxable
-                  tax += taxable * (taxRate / 100)
-                })
-                const total = sub + tax
-                return (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 20, fontSize: '0.85rem', fontWeight: 600, borderTop: '1px solid var(--border)', paddingTop: 10, marginBottom: 15 }}>
-                    <div>Return Subtotal: <span style={{ color: 'var(--text-secondary)' }}>{fmt(sub)}</span></div>
-                    <div>Return Tax: <span style={{ color: 'var(--text-secondary)' }}>{fmt(tax)}</span></div>
-                    <div>Grand Total: <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{fmt(total)}</span></div>
-                  </div>
-                )
-              })()}
-
-              <div className="form-group">
-                <label className="form-label" style={{ fontWeight: 600 }}>Remarks / Reason for Return</label>
-                <textarea
-                  className="form-textarea"
-                  style={{ minHeight: 60 }}
-                  value={returnNote}
-                  onChange={e => setReturnNote(e.target.value)}
-                  placeholder="Reason for return, damaged goods, client change, etc..."
-                />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => { setShowReturnModal(false); setReturningInvoice(null); }} disabled={savingReturn}>Cancel</button>
-              <button
-                className="btn btn-primary"
-                disabled={savingReturn || returnLines.every(l => !(parseFloat(l.quantity) > 0))}
-                onClick={handleSaveReturn}
-              >
-                {savingReturn ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Saving…</> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Record Return</span>}
-              </button>
-            </div>
-          </div>
-        </div>
+        <SaleReturnModal
+          returningInvoice={returningInvoice} setReturningInvoice={setReturningInvoice}
+          returnLines={returnLines} setReturnLines={setReturnLines}
+          returnNote={returnNote} setReturnNote={setReturnNote}
+          handleSaveReturn={handleSaveReturn} savingReturn={savingReturn}
+          setShowReturnModal={setShowReturnModal} form={form}
+        />
       )}
       <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />
       <UnsavedChangesModal blocker={blocker} message={dirtyMessage} />

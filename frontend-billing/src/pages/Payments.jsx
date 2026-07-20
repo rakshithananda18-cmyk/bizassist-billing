@@ -4,7 +4,6 @@
 //              and outflows, records general expenses, and tracks credit note returns.
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
-import { createPortal } from 'react-dom'
 import PageShell from '../components/common/PageShell'
 import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
 import { useAuth } from '../contexts/AuthContext'
@@ -13,7 +12,9 @@ import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, Warehou
 import { logger } from '../utils/logger'
 import CustomSelect from '../components/common/CustomSelect'
 import { formatISTDate } from '../utils/format'
-import InvoiceViewer from '../invoice/InvoiceViewer'
+import InvoiceViewerModal from '../components/invoice/InvoiceViewerModal'
+import RecordPaymentModal from '../components/payments/RecordPaymentModal'
+import LogExpenseModal from '../components/payments/LogExpenseModal'
 import { buildWhatsAppLink, buildPublicInvoiceLink } from '../invoice/share'
 import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import ContextMenu from '../components/common/ContextMenu'
@@ -1275,205 +1276,32 @@ export default function Payments({ embedded = false, headerTabs = null }) {
       </div>
 
       {/* Record Payment Modal */}
+      {/* 💳 Record Payment Modal — extracted to components/payments/RecordPaymentModal */}
       {showModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
-          <div className="modal">
-            <div className="modal-header">
-              <span className="modal-title">💳 Record Payment</span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
-            </div>
-            <form onSubmit={handleSubmit}>
-              <div className="modal-body">
-                <div className="grid grid-2 gap-3 mb-4">
-                  <div className="form-group">
-                    <label className="form-label">Payment Type</label>
-                    <CustomSelect className="form-select" value={form.type} onChange={e => setField('type', e.target.value)}>
-                      <option value="received">Received (from customer)</option>
-                      <option value="made">Made (to supplier)</option>
-                    </CustomSelect>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Date</label>
-                    <input type="date" className="form-input" value={form.date} onChange={e => setField('date', e.target.value)} required />
-                  </div>
-                </div>
-                <div className="form-group mb-4">
-                  <label className="form-label">Invoice / Bill Reference</label>
-                  <input className="form-input" placeholder="INV-001 or bill number…" value={form.invoice_ref} onChange={e => setField('invoice_ref', e.target.value)} />
-                </div>
-                <div className="grid grid-2 gap-3 mb-4">
-                  <div className="form-group">
-                    <label className="form-label">Amount (₹)</label>
-                    <input type="number" className="form-input" placeholder="0.00" min="0" step="any" value={form.amount} onChange={e => setField('amount', e.target.value)} required />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Payment Method</label>
-                    <CustomSelect className="form-select" value={form.method} onChange={e => setField('method', e.target.value)}>
-                      <option value="Cash"><CashIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Cash</option>
-                      <option value="UPI"><PhoneIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> UPI</option>
-                      <option value="Bank"><WarehouseIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Bank Transfer</option>
-                      <option value="Cheque"><BillsIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Cheque</option>
-                    </CustomSelect>
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Reference / UTR / Cheque No.</label>
-                  <input className="form-input" placeholder="Transaction reference…" value={form.reference} onChange={e => setField('reference', e.target.value)} />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={submitting}>
-                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Recording…</> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Record Payment</span>}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <RecordPaymentModal
+          form={form}
+          setField={setField}
+          onSubmit={handleSubmit}
+          submitting={submitting}
+          onClose={() => setShowModal(false)}
+        />
       )}
 
-      {/* 💸 Log Expense Modal */}
+      {/* 💸 Log Expense Modal — extracted to components/payments/LogExpenseModal */}
       {showExpenseModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowExpenseModal(false)}>
-          <div className="modal">
-            <div className="modal-header">
-              <span className="modal-title"><CashIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Log Business Expense</span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowExpenseModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
-            </div>
-            <form onSubmit={handleExpenseSubmit}>
-              <div className="modal-body">
-                <div className="grid grid-2 gap-3 mb-4">
-                  <div className="form-group">
-                    <label className="form-label">Expense Date</label>
-                    <input type="date" className="form-input" value={expenseForm.expense_date} onChange={e => setExpenseField('expense_date', e.target.value)} required />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Expense Category</label>
-                    <CustomSelect className="form-select" value={expenseForm.category} onChange={e => setExpenseField('category', e.target.value)}>
-                      <option value="Rent">Rent</option>
-                      <option value="Utilities">Utilities (Power, Water, Net)</option>
-                      <option value="Salaries & Wages">Salaries & Wages</option>
-                      <option value="Marketing & Advertising">Marketing & Ads</option>
-                      <option value="Office Supplies">Office Supplies</option>
-                      <option value="Travel & Conveyance">Travel & Conveyance</option>
-                      <option value="Repair & Maintenance">Repair & Maintenance</option>
-                      <option value="Others">Others</option>
-                    </CustomSelect>
-                  </div>
-                </div>
-
-                <div className="grid grid-2 gap-3 mb-4">
-                  <div className="form-group">
-                    <label className="form-label">Expense Type</label>
-                    <CustomSelect className="form-select" value={expenseForm.expense_type} onChange={e => setExpenseField('expense_type', e.target.value)}>
-                      <option value="Indirect">Indirect (Operating/Office Overhead)</option>
-                      <option value="Direct">Direct (Cost of Production/Goods)</option>
-                    </CustomSelect>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Payment Mode</label>
-                    <CustomSelect className="form-select" value={expenseForm.payment_mode} onChange={e => setExpenseField('payment_mode', e.target.value)}>
-                      <option value="Cash"><CashIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Cash</option>
-                      <option value="UPI"><PhoneIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> UPI</option>
-                      <option value="Bank"><WarehouseIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Bank Transfer</option>
-                    </CustomSelect>
-                  </div>
-                </div>
-
-                <div className="form-group mb-4">
-                  <label className="form-label">Amount (₹)</label>
-                  <input type="number" className="form-input" placeholder="0.00" min="0" step="any" value={expenseForm.amount} onChange={e => setExpenseField('amount', e.target.value)} required />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Description / Remarks</label>
-                  <textarea className="form-input" placeholder="e.g. Electricity bill for June…" rows={2} value={expenseForm.note} onChange={e => setExpenseField('note', e.target.value)} />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowExpenseModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={submitting}>
-                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Saving…</> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Save Expense</span>}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <LogExpenseModal
+          expenseForm={expenseForm}
+          setExpenseField={setExpenseField}
+          onSubmit={handleExpenseSubmit}
+          submitting={submitting}
+          onClose={() => setShowExpenseModal(false)}
+        />
       )}
 
 
 
-      {/* ── Invoice modal portal ────────────────────────────────────── */}
-      {viewingInvoiceNo && createPortal(
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Invoice viewer"
-          className="no-print"
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1200,
-            display: 'flex', flexDirection: 'column',
-            background: 'rgba(0,0,0,0.55)',
-            backdropFilter: 'blur(4px)',
-            animation: 'fadeInBackdrop 0.18s ease',
-          }}
-          onClick={(e) => { if (e.target === e.currentTarget) setViewingInvoiceNo(null) }}
-        >
-          <style>{`
-            @keyframes fadeInBackdrop { from { opacity: 0 } to { opacity: 1 } }
-            @keyframes slideUpModal { from { transform: translateY(32px); opacity: 0 } to { transform: none; opacity: 1 } }
-          `}</style>
-
-          {/* Modal shell */}
-          <div style={{
-            margin: 'auto',
-            width: '96vw', maxWidth: 1200,
-            height: '92vh',
-            background: 'var(--bg-2)',
-            borderRadius: 'var(--radius-lg, 14px)',
-            border: '1px solid var(--border)',
-            boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
-            display: 'flex', flexDirection: 'column',
-            overflow: 'hidden',
-            animation: 'slideUpModal 0.22s cubic-bezier(0.34,1.56,0.64,1)',
-          }}>
-            {/* Close strip */}
-            <div style={{
-              display: 'flex', justifyContent: 'flex-end', alignItems: 'center',
-              padding: '6px 10px 0',
-              flexShrink: 0,
-            }}>
-              <button
-                onClick={() => setViewingInvoiceNo(null)}
-                aria-label="Close invoice viewer"
-                style={{
-                  background: 'var(--bg-3)', border: '1px solid var(--border)',
-                  borderRadius: '50%', width: 28, height: 28,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', color: 'var(--text-secondary)',
-                  fontSize: '1.1rem', lineHeight: 1, flexShrink: 0,
-                  transition: 'background 0.15s, color 0.15s',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-dim)'; e.currentTarget.style.color = 'var(--danger)' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
-              >
-                ×
-              </button>
-            </div>
-
-            {/* The full InvoiceViewer — embedded mode so Back/× both close the modal */}
-            <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-              <InvoiceViewer
-                key={viewingInvoiceNo}
-                invoiceNo={viewingInvoiceNo}
-                embedded
-                onBack={() => setViewingInvoiceNo(null)}
-              />
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      {/* ── Invoice modal portal — extracted to components/invoice/InvoiceViewerModal ── */}
+      <InvoiceViewerModal invoiceNo={viewingInvoiceNo} onClose={() => setViewingInvoiceNo(null)} />
       </>
       <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />
       <UnsavedChangesModal blocker={blocker} message={dirtyMessage} />

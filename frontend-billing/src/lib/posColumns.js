@@ -15,19 +15,25 @@ export const colLabels = {
   attrs: 'Item Details (Size/Color/Warranty…)',
   price_option: 'Price Option',
   mrp: 'MRP',
+  mrp_total: 'Total MRP',
   hsn: 'HSN',
   qty: 'Quantity',
   unit: 'Unit',
   rate: 'Price Per Unit Before Tax',
   price: 'Total Before Tax',
-  discount: 'Discount',
+  discount_unit: 'Discount Per Unit',
+  discount: 'Total Discount',
   tax: 'Tax',
   total: 'Total After Tax'
 }
 
+// Smart default: identity (what) → quantity (how many) → MRP story (sticker
+// value) → chosen price → savings → net → tax → payable. Reads left-to-right
+// the way an owner explains a bill.
 export const DEFAULT_COLUMN_ORDER = [
-  'sku', 'name', 'batch', 'serial', 'attrs', 'price_option', 'mrp', 'hsn',
-  'qty', 'unit', 'rate', 'price', 'discount', 'tax', 'total'
+  'sku', 'name', 'batch', 'serial', 'attrs', 'hsn',
+  'qty', 'unit', 'mrp', 'mrp_total', 'price_option', 'rate',
+  'discount_unit', 'discount', 'price', 'tax', 'total'
 ]
 
 /**
@@ -80,6 +86,22 @@ export function normalizeColumnOrder(parsed) {
       parsed.push('attrs')
     }
   }
+  if (!parsed.includes('mrp_total')) {
+    const mrpIdx = parsed.indexOf('mrp')
+    if (mrpIdx !== -1) {
+      parsed.splice(mrpIdx + 1, 0, 'mrp_total')
+    } else {
+      parsed.push('mrp_total')
+    }
+  }
+  if (!parsed.includes('discount_unit')) {
+    const discIdx = parsed.indexOf('discount')
+    if (discIdx !== -1) {
+      parsed.splice(discIdx, 0, 'discount_unit')
+    } else {
+      parsed.push('discount_unit')
+    }
+  }
   return parsed
 }
 
@@ -98,11 +120,42 @@ export function moveColumn(order, index, direction) {
   return nextOrder
 }
 
+/** Columns that cannot be fold-collapsed: `name` is the frozen anchor and
+ *  carries the COLUMN TOTALS label, so folding it would orphan the footer. */
+export const NON_COLLAPSIBLE = ['name']
+
+/** Pixel width of a fold-collapsed column strip (kept in sync with the
+ *  `.pos-col-collapsed` CSS rule). */
+export const COLLAPSED_COL_WIDTH = 22
+
+/** Short vertical labels shown inside a fold-collapsed strip so the cashier
+ *  can tell what's folded without expanding it. */
+export const colShortLabels = {
+  sku: 'CODE',
+  batch: 'BATCH',
+  serial: 'SERIAL',
+  attrs: 'INFO',
+  price_option: 'PRICE',
+  mrp: 'MRP',
+  mrp_total: 'ΣMRP',
+  hsn: 'HSN',
+  qty: 'QTY',
+  unit: 'UNIT',
+  rate: 'RATE',
+  price: 'TOTAL',
+  discount_unit: 'DISC/U',
+  discount: 'DISC',
+  tax: 'TAX',
+  total: 'NET'
+}
+
 /**
  * Sticky-left pixel offsets for the frozen sku/name columns. Freezing stops at
  * the first visible column that isn't sku/name (matches original behavior).
+ * `collapsedObj` (optional): fold-collapsed columns — a collapsed sku still
+ * freezes, but only occupies the narrow strip width.
  */
-export function getStickyLeftOffsets(order, visibleObj) {
+export function getStickyLeftOffsets(order, visibleObj, collapsedObj = {}) {
   const offsets = {}
   let currentOffset = 40
   let freezeAllowed = true
@@ -111,8 +164,10 @@ export function getStickyLeftOffsets(order, visibleObj) {
     const col = order[i]
     const isVisible = col === 'sku' ? visibleObj.sku :
                       col === 'mrp' ? visibleObj.mrp :
+                      col === 'mrp_total' ? visibleObj.mrp_total :
                       col === 'hsn' ? visibleObj.hsn :
                       col === 'unit' ? visibleObj.unit :
+                      col === 'discount_unit' ? visibleObj.discount_unit :
                       col === 'discount' ? visibleObj.discount :
                       col === 'tax' ? visibleObj.tax :
                       col === 'batch' ? visibleObj.batch :
@@ -124,7 +179,9 @@ export function getStickyLeftOffsets(order, visibleObj) {
 
     if (freezeAllowed && (col === 'sku' || col === 'name')) {
       offsets[col] = currentOffset
-      if (col === 'sku') {
+      if (collapsedObj[col]) {
+        currentOffset += COLLAPSED_COL_WIDTH
+      } else if (col === 'sku') {
         currentOffset += 95
       } else if (col === 'name') {
         currentOffset += 180

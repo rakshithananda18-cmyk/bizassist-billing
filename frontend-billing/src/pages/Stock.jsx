@@ -10,6 +10,8 @@ import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon, ExpandIcon, SidebarIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import CustomSelect from '../components/common/CustomSelect'
+import AdjustStockModal from '../components/stock/AdjustStockModal'
+import TransferStockModal from '../components/stock/TransferStockModal'
 import LabelPrintModal from '../components/stock/LabelPrintModal'
 import ProductFormModal, { EMPTY_PRODUCT } from '../components/stock/ProductFormModal'
 import ScanStockInModal from '../components/stock/ScanStockInModal'
@@ -1235,107 +1237,29 @@ export default function Stock({ embedded = false, headerTabs = null }) {
         onStocked={() => load()} onAddNew={(code) => { setPrefillBarcode(code); setEditProduct(null); setShowAddModal(true) }} />
 
       {/* Adjust Stock Modal */}
+      {/* Adjust Stock Modal — extracted to components/stock/AdjustStockModal */}
       {showAdjustModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowAdjustModal(false)}>
-          <div className="modal">
-            <div className="modal-header">
-              <span className="modal-title"><ZapIcon size={14} style={{ marginRight: 6 }} /> Adjust Stock</span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowAdjustModal(false)}><CloseIcon size={16} /></button>
-            </div>
-            <form onSubmit={handleAdjust}>
-              <div className="modal-body">
-                <div className="form-group mb-4">
-                  <label className="form-label">Select Product *</label>
-                  <CustomSelect className="form-select" value={adjustForm.product_id} onChange={e => setAdjField('product_id', e.target.value)} required>
-                    <option value="">Choose a product…</option>
-                    {products.map(p => <option key={p.id} value={p.id}>{p.name} (Stock: {p.stock_qty ?? p.quantity ?? 0} {p.unit || ''})</option>)}
-                  </CustomSelect>
-                </div>
-                <div className="grid grid-2 gap-3 mb-4">
-                  <div className="form-group">
-                    <label className="form-label">Movement Type</label>
-                    <CustomSelect className="form-select" value={adjustForm.movement_type} onChange={e => setAdjField('movement_type', e.target.value)}>
-                      <option value="stock_in">Stock In</option>
-                      <option value="stock_out">Stock Out</option>
-                      <option value="adjustment">Adjustment</option>
-                    </CustomSelect>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Quantity</label>
-                    <input type="number" className="form-input" placeholder="0" min="0" step="any" value={adjustForm.quantity} onChange={e => setAdjField('quantity', e.target.value)} required />
-                  </div>
-                </div>
-                <div className="form-group mb-4">
-                  <label className="form-label">Reason *</label>
-                  <input className="form-input" required placeholder="e.g. Damaged goods, count correction…" value={adjustForm.reason} onChange={e => setAdjField('reason', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Reference</label>
-                  <input className="form-input" placeholder="PO / GRN number…" value={adjustForm.reference} onChange={e => setAdjField('reference', e.target.value)} />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowAdjustModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={submitting}>
-                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Adjusting…</> : <><CheckIcon size={14} /> Apply</>}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <AdjustStockModal
+          adjustForm={adjustForm}
+          setAdjField={setAdjField}
+          products={products}
+          onSubmit={handleAdjust}
+          submitting={submitting}
+          onClose={() => setShowAdjustModal(false)}
+        />
       )}
 
-      {/* Transfer Stock Modal */}
+      {/* Transfer Stock Modal — extracted to components/stock/TransferStockModal */}
       {showTransferModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowTransferModal(false)}>
-          <div className="modal">
-            <div className="modal-header">
-              <span className="modal-title"><SyncIcon size={14} style={{ marginRight: 6 }} /> Transfer Stock</span>
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowTransferModal(false)}><CloseIcon size={16} /></button>
-            </div>
-            <form onSubmit={handleTransferStock}>
-              <div className="modal-body">
-                <div className="form-group mb-4">
-                  <label className="form-label">Select Product *</label>
-                  <CustomSelect className="form-select" value={transferForm.product_id} onChange={e => setTrsfField('product_id', e.target.value)} required>
-                    <option value="">Choose a product…</option>
-                    {products.map(p => <option key={p.id} value={p.id}>{p.name} (Total Stock: {p.stock_qty ?? p.quantity ?? 0} {p.unit || ''})</option>)}
-                  </CustomSelect>
-                </div>
-                <div className="grid grid-2 gap-3 mb-4">
-                  <div className="form-group">
-                    <label className="form-label">From Godown *</label>
-                    <CustomSelect className="form-select" value={transferForm.from_godown_id} onChange={e => setTrsfField('from_godown_id', e.target.value)} required>
-                      <option value="">Select source…</option>
-                      {godowns.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                    </CustomSelect>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">To Godown *</label>
-                    <CustomSelect className="form-select" value={transferForm.to_godown_id} onChange={e => setTrsfField('to_godown_id', e.target.value)} required>
-                      <option value="">Select destination…</option>
-                      {godowns.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                    </CustomSelect>
-                  </div>
-                </div>
-                <div className="form-group mb-4">
-                  <label className="form-label">Quantity *</label>
-                  <input type="number" className="form-input" placeholder="0" min="0.001" step="any" value={transferForm.quantity} onChange={e => setTrsfField('quantity', e.target.value)} required />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Notes</label>
-                  <input className="form-input" placeholder="Reason for transfer…" value={transferForm.notes} onChange={e => setTrsfField('notes', e.target.value)} />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowTransferModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={submitting}>
-                  {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Transferring…</> : <><CheckIcon size={14} /> Transfer Stock</>}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <TransferStockModal
+          transferForm={transferForm}
+          setTrsfField={setTrsfField}
+          products={products}
+          godowns={godowns}
+          onSubmit={handleTransferStock}
+          submitting={submitting}
+          onClose={() => setShowTransferModal(false)}
+        />
       )}
     </PageShell>
   )

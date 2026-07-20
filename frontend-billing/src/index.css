@@ -2259,6 +2259,51 @@ img { display: block; max-width: 100%; }
   font-size: 13px;
 }
 
+/* ── Fold-collapsed column (paper-fold strip) ──────────────────────────────
+   A collapsed column shrinks to a ~22px seam (kept in sync with
+   COLLAPSED_COL_WIDTH in lib/posColumns.js). `width: 0.1%` makes the auto
+   table layout give the column ONLY its min-content width instead of
+   distributing spare table width into it; min-width pins the seam size.
+   The header shows the column's short label vertically; click to unfold. */
+/* Doubled class + !important so this beats the fixed per-column
+   `.col-*` min-width !important rules further down this file. */
+.pos-cart-table th.pos-col-collapsed.pos-col-collapsed,
+.pos-cart-table td.pos-col-collapsed.pos-col-collapsed {
+  width: 22px !important;
+  min-width: 22px !important;
+  max-width: 22px !important;
+  padding: 0 !important;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: pointer;
+  text-align: center;
+  background: linear-gradient(90deg, var(--bg-3) 0%, var(--bg-2) 55%, var(--bg-3) 100%);
+  border-right: 1px solid var(--border);
+}
+.pos-cart-table th.pos-col-collapsed {
+  color: var(--text-muted);
+  user-select: none;
+  vertical-align: middle;
+}
+.pos-col-collapsed-label {
+  display: inline-block;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 22px;
+  max-height: 38px;
+  overflow: hidden;
+}
+.pos-cart-table th.pos-col-collapsed:hover {
+  color: var(--accent);
+}
+.pos-cart-table th.pos-col-collapsed:hover,
+.pos-cart-table td.pos-col-collapsed:hover {
+  background: linear-gradient(90deg, var(--bg-3) 0%, var(--accent-dim, rgba(249,115,22,0.10)) 55%, var(--bg-3) 100%);
+}
+
 .pos-cart-table th:last-child,
 .pos-cart-table td:last-child {
   border-right: none;

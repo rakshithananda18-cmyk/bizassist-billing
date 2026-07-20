@@ -7,7 +7,7 @@
 import React from 'react'
 import { fmt } from '../../utils/format'
 
-export default function CartFooterRow({ columnOrder, colVisible, stickyOffsets, colFooter, gstAmt, grandTotal }) {
+export default function CartFooterRow({ columnOrder, colVisible, stickyOffsets, colFooter, gstAmt, grandTotal, collapsedCols = {} }) {
   return (
     <tfoot>
       <tr className="pos-cart-foot">
@@ -16,8 +16,10 @@ export default function CartFooterRow({ columnOrder, colVisible, stickyOffsets, 
           const isVisible = col === 'attrs' ? colVisible.attrs :
                             col === 'sku' ? colVisible.sku :
                             col === 'mrp' ? colVisible.mrp :
+                            col === 'mrp_total' ? colVisible.mrp_total :
                             col === 'hsn' ? colVisible.hsn :
                             col === 'unit' ? colVisible.unit :
+                            col === 'discount_unit' ? colVisible.discount_unit :
                             col === 'discount' ? colVisible.discount :
                             col === 'tax' ? colVisible.tax :
                             col === 'batch' ? colVisible.batch :
@@ -29,9 +31,21 @@ export default function CartFooterRow({ columnOrder, colVisible, stickyOffsets, 
           const isSticky = stickyOffsets[col] !== undefined;
           const style = isSticky ? { left: stickyOffsets[col] } : {};
 
+          // Fold-collapsed → narrow strip (totals hidden while folded).
+          if (collapsedCols[col]) {
+            return (
+              <td
+                key={col}
+                className={`pos-col-collapsed col-${col} ${isSticky ? 'pos-sticky-footer sticky-left' : 'pos-sticky-footer'}`}
+                style={style}
+              />
+            );
+          }
+
           const renderFoot = () => {
             if (col === 'name')     return <td key="name" className="pos-footer-totals-label">COLUMN TOTALS</td>;
             if (col === 'qty')      return <td key="qty" className="pos-align-center">{colFooter.qty}</td>;
+            if (col === 'mrp_total') return <td key="mrp_total" className="pos-align-right">{fmt(colFooter.mrpTotal)}</td>;
             if (col === 'price')    return <td key="price" className="pos-align-right">{fmt(colFooter.total)}</td>;
             if (col === 'discount') return <td key="discount" className="pos-align-right">{fmt(colFooter.discount)}</td>;
             if (col === 'tax')      return <td key="tax" className="pos-align-center">{fmt(gstAmt)}</td>;
