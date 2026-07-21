@@ -25,7 +25,7 @@ sys.path.insert(0, backend_path)
 import pytest
 from database.db import SessionLocal
 from database.models import Base, Product, Invoice, InvoiceLineItem, Inventory, User
-from core.models import StockLedger
+from core.models import StockLedger, InvoicePayment, JournalEntry, JournalLine
 from core.billing import commands as billing
 from core.stock import ledger as SL
 
@@ -46,6 +46,14 @@ def _clear():
         ids = [r.id for r in db.query(Invoice.id).filter(Invoice.business_id == BID).all()]
         if ids:
             db.query(InvoiceLineItem).filter(InvoiceLineItem.invoice_id.in_(ids)).delete(synchronize_session=False)
+        # Delete FK children BEFORE invoices — Postgres enforces the
+        # invoice_payments→invoices FK (SQLite doesn't), so a paid sale's receipt
+        # must go first or the invoice DELETE raises a ForeignKeyViolation.
+        db.query(InvoicePayment).filter(InvoicePayment.business_id == BID).delete()
+        ent = [r.id for r in db.query(JournalEntry.id).filter(JournalEntry.business_id == BID).all()]
+        if ent:
+            db.query(JournalLine).filter(JournalLine.entry_id.in_(ent)).delete(synchronize_session=False)
+        db.query(JournalEntry).filter(JournalEntry.business_id == BID).delete()
         db.query(Invoice).filter(Invoice.business_id == BID).delete()
         db.query(StockLedger).filter(StockLedger.business_id == BID).delete()
         db.query(Inventory).filter(Inventory.business_id == BID).delete()

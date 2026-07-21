@@ -43,8 +43,11 @@ def _clear():
         ids = [r.id for r in db.query(Invoice.id).filter(Invoice.business_id == BID).all()]
         if ids:
             db.query(InvoiceLineItem).filter(InvoiceLineItem.invoice_id.in_(ids)).delete(synchronize_session=False)
-        db.query(Invoice).filter(Invoice.business_id == BID).delete()
+        # InvoicePayment must be deleted BEFORE invoices — Postgres enforces the
+        # invoice_payments→invoices FK (SQLite doesn't), so a paid sale's receipt
+        # first, else the invoice DELETE raises a ForeignKeyViolation.
         db.query(InvoicePayment).filter(InvoicePayment.business_id == BID).delete()
+        db.query(Invoice).filter(Invoice.business_id == BID).delete()
         ent_ids = [r.id for r in db.query(JournalEntry.id).filter(JournalEntry.business_id == BID).all()]
         if ent_ids:
             db.query(JournalLine).filter(JournalLine.entry_id.in_(ent_ids)).delete(synchronize_session=False)
