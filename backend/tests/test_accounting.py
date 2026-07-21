@@ -240,10 +240,15 @@ def test_accounting_depth_calculations(api_auth):
     assert exp_resp.status_code == 201
 
     # 7. Record payment of 50
+    #    Pass an explicit payment_date so the receipt lands on the SAME day as the
+    #    other entries. Without it the receipt defaults to the business-timezone
+    #    (IST) date, which can differ from today_str (server/UTC) when CI runs in
+    #    the 00:00–05:30 IST window — dropping it from this from=to=today filter.
     pay_resp1 = client.post("/payments", headers=headers, json={
         "invoice_id": invoice_db_id,
         "amount_paid": 50.0,
         "payment_mode": "UPI",
+        "payment_date": today_str,
         "idempotency_key": f"idem-{uuid.uuid4().hex[:6]}"
     })
     assert pay_resp1.status_code == 201
@@ -253,6 +258,7 @@ def test_accounting_depth_calculations(api_auth):
         "invoice_id": invoice_db_id,
         "amount_paid": 25.0,
         "payment_mode": "UPI",
+        "payment_date": today_str,
         "idempotency_key": f"idem-{uuid.uuid4().hex[:6]}"
     })
     assert pay_resp2.status_code == 201
