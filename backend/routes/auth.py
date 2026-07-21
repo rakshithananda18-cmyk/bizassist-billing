@@ -420,6 +420,9 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
         # Adopt a cloud-issued BizID when provided (local mirror of a cloud
         # account); otherwise mint a fresh one (web signup / standalone).
         bizid = (req.public_id or "").strip() or generate_bizid(db)
+        from sqlalchemy.exc import IntegrityError
+        from sqlalchemy import text
+
         user = User(
             username=req.username,
             password=hash_password(req.password),
@@ -429,7 +432,29 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             phone=(req.phone or None),   # captured at registration → shows on the profile
         )
         db.add(user)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as e:
+            err_str = str(e)
+            if "pk_users" in err_str or "users_id_seq" in err_str or "Key (id)=" in err_str:
+                db.rollback()
+                if db.bind.dialect.name == "postgresql":
+                    logger.warning(f"[AUTH] Resyncing Postgres users_id_seq after explicit ID collision for '{req.username}'.")
+                    db.execute(text("SELECT setval(pg_get_serial_sequence('users', 'id'), COALESCE((SELECT MAX(id) FROM users), 0) + 1, false);"))
+                    user = User(
+                        username=req.username,
+                        password=hash_password(req.password),
+                        business_name=req.business_name,
+                        role="enterprise",
+                        public_id=bizid,
+                        phone=(req.phone or None),
+                    )
+                    db.add(user)
+                    db.commit()
+                else:
+                    raise
+            else:
+                raise
         db.refresh(user)
         
         token = create_access_token({

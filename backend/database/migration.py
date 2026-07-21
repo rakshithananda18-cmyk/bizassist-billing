@@ -508,6 +508,23 @@ def _seed_users(db):
     db.commit()
 
 
+def _resync_postgres_sequences(conn):
+    """Resync Postgres auto-increment sequences after explicit PK inserts."""
+    if conn.dialect.name != "postgresql":
+        return
+    tables = [
+        "users", "customers", "vendors", "products", "invoices", "inventory",
+        "payments", "purchase_orders", "purchase_invoices", "expenses",
+        "godowns", "stock_transfers", "journal_entries", "invoice_payments",
+        "b2b_ledgers", "register_shifts", "shift_cash_movements"
+    ]
+    for tbl in tables:
+        try:
+            conn.execute(text(f"SELECT setval(pg_get_serial_sequence('{tbl}', 'id'), COALESCE((SELECT MAX(id) FROM {tbl}), 0) + 1, false);"))
+        except Exception:
+            pass
+
+
 def run_migrations_and_seed():
     """Called on app startup. Idempotent — safe to run on every boot."""
     logger.info("[Migration] Starting...")
@@ -521,13 +538,14 @@ def run_migrations_and_seed():
         _run_column_migrations(conn)
         _check_schema_integrity(conn)
 
-    # 3. Backfills
+    # 3. Backfills & sequence resync
     with engine.connect() as conn:
         _backfill_null_business_ids(conn)
         _backfill_null_uids(conn)
         _ensure_uid_unique_indexes(conn)  # dedup once + create partial unique index (no-op after first boot)
         _backfill_staff_login_name(conn)
         _migrate_session_nulls(conn)
+        _resync_postgres_sequences(conn)
 
     # 4. Seed users
     db = SessionLocal()
