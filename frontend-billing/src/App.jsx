@@ -19,6 +19,7 @@ import Dashboard from './pages/Dashboard'
 import Sales     from './pages/Sales'
 import LiveView  from './pages/LiveView'
 import Khata     from './pages/Khata'
+import Money     from './pages/Money'
 import Godown    from './pages/Godown'
 import Reports   from './pages/Reports'
 import Import    from './pages/Import'
@@ -55,6 +56,9 @@ function AppRoutes() {
           Each view is a real ROUTE (/parties/payments, /stock/inventory). */}
       <Route path="/parties"      element={<ProtectedRoute><Khata  /></ProtectedRoute>} />
       <Route path="/parties/:tab" element={<ProtectedRoute><Khata  /></ProtectedRoute>} />
+      {/* New unified Money workspace (runs alongside /parties until verified) */}
+      <Route path="/money"        element={<ProtectedRoute><Money  /></ProtectedRoute>} />
+      <Route path="/money/:view"  element={<ProtectedRoute><Money  /></ProtectedRoute>} />
       <Route path="/stock"        element={<ProtectedRoute><Godown /></ProtectedRoute>} />
       <Route path="/stock/:tab"   element={<ProtectedRoute><Godown /></ProtectedRoute>} />
       <Route path="/reports"  element={<ProtectedRoute><Reports   /></ProtectedRoute>} />

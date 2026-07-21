@@ -31,6 +31,7 @@ export default function AdminBusinessDetail() {
 
   const [business, setBusiness] = useState(null)     // row from /admin/businesses
   const [syncHealth, setSyncHealth] = useState(null) // row from /admin/sync-doctor
+  const [opsHealth, setOpsHealth] = useState(null)   // /admin/business/{id}/ops-health
   const [telemetry, setTelemetry] = useState([])
   const [serverLog, setServerLog] = useState('')
   const [limits, setLimits] = useState(null)
@@ -39,11 +40,13 @@ export default function AdminBusinessDetail() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [bizRes, doctorRes, limitsRes] = await Promise.all([
+      const [bizRes, doctorRes, limitsRes, opsRes] = await Promise.all([
         authFetch(`${API_BASE}/admin/businesses`),
         authFetch(`${API_BASE}/admin/sync-doctor`),
         authFetch(`${API_BASE}/admin/rate-limits/${id}`),
+        authFetch(`${API_BASE}/admin/business/${id}/ops-health`),
       ])
+      if (opsRes.ok) setOpsHealth(await opsRes.json())
       let biz = null
       if (bizRes.ok) {
         const all = await bizRes.json()
@@ -208,6 +211,31 @@ export default function AdminBusinessDetail() {
               </div>
             ) : (
               <div style={{ color: 'var(--secondary-text)', fontSize: 13 }}>No sync data for this business.</div>
+            )}
+          </Section>
+
+          {/* Data health — books integrity, financial conflicts, AI usage */}
+          <Section title="Data health" icon={<Icon name="check" size={16} />} collapsible style={{ marginTop: 24 }}>
+            {opsHealth ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+                  <Stat label="Overall" value={opsHealth.ok ? 'OK' : 'ATTENTION'} />
+                  <Stat label="Books integrity"
+                        value={opsHealth.integrity?.ok === false ? 'BROKEN'
+                          : opsHealth.integrity?.ok === true ? 'OK' : '—'} />
+                  <Stat label="Journal drift" value={opsHealth.integrity?.journal_drift ?? '—'} mono />
+                  <Stat label="Conflicts to review" value={opsHealth.conflicts?.unreviewed ?? 0} mono />
+                  <Stat label="Sync errors" value={opsHealth.sync?.failed ?? 0} mono />
+                  <Stat label="AI tokens today" value={opsHealth.ai_usage?.tokens_today ?? '—'} mono />
+                </div>
+                {!opsHealth.ok && (
+                  <div style={{ color: 'var(--danger, #b4462f)', fontSize: 13 }}>
+                    This business needs attention — books integrity, unreviewed financial conflicts, or sync errors.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ color: 'var(--secondary-text)', fontSize: 13 }}>No data-health info for this business.</div>
             )}
           </Section>
 

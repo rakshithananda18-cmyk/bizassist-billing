@@ -551,6 +551,27 @@ def is_action(action_key: str) -> bool:
     return action_key in ACTIONS
 
 
+import hashlib as _hashlib
+
+def preview_fingerprint(preview_result: dict) -> str:
+    """Stable SHA-256 over the MATERIAL content of a preview — the actual items
+    that would be acted on (targets + amounts), ignoring cosmetic fields like
+    summary text or labels. The route binds this into the confirm token so
+    execute can detect that the previewed data changed before the user confirmed
+    (P0 preview=execute binding). Empty/failed previews fingerprint to a constant.
+    """
+    if not isinstance(preview_result, dict):
+        return "none"
+    # `items` is the substance across all actions; fall back to the whole result
+    # minus volatile presentation keys if an action ever omits it.
+    material = preview_result.get("items")
+    if material is None:
+        material = {k: v for k, v in preview_result.items()
+                    if k not in ("markdown", "summary", "confirm_label", "confirm_token", "meta")}
+    canon = json.dumps(material, sort_keys=True, separators=(",", ":"), default=str)
+    return _hashlib.sha256(canon.encode("utf-8")).hexdigest()
+
+
 def preview(action_key: str, user_id: int, params: dict = None) -> Optional[dict]:
     spec = ACTIONS.get(action_key)
     if not spec:

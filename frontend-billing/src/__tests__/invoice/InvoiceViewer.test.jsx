@@ -17,6 +17,9 @@ vi.mock('../../api/client', () => ({
     get: (...a) => apiGet(...a),
     post: (...a) => apiPost(...a),
     put: (...a) => apiPut(...a),
+    // InvoiceAccountPanel fetches the invoice account via api.raw; return
+    // not-ok so the panel renders nothing and these tests stay focused.
+    raw: () => Promise.resolve({ ok: false, json: async () => ({}) }),
   },
 }))
 

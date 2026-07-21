@@ -69,6 +69,45 @@ def _load_all_business_ids() -> list:
         db.close()
 
 
+# ── Job: Books Integrity Audit ────────────────────────────────
+# Scheduled companion to the on-demand GET /reports/integrity (P0). Walks every
+# business daily, verifying the tamper-evident hash chain AND that the posted
+# journal foots globally. Logs a WARNING on any drift so it surfaces in
+# monitoring — a tamper-evident ledger only helps if something actually checks
+# it. Read-only; never mutates books.
+
+def run_books_integrity_audit():
+    from core.accounting.integrity import run_integrity_check
+
+    business_ids = _load_all_business_ids()
+    if not business_ids:
+        logger.info("[SCHED] Integrity audit: no registered users.")
+        return
+
+    logger.info("[SCHED] Running books integrity audit for %d business(es)...", len(business_ids))
+    failures = 0
+    for bid in business_ids:
+        db = SessionLocal()
+        try:
+            report = run_integrity_check(db, bid)
+            if not report["ok"]:
+                failures += 1
+                logger.warning(
+                    "[INTEGRITY] Books integrity FAILED for business_id=%s: "
+                    "chain_ok=%s balance_ok=%s drift=%s broken_at=%s",
+                    bid,
+                    report["hash_chain"].get("ok"),
+                    report["journal_balance"].get("ok"),
+                    report["journal_balance"].get("drift"),
+                    report["hash_chain"].get("broken_at"),
+                )
+        except Exception as e:
+            logger.error("[INTEGRITY] Audit failed for business_id=%s: %s", bid, e, exc_info=True)
+        finally:
+            db.close()
+    logger.info("[SCHED] Integrity audit complete — %d business(es) with issues.", failures)
+
+
 
 
 # ── Job 1: Overdue Invoices ───────────────────────────────────

@@ -12,7 +12,18 @@ import { resolveTemplate, templateOptions, FALLBACK_TEMPLATE } from './registry'
 import PrintPortal, { triggerPrint } from './PrintPortal'
 import { shareInvoice, buildWhatsAppLink, buildPublicInvoiceLink } from './share'
 import PageLoader from '../components/PageLoader'
+import InvoiceAccountPanel from '../components/invoice/InvoiceAccountPanel'
+import { PhoneIcon, DownloadIcon } from '../components/Icons'
 const LAST_USED_KEY = (bizId) => `invoice.template.${bizId || 'default'}`
+
+/** WhatsApp glyph (no dedicated icon in Icons.jsx). */
+function WhatsAppIcon({ size = 15 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 004.79 1.22h.004c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0012.04 2zm0 1.8c2.17 0 4.2.84 5.74 2.38a8.06 8.06 0 012.37 5.73c0 4.47-3.64 8.11-8.12 8.11a8.1 8.1 0 01-4.13-1.13l-.3-.18-3.11.82.83-3.04-.19-.31a8.03 8.03 0 01-1.24-4.29c0-4.47 3.64-8.11 8.12-8.11zm4.55 10.29c-.25-.13-1.47-.72-1.7-.81-.23-.08-.39-.13-.56.13-.16.25-.64.8-.79.97-.14.16-.29.18-.54.06-.25-.13-1.05-.39-2-1.23-.74-.66-1.24-1.47-1.38-1.72-.14-.25-.02-.39.11-.51.11-.11.25-.29.37-.43.13-.15.17-.25.25-.42.08-.16.04-.31-.02-.43-.06-.13-.56-1.35-.77-1.85-.2-.48-.41-.42-.56-.43l-.48-.01c-.16 0-.43.06-.66.31-.23.25-.86.85-.86 2.07 0 1.22.89 2.4 1.01 2.56.13.16 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.14-1.18-.06-.11-.22-.17-.47-.29z"/>
+    </svg>
+  )
+}
 
 /** Deep-freeze the payload in dev/test so any template mutation throws loudly. */
 function deepFreeze(obj) {
@@ -252,16 +263,10 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
         {/* divider */}
         <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
 
-        {/* Share actions */}
+        {/* Share actions (WhatsApp + Download PDF now live beside the customer
+            name in the right panel as icon buttons). */}
         <div style={{ display: 'flex', gap: 4 }}>
-          <button
-            className="btn btn-sm"
-            onClick={onShareWhatsApp}
-            style={{ background: '#25D366', color: '#fff', border: 'none', fontWeight: 600 }}>
-            WhatsApp
-          </button>
           <button className="btn btn-ghost btn-sm" onClick={onShare}>Share Link</button>
-          <button className="btn btn-ghost btn-sm" onClick={onDownloadPdf}>Download PDF</button>
         </div>
 
         {/* Primary: Print */}
@@ -292,8 +297,10 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
           </div>
         </div>
 
-        {/* ── Right side panel (standalone mode only) ── */}
-        {!embedded && (() => {
+        {/* ── Right side panel: customer, items, summary + payments/returns.
+             Shown in both standalone and modal (embedded) mode — the account
+             details that used to sit in a top strip now live here, on-theme. ── */}
+        {(() => {
           const tot = payload.totals || {}
           const buyer = payload.buyer || {}
           const lines = payload.lines || []
@@ -308,7 +315,7 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
               borderLeft: '1px solid var(--border)',
               background: 'var(--bg-2)',
               display: 'flex', flexDirection: 'column',
-              overflowY: 'auto',
+              overflow: 'hidden',
             }}>
               <style>{`
                 .ivp-label { font-size: 0.67rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 8px; display: flex; align-items: center; gap: 5px; }
@@ -319,35 +326,51 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
                 .ivp-row .val { font-weight: 600; color: var(--text-primary); }
               `}</style>
 
-              <div style={{ padding: '16px 16px 20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-
-                {/* — Customer — */}
-                <div>
-                  <div className="ivp-label">Customer</div>
-                  <div className="ivp-card" style={{ gap: 5 }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+              {/* Pinned customer header — stays at the top while the details below
+                  scroll under it. */}
+              <div style={{ padding: '16px 16px 12px', flexShrink: 0, borderBottom: '1px solid var(--border)', background: 'var(--bg-2)' }}>
+                <div className="ivp-label">Customer</div>
+                <div className="ivp-card" style={{ gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {buyer.name || 'Walk-in Customer'}
                     </div>
-                    {buyer.phone && (
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>📞 {buyer.phone}</div>
-                    )}
-                    {buyer.place_of_supply && (
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>📍 {buyer.place_of_supply}</div>
-                    )}
-                    {payload.invoice?.payment_mode && (
-                      <div style={{ marginTop: 4 }}>
-                        <span style={{
-                          fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px',
-                          borderRadius: '99px', background: 'var(--accent-dim)',
-                          color: 'var(--accent)', border: '1px solid var(--border-subtle)',
-                          textTransform: 'uppercase', letterSpacing: '0.5px',
-                        }}>
-                          {payload.invoice.payment_mode}
-                        </span>
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <button onClick={onShareWhatsApp} title="Send on WhatsApp" aria-label="Send on WhatsApp"
+                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: '50%', border: 'none', cursor: 'pointer', background: '#25D366', color: '#fff' }}>
+                        <WhatsAppIcon size={15} />
+                      </button>
+                      <button onClick={onDownloadPdf} title="Download PDF" aria-label="Download PDF"
+                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: '50%', border: '1px solid var(--border)', cursor: 'pointer', background: 'var(--bg-2)', color: 'var(--text-secondary)' }}>
+                        <DownloadIcon size={14} />
+                      </button>
+                    </div>
                   </div>
+                  {buyer.phone && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                      <PhoneIcon size={12} /> {buyer.phone}
+                    </div>
+                  )}
+                  {buyer.place_of_supply && (
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>📍 {buyer.place_of_supply}</div>
+                  )}
+                  {payload.invoice?.payment_mode && (
+                    <div style={{ marginTop: 2 }}>
+                      <span style={{
+                        fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px',
+                        borderRadius: '99px', background: 'var(--accent-dim)',
+                        color: 'var(--accent)', border: '1px solid var(--border-subtle)',
+                        textTransform: 'uppercase', letterSpacing: '0.5px',
+                      }}>
+                        {payload.invoice.payment_mode}
+                      </span>
+                    </div>
+                  )}
                 </div>
+              </div>
+
+              {/* Scrolling details — roll under the pinned customer header. */}
+              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
 
                 {/* — Items — */}
                 <div>
@@ -451,6 +474,11 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
                       </div>
                     </div>
                   </div>
+                )}
+
+                {/* — Payments received & returns (screen-only, from /account) — */}
+                {payload.invoice?.id && (
+                  <InvoiceAccountPanel authFetch={(p) => api.raw(p)} invoiceId={payload.invoice.id} />
                 )}
 
               </div>

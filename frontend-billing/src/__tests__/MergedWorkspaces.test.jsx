@@ -49,7 +49,7 @@ describe('Parties (Contacts & Payments workspace)', () => {
     renderAt(<Khata />, '/parties', '/parties')
     expect(await screen.findByText('PARTIES_VIEW')).toBeInTheDocument()
     expect(screen.queryByText('PAYMENTS_VIEW')).not.toBeInTheDocument()
-    expect(screen.getByText('Contacts & Dues')).toBeInTheDocument()
+    expect(screen.getByText('Contacts')).toBeInTheDocument()
     expect(screen.getByText('Transactions')).toBeInTheDocument()
   })
 

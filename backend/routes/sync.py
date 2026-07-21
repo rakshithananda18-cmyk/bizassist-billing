@@ -18,7 +18,7 @@ from typing import Any, Optional, List, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
-from sqlalchemy import text
+from sqlalchemy import text, func
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -62,6 +62,28 @@ APPEND_ONLY_DELETE_BLOCKLIST = frozenset({
 })
 
 
+# Entities where a conflicting concurrent edit must never be resolved SILENTLY.
+# For these, whenever an incoming push OVERWRITES an existing row with a
+# different-timestamped local version, we record a ConflictLog(review_needed)
+# capturing both sides so the owner can see it — instead of the historical
+# behaviour where the "local won" branch clobbered the cloud row with no trace
+# (the silent-lost-edit failure mode, review P0). Resolution behaviour is
+# UNCHANGED (LWW still lands the data); we only remove the silence.
+FINANCIAL_ENTITIES = frozenset({
+    "invoices",
+    "invoice_line_items",
+    "payments",
+    "invoice_payments",
+    "purchase_invoices",
+    "purchase_invoice_line_items",
+    "purchase_orders",
+    "purchase_order_line_items",
+    "expenses",
+    "stock_ledger",
+    "b2b_ledgers",
+})
+
+
 # ---------------------------------------------------------------------------
 # PYDANTIC SCHEMAS
 # ---------------------------------------------------------------------------
@@ -92,6 +114,37 @@ def _row_to_dict(row) -> dict:
         if isinstance(v, datetime):
             d[k] = v.isoformat()
     return d
+
+
+def _safe_json_load(s: Any):
+    """Parse a stored JSON payload back to an object for the API; return the raw
+    value (or None) if it isn't valid JSON."""
+    if not s:
+        return None
+    if isinstance(s, (dict, list)):
+        return s
+    try:
+        return json.loads(s)
+    except (ValueError, TypeError):
+        return s
+
+
+def _payloads_differ(incoming: dict, existing: dict) -> bool:
+    """True when the incoming push carries a MEANINGFUL change vs the current
+    row — compared only on the keys the push actually sends, and ignoring
+    bookkeeping columns that always differ (timestamps, sync cursors) so we
+    don't flag a no-op re-sync as a conflict. Values compared as strings so
+    123 == "123" across the SQLite↔Postgres boundary."""
+    ignore = {"updated_at", "created_at", "synced_at", "last_synced_at",
+              "sync_status", "id", "_sa_instance_state"}
+    for k, v in incoming.items():
+        if k in ignore:
+            continue
+        if k not in existing:
+            continue
+        if str(existing.get(k)) != str(v):
+            return True
+    return False
 
 
 def _parse_dt(dt_str: Any) -> Optional[datetime]:
@@ -353,6 +406,34 @@ def push_changes(
                     logger.info("sync/push: LWW conflict resolved (cloud won) for %s.id=%s", change.entity, change.entity_id)
                     continue
 
+                # (P0) Local-wins on a FINANCIAL row = the previously-SILENT
+                # overwrite. Data still lands (LWW below), but a financial record
+                # being edited on two devices is something the owner must see, so
+                # log a review_needed conflict capturing the cloud version BEFORE
+                # we clobber it. Guarded to a genuine change (differing timestamp
+                # and differing content) so normal edit→sync propagation of an
+                # unchanged row doesn't spam the review list.
+                if (change.entity in FINANCIAL_ENTITIES
+                        and cloud_updated_at and local_updated_at > cloud_updated_at):
+                    cloud_snapshot = _row_to_dict(existing)
+                    if _payloads_differ(data, cloud_snapshot):
+                        db.add(ConflictLog(
+                            business_id=business_id,
+                            entity=change.entity,
+                            entity_id=change.entity_id,
+                            local_updated_at=local_updated_at,
+                            cloud_updated_at=cloud_updated_at,
+                            local_payload=json.dumps(data, default=str),
+                            cloud_payload=json.dumps(cloud_snapshot, default=str),
+                            resolved_at=None,               # unreviewed
+                            resolution="review_needed",
+                        ))
+                        logger.warning(
+                            "sync/push: financial overwrite flagged for review — %s.id=%s "
+                            "(local %s > cloud %s)",
+                            change.entity, change.entity_id, local_updated_at, cloud_updated_at,
+                        )
+
             # Resolve FKs via the parent's durable uid (shared helper — same logic
             # as the pull-apply worker). If a parent_uid is present but the parent
             # row isn't in this DB yet, the child is DEFERRED rather than written
@@ -536,6 +617,75 @@ def get_queue_depth(
         "last_status":    last_log.status if last_log else "idle",
         "last_error":     last_log.error  if last_log else None,
     }
+
+
+@router.get("/api/sync/conflicts")
+def list_sync_conflicts(
+    include_resolved: bool = False,
+    limit: int = 100,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
+):
+    """Surface sync conflicts for this business so the owner can review them —
+    previously ConflictLog was written but never exposed anywhere. By default
+    returns only the unreviewed ones (``resolution='review_needed'`` and not yet
+    resolved), newest first, plus a total count for a UI badge."""
+    business_id = _resolve_business_id_by_username(current_user, db)
+    try:
+        q = db.query(ConflictLog).filter(ConflictLog.business_id == business_id)
+        if not include_resolved:
+            q = q.filter(ConflictLog.resolution == "review_needed",
+                         ConflictLog.resolved_at.is_(None))
+        rows = q.order_by(ConflictLog.id.desc()).limit(max(1, min(limit, 500))).all()
+        unreviewed = (
+            db.query(func.count(ConflictLog.id))
+            .filter(ConflictLog.business_id == business_id,
+                    ConflictLog.resolution == "review_needed",
+                    ConflictLog.resolved_at.is_(None))
+            .scalar()
+        ) or 0
+        return {
+            "unreviewed_count": int(unreviewed),
+            "conflicts": [
+                {
+                    "id": r.id,
+                    "entity": r.entity,
+                    "entity_id": r.entity_id,
+                    "resolution": r.resolution,
+                    "local_updated_at": r.local_updated_at.isoformat() if r.local_updated_at else None,
+                    "cloud_updated_at": r.cloud_updated_at.isoformat() if r.cloud_updated_at else None,
+                    "local_payload": _safe_json_load(r.local_payload),
+                    "cloud_payload": _safe_json_load(r.cloud_payload),
+                    "resolved_at": r.resolved_at.isoformat() if r.resolved_at else None,
+                }
+                for r in rows
+            ],
+        }
+    except Exception as e:
+        logger.warning("sync/conflicts: query failed for biz=%s: %s", business_id, e)
+        return {"unreviewed_count": 0, "conflicts": []}
+
+
+@router.post("/api/sync/conflicts/{conflict_id}/resolve")
+def resolve_sync_conflict(
+    conflict_id: int,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
+):
+    """Mark a reviewed conflict as acknowledged (stamps ``resolved_at``). This
+    does NOT change any business data — the winning row already stands; the owner
+    is simply clearing it from their review list after looking at both versions."""
+    business_id = _resolve_business_id_by_username(current_user, db)
+    row = (
+        db.query(ConflictLog)
+        .filter(ConflictLog.id == conflict_id, ConflictLog.business_id == business_id)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Conflict not found")
+    row.resolved_at = utc_now()
+    db.commit()
+    return {"ok": True, "id": conflict_id}
 
 
 @router.post("/api/sync/flush")

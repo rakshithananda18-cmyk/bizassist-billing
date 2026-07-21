@@ -11,6 +11,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database.db import get_db
@@ -167,6 +168,72 @@ def list_payments(
             "reference": p.note or p.idempotency_key or "",
         })
     return result
+
+
+@router.get("/invoices/{invoice_id}/account")
+def invoice_account(
+    invoice_id: int,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
+):
+    """Per-invoice money view for the invoice viewer: totals, amount paid,
+    outstanding, the list of payment receipts, and any linked returns (credit
+    notes that reference this invoice). Read-only."""
+    bid = current_user["id"]
+    inv = db.query(Invoice).filter(Invoice.id == invoice_id, Invoice.business_id == bid).first()
+    if inv is None:
+        raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+
+    total = round(inv.total_amount or inv.amount or 0.0, 2)
+    paid = round(inv.paid_amount or 0.0, 2)
+    outstanding = round(max(total - paid, 0.0), 2)
+
+    payments = (
+        db.query(InvoicePayment)
+        .filter(InvoicePayment.business_id == bid, InvoicePayment.invoice_id == invoice_id)
+        .order_by(InvoicePayment.created_at.asc())
+        .all()
+    )
+    payment_rows = [{
+        "id": p.id,
+        "date": p.payment_date or (p.created_at.strftime("%Y-%m-%d") if p.created_at else None),
+        "amount": round(p.amount_paid or 0.0, 2),
+        "method": p.payment_mode or "Cash",
+        "note": p.note or "",
+    } for p in payments]
+
+    # Returns: credit notes referencing this invoice via the exact note phrase
+    # written by create_credit_note — "Credit note against <invoice_no>." The
+    # trailing '.' is the delimiter that disambiguates numbers that are prefixes
+    # of one another (a bare substring LIKE matched 'INV-1' against 'INV-10' /
+    # 'INV-100', and could pull credit notes for unrelated invoices).
+    returns = []
+    if inv.invoice_id:
+        marker = f"Credit note against {inv.invoice_id}."
+        cns = (
+            db.query(Invoice)
+            .filter(Invoice.business_id == bid,
+                    Invoice.invoice_type == "credit_note",
+                    Invoice.notes.ilike(f"%{marker}%"))
+            .all()
+        )
+        returns = [{
+            "id": cn.id,
+            "credit_note_no": cn.invoice_id,
+            "date": cn.invoice_date,
+            "amount": round(cn.total_amount or cn.amount or 0.0, 2),
+        } for cn in cns]
+
+    return {
+        "invoice_id": inv.id,
+        "invoice_no": inv.invoice_id,
+        "status": inv.status,
+        "total": total,
+        "paid": paid,
+        "outstanding": outstanding,
+        "payments": payment_rows,
+        "returns": returns,
+    }
 
 
 @router.post("/payments", status_code=201)
@@ -452,13 +519,20 @@ def list_pending_invoices(
     db: Session = Depends(get_db)
 ):
     """Return all pending and overdue customer invoices (money owed to the business)."""
-    from datetime import date as _date
+    from services.dates import biz_today_str
     bid = current_user["id"]
-    today = _date.today().isoformat()
+    today = biz_today_str()   # IST business date, not server-local
+    # Match on lower-cased status: record_payment / create_sale_invoice write
+    # "Partial" (capital P), but this filter used lowercase "partial" — so every
+    # partially-settled invoice was silently dropped here while Contacts (balance
+    # aggregation) and Invoices (raw status) still showed it as due. That's the
+    # "Transactions says cleared, Contacts/Invoices say pending" mismatch.
+    # Case-insensitive match + a positive-balance guard below keep this endpoint
+    # a pure function of what's actually owed.
     invoices = db.query(Invoice).filter(
         Invoice.business_id == bid,
         Invoice.invoice_type != "credit_note",
-        Invoice.status.in_(["Pending", "Overdue", "partial"])
+        func.lower(Invoice.status).in_(["pending", "overdue", "partial"])
     ).order_by(Invoice.due_date.asc(), Invoice.id.desc()).all()
 
     result = []
@@ -466,8 +540,10 @@ def list_pending_invoices(
         due = inv.due_date or ""
         paid = inv.paid_amount or 0
         total = inv.total_amount or inv.amount or 0
-        balance = max(total - paid, 0)
-        is_overdue = due and due < today and inv.status != "Paid"
+        balance = round(max(total - paid, 0), 2)
+        if balance <= 0.005:
+            continue  # fully settled but status not yet flipped — not a due
+        is_overdue = due and due < today and (inv.status or "").lower() != "paid"
         result.append({
             "id": inv.id,
             "invoice_id": inv.invoice_id,

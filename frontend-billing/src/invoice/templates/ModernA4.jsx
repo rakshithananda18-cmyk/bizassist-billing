@@ -169,12 +169,16 @@ export default function ModernA4({ payload }) {
           {payments.length > 0 ? (
             <div style={{ marginTop: 10 }}>
               <div style={S.label}>Payments Received</div>
-              {payments.map((p, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', maxWidth: 220, borderBottom: `1px solid ${HAIR}`, padding: '3px 0' }}>
-                  <span>{p.mode}{p.reference ? ` · ${p.reference}` : ''}</span>
-                  <span>{inr(p.amount)}</span>
-                </div>
-              ))}
+              {payments.map((p, i) => {
+                const when = [p.date, p.time].filter(Boolean).join(' ')
+                const meta = [p.reference, when].filter(Boolean).join(' · ')
+                return (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, maxWidth: 260, borderBottom: `1px solid ${HAIR}`, padding: '3px 0' }}>
+                    <span>{p.mode}{meta ? ` · ${meta}` : ''}</span>
+                    <span>{inr(p.amount)}</span>
+                  </div>
+                )
+              })}
             </div>
           ) : null}
 

@@ -307,6 +307,20 @@ export default function AdminBusinesses() {
           <div className="vskel" style={{ padding: 20 }}></div>
         ) : (
           <div className="admin-table-wrap" style={{ overflowX: 'auto', width: '100%' }}>
+            {(() => {
+              const flagged = businesses.filter(b => b.needs_attention)
+              if (flagged.length === 0) return null
+              return (
+                <div style={{
+                  margin: '10px 0 4px', padding: '9px 14px', borderRadius: 8,
+                  background: 'rgba(180,70,47,0.10)', border: '1px solid rgba(180,70,47,0.30)',
+                  color: 'var(--danger, #b4462f)', fontSize: 13, fontWeight: 600,
+                }}>
+                  ⚠ {flagged.length} business{flagged.length > 1 ? 'es' : ''} need attention —
+                  {' '}sync errors or unreviewed financial conflicts. Look for the “Attention” tag below.
+                </div>
+              )
+            })()}
             <table className="admin-table" style={{ width: '100%', marginTop: 12 }}>
               <thead>
                 <tr>
@@ -341,6 +355,18 @@ export default function AdminBusinesses() {
                           style={{ color: 'var(--accent-color)', textDecoration: 'none' }}>
                           {b.business_name}
                         </Link>
+                        {b.needs_attention && (
+                          <span
+                            title={`Needs attention — ${b.sync_errors || 0} sync error(s), ${b.unreviewed_conflicts || 0} unreviewed conflict(s)`}
+                            style={{
+                              marginLeft: 8, fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                              letterSpacing: '0.04em', padding: '2px 7px', borderRadius: 10,
+                              background: 'rgba(180,70,47,0.12)', color: 'var(--danger, #b4462f)',
+                            }}
+                          >
+                            ⚠ Attention
+                          </span>
+                        )}
                       </td>
                       <td>{b.username}</td>
                       <td><span className="tag">{b.hosting_mode || 'local'}</span></td>

@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from services.auth import get_active_user, restrict_cashier
-from services.actions import preview as action_preview, execute as action_execute
+from services.actions import preview as action_preview, execute as action_execute, preview_fingerprint
 from services.action_rails import mint_confirm_token, verify_confirm_token, confirm_required
 from core.sync.idempotency import ReplayGuard, replay_guard
 from routes.intents import _persist_turn
@@ -50,8 +50,11 @@ def preview_action(req: ActionRequest, current_user: dict = Depends(restrict_cas
     result = action_preview(req.action, current_user["id"], req.params)
     if result is None:
         raise HTTPException(status_code=404, detail=f"Unknown action: {req.action}")
-    # Write rail #1: bind this preview to (business, action, exact params).
-    result["confirm_token"] = mint_confirm_token(current_user["id"], req.action, req.params)
+    # Write rail #1: bind this preview to (business, action, exact params) AND the
+    # preview's computed content, so execute can refuse if the data changed.
+    state_fp = preview_fingerprint(result)
+    result["confirm_token"] = mint_confirm_token(current_user["id"], req.action, req.params,
+                                                 state_fp=state_fp)
     return result
 
 
@@ -61,9 +64,15 @@ def execute_action(req: ActionRequest,
                    guard: ReplayGuard = Depends(replay_guard)):
     user_id = current_user["id"]
 
-    # Write rail #1: only a previewed (business, action, params) may execute.
+    # Write rail #1: only a previewed (business, action, params) may execute —
+    # AND the previewed content must still hold. Recompute the preview NOW and
+    # bind its fingerprint; if the data drifted since the user confirmed, the
+    # token won't verify and we refuse rather than act on unseen changes.
     if confirm_required():
-        ok, reason = verify_confirm_token(req.confirm_token, user_id, req.action, req.params)
+        current_preview = action_preview(req.action, user_id, req.params)
+        state_fp = preview_fingerprint(current_preview) if current_preview is not None else None
+        ok, reason = verify_confirm_token(req.confirm_token, user_id, req.action, req.params,
+                                          state_fp=state_fp)
         if not ok:
             logger.warning(f"[ACTION] execute refused biz={user_id} action={req.action}: confirm token {reason}")
             # 428 (not 403): this is a missing precondition — preview first —

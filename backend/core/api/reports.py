@@ -8,6 +8,7 @@ Per FOUNDATION.md: routes stay thin. Scoped by business_id.
 """
 import logging
 from datetime import datetime
+from services.dates import biz_today_str
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -63,7 +64,7 @@ def day_summary(
     Defaults to today's date in local time.
     """
     bid = current_user["id"]
-    target_date = date or datetime.today().strftime("%Y-%m-%d")
+    target_date = date or biz_today_str()   # IST business date
 
     # 1. Sales summary (excluding credit notes)
     sales_row = (
@@ -1114,7 +1115,7 @@ def report_day_book(
     """Daily Transaction Register (Day Book) chronologically."""
     bid = current_user["id"]
     
-    today = datetime.today().strftime("%Y-%m-%d")
+    today = biz_today_str()   # IST business date, not server-local
     f_date = from_date if from_date else today
     t_date = to_date if to_date else today
     
@@ -1359,6 +1360,36 @@ def report_balance_sheet(
         },
         "net_worth": round(net_worth, 2)
     }
+
+
+@router.get("/reports/ops-health")
+def report_ops_health(
+    current_user: dict = Depends(restrict_cashier),
+    db: Session = Depends(get_db),
+):
+    """One per-tenant operational-health snapshot (owner-only) for observability:
+    sync backlog, unreviewed conflicts, books integrity, and today's AI usage.
+    Shared with the admin fleet view via services.ops_health.compute_ops_health.
+    """
+    from services.ops_health import compute_ops_health
+    return compute_ops_health(db, current_user["id"])
+
+
+@router.get("/reports/integrity")
+def report_books_integrity(
+    current_user: dict = Depends(restrict_cashier),
+    db: Session = Depends(get_db),
+):
+    """Books integrity check (owner-only): tamper-evident hash chain intact AND
+    the posted journal foots globally (SUM debits == SUM credits). Read-only;
+    returns the same report a scheduled job would evaluate. `ok: false` means
+    the audit trail was altered or an unbalanced entry slipped in — investigate.
+    """
+    from core.accounting.integrity import run_integrity_check
+    report = run_integrity_check(db, current_user["id"])
+    logger.info("[REPORT] integrity bid=%s ok=%s drift=%s",
+                current_user["id"], report["ok"], report["journal_balance"]["drift"])
+    return report
 
 
 @router.get("/reports/trial-balance")

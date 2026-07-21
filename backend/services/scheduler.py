@@ -39,6 +39,7 @@ def start_scheduler():
         run_low_stock_alerts,
         run_expiry_alerts,
         run_memory_distillation,
+        run_books_integrity_audit,
     )
     from services.sync_worker import run_hybrid_sync
 
@@ -87,6 +88,15 @@ def start_scheduler():
         name="Weekly Memory Distillation",
         replace_existing=True,
         misfire_grace_time=86400,  # tolerate up to 24h (weekly job)
+    )
+
+    _scheduler.add_job(
+        run_books_integrity_audit,
+        CronTrigger(hour=3, minute=30),   # nightly, off-peak
+        id="books_integrity_audit",
+        name="Books Integrity Audit (hash chain + journal foots)",
+        replace_existing=True,
+        misfire_grace_time=3600,
     )
 
     _scheduler.add_job(

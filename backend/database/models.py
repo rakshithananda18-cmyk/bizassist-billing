@@ -162,6 +162,9 @@ class Customer(Base, BusinessOwnedMixin):
     pan          = Column(String, nullable=True)
     credit_limit = Column(Float,   nullable=True, default=0.0)
     credit_days  = Column(Integer, nullable=True, default=30)
+    # Advance/credit the customer has on account (e.g. an overpayment from a
+    # lump-sum settlement). Auto-applied to the next sale invoice.
+    credit_balance = Column(Float, nullable=True, default=0.0)
     is_active    = Column(Boolean, default=True)
     price_tier   = Column(String, nullable=True, default="standard")
 

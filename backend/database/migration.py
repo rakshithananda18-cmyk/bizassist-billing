@@ -151,6 +151,7 @@ _COLUMN_MIGRATIONS = [
     {"table": "purchase_invoices", "column": "godown_id",      "ddl": "ALTER TABLE purchase_invoices ADD COLUMN godown_id INTEGER"},
     # customers additions
     {"table": "customers", "column": "price_tier", "ddl": "ALTER TABLE customers ADD COLUMN price_tier TEXT DEFAULT 'standard'"},
+    {"table": "customers", "column": "credit_balance", "ddl": "ALTER TABLE customers ADD COLUMN credit_balance REAL DEFAULT 0.0"},
     # b2b_orders additions
     {"table": "b2b_orders", "column": "seller_invoice_id", "ddl": "ALTER TABLE b2b_orders ADD COLUMN seller_invoice_id INTEGER"},
     # journal_entries additions

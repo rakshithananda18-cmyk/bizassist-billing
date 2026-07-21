@@ -37,13 +37,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run SQLite Logic Tests
+      - name: Run SQLite Logic Tests (fast — pytest-xdist across all cores)
+        # Mirrors `run_tests.ps1 -Fast`: parallel across all CPU cores. conftest
+        # keys each worker's SQLite file on the xdist worker id (test_bizassist_gw*.db)
+        # so runs stay isolated; --dist loadscope keeps a module's tests on one
+        # worker (module-scoped DB fixtures never straddle workers).
         env:
           JWT_SECRET: dev-test-secret-please-change-0123456789abcdef
           GROQ_API_KEY: mock_groq_api_key
         run: |
           cd backend
-          python -m pytest -q --ignore=tests/test_rls_postgres.py
+          python -m pytest -q -n auto --dist loadscope --ignore=tests/test_rls_postgres.py
 
       - name: Run Postgres RLS Tests
         env:
@@ -53,6 +57,29 @@ jobs:
         run: |
           cd backend
           python -m pytest tests/test_rls_postgres.py -v
+
+      - name: Run Financial Invariants on Postgres (cross-dialect drift guard)
+        # Re-runs the money-layer suites against the SAME Postgres service so a
+        # SQLite-only pass can't hide a dialect-specific accounting/sync bug.
+        # conftest honours BIZASSIST_TEST_DATABASE_URL to point the whole suite
+        # at Postgres (db name contains "test" to satisfy the fail-closed guard).
+        env:
+          BIZASSIST_TEST_DATABASE_URL: postgresql://postgres:pass@localhost:5432/rls_test
+          JWT_SECRET: dev-test-secret-please-change-0123456789abcdef
+          GROQ_API_KEY: mock_groq_api_key
+        run: |
+          cd backend
+          python -m pytest -q -p no:randomly \
+            tests/test_billing.py \
+            tests/test_financial_invariants.py \
+            tests/test_negative_stock_policy.py \
+            tests/test_journal.py \
+            tests/test_hash_chain.py \
+            tests/test_trial_balance.py \
+            tests/test_period_lock.py \
+            tests/test_party_ledger.py \
+            tests/test_sync_financial_conflicts.py \
+            tests/test_ops_health.py
 
   # BUG-3 guard: the sync/relay/routing tests are the ones that hide real
   # data-loss bugs. Run them repeatedly, in both fixed and randomized order,

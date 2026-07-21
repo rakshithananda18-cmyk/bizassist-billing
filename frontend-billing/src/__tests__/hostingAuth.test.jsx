@@ -87,11 +87,27 @@ const globalMockFetch = vi.fn(async (url) => {
   const jsonResponse = (body, status = 200, ok = true) => ({
     ok,
     status,
-    json: async () => body
+    json: async () => body,
+    // authFetch calls res.clone().json() on the error branch; real Responses
+    // have clone(), our mocks must too.
+    clone() { return this },
   })
 
   if (u.includes('/business/templates')) {
     return jsonResponse({ templates: mockTemplates })
+  }
+  // Optional profile fetch on mount — succeed with an empty profile so it never
+  // emits a spurious error toast that would race the assertions below.
+  if (u.includes('/business/billing-profile')) {
+    return jsonResponse({})
+  }
+  // Settings → Advanced mounts OpsHealthPanel, which fetches these on mount;
+  // succeed so they don't emit a spurious error toast in the mode-switch tests.
+  if (u.includes('/reports/ops-health')) {
+    return jsonResponse({ ok: true, sync: {}, conflicts: { unreviewed: 0 }, integrity: { ok: true }, ai_usage: {} })
+  }
+  if (u.includes('/api/sync/conflicts')) {
+    return jsonResponse({ unreviewed_count: 0, conflicts: [] })
   }
   if (u.includes('/settings')) {
     return jsonResponse(mockSettings)
@@ -136,7 +152,7 @@ const globalMockFetch = vi.fn(async (url) => {
     return jsonResponse({ status: 'ok' })
   }
 
-  return { ok: false, status: 404, json: async () => ({}) }
+  return { ok: false, status: 404, json: async () => ({}), clone() { return this } }
 })
 
 beforeEach(() => {
@@ -173,7 +189,7 @@ describe('Login staff resolution (T2)', () => {
     // Stub fetch to return empty local, but populated cloud staff counters
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       const u = String(url)
-      const jsonResponse = (body) => ({ ok: true, status: 200, json: async () => body })
+      const jsonResponse = (body) => ({ ok: true, status: 200, json: async () => body, clone() { return this } })
       if (u.includes('/staff-counters')) {
         if (u.startsWith('http://local-backend')) {
           return jsonResponse({ business_name: 'Local Store', staff: [] })
@@ -185,7 +201,7 @@ describe('Login staff resolution (T2)', () => {
           })
         }
       }
-      return { ok: false }
+      return { ok: false, status: 404, json: async () => ({}), clone() { return this } }
     }))
 
     render(
@@ -261,7 +277,7 @@ describe('Login staff resolution (T2)', () => {
     }]
     localStorage.setItem('bizassist_recent_logins', JSON.stringify(initialLogins))
 
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false })))
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}), clone() { return this } })))
 
     render(
       <MemoryRouter initialEntries={['/login']}>
@@ -409,7 +425,7 @@ describe('Register two options (T4)', () => {
       if (url.includes('/business/setup')) {
         return { ok: true, status: 200, json: async () => ({}) }
       }
-      return { ok: false, status: 404 }
+      return { ok: false, status: 404, json: async () => ({}), clone() { return this } }
     })
     vi.stubGlobal('fetch', signupSpy)
 

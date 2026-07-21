@@ -166,6 +166,24 @@ def get_business_metrics(current_user: dict = Depends(get_active_user), db: Sess
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@router.get("/admin/business/{user_id}/ops-health")
+def admin_business_ops_health(user_id: int,
+                              current_user: dict = Depends(get_active_user),
+                              db: Session = Depends(get_db)):
+    """Fleet observability: the same ops-health snapshot an owner sees, for ANY
+    business — sync backlog, unreviewed conflicts, books integrity, AI usage.
+    Admin-only; audited by require_admin."""
+    try:
+        svc.require_admin(current_user["id"], db, action="view_ops_health", details={"target": user_id})
+        svc.require_target_user(user_id, db)
+        from services.ops_health import compute_ops_health
+        return compute_ops_health(db, user_id)
+    except HTTPException: raise
+    except Exception as e:
+        logger.error("admin/business/%s/ops-health: %s", user_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 # ── Admin TOTP 2FA (§4.1) ────────────────────────────────────────────────────
 
 class TotpCodeRequest(BaseModel):

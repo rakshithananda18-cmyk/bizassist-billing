@@ -638,3 +638,35 @@ export function ExpandIcon({ size, strokeWidth, className }) {
     </svg>
   )
 }
+
+/** Funnel / filter icon — used in FilterDropdown */
+export function FilterIcon({ size = 16, strokeWidth, className, style }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth ?? 2, className)} style={style}>
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+    </svg>
+  )
+}
+
+/** Modern share node icon */
+export function Share2Icon({ size = 14, strokeWidth, className, style }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth ?? 2, className)} style={style}>
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+    </svg>
+  )
+}
+
+/** Return arrow icon */
+export function ReturnArrowIcon({ size = 14, strokeWidth, className, style }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth ?? 2, className)} style={style}>
+      <polyline points="9 14 4 9 9 4" />
+      <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+    </svg>
+  )
+}

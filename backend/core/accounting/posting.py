@@ -50,6 +50,9 @@ ACC_PURCHASES = "Purchases"
 ACC_GST_OUT = "GST Payable"
 ACC_GST_IN = "GST Input Credit"
 ACC_DISCOUNT = "Discount Allowed"   # post-tax cash discount given to customers (R4)
+ACC_ADVANCE = "Customer Advances"   # liability: cash received before it's earned
+                                    # (lump-sum settlement leftover). Released
+                                    # (Dr) when auto-applied to the next invoice.
 
 
 def _r2(x) -> float:
@@ -78,8 +81,9 @@ def post_entry(db, *, business_id, entry_date, source_type, source_id,
         return existing
 
     # A journal entry always carries a date — fall back to the posting date
-    # (today) when the source document didn't record one.
-    entry_date = entry_date or datetime.today().strftime("%Y-%m-%d")
+    # (business-local today, IST) when the source document didn't record one.
+    from services.dates import biz_today_str
+    entry_date = entry_date or biz_today_str()
 
     # Period lock: refuse to post into a closed period. Checked AFTER the
     # idempotency return above, so re-running a command that already posted a
@@ -266,12 +270,39 @@ def post_expense(db, exp):
     )
 
 
-def post_payment(db, pay):
-    """A later receipt against an invoice: Dr Cash, Cr Accounts Receivable."""
+def post_payment(db, pay, debit_account: str = ACC_CASH):
+    """A later receipt against an invoice: Dr <debit_account>, Cr Accounts
+    Receivable.
+
+    `debit_account` defaults to Cash & Bank (a real cash/bank receipt). When an
+    invoice is settled by RELEASING a customer's banked advance (credit_balance),
+    the caller passes ACC_ADVANCE instead — the cash was already booked (Dr Cash /
+    Cr Customer Advances) when the advance was received, so applying it must draw
+    down that liability rather than double-count cash.
+    """
     amt = _r2(pay.amount_paid)
+    narration = ("Advance applied" if debit_account == ACC_ADVANCE
+                 else "Payment received")
     return post_entry(
         db, business_id=pay.business_id, entry_date=pay.payment_date,
         source_type="payment", source_id=pay.id, ref_no=f"REC-{pay.id}",
-        narration="Payment received",
-        lines=[(ACC_CASH, amt, 0.0), (ACC_AR, 0.0, amt)],
+        narration=narration,
+        lines=[(debit_account, amt, 0.0), (ACC_AR, 0.0, amt)],
+    )
+
+
+def post_advance_receipt(db, *, business_id, entry_date, amount, source_id, ref_no):
+    """Cash received beyond a customer's dues (a lump-sum settlement leftover):
+    Dr Cash & Bank, Cr Customer Advances. Books the cash immediately and parks
+    the unearned portion as a liability until it's applied to a future invoice
+    (see post_payment(debit_account=ACC_ADVANCE)). Idempotent on
+    (business_id, 'advance_receipt', source_id)."""
+    amt = _r2(amount)
+    if amt <= 0:
+        return None
+    return post_entry(
+        db, business_id=business_id, entry_date=entry_date,
+        source_type="advance_receipt", source_id=source_id, ref_no=ref_no,
+        narration="Advance received",
+        lines=[(ACC_CASH, amt, 0.0), (ACC_ADVANCE, 0.0, amt)],
     )

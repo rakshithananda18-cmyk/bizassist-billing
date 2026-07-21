@@ -28,8 +28,9 @@ from sqlalchemy.orm import Session
 
 from database.db import get_db
 from database.models import Customer, Vendor, Invoice
-from services.auth import get_active_user
+from services.auth import get_active_user, restrict_cashier
 from services.realtime import realtime_manager, delta_event
+from core.billing import commands as billing
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.parties")
@@ -103,6 +104,7 @@ def _customer_out(c: Customer, outstanding: float = 0.0, last_invoice_date: Opti
         "is_active": c.is_active,
         "outstanding_dues": round(outstanding, 2),
         "outstanding_balance": round(outstanding, 2),
+        "credit_balance": round(getattr(c, "credit_balance", 0.0) or 0.0, 2),
         "last_invoice_date": last_invoice_date,
     }
 
@@ -341,9 +343,65 @@ def customer_ledger(
         "customer_id": customer_id,
         "customer_name": c.name,
         "outstanding_total": round(outstanding_total, 2),
+        "credit_balance": round(c.credit_balance or 0.0, 2),   # banked advance
         "total": total, "page": page, "per_page": per_page,
         "entries": entries,
     }
+
+
+class SettleDuesRequest(BaseModel):
+    amount: float
+    payment_mode: Optional[str] = None
+    payment_date: Optional[str] = None
+    note: Optional[str] = None
+    idempotency_key: Optional[str] = None
+
+
+@router.post("/customers/{customer_id}/settle")
+def settle_customer_dues(
+    customer_id: int,
+    req: SettleDuesRequest,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(restrict_cashier),   # staff-restricted (owner/manager)
+    db: Session = Depends(get_db),
+):
+    """Staff-restricted (cashiers/supply-adders blocked): apply a lump-sum receipt
+    across a customer's outstanding invoices oldest-first (FIFO). Clears earlier
+    bills fully, leaves at most one partial, and carries any leftover as an
+    advance that nets against the next bill. Returns the per-invoice allocation
+    breakdown + advance."""
+    bid = current_user["id"]
+    c = db.query(Customer).filter(Customer.id == customer_id, Customer.business_id == bid).first()
+    if c is None:
+        raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
+
+    # Shift stamping (Phase 3): settlement receipts taken while the operator has
+    # an open register shift must count toward that shift's drawer tally, exactly
+    # like a normal receipt on the /payments route. Without this the settled cash
+    # is invisible to shift reconciliation.
+    from core.shifts import service as shifts_svc
+    operator_id = current_user.get("user_id") or bid
+    active_shift = shifts_svc.get_open_shift(db, business_id=bid, user_id=operator_id)
+
+    try:
+        result = billing.settle_customer_dues(
+            db, business_id=bid, customer_id=customer_id,
+            amount=req.amount, payment_mode=req.payment_mode,
+            payment_date=req.payment_date, note=req.note,
+            idempotency_key=req.idempotency_key,
+            shift_id=(active_shift.id if active_shift else None),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        db.rollback()
+        logger.error("settle_customer_dues route failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Could not settle dues")
+
+    background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "payment"})
+    result["customer_id"] = customer_id
+    result["customer_name"] = c.name
+    return result
 
 
 # ── Vendor Routes ──────────────────────────────────────────────────────────────

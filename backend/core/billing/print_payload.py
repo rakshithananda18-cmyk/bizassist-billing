@@ -336,11 +336,15 @@ def build_print_payload(db, *, business_id: int, invoice_no: str, user_id=None) 
         .order_by(InvoicePayment.id.asc())
         .all()
     )
+    # `time` is the receipt's clock time in the business timezone (IST) — shown
+    # next to the payment so a settlement reads e.g. "Settlement (FIFO) · 2026-07-22 1:21 AM".
     payments = [{"mode": p.payment_mode or "Cash", "amount": _r2(p.amount_paid),
-                 "reference": p.note, "date": p.payment_date} for p in pay_rows]
+                 "reference": p.note, "date": p.payment_date,
+                 "time": _local_time_str(p.created_at)} for p in pay_rows]
     if not payments and paid > 0:
         payments = [{"mode": inv.payment_mode or "Cash", "amount": paid,
-                     "reference": None, "date": inv.payment_date}]
+                     "reference": None, "date": inv.payment_date,
+                     "time": _local_time_str(inv.created_at)}]
 
     # ── Visibility (resolved once, honored by every renderer) ────────────────
     columns = ["sno", "item", "qty", "unit", "rate", "discount", "total"]

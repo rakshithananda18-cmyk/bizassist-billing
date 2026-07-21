@@ -46,8 +46,9 @@ const NAV = [
     items: [
       { to: '/sales',    icon: <CounterIcon size={16} className="nav-anim-bill" />,   label: 'Billing Counter' },
       { to: '/pos-live-counter', icon: <MonitorIcon size={16} />,   label: 'POS Live Counter' },
-      // Merged workspace: Parties = Contacts+Transactions
+      // Contacts & Payments workspace: Contacts · Transactions · Invoices tabs
       { to: '/parties',  icon: <ContactsIcon size={16} className="nav-anim-contact" />,  label: 'Contacts & Payments' },
+      // /money routes preserved for backward-compat but removed from nav
       { to: '/reports',  icon: <ReportsIcon size={16} className="nav-anim-report" />,   label: 'GST & Tax Reports' },
     ]
   }
@@ -100,7 +101,7 @@ const QUICK_ACTIONS = {
     { label: 'Adjust Stock',         icon: <ZapIcon size={14} />,       action: () => { nav('/stock/inventory'); setTimeout(() => window.dispatchEvent(new CustomEvent('open_adjust_stock')), 200) } },
   ],
   '/parties':     (nav) => [
-    { label: 'Contacts & Dues',      icon: <ContactsIcon size={14} />,  action: () => nav('/parties/contacts') },
+    { label: 'Contacts',             icon: <ContactsIcon size={14} />,  action: () => nav('/parties/contacts') },
     { label: 'Transactions',         icon: <CashIcon size={14} />,      action: () => nav('/parties/payments') },
     { label: 'Add Contact',          icon: <PlusIcon size={14} />,      action: () => { nav('/parties/contacts'); setTimeout(() => window.dispatchEvent(new CustomEvent('open_add_contact')), 200) } },
   ],

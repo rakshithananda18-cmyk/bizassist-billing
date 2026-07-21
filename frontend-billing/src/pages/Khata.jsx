@@ -2,13 +2,15 @@
 // Page: Khata.jsx — Contacts & Payments workspace (merged Parties + Payments).
 // ----------------------------------------------------------------------------
 // One nav destination for the shop's money book: who owes what (Contacts &
-// Dues) and every transaction (Payments). The two views keep their own JSX
-// files (Parties.jsx / Payments.jsx rendered embedded); this page owns the
-// layout, the workspace tabs, and the URL state.
+// Dues) and every transaction (Payments + Invoices). The three views keep their
+// own JSX files (Parties / Payments / InvoicesPage rendered embedded); this
+// page owns the layout, the workspace tabs, and the URL state.
 //
-// Each view is a real ROUTE:
+// Routes:
 //   /parties/contacts   → Parties view
 //   /parties/payments   → Payments view
+//   /parties/invoices   → Invoices view
+//   /parties/invoices?customer=Name  → Invoices filtered to that customer
 // (bare /parties redirects to the last-used tab; legacy ?tab= links still work)
 //
 // Only the ACTIVE view is mounted (each fetches on mount — rendering both
@@ -19,14 +21,16 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import PageTabs from '../components/common/PageTabs'
 import PageLoader from '../components/PageLoader'
-import { ContactsIcon, CashIcon } from '../components/Icons'
+import { ContactsIcon, CashIcon, BillsIcon } from '../components/Icons'
 
-const Parties  = lazy(() => import('./Parties'))
-const Payments = lazy(() => import('./Payments'))
+const Parties      = lazy(() => import('./Parties'))
+const Payments     = lazy(() => import('./Payments'))
+const InvoicesPage = lazy(() => import('./InvoicesPage'))
 
 const TABS = [
-  { id: 'contacts', label: 'Contacts & Dues', icon: <ContactsIcon size={16} /> },
-  { id: 'payments', label: 'Transactions',    icon: <CashIcon size={16} /> },
+  { id: 'contacts', label: 'Contacts',     icon: <ContactsIcon size={16} /> },
+  { id: 'payments', label: 'Transactions', icon: <CashIcon size={16} /> },
+  { id: 'invoices', label: 'Invoices',     icon: <BillsIcon size={16} /> },
 ]
 
 const LAST_TAB_KEY = 'khata_last_tab'
@@ -54,6 +58,7 @@ export default function Khata() {
     localStorage.setItem(LAST_TAB_KEY, id)
     // replace:true keeps tab-switches as a single history slot so minimize
     // (navigate(-1)) exits the workspace rather than going back to a sibling tab.
+    // Note: switching away from invoices drops any ?customer= filter intentionally.
     navigate(`/parties/${id}`, { replace: true })
   }
 
@@ -64,8 +69,10 @@ export default function Khata() {
     <AppLayout title="Contacts & Payments">
       <Suspense fallback={<PageLoader />}>
         {tab === 'payments'
-          ? <Payments embedded headerTabs={headerTabs} />
-          : <Parties  embedded headerTabs={headerTabs} />}
+          ? <Payments  embedded headerTabs={headerTabs} />
+          : tab === 'invoices'
+          ? <InvoicesPage embedded headerTabs={headerTabs} />
+          : <Parties   embedded headerTabs={headerTabs} />}
       </Suspense>
     </AppLayout>
   )

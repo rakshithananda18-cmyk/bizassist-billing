@@ -13,6 +13,14 @@ over this env default, so they are unaffected.
 """
 import os
 import sys
+import logging
+
+# Background daemon threads (e.g. services/immediate_sync's force-sync) can log
+# AFTER pytest has torn down its capture stream at session/worker shutdown. The
+# default logging.raiseExceptions=True then prints a scary "I/O operation on
+# closed file" traceback that isn't a failure. Turning it off makes late-thread
+# logging errors silent — logging never affects test outcomes anyway.
+logging.raiseExceptions = False
 
 _orig_remove = os.remove
 _orig_unlink = os.unlink
@@ -48,20 +56,47 @@ os.unlink = secure_unlink
 # so it never writes to or pollutes the development database (bizassist.db).
 # Since load_dotenv(override=False) is called by db.py, pre-setting it here
 # guarantees it won't be overridden by the .env file.
-os.environ["DATABASE_URL"] = "sqlite:///./test_bizassist.db"
+#
+# Parallel runs (pytest-xdist, `pytest -n auto`): each worker gets its OWN test
+# DB file so workers can't clobber each other's rows / fixed business IDs.
+# PYTEST_XDIST_WORKER is set by xdist to gw0, gw1, … per worker; unset for a
+# normal serial run, so serial behaviour is byte-for-byte unchanged. The name
+# still contains "test", satisfying db.py's fail-closed guard.
+# Cross-dialect opt-in: set BIZASSIST_TEST_DATABASE_URL to a throwaway Postgres
+# (name must contain "test" for db.py's fail-closed guard) to run the suite
+# against Postgres instead of SQLite — used by the CI "invariants on Postgres"
+# job to catch SQLite↔Postgres drift in the money layer. Unset → per-worker
+# SQLite exactly as before.
+_pg_override = (os.environ.get("BIZASSIST_TEST_DATABASE_URL") or "").strip()
+_xdist_worker = os.environ.get("PYTEST_XDIST_WORKER")
+if _pg_override:
+    os.environ["DATABASE_URL"] = _pg_override
+    _test_db_name = None  # Postgres: no local file to clean up
+else:
+    _test_db_name = f"test_bizassist_{_xdist_worker}.db" if _xdist_worker else "test_bizassist.db"
+    os.environ["DATABASE_URL"] = f"sqlite:///./{_test_db_name}"
 # Explicit signal for database/db.py's fail-closed guard: even on an odd entry
 # path, this marks the process as a test run so the DB layer refuses any
 # non-test DATABASE_URL.
 os.environ["BIZASSIST_TESTING"] = "1"
 
-# Clean up test database file immediately on module load to prevent cross-run pollution
-_root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_test_db = os.path.join(_root_dir, "backend", "test_bizassist.db")
-try:
-    if os.path.exists(_test_db):
-        os.remove(_test_db)
-except Exception:
-    pass
+# JWT_SECRET is required by services/auth.py at import time. run_tests.bat / CI
+# export one, but a bare `pytest` (or `pytest -n auto`) wouldn't — every
+# TestClient module then errors at collection with "JWT_SECRET not set".
+# setdefault gives a test-only fallback so the suite is self-contained, while
+# still honouring a real secret if the shell/CI already exported one.
+os.environ.setdefault("JWT_SECRET", "test-only-secret-please-change-0123456789abcdef")
+
+# Clean up test database file immediately on module load to prevent cross-run
+# pollution. Skipped when running against Postgres (no local SQLite file).
+if _test_db_name:
+    _root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    _test_db = os.path.join(_root_dir, "backend", _test_db_name)
+    try:
+        if os.path.exists(_test_db):
+            os.remove(_test_db)
+    except Exception:
+        pass
 
 # Deterministic default for the whole suite. load_dotenv(override=False) later
 # will NOT overwrite this, so tests ignore whatever the dev's .env says.

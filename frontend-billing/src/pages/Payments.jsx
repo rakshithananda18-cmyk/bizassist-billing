@@ -4,6 +4,7 @@
 //              and outflows, records general expenses, and tracks credit note returns.
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
 import { useAuth } from '../contexts/AuthContext'
@@ -11,9 +12,13 @@ import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, Warehou
 
 import { logger } from '../utils/logger'
 import CustomSelect from '../components/common/CustomSelect'
-import { formatISTDate } from '../utils/format'
+import FilterDropdown from '../components/common/FilterDropdown'
+import SortDropdown from '../components/common/SortDropdown'
+import { formatISTDate, formatISTDateTime } from '../utils/format'
 import InvoiceViewerModal from '../components/invoice/InvoiceViewerModal'
 import RecordPaymentModal from '../components/payments/RecordPaymentModal'
+import SettleDuesModal from '../components/payments/SettleDuesModal'
+import InvoicesListView from '../components/payments/InvoicesListView'
 import LogExpenseModal from '../components/payments/LogExpenseModal'
 import { buildWhatsAppLink, buildPublicInvoiceLink } from '../invoice/share'
 import { usePageLifecycle } from '../hooks/usePageLifecycle'
@@ -37,7 +42,15 @@ const defaultForm = {
 }
 
 export default function Payments({ embedded = false, headerTabs = null }) {
-  const { authFetch, settings } = useAuth()
+  const { authFetch, settings, user } = useAuth()
+  const isCashier = (user?.role || '').toLowerCase() === 'cashier'
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+
+  // ?customer= param — set by Parties.jsx when "Settle" is clicked on a contact.
+  // Acts as a locked filter (shows a clearable chip); clearing navigates back to
+  // /parties/payments without the param so all transactions are shown again.
+  const customerFilter = searchParams.get('customer') || null
 
   const settingsRef = useRef(settings)
   useEffect(() => {
@@ -53,6 +66,8 @@ export default function Payments({ embedded = false, headerTabs = null }) {
   const [isFullScreen, setIsFullScreen] = useState(false)
   const [showModal, setShowModal]   = useState(false)
   const [showExpenseModal, setShowExpenseModal] = useState(false)
+  const [showSettleModal, setShowSettleModal] = useState(false)
+  const [invoicesReloadKey, setInvoicesReloadKey] = useState(0)
   // In-page invoice viewer (full InvoiceViewer feature set, no route change)
   const [viewingInvoiceNo, setViewingInvoiceNo] = useState(null)
   const [showStats, setShowStats] = useState(false)
@@ -120,6 +135,12 @@ export default function Payments({ embedded = false, headerTabs = null }) {
 
   const [search, setSearch] = useState('')
   const [modeFilter, setModeFilter] = useState('')
+  const [dateFilter, setDateFilter] = useState({ from: '', to: '' })
+  const [amountFilter, setAmountFilter] = useState({ min: '', max: '' })
+  const [customerNameFilter, setCustomerNameFilter] = useState('')
+  const [groupBy, setGroupBy] = useState('')
+  // settlePreset: when a Pending row is clicked, pre-fill the SettleDuesModal.
+  const [settlePreset, setSettlePreset] = useState(null)
   const [sortConfig, setSortConfig] = useState({ key: '', direction: '' })
 
   const handleSort = (key) => {
@@ -137,38 +158,43 @@ export default function Payments({ embedded = false, headerTabs = null }) {
     let baseItems = []
     
     if (activeTab === 'All') {
-      const mappedPayments = payments.map(p => ({ ...p, _sortDate: p.date }))
+      const mappedPayments = payments.map(p => {
+        const ts = p.created_at || p.payment_date || p.date
+        return { ...p, date: ts, _sortDate: ts }
+      })
       const mappedExpenses = expenses.map(e => ({
         id: `exp-${e.id}`,
-        date: e.expense_date,
+        date: e.created_at || e.expense_date,
         party_name: e.category,
         type: 'expense',
         amount: e.amount,
         method: e.payment_mode,
         reference: e.note,
-        _sortDate: e.expense_date
+        _sortDate: e.created_at || e.expense_date
       }))
       const mappedDues = pendingDues.map(d => ({
         id: `due-${d.id}`,
-        date: d.invoice_date || d.due_date,
+        _rawDueId: d.id,           // keep for settle preset lookup
+        _customerId: d.customer_id, // keep for SettleDuesModal preset
+        date: d.created_at || d.invoice_date || d.due_date,
         invoice_number: d.invoice_id,
         party_name: d.customer,
         type: 'pending_due',
         amount: d.balance_due,
         method: '—',
         reference: `Pending Balance (Due: ${d.due_date ? formatISTDate(d.due_date) : '—'})`,
-        _sortDate: d.invoice_date || d.due_date
+        _sortDate: d.created_at || d.invoice_date || d.due_date
       }))
       const mappedCreditNotes = creditNotes.map(cn => ({
         id: `cn-${cn.id}`,
-        date: cn.date,
+        date: cn.created_at || cn.date,
         invoice_number: cn.invoice_id,
         party_name: cn.customer,
         type: 'credit_note',
         amount: cn.amount,
         method: '—',
         reference: cn.note ? `Credit Note: ${cn.note}` : `Credit Note for ${cn.reference_invoice || '—'}`,
-        _sortDate: cn.date
+        _sortDate: cn.created_at || cn.date
       }))
       baseItems = [...mappedPayments, ...mappedExpenses, ...mappedDues, ...mappedCreditNotes]
       
@@ -182,21 +208,45 @@ export default function Payments({ embedded = false, headerTabs = null }) {
       }
     } else {
       baseItems = payments.filter(p => {
-        if (activeTab === 'Received' && p.type !== 'received') return false
+        if (activeTab === 'Received' && p.type !== 'received' && p.type !== 'settlement') return false
         if (activeTab === 'Made' && p.type !== 'made') return false
         return true
-      }).map(p => ({ ...p, _sortDate: p.date }))
+      }).map(p => {
+        const ts = p.created_at || p.payment_date || p.date
+        return { ...p, date: ts, _sortDate: ts }
+      })
     }
 
     let items = baseItems.filter(p => {
+      // Exact customer filter from URL (?customer=)
+      if (customerFilter) {
+        const party = (p.party_name || p.customer_name || p.supplier_name || '').toLowerCase()
+        if (party !== customerFilter.toLowerCase()) return false
+      }
+
+      // Customer name filter from the FilterDropdown combobox
+      if (customerNameFilter) {
+        const party = (p.party_name || p.customer_name || p.supplier_name || '').toLowerCase()
+        if (party !== customerNameFilter.toLowerCase()) return false
+      }
+
       if (modeFilter && (p.method || '').toLowerCase() !== modeFilter.toLowerCase()) return false
+
+      // Date range filter
+      if (dateFilter.from && p.date && p.date < dateFilter.from) return false
+      if (dateFilter.to   && p.date && p.date > dateFilter.to)   return false
+
+      // Amount range filter
+      const amt = parseFloat(p.amount ?? 0)
+      if (amountFilter.min !== '' && amountFilter.min != null && amt < parseFloat(amountFilter.min)) return false
+      if (amountFilter.max !== '' && amountFilter.max != null && amt > parseFloat(amountFilter.max)) return false
 
       const q = search.toLowerCase()
       const party = p.party_name || p.customer_name || p.supplier_name || ''
-      return !q || 
-        p.invoice_number?.toLowerCase().includes(q) || 
-        p.invoice_ref?.toLowerCase().includes(q) || 
-        party.toLowerCase().includes(q) || 
+      return !q ||
+        p.invoice_number?.toLowerCase().includes(q) ||
+        p.invoice_ref?.toLowerCase().includes(q) ||
+        party.toLowerCase().includes(q) ||
         p.reference?.toLowerCase().includes(q)
     })
 
@@ -440,15 +490,22 @@ export default function Payments({ embedded = false, headerTabs = null }) {
     e.preventDefault()
     setSubmitting(true)
     try {
+      const nowIso = new Date().toISOString()
       const res = await authFetch('/billing/payments', {
         method: 'POST',
-        body: JSON.stringify({ ...form, amount: parseFloat(form.amount) }),
+        body: JSON.stringify({
+          ...form,
+          amount: parseFloat(form.amount),
+          created_at: nowIso,
+          payment_date: nowIso,
+        }),
       })
       if (res.ok) {
         setAlert({ type: 'success', msg: 'Payment recorded successfully!' })
         setShowModal(false)
         setForm(defaultForm)
         load()
+        setInvoicesReloadKey(k => k + 1)
       } else {
         const err = await res.json().catch(() => ({}))
         setAlert({ type: 'danger', msg: err.detail || 'Failed to record payment.' })
@@ -465,11 +522,14 @@ export default function Payments({ embedded = false, headerTabs = null }) {
     e.preventDefault()
     setSubmitting(true)
     try {
+      const nowIso = new Date().toISOString()
       const res = await authFetch('/billing/expenses', {
         method: 'POST',
         body: JSON.stringify({
           ...expenseForm,
-          amount: parseFloat(expenseForm.amount)
+          amount: parseFloat(expenseForm.amount),
+          created_at: nowIso,
+          expense_date: nowIso,
         }),
       })
       if (res.ok) {
@@ -539,9 +599,23 @@ export default function Payments({ embedded = false, headerTabs = null }) {
                     <PlusIcon size={13} /> Log Expense
                   </button>
                 ) : (
-                  <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={() => { setForm(defaultForm); setShowModal(true) }}>
-                    <PlusIcon size={13} /> Record Payment
-                  </button>
+                  <>
+                    {/* Settle Dues — only shown when there are pending dues in the current filtered view */}
+                    {!isCashier && getFilteredPayments().some(p => p.type === 'pending_due') && (
+                      <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={() => {
+                        // Arrived via "Settle" on a contact (?customer=Name): carry
+                        // that customer into the modal so it's pre-selected + locked
+                        // instead of forcing a re-pick from the dropdown.
+                        setSettlePreset(customerFilter ? { customerName: customerFilter } : null)
+                        setShowSettleModal(true)
+                      }}>
+                        <CheckIcon size={13} /> Settle Dues
+                      </button>
+                    )}
+                    <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={() => { setForm(defaultForm); setShowModal(true) }}>
+                      <PlusIcon size={13} /> Record Payment
+                    </button>
+                  </>
                 )}
               </>
             }
@@ -750,69 +824,141 @@ export default function Payments({ embedded = false, headerTabs = null }) {
           </div>
         </div>
 
-        {/* Sub-filters (left of search) & Search/Filter */}
-        <div className="flex items-center justify-between page-subbar" style={{ display: 'flex', flexFlow: 'row wrap', gap: 12, alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              {(['Made', 'Expenses'].includes(activeTab)
-                ? ['Made', 'Expenses']
-                : ['All', 'Received', 'Pending Dues', 'Credit Notes']
-              ).map(t => (
-                headerTabs ? (
-                  <button key={t} className={`ws-tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
-                    {t}
-                  </button>
-                ) : (
-                  <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)} style={{ margin: 0, padding: '4px 10px', fontSize: '0.8rem' }}>
-                    {t}
-                  </button>
-                )
-              ))}
-            </div>
-            <div className="search-bar" style={{ width: 180, margin: 0, height: '34px', boxSizing: 'border-box', display: 'flex', alignItems: 'center' }}>
-              <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
-              <input 
-                value={search} 
-                onChange={e => setSearch(e.target.value)} 
-                placeholder={activeTab === 'Expenses' ? "Search expenses…" : "Search transactions…"} 
-                style={{ fontSize: '0.82rem' }}
-              />
-            </div>
-            <CustomSelect
-              value={modeFilter}
-              onChange={e => setModeFilter(e.target.value)}
-              style={{
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-md)',
-                color: 'var(--text-primary)',
-                padding: '0 12px',
-                fontSize: '0.82rem',
-                cursor: 'pointer',
-                width: '130px',
-                height: '34px',
-                boxSizing: 'border-box',
-                display: 'inline-flex',
-                alignItems: 'center'
-              }}
-            >
-              <option value="">All Modes</option>
-              <option value="UPI">UPI</option>
-              <option value="Cash">Cash</option>
-              <option value="Bank">Bank Transfer</option>
-              <option value="Cheque">Cheque</option>
-            </CustomSelect>
-            {isRefreshing && (
-              <span className="toolbar-refresh-spinner">
-                <span className="spin" /> Refreshing…
-              </span>
-            )}
+        {/* ── Unified filter bar: Search | Sub-tabs | FilterDropdown ── */}
+        <div className="page-subbar" style={{ display: 'flex', flexFlow: 'row wrap', gap: 8, alignItems: 'center' }}>
+          {/* Search — always first */}
+          <div className="search-bar" style={{ margin: 0, height: 34, boxSizing: 'border-box', display: 'flex', alignItems: 'center', minWidth: 180, flex: '0 0 auto' }}>
+            <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={activeTab === 'Expenses' ? 'Search expenses…' : 'Search transactions…'}
+              style={{ fontSize: '0.82rem' }}
+            />
           </div>
+          {/* Sub-tabs */}
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+            {(['Made', 'Expenses'].includes(activeTab)
+              ? ['Made', 'Expenses']
+              : ['All', 'Invoices', 'Received', 'Pending Dues', 'Credit Notes']
+            ).map(t => (
+              headerTabs ? (
+                <button key={t} className={`ws-tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
+                  {t}
+                </button>
+              ) : (
+                <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)} style={{ margin: 0, padding: '4px 10px', fontSize: '0.8rem' }}>
+                  {t}
+                </button>
+              )
+            ))}
+          </div>
+          {/* FilterDropdown — Customer, Date range, Mode, Amount range */}
+          <FilterDropdown
+            filters={[
+              {
+                key: 'customer',
+                label: 'Customer',
+                type: 'select',
+                value: customerNameFilter,
+                onChange: setCustomerNameFilter,
+                options: [
+                  { value: '', label: 'All Customers' },
+                  ...[...new Set(
+                    [...payments, ...pendingDues].map(p =>
+                      p.party_name || p.customer_name || p.supplier_name || p.customer || ''
+                    ).filter(Boolean)
+                  )].sort().map(name => ({ value: name, label: name })),
+                ],
+              },
+              {
+                key: 'date',
+                label: 'Date Range',
+                type: 'daterange',
+                value: dateFilter,
+                onChange: setDateFilter,
+              },
+              {
+                key: 'mode',
+                label: 'Payment Mode',
+                type: 'chips',
+                value: modeFilter,
+                onChange: setModeFilter,
+                options: [
+                  { value: '', label: 'All Modes' },
+                  { value: 'UPI', label: 'UPI' },
+                  { value: 'Cash', label: 'Cash' },
+                  { value: 'Bank', label: 'Bank Transfer' },
+                  { value: 'Cheque', label: 'Cheque' },
+                ],
+              },
+              {
+                key: 'amount',
+                label: 'Amount Range',
+                type: 'amountrange',
+                value: amountFilter,
+                onChange: setAmountFilter,
+              },
+            ]}
+          />
+          {/* SortDropdown — sort + group-by, reusable common component */}
+          <SortDropdown
+            fields={[
+              { value: 'date',       label: 'Date' },
+              { value: 'party_name', label: 'Customer' },
+              { value: 'amount',     label: 'Amount' },
+            ]}
+            sortConfig={sortConfig}
+            onSortChange={setSortConfig}
+            groupFields={[
+              { value: '',           label: 'None' },
+              { value: 'party_name', label: 'Customer' },
+              { value: 'date',       label: 'Date' },
+            ]}
+            groupBy={groupBy}
+            onGroupChange={setGroupBy}
+          />
+          {/* Customer filter chip — shown inline when ?customer= param is set */}
+          {customerFilter && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '4px 12px', borderRadius: 20, height: 34, boxSizing: 'border-box',
+              background: 'rgba(99,102,241,0.12)',
+              border: '1px solid rgba(99,102,241,0.45)',
+              color: '#6366f1', fontSize: '0.82rem', fontWeight: 600, flexShrink: 0,
+            }}>
+              {customerFilter}
+              <button
+                onClick={() => navigate('/parties/payments', { replace: true })}
+                title="Clear — show all transactions"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', padding: 0, fontSize: '1.1rem', lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                aria-label="Clear customer filter"
+              >×</button>
+            </span>
+          )}
+          {isRefreshing && (
+            <span className="toolbar-refresh-spinner">
+              <span className="spin" /> Refreshing…
+            </span>
+          )}
         </div>
 
         {/* Table & Content */}
         {loading ? (
           <div className="page-loader"><span className="spinner" /> Loading…</div>
+        ) : activeTab === 'Invoices' ? (
+          <div className="slide-up">
+            <InvoicesListView
+              authFetch={authFetch}
+              reloadKey={invoicesReloadKey}
+              onView={(no) => setViewingInvoiceNo(no)}
+              onRecordPayment={(inv) => {
+                setForm({ ...defaultForm, type: 'received', invoice_ref: inv.invoice_no, amount: String(inv.outstanding || '') })
+                setShowModal(true)
+              }}
+              onReturn={(inv) => setViewingInvoiceNo(inv.invoice_no)}
+            />
+          </div>
         ) : activeTab === 'Expenses' ? (
           <div className="slide-up">
             {/* Expense Cards */}
@@ -1156,45 +1302,15 @@ export default function Payments({ embedded = false, headerTabs = null }) {
           <>
             {(() => {
               const tableContent = (
-                <table className="data-table">
+                <table className="data-table" style={{ width: '100%', fontSize: '0.82rem' }}>
                   <thead><tr>
-                    <th className="sortable" onClick={() => handleSort('date')}>
-                      Date
-                      <span className={`sort-indicator ${sortConfig.key === 'date' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'date' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('invoice_number')}>
-                      Invoice #
-                      <span className={`sort-indicator ${sortConfig.key === 'invoice_number' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'invoice_number' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('party_name')}>
-                      Customer / Supplier
-                      <span className={`sort-indicator ${sortConfig.key === 'party_name' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'party_name' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('type')}>
-                      Type
-                      <span className={`sort-indicator ${sortConfig.key === 'type' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'type' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('amount')}>
-                      Amount
-                      <span className={`sort-indicator ${sortConfig.key === 'amount' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'amount' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('method')}>
-                      Method
-                      <span className={`sort-indicator ${sortConfig.key === 'method' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'method' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th>Reference</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Date</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Invoice #</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Customer / Supplier</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Type</th>
+                    <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Amount</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Method</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Reference</th>
                   </tr></thead>
                   <tbody>
                     {filtered.length === 0 ? (
@@ -1208,8 +1324,24 @@ export default function Payments({ embedded = false, headerTabs = null }) {
                     ) : filtered.map(p => (
                       <tr
                         key={p.id}
-                        style={{ cursor: (p.invoice_number || p.invoice_ref) ? 'pointer' : 'default' }}
-                        onClick={() => { if (p.invoice_number || p.invoice_ref) setViewingInvoiceNo(p.invoice_number || p.invoice_ref) }}
+                        style={{
+                          cursor: p.type === 'pending_due' || p.invoice_number || p.invoice_ref ? 'pointer' : 'default',
+                          background: p.type === 'pending_due' ? 'rgba(180,83,9,0.04)' : undefined,
+                        }}
+                        title={p.type === 'pending_due' ? 'Click to settle this due' : undefined}
+                        onClick={() => {
+                          if (p.type === 'pending_due' && !isCashier) {
+                            // p._customerId is stored at mapping time from d.customer_id
+                            setSettlePreset({
+                              customerId:   p._customerId ?? null,
+                              customerName: p.party_name || p.customer_name || '',
+                              outstanding:  parseFloat(p.amount ?? 0),
+                            })
+                            setShowSettleModal(true)
+                          } else if (p.invoice_number || p.invoice_ref) {
+                            setViewingInvoiceNo(p.invoice_number || p.invoice_ref)
+                          }
+                        }}
                         onContextMenu={e => {
                           e.preventDefault()
                           setCtxMenu({ x: e.clientX, y: e.clientY, items: [
@@ -1219,8 +1351,8 @@ export default function Payments({ embedded = false, headerTabs = null }) {
                           ]})
                         }}
                       >
-                        <td>{p.date ? formatISTDate(p.date) : '—'}</td>
-                        <td className="td-mono">
+                        <td style={{ whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '0.78rem' }}>{p.date ? formatISTDateTime(p.date) : '—'}</td>
+                        <td className="td-mono" style={{ whiteSpace: 'nowrap' }}>
                           {(p.invoice_number || p.invoice_ref) ? (
                             <span 
                               className="link" 
@@ -1230,16 +1362,16 @@ export default function Payments({ embedded = false, headerTabs = null }) {
                             </span>
                           ) : '—'}
                         </td>
-                        <td className="td-primary">{p.party_name || p.customer_name || p.supplier_name || '—'}</td>
-                        <td>
-                          <span className={`badge ${p.type === 'received' ? 'badge-success' : (p.type === 'expense' ? 'badge-warning' : p.type === 'pending_due' ? 'badge-danger' : p.type === 'credit_note' ? 'badge-info' : 'badge-accent')}`}>
-                            {p.type === 'received' ? '↓ Received' : (p.type === 'expense' ? '↑ Expense' : p.type === 'pending_due' ? '⚠ Pending' : p.type === 'credit_note' ? '⟲ Credit Note' : '↑ Made')}
+                        <td style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>{p.party_name || p.customer_name || p.supplier_name || '—'}</td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <span className={`badge ${p.type === 'received' || p.type === 'settlement' ? 'badge-success' : (p.type === 'expense' ? 'badge-warning' : p.type === 'pending_due' ? 'badge-danger' : p.type === 'credit_note' ? 'badge-info' : 'badge-accent')}`}>
+                            {p.type === 'received' ? '↓ Received' : p.type === 'settlement' ? '↓ Settlement' : (p.type === 'expense' ? '↑ Expense' : p.type === 'pending_due' ? '⚠ Pending' : p.type === 'credit_note' ? '⟲ Credit Note' : '↑ Made')}
                           </span>
                         </td>
-                        <td style={{ fontWeight: 600, color: p.type === 'received' ? 'var(--success)' : (p.type === 'pending_due' ? 'var(--warning)' : (p.type === 'credit_note' ? 'var(--info)' : 'var(--danger)')) }}>
-                          {(p.type === 'received' || p.type === 'pending_due') ? '+' : '−'}{fmt(p.amount)}
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600, color: (p.type === 'received' || p.type === 'settlement') ? 'var(--success)' : (p.type === 'pending_due' ? 'var(--warning)' : (p.type === 'credit_note' ? 'var(--info)' : 'var(--danger)')) }}>
+                          {(p.type === 'received' || p.type === 'settlement' || p.type === 'pending_due') ? '+' : '−'}{fmt(p.amount)}
                         </td>
-                        <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><CashIcon size={14} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} /> {p.method || '—'}</span></td>
+                        <td style={{ whiteSpace: 'nowrap' }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><CashIcon size={14} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} /> {p.method || '—'}</span></td>
                         <td className="td-mono" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{p.reference || '—'}</td>
                       </tr>
                     ))}
@@ -1284,6 +1416,18 @@ export default function Payments({ embedded = false, headerTabs = null }) {
           onSubmit={handleSubmit}
           submitting={submitting}
           onClose={() => setShowModal(false)}
+        />
+      )}
+
+      {/* Settle Dues Modal — presets when a Pending row was clicked */}
+      {showSettleModal && (
+        <SettleDuesModal
+          authFetch={authFetch}
+          presetCustomerId={settlePreset?.customerId ?? null}
+          presetCustomerName={settlePreset?.customerName ?? null}
+          presetOutstanding={settlePreset?.outstanding ?? null}
+          onClose={() => { setShowSettleModal(false); setSettlePreset(null) }}
+          onDone={() => { load(); setSettlePreset(null) }}
         />
       )}
 

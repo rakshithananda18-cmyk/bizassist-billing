@@ -53,23 +53,33 @@ def _canon_params(params: dict) -> str:
     return json.dumps(params or {}, sort_keys=True, separators=(",", ":"), default=str)
 
 
-def _signed_payload(business_id: int, action: str, params: dict, exp: int) -> bytes:
+def _signed_payload(business_id: int, action: str, params: dict, exp: int,
+                    state_fp: str = None) -> bytes:
+    # state_fp binds the token to the PREVIEW'S COMPUTED CONTENT (the exact items
+    # the user saw), not just the request params. If the underlying data shifts
+    # between preview and execute (an invoice gets paid, stock moves), the
+    # recomputed fingerprint differs and the token no longer verifies — execute
+    # refuses instead of acting on data the user never confirmed. Empty string
+    # for legacy callers that don't bind state (unchanged behaviour).
     params_hash = hashlib.sha256(_canon_params(params).encode("utf-8")).hexdigest()
-    return f"{business_id}|{action}|{params_hash}|{exp}".encode("utf-8")
+    return f"{business_id}|{action}|{params_hash}|{state_fp or ''}|{exp}".encode("utf-8")
 
 
 def mint_confirm_token(business_id: int, action: str, params: dict = None,
-                       ttl_secs: int = None) -> str:
-    """Called by /action/preview: bind this preview to (user, action, params)."""
+                       ttl_secs: int = None, state_fp: str = None) -> str:
+    """Called by /action/preview: bind this preview to (user, action, params)
+    and — when given — the preview's content fingerprint `state_fp`."""
     exp = int(time.time()) + (ttl_secs if ttl_secs is not None else CONFIRM_TTL_SECS)
-    sig = hmac.new(_secret(), _signed_payload(business_id, action, params, exp),
+    sig = hmac.new(_secret(), _signed_payload(business_id, action, params, exp, state_fp),
                    hashlib.sha256).hexdigest()
     return f"{exp}.{sig}"
 
 
 def verify_confirm_token(token: str, business_id: int, action: str,
-                         params: dict = None):
-    """Returns (ok: bool, reason: str). Constant-time compare on the HMAC."""
+                         params: dict = None, state_fp: str = None):
+    """Returns (ok: bool, reason: str). Constant-time compare on the HMAC.
+    `state_fp` must match the value bound at mint time; a differing fingerprint
+    (state changed since preview) yields reason='stale'."""
     if not token or "." not in (token or ""):
         return False, "missing"
     exp_part, _, sig = token.partition(".")
@@ -79,9 +89,13 @@ def verify_confirm_token(token: str, business_id: int, action: str,
         return False, "malformed"
     if exp < int(time.time()):
         return False, "expired"
-    expected = hmac.new(_secret(), _signed_payload(business_id, action, params, exp),
+    expected = hmac.new(_secret(), _signed_payload(business_id, action, params, exp, state_fp),
                         hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, sig):
+        # Fails for a forged/expired-params token OR because state_fp differs
+        # from mint time (the previewed data changed). Both resolve the same way:
+        # re-preview and confirm. Kept indistinguishable on purpose — the token
+        # carries only the HMAC, never the fingerprint, so it can't leak state.
         return False, "mismatch"
     return True, "ok"
 

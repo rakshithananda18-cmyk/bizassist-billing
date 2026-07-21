@@ -379,6 +379,11 @@ class FrontendInvoiceRequest(BaseModel):
 
 
 def _invoice_out_for_frontend(inv: Invoice) -> dict:
+    total = round(inv.total_amount or inv.amount or 0.0, 2)
+    paid = round(inv.paid_amount or 0.0, 2)
+    outstanding = round(max(total - paid, 0.0), 2)
+    itype = inv.invoice_type or "B2C"
+    is_note = itype in ("credit_note", "debit_note")
     return {
         "id": inv.id,
         "invoice_number": inv.invoice_id,
@@ -389,11 +394,20 @@ def _invoice_out_for_frontend(inv: Invoice) -> dict:
         "date": inv.invoice_date,
         "invoice_date": inv.invoice_date,
         "status": inv.status,
-        "total_amount": inv.total_amount,
-        "paid_amount": inv.paid_amount,
+        "total_amount": total,
+        "paid_amount": paid,
+        "outstanding": outstanding,
         "item_count": len(inv.line_items) if inv.line_items else 0,
         "notes": inv.notes,
-        "invoice_type": inv.invoice_type
+        "invoice_type": itype,
+        # Norms-aware action gates for the UI:
+        #  • record payment only while money is owed on a real sale invoice
+        #  • returns (credit note) only against a real sale invoice
+        #  • editing a finalized/paid invoice is not offered — corrections go via
+        #    credit/debit notes (and there is no invoice-edit endpoint by design)
+        "can_record_payment": (outstanding > 0) and not is_note,
+        "can_return": (not is_note),
+        "editable": (paid == 0) and not is_note,
     }
 
 

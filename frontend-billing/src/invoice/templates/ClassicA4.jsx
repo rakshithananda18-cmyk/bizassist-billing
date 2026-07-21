@@ -174,11 +174,15 @@ export default function ClassicA4({ payload }) {
           {payments.length > 0 ? (
             <div style={{ marginTop: 10 }}>
               <div style={S.label}>Payments</div>
-              {payments.map((p, i) => (
-                <div key={i} style={{ fontSize: 11.5 }}>
-                  {p.mode}: {inr(p.amount)}{p.reference ? <span style={{ color: MUTED }}> ({p.reference})</span> : ''}
-                </div>
-              ))}
+              {payments.map((p, i) => {
+                const when = [p.date, p.time].filter(Boolean).join(' ')
+                const meta = [p.reference, when].filter(Boolean).join(' · ')
+                return (
+                  <div key={i} style={{ fontSize: 11.5 }}>
+                    {p.mode}: {inr(p.amount)}{meta ? <span style={{ color: MUTED }}> ({meta})</span> : ''}
+                  </div>
+                )
+              })}
             </div>
           ) : null}
 

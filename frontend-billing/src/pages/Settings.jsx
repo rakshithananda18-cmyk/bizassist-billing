@@ -40,6 +40,7 @@ import { BrandLoader, Toggle, SettingRow, SectionHeader, overlayStyle, boxStyle,
 import NetworkDiscoverySection from '../components/settings/NetworkDiscoverySection'
 import PasscodeModal from '../components/settings/PasscodeModal'
 import HostingModeSection from '../components/settings/HostingModeSection'
+import OpsHealthPanel from '../components/settings/OpsHealthPanel'
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 const TABS = [
@@ -905,7 +906,7 @@ export default function Settings() {
               </SettingRow>
 
               <SectionHeader title="Stock Control" />
-              <SettingRow label="Prevent Negative Stock" description="Block a sale if the item stock would go below zero.">
+              <SettingRow label="Prevent Negative Stock" description="Block a sale at the counter if it would take a tracked item below zero. When off, overselling is allowed and stock simply goes negative.">
                 <Toggle id="neg_stock" checked={t.prevent_negative_stock} onChange={v => patch('transactions', 'prevent_negative_stock', v)} />
               </SettingRow>
 
@@ -1732,6 +1733,9 @@ export default function Settings() {
           {/* ═══════════════════════════ ADVANCED ═════════════════════════════ */}
           {activeTab === 'advanced' && !isCashier && (
             <>
+              <SectionHeader title="Data Health" />
+              <OpsHealthPanel authFetch={authFetch} />
+
               <SectionHeader title="Hosting & Sync Mode" />
               <HostingModeSection
                 // Effective mode is platform-aware: the web/browser is ALWAYS

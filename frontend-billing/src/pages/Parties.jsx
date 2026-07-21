@@ -5,16 +5,17 @@
 //              payment reminders/UPI payment links via WhatsApp.
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import { useAuth } from '../contexts/AuthContext'
 import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, HandshakeIcon, InventoryIcon, MessageIcon, PlusIcon, PrinterIcon, SearchIcon, SyncIcon, UserIcon, WarehouseIcon, ExpandIcon } from '../components/Icons'
 import PartyFormModal from '../components/parties/PartyFormModal'
-import PartyDetailModal from '../components/parties/PartyDetailModal'
 import SaleReturnModal from '../components/parties/SaleReturnModal'
 import { logger } from '../utils/logger'
 import { buildUpiUri, buildWhatsAppShareUrl, normalizePhoneIN } from '../utils/share'
 import { applyDelta, hasDelta } from '../sync/applyDelta'
-import CustomSelect from '../components/common/CustomSelect'
+import FilterDropdown from '../components/common/FilterDropdown'
+import SortDropdown from '../components/common/SortDropdown'
 import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
 import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import ContextMenu from '../components/common/ContextMenu'
@@ -31,6 +32,7 @@ const defaultForm = {
 
 export default function Parties({ embedded = false, headerTabs = null }) {
   const { authFetch, user, settings } = useAuth()
+  const navigate = useNavigate()
 
   const settingsRef = useRef(settings)
   useEffect(() => {
@@ -50,11 +52,13 @@ export default function Parties({ embedded = false, headerTabs = null }) {
   const [submitting, setSubmitting] = useState(false)
   const [alert, setAlert]           = useState(null)
 
-  const [selectedParty, setSelectedParty] = useState(null) // { type: 'customer'|'vendor', name: '', id: '' }
-  const [partyHistory, setPartyHistory]   = useState([])
+  // selectedParty / partyHistory removed: "View Invoices" now navigates to the
+  // Invoices tab (/parties/invoices?customer=name) instead of opening a modal.
 
   // Returns
   const [showReturnModal, setShowReturnModal] = useState(false)
+  // settleParty removed — "Settle" now navigates to /parties/payments?customer=name.
+  const isCashier = (user?.role || '').toLowerCase() === 'cashier'
   const [returningInvoice, setReturningInvoice] = useState(null)
   const [returnLines, setReturnLines] = useState([])
   const [returnNote, setReturnNote] = useState('')
@@ -272,16 +276,18 @@ export default function Parties({ embedded = false, headerTabs = null }) {
     }
   }
 
+  // Navigate to the Invoices tab, pre-filtered to this customer's invoices.
+  // The Invoices tab (InvoicesPage) reads ?customer= from the URL and shows a
+  // clearable chip, so the user can remove the filter to see all invoices.
   const handleViewInvoices = (customer) => {
-    const custInvs = invoices.filter(i => i.customer_id === customer.id)
-    setSelectedParty({ type: 'customer', name: customer.name, id: customer.id })
-    setPartyHistory(custInvs)
+    navigate(`/parties/invoices?customer=${encodeURIComponent(customer.name)}`)
   }
 
   const handleViewPurchases = (vendor) => {
     const vendPurchs = purchases.filter(p => p.supplier_id === vendor.id)
-    setSelectedParty({ type: 'vendor', name: vendor.name, id: vendor.id })
-    setPartyHistory(vendPurchs)
+    // Vendor purchases: still use local state (no dedicated Purchases tab yet).
+    // TODO: add a Purchases tab to the workspace and navigate similarly.
+    window.alert(`Purchases view for ${vendor.name} — coming soon in the workspace.`)
   }
 
   const handleWhatsAppReminder = (party) => {
@@ -472,10 +478,10 @@ export default function Parties({ embedded = false, headerTabs = null }) {
           </div>
         )}
 
-        {/* Tabs + Search & Filters (tabs live in the top bar when embedded) */}
-        <div className="flex items-center justify-between page-subbar" style={{ flexWrap: 'wrap', gap: 12 }}>
+        {/* ── Unified filter bar: Search | FilterDropdown | SortDropdown ── */}
+        <div className="page-subbar" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {!headerTabs ? (
-            <div className="tabs" style={{ margin: 0 }}>
+            <div className="tabs" style={{ margin: 0, flexShrink: 0 }}>
               <button className={`tab${activeTab === 'Customers' ? ' active' : ''}`} onClick={() => setActiveTab('Customers')}>
                 Customers <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({customers.length})</span>
               </button>
@@ -486,124 +492,87 @@ export default function Parties({ embedded = false, headerTabs = null }) {
                 Casual / Other Invoices <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({invoices.filter(i => !i.customer_id).length})</span>
               </button>
             </div>
-          ) : <div />}
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <div className="search-bar" style={{ width: 180 }}>
-              <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${activeTab.toLowerCase()}…`} />
-            </div>
-            {isRefreshing && (
-              <span className="toolbar-refresh-spinner">
-                <span className="spin" /> Refreshing…
-              </span>
-            )}
-            {activeTab !== 'Other Invoices' && (
-              <CustomSelect
-                value={balanceFilter}
-                onChange={e => setBalanceFilter(e.target.value)}
-                style={{
-                  background: 'var(--bg-2)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-md)',
-                  color: 'var(--text-primary)',
-                  padding: '6px 12px',
-                  fontSize: '0.82rem',
-                  cursor: 'pointer'
-                }}
-              >
-                <option value="">All Balances</option>
-                <option value="due">Outstanding Due</option>
-                <option value="nil">Nil / Zero Balance</option>
-              </CustomSelect>
-            )}
+          ) : null}
+
+          {/* Search — always first */}
+          <div className="search-bar" style={{ margin: 0, height: 34, boxSizing: 'border-box', display: 'flex', alignItems: 'center', flex: '1 1 200px', maxWidth: 320 }}>
+            <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${activeTab.toLowerCase()}…`} style={{ fontSize: '0.82rem' }} />
           </div>
+
+          {activeTab !== 'Other Invoices' && (
+            <FilterDropdown
+              filters={[{
+                key: 'balance',
+                label: 'Balance',
+                type: 'chips',
+                value: balanceFilter,
+                onChange: setBalanceFilter,
+                options: [
+                  { value: '', label: 'All' },
+                  { value: 'due', label: 'Outstanding Due' },
+                  { value: 'nil', label: 'Nil / Zero' },
+                ],
+              }]}
+            />
+          )}
+
+          <SortDropdown
+            fields={activeTab === 'Other Invoices' ? [
+              { value: 'invoice_number', label: 'Invoice #' },
+              { value: 'date',           label: 'Date' },
+              { value: 'total_amount',   label: 'Amount' },
+            ] : [
+              { value: 'name',                label: 'Name' },
+              { value: 'outstanding_balance', label: 'Outstanding' },
+              { value: 'last_date',           label: 'Latest Sale Date' },
+            ]}
+            sortConfig={sortConfig}
+            onSortChange={setSortConfig}
+          />
+
+          {isRefreshing && (
+            <span className="toolbar-refresh-spinner">
+              <span className="spin" /> Refreshing…
+            </span>
+          )}
         </div>
 
         {/* Table */}
         {(() => {
           const tableContent = (
-            <table className="data-table">
+            <table className="data-table" style={{ width: '100%', fontSize: '0.82rem' }}>
               <thead>
                 {activeTab === 'Customers' && (
                   <tr>
-                    <th className="sortable" onClick={() => handleSort('name')}>
-                      Name
-                      <span className={`sort-indicator ${sortConfig.key === 'name' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'name' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th>Phone</th>
-                    <th>Email</th>
-                    <th>GSTIN</th>
-                    <th className="sortable" onClick={() => handleSort('outstanding_balance')}>
-                      Outstanding
-                      <span className={`sort-indicator ${sortConfig.key === 'outstanding_balance' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'outstanding_balance' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('last_date')}>
-                      Latest Sale Date
-                      <span className={`sort-indicator ${sortConfig.key === 'last_date' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'last_date' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th>Actions</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Name</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Phone</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Email</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>GSTIN</th>
+                    <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Outstanding</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Latest Sale Date</th>
+                    <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Actions</th>
                   </tr>
                 )}
                 {activeTab === 'Vendors' && (
                   <tr>
-                    <th className="sortable" onClick={() => handleSort('name')}>
-                      Name
-                      <span className={`sort-indicator ${sortConfig.key === 'name' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'name' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th>Phone</th>
-                    <th>GSTIN</th>
-                    <th className="sortable" onClick={() => handleSort('outstanding_balance')}>
-                      Outstanding
-                      <span className={`sort-indicator ${sortConfig.key === 'outstanding_balance' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'outstanding_balance' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('last_date')}>
-                      Last Invoice Date
-                      <span className={`sort-indicator ${sortConfig.key === 'last_date' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'last_date' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th>Actions</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Name</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Phone</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>GSTIN</th>
+                    <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Outstanding</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Last Invoice Date</th>
+                    <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Actions</th>
                   </tr>
                 )}
                 {activeTab === 'Other Invoices' && (
                   <tr>
-                    <th className="sortable" onClick={() => handleSort('invoice_number')}>
-                      Invoice #
-                      <span className={`sort-indicator ${sortConfig.key === 'invoice_number' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'invoice_number' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('date')}>
-                      Date
-                      <span className={`sort-indicator ${sortConfig.key === 'date' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'date' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th>Customer</th>
-                    <th>Items</th>
-                    <th className="sortable" onClick={() => handleSort('total_amount')}>
-                      Amount
-                      <span className={`sort-indicator ${sortConfig.key === 'total_amount' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'total_amount' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th className="sortable" onClick={() => handleSort('status')}>
-                      Status
-                      <span className={`sort-indicator ${sortConfig.key === 'status' && sortConfig.direction ? 'active' : ''}`}>
-                        {sortConfig.key === 'status' && sortConfig.direction ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '⇅'}
-                      </span>
-                    </th>
-                    <th>Actions</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Invoice #</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Date</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Customer</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Items</th>
+                    <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Amount</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Status</th>
+                    <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Actions</th>
                   </tr>
                 )}
               </thead>
@@ -663,7 +632,7 @@ export default function Parties({ embedded = false, headerTabs = null }) {
                       onContextMenu={e => {
                         e.preventDefault()
                         setCtxMenu({ x: e.clientX, y: e.clientY, items: [
-                          { label: 'View Invoices', icon: <BillsIcon size={13} />, action: () => handleViewInvoices(p) },
+                          { label: 'View Invoices', icon: <BillsIcon size={13} />, action: () => navigate(`/parties/invoices?customer=${encodeURIComponent(p.name)}`) },
                           { label: 'Send Payment Reminder', icon: <MessageIcon size={13} />, action: () => handleWhatsAppReminder(p) },
                           { divider: true },
                           { label: 'Copy Phone', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(p.phone || '') },
@@ -678,18 +647,27 @@ export default function Parties({ embedded = false, headerTabs = null }) {
                       <td>{p.phone || '—'}</td>
                       {activeTab === 'Customers' && <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{p.email || '—'}</td>}
                       <td className="td-mono" style={{ fontSize: '0.78rem' }}>{p.gstin || '—'}</td>
-                      <td>{outstanding > 0 ? <span className="badge badge-danger">{fmt(outstanding)}</span> : <span className="badge badge-success">Nil</span>}</td>
-                      <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{outstanding > 0 ? <span className="badge badge-danger">{fmt(outstanding)}</span> : <span className="badge badge-success">Nil</span>}</td>
+                      <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
                         {activeTab === 'Customers'
                           ? (p.last_invoice_date ? new Date(p.last_invoice_date).toLocaleDateString('en-IN') : '—')
                           : (p.last_purchase_date ? new Date(p.last_purchase_date).toLocaleDateString('en-IN') : '—')
                         }
                       </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         {activeTab === 'Customers' ? (
                           <>
                             <button className="btn btn-secondary btn-sm" onClick={() => handleViewInvoices(p)}><BillsIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> View Invoices</button>
+                            {outstanding > 0 && !isCashier && (
+                              <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => navigate(`/parties/payments?customer=${encodeURIComponent(p.name)}`)}
+                                title="View this customer's transactions in the Payments tab"
+                              >
+                                <CheckIcon size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> Settle
+                              </button>
+                            )}
                             {outstanding > 0 && (
                               <button className="btn btn-sm" style={{ backgroundColor: '#166534', color: '#ffffff', border: 'none' }} onClick={() => handleWhatsAppReminder(p)} title="Send payment reminder on WhatsApp"><MessageIcon size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> Send Reminder</button>
                             )}
@@ -735,18 +713,9 @@ export default function Parties({ embedded = false, headerTabs = null }) {
         <PartyFormModal form={form} setField={setField} handleSubmit={handleSubmit} submitting={submitting} setShowModal={setShowModal} />
       )}
 
-      {/* Selected Party Transaction Lookup Modal */}
-      {/* Selected Party Transaction Lookup Modal — extracted to components/parties/PartyDetailModal */}
-      {selectedParty && (
-        <PartyDetailModal
-          selectedParty={selectedParty} setSelectedParty={setSelectedParty}
-          partyHistory={partyHistory}
-          handleOpenReturn={handleOpenReturn}
-          handlePrintInvoice={handlePrintInvoice}
-          handleWhatsAppShareInvoice={handleWhatsAppShareInvoice}
-          setCtxMenu={setCtxMenu}
-        />
-      )}
+      {/* PartyDetailModal removed — "View Invoices" now navigates to the Invoices
+          tab (/parties/invoices?customer=name) which shows a filterable table with
+          full invoice actions (print, share, return, record payment). */}
       {/* Sale Return (Credit Note) Modal — extracted to components/parties/SaleReturnModal */}
       {showReturnModal && returningInvoice && (
         <SaleReturnModal
@@ -757,6 +726,10 @@ export default function Parties({ embedded = false, headerTabs = null }) {
           setShowReturnModal={setShowReturnModal} form={form}
         />
       )}
+      {/* SettleDuesModal removed — "Settle" now navigates to the Transactions tab
+          (/parties/payments?customer=name) pre-filtered to that customer.
+          The Transactions tab's workspace top bar has a Settle Dues button that handles
+          the FIFO settlement flow from there. */}
       <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />
       <UnsavedChangesModal blocker={blocker} message={dirtyMessage} />
     </PageShell>

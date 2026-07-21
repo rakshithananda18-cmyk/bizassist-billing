@@ -43,6 +43,11 @@ chromadb>=0.4.0
 
 # ── Scheduler ──────────────────────────────────────────────────
 apscheduler>=3.10.0
+tzdata>=2024.1                 # zoneinfo tz database for slim images: services.dates
+                               # biz_now()/biz_today_str() (IST) + APScheduler
+                               # timezone="Asia/Kolkata". python:3.x-slim ships no
+                               # system /usr/share/zoneinfo, so this pip pkg is
+                               # required for named-zone lookups on HF Docker.
 
 # ── Billing / invoicing ────────────────────────────────────────
 qrcode[pil]>=7.4.0             # QR code on thermal bills (requires Pillow, already listed)

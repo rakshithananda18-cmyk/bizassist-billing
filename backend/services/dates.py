@@ -11,8 +11,22 @@ in a dozen places (H3). This is the single source of truth: every caller uses
 Returns a naive `datetime` (most callers do date arithmetic like `(today - due)
 .days` or `today <= exp <= soon`). Use `parse_date_only()` when you want a `date`.
 """
-from datetime import datetime, date, timezone
+import os
+from datetime import datetime, date, timezone, timedelta
 from typing import Optional
+
+_IST_OFFSET = timedelta(hours=5, minutes=30)
+
+# Business wall-clock timezone. Timestamps are STORED naive-UTC, but the
+# *business calendar date* stamped on invoices/receipts/journal entries must be
+# the merchant's local date — otherwise a sale made at 01:00 IST lands on the
+# previous day when the server runs in UTC. Env-tunable; defaults to IST (the
+# scheduler and print layer already assume Asia/Kolkata).
+try:
+    from zoneinfo import ZoneInfo
+    _BIZ_TZ = ZoneInfo(os.getenv("BIZ_TIMEZONE", "Asia/Kolkata"))
+except Exception:                                    # pragma: no cover
+    _BIZ_TZ = None
 
 # Order matters for separator-ambiguous inputs: ISO first, then day-first
 # (the dominant Indian format), then US month-first, then slashed-ISO.
@@ -50,6 +64,28 @@ def parse_date_only(value) -> Optional[date]:
     """Like parse_date() but returns a `date` (or None)."""
     dt = parse_date(value)
     return dt.date() if dt else None
+
+
+def biz_now() -> datetime:
+    """Aware 'now' in the business timezone (Asia/Kolkata by default).
+
+    Use this — NOT `datetime.now()`/`datetime.today()` — whenever you need the
+    merchant's wall-clock, so the result is correct no matter what timezone the
+    server process runs in.
+    """
+    if _BIZ_TZ is not None:
+        return datetime.now(_BIZ_TZ)
+    # Fallback: explicit +05:30 so we never accidentally emit server-local time.
+    return datetime.now(timezone(_IST_OFFSET))
+
+
+def biz_today_str() -> str:
+    """Today's business calendar date as 'YYYY-MM-DD' in the business timezone.
+
+    The single source of truth for the default date stamped on invoices,
+    payment receipts, and journal entries. Server-timezone-independent.
+    """
+    return biz_now().strftime("%Y-%m-%d")
 
 
 def utc_now() -> datetime:

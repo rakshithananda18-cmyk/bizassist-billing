@@ -154,11 +154,27 @@ def list_businesses(db: Session) -> list:
             db.query(func.max(SyncLog.synced_at))
             .filter(SyncLog.business_id == b.id).scalar()
         )
-        queue_depth = (
+        pending_q = (
             db.query(SyncQueue)
             .filter(SyncQueue.business_id == b.id, SyncQueue.synced_at.is_(None))
-            .count()
         )
+        queue_depth = pending_q.count()
+        # Lightweight fleet attention signal — CHEAP counts only (errored sync
+        # rows + unreviewed financial conflicts). The expensive hash-chain
+        # integrity walk stays on the per-business detail view.
+        sync_errors = pending_q.filter(SyncQueue.error.isnot(None)).count()
+        try:
+            from database.models import ConflictLog
+            unreviewed_conflicts = (
+                db.query(func.count(ConflictLog.id))
+                .filter(ConflictLog.business_id == b.id,
+                        ConflictLog.resolution == "review_needed",
+                        ConflictLog.resolved_at.is_(None))
+                .scalar()
+            ) or 0
+        except Exception:
+            unreviewed_conflicts = 0
+        needs_attention = (sync_errors > 0) or (unreviewed_conflicts > 0)
         online_24h = bool(last_sync and (now - last_sync) < timedelta(hours=24))
         result.append({
             "id":              b.id,
@@ -173,6 +189,9 @@ def list_businesses(db: Session) -> list:
             "hosting_mode":    s.get("general", {}).get("hosting_mode", "local"),
             "last_sync_at":    last_sync.isoformat() if last_sync else None,
             "sync_queue_depth": queue_depth,
+            "sync_errors":     sync_errors,
+            "unreviewed_conflicts": unreviewed_conflicts,
+            "needs_attention": needs_attention,
             "online_last_24h": online_24h,
             # Subscription
             "plan":            sub.get("plan", "free"),

@@ -30,6 +30,38 @@ import {
   ZapIcon, InventoryIcon, AlertIcon, SyncIcon, PackageIcon,
   EditIcon, PrinterIcon
 } from '../Icons'
+import ContextMenu from '../common/ContextMenu'
+
+// ── Intake grid columns (order MUST match the <tbody> cell order) ────────────
+// Drives the header + the POS-style fold-collapse. Collapse ≠ hide: it's a
+// quick per-device fold (right-click a header → Collapse; click the folded
+// strip to expand), persisted in localStorage. Essential columns (#, Product,
+// +Qty) are non-collapsible.
+const INTAKE_COLS = [
+  { key: 'sno',     label: '#',         width: 32,  collapsible: false },
+  { key: 'product', label: 'Product',   width: 148, collapsible: false, align: 'left' },
+  { key: 'type',    label: 'Type',      short: 'TYPE',    width: 56 },
+  { key: 'current', label: 'Current',   short: 'CURRENT', width: 58,  align: 'right' },
+  { key: 'qty',     label: '+ Qty *',   width: 64,  align: 'right', collapsible: false },
+  { key: 'free',    label: 'Free',      short: 'FREE',    width: 52,  align: 'right', title: 'Free units received (added to stock, no cost)' },
+  { key: 'cost',    label: 'Cost ₹',    short: 'COST',    width: 84,  align: 'right', title: 'Purchase rate per unit (before tax)' },
+  { key: 'sell',    label: 'Sell ₹',    short: 'SELL',    width: 84,  align: 'right', title: 'Selling price per unit' },
+  { key: 'mrp',     label: 'MRP ₹',     short: 'MRP',     width: 96,  align: 'right' },
+  { key: 'disc',    label: 'Disc%',     short: 'DISC%',   width: 52,  align: 'right', title: 'Discount off MRP' },
+  { key: 'discamt', label: 'Disc Amt',  short: 'DISC ₹',  width: 70,  align: 'right', title: 'MRP − Sell, per unit' },
+  { key: 'tax',     label: 'Tax%',      short: 'TAX%',    width: 48,  align: 'right', title: 'GST rate on this item' },
+  { key: 'taxamt',  label: 'Tax Amt',   short: 'TAX ₹',   width: 76,  align: 'right', title: 'GST on the amount' },
+  { key: 'amount',  label: 'Amount ₹',  short: 'AMOUNT',  width: 82,  align: 'right', title: 'Qty × Cost (before tax)' },
+  { key: 'netamt',  label: 'Net Amt ₹', short: 'NET AMT', width: 98,  align: 'right', title: 'Amount + Tax (payable to supplier)' },
+  { key: 'roi',     label: 'ROI%',      short: 'ROI%',    width: 54,  align: 'right', title: 'Return on cost = (Sell−Cost)/Cost' },
+  { key: 'profit',  label: 'Profit%',   short: 'PROFIT',  width: 58,  align: 'right', title: 'Margin on selling = (Sell−Cost)/Sell' },
+  { key: 'netcost', label: 'NetCost',   short: 'NETCOST', width: 82,  align: 'right', title: 'Landed cost incl. GST' },
+  { key: 'batch',   label: 'Batch / Lot', short: 'BATCH', width: 92 },
+  { key: 'expiry',  label: 'Expiry',    short: 'EXPIRY',  width: 96 },
+  { key: 'reason',  label: 'Reason',    short: 'REASON',  width: 120 },
+  { key: 'status',  label: 'Status',    short: 'STATUS',  width: 70 },
+]
+const INTAKE_COLLAPSED_W = 26   // folded strip width (px)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -154,20 +186,6 @@ function StatusChip({ status }) {
   return <span style={{ color: '#ef4444', fontSize: '0.71rem' }} title={status}>{String(status).slice(0, 38)}</span>
 }
 
-function ColHead({ children, style = {}, title }) {
-  return (
-    <th title={title} style={{
-      padding: '7px 8px', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase',
-      letterSpacing: '0.06em', color: 'var(--text-secondary)', textAlign: 'left',
-      whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)',
-      background: 'var(--bg-2, rgba(0,0,0,.03))',
-      ...style,
-    }}>
-      {children}
-    </th>
-  )
-}
-
 function TCell({ children, style = {} }) {
   return (
     <td style={{ padding: '5px 6px', verticalAlign: 'top', ...style }}>
@@ -229,6 +247,48 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
   const [uploading, setUploading] = useState(false)
   const [uploadErr, setUploadErr] = useState(null)
   const [scanErr, setScanErr] = useState(null)
+
+  // ── Fold-collapsible columns (POS-style paper-fold strips) ─────────────────
+  // Right-click a header → Collapse; click the folded strip (or the menu) to
+  // expand. Persisted per device so the intake sheet reopens as it was left.
+  const [collapsedCols, setCollapsedCols] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('stock_intake_collapsed_columns')) || {} } catch { return {} }
+  })
+  const [headerCtxMenu, setHeaderCtxMenu] = useState(null)
+  const setColumnCollapsed = (key, val) => {
+    const c = INTAKE_COLS.find(x => x.key === key)
+    if (!c || c.collapsible === false) return
+    setCollapsedCols(prev => {
+      const next = { ...prev }
+      if (val) next[key] = true; else delete next[key]
+      try { localStorage.setItem('stock_intake_collapsed_columns', JSON.stringify(next)) } catch { /* ignore */ }
+      return next
+    })
+  }
+  const openHeaderMenu = (key, e) => {
+    e.preventDefault()
+    const c = INTAKE_COLS.find(x => x.key === key)
+    const items = []
+    if (c && c.collapsible !== false) {
+      items.push(collapsedCols[key]
+        ? { label: `Expand "${c.label}"`, action: () => setColumnCollapsed(key, false) }
+        : { label: `Collapse "${c.label}"`, action: () => setColumnCollapsed(key, true) })
+    }
+    if (Object.keys(collapsedCols).length > 0) {
+      items.push({ label: 'Expand all columns', action: () => {
+        setCollapsedCols({})
+        try { localStorage.removeItem('stock_intake_collapsed_columns') } catch { /* ignore */ }
+      } })
+    }
+    if (items.length) setHeaderCtxMenu({ x: e.clientX, y: e.clientY, items })
+  }
+  // Fold the body cells of collapsed columns to a narrow strip via nth-child
+  // (header th are rendered folded inline; body cells stay untouched in JSX).
+  const collapsedBodyCss = INTAKE_COLS.map((c, i) => collapsedCols[c.key]
+    ? `.intake-grid td:nth-child(${i + 1}){width:${INTAKE_COLLAPSED_W}px!important;min-width:${INTAKE_COLLAPSED_W}px!important;max-width:${INTAKE_COLLAPSED_W}px!important;padding:0!important;overflow:hidden;background:var(--bg-3);}
+.intake-grid td:nth-child(${i + 1})>*{visibility:hidden!important;}`
+    : '').filter(Boolean).join('\n')
+  const intakeTableMinWidth = INTAKE_COLS.reduce((s, c) => s + (collapsedCols[c.key] ? INTAKE_COLLAPSED_W : c.width), 0) + 100
 
   const scanRef  = useRef(null)
   const fileRef  = useRef(null)
@@ -814,31 +874,49 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
             .intake-grid tbody tr:hover .row-edit-btn { display: inline-flex; }
             .intake-grid .row-edit-btn.is-active { display: inline-flex; }
            `}</style>
-          <table className="intake-grid" style={{ fontSize: '0.78rem', minWidth: 1760 }}>
+          {/* Folded-column body strips (POS-style). Header th are folded inline. */}
+          {collapsedBodyCss && <style>{collapsedBodyCss}</style>}
+          <table className="intake-grid" style={{ fontSize: '0.78rem', minWidth: intakeTableMinWidth }}>
             <thead>
               <tr>
-                <ColHead style={{ width: 32 }}>#</ColHead>
-                <ColHead style={{ width: 148 }}>Product</ColHead>
-                <ColHead style={{ width: 56 }}>Type</ColHead>
-                <ColHead style={{ width: 58, textAlign: 'right' }}>Current</ColHead>
-                <ColHead style={{ width: 64, textAlign: 'right' }}>+ Qty *</ColHead>
-                <ColHead style={{ width: 52, textAlign: 'right' }} title="Free units received (added to stock, no cost)">Free</ColHead>
-                <ColHead style={{ width: 84, textAlign: 'right' }} title="Purchase rate per unit (before tax)">Cost ₹</ColHead>
-                <ColHead style={{ width: 84, textAlign: 'right' }} title="Selling price per unit">Sell ₹</ColHead>
-                <ColHead style={{ width: 96, textAlign: 'right' }}>MRP ₹</ColHead>
-                <ColHead style={{ width: 52, textAlign: 'right' }} title="Discount off MRP">Disc%</ColHead>
-                <ColHead style={{ width: 70, textAlign: 'right' }} title="MRP − Sell, per unit">Disc Amt</ColHead>
-                <ColHead style={{ width: 48, textAlign: 'right' }} title="GST rate on this item">Tax%</ColHead>
-                <ColHead style={{ width: 76, textAlign: 'right' }} title="GST on the amount">Tax Amt</ColHead>
-                <ColHead style={{ width: 82, textAlign: 'right' }} title="Qty × Cost (before tax)">Amount ₹</ColHead>
-                <ColHead style={{ width: 98, textAlign: 'right' }} title="Amount + Tax (payable to supplier)">Net Amt ₹</ColHead>
-                <ColHead style={{ width: 54, textAlign: 'right' }} title="Return on cost = (Sell−Cost)/Cost">ROI%</ColHead>
-                <ColHead style={{ width: 58, textAlign: 'right' }} title="Margin on selling = (Sell−Cost)/Sell">Profit%</ColHead>
-                <ColHead style={{ width: 82, textAlign: 'right' }} title="Landed cost incl. GST">NetCost</ColHead>
-                <ColHead style={{ width: 92 }}>Batch / Lot</ColHead>
-                <ColHead style={{ width: 96 }}>Expiry</ColHead>
-                <ColHead style={{ width: 120 }}>Reason</ColHead>
-                <ColHead style={{ width: 70 }}>Status</ColHead>
+                {INTAKE_COLS.map((c) => {
+                  const collapsed = !!collapsedCols[c.key]
+                  const canCollapse = c.collapsible !== false
+                  return (
+                    <th
+                      key={c.key}
+                      title={collapsed
+                        ? `Show "${c.label}"`
+                        : (canCollapse ? `${c.title ? c.title + ' · ' : ''}Right-click to collapse` : (c.title || undefined))}
+                      onClick={collapsed ? () => setColumnCollapsed(c.key, false) : undefined}
+                      onContextMenu={canCollapse ? (e) => openHeaderMenu(c.key, e) : undefined}
+                      style={{
+                        padding: collapsed ? '6px 0' : '7px 8px',
+                        fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase',
+                        letterSpacing: '0.06em', color: collapsed ? 'var(--accent)' : 'var(--text-secondary)',
+                        textAlign: collapsed ? 'center' : (c.align || 'left'),
+                        verticalAlign: collapsed ? 'middle' : undefined,
+                        whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)',
+                        background: collapsed ? 'var(--bg-3)' : 'var(--bg-2, rgba(0,0,0,.03))',
+                        cursor: canCollapse ? 'pointer' : 'default', userSelect: 'none',
+                        ...(collapsed
+                          ? { width: INTAKE_COLLAPSED_W, minWidth: INTAKE_COLLAPSED_W, maxWidth: INTAKE_COLLAPSED_W }
+                          : { width: c.width }),
+                      }}
+                    >
+                      {collapsed ? (
+                        // Vertical column name (POS-style folded strip).
+                        <span style={{
+                          display: 'inline-block', writingMode: 'vertical-rl', transform: 'rotate(180deg)',
+                          fontSize: '9px', fontWeight: 800, letterSpacing: '0.08em', lineHeight: '24px',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {c.short || c.label}
+                        </span>
+                      ) : c.label}
+                    </th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody>
@@ -1125,6 +1203,10 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
           </>
         )}
       </div>
+
+      {/* Right-click header → collapse/expand columns (folded strips persist) */}
+      <ContextMenu menu={headerCtxMenu} onClose={() => setHeaderCtxMenu(null)} />
+
 
       {/* ── Footer: summary + save ───────────────────────────────────────── */}
       <div style={{
