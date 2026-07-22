@@ -1210,7 +1210,6 @@ export default function CheckoutModal({
                     <span>Payable</span><span>{fmt(pay)}</span>
                   </div>
                 </div>
-              </div>
 
               {/* Amount Received Input */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1448,6 +1447,7 @@ export default function CheckoutModal({
 
           </div>
         </div>
+      </div>
 
     </>
   )
