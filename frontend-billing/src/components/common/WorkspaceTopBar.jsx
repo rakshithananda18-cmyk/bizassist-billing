@@ -11,13 +11,13 @@
 //   </WorkspaceTopBar>
 // ============================================================================
 import { useNavigate } from 'react-router-dom'
-import { CloseIcon } from '../Icons'
+import { CloseIcon, SettingsIcon } from '../Icons'
 
 export const WsDivider = () => (
   <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 4px' }} />
 )
 
-export default function WorkspaceTopBar({ children, actions = null, windowControls = true }) {
+export default function WorkspaceTopBar({ children, actions = null, settingsTab = null, windowControls = true }) {
   const navigate = useNavigate()
   return (
     <>
@@ -58,6 +58,24 @@ export default function WorkspaceTopBar({ children, actions = null, windowContro
         <div style={{ flex: 1 }} />
 
         {actions}
+
+        {settingsTab && (
+          <button
+            title={`Configure ${settingsTab.charAt(0).toUpperCase() + settingsTab.slice(1)} Settings`}
+            onClick={() => navigate(`/settings?tab=${settingsTab}`)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)',
+              background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)',
+              transition: 'background .12s, color .12s',
+              marginLeft: 4,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
+          >
+            <SettingsIcon size={14} />
+          </button>
+        )}
 
         {windowControls && (
           <>

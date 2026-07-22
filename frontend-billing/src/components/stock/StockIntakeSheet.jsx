@@ -235,7 +235,17 @@ function TextCell({ value, onChange, disabled, placeholder = '' }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function StockIntakeSheet({ products = [], onSaved, onExit, prefillProduct, rows = [], setRows, distributor, setDistributor, editingRowKey, setEditingRowKey, adjustments, isSidebarCollapsed, setIsSidebarCollapsed, onPrint }) {
-  const { authFetch } = useAuth()
+  const auth = useAuth()
+  const authFetch = auth?.authFetch
+  const settings = auth?.settings
+
+  const showMrpCol = settings?.inventory?.mrp_enabled !== false
+  const showWholesaleIntake = settings?.inventory?.wholesale_price !== false
+
+  const intakeCols = React.useMemo(() => INTAKE_COLS.filter(c => {
+    if (c.key === 'mrp' && !showMrpCol) return false
+    return true
+  }), [showMrpCol])
 
   const [globalRef, setGlobalRef] = useState('')   // bill reference, fills all empty reasons
   const [saving, setSaving] = useState(false)
@@ -256,7 +266,7 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
   })
   const [headerCtxMenu, setHeaderCtxMenu] = useState(null)
   const setColumnCollapsed = (key, val) => {
-    const c = INTAKE_COLS.find(x => x.key === key)
+    const c = intakeCols.find(x => x.key === key)
     if (!c || c.collapsible === false) return
     setCollapsedCols(prev => {
       const next = { ...prev }
@@ -267,7 +277,7 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
   }
   const openHeaderMenu = (key, e) => {
     e.preventDefault()
-    const c = INTAKE_COLS.find(x => x.key === key)
+    const c = intakeCols.find(x => x.key === key)
     const items = []
     if (c && c.collapsible !== false) {
       items.push(collapsedCols[key]
@@ -284,11 +294,11 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
   }
   // Fold the body cells of collapsed columns to a narrow strip via nth-child
   // (header th are rendered folded inline; body cells stay untouched in JSX).
-  const collapsedBodyCss = INTAKE_COLS.map((c, i) => collapsedCols[c.key]
+  const collapsedBodyCss = intakeCols.map((c, i) => collapsedCols[c.key]
     ? `.intake-grid td:nth-child(${i + 1}){width:${INTAKE_COLLAPSED_W}px!important;min-width:${INTAKE_COLLAPSED_W}px!important;max-width:${INTAKE_COLLAPSED_W}px!important;padding:0!important;overflow:hidden;background:var(--bg-3);}
 .intake-grid td:nth-child(${i + 1})>*{visibility:hidden!important;}`
     : '').filter(Boolean).join('\n')
-  const intakeTableMinWidth = INTAKE_COLS.reduce((s, c) => s + (collapsedCols[c.key] ? INTAKE_COLLAPSED_W : c.width), 0) + 100
+  const intakeTableMinWidth = intakeCols.reduce((s, c) => s + (collapsedCols[c.key] ? INTAKE_COLLAPSED_W : c.width), 0) + 100
 
   const scanRef  = useRef(null)
   const fileRef  = useRef(null)
@@ -879,7 +889,7 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
           <table className="intake-grid" style={{ fontSize: '0.78rem', minWidth: intakeTableMinWidth }}>
             <thead>
               <tr>
-                {INTAKE_COLS.map((c) => {
+                {intakeCols.map((c) => {
                   const collapsed = !!collapsedCols[c.key]
                   const canCollapse = c.collapsible !== false
                   return (

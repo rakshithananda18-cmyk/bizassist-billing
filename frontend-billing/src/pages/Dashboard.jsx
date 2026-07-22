@@ -23,6 +23,7 @@ import {
 } from '../components/Icons'
 import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import ContextMenu from '../components/common/ContextMenu'
+import { useDocLabels } from '../hooks/useDocLabels'
 
 function StatCard({ icon, label, value, sub, variant = 'accent', badge, badgeType }) {
   return (
@@ -40,6 +41,8 @@ function StatCard({ icon, label, value, sub, variant = 'accent', badge, badgeTyp
 
 export default function Dashboard() {
   const { authFetch, profile, settings } = useAuth()
+  const privacyMode = settings?.general?.privacy_mode === true
+  const label = useDocLabels()
 
   const settingsRef = useRef(settings)
   useEffect(() => {
@@ -101,7 +104,7 @@ export default function Dashboard() {
         icon:         <CounterIcon size={14} />,
         bg:           'var(--accent-dim)',
         color:        'var(--text-primary)',
-        title:        `Sales Invoice ${inv.invoice_number || `#${inv.id}`}`,
+        title:        `${label('sale')} ${inv.invoice_number || `#${inv.id}`}`,
         desc:         `Billed to ${inv.customer_name || 'Walk-in Customer'}`,
         amount:       inv.total_amount,
         amountPrefix: '+',
@@ -170,7 +173,7 @@ export default function Dashboard() {
           <>
             {/* KPI Summary Strip 1 — every card is CLICKABLE and jumps to its data */}
             {(() => {
-              const kpiCard = (label, value, sub, color, to, valueStyle = {}) => (
+              const kpiCard = (label, value, sub, color, to, valueStyle = {}, sensitive = false) => (
                 <div
                   className="vsummary-card"
                   style={{ borderLeftColor: color, cursor: to ? 'pointer' : 'default' }}
@@ -183,23 +186,30 @@ export default function Dashboard() {
                   onMouseLeave={e => { if (to) e.currentTarget.style.transform = 'none' }}
                 >
                   <div className="vsummary-label">{label}</div>
-                  <div className="vsummary-value" style={valueStyle}>{value}</div>
+                  <div
+                    className="vsummary-value"
+                    style={{
+                      ...valueStyle,
+                      ...(sensitive && privacyMode ? { filter: 'blur(8px)', userSelect: 'none', transition: 'filter 0.2s' } : {})
+                    }}
+                    title={sensitive && privacyMode ? 'Privacy Mode is ON — go to Settings > General to disable' : undefined}
+                  >{value}</div>
                   <div className="vsummary-sub">{sub}</div>
                 </div>
               )
               return (
                 <>
                   <div className="vsummary-strip mb-6">
-                    {kpiCard('Total Revenue', fmt(s.total_revenue), `${s.invoice_count || 0} invoices — view all`, 'var(--accent)', '/payments')}
-                    {kpiCard('Pending', s.pending_count ?? 0, s.pending_amount ? `${fmt(s.pending_amount)} outstanding` : 'invoices awaiting', '#c97c22', '/payments')}
-                    {kpiCard('Overdue', fmt(s.overdue_amount), `${s.overdue_count ?? 0} invoices at risk`, '#c02a2a', '/payments', { color: '#c02a2a' })}
+                    {kpiCard('Total Revenue', fmt(s.total_revenue), `${s.invoice_count || 0} invoices — view all`, 'var(--accent)', '/payments', {}, true)}
+                    {kpiCard('Pending', s.pending_count ?? 0, s.pending_amount ? `${fmt(s.pending_amount)} outstanding` : 'invoices awaiting', '#c97c22', '/payments', {}, true)}
+                    {kpiCard('Overdue', fmt(s.overdue_amount), `${s.overdue_count ?? 0} invoices at risk`, '#c02a2a', '/payments', { color: '#c02a2a' }, true)}
                     {kpiCard('Inventory', s.inventory_count ?? 0, 'products tracked — open', '#3a9a5c', '/stock')}
                   </div>
                   <div className="vsummary-strip mb-6">
                     {kpiCard('Low Stock Items', s.low_stock_count ?? 0, 'need restocking — open', '#c97c22', '/stock')}
-                    {kpiCard('Purchases (30d)', fmt(s.purchases_30d), 'total purchase value — open', 'var(--accent)', '/purchases')}
+                    {kpiCard('Purchases (30d)', fmt(s.purchases_30d), 'total purchase value — open', 'var(--accent)', '/purchases', {}, true)}
                     {kpiCard('Active Customers', s.active_customers ?? 0, 'in last 30 days — open', '#3a9a5c', '/parties')}
-                    {kpiCard('Gross Margin', s.gross_margin ? `${s.gross_margin}%` : '—', 'estimated margin — reports', 'var(--accent)', '/reports')}
+                    {kpiCard('Gross Margin', s.gross_margin ? `${s.gross_margin}%` : '—', 'estimated margin — reports', 'var(--accent)', '/reports', {}, true)}
                   </div>
                 </>
               )

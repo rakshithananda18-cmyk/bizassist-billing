@@ -84,6 +84,61 @@ FINANCIAL_ENTITIES = frozenset({
 })
 
 
+def _reconcile_invoice_paid_state(db, inv) -> None:
+    """Re-derive Invoice.paid_amount + status from the append-only invoice_payments
+    ledger — the source of truth.
+
+    Invoice.paid_amount/status are a PROJECTION of the payment rows. A stale
+    device must never be able to push paid_amount=0 / status=Pending and "un-pay"
+    an invoice that was settled elsewhere (the "shows Pending but already paid"
+    bug). So on every invoice/payment sync the server recomputes these from its
+    OWN payment rows and ignores whatever the client sent.
+
+    Only overrides when the invoice actually has ledger rows, so legacy paid
+    invoices with no invoice_payments (older data) are left untouched. Bumps
+    updated_at only on a real change, so the correction propagates on the next
+    pull without creating a sync loop.
+    """
+    if inv is None or getattr(inv, "id", None) is None:
+        return
+    from core.models import InvoicePayment
+    total_paid, n = (
+        db.query(func.coalesce(func.sum(InvoicePayment.amount_paid), 0.0),
+                 func.count(InvoicePayment.id))
+        .filter(InvoicePayment.business_id == inv.business_id,
+                InvoicePayment.invoice_id == inv.id)
+        .one()
+    )
+    if not n:
+        return  # no ledger rows → don't touch (legacy / payment not yet synced)
+    total_paid = round(total_paid or 0.0, 2)
+    grand = round((inv.total_amount or getattr(inv, "amount", 0.0) or 0.0), 2)
+    if grand > 0 and total_paid >= grand:
+        new_status = "Paid"
+    elif total_paid > 0:
+        new_status = "Partial"
+    else:
+        new_status = "Pending"
+    if round(inv.paid_amount or 0.0, 2) != total_paid or inv.status != new_status:
+        inv.paid_amount = total_paid
+        inv.status = new_status
+        if hasattr(inv, "updated_at"):
+            inv.updated_at = utc_now()
+
+
+def _reconcile_parent_invoice_of_payment(db, pay) -> None:
+    """When an invoice_payment syncs, re-derive its parent invoice's paid state."""
+    inv_id = getattr(pay, "invoice_id", None)
+    if not inv_id:
+        return
+    inv = (
+        db.query(Invoice)
+        .filter(Invoice.id == inv_id, Invoice.business_id == pay.business_id)
+        .first()
+    )
+    _reconcile_invoice_paid_state(db, inv)
+
+
 # ---------------------------------------------------------------------------
 # PYDANTIC SCHEMAS
 # ---------------------------------------------------------------------------
@@ -465,6 +520,14 @@ def push_changes(
                     if not existing:
                         db.add(target_obj)
                     db.flush()
+                    # Payment state is server-authoritative: re-derive it from the
+                    # payment ledger so a stale client can't un-pay a settled invoice.
+                    if change.entity == "invoices":
+                        _reconcile_invoice_paid_state(db, target_obj)
+                        db.flush()
+                    elif change.entity == "invoice_payments":
+                        _reconcile_parent_invoice_of_payment(db, target_obj)
+                        db.flush()
                 processed_count += 1
                 ent_name = entity_map.get(change.entity)
                 if ent_name:
@@ -490,6 +553,13 @@ def push_changes(
                                                 val = _parse_dt(val)
                                             setattr(dup, key, val)
                                     db.flush()
+                                    # Re-derive server-authoritative payment state.
+                                    if change.entity == "invoices":
+                                        _reconcile_invoice_paid_state(db, dup)
+                                        db.flush()
+                                    elif change.entity == "invoice_payments":
+                                        _reconcile_parent_invoice_of_payment(db, dup)
+                                        db.flush()
                                 deduped = "updated"
                             else:
                                 deduped = "kept-newer-cloud"

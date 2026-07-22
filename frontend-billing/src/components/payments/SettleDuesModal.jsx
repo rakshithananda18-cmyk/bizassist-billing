@@ -6,11 +6,13 @@
 // ============================================================================
 import React, { useEffect, useState } from 'react'
 import CustomSelect from '../common/CustomSelect'
-import { CheckIcon, CloseIcon } from '../Icons'
+import { CheckIcon, CloseIcon, PrinterIcon } from '../Icons'
+import { useDocLabels } from '../../hooks/useDocLabels'
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 
 export default function SettleDuesModal({ authFetch, onClose, onDone, presetCustomerId = null, presetCustomerName = null, presetOutstanding = null, presetCreditBalance = 0 }) {
+  const label = useDocLabels()
   const [customers, setCustomers] = useState(
     presetCustomerId ? [{ id: presetCustomerId, name: presetCustomerName || 'Customer' }] : []
   )
@@ -72,6 +74,55 @@ export default function SettleDuesModal({ authFetch, onClose, onDone, presetCust
     } finally {
       setSubmitting(false)
     }
+  }
+
+  // Print a payment receipt for the settlement (a "settlement bill" spanning the
+  // cleared invoices). Rendered into a hidden iframe so no popup blocker fires.
+  const printReceipt = () => {
+    if (!result) return
+    const who = presetCustomerName || selected?.name || selected?.customer_name || 'Customer'
+    const when = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+    const esc = (s) => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+    const rows = result.allocations.map(a => `
+      <tr><td>${esc(a.invoice_no)}</td>
+      <td style="text-align:right">${fmt(a.applied)}</td>
+      <td style="text-align:right">${fmt(a.remaining_after)}</td>
+      <td>${esc(a.status)}</td></tr>`).join('')
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${label('payment_in')}</title>
+      <style>
+        *{box-sizing:border-box} body{font-family:system-ui,-apple-system,Arial,sans-serif;padding:26px;color:#111;max-width:520px;margin:0 auto}
+        h2{margin:0} .muted{color:#666;font-size:13px;margin-top:2px}
+        hr{border:none;border-top:1px solid #ddd;margin:14px 0}
+        .big{font-size:22px;font-weight:800;margin:10px 0}
+        table{width:100%;border-collapse:collapse;font-size:14px}
+        th,td{padding:6px 8px;border-bottom:1px solid #eee;text-align:left}
+        th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#666;border-bottom:1px solid #ccc}
+        .row{display:flex;justify-content:space-between;font-size:14px;margin:4px 0}
+        .foot{color:#666;font-size:12px;margin-top:20px;text-align:center}
+      </style></head><body>
+      <h2>${label('payment_in')}</h2>
+      <div class="muted">${esc(who)} · ${esc(when)} · ${esc(method)}</div>
+      <div class="big">Received: ${fmt(result.amount ?? result.total_applied)}</div>
+      <hr>
+      <table><thead><tr>
+        <th>Invoice</th><th style="text-align:right">Applied</th>
+        <th style="text-align:right">Remaining</th><th>Status</th>
+      </tr></thead><tbody>${rows}</tbody></table>
+      <hr>
+      <div class="row"><span>Applied to invoices</span><strong>${fmt(result.total_applied)}</strong></div>
+      ${result.advance > 0 ? `<div class="row"><span>Advance kept for next bill</span><strong>${fmt(result.advance)}</strong></div>` : ''}
+      <div class="foot">Cleared oldest bills first (FIFO). Thank you!</div>
+      </body></html>`
+    const iframe = document.createElement('iframe')
+    Object.assign(iframe.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0' })
+    document.body.appendChild(iframe)
+    const doc = iframe.contentWindow.document
+    doc.open(); doc.write(html); doc.close()
+    iframe.contentWindow.focus()
+    setTimeout(() => {
+      try { iframe.contentWindow.print() } catch { /* ignore */ }
+      setTimeout(() => { try { document.body.removeChild(iframe) } catch { /* ignore */ } }, 800)
+    }, 250)
   }
 
   return (
@@ -178,6 +229,9 @@ export default function SettleDuesModal({ authFetch, onClose, onDone, presetCust
               </div>
             </div>
             <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={printReceipt}>
+                <PrinterIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Print Receipt
+              </button>
               <button className="btn btn-primary" onClick={onClose}>Done</button>
             </div>
           </>

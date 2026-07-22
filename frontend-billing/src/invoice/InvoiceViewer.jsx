@@ -14,6 +14,7 @@ import { shareInvoice, buildWhatsAppLink, buildPublicInvoiceLink } from './share
 import PageLoader from '../components/PageLoader'
 import InvoiceAccountPanel from '../components/invoice/InvoiceAccountPanel'
 import { PhoneIcon, DownloadIcon } from '../components/Icons'
+import { useDocLabels } from '../hooks/useDocLabels'
 const LAST_USED_KEY = (bizId) => `invoice.template.${bizId || 'default'}`
 
 /** WhatsApp glyph (no dedicated icon in Icons.jsx). */
@@ -71,6 +72,7 @@ class TemplateBoundary extends Component {
 }
 
 export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedded = false, onBack = null }) {
+  const label = useDocLabels()
   // Embedded mode (e.g. inside the Payments page): the invoice number comes in
   // as a prop and Back returns to the host page instead of navigating away.
   // ALL toolbar functionality (templates, duplicate, credit note, set default,
@@ -254,7 +256,7 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
         {/* Secondary actions */}
         <div style={{ display: 'flex', gap: 4 }}>
           <button className="btn btn-ghost btn-sm" onClick={onDuplicate}>Duplicate</button>
-          <button className="btn btn-ghost btn-sm" onClick={onCreditNote}>Credit Note</button>
+          <button className="btn btn-ghost btn-sm" onClick={onCreditNote}>{label('sale_return')}</button>
           <button className="btn btn-ghost btn-sm" onClick={onSetDefault} disabled={savingDefault}>
             {savingDefault ? 'Saving…' : 'Set as default'}
           </button>

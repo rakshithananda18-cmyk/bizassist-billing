@@ -20,6 +20,7 @@ import PageTabs from '../components/common/PageTabs'
 import PageLoader from '../components/PageLoader'
 import { useAuth } from '../contexts/AuthContext'
 import { InventoryIcon, BillsIcon } from '../components/Icons'
+import { useDocLabels } from '../hooks/useDocLabels'
 
 const Stock     = lazy(() => import('./Stock'))
 const Purchases = lazy(() => import('./Purchases'))
@@ -36,11 +37,17 @@ export default function Godown() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const label = useDocLabels()
+
+  const TABS_LOCAL = [
+    { id: 'inventory', label: 'Stock & Items',  icon: <InventoryIcon size={16} /> },
+    { id: 'purchase',  label: label('purchase') + 's', icon: <BillsIcon size={16} /> },
+  ]
 
   // Purchase bills were owner/supply-adder territory before the merge — keep
   // that: cashiers get the stock tab only (backend still enforces writes).
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
-  const TABS = isCashier ? ALL_TABS.filter(t => t.id !== 'purchase') : ALL_TABS
+  const TABS = isCashier ? TABS_LOCAL.filter(t => t.id !== 'purchase') : TABS_LOCAL
 
   // Path param first; legacy ?tab= second; remembered tab third.
   const legacy = searchParams.get('tab')

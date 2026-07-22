@@ -5,8 +5,10 @@
 // ============================================================================
 import React from 'react'
 import { EyeIcon, PrinterIcon, Share2Icon, CashIcon, ReturnArrowIcon } from '../Icons'
+import { useDocLabels } from '../../hooks/useDocLabels'
 
 export default function InvoiceActions({ invoice, actions, customer = null }) {
+  const label = useDocLabels()
   const sz = 14
   const cls = `btn btn-secondary btn-sm`
   const btnStyle = { padding: '0 8px', height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }
@@ -28,7 +30,7 @@ export default function InvoiceActions({ invoice, actions, customer = null }) {
         </button>
       )}
       {invoice.can_return && (
-        <button className={cls} style={btnStyle} onClick={() => actions.openReturn(invoice)} title="Raise return / credit note">
+        <button className={cls} style={btnStyle} onClick={() => actions.openReturn(invoice)} title={`Raise return / ${label('sale_return')}`}>
           <ReturnArrowIcon size={sz} />
         </button>
       )}

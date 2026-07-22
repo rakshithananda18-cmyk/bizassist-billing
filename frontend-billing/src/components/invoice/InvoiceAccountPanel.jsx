@@ -8,10 +8,12 @@
 // as a full-width strip. Returns null when there's nothing to show.
 // ============================================================================
 import React, { useEffect, useState } from 'react'
+import { useDocLabels } from '../../hooks/useDocLabels'
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 
 export default function InvoiceAccountPanel({ authFetch, invoiceId }) {
+  const label = useDocLabels()
   const [acct, setAcct] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -72,7 +74,7 @@ export default function InvoiceAccountPanel({ authFetch, invoiceId }) {
 
       {hasReturns && (
         <div>
-          <div className="ivp-label">Returns (Credit Notes)</div>
+          <div className="ivp-label">Returns ({label('sale_return')}s)</div>
           <div className="ivp-card" style={{ gap: 0, padding: 0, overflow: 'hidden' }}>
             {acct.returns.map((r, i) => (
               <div key={r.id} style={{

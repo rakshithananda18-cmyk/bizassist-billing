@@ -311,9 +311,23 @@ def build_print_payload(db, *, business_id: int, invoice_no: str, user_id=None) 
                       business_type=business_type, success=True,
                       expected="inter-state place_of_supply", found=inv.place_of_supply)
 
-    # ── Totals (all persisted by the command — nothing recomputed) ───────────
+    # ── Payments (append-only ledger; split-tender rows) ─────────────────────
+    pay_rows = (
+        db.query(InvoicePayment)
+        .filter(InvoicePayment.business_id == business_id,
+                InvoicePayment.invoice_id == inv.id)
+        .order_by(InvoicePayment.id.asc())
+        .all()
+    )
+
+    # ── Totals ───────────────────────────────────────────────────────────────
+    # `amount_paid` is DERIVED from the payment ledger (the source of truth), not
+    # trusted from inv.paid_amount — a stale synced copy can leave that column
+    # behind and show a fully-paid invoice as "Balance Due" (the "Pending but
+    # already paid" bug). Fall back to the column only when there are NO ledger
+    # rows (legacy data / mark_paid without a receipt).
     grand = _r2(inv.total_amount if inv.total_amount is not None else inv.amount)
-    paid = _r2(inv.paid_amount)
+    paid = _r2(sum(p.amount_paid or 0.0 for p in pay_rows)) if pay_rows else _r2(inv.paid_amount)
     totals = {
         "subtotal": _r2(inv.subtotal),                    # Σ taxable (command-defined)
         "total_discount": _r2(inv.discount_total),
@@ -328,22 +342,19 @@ def build_print_payload(db, *, business_id: int, invoice_no: str, user_id=None) 
         "amount_in_words": amount_in_words(grand),
     }
 
-    # ── Payments (split-tender rows; legacy single-mode fallback) ────────────
-    pay_rows = (
-        db.query(InvoicePayment)
-        .filter(InvoicePayment.business_id == business_id,
-                InvoicePayment.invoice_id == inv.id)
-        .order_by(InvoicePayment.id.asc())
-        .all()
-    )
+    # Normalize a stored date to a bare YYYY-MM-DD (older receipts saved a full
+    # ISO timestamp, which rendered as "2026-07-21T18:08:07.095Z" on the bill).
+    def _date_only(d):
+        return str(d).split("T")[0].split(" ")[0] if d else None
+
     # `time` is the receipt's clock time in the business timezone (IST) — shown
     # next to the payment so a settlement reads e.g. "Settlement (FIFO) · 2026-07-22 1:21 AM".
     payments = [{"mode": p.payment_mode or "Cash", "amount": _r2(p.amount_paid),
-                 "reference": p.note, "date": p.payment_date,
+                 "reference": p.note, "date": _date_only(p.payment_date),
                  "time": _local_time_str(p.created_at)} for p in pay_rows]
     if not payments and paid > 0:
         payments = [{"mode": inv.payment_mode or "Cash", "amount": paid,
-                     "reference": None, "date": inv.payment_date,
+                     "reference": None, "date": _date_only(inv.payment_date),
                      "time": _local_time_str(inv.created_at)}]
 
     # ── Visibility (resolved once, honored by every renderer) ────────────────
@@ -428,6 +439,7 @@ def build_print_payload(db, *, business_id: int, invoice_no: str, user_id=None) 
             "header_layout": _header_layout(pr),
             "print_item_sno": pr.get("print_item_sno", True),
             "print_item_hsn": pr.get("print_item_hsn", True),
+            "print_item_discount": pr.get("print_item_discount", True),
             "print_item_tax": pr.get("print_item_tax", True),
             "print_tax_breakdown": pr.get("print_tax_breakdown", True),
             "print_amount_in_words": pr.get("print_amount_in_words", True),

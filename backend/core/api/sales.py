@@ -393,6 +393,8 @@ def _invoice_out_for_frontend(inv: Invoice) -> dict:
         "customer_id": inv.customer_id,
         "date": inv.invoice_date,
         "invoice_date": inv.invoice_date,
+        # Full timestamp (naive UTC) → UI renders date + time in IST.
+        "created_at": inv.created_at.isoformat() if inv.created_at else None,
         "status": inv.status,
         "total_amount": total,
         "paid_amount": paid,

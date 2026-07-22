@@ -6,16 +6,18 @@
 import React from 'react'
 import CustomSelect from '../common/CustomSelect'
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, SyncIcon } from '../Icons'
+import { useDocLabels } from '../../hooks/useDocLabels'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
 
 export default function PurchaseReturnModal({ setShowReturnModal, returnStep, setReturnStep, returnSupplier, setReturnSupplier, returnBillId, setReturnBillId, bills, debitNoteNoInput, setDebitNoteNoInput, returnLines, setReturnLines, returnNote, setReturnNote, handleSelectBillNext, confirming, handleSaveReturn }) {
+  const label = useDocLabels()
   return (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowReturnModal(false)}>
           <div className="modal" style={{ maxWidth: returnStep === 'enter_items' ? '850px' : '480px', width: '95%' }}>
             <div className="modal-header">
-              <span className="modal-title"><SyncIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Record Purchase Return (Debit Note)</span>
+              <span className="modal-title"><SyncIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Record Purchase Return ({label('purchase_return')})</span>
               <button className="btn btn-ghost btn-icon" onClick={() => setShowReturnModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
             </div>
 
@@ -67,7 +69,7 @@ export default function PurchaseReturnModal({ setShowReturnModal, returnStep, se
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label" style={{ fontWeight: 600 }}>Debit Note Number (Optional)</label>
+                    <label className="form-label" style={{ fontWeight: 600 }}>{label('purchase_return')} Number (Optional)</label>
                     <input
                       type="text"
                       className="form-input"

@@ -7,6 +7,7 @@ import { buildUpiUri, qrImageUrl } from '../../utils/share'
 import { logger } from '../../utils/logger'
 import CustomSelect from '../../components/common/CustomSelect'
 import { useBillingProfile } from '../../hooks/useBillingProfile'
+import { useAuth } from '../../contexts/AuthContext'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -37,6 +38,8 @@ export default function CheckoutModal({
   focusTarget,
   funcKeys
 }) {
+  const auth = useAuth()
+  const settings = auth?.settings
   const customerRef = useRef(null)
   const godownRef = useRef(null)
   const invoiceDateRef = useRef(null)
@@ -1148,43 +1151,46 @@ export default function CheckoutModal({
               </div>
 
               {/* Single Discount (post-tax — reduces the payable, NOT GST) + automatic round-off */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Discount (₹)</label>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '1rem', color: 'var(--text-muted)', fontWeight: 700 }}>₹</span>
-                  <input
-                    ref={discountRef}
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={form.cash_discount}
-                    onChange={e => setField('cash_discount', e.target.value)}
-                    placeholder="0.00"
-                    title="Discount on the payable. Does not change GST. Round-off is automatic."
-                    onKeyDown={e => {
-                      if (matchesKey(e, funcKeys?.flowBack || 'Shift+Enter')) {
-                        e.preventDefault()
-                        notesRef.current?.focus()
-                      } else if (matchesKey(e, funcKeys?.flowForward || 'Enter')) {
-                        e.preventDefault()
-                        amountReceivedRef.current?.focus()
-                        amountReceivedRef.current?.select()
-                      }
-                    }}
-                    style={{
-                      flex: 1,
-                      background: 'var(--bg-3)',
-                      border: '1px solid var(--border)',
-                      color: 'var(--text-primary)',
-                      height: 38,
-                      padding: '4px 12px',
-                      borderRadius: 'var(--radius-md)',
-                      outline: 'none',
-                      fontSize: '1rem',
-                      fontWeight: 600
-                    }}
-                  />
+              {settings?.transactions?.discount_enabled !== false && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Discount (₹)</label>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '1rem', color: 'var(--text-muted)', fontWeight: 700 }}>₹</span>
+                    <input
+                      ref={discountRef}
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={form.cash_discount}
+                      onChange={e => setField('cash_discount', e.target.value)}
+                      placeholder="0.00"
+                      title="Discount on the payable. Does not change GST. Round-off is automatic."
+                      onKeyDown={e => {
+                        if (matchesKey(e, funcKeys?.flowBack || 'Shift+Enter')) {
+                          e.preventDefault()
+                          notesRef.current?.focus()
+                        } else if (matchesKey(e, funcKeys?.flowForward || 'Enter')) {
+                          e.preventDefault()
+                          amountReceivedRef.current?.focus()
+                          amountReceivedRef.current?.select()
+                        }
+                      }}
+                      style={{
+                        flex: 1,
+                        background: 'var(--bg-3)',
+                        border: '1px solid var(--border)',
+                        color: 'var(--text-primary)',
+                        height: 38,
+                        padding: '4px 12px',
+                        borderRadius: 'var(--radius-md)',
+                        outline: 'none',
+                        fontSize: '1rem',
+                        fontWeight: 600
+                      }}
+                    />
+                  </div>
                 </div>
+              )}
                 {/* Auto round-off + discount → payable, computed live */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2, fontSize: '0.85rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
@@ -1442,8 +1448,6 @@ export default function CheckoutModal({
 
           </div>
         </div>
-      </div>
-
 
     </>
   )

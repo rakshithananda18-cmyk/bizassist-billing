@@ -428,6 +428,7 @@ export default function Purchases({ embedded = false, headerTabs = null }) {
             workspace tabs · divider · view tabs · actions · window controls. */}
         {headerTabs && (
           <WorkspaceTopBar
+            settingsTab="transactions"
             actions={
               <>
                 <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={openReturnModal}>

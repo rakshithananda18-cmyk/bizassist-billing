@@ -80,7 +80,12 @@ function MLabel({ children }) {
 // ─────────────────────────── main component ─────────────────────────────────
 
 export default function BulkAddProductsModal({ open, onClose, onSaved, existingProducts = [] }) {
-  const { authFetch } = useAuth()
+  const auth = useAuth()
+  const authFetch = auth?.authFetch
+  const settings = auth?.settings
+  const inv = settings?.inventory || {}
+  const showWholesale = inv.wholesale_price !== false
+  const showMrp = inv.mrp_enabled !== false
 
   // mode: 'add' | 'stock'
   const [mode, setMode] = useState('add')
@@ -376,13 +381,13 @@ export default function BulkAddProductsModal({ open, onClose, onSaved, existingP
             {/* Header row */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '2.4fr 1.3fr 0.85fr 0.85fr 0.7fr 0.55fr 100px 24px 22px',
+              gridTemplateColumns: showMrp ? '2.4fr 1.3fr 0.85fr 0.85fr 0.7fr 0.55fr 100px 24px 22px' : '2.4fr 1.3fr 0.85fr 0.7fr 0.55fr 100px 24px 22px',
               gap: 8, padding: '0 4px', flexShrink: 0,
             }}>
               {hdr('Product name *')}
               {hdr('Barcode')}
               {hdr('Retail ₹', 'right')}
-              {hdr('MRP ₹', 'right')}
+              {showMrp && hdr('MRP ₹', 'right')}
               {hdr('Stock')}
               {hdr('Unit')}
               {hdr('Status')}
@@ -406,11 +411,11 @@ export default function BulkAddProductsModal({ open, onClose, onSaved, existingP
                     }}
                   >
                     {/* Main row */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '2.4fr 1.3fr 0.85fr 0.85fr 0.7fr 0.55fr 100px 24px 22px', gap: 8, alignItems: 'center' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: showMrp ? '2.4fr 1.3fr 0.85fr 0.85fr 0.7fr 0.55fr 100px 24px 22px' : '2.4fr 1.3fr 0.85fr 0.7fr 0.55fr 100px 24px 22px', gap: 8, alignItems: 'center' }}>
                       {addInput(r, i, 'name', { placeholder: 'e.g. Sunflower Oil 15L' })}
                       {addInput(r, i, 'barcode', { placeholder: 'scan / type', mono: true })}
                       {addInput(r, i, 'selling_price', { num: true })}
-                      {addInput(r, i, 'mrp', { num: true })}
+                      {showMrp && addInput(r, i, 'mrp', { num: true })}
                       {addInput(r, i, 'opening_stock', { num: true, placeholder: '0' })}
                       {addInput(r, i, 'unit', { placeholder: 'pcs' })}
 
@@ -466,7 +471,7 @@ export default function BulkAddProductsModal({ open, onClose, onSaved, existingP
                         </div>
                         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
                           {[
-                            ['Wholesale ₹', 'wholesale_price'],
+                            ...(showWholesale ? [['Wholesale ₹', 'wholesale_price']] : []),
                             ['Distributor ₹', 'distributor_price'],
                             ['Cost ₹', 'cost_price'],
                             ['Min Stock', 'min_stock'],

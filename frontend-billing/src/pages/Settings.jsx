@@ -11,7 +11,7 @@ import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { formatIST } from '../utils/format'
 import { useLock } from '../contexts/LockContext'
 import { API_BASE, IS_LOCAL_APP, updateApiBase } from '../config'
-import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon, MonitorIcon, SyncIcon, ZapIcon, WifiOffIcon, RobotIcon, DevicesIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon, MonitorIcon, SyncIcon, ZapIcon, WifiOffIcon, RobotIcon, DevicesIcon, TruckIcon, PackageIcon, OrderIcon, CartIcon, CashIcon, ArrowDownIcon, ArrowUpIcon, TaxIcon, EditIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import { SkylineLoader } from '../components/Logo'
 import { getHeaderLayout, isHeaderLineEnabled, moveItem } from '../utils/printLayout'
@@ -48,7 +48,6 @@ const TABS = [
   { id: 'transactions', label: 'Transactions',          icon: <BillsIcon size={16} /> },
   { id: 'inventory',    label: 'Items & Stock',         icon: <InventoryIcon size={16} /> },
   { id: 'print',        label: 'Print & PDF',           icon: <PrinterIcon size={16} /> },
-  { id: 'labels',       label: 'Custom Labels',         icon: <TagIcon size={16} /> },
   { id: 'staff',        label: 'Staff Management',      icon: <ShieldIcon size={16} /> },
   { id: 'network',      label: 'Network & Discovery',   icon: <ZapIcon size={16} /> },
   { id: 'advanced',     label: 'Advanced',              icon: <ZapIcon size={16} /> },
@@ -596,248 +595,325 @@ export default function Settings() {
             padding: '24px 28px 28px',
           }}>
 
+          {/* ── Global card-group styles (shared by all tabs) ── */}
+          <style>{`
+            .inv-group {
+              margin-top: 20px;
+              border: 1px solid var(--border);
+              border-radius: 12px;
+              overflow: hidden;
+              background: var(--bg-2);
+            }
+            .inv-group-header {
+              display: flex; align-items: center; gap: 10px;
+              padding: 13px 18px 11px;
+              border-bottom: 1px solid var(--border);
+              background: var(--bg-3);
+            }
+            .inv-group-title {
+              font-size: 0.78rem; font-weight: 700;
+              color: var(--text-primary); letter-spacing: 0.01em;
+            }
+            .inv-group-badge {
+              font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em;
+              padding: 2px 7px; border-radius: 20px;
+              background: var(--accent-muted, rgba(192,97,42,.12));
+              color: var(--accent);
+            }
+            .inv-group-desc {
+              font-size: 0.73rem; color: var(--text-muted); margin-left: auto;
+            }
+            .inv-row {
+              display: flex; align-items: center;
+              padding: 13px 18px;
+              gap: 16px;
+              border-bottom: 1px solid var(--border);
+            }
+            .inv-row:last-child { border-bottom: none; }
+            .inv-row-body { flex: 1; }
+            .inv-row-label {
+              font-size: 0.85rem; font-weight: 600;
+              color: var(--text-primary);
+            }
+            .inv-row-hint {
+              font-size: 0.74rem; color: var(--text-muted); margin-top: 2px;
+            }
+            .inv-tag {
+              font-size: 0.62rem; font-weight: 700; letter-spacing: 0.05em;
+              padding: 1px 6px; border-radius: 20px; margin-left: 6px;
+              display: inline-block; vertical-align: middle;
+            }
+            .inv-tag-on  { background: rgba(34,197,94,0.12);  color: #22c55e; }
+            .inv-tag-off { background: rgba(239,68,68,0.10);  color: #ef4444; }
+            .inv-tag-opt { background: var(--bg-4, var(--bg-3)); color: var(--text-muted); }
+            .inv-tag-cs  { background: rgba(148,163,184,0.12); color: #94a3b8; letter-spacing: 0.03em; }
+            .inv-row-cs  { opacity: 0.55; pointer-events: none; }
+            .inv-row-cs .inv-row-label { color: var(--text-muted); }
+          `}</style>
+
           {/* ═══════════════════════════ GENERAL ══════════════════════════════ */}
           {activeTab === 'general' && (
             <>
+              {/* ── Group 1: Appearance ─────────────────────────── */}
+              <div className="inv-group">
+                <div className="inv-group-header">
+                  <span className="inv-group-title">Appearance</span>
+                  <span className="inv-group-badge">Essential</span>
+                  <span className="inv-group-desc">Applied instantly</span>
+                </div>
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">App Display Size</div>
+                    <div className="inv-row-hint">Scale the entire application interface to suit your screen and preference.</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {[80, 90, 100, 110, 120, 130].map(v => {
+                      const active = (g.app_zoom ?? 100) === v
+                      return (
+                        <button
+                          key={v}
+                          onClick={async () => {
+                            patch('general', 'app_zoom', v)
+                            localStorage.setItem('billing_app_zoom', String(v))
+                            document.documentElement.style.zoom = `${v}%`
+                            document.documentElement.style.setProperty('--zoom', v / 100)
+                            document.documentElement.style.minHeight = ''
+                            
+                            // Auto-save zoom level to backend
+                            try {
+                              const newSettings = {
+                                ...settings,
+                                general: { ...settings.general, app_zoom: v }
+                              }
+                              await authFetch('/settings', {
+                                method: 'PUT',
+                                body: JSON.stringify(newSettings)
+                              })
+                            } catch (err) {
+                              logger.error('[Settings] Auto-saving zoom failed:', err)
+                            }
+                          }}
+                          className={`btn ${active ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ padding: '6px 12px', minWidth: 50 }}
+                        >
+                          {v}%
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Privacy Mode  <span className={`inv-tag ${g.privacy_mode === true ? 'inv-tag-on' : 'inv-tag-off'}`}>{g.privacy_mode === true ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">Blurs revenue &amp; profit on the dashboard — protects sensitive data from passersby.</div>
+                  </div>
+                  <Toggle id="privacy_mode" checked={g.privacy_mode === true} onChange={v => patch('general', 'privacy_mode', v)} />
+                </div>
+              </div>
+
               {!isCashier && (
                 <>
-                  <SectionHeader title="Advanced Sync & Hosting" />
-                  <SettingRow
-                    label="Cloud Sync & Database Hosting"
-                    description="Configure where your data resides (Local Only, Hybrid Sync, or Cloud Only) and manage automated cloud backups."
-                  >
-                    <button
-                      onClick={() => handleTabChange('advanced')}
-                      className="btn btn-primary"
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        background: 'linear-gradient(135deg, var(--accent) 0%, #4f46e5 100%)',
-                        border: 'none',
-                        padding: '10px 18px',
-                        borderRadius: 8,
-                        fontWeight: 700,
-                        boxShadow: '0 4px 12px rgba(99, 99, 255, 0.2)',
-                      }}
-                    >
-                      <ZapIcon size={14} />
-                      Manage Hosting & Backups →
-                    </button>
-                  </SettingRow>
-
-                  <SectionHeader title="Business Category" />
-                  <SettingRow label="Active Business Type" description="Select your business vertical to automatically configure terminology, layouts, and custom fields.">
-                    <CustomSelect
-                      className="form-input"
-                      style={{ width: 220 }}
-                      value={config?.key || 'general'}
-                      onChange={e => handleUpdateTemplate(e.target.value)}
-                    >
-                      {templates.map(t => (
-                        <option key={t.key} value={t.key}>
-                          {t.label}
-                        </option>
-                      ))}
-                    </CustomSelect>
-                  </SettingRow>
-
-                  <SettingRow
-                    label="Business Types"
-                    description="Businesses running more than one vertical (e.g. supermarket + mobile repair) can register secondary types. The counter can switch between them per bill."
-                  >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-end' }}>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
-                        {bizTypes.map((key, i) => {
-                          const label = templates.find(t => t.key === key)?.label || key
-                          return (
-                            <span
-                              key={key}
-                              style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 6,
-                                padding: '4px 10px', borderRadius: 999, fontSize: '0.78rem',
-                                fontWeight: 600,
-                                background: i === 0 ? 'var(--accent)' : 'var(--bg-subtle, #f1f5f9)',
-                                color: i === 0 ? '#fff' : 'var(--text-muted)',
-                                border: '1px solid var(--border, #e2e8f0)',
-                              }}
-                            >
-                              {label}{i === 0 && ' (Primary)'}
-                              {i > 0 && (
-                                <button
-                                  onClick={() => handleRemoveBusinessType(key)}
-                                  title={`Remove ${label}`}
-                                  style={{
-                                    border: 'none', background: 'transparent', cursor: 'pointer',
-                                    color: 'inherit', padding: 0, lineHeight: 1, fontSize: '0.85rem',
-                                  }}
-                                >
-                                  ×
-                                </button>
-                              )}
-                            </span>
-                          )
-                        })}
+                  {/* ── Group 2: Formats & Localisation ─────────────────────────── */}
+                  <div className="inv-group">
+                    <div className="inv-group-header">
+                      <span className="inv-group-title">Formats & Localisation</span>
+                    </div>
+                    <div className="inv-row inv-row-cs" title="Date formatting is being rolled out — coming soon">
+                      <div className="inv-row-body">
+                        <div className="inv-row-label">Date Format  <span className="inv-tag inv-tag-cs">Coming Soon</span></div>
+                        <div className="inv-row-hint">How dates appear across bills and reports.</div>
                       </div>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <CustomSelect
-                          className="form-input"
-                          style={{ width: 180 }}
-                          value={addTypeKey}
-                          onChange={e => setAddTypeKey(e.target.value)}
+                      <CustomSelect className="form-input" style={{ width: 220 }} value={g.date_format || 'DD/MM/YYYY'} onChange={() => {}}>
+                        <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                        <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                        <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                      </CustomSelect>
+                    </div>
+                    <div className="inv-row inv-row-cs" title="Decimal precision coming in a future update">
+                      <div className="inv-row-body">
+                        <div className="inv-row-label">Quantity Decimal Places  <span className="inv-tag inv-tag-cs">Coming Soon</span></div>
+                        <div className="inv-row-hint">Decimal precision for quantities (e.g. 2.50 kg).</div>
+                      </div>
+                      <CustomSelect className="form-input" style={{ width: 220 }} value={g.quantity_decimal_places ?? 2} onChange={() => {}}>
+                        <option value={1}>1 decimal place (0.0)</option>
+                        <option value={2}>2 decimal places (0.00)</option>
+                        <option value={3}>3 decimal places (0.000)</option>
+                      </CustomSelect>
+                    </div>
+                    <div className="inv-row inv-row-cs" title="Decimal precision coming in a future update">
+                      <div className="inv-row-body">
+                        <div className="inv-row-label">Amount Decimal Places  <span className="inv-tag inv-tag-cs">Coming Soon</span></div>
+                        <div className="inv-row-hint">Decimal precision for amounts and rates (e.g. ₹120.50).</div>
+                      </div>
+                      <CustomSelect className="form-input" style={{ width: 220 }} value={g.amount_decimal_places ?? 2} onChange={() => {}}>
+                        <option value={2}>2 decimal places (0.00)</option>
+                        <option value={3}>3 decimal places (0.000)</option>
+                      </CustomSelect>
+                    </div>
+                  </div>
+
+                  {/* ── Group 3: Security ─────────────────────────── */}
+                  <div className="inv-group">
+                    <div className="inv-group-header">
+                      <span className="inv-group-title">Security</span>
+                    </div>
+                    <div className="inv-row">
+                      <div className="inv-row-body">
+                        <div className="inv-row-label">Passcode App Lock</div>
+                        <div className="inv-row-hint">Require a PIN to unlock after inactivity.</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: hasLock ? 'var(--success)' : 'var(--text-muted)' }}>
+                          {hasLock ? 'Enabled (PIN set)' : 'Disabled'}
+                        </span>
+                        <button 
+                          type="button" 
+                          className={`btn ${hasLock ? 'btn-secondary' : 'btn-primary'}`}
+                          onClick={() => setShowPasscodeModal(true)}
+                          style={{ padding: '6px 14px', fontSize: '0.82rem' }}
                         >
-                          <option value="">Add a business type…</option>
-                          {templates.filter(t => !bizTypes.includes(t.key)).map(t => (
-                            <option key={t.key} value={t.key}>{t.label}</option>
-                          ))}
-                        </CustomSelect>
-                        <button
-                          className="btn btn-secondary"
-                          onClick={handleAddBusinessType}
-                          disabled={!addTypeKey}
-                          style={{ padding: '6px 14px' }}
-                        >
-                          Add
+                          {hasLock ? 'Manage Lock' : 'Enable Lock'}
                         </button>
                       </div>
                     </div>
-                  </SettingRow>
-                </>
-              )}
+                    <div className="inv-row">
+                      <div className="inv-row-body">
+                        <div className="inv-row-label">Auto-Lock Timeout</div>
+                        <div className="inv-row-hint">How long before the app locks automatically.</div>
+                      </div>
+                      <CustomSelect
+                        className="form-input"
+                        style={{ width: 220 }}
+                        value={g.lock_timeout_minutes ?? 60}
+                        onChange={e => patch('general', 'lock_timeout_minutes', parseInt(e.target.value))}
+                      >
+                        <option value={0}>Never Auto-Lock</option>
+                        <option value={15}>15 Minutes</option>
+                        <option value={30}>30 Minutes</option>
+                        <option value={60}>1 Hour</option>
+                        <option value={120}>2 Hours</option>
+                      </CustomSelect>
+                    </div>
+                  </div>
 
-              <SectionHeader title="Appearance" />
-              <SettingRow
-                label="App Display Size"
-                description="Scale the entire application interface to suit your screen and preference."
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {[80, 90, 100, 110, 120, 130].map(v => {
-                    const active = (g.app_zoom ?? 100) === v
-                    return (
+                  {/* ── Group 4: Business Profile ─────────────────────────── */}
+                  <div className="inv-group">
+                    <div className="inv-group-header">
+                      <span className="inv-group-title">Business Profile</span>
+                    </div>
+                    <div className="inv-row">
+                      <div className="inv-row-body">
+                        <div className="inv-row-label">Active Business Type</div>
+                        <div className="inv-row-hint">Select your business vertical to automatically configure terminology, layouts, and custom fields.</div>
+                      </div>
+                      <CustomSelect
+                        className="form-input"
+                        style={{ width: 220 }}
+                        value={config?.key || 'general'}
+                        onChange={e => handleUpdateTemplate(e.target.value)}
+                      >
+                        {templates.map(t => (
+                          <option key={t.key} value={t.key}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </CustomSelect>
+                    </div>
+                    <div className="inv-row">
+                      <div className="inv-row-body">
+                        <div className="inv-row-label">Business Types</div>
+                        <div className="inv-row-hint">Businesses running more than one vertical (e.g. supermarket + mobile repair) can register secondary types. The counter can switch between them per bill.</div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-end' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
+                          {bizTypes.map((key, i) => {
+                            const label = templates.find(t => t.key === key)?.label || key
+                            return (
+                              <span
+                                key={key}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                                  padding: '4px 10px', borderRadius: 999, fontSize: '0.78rem',
+                                  fontWeight: 600,
+                                  background: i === 0 ? 'var(--accent)' : 'var(--bg-subtle, #f1f5f9)',
+                                  color: i === 0 ? '#fff' : 'var(--text-muted)',
+                                  border: '1px solid var(--border, #e2e8f0)',
+                                }}
+                              >
+                                {label}{i === 0 && ' (Primary)'}
+                                {i > 0 && (
+                                  <button
+                                    onClick={() => handleRemoveBusinessType(key)}
+                                    title={`Remove ${label}`}
+                                    style={{
+                                      border: 'none', background: 'transparent', cursor: 'pointer',
+                                      color: 'inherit', padding: 0, lineHeight: 1, fontSize: '0.85rem',
+                                    }}
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </span>
+                            )
+                          })}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <CustomSelect
+                            className="form-input"
+                            style={{ width: 180 }}
+                            value={addTypeKey}
+                            onChange={e => setAddTypeKey(e.target.value)}
+                          >
+                            <option value="">Add a business type…</option>
+                            {templates.filter(t => !bizTypes.includes(t.key)).map(t => (
+                              <option key={t.key} value={t.key}>{t.label}</option>
+                            ))}
+                          </CustomSelect>
+                          <button
+                            className="btn btn-secondary"
+                            onClick={handleAddBusinessType}
+                            disabled={!addTypeKey}
+                            style={{ padding: '6px 14px' }}
+                          >
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Group 5: Cloud Sync & Hosting ─────────────────────────── */}
+                  <div className="inv-group">
+                    <div className="inv-group-header">
+                      <span className="inv-group-title">Cloud Sync & Hosting</span>
+                    </div>
+                    <div className="inv-row">
+                      <div className="inv-row-body">
+                        <div className="inv-row-label">Cloud Sync & Database Hosting</div>
+                        <div className="inv-row-hint">Configure where your data resides (Local Only, Hybrid Sync, or Cloud Only) and manage automated cloud backups.</div>
+                      </div>
                       <button
-                        key={v}
-                        onClick={async () => {
-                          patch('general', 'app_zoom', v)
-                          localStorage.setItem('billing_app_zoom', String(v))
-                          document.documentElement.style.zoom = `${v}%`
-                          document.documentElement.style.setProperty('--zoom', v / 100)
-                          document.documentElement.style.minHeight = ''
-                          
-                          // Auto-save zoom level to backend
-                          try {
-                            const newSettings = {
-                              ...settings,
-                              general: { ...settings.general, app_zoom: v }
-                            }
-                            await authFetch('/settings', {
-                              method: 'PUT',
-                              body: JSON.stringify(newSettings)
-                            })
-                          } catch (err) {
-                            logger.error('[Settings] Auto-saving zoom failed:', err)
-                          }
+                        onClick={() => handleTabChange('advanced')}
+                        className="btn btn-primary"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          background: 'linear-gradient(135deg, var(--accent) 0%, #4f46e5 100%)',
+                          border: 'none',
+                          padding: '10px 18px',
+                          borderRadius: 8,
+                          fontWeight: 700,
+                          boxShadow: '0 4px 12px rgba(99, 99, 255, 0.2)',
                         }}
-                        className={`btn ${active ? 'btn-primary' : 'btn-secondary'}`}
-                        style={{ padding: '6px 12px', minWidth: 50 }}
                       >
-                        {v}%
-                      </button>
-                    )
-                  })}
-                </div>
-              </SettingRow>
-
-              {!isCashier && (
-                <>
-                  <SectionHeader title="Localization & Formats" />
-                  <SettingRow label="Date Format" description="Set the display format for dates throughout the app.">
-                    <CustomSelect
-                      className="form-input"
-                      style={{ width: 220 }}
-                      value={g.date_format || 'DD/MM/YYYY'}
-                      onChange={e => patch('general', 'date_format', e.target.value)}
-                    >
-                      <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                      <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                      <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                    </CustomSelect>
-                  </SettingRow>
-
-                  <SettingRow label="Quantity Decimals" description="Number of decimal places shown for quantities.">
-                    <CustomSelect
-                      className="form-input"
-                      style={{ width: 220 }}
-                      value={g.quantity_decimal_places ?? 2}
-                      onChange={e => patch('general', 'quantity_decimal_places', parseInt(e.target.value))}
-                    >
-                      <option value={1}>1 decimal place (0.0)</option>
-                      <option value={2}>2 decimal places (0.00)</option>
-                      <option value={3}>3 decimal places (0.000)</option>
-                    </CustomSelect>
-                  </SettingRow>
-
-                  <SettingRow label="Amount Decimals" description="Number of decimal places shown for rates and amounts.">
-                    <CustomSelect
-                      className="form-input"
-                      style={{ width: 220 }}
-                      value={g.amount_decimal_places ?? 2}
-                      onChange={e => patch('general', 'amount_decimal_places', parseInt(e.target.value))}
-                    >
-                      <option value={2}>2 decimal places (0.00)</option>
-                      <option value={3}>3 decimal places (0.000)</option>
-                    </CustomSelect>
-                  </SettingRow>
-
-                  <SectionHeader title="Passcode & Session Security" />
-                  
-                  <SettingRow 
-                    label="Passcode App Lock" 
-                    description="Require a passcode to unlock the app session after inactivity."
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: hasLock ? 'var(--success)' : 'var(--text-muted)' }}>
-                        {hasLock ? 'Enabled (PIN set)' : 'Disabled'}
-                      </span>
-                      <button 
-                        type="button" 
-                        className={`btn ${hasLock ? 'btn-secondary' : 'btn-primary'}`}
-                        onClick={() => setShowPasscodeModal(true)}
-                        style={{ padding: '6px 14px', fontSize: '0.82rem' }}
-                      >
-                        {hasLock ? 'Manage Lock' : 'Enable Lock'}
+                        <ZapIcon size={14} />
+                        Manage Hosting & Backups →
                       </button>
                     </div>
-                  </SettingRow>
-
-                  <SettingRow 
-                    label="Auto-Lock Timeout" 
-                    description="Lock the session automatically after a period of user inactivity."
-                  >
-                    <CustomSelect
-                      className="form-input"
-                      style={{ width: 220 }}
-                      value={g.lock_timeout_minutes ?? 60}
-                      onChange={e => patch('general', 'lock_timeout_minutes', parseInt(e.target.value))}
-                    >
-                      <option value={0}>Never Auto-Lock</option>
-                      <option value={15}>15 Minutes</option>
-                      <option value={30}>30 Minutes</option>
-                      <option value={60}>1 Hour</option>
-                      <option value={120}>2 Hours</option>
-                    </CustomSelect>
-                  </SettingRow>
-
-                  <SettingRow 
-                    label="Privacy Mode" 
-                    description="Hide sensitive business revenue and profit figures on the dashboard."
-                  >
-                    <Toggle 
-                      id="privacy_mode" 
-                      checked={g.privacy_mode === true} 
-                      onChange={v => patch('general', 'privacy_mode', v)} 
-                    />
-                  </SettingRow>
-
+                  </div>
                 </>
               )}
             </>
@@ -846,158 +922,470 @@ export default function Settings() {
           {/* ═══════════════════════════ TRANSACTIONS ═════════════════════════ */}
           {activeTab === 'transactions' && (
             <>
-              <SectionHeader title="Tax & Invoice" />
-              <SettingRow label="Tax Invoice Format" description="Enable GST-compliant Tax Invoice numbering (mandatory for GSTIN holders).">
-                <Toggle id="tax_invoice" checked={t.tax_invoice_enabled} onChange={v => patch('transactions', 'tax_invoice_enabled', v)} />
-              </SettingRow>
-              <SettingRow label="GST Composite Scheme" description="For businesses under the GST Composition Levy (no input tax credit).">
-                <Toggle id="composite" checked={t.composite_scheme} onChange={v => patch('transactions', 'composite_scheme', v)} />
-              </SettingRow>
-              <SettingRow label="e-Way Bill Number Field" description="Show an e-Way Bill number field on transactions.">
-                <Toggle id="eway" checked={t.eway_bill_enabled} onChange={v => patch('transactions', 'eway_bill_enabled', v)} />
-              </SettingRow>
+              {/* ── Group 1: GST & Tax ─────────────────────────── */}
+              <div className="inv-group">
+                <div className="inv-group-header">
+                  <span className="inv-group-title">GST & Tax</span>
+                  <span className="inv-group-badge">Required</span>
+                  <span className="inv-group-desc">For GST-registered businesses</span>
+                </div>
+                <div className="inv-row inv-row-cs" title="Frontend never reads this to change billing UI">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Tax Invoice Format  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">GST-compliant Tax Invoice (mandatory for GSTIN holders).</div>
+                  </div>
+                  <Toggle id="tax_invoice" checked={t.tax_invoice_enabled} onChange={() => {}} />
+                </div>
+                <div className="inv-row inv-row-cs" title="Composite scheme GST changes are applied on the backend — UI gate coming soon">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      GST Composite Scheme  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">For businesses under Composition Levy — no input tax credit.</div>
+                  </div>
+                  <Toggle id="composite" checked={t.composite_scheme} onChange={() => {}} />
+                </div>
+                <div className="inv-row inv-row-cs" title="e-Way Bill field on the billing counter is coming in a future update">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      e-Way Bill Field  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">Shows e-Way Bill number field on transactions above ₹50,000.</div>
+                  </div>
+                  <Toggle id="eway" checked={t.eway_bill_enabled} onChange={() => {}} />
+                </div>
+              </div>
 
-              <SectionHeader title="Discounts" />
-              <SettingRow label="Discounts Enabled" description="Allow discounts to be applied on invoice line items.">
-                <Toggle id="discount" checked={t.discount_enabled} onChange={v => patch('transactions', 'discount_enabled', v)} />
-              </SettingRow>
-              {t.discount_enabled && (
-                <SettingRow label="Discount in Amount (₹)" description="Off = percentage discount. On = fixed ₹ amount discount.">
-                  <Toggle id="discount_amt" checked={t.discount_in_amount} onChange={v => patch('transactions', 'discount_in_amount', v)} />
-                </SettingRow>
-              )}
+              {/* ── Group 2: Discounts & Totals ─────────────────────────── */}
+              <div className="inv-group">
+                <div className="inv-group-header">
+                  <span className="inv-group-title">Discounts & Totals</span>
+                  <span className="inv-group-badge">On by default</span>
+                </div>
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Discounts  <span className={`inv-tag ${t.discount_enabled !== false ? 'inv-tag-on' : 'inv-tag-off'}`}>{t.discount_enabled !== false ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">Allow line-item and overall discounts on bills.</div>
+                  </div>
+                  <Toggle id="discount" checked={t.discount_enabled !== false} onChange={v => patch('transactions', 'discount_enabled', v)} />
+                </div>
+                {t.discount_enabled !== false && (
+                  <div className="inv-row">
+                    <div className="inv-row-body">
+                      <div className="inv-row-label">Discount Mode</div>
+                      <div className="inv-row-hint">How discounts are entered on each line item.</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        onClick={() => patch('transactions', 'discount_in_amount', false)}
+                        className={`btn ${!t.discount_in_amount ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ padding: '4px 10px' }}
+                      >
+                        % Percentage
+                      </button>
+                      <button
+                        onClick={() => patch('transactions', 'discount_in_amount', true)}
+                        className={`btn ${t.discount_in_amount ? 'btn-primary' : 'btn-secondary'}`}
+                        style={{ padding: '4px 10px' }}
+                      >
+                        ₹ Fixed Amount
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Round Off Total  <span className={`inv-tag ${t.round_off_enabled !== false ? 'inv-tag-on' : 'inv-tag-off'}`}>{t.round_off_enabled !== false ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">Rounds the final payable amount to nearest rupee.</div>
+                  </div>
+                  <Toggle id="round" checked={t.round_off_enabled !== false} onChange={v => patch('transactions', 'round_off_enabled', v)} />
+                </div>
+                {t.round_off_enabled !== false && (
+                  <div className="inv-row">
+                    <div className="inv-row-body">
+                      <div className="inv-row-label">Rounding Method</div>
+                      <div className="inv-row-hint">Direction to round the final total.</div>
+                    </div>
+                    <CustomSelect
+                      className="form-input"
+                      style={{ width: 160 }}
+                      value={t.round_off_type || 'nearest'}
+                      onChange={e => patch('transactions', 'round_off_type', e.target.value)}
+                    >
+                      <option value="nearest">Nearest (±0.50)</option>
+                      <option value="ceil">Always Up</option>
+                      <option value="floor">Always Down</option>
+                    </CustomSelect>
+                  </div>
+                )}
+              </div>
 
-              <SectionHeader title="Payment Reminders" />
-              <SettingRow label="Payment Reminders" description="Send automatic follow-up reminders for overdue balances.">
-                <Toggle id="reminders" checked={t.payment_reminder_enabled} onChange={v => patch('transactions', 'payment_reminder_enabled', v)} />
-              </SettingRow>
-              {t.payment_reminder_enabled && (
-                <SettingRow label="Reminder After (days)" description="Send a reminder this many days past the due date.">
-                  <input
-                    type="number"
-                    min={1}
-                    max={90}
-                    value={t.payment_reminder_days}
-                    onChange={e => patch('transactions', 'payment_reminder_days', parseInt(e.target.value) || 1)}
-                    className="form-input"
-                    style={{ width: 80, padding: '6px 10px', textAlign: 'center' }}
-                  />
-                </SettingRow>
-              )}
-              <SettingRow label="Payment Terms" description="Enable due-date payment terms on invoices (e.g. Net 30).">
-                <Toggle id="pay_terms" checked={t.payment_terms_enabled} onChange={v => patch('transactions', 'payment_terms_enabled', v)} />
-              </SettingRow>
+              {/* ── Group 3: Payment & Credit ─────────────────────────── */}
+              <div className="inv-group">
+                <div className="inv-group-header">
+                  <span className="inv-group-title">Payment & Credit</span>
+                  <span className="inv-group-badge">Optional</span>
+                </div>
+                <div className="inv-row inv-row-cs" title="Automated reminder dispatch (via AI assistant) is available — UI toggle wiring coming soon">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Payment Reminders  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">Auto-remind customers about overdue balances via WhatsApp or SMS.</div>
+                  </div>
+                  <Toggle id="reminders" checked={t.payment_reminder_enabled !== false} onChange={() => {}} />
+                </div>
+                <div className="inv-row inv-row-cs" title="Net-30 / due-date terms field on invoices is coming in a future update">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Payment Terms (Net 30)  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">Set due-date terms (e.g. Net 30) on invoices.</div>
+                  </div>
+                  <Toggle id="pay_terms" checked={t.payment_terms_enabled} onChange={() => {}} />
+                </div>
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Prevent Negative Stock  <span className={`inv-tag ${t.prevent_negative_stock ? 'inv-tag-on' : 'inv-tag-off'}`}>{t.prevent_negative_stock ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">Blocks sale if item stock would go below zero.</div>
+                  </div>
+                  <Toggle id="neg_stock" checked={t.prevent_negative_stock} onChange={v => patch('transactions', 'prevent_negative_stock', v)} />
+                </div>
+              </div>
 
-              <SectionHeader title="Document Types" />
-              <SettingRow label="Estimates / Quotations" description="Enable the Estimates module for pre-invoice quoting.">
-                <Toggle id="estimates" checked={t.estimate_enabled} onChange={v => patch('transactions', 'estimate_enabled', v)} />
-              </SettingRow>
-              <SettingRow label="Proforma Invoices" description="Enable Proforma Invoice documents (advance billing before goods delivery).">
-                <Toggle id="proforma" checked={t.proforma_invoice_enabled} onChange={v => patch('transactions', 'proforma_invoice_enabled', v)} />
-              </SettingRow>
-              <SettingRow label="Delivery Challans" description="Enable Delivery Challan documents for goods dispatched without invoice.">
-                <Toggle id="challan" checked={t.delivery_challan_enabled} onChange={v => patch('transactions', 'delivery_challan_enabled', v)} />
-              </SettingRow>
-              <SettingRow label="Sale Orders" description="Enable Sale Orders module for pre-billing order booking.">
-                <Toggle id="sale_ord" checked={t.sale_order_enabled} onChange={v => patch('transactions', 'sale_order_enabled', v)} />
-              </SettingRow>
-              <SettingRow label="Purchase Orders" description="Enable Purchase Order creation for supplier communication.">
-                <Toggle id="pur_ord" checked={t.purchase_order_enabled} onChange={v => patch('transactions', 'purchase_order_enabled', v)} />
-              </SettingRow>
+              {/* ── Group 4: Document Types ─────────────────────────── */}
+              <div className="inv-group">
+                <div className="inv-group-header">
+                  <span className="inv-group-title">Document Types</span>
+                  <span className="inv-group-badge">On by default</span>
+                  <span className="inv-group-desc">Modules visible in the app</span>
+                </div>
+                <div className="inv-row inv-row-cs" title="Coming soon — nav item gating is being implemented">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Estimates / Quotations  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">Pre-invoice quote documents.</div>
+                  </div>
+                  <Toggle id="estimates" checked={t.estimate_enabled !== false} onChange={() => {}} />
+                </div>
+                <div className="inv-row inv-row-cs" title="Coming soon — nav item gating is being implemented">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Proforma Invoices  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">Advance billing before delivery.</div>
+                  </div>
+                  <Toggle id="proforma" checked={t.proforma_invoice_enabled !== false} onChange={() => {}} />
+                </div>
+                <div className="inv-row inv-row-cs" title="Coming soon — nav item gating is being implemented">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Delivery Challans  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">Dispatch notes sent without invoice.</div>
+                  </div>
+                  <Toggle id="challan" checked={t.delivery_challan_enabled !== false} onChange={() => {}} />
+                </div>
+                <div className="inv-row inv-row-cs" title="Coming soon — nav item gating is being implemented">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Sale Orders  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">Booking orders before billing.</div>
+                  </div>
+                  <Toggle id="sale_ord" checked={t.sale_order_enabled !== false} onChange={() => {}} />
+                </div>
+                <div className="inv-row inv-row-cs" title="Coming soon — nav item gating is being implemented">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Purchase Orders  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">PO documents for supplier communication.</div>
+                  </div>
+                  <Toggle id="pur_ord" checked={t.purchase_order_enabled !== false} onChange={() => {}} />
+                </div>
+              </div>
 
-              <SectionHeader title="Stock Control" />
-              <SettingRow label="Prevent Negative Stock" description="Block a sale at the counter if it would take a tracked item below zero. When off, overselling is allowed and stock simply goes negative.">
-                <Toggle id="neg_stock" checked={t.prevent_negative_stock} onChange={v => patch('transactions', 'prevent_negative_stock', v)} />
-              </SettingRow>
-
-              <SectionHeader title="Totals" />
-              <SettingRow label="Round Off Total" description="Apply rounding to the final invoice amount.">
-                <Toggle id="round" checked={t.round_off_enabled} onChange={v => patch('transactions', 'round_off_enabled', v)} />
-              </SettingRow>
-              {t.round_off_enabled && (
-                <SettingRow label="Rounding Method">
-                  <CustomSelect
-                    className="form-input"
-                    style={{ width: 160 }}
-                    value={t.round_off_type}
-                    onChange={e => patch('transactions', 'round_off_type', e.target.value)}
-                  >
-                    <option value="nearest">Nearest Rupee</option>
-                    <option value="ceil">Round Up</option>
-                    <option value="floor">Round Down</option>
-                  </CustomSelect>
-                </SettingRow>
-              )}
-
-              <SectionHeader title="POS Billing Table Columns" />
-              <SettingRow label="Show SKU / Item Code" description="Show SKU or Item Code column in billing table.">
-                <Toggle id="pos_show_sku" checked={t.pos_show_sku !== false} onChange={v => patch('transactions', 'pos_show_sku', v)} />
-              </SettingRow>
-              <SettingRow label="Show Item Unit" description="Show measurement unit column (e.g. pcs) in billing table.">
-                <Toggle id="pos_show_unit" checked={t.pos_show_unit !== false} onChange={v => patch('transactions', 'pos_show_unit', v)} />
-              </SettingRow>
-              <SettingRow label="Show Item Discount" description="Show Discount column on each item in billing table.">
-                <Toggle id="pos_show_discount" checked={t.pos_show_discount !== false} onChange={v => patch('transactions', 'pos_show_discount', v)} />
-              </SettingRow>
-              <SettingRow label="Show Item Tax (GST)" description="Show GST / Tax applied column on each item in billing table.">
-                <Toggle id="pos_show_tax" checked={t.pos_show_tax !== false} onChange={v => patch('transactions', 'pos_show_tax', v)} />
-              </SettingRow>
-              <SettingRow label="Show HSN Column" description="Show HSN Code column in billing table.">
-                <Toggle id="pos_show_hsn" checked={t.pos_show_hsn === true} onChange={v => patch('transactions', 'pos_show_hsn', v)} />
-              </SettingRow>
-              <SettingRow label="Show MRP Column" description="Show Maximum Retail Price (MRP) column in billing table.">
-                <Toggle id="pos_show_mrp" checked={t.pos_show_mrp === true} onChange={v => patch('transactions', 'pos_show_mrp', v)} />
-              </SettingRow>
-              <SettingRow label="Show Batch Selector Column" description="Show Batch Selector column on each item in billing table.">
-                <Toggle id="pos_show_batch" checked={t.pos_show_batch !== false} onChange={v => patch('transactions', 'pos_show_batch', v)} />
-              </SettingRow>
-              <SettingRow label="Show Serial / IMEI Column" description="Show Serial Number / IMEI column in billing table (electronics, mobile, repair).">
-                <Toggle id="pos_show_serial" checked={t.pos_show_serial === true} onChange={v => patch('transactions', 'pos_show_serial', v)} />
-              </SettingRow>
+              {/* ── Group 5: POS Billing Table Columns ─────────────────────────── */}
+              <div className="inv-group">
+                <div className="inv-group-header">
+                  <span className="inv-group-title">POS Billing Table Columns</span>
+                  <span className="inv-group-badge">Customise</span>
+                  <span className="inv-group-desc">Columns visible at the billing counter</span>
+                </div>
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Show SKU  <span className={`inv-tag ${t.pos_show_sku !== false ? 'inv-tag-on' : 'inv-tag-off'}`}>{t.pos_show_sku !== false ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">Item code/SKU column.</div>
+                  </div>
+                  <Toggle id="pos_show_sku" checked={t.pos_show_sku !== false} onChange={v => patch('transactions', 'pos_show_sku', v)} />
+                </div>
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Show Unit  <span className={`inv-tag ${t.pos_show_unit !== false ? 'inv-tag-on' : 'inv-tag-off'}`}>{t.pos_show_unit !== false ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">Unit of measurement (pcs, kg, etc.).</div>
+                  </div>
+                  <Toggle id="pos_show_unit" checked={t.pos_show_unit !== false} onChange={v => patch('transactions', 'pos_show_unit', v)} />
+                </div>
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Show Discount  <span className={`inv-tag ${t.pos_show_discount !== false ? 'inv-tag-on' : 'inv-tag-off'}`}>{t.pos_show_discount !== false ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">Per-item discount column.</div>
+                  </div>
+                  <Toggle id="pos_show_discount" checked={t.pos_show_discount !== false} onChange={v => patch('transactions', 'pos_show_discount', v)} />
+                </div>
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Show Tax (GST)  <span className={`inv-tag ${t.pos_show_tax !== false ? 'inv-tag-on' : 'inv-tag-off'}`}>{t.pos_show_tax !== false ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">GST % applied per item.</div>
+                  </div>
+                  <Toggle id="pos_show_tax" checked={t.pos_show_tax !== false} onChange={v => patch('transactions', 'pos_show_tax', v)} />
+                </div>
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Show HSN Code  <span className={`inv-tag ${t.pos_show_hsn === true ? 'inv-tag-on' : 'inv-tag-off'}`}>{t.pos_show_hsn === true ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">HSN/SAC code column (GST compliance).</div>
+                  </div>
+                  <Toggle id="pos_show_hsn" checked={t.pos_show_hsn === true} onChange={v => patch('transactions', 'pos_show_hsn', v)} />
+                </div>
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Show MRP  <span className={`inv-tag ${t.pos_show_mrp === true ? 'inv-tag-on' : 'inv-tag-off'}`}>{t.pos_show_mrp === true ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">Max Retail Price column.</div>
+                  </div>
+                  <Toggle id="pos_show_mrp" checked={t.pos_show_mrp === true} onChange={v => patch('transactions', 'pos_show_mrp', v)} />
+                </div>
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Show Batch  <span className={`inv-tag ${t.pos_show_batch !== false ? 'inv-tag-on' : 'inv-tag-off'}`}>{t.pos_show_batch !== false ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">Batch selector per item.</div>
+                  </div>
+                  <Toggle id="pos_show_batch" checked={t.pos_show_batch !== false} onChange={v => patch('transactions', 'pos_show_batch', v)} />
+                </div>
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Show Serial/IMEI  <span className={`inv-tag ${t.pos_show_serial === true ? 'inv-tag-on' : 'inv-tag-off'}`}>{t.pos_show_serial === true ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">Serial number / IMEI per item.</div>
+                  </div>
+                  <Toggle id="pos_show_serial" checked={t.pos_show_serial === true} onChange={v => patch('transactions', 'pos_show_serial', v)} />
+                </div>
+              </div>
+              {/* ── Group 6: Custom Document Names ──────────────────────────── */}
+              <div className="inv-group">
+                <div className="inv-group-header">
+                  <span className="inv-group-title">Custom Document Names</span>
+                  <span className="inv-group-badge">Optional</span>
+                  <span className="inv-group-desc">Rename any document to match your business — leave blank to keep defaults</span>
+                </div>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, 1fr)',
+                  gap: '1px',
+                  background: 'var(--border)',
+                }}>
+                  {[
+                    { key: 'sale',             label: 'Sales Invoice',                icon: <BillsIcon size={13} /> },
+                    { key: 'purchase',         label: 'Purchase Bill',                icon: <PackageIcon size={13} /> },
+                    { key: 'estimate',         label: 'Estimate / Quote',             icon: <EditIcon size={13} /> },
+                    { key: 'proforma',         label: 'Proforma Invoice',             icon: <TagIcon size={13} /> },
+                    { key: 'delivery_challan', label: 'Delivery Challan',             icon: <TruckIcon size={13} /> },
+                    { key: 'sale_return',      label: 'Sale Return / Credit Note',    icon: <ArrowDownIcon size={13} /> },
+                    { key: 'purchase_return',  label: 'Purchase Return / Debit Note', icon: <ArrowUpIcon size={13} /> },
+                    { key: 'payment_in',       label: 'Payment Received',             icon: <CashIcon size={13} /> },
+                    { key: 'payment_out',      label: 'Payment Made',                 icon: <CashIcon size={13} /> },
+                    { key: 'expense',          label: 'Expense',                      icon: <TaxIcon size={13} /> },
+                    { key: 'income',           label: 'Other Income',                 icon: <ArrowUpIcon size={13} /> },
+                    { key: 'sale_order',       label: 'Sale Order',                   icon: <CartIcon size={13} /> },
+                    { key: 'purchase_order',   label: 'Purchase Order',               icon: <OrderIcon size={13} /> },
+                  ].map(({ key, label, icon }) => (
+                    <div key={key} style={{
+                      display: 'flex', flexDirection: 'column', gap: 4,
+                      padding: '10px 16px', background: 'var(--bg-2)',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)' }}>
+                        {icon}
+                        <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>{label}</span>
+                      </div>
+                      <input
+                        type="text"
+                        className="form-input"
+                        style={{ padding: '5px 10px', fontSize: '0.8rem', height: 30 }}
+                        value={lb[key] || ''}
+                        onChange={e => patch('labels', key, e.target.value)}
+                        placeholder={label}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
             </>
           )}
 
-          {/* ═══════════════════════════ INVENTORY ════════════════════════════ */}
+
           {activeTab === 'inventory' && (
             <>
-              <SectionHeader title="Stock Management" />
-              <SettingRow label="Stock Tracking" description="Track item quantities in real-time as transactions are saved.">
-                <Toggle id="stock" checked={inv.stock_tracking} onChange={v => patch('inventory', 'stock_tracking', v)} />
-              </SettingRow>
-              <SettingRow label="Item Units" description="Enable custom units of measurement (kg, pcs, litre, etc.) per item.">
-                <Toggle id="units" checked={inv.item_units_enabled} onChange={v => patch('inventory', 'item_units_enabled', v)} />
-              </SettingRow>
-              <SettingRow label="Item Categories" description="Organise items into categories for filtering and reports.">
-                <Toggle id="cats" checked={inv.item_categories_enabled} onChange={v => patch('inventory', 'item_categories_enabled', v)} />
-              </SettingRow>
-              <SettingRow label="Barcode Scanning" description="Enable barcode scanning to add items to invoices at the counter.">
-                <Toggle id="barcode" checked={inv.barcode_scanning} onChange={v => patch('inventory', 'barcode_scanning', v)} />
-              </SettingRow>
-              <SettingRow label="Auto-Update Sale Price from Bills" description="Automatically update an item's sale price when a purchase bill is saved.">
-                <Toggle id="auto_price" checked={inv.auto_update_sale_price} onChange={v => patch('inventory', 'auto_update_sale_price', v)} />
-              </SettingRow>
+              {/* styles injected globally above all tabs */}
 
-              <SectionHeader title="Pricing" />
-              <SettingRow label="MRP Field" description="Show an MRP (Maximum Retail Price) field on each item.">
-                <Toggle id="mrp" checked={inv.mrp_enabled} onChange={v => patch('inventory', 'mrp_enabled', v)} />
-              </SettingRow>
-              <SettingRow label="Wholesale Price" description="Enable a separate Wholesale Price on each item for wholesale-tier customers.">
-                <Toggle id="wholesale" checked={inv.wholesale_price} onChange={v => patch('inventory', 'wholesale_price', v)} />
-              </SettingRow>
+              {/* ── Group 1: Core Catalogue ─────────────────────────── */}
+              <div className="inv-group">
+                <div className="inv-group-header">
+                  <span className="inv-group-title">Core Catalogue</span>
+                  <span className="inv-group-badge">Essential</span>
+                  <span className="inv-group-desc">Enabled for all businesses by default</span>
+                </div>
 
-              <SectionHeader title="Advanced Tracking" />
-              <SettingRow label="Batch Tracking" description="Track items by batch/lot numbers (e.g. manufacturing batches, imports).">
-                <Toggle id="batch" checked={inv.batch_tracking} onChange={v => patch('inventory', 'batch_tracking', v)} />
-              </SettingRow>
-              <SettingRow label="Expiry Date Tracking" description="Track and display item expiry dates (essential for pharma, FMCG, F&B).">
-                <Toggle id="expiry" checked={inv.expiry_date_tracking} onChange={v => patch('inventory', 'expiry_date_tracking', v)} />
-              </SettingRow>
-              <SettingRow label="Manufacturing Date" description="Track the manufacturing date alongside expiry dates.">
-                <Toggle id="mfg_date" checked={inv.manufacturing_date_tracking} onChange={v => patch('inventory', 'manufacturing_date_tracking', v)} />
-              </SettingRow>
-              <SettingRow label="Serial Number Tracking" description="Assign and track unique serial numbers per unit sold (electronics, equipment).">
-                <Toggle id="serial" checked={inv.serial_tracking} onChange={v => patch('inventory', 'serial_tracking', v)} />
-              </SettingRow>
+                <div className="inv-row inv-row-cs" title="Backend always tracks stock regardless">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Stock Tracking  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">Deducts item qty on sale, adds on purchase. Keeps stock levels accurate in real-time.</div>
+                  </div>
+                  <Toggle id="stock" checked={inv.stock_tracking !== false} onChange={() => {}} />
+                </div>
+
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Item Units  <span className={`inv-tag ${inv.item_units_enabled !== false ? 'inv-tag-on' : 'inv-tag-off'}`}>{inv.item_units_enabled !== false ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">Units like kg, pcs, litre, box appear on item forms, bills, and stock tables.</div>
+                  </div>
+                  <Toggle id="units" checked={inv.item_units_enabled !== false} onChange={v => patch('inventory', 'item_units_enabled', v)} />
+                </div>
+
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Item Categories  <span className={`inv-tag ${inv.item_categories_enabled !== false ? 'inv-tag-on' : 'inv-tag-off'}`}>{inv.item_categories_enabled !== false ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">Group items into categories (e.g. Beverages, Pharma) for filtering and reports.</div>
+                  </div>
+                  <Toggle id="cats" checked={inv.item_categories_enabled !== false} onChange={v => patch('inventory', 'item_categories_enabled', v)} />
+                </div>
+
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Barcode Scanning  <span className={`inv-tag ${inv.barcode_scanning !== false ? 'inv-tag-on' : 'inv-tag-off'}`}>{inv.barcode_scanning !== false ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">USB/Bluetooth scanner instantly adds items to the counter when a barcode is scanned.</div>
+                  </div>
+                  <Toggle id="barcode" checked={inv.barcode_scanning !== false} onChange={v => patch('inventory', 'barcode_scanning', v)} />
+                </div>
+
+                <div className="inv-row inv-row-cs" title="Auto-price update on purchase bill save is coming in a future update">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Auto-Update Sale Price  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">When a purchase bill is saved with a new cost, automatically revises the item's selling price.</div>
+                  </div>
+                  <Toggle id="auto_price" checked={!!inv.auto_update_sale_price} onChange={() => {}} />
+                </div>
+              </div>
+
+              {/* ── Group 2: Pricing & Tier Rates ───────────────────── */}
+              <div className="inv-group">
+                <div className="inv-group-header">
+                  <span className="inv-group-title">Pricing & Tier Rates</span>
+                  <span className="inv-group-badge">Recommended</span>
+                </div>
+
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      MRP Field  <span className={`inv-tag ${inv.mrp_enabled !== false ? 'inv-tag-on' : 'inv-tag-off'}`}>{inv.mrp_enabled !== false ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">Adds an MRP (Maximum Retail Price) field to items — required for compliance with printed MRP on packaging.</div>
+                  </div>
+                  <Toggle id="mrp" checked={inv.mrp_enabled !== false} onChange={v => patch('inventory', 'mrp_enabled', v)} />
+                </div>
+
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Wholesale Price  <span className={`inv-tag ${!!inv.wholesale_price ? 'inv-tag-on' : 'inv-tag-off'}`}>{!!inv.wholesale_price ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">Adds a Wholesale tier price to items. The counter auto-applies it when billing a wholesale customer.</div>
+                  </div>
+                  <Toggle id="wholesale" checked={!!inv.wholesale_price} onChange={v => patch('inventory', 'wholesale_price', v)} />
+                </div>
+              </div>
+
+              {/* ── Group 3: Advanced Traceability ─────────────────── */}
+              <div className="inv-group">
+                <div className="inv-group-header">
+                  <span className="inv-group-title">Advanced Traceability</span>
+                  <span className="inv-group-badge">Pharma · FMCG · Electronics</span>
+                  <span className="inv-group-desc">Enable only if your business needs these</span>
+                </div>
+
+                <div className="inv-row inv-row-cs" title="Batch fields always shown in POS/intake regardless">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Batch & Lot Tracking  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">Track stock by batch/lot numbers during intake and sales — essential for manufacturing & wholesale.</div>
+                  </div>
+                  <Toggle id="batch" checked={!!inv.batch_tracking} onChange={() => {}} />
+                </div>
+
+                <div className="inv-row inv-row-cs" title="Expiry fields always shown regardless">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Expiry Date Tracking  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">Records expiry dates per batch. Highlights near-expiry items on the counter to prevent selling expired stock.</div>
+                  </div>
+                  <Toggle id="expiry" checked={!!inv.expiry_date_tracking} onChange={() => {}} />
+                </div>
+
+                <div className="inv-row inv-row-cs" title="Mfg date field on intake form is coming in a future update">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Manufacturing Date  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">Records manufacturing date alongside expiry — required for FSSAI-regulated food & pharma goods.</div>
+                  </div>
+                  <Toggle id="mfg_date" checked={!!inv.manufacturing_date_tracking} onChange={() => {}} />
+                </div>
+
+                <div className="inv-row inv-row-cs" title="Serial fields gated by pos_show_serial, not this">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Serial / IMEI Tracking  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">Assigns a unique serial number or IMEI to every individual unit — used for electronics, mobiles, and warranty tracking.</div>
+                  </div>
+                  <Toggle id="serial" checked={!!inv.serial_tracking} onChange={() => {}} />
+                </div>
+              </div>
             </>
           )}
 
@@ -1047,24 +1435,30 @@ export default function Settings() {
                 </SettingRow>
                 </>)}
                 <SettingRow id="set-text_size" label="Text Size">
-                  <CustomSelect className="form-input" style={{ width: 140 }} value={gen.text_size || pr.text_size || 'medium'} onChange={e => patch('general', 'text_size', e.target.value)}>
+                  <CustomSelect className="form-input" style={{ width: 140 }} value={pr.text_size || gen.text_size || 'medium'} onChange={e => patch('print', 'text_size', e.target.value)}>
                     <option value="small">Small</option>
                     <option value="medium">Medium</option>
                     <option value="large">Large</option>
                   </CustomSelect>
                 </SettingRow>
-                <SettingRow label="Print Copies" description="Number of copies to print automatically per invoice.">
+                <div className="inv-row inv-row-cs" title="Never used in any print flow">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Print Copies  <span className="inv-tag inv-tag-cs">Coming Soon</span>
+                    </div>
+                    <div className="inv-row-hint">Number of copies to print automatically per invoice.</div>
+                  </div>
                   <input type="number" min={1} max={5} value={pr.copy_count}
-                    onChange={e => patch('print', 'copy_count', parseInt(e.target.value) || 1)}
+                    onChange={() => {}}
                     className="form-input" style={{ width: 80, padding: '6px 10px', textAlign: 'center' }} />
-                </SettingRow>
+                </div>
                 <SettingRow label="Thermal Printer Mode" description="Optimise output for local thermal receipt printers.">
                   <Toggle id="thermal" checked={pr.thermal_printer_mode} onChange={v => patch('print', 'thermal_printer_mode', v)} />
                 </SettingRow>
                 {previewMode === 'thermal' && (
                   <>
                     <SettingRow id="set-thermal_page_size" label="Thermal Page Size" description="Choose width of your receipt paper roll.">
-                      <CustomSelect className="form-input" style={{ width: 140 }} value={gen.thermal_page_size || pr.thermal_page_size || '3inch'} onChange={e => patch('general', 'thermal_page_size', e.target.value)}>
+                      <CustomSelect className="form-input" style={{ width: 140 }} value={pr.thermal_page_size || gen.thermal_page_size || '3inch'} onChange={e => patch('print', 'thermal_page_size', e.target.value)}>
                         <option value="3inch">3 Inch (80mm)</option>
                         <option value="2inch">2 Inch (58mm)</option>
                       </CustomSelect>
@@ -1464,80 +1858,14 @@ export default function Settings() {
                         </div>
                       </div>
                     </div>
-
-                    {pr.print_tax_breakdown && (
-                      <Editable k="print_tax_breakdown" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '6px', fontSize: '0.6rem', color: '#64748b', marginBottom: '12px' }}>
-                        <b>GST BREAKDOWN:</b><br />
-                        Intrastate Transaction (CGST + SGST applied):<br />
-                        - CGST @ 9% on ₹20.00 = ₹1.80 | SGST @ 9% on ₹20.00 = ₹1.80<br />
-                        - CGST @ 2.5% on ₹28.00 = ₹0.70 | SGST @ 2.5% on ₹28.00 = ₹0.70
-                      </Editable>
-                    )}
-
-                    {pr.print_terms_conditions && pr.terms_conditions_text && (
-                      <Editable k="print_terms_conditions" style={{ fontSize: '0.65rem', borderTop: '1px solid #f1f5f9', paddingTop: '6px', marginTop: '6px', color: '#64748b' }}>
-                        <b>Terms & Conditions:</b> {pr.terms_conditions_text}
-                      </Editable>
-                    )}
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '24px' }}>
-                      <div>
-                        {pr.customer_signature && (
-                          <div style={{ borderTop: '1px solid #94a3b8', width: '130px', textAlign: 'center', paddingTop: '4px', fontSize: '0.65rem', marginTop: '16px' }}>
-                            {pr.customer_signature_label || 'Customer Signature'}
-                          </div>
-                        )}
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        {pr.print_signature && (
-                          <div style={{ display: 'inline-block', borderTop: '1px solid #94a3b8', width: '130px', textAlign: 'center', paddingTop: '4px', fontSize: '0.65rem', marginTop: '16px' }}>
-                            {pr.signature_label || 'Authorised Signatory'}
-                          </div>
-                        )}
-                      </div>
-                    </div>
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* ═══════════════════════════ LABELS ═══════════════════════════════ */}
-          {activeTab === 'labels' && (
-            <>
-              <div style={{ paddingTop: 12, paddingBottom: 8, fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                Rename any transaction type to match your business terminology. These names appear on invoices, menus, and reports.
-              </div>
-              {[
-                { key: 'sale',             label: 'Sales Invoice' },
-                { key: 'purchase',         label: 'Purchase Bill' },
-                { key: 'estimate',         label: 'Estimate / Quote' },
-                { key: 'proforma',         label: 'Proforma Invoice' },
-                { key: 'delivery_challan', label: 'Delivery Challan' },
-                { key: 'sale_return',      label: 'Sale Return / Credit Note' },
-                { key: 'purchase_return',  label: 'Purchase Return / Debit Note' },
-                { key: 'payment_in',       label: 'Payment Received' },
-                { key: 'payment_out',      label: 'Payment Made' },
-                { key: 'expense',          label: 'Expense' },
-                { key: 'income',           label: 'Other Income' },
-                { key: 'sale_order',       label: 'Sale Order' },
-                { key: 'purchase_order',   label: 'Purchase Order' },
-              ].map(({ key, label }) => (
-                <SettingRow key={key} label={label}>
-                  <input
-                    type="text"
-                    className="form-input"
-                    style={{ width: 220 }}
-                    value={lb[key] || ''}
-                    onChange={e => patch('labels', key, e.target.value)}
-                    placeholder={label}
-                  />
-                </SettingRow>
-              ))}
-            </>
-          )}
-
           {/* ═══════════════════════════ LOCK & STAFF ═════════════════════════ */}
+
           {/* ═══════════════════════════ STAFF MANAGEMENT ═════════════════════════ */}
           {activeTab === 'staff' && !isCashier && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>

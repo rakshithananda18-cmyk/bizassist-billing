@@ -5,16 +5,18 @@
 import React from 'react'
 import CustomSelect from '../common/CustomSelect'
 import { CheckIcon, CloseIcon, SyncIcon } from '../Icons'
+import { useDocLabels } from '../../hooks/useDocLabels'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
 
 export default function SaleReturnModal({ returningInvoice, setReturningInvoice, returnLines, setReturnLines, returnNote, setReturnNote, handleSaveReturn, savingReturn, setShowReturnModal, form }) {
+  const label = useDocLabels()
   return (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowReturnModal(false)}>
           <div className="modal modal-lg" style={{ maxWidth: '850px', width: '95%' }}>
             <div className="modal-header">
-              <span className="modal-title"><SyncIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Record Sales Return (Credit Note)</span>
+              <span className="modal-title"><SyncIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Record Sales Return ({label('sale_return')})</span>
               <button className="btn btn-ghost btn-icon" onClick={() => { setShowReturnModal(false); setReturningInvoice(null); }} aria-label="Close"><CloseIcon size={16} /></button>
             </div>
             <div className="modal-body">

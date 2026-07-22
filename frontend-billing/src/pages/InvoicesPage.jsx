@@ -17,11 +17,13 @@ import { useAuth } from '../contexts/AuthContext'
 import { PlusIcon } from '../components/Icons'
 import InvoicesListView from '../components/payments/InvoicesListView'
 import useInvoiceActions from '../hooks/useInvoiceActions'
+import { useDocLabels } from '../hooks/useDocLabels'
 
 export default function InvoicesPage({ embedded = false, headerTabs = null }) {
   const { authFetch } = useAuth()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const label = useDocLabels()
 
   const customerFilter = searchParams.get('customer') || null
 
@@ -42,6 +44,7 @@ export default function InvoicesPage({ embedded = false, headerTabs = null }) {
         {/* Workspace top bar (when embedded in Khata) */}
         {headerTabs && (
           <WorkspaceTopBar
+            settingsTab="transactions"
             windowControls={false}
             actions={
               <button
@@ -62,7 +65,7 @@ export default function InvoicesPage({ embedded = false, headerTabs = null }) {
           <div className="page-header">
             <div className="page-header-left">
               <h1 className="page-title">Invoices</h1>
-              <p className="page-subtitle">All sales invoices and credit notes</p>
+              <p className="page-subtitle">{`All ${label('sale').toLowerCase()}s and ${label('sale_return').toLowerCase()}s`}</p>
             </div>
           </div>
         )}

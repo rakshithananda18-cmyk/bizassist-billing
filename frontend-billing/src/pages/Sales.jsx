@@ -1193,7 +1193,7 @@ export default function Sales(props = {}) {
     attrs: extraAttrFields.length > 0,
     sku: settings?.transactions?.pos_show_sku !== false,
     unit: settings?.transactions?.pos_show_unit !== false,
-    discount: settings?.transactions?.pos_show_discount !== false,
+    discount: settings?.transactions?.discount_enabled !== false && settings?.transactions?.pos_show_discount !== false,
     tax: settings?.transactions?.pos_show_tax !== false,
     hsn: settings?.transactions?.pos_show_hsn === true,
     mrp: settings?.transactions?.pos_show_mrp === true
@@ -1202,7 +1202,7 @@ export default function Sales(props = {}) {
     // toggle — one switch controls the pair, keeping settings simple.
     mrp_total: settings?.transactions?.pos_show_mrp === true
          || (settings?.transactions?.pos_show_mrp !== false && profileLineFields.includes('mrp')),
-    discount_unit: settings?.transactions?.pos_show_discount !== false,
+    discount_unit: settings?.transactions?.discount_enabled !== false && settings?.transactions?.pos_show_discount !== false,
     batch: settings?.transactions?.pos_show_batch !== false,
     serial: settings?.transactions?.pos_show_serial === true
             || (settings?.transactions?.pos_show_serial !== false && profileLineFields.includes('serial_no')),
@@ -1416,6 +1416,7 @@ export default function Sales(props = {}) {
       billDiscountType: form.bill_discount_type,
       billDiscountValue: form.bill_discount_value,
       cashDiscount: parseFloat(form.cash_discount) || 0,
+      roundOffEnabled: settings?.transactions?.round_off_enabled !== false,
     })
   const colFooter = columnTotals(form.items, products)   // per-column totals for the cart footer row
 
@@ -1634,9 +1635,9 @@ export default function Sales(props = {}) {
 
     const rawOptions = [
       { label: 'Standard Price', price: product.selling_price },
-      { label: 'Wholesale Price', price: product.wholesale_price },
+      ...(settings?.inventory?.wholesale_price !== false ? [{ label: 'Wholesale Price', price: product.wholesale_price }] : []),
       { label: 'Distributor Price', price: product.distributor_price },
-      { label: 'MRP', price: product.mrp }
+      ...(settings?.inventory?.mrp_enabled !== false ? [{ label: 'MRP', price: product.mrp }] : [])
     ]
     if (batches) {
       batches.forEach(b => {
@@ -2452,7 +2453,7 @@ export default function Sales(props = {}) {
           onMoveColumn={handleMoveColumn}
           funcKeys={funcKeys}
           setFuncKeys={setFuncKeys}
-          onAdvancedSettings={() => { setShowSettingsModal(false); navigate('/settings'); }}
+          onAdvancedSettings={() => { setShowSettingsModal(false); navigate('/settings?tab=transactions'); }}
           defaultFuncKeys={defaultFuncKeys}
           initialTab={settingsInitialTab}
         />

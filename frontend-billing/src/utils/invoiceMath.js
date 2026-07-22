@@ -48,7 +48,7 @@ export function resolveBillDiscount(subtotal, { type = 'amount', value = 0 } = {
  * @param {{isIntrastate?: boolean, billDiscountType?: 'amount'|'percent', billDiscountValue?: number}} opts
  * @returns {{subtotal,discount,discountedSubtotal,cgstAmt,sgstAmt,igstAmt,gstAmt,grandTotal}}
  */
-export function computeInvoiceTotals(items = [], { isIntrastate = true, billDiscountType = 'amount', billDiscountValue = 0, cashDiscount = 0 } = {}) {
+export function computeInvoiceTotals(items = [], { isIntrastate = true, billDiscountType = 'amount', billDiscountValue = 0, cashDiscount = 0, roundOffEnabled = true } = {}) {
   const subtotal = items.reduce((sum, item) => sum + lineTotal(item), 0)
 
   const discount = resolveBillDiscount(subtotal, { type: billDiscountType, value: billDiscountValue })
@@ -85,8 +85,8 @@ export function computeInvoiceTotals(items = [], { isIntrastate = true, billDisc
   // AUTOMATIC round-off: the grand total is rounded to the nearest rupee (matching
   // how the backend persists `grand = round(raw_total)`), so the counter always
   // shows a clean figure. roundOff is signed (negative if rounded down).
-  const roundedGrandTotal = Math.round(grandTotal)
-  const roundOff = +(roundedGrandTotal - grandTotal).toFixed(2)
+  const roundedGrandTotal = roundOffEnabled ? Math.round(grandTotal) : grandTotal
+  const roundOff = roundOffEnabled ? +(roundedGrandTotal - grandTotal).toFixed(2) : 0
 
   // Payable = the auto-rounded total minus the cash discount, floored at 0.
   const payable = Math.max(0, +(roundedGrandTotal - cashDisc).toFixed(2))

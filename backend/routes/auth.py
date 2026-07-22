@@ -749,6 +749,11 @@ _DEFAULT_SETTINGS = {
         "amount_decimal_places": 2,
         "app_zoom": 100,                 # UI scale percentage: 80-130
         "hosting_mode": "cloud" if "postgres" in DATABASE_URL or "postgresql" in DATABASE_URL else "local",         # local | hybrid | cloud
+        "realtime_sync_global": True,
+        "realtime_sync_sales": True,
+        "realtime_sync_stock": True,
+        "realtime_sync_parties": True,
+        "realtime_sync_purchases": True,
     },
     # ── Transactions ─────────────────────────────────────────────────────────
     "transactions": {
@@ -774,6 +779,7 @@ _DEFAULT_SETTINGS = {
         "pos_show_tax": True,
         "pos_show_hsn": False,
         "pos_show_mrp": False,
+        "pos_show_batch": True,
         "pos_show_serial": False,
     },
     # ── Items / Inventory ─────────────────────────────────────────────────────
@@ -785,9 +791,9 @@ _DEFAULT_SETTINGS = {
         "expiry_date_tracking": False,
         "manufacturing_date_tracking": False,
         "serial_tracking": False,
-        "mrp_enabled": False,
+        "mrp_enabled": True,
         "wholesale_price": False,
-        "barcode_scanning": False,
+        "barcode_scanning": True,
         "auto_update_sale_price": False,
     },
     # ── Print / PDF ───────────────────────────────────────────────────────────

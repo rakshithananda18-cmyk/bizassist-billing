@@ -584,6 +584,7 @@ export default function Payments({ embedded = false, headerTabs = null }) {
             workspace tabs · divider · group switch · actions · window controls. */}
         {headerTabs && (
           <WorkspaceTopBar
+            settingsTab="transactions"
             windowControls={false}
             actions={
               <>

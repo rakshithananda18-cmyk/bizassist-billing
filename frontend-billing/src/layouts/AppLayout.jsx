@@ -16,6 +16,7 @@ import WebLocalOnlyNotice from '../components/hosting/WebLocalOnlyNotice'
 import SidebarContextMenu from '../components/layout/SidebarContextMenu'
 import ToastContainer from '../components/layout/ToastContainer'
 import SessionExpiredModal from '../components/layout/SessionExpiredModal'
+import { useDocLabels } from '../hooks/useDocLabels'
 // HostingOnboardingModal removed: hosting is now chosen once, in Register.
 // The post-login onboarding pop-up duplicated that choice and was intrusive.
 import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon, DownloadIcon, PlusIcon } from '../components/Icons'
@@ -80,54 +81,55 @@ const PAGE_TITLES = {
   '/settings':      'App Settings',
 }
 
-// Quick actions surfaced in the sidebar right-click menu.
-// Each entry: { label, icon: <SvgComponent />, action(navigate) }
-const QUICK_ACTIONS = {
-  '/':            (nav) => [
-    { label: 'Go to Home',           icon: <HomeIcon size={14} />,      action: () => nav('/') },
-    { label: 'Open Billing Counter', icon: <CounterIcon size={14} />,   action: () => nav('/sales') },
-  ],
-  '/dashboard':   (nav) => [
-    { label: 'Open Dashboard',       icon: <DashboardIcon size={14} />, action: () => nav('/dashboard') },
-    { label: 'Refresh Data',         icon: <SyncIcon size={14} />,      action: () => window.dispatchEvent(new CustomEvent('sync-event', { detail: { type: 'sync.reconnect' } })) },
-  ],
-  '/sales':       (nav) => [
-    { label: 'New Invoice',          icon: <PlusIcon size={14} />,      action: () => nav('/sales') },
-    { label: "Today's Bills",        icon: <BillsIcon size={14} />,     action: () => nav('/sales?view=today') },
-  ],
-  '/stock':       (nav) => [
-    { label: 'Stock & Items',        icon: <InventoryIcon size={14} />, action: () => nav('/stock/inventory') },
-    { label: 'Purchase Bills',       icon: <BillsIcon size={14} />,     action: () => nav('/stock/purchase') },
-    { label: 'Adjust Stock',         icon: <ZapIcon size={14} />,       action: () => { nav('/stock/inventory'); setTimeout(() => window.dispatchEvent(new CustomEvent('open_adjust_stock')), 200) } },
-  ],
-  '/parties':     (nav) => [
-    { label: 'Contacts',             icon: <ContactsIcon size={14} />,  action: () => nav('/parties/contacts') },
-    { label: 'Transactions',         icon: <CashIcon size={14} />,      action: () => nav('/parties/payments') },
-    { label: 'Add Contact',          icon: <PlusIcon size={14} />,      action: () => { nav('/parties/contacts'); setTimeout(() => window.dispatchEvent(new CustomEvent('open_add_contact')), 200) } },
-  ],
-  '/reports':     (nav) => [
-    { label: 'Open Reports',         icon: <ReportsIcon size={14} />,   action: () => nav('/reports') },
-    { label: 'GST Summary',          icon: <TaxIcon size={14} />,       action: () => nav('/reports?tab=gst') },
-  ],
-  '/b2b-orders':  (nav) => [
-    { label: 'View B2B Orders',      icon: <OrderIcon size={14} />,     action: () => nav('/b2b-orders') },
-  ],
-  '/b2b-network': (nav) => [
-    { label: 'View B2B Network',     icon: <ConnectionIcon size={14} />,action: () => nav('/b2b-network') },
-  ],
-  '/import':      (nav) => [
-    { label: 'Data Migration',       icon: <ImportIcon size={14} />,    action: () => nav('/import') },
-  ],
-  '/pos-live-counter': (nav) => [
-    { label: 'Open Live Counter',    icon: <MonitorIcon size={14} />,   action: () => nav('/pos-live-counter') },
-  ],
-}
-
 export default function AppLayout({ children, title }) {
   const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings, fetchSettings } = useAuth()
   const { hasLock, lock, resetInactivityTimer } = useLock()
   const navigate = useNavigate()
   const location = useLocation()
+  const label = useDocLabels()
+
+  // Quick actions surfaced in the sidebar right-click menu.
+  // Each entry: { label, icon: <SvgComponent />, action(navigate) }
+  const QUICK_ACTIONS = {
+    '/':            (nav) => [
+      { label: 'Go to Home',           icon: <HomeIcon size={14} />,      action: () => nav('/') },
+      { label: 'Open Billing Counter', icon: <CounterIcon size={14} />,   action: () => nav('/sales') },
+    ],
+    '/dashboard':   (nav) => [
+      { label: 'Open Dashboard',       icon: <DashboardIcon size={14} />, action: () => nav('/dashboard') },
+      { label: 'Refresh Data',         icon: <SyncIcon size={14} />,      action: () => window.dispatchEvent(new CustomEvent('sync-event', { detail: { type: 'sync.reconnect' } })) },
+    ],
+    '/sales':       (nav) => [
+      { label: 'New Invoice',          icon: <PlusIcon size={14} />,      action: () => nav('/sales') },
+      { label: "Today's Bills",        icon: <BillsIcon size={14} />,     action: () => nav('/sales?view=today') },
+    ],
+    '/stock':       (nav) => [
+      { label: 'Stock & Items',        icon: <InventoryIcon size={14} />, action: () => nav('/stock/inventory') },
+      { label: label('purchase') + 's',       icon: <BillsIcon size={14} />,     action: () => nav('/stock/purchase') },
+      { label: 'Adjust Stock',         icon: <ZapIcon size={14} />,       action: () => { nav('/stock/inventory'); setTimeout(() => window.dispatchEvent(new CustomEvent('open_adjust_stock')), 200) } },
+    ],
+    '/parties':     (nav) => [
+      { label: 'Contacts',             icon: <ContactsIcon size={14} />,  action: () => nav('/parties/contacts') },
+      { label: 'Transactions',         icon: <CashIcon size={14} />,      action: () => nav('/parties/payments') },
+      { label: 'Add Contact',          icon: <PlusIcon size={14} />,      action: () => { nav('/parties/contacts'); setTimeout(() => window.dispatchEvent(new CustomEvent('open_add_contact')), 200) } },
+    ],
+    '/reports':     (nav) => [
+      { label: 'Open Reports',         icon: <ReportsIcon size={14} />,   action: () => nav('/reports') },
+      { label: 'GST Summary',          icon: <TaxIcon size={14} />,       action: () => nav('/reports?tab=gst') },
+    ],
+    '/b2b-orders':  (nav) => [
+      { label: 'View B2B Orders',      icon: <OrderIcon size={14} />,     action: () => nav('/b2b-orders') },
+    ],
+    '/b2b-network': (nav) => [
+      { label: 'View B2B Network',     icon: <ConnectionIcon size={14} />,action: () => nav('/b2b-network') },
+    ],
+    '/import':      (nav) => [
+      { label: 'Data Migration',       icon: <ImportIcon size={14} />,    action: () => nav('/import') },
+    ],
+    '/pos-live-counter': (nav) => [
+      { label: 'Open Live Counter',    icon: <MonitorIcon size={14} />,   action: () => nav('/pos-live-counter') },
+    ],
+  }
 
   const hostingMode = settings?.general?.hosting_mode || 'local'
   const effectiveMode = !IS_LOCAL_APP
@@ -1089,7 +1091,7 @@ export default function AppLayout({ children, title }) {
                         inventory:                'Inventory',
                         stock_ledger:             'Stock Ledger',
                         product_barcodes:         'Barcodes',
-                        purchase_invoices:        'Purchase Bills',
+                        purchase_invoices:        label('purchase') + 's',
                         purchase_invoice_items:   'Purchase Items',
                         expenses:                 'Expenses',
                         godowns:                  'Godowns',

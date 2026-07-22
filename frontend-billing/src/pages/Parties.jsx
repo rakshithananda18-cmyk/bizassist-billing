@@ -20,6 +20,7 @@ import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar
 import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import ContextMenu from '../components/common/ContextMenu'
 import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
+import { useDocLabels } from '../hooks/useDocLabels'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -33,6 +34,7 @@ const defaultForm = {
 export default function Parties({ embedded = false, headerTabs = null }) {
   const { authFetch, user, settings } = useAuth()
   const navigate = useNavigate()
+  const label = useDocLabels()
 
   const settingsRef = useRef(settings)
   useEffect(() => {
@@ -409,7 +411,7 @@ export default function Parties({ embedded = false, headerTabs = null }) {
       })
       
       if (res.ok) {
-        setAlert({ type: 'success', msg: 'Sales return (Credit Note) recorded successfully! Stock and customer balance updated.' })
+        setAlert({ type: 'success', msg: `${label('sale_return')} recorded successfully! Stock and customer balance updated.` })
         setShowReturnModal(false)
         setReturningInvoice(null)
         setReturnLines([])
@@ -442,6 +444,7 @@ export default function Parties({ embedded = false, headerTabs = null }) {
             workspace tabs · divider · view tabs · actions · window controls. */}
         {headerTabs && (
           <WorkspaceTopBar
+            settingsTab="transactions"
             windowControls={false}
             actions={
               <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={() => { setForm(defaultForm); setShowModal(true) }}>
@@ -618,7 +621,7 @@ export default function Parties({ embedded = false, headerTabs = null }) {
                             <button className="btn btn-secondary btn-sm" onClick={() => handlePrintInvoice(p.invoice_number || p.invoice_no)}><PrinterIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Print</button>
                             <button className="btn btn-secondary btn-sm" onClick={() => handleWhatsAppShareInvoice(p)} title="Share invoice on WhatsApp"><MessageIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Share</button>
                             {p.invoice_type !== 'credit_note' && (
-                              <button className="btn btn-secondary btn-sm" onClick={() => handleOpenReturn(p)} title="Record Sales Return / Credit Note"><SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Return</button>
+                              <button className="btn btn-secondary btn-sm" onClick={() => handleOpenReturn(p)} title={`Record Sales Return / ${label('sale_return')}`}><SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Return</button>
                             )}
                           </div>
                         </td>

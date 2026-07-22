@@ -48,7 +48,14 @@ const inputCls = 'form-input'
 const rowStyle = { display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 8 }
 
 export default function ProductFormModal({ open, product, onClose, onSaved, prefillBarcode = '', inline = false, onChange }) {
-  const { authFetch } = useAuth()
+  const auth = useAuth()
+  const authFetch = auth?.authFetch
+  const settings = auth?.settings
+  const inv = settings?.inventory || {}
+  const showUnit       = inv.item_units_enabled !== false
+  const showCategory   = inv.item_categories_enabled !== false
+  const showMrp        = inv.mrp_enabled !== false
+  const showWholesale  = inv.wholesale_price !== false
   const isEdit = !!product?.id
   const [form, setForm] = useState(EMPTY_PRODUCT)
   const [barcodes, setBarcodes] = useState([])      // edit mode: existing barcodes
@@ -188,12 +195,16 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
           </Field>
         </div>
         <div style={currentRowStyle}>
-          <Field label="Category">
-            <input className={inputCls} value={form.category} onChange={e => setF('category', e.target.value)} placeholder="e.g. Oils" />
-          </Field>
-          <Field label="Unit">
-            <input className={inputCls} value={form.unit} onChange={e => setF('unit', e.target.value)} placeholder="pcs / kg / L / box" />
-          </Field>
+          {showCategory && (
+            <Field label="Category">
+              <input className={inputCls} value={form.category} onChange={e => setF('category', e.target.value)} placeholder="e.g. Oils" />
+            </Field>
+          )}
+          {showUnit && (
+            <Field label="Unit">
+              <input className={inputCls} value={form.unit} onChange={e => setF('unit', e.target.value)} placeholder="pcs / kg / L / box" />
+            </Field>
+          )}
           <Field label="Description" flex={2}>
             <input className={inputCls} value={form.description} onChange={e => setF('description', e.target.value)} />
           </Field>
@@ -205,9 +216,11 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
           <Field label="Retail price (₹) *">
             <input className={inputCls} type="number" min="0" step="any" value={form.selling_price} onChange={e => setF('selling_price', e.target.value)} />
           </Field>
-          <Field label="Wholesale price (₹)">
-            <input className={inputCls} type="number" min="0" step="any" value={form.wholesale_price} onChange={e => setF('wholesale_price', e.target.value)} />
-          </Field>
+          {showWholesale && (
+            <Field label="Wholesale price (₹)">
+              <input className={inputCls} type="number" min="0" step="any" value={form.wholesale_price} onChange={e => setF('wholesale_price', e.target.value)} />
+            </Field>
+          )}
           <Field label="Distributor price (₹)">
             <input className={inputCls} type="number" min="0" step="any" value={form.distributor_price} onChange={e => setF('distributor_price', e.target.value)} />
           </Field>
@@ -216,9 +229,11 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
           <Field label="Cost price (₹)">
             <input className={inputCls} type="number" min="0" step="any" value={form.cost_price} onChange={e => setF('cost_price', e.target.value)} />
           </Field>
-          <Field label="MRP (₹)">
-            <input className={inputCls} type="number" min="0" step="any" value={form.mrp} onChange={e => setF('mrp', e.target.value)} placeholder="printed MRP" />
-          </Field>
+          {showMrp && (
+            <Field label="MRP (₹)">
+              <input className={inputCls} type="number" min="0" step="any" value={form.mrp} onChange={e => setF('mrp', e.target.value)} placeholder="printed MRP" />
+            </Field>
+          )}
           {!inline && (
             <Field label=" ">
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', paddingTop: 6 }}>

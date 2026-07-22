@@ -6,17 +6,19 @@
 import React from 'react'
 import CustomSelect from '../common/CustomSelect'
 import { BillsIcon, CloseIcon, SyncIcon } from '../Icons'
+import { useDocLabels } from '../../hooks/useDocLabels'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
 
 export default function PurchaseDetailModal({ selectedDetail, setShowDetailModal }) {
+  const label = useDocLabels()
   return (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowDetailModal(false)}>
           <div className="modal" style={{ maxWidth: '750px', width: '95%' }}>
             <div className="modal-header">
               <span className="modal-title">
-                {selectedDetail.invoice_type === 'debit_note' ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><SyncIcon size={14} /> Debit Note Details</span> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><BillsIcon size={14} /> Purchase Invoice Details</span>}
+                {selectedDetail.invoice_type === 'debit_note' ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><SyncIcon size={14} /> {label('purchase_return')} Details</span> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><BillsIcon size={14} /> {label('purchase')} Details</span>}
               </span>
               <button className="btn btn-ghost btn-icon" onClick={() => setShowDetailModal(false)} aria-label="Close"><CloseIcon size={16} /></button>
             </div>
@@ -44,7 +46,7 @@ export default function PurchaseDetailModal({ selectedDetail, setShowDetailModal
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Type & Status</div>
                   <div>
                     <span className={`badge ${selectedDetail.invoice_type === 'debit_note' ? 'badge-accent' : (selectedDetail.status === 'confirmed' ? 'badge-success' : 'badge-warning')}`}>
-                      {selectedDetail.invoice_type === 'debit_note' ? 'Debit Note (Return)' : `Bill: ${selectedDetail.status || 'pending'}`}
+                      {selectedDetail.invoice_type === 'debit_note' ? `${label('purchase_return')} (Return)` : `Bill: ${selectedDetail.status || 'pending'}`}
                     </span>
                   </div>
                 </div>

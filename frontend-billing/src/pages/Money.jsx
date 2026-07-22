@@ -72,6 +72,7 @@ export default function Money() {
     <AppLayout title="Money">
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
         <WorkspaceTopBar
+          settingsTab="transactions"
           windowControls={false}
           actions={
             <button className="btn btn-ghost btn-sm" onClick={refreshAll} title="Refresh" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>

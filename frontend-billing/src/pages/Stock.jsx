@@ -667,6 +667,7 @@ export default function Stock({ embedded = false, headerTabs = null }) {
       <div className="inv-shell">
         {/* ── Top bar — shared WorkspaceTopBar (identical to Purchases/Parties/Payments) ── */}
         <WorkspaceTopBar
+          settingsTab="inventory"
           actions={
             <>
               {/* Alert flash */}
@@ -788,11 +789,13 @@ export default function Stock({ embedded = false, headerTabs = null }) {
                     <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={15} /></span>
                     <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search products…" autoFocus />
                   </div>
-                  <CustomSelect className="form-select" style={{ height: 34, fontSize: '0.82rem', minWidth: 140, width: 'auto', flexShrink: 0 }}
-                    value={catFilter} onChange={e => setCatFilter(e.target.value)}>
-                    <option value="">All Categories</option>
-                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                  </CustomSelect>
+                  {settings?.inventory?.item_categories_enabled !== false && (
+                    <CustomSelect className="form-select" style={{ height: 34, fontSize: '0.82rem', minWidth: 140, width: 'auto', flexShrink: 0 }}
+                      value={catFilter} onChange={e => setCatFilter(e.target.value)}>
+                      <option value="">All Categories</option>
+                      {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                    </CustomSelect>
+                  )}
                   <CustomSelect className="form-select" style={{ height: 34, fontSize: '0.82rem', minWidth: 120, width: 'auto', flexShrink: 0 }}
                     value={stockStatusFilter} onChange={e => setStockStatusFilter(e.target.value)}>
                     <option value="">All Status</option>

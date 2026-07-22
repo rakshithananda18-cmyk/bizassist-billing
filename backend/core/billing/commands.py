@@ -210,7 +210,6 @@ def _negative_stock_blocked(db, business_id: int) -> bool:
     carries the authoritative setting for the whole tenant. Any problem reading
     it → False (fail-open: never block billing on a config hiccup)."""
     try:
-        from database.models import User
         owner = db.query(User).filter(User.id == business_id).first()
         if not owner or not owner.settings:
             return False
@@ -376,8 +375,22 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
     cess_t   = _round2(sum(c[0]["cess_amount"]  for c in computed))
     disc_t   = _round2(sum(c[0]["discount"]     for c in computed))
     raw_total = subtotal + cgst_t + sgst_t + igst_t + cess_t
-    rounded   = _round2(round(raw_total))           # round to nearest rupee
-    round_off = _round2(rounded - raw_total)
+    
+    # Check for round_off_enabled in settings
+    try:
+        owner = db.query(User).filter(User.id == business_id).first()
+        blob = json.loads(owner.settings) if owner and owner.settings else {}
+        round_off_enabled = bool((blob.get("transactions") or {}).get("round_off_enabled", True))
+    except Exception:
+        round_off_enabled = True
+
+    if round_off_enabled:
+        rounded   = _round2(round(raw_total))           # round to nearest rupee
+        round_off = _round2(rounded - raw_total)
+    else:
+        rounded = raw_total
+        round_off = 0.0
+
     # Post-tax cash discount / round-off: reduces the PAYABLE only — never the
     # taxable value or GST (the "Cash Dis" line on real retail receipts; see
     # BENCHMARK_RECEIPT_MR_TRADERS.md). Clamped to [0, rounded]. 0 ⇒ exact no-op,

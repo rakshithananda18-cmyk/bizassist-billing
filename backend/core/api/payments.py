@@ -158,6 +158,9 @@ def list_payments(
         result.append({
             "id": p.id,
             "date": p.payment_date or (p.created_at.strftime("%Y-%m-%d") if p.created_at else None),
+            # Full timestamp (naive UTC) so the UI can show the receipt time in IST,
+            # not just the date. formatISTDateTime falls back to date-only otherwise.
+            "created_at": p.created_at.isoformat() if p.created_at else None,
             "invoice_ref": inv_no,
             "invoice_number": inv_no,
             "party_name": party_name,
@@ -184,19 +187,28 @@ def invoice_account(
     if inv is None:
         raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
 
-    total = round(inv.total_amount or inv.amount or 0.0, 2)
-    paid = round(inv.paid_amount or 0.0, 2)
-    outstanding = round(max(total - paid, 0.0), 2)
-
     payments = (
         db.query(InvoicePayment)
         .filter(InvoicePayment.business_id == bid, InvoicePayment.invoice_id == invoice_id)
         .order_by(InvoicePayment.created_at.asc())
         .all()
     )
+
+    total = round(inv.total_amount or inv.amount or 0.0, 2)
+    # Derive paid from the payment ledger (source of truth), not inv.paid_amount —
+    # a stale synced invoice can leave that column at 0 while receipts exist (the
+    # "Pending but already paid" bug). Fall back to the column only when there are
+    # no ledger rows.
+    paid = round(sum(p.amount_paid or 0.0 for p in payments), 2) if payments else round(inv.paid_amount or 0.0, 2)
+    outstanding = round(max(total - paid, 0.0), 2)
+    status = "Paid" if (total > 0 and paid >= total) else ("Partial" if paid > 0 else (inv.status or "Pending"))
+
+    def _date_only(d):
+        return str(d).split("T")[0].split(" ")[0] if d else None
+
     payment_rows = [{
         "id": p.id,
-        "date": p.payment_date or (p.created_at.strftime("%Y-%m-%d") if p.created_at else None),
+        "date": _date_only(p.payment_date) or (p.created_at.strftime("%Y-%m-%d") if p.created_at else None),
         "amount": round(p.amount_paid or 0.0, 2),
         "method": p.payment_mode or "Cash",
         "note": p.note or "",
@@ -227,7 +239,7 @@ def invoice_account(
     return {
         "invoice_id": inv.id,
         "invoice_no": inv.invoice_id,
-        "status": inv.status,
+        "status": status,
         "total": total,
         "paid": paid,
         "outstanding": outstanding,
@@ -535,14 +547,28 @@ def list_pending_invoices(
         func.lower(Invoice.status).in_(["pending", "overdue", "partial"])
     ).order_by(Invoice.due_date.asc(), Invoice.id.desc()).all()
 
+    # Derive "paid" from the payment ledger (source of truth), so an invoice whose
+    # cached paid_amount is stale (e.g. a sync clobbered it back to 0) is still
+    # correctly excluded once its receipts cover the total. Batched one query.
+    inv_ids = [inv.id for inv in invoices]
+    ledger_paid = {}
+    if inv_ids:
+        for iid, s in (db.query(InvoicePayment.invoice_id,
+                                func.coalesce(func.sum(InvoicePayment.amount_paid), 0.0))
+                       .filter(InvoicePayment.business_id == bid,
+                               InvoicePayment.invoice_id.in_(inv_ids))
+                       .group_by(InvoicePayment.invoice_id).all()):
+            ledger_paid[iid] = round(s or 0.0, 2)
+
     result = []
     for inv in invoices:
         due = inv.due_date or ""
-        paid = inv.paid_amount or 0
         total = inv.total_amount or inv.amount or 0
+        # Ledger sum when the invoice has receipts; else the cached column.
+        paid = ledger_paid.get(inv.id, round(inv.paid_amount or 0, 2))
         balance = round(max(total - paid, 0), 2)
         if balance <= 0.005:
-            continue  # fully settled but status not yet flipped — not a due
+            continue  # fully settled (per the ledger) — not a due
         is_overdue = due and due < today and (inv.status or "").lower() != "paid"
         result.append({
             "id": inv.id,
@@ -554,6 +580,7 @@ def list_pending_invoices(
             "due_date": due,
             "status": "Overdue" if is_overdue else inv.status,
             "invoice_date": inv.invoice_date,
+            "created_at": inv.created_at.isoformat() if inv.created_at else None,
         })
     return result
 
