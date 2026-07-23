@@ -1,258 +1,164 @@
----
-title: BizAssist
-emoji: 💎
-colorFrom: blue
-colorTo: green
-sdk: docker
-pinned: false
----
+<div align="center">
 
-# BizAssist — AI-Powered Business Intelligence, Billing & POS Ecosystem
+# BizAssist
+### AI-Powered Business Intelligence, POS & Accounting Ecosystem
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](#-running-tests)
-[![License](https://img.shields.io/badge/license-UNLICENSED-blue)](#)
-[![Version](https://img.shields.io/badge/version-1.2.2-blue)](#)
+[![Version](https://img.shields.io/badge/version-1.2.2-blue.svg?style=for-the-badge)](https://github.com/rakshithananda18-cmyk/bizassist-billing)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=for-the-badge)](#-running-tests)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB.svg?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![React](https://img.shields.io/badge/React-18.0-61DAFB.svg?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![License](https://img.shields.io/badge/License-UNLICENSED-red.svg?style=for-the-badge)](#)
 
-**BizAssist** is a modern, high-performance, offline-first business intelligence, POS, and accounting ecosystem built for retail, wholesale, distribution, and service operations. 
-
-It combines high-speed POS checkout billing, dynamic custom document labeling, automated double-entry accounting with tamper-evident blockchain-style hash chains, multi-location stock & intake management, dual hosting modes (Local & Cloud Sync), and a cost-optimized AI business advisor grounded in local financial data.
+*Offline-first POS, custom document labeling, double-entry ledgers with tamper-evident hash chains, multi-godown stock management, and a 4-tier cost-optimized AI advisor.*
 
 ---
 
-## 📖 Table of Contents
+[Quick Start](#-quick-start) • [Features](#-core-features) • [Architecture](#-architecture--ai-router) • [Testing](#-running-tests) • [Docs](#-key-documentation)
 
-- [Core Features & Functionality](#-core-features--functionality)
-  - [1. POS Counter & Billing Engine](#1-pos-counter--billing-engine)
-  - [2. Dynamic Settings & Custom Document Labels](#2-dynamic-settings--custom-document-labels)
-  - [3. Financial Invariants & Double-Entry Ledger](#3-financial-invariants--double-entry-ledger)
-  - [4. Stock, Intake & Inventory Control](#4-stock-intake--inventory-control)
-  - [5. B2B Wholesaling & Customer Tiers](#5-b2b-wholesaling--customer-tiers)
-  - [6. Custom Confirmation & Visual Diffing System](#6-custom-confirmation--visual-diffing-system)
-  - [7. Dual Hosting Architecture & Sync](#7-dual-hosting-architecture--sync)
-  - [8. AI Business Advisor & 4-Tier Intent Router](#8-ai-business-advisor--4-tier-intent-router)
-- [🛠️ Technology Stack & Architecture](#-technology-stack--architecture)
-- [⚡ Getting Started](#-getting-started)
-- [📁 Project Structure](#-project-structure)
-- [🧪 Seeding & Performance Benchmarks](#-seeding--performance-benchmarks)
-- [📋 Running Tests](#-running-tests)
-- [📖 Documentation Directory](#-documentation-directory)
+</div>
+
+<br />
+
+## 🌟 Overview
+
+**BizAssist** is an enterprise-grade, offline-first business management platform designed for retail, wholesale, distribution, and service enterprises. It pairs a lightning-fast barcode POS counter with automated double-entry accounting, real-time stock intake, B2B supplier networking, and an LLM-driven business advisor.
 
 ---
 
-## 🚀 Core Features & Functionality
+## ⚡ Quick Start
 
-### 1. POS Counter & Billing Engine
-* **Barcode-First Checkout**: Rapid barcode scanning, multi-cart tab support, and pure keyboard shortcuts for high-volume sales counters.
-* **Flexible Payment Methods**: Supports Cash, UPI (with QR code generation), Card, Net Banking, Wallet, and Credit/Split payments.
-* **POS Column Customization**: Show or hide POS billing table columns dynamically (SKU, Unit, Discount %, Tax %, HSN/SAC, MRP, Batch, Serial/IMEI).
-* **Multi-Tab Cart Persistence**: Auto-saves active sales tabs per cashier in local storage and safely clears them on bill completion or exit.
-* **Auto-Discount & Round Off**: Master toggles for line-item/overall discounts (% or ₹ fixed) and total round-off (Nearest, Round Up, Round Down).
-
----
-
-### 2. Dynamic Settings & Custom Document Labels
-* **App-Wide Document Labeling (`useDocLabels`)**: Rename any business document type in **Settings → Custom Labels** (e.g. *Sales Invoice* ➔ *Tax Bill*, *Credit Note* ➔ *Return Slip*, *Payment Receipt* ➔ *Voucher*). All UI headings, button labels, lists, and PDF print headers update dynamically across the entire application.
-* **Privacy Mode**: One-click toggle in Settings to blur financial KPI cards (Revenue, Gross Margin, Overdue) on the dashboard when operating counters in customer-facing environments.
-* **Localisation & Precision**: Customizable date formats (`DD/MM/YYYY`, `MM/DD/YYYY`, `YYYY-MM-DD`) and separate decimal precision settings for Quantities (up to 3 decimals) and Amounts.
-* **App Lock & Security**: Passcode PIN protection with configurable auto-lock inactivity timeouts.
-* **Print & PDF Designer**: Custom theme color pickers, multiple invoice templates (*Classic*, *Modern*, *Thermal*), page sizes (A4, A5, 3-inch Thermal), and custom business logos/watermarks.
-
----
-
-### 3. Financial Invariants & Double-Entry Ledger
-* **Automated Journal Postings**: Every sales checkout, purchase, return, or payment automatically posts balanced `JournalEntry` and `JournalLine` records to the general ledger.
-* **Tamper-Evident Hash Chain**: Sequentially links all journal entries using SHA-256 cryptographic hashes. Built-in verification (`verify_chain`) detects any database tampering or raw record manipulation.
-* **Period Locking & Financial Controls**: Allows locking historical accounting periods to prevent retroactive modifications to closed books.
-* **FIFO Payment Settlement & Advances**: Settle customer dues chronologically (oldest invoice first) with automatic banking of overpayments as advance credit balances.
-
----
-
-### 4. Stock, Intake & Inventory Control
-* **Stock Intake Sheet**: Grid-based batch purchase intake for multi-item inventory stock-in, with landed cost calculations, ROI/Margin forecasting, and batch expiry tracking.
-* **Prevent Negative Stock**: Configurable negative stock policy that blocks sales when inventory levels would drop below zero.
-* **Multi-Godown / Warehouse Transfers**: Manage stock movements across multiple physical godowns and warehouses with stock ledger audit entries.
-* **Barcode & Label Management**: Generate, prefill, and print custom barcode labels for single or bulk items.
-* **Bulk Add & Import**: Rapid bulk product creation and CSV data import with interactive column mapping.
-
----
-
-### 5. B2B Wholesaling & Customer Tiers
-* **BizID Connection Network**: Connect suppliers and buyers via unique connection codes (`BizID`) for direct inter-business trading.
-* **Customer Price Tiers**: Automatic application of customer-specific price tiers (*Standard*, *Wholesale*, *Distributor*) during counter billing.
-* **Network Catalog Sharing**: Share supplier product catalogs with connected buyers for automated purchase order mapping.
-
----
-
-### 6. Custom Confirmation & Visual Diffing System
-* **Context-Driven Dialogs (`useConfirm`)**: Replaces browser-default confirm dialogs with styled modal dialogs across all pages.
-* **Field-Level Diffing (`diffFields`)**: Displays side-by-side "Before vs. After" field change summaries when editing existing customers, products, or transactions.
-* **Unsaved Changes Protection**: Warns users before closing tabs or navigating away with unsaved bill items or form inputs.
-
----
-
-### 7. Dual Hosting Architecture & Sync
-* **Offline-First Local Operation**: Runs completely offline using local SQLite database storage.
-* **Hybrid & Cloud Sync**: Seamlessly syncs local offline transactions to the cloud backend (`/sync/push` and `/sync/pull`) using delta cursor tracking and idempotent outbox queues.
-* **Row-Level Security (RLS)**: Enforces multi-tenant isolation at the database level for cloud PostgreSQL deployments.
-
----
-
-### 8. AI Business Advisor & 4-Tier Intent Router
-
-Every plain-language question or query goes through a cost-optimized 4-tier routing architecture:
-
-```
-                  [User Natural Language Query]
-                               │
-                               ▼
-                    ┌─────────────────────┐      0 tokens
-                    │ CONVERSATIONAL TIER │ ──► Greetings, off-topic help
-                    └─────────────────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐      0 tokens (SQL intent)
-                    │  DIRECT INTENT TIER │ ──► "who owes me?", "low stock products"
-                    └─────────────────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐      0 tokens
-                    │   SEMANTIC CACHE    │ ──► Returns cached insights
-                    └─────────────────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐      Low cost (Groq Llama-3.1 8B)
-                    │   AI_SIMPLE TIER    │ ──► Single-table summaries, simple filters
-                    └─────────────────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐      Adaptive Agent Loop (Groq 70B)
-                    │   AI_COMPLEX TIER   │ ──► Multi-source financial reports & trend analysis
-                    └─────────────────────┘
-```
-
-* **Durable Business Memories (`BusinessFact`)**: Background background processes distill long-term business patterns (e.g. top-moving products, payment behaviors) into durable memory records injected into AI prompt contexts.
-* **Audited Action Execution**: The AI can propose actionable steps (e.g., `send_payment_reminders`). Proposed actions undergo a dry-run preview, require explicit user confirmation, and are logged in an immutable `ActionLog`.
-
----
-
-## 🛠️ Technology Stack & Architecture
-
-* **Frontend**: React 18, Vite, React Router v6, Vanilla CSS (Design system with dark mode, glassmorphism, micro-animations).
-  * `frontend-billing/` — Main POS, Billing, Inventory, Accounting & Settings web app.
-  * `frontend-ai/` — Conversational AI Advisor & Business Analytics dashboard.
-* **Backend**: FastAPI (Python 3.12), SQLAlchemy ORM, Pydantic v2, SQLite / PostgreSQL.
-* **Desktop App**: Electron wrapper (`desktop/`) with PyInstaller frozen Python backend for one-click desktop installation.
-* **AI Engine**: Groq API (Llama-3.1 8B & Llama-3.3 70B) with local embeddings (`all-MiniLM-L6-v2`) for semantic intent routing.
-* **Testing**: Pytest + pytest-xdist (Backend) and Vitest + Testing Library (Frontend).
-
----
-
-## ⚡ Getting Started
-
-### 1. Install Dependencies
-Run the environment setup script to prepare the Python virtual environment and install Node packages for both frontend applications:
+### 1️⃣ Install Dependencies
 ```bash
 .\dependencies.bat
 ```
 
-### 2. Configure Environment Variables
-Copy `.env.example` to `backend/.env`:
+### 2️⃣ Environment Setup
+Copy the example environment file:
 ```bash
 copy .env.example backend\.env
 ```
+Ensure your `backend/.env` contains your key credentials:
+```ini
+GROQ_API_KEY=your_groq_api_key_here
+JWT_SECRET=dev-test-secret-please-change-0123456789abcdef
+DATABASE_URL=sqlite:///./bizassist.db
+```
 
-Key environment parameters:
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `GROQ_API_KEY` | **Yes** | — | Powers all AI LLM tiers + adaptive agent loop |
-| `JWT_SECRET` | **Yes** | — | Signed JWT token secret key for user authentication |
-| `DATABASE_URL` | No | `sqlite:///./bizassist.db` | Target database connection URI |
-| `INTENT_ROUTER` | No | `shadow` | Intent router mode (`off` / `shadow` / `on`) |
-| `AGENT_MODE` | No | `loop` | `loop` (adaptive tool calling) / `pipeline` |
-
-### 3. Launch Development Servers
-Start the backend API (port `8001`), AI Dashboard (port `5173`), and Billing POS App (port `5174`) concurrently:
+### 3️⃣ Launch Development Environment
 ```bash
 .\start_dev.bat
 ```
+> **Services Started:**  
+> 🔹 **Backend API:** `http://localhost:8001`  
+> 🔹 **POS Billing App:** `http://localhost:5174`  
+> 🔹 **AI Dashboard:** `http://localhost:5173`
 
 ---
 
-## 📁 Project Structure
+## ✨ Core Features
 
-```
-bizassist-billing/
-├── backend/                  # FastAPI python backend
-│   ├── core/                 # Core domains (api, billing, accounting, sync, ai)
-│   ├── database/             # SQLAlchemy models & migrations
-│   ├── routes/               # REST API route handlers
-│   ├── services/             # Background workers & insights services
-│   └── tests/                # 970+ Pytest unit & integration tests
-├── frontend-billing/         # Primary React + Vite POS & Billing Web App
-│   ├── src/
-│   │   ├── components/       # POS, Invoice, Stock, Parties & Modal components
-│   │   ├── contexts/         # Auth, Confirm, & Theme contexts
-│   │   ├── hooks/            # useDocLabels, useConfirm, usePageLifecycle...
-│   │   ├── pages/            # Dashboard, Sales, Stock, Money, Settings...
-│   │   └── utils/            # invoiceMath, diffFields, logger...
-│   └── src/__tests__/        # Vitest frontend unit & component tests
-├── frontend-ai/              # React AI Chat & Business Advisor Dashboard
-├── desktop/                  # Electron wrapper & PyInstaller packaging scripts
-├── docs/                     # Comprehensive architecture, plans & user guides
-├── run_tests.bat             # Test runner batch script
-└── start_dev.bat             # Concurrent dev server starter
+| Feature Module | Description & Capabilities |
+| :--- | :--- |
+| 🛒 **POS Billing Counter** | Barcode-first scanning, multi-tab carts, keyboard shortcuts, split payments (Cash, UPI QR, Card, Credit). |
+| 🏷️ **Dynamic Labels (`useDocLabels`)** | Customize document names (*Sales Invoice*, *Credit Note*, *Debit Note*, *Voucher*). All UI & PDF headers update instantly. |
+| 🔒 **Privacy & Security** | 1-click KPI blur mode for public counters, passcode lock with auto-lock inactivity timers. |
+| 📜 **Audit Hash Chains** | Append-only double-entry ledger (`JournalEntry`) linked by SHA-256 cryptographic hash chains to detect database tampering. |
+| 📦 **Stock Intake & Godowns** | Multi-item purchase intake grid with landed cost, batch expiry tracking, and multi-location warehouse transfers. |
+| 🤝 **B2B Network & Price Tiers** | Connect buyers & suppliers via BizID codes; auto-apply *Wholesale*, *Distributor*, or *Standard* customer pricing tiers. |
+| 🛡️ **Custom Confirm (`useConfirm`)** | Styled confirmation dialogs with field-level "Before vs. After" visual diffing when editing records. |
+| 🔄 **Dual Hosting & Sync** | Seamless switching between offline local SQLite and cloud PostgreSQL with background delta sync queues. |
+
+---
+
+## 🤖 Architecture & AI Router
+
+All user queries pass through a 4-tier cost-optimized intent router:
+
+```mermaid
+flowchart TD
+    A[User Query] --> B{Intent Router}
+    B -->|Greetings / Off-topic| C[Tier 1: Conversational - 0 Tokens]
+    B -->|Exact Intent / SQL| D[Tier 2: Direct Intent - 0 Tokens]
+    B -->|Cached Answers| E[Tier 3: Semantic Cache Hit - 0 Tokens]
+    B -->|Simple Data Summaries| F[Tier 4a: AI_SIMPLE - Groq Llama 8B]
+    B -->|Complex Analytics| G[Tier 4b: AI_COMPLEX - Groq Llama 70B Adaptive Loop]
 ```
 
 ---
 
-## 🧪 Seeding & Performance Benchmarks
+## 🧪 Seeding & Benchmarks
 
-BizAssist includes high-throughput load testing and database performance benchmark utilities.
+Generate load testing datasets and run query performance checks:
 
-### Seed 10,000 Invoices
-Seed a high volume of transactions, inventory ledgers, and posted journal entries for stress testing:
 ```bash
+# Seed 10,000 invoices with full stock & journal ledgers
 cd backend
 ..\venv\Scripts\python seed_load_test.py --count 10000
-```
 
-### Run Latency Benchmarks
-Measure query and serialization response times across reporting endpoints:
-```bash
-cd backend
+# Run latency benchmarks
 ..\venv\Scripts\python benchmark_reports.py
 ```
 
-#### Verified Benchmark Latency Metrics (10k Invoices)
-* **Day Book (1-Year Window)**: **~108 ms**
-* **Audit Journal (1-Year Window)**: **~489 ms** (N+1 queries eliminated via `selectinload`)
-* **Profit & Loss (1-Year Window)**: **~211 ms**
-* **Balance Sheet / Trial Balance**: **~21 - 32 ms** (database-level aggregates)
+#### ⚡ Performance Summary (10,000 Invoices)
+* 📊 **Day Book (1 Year)**: `~108 ms`
+* 🧾 **Audit Journal (1 Year)**: `~489 ms` *(N+1 queries pre-fetched)*
+* 📈 **Profit & Loss**: `~211 ms`
+* ⚖️ **Trial Balance & Balance Sheet**: `~21–32 ms`
 
 ---
 
-## 📋 Running Tests
+## 🧪 Running Tests
 
-BizAssist features a comprehensive, dual-suite test architecture (970+ backend tests and 300+ frontend tests).
+BizAssist includes a comprehensive dual test suite (970+ backend tests and 300+ frontend tests).
 
-Run the full parallel test suite across all CPU cores:
 ```bash
-# Run both backend and frontend test suites in parallel mode:
+# Run both Backend & Frontend test suites in parallel
 .\run_tests.bat fast
 
-# Or run specific test suites:
-.\run_tests.bat backend fast   # Backend Pytest only
-.\run_tests.bat frontend       # Frontend Vitest only
+# Target specific test suites
+.\run_tests.bat backend fast   # Pytest (backend)
+.\run_tests.bat frontend       # Vitest (frontend)
 ```
 
 ---
 
-## 📖 Documentation Directory
+## 📁 Repository Structure
 
-* **[docs/MASTER_PLAN.md](docs/MASTER_PLAN.md)** — Architectural decisions (D1–D10), roadmap & vision.
-* **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — In-depth technology stack & database layer design.
-* **[docs/SETUP_AND_DEPLOYMENT.md](docs/SETUP_AND_DEPLOYMENT.md)** — Deployment guides (Hugging Face Spaces, Docker, Vercel).
-* **[docs/TESTING.md](docs/TESTING.md)** — Testing strategy, RLS validation & test execution patterns.
-* **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** — User guide for POS checkout, settings, stock intake & AI queries.
-* **[backend/FOUNDATION.md](backend/FOUNDATION.md)** — Backend conventions, tenancy rules, and append-only ledgers.
+```text
+bizassist-billing/
+├── backend/                  # FastAPI Python Service (API, Billing, Accounting, Sync, AI)
+│   ├── core/                 # Business logic, command handlers, and algorithms
+│   ├── database/             # SQLAlchemy schemas, models & migrations
+│   ├── routes/               # API endpoints
+│   └── tests/                # 970+ Pytest unit & integration tests
+├── frontend-billing/         # Primary React POS & Billing Web App
+│   ├── src/components/       # POS, Invoice, Stock & Modal components
+│   ├── src/contexts/         # Auth, Confirm, & Theme providers
+│   ├── src/hooks/            # useDocLabels, useConfirm, usePageLifecycle...
+│   └── src/__tests__/        # 300+ Vitest component & unit tests
+├── frontend-ai/              # AI Assistant & Analytics Dashboard
+├── desktop/                  # Electron desktop wrapper & build scripts
+├── docs/                     # Architecture, user guides & technical decision logs
+├── run_tests.bat             # Fast test runner script
+└── start_dev.bat             # Development server launcher
+```
+
+---
+
+## 📖 Key Documentation
+
+| Document | Content Summary |
+| :--- | :--- |
+| 📌 **[MASTER_PLAN.md](docs/MASTER_PLAN.md)** | Core vision, architectural decisions (D1–D10), roadmap. |
+| 🏗️ **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** | Layer-by-layer system architecture & data flows. |
+| 🚀 **[SETUP_AND_DEPLOYMENT.md](docs/SETUP_AND_DEPLOYMENT.md)** | Local environment setup, Docker & cloud deployment guide. |
+| 🧪 **[TESTING.md](docs/TESTING.md)** | Testing strategy, RLS tenant isolation & benchmark instructions. |
+| 📘 **[USER_GUIDE.md](docs/USER_GUIDE.md)** | User manual for POS operations, custom labels, and AI queries. |
+| 🏛️ **[FOUNDATION.md](backend/FOUNDATION.md)** | Backend conventions, tenant isolation, and transaction safety. |
+
+---
+
+<div align="center">
+  <sub>Built with ❤️ for modern businesses • BizAssist Engine</sub>
+</div>
