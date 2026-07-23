@@ -100,11 +100,12 @@ cd backend
 ..\venv\Scripts\python benchmark_reports.py
 ```
 
-#### ⚡ Performance Summary (10,000 Invoices)
-* 📊 **Day Book (1 Year)**: `~108 ms`
-* 🧾 **Audit Journal (1 Year)**: `~489 ms` *(N+1 queries pre-fetched)*
-* 📈 **Profit & Loss**: `~211 ms`
-* ⚖️ **Trial Balance & Balance Sheet**: `~21–32 ms`
+#### ⚡ Performance Summary (10,000 Invoices Load Test)
+* 📊 **Day Book (Today / 1 Year)**: `3.89 ms` (Today) / `136.12 ms` (1-Year window, limit 200)
+* 🧾 **Audit Journal (1 Year)**: `240.94 ms` *(2,000 entries pre-fetched)*
+* 📈 **Profit & Loss (1 Year)**: `150.73 ms`
+* 📦 **Stock Movement (1 Year)**: `91.14 ms` *(2,000 movements)*
+* ⚖️ **Trial Balance & Balance Sheet**: `15.37 ms` (Balance Sheet) / `20.18 ms` (Trial Balance)
 
 ---
 
