@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { logger } from '../utils/logger'
 import { ContactsIcon, CheckIcon, CloseIcon } from '../components/Icons'
 import CustomSelect from '../components/common/CustomSelect'
@@ -13,6 +14,7 @@ import CustomSelect from '../components/common/CustomSelect'
 // business's data. The backend (/staff) is owner-only and tenant-scoped.
 export default function Staff() {
   const { authFetch, settings } = useAuth()
+  const confirm = useConfirm()
   const [staff, setStaff] = useState([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({ username: '', password: '', confirmPassword: '', counter_prefix: '' })
@@ -52,7 +54,14 @@ export default function Staff() {
   }
 
   const removeCounter = async (prefix) => {
-    if (!window.confirm(`Remove counter "${prefix}"? Staff assigned to it keep their prefix until you reassign them.`)) return
+    const ok = await confirm({
+      mode: 'delete',
+      title: 'Remove counter?',
+      entity: prefix,
+      message: `Remove counter "${prefix}"? Staff assigned to it keep their prefix until you reassign them.`,
+      confirmText: 'Remove',
+    })
+    if (!ok) return
     setError(''); setSuccess('')
     await saveCounters(counters.filter(c => c.prefix !== prefix))
   }
@@ -147,7 +156,14 @@ export default function Staff() {
   }
 
   const removeStaff = async (s) => {
-    if (!window.confirm(`Remove cashier "${s.username}"? They will no longer be able to log in.`)) return
+    const ok = await confirm({
+      mode: 'delete',
+      title: 'Remove cashier?',
+      entity: s.username,
+      message: `Remove cashier "${s.username}"? They will no longer be able to log in.`,
+      confirmText: 'Remove',
+    })
+    if (!ok) return
     setError(''); setSuccess('')
     try {
       const res = await authFetch(`/staff/${s.id}`, { method: 'DELETE' })

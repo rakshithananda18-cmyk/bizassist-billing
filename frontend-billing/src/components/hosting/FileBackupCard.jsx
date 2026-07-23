@@ -11,8 +11,10 @@ import React, { useState, useRef } from 'react'
 import { API_BASE } from '../../config'
 import { logger } from '../../utils/logger'
 import { ShieldIcon } from '../Icons'
+import { useConfirm } from '../../contexts/ConfirmContext'
 
 export default function FileBackupCard({ token, bizId = '' }) {
+  const confirm = useConfirm()
   const [busy, setBusy] = useState(null)          // 'backup' | 'restore' | null
   const [msg, setMsg] = useState(null)            // { ok, text }
   const fileRef = useRef(null)
@@ -47,9 +49,14 @@ export default function FileBackupCard({ token, bizId = '' }) {
     const file = e.target.files?.[0]
     e.target.value = ''                            // allow re-selecting the same file
     if (!file) return
-    if (!window.confirm(
-      `Restore data from "${file.name}"?\n\nThis MERGES the backup into this device — newer records on this device are kept, nothing is deleted.`
-    )) return
+    const ok = await confirm({
+      mode: 'update',
+      title: 'Restore backup?',
+      entity: file.name,
+      message: 'This merges the backup into this device — newer records here are kept, nothing is deleted.',
+      confirmText: 'Restore',
+    })
+    if (!ok) return
     setBusy('restore'); setMsg(null)
     try {
       const text = await file.text()

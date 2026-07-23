@@ -586,10 +586,11 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
 
         _resp_json = resp.json()
         pulled = _resp_json.get("changes", {})
-        # Advance the cloud-clock cursor to the server's own pull timestamp.
+        # Capture the server's own pull timestamp, but DON'T advance the cursor
+        # yet — we advance it only AFTER the batch is applied & committed below
+        # (see end of this try). Advancing here risked skipping rows if the apply
+        # step failed after the cursor had already moved past them.
         _cloud_cursor = _resp_json.get("pulled_at")
-        if _cloud_cursor:
-            _PULL_CURSOR[business_id] = _cloud_cursor
         total_pulled = sum(len(v) for v in pulled.values())
         
         if total_pulled > 0:
@@ -904,7 +905,14 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                     _safe_broadcast(business_id, {"type": "sync.trigger", "entity": ent})
             finally:
                 sync_disabled_var.reset(token_var)
-                
+
+        # The batch has now been applied & committed above (or there was nothing
+        # to pull). ONLY NOW is it safe to advance the cursor. If the fetch timed
+        # out or the apply raised, we never reach here — so the same window is
+        # re-pulled next cycle instead of being silently skipped.
+        if _cloud_cursor:
+            _PULL_CURSOR[business_id] = _cloud_cursor
+
     except Exception as e:
         logger.error("[SYNC_WORKER] Pull failed for business_id=%s: %s", business_id, e)
         # Log pull failure

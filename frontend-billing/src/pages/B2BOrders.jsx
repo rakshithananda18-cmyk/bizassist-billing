@@ -7,6 +7,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { API_BASE } from '../config'
 import { AlertIcon, BillsIcon, CheckIcon, CloseIcon, DownloadIcon, ImportIcon, OrderIcon, PackageIcon, PlusIcon, SummaryIcon, TruckIcon, BellIcon, SearchIcon, ExpandIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
@@ -14,6 +15,7 @@ import CustomSelect from '../components/common/CustomSelect'
 import { STATUS_FLOW } from '../components/b2b/orderStatus'
 import OrderDetailModal from '../components/b2b/OrderDetailModal'
 import CatalogOrderModal from '../components/b2b/CatalogOrderModal'
+import { useForegroundRefresh } from '../hooks/useForegroundRefresh'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -24,6 +26,7 @@ const fmt = (n) =>
 // ============================================================================
 export default function B2BOrders() {
   const { authFetch, token, user, settings } = useAuth()
+  const confirm = useConfirm()
 
   const settingsRef = useRef(settings)
   useEffect(() => {
@@ -154,6 +157,11 @@ export default function B2BOrders() {
   // ============================================================================
   // ── 3. B2B NETWORK SYNC & SSE EFFECTS ──
   // ============================================================================
+  // Throttled foreground refresh (focus/visibility) — replaces the old raw
+  // 'focus' → loadOrders listener that reloaded on every window switch. Uses the
+  // router-free hook so it also works in unit tests rendered without a <Router>.
+  useForegroundRefresh({ onResume: () => loadOrders() })
+
   useEffect(() => {
     loadOrders()
     const handleSync = (e) => {
@@ -165,10 +173,8 @@ export default function B2BOrders() {
         loadOrders()
       }
     }
-    window.addEventListener('focus', loadOrders)
     window.addEventListener('sync-event', handleSync)
     return () => {
-      window.removeEventListener('focus', loadOrders)
       window.removeEventListener('sync-event', handleSync)
     }
   }, [loadOrders])
@@ -336,7 +342,20 @@ export default function B2BOrders() {
   const handlePlaceOrder = async () => {
     const { items, total } = getCartTotals()
     if (items.length === 0 || !selectedSupplier) return
-    
+
+    const ok = await confirm({
+      mode: 'create',
+      title: 'Place this order?',
+      entity: selectedSupplier.seller_name || selectedSupplier.name,
+      summary: [
+        { key: 'supplier', label: 'Supplier', value: selectedSupplier.seller_name || selectedSupplier.name || '—' },
+        { key: 'items', label: 'Items', value: String(items.length) },
+        { key: 'total', label: 'Total', value: `₹${Number(total || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` },
+      ],
+      confirmText: 'Place order',
+    })
+    if (!ok) return
+
     setPlacingOrder(true)
     try {
       const res = await authFetch('/connections/orders', {

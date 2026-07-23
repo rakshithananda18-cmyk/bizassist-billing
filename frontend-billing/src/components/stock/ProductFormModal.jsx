@@ -6,10 +6,12 @@
 // every field the counter and invoices use, organised in sections:
 //   Basics · Pricing (all 4 prices + MRP) · Tax (HSN, CGST/SGST) · Stock ·
 //   Codes (SKU + barcodes — MULTIPLE barcodes per product in edit mode) — v3.
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
 import { CloseIcon, InventoryIcon } from '../Icons'
+import { useConfirm } from '../../contexts/ConfirmContext'
+import { diffFields, summariseFields, isDirty } from '../../utils/diffFields'
 
 export const EMPTY_PRODUCT = {
   name: '', description: '', brand: '', category: '', unit: 'pcs',
@@ -18,6 +20,27 @@ export const EMPTY_PRODUCT = {
   cgst_rate: '', sgst_rate: '',
   min_stock: '', opening_stock: '',
 }
+
+// Fields shown in the save / discard confirmation — labels + formatting.
+const PRODUCT_FIELDS = [
+  { key: 'name', label: 'Name' },
+  { key: 'brand', label: 'Brand' },
+  { key: 'category', label: 'Category' },
+  { key: 'unit', label: 'Unit' },
+  { key: 'description', label: 'Description' },
+  { key: 'selling_price', label: 'Retail price', money: true },
+  { key: 'wholesale_price', label: 'Wholesale price', money: true },
+  { key: 'distributor_price', label: 'Distributor price', money: true },
+  { key: 'cost_price', label: 'Cost price', money: true },
+  { key: 'mrp', label: 'MRP', money: true },
+  { key: 'hsn_sac', label: 'HSN / SAC' },
+  { key: 'cgst_rate', label: 'CGST', suffix: '%' },
+  { key: 'sgst_rate', label: 'SGST', suffix: '%' },
+  { key: 'sku', label: 'SKU' },
+  { key: 'min_stock', label: 'Min stock' },
+  { key: 'opening_stock', label: 'Opening stock' },
+  { key: 'barcode', label: 'Barcode' },
+]
 
 const num = (v) => (v === '' || v === null || v === undefined ? 0 : parseFloat(v) || 0)
 const numOrNull = (v) => (v === '' || v === null || v === undefined ? null : parseFloat(v) || 0)
@@ -57,11 +80,15 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
   const showMrp        = inv.mrp_enabled !== false
   const showWholesale  = inv.wholesale_price !== false
   const isEdit = !!product?.id
+  const confirm = useConfirm()
   const [form, setForm] = useState(EMPTY_PRODUCT)
   const [barcodes, setBarcodes] = useState([])      // edit mode: existing barcodes
   const [newBarcode, setNewBarcode] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+  // Snapshot of the form as first loaded — the baseline for the change diff and
+  // the "discard unsaved changes?" check.
+  const initialFormRef = useRef(EMPTY_PRODUCT)
 
   const currentRowStyle = {
     display: 'flex',
@@ -76,7 +103,7 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
     setError(null)
     setNewBarcode('')
     if (product) {
-      setForm({
+      const loaded = {
         ...EMPTY_PRODUCT,
         ...Object.fromEntries(Object.entries({
           name: product.name, description: product.description, brand: product.brand,
@@ -88,7 +115,9 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
           min_stock: product.min_stock,
           barcode: product.barcode || prefillBarcode || '',
         }).map(([k, v]) => [k, v ?? ''])),
-      })
+      }
+      setForm(loaded)
+      initialFormRef.current = loaded
       if (isEdit) {
         // Load the full record for the barcode list.
         authFetch(`/billing/products/${product.id}`)
@@ -100,7 +129,9 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
       }
     } else {
       // Add mode — an unknown scan from Scan Stock-In prefills its barcode.
-      setForm({ ...EMPTY_PRODUCT, barcode: prefillBarcode || '' })
+      const fresh = { ...EMPTY_PRODUCT, barcode: prefillBarcode || '' }
+      setForm(fresh)
+      initialFormRef.current = fresh
       setBarcodes([])
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -112,9 +143,34 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
     onChange?.(k, v)
   }
 
+  // Dirty-aware close: prompt before throwing away unsaved edits.
+  const attemptClose = async () => {
+    if (submitting) return
+    const dirty = isDirty(initialFormRef.current, form, PRODUCT_FIELDS) || !!newBarcode.trim()
+    if (dirty) {
+      const ok = await confirm({
+        mode: 'discard',
+        entity: isEdit ? (form.name?.trim() || 'this product') : (form.name?.trim() || 'this product'),
+      })
+      if (!ok) return
+    }
+    onClose?.()
+  }
+
   const submit = async (e) => {
     e.preventDefault()
     if (!form.name.trim()) { setError('Product name is required.'); return }
+
+    // Double-check step — show exactly what will be saved before committing.
+    const entity = form.name.trim()
+    if (isEdit) {
+      const changes = diffFields(initialFormRef.current, form, PRODUCT_FIELDS)
+      if (!(await confirm({ mode: 'update', entity, changes }))) return
+    } else {
+      const summary = summariseFields(form, PRODUCT_FIELDS)
+      if (!(await confirm({ mode: 'create', entity, summary }))) return
+    }
+
     setSubmitting(true); setError(null)
     try {
       const payload = {
@@ -316,7 +372,7 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
 
       {error && <div className="alert alert-danger" style={{ marginBottom: 10 }}>{error}</div>}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
-        <button type="button" className="btn btn-secondary" disabled={submitting} onClick={onClose}>
+        <button type="button" className="btn btn-secondary" disabled={submitting} onClick={attemptClose}>
           {inline ? 'Close' : 'Cancel'}
         </button>
         <button type="submit" className="btn btn-primary" style={{ fontWeight: 700 }} disabled={submitting}>
@@ -336,7 +392,7 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
           <span style={{ fontWeight: 700, fontSize: '0.85rem', flex: 1, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
             {isEdit ? `Edit Product — ${product.name}` : 'Add Product'}
           </span>
-          <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close" style={{ width: 24, height: 24 }}><CloseIcon size={14} /></button>
+          <button className="btn btn-ghost btn-icon" onClick={attemptClose} aria-label="Close" style={{ width: 24, height: 24 }}><CloseIcon size={14} /></button>
         </div>
         {formJSX}
       </div>
@@ -344,14 +400,14 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
   }
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 3000 }} onClick={e => e.target === e.currentTarget && !submitting && onClose()}>
+    <div className="modal-overlay" style={{ zIndex: 3000 }} onClick={e => e.target === e.currentTarget && !submitting && attemptClose()}>
       <div className="modal modal-lg" style={{ maxWidth: 720, width: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
         <div className="modal-header">
           <span className="modal-title" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <InventoryIcon size={16} />
             <span>{isEdit ? `Edit Product — ${product.name}` : 'Add Product'}</span>
           </span>
-          <button className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Close"><CloseIcon size={16} /></button>
+          <button className="btn btn-ghost btn-icon" onClick={attemptClose} aria-label="Close"><CloseIcon size={16} /></button>
         </div>
         {formJSX}
       </div>

@@ -2,6 +2,7 @@ import React from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { useLock } from '../contexts/LockContext'
 import { API_BASE, IS_LOCAL_APP } from '../config'
 import { logger } from '../utils/logger'
@@ -84,6 +85,7 @@ const PAGE_TITLES = {
 export default function AppLayout({ children, title }) {
   const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings, fetchSettings } = useAuth()
   const { hasLock, lock, resetInactivityTimer } = useLock()
+  const confirm = useConfirm()
   const navigate = useNavigate()
   const location = useLocation()
   const label = useDocLabels()
@@ -1458,7 +1460,11 @@ export default function AppLayout({ children, title }) {
                               e.preventDefault()
                               setMobileMenuOpen(false)
                               if (aiGated) {
-                                window.alert('Dashboard BIZASSIST is part of the Pro plan. Contact your provider to upgrade.')
+                                confirm({
+                                  mode: 'alert',
+                                  title: 'Pro plan feature',
+                                  message: 'Dashboard BIZASSIST is part of the Pro plan. Contact your provider to upgrade.',
+                                })
                                 return
                               }
                               openAiDashboard()
@@ -1529,9 +1535,15 @@ export default function AppLayout({ children, title }) {
                       justifyContent: 'center',
                       lineHeight: 1
                     }}
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
-                      if (window.confirm('Discard active draft billing session?')) {
+                      const ok = await confirm({
+                        mode: 'discard',
+                        title: 'Discard draft bill?',
+                        message: 'Discard active draft billing session?',
+                        confirmText: 'Discard',
+                      })
+                      if (ok) {
                         const cleanupUid = user?.user_id || user?.id
                         if (cleanupUid) {
                           localStorage.removeItem(`pos_minimized_${cleanupUid}`);
@@ -1587,9 +1599,15 @@ export default function AppLayout({ children, title }) {
                       justifyContent: 'center',
                       lineHeight: 1
                     }}
-                    onClick={(e) => {
+                    onClick={async (e) => {
                       e.stopPropagation();
-                      if (window.confirm('Discard active live counter monitoring draft?')) {
+                      const ok = await confirm({
+                        mode: 'discard',
+                        title: 'Discard live draft?',
+                        message: 'Discard active live counter monitoring draft?',
+                        confirmText: 'Discard',
+                      })
+                      if (ok) {
                         const cleanupUid = user?.user_id || user?.id
                         if (cleanupUid) {
                           localStorage.removeItem(`pos_live_minimized_${cleanupUid}`);

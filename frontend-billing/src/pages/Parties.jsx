@@ -21,6 +21,8 @@ import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import ContextMenu from '../components/common/ContextMenu'
 import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
 import { useDocLabels } from '../hooks/useDocLabels'
+import { useConfirm } from '../contexts/ConfirmContext'
+import { summariseFields, isDirty } from '../utils/diffFields'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -31,10 +33,23 @@ const defaultForm = {
   credit_limit: '', payment_terms: 'net30',
 }
 
+// Fields shown in the add / discard confirmation for a party.
+const PARTY_FIELDS = [
+  { key: 'party_type', label: 'Type', map: { customer: 'Customer', vendor: 'Vendor' } },
+  { key: 'name', label: 'Name' },
+  { key: 'phone', label: 'Phone' },
+  { key: 'email', label: 'Email' },
+  { key: 'gstin', label: 'GSTIN' },
+  { key: 'address', label: 'Address' },
+  { key: 'credit_limit', label: 'Credit limit', money: true },
+  { key: 'payment_terms', label: 'Payment terms' },
+]
+
 export default function Parties({ embedded = false, headerTabs = null }) {
   const { authFetch, user, settings } = useAuth()
   const navigate = useNavigate()
   const label = useDocLabels()
+  const confirm = useConfirm()
 
   const settingsRef = useRef(settings)
   useEffect(() => {
@@ -121,10 +136,10 @@ export default function Parties({ embedded = false, headerTabs = null }) {
         load()
       }
     }
-    window.addEventListener('focus', load)
+    // Foreground refresh (focus/visibility) is handled by usePageLifecycle,
+    // throttled — no separate 'focus' listener here (that caused a double reload).
     window.addEventListener('sync-event', handleSync)
     return () => {
-      window.removeEventListener('focus', load)
       window.removeEventListener('sync-event', handleSync)
     }
   }, [load])
@@ -199,10 +214,25 @@ export default function Parties({ embedded = false, headerTabs = null }) {
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  // Prompt before discarding a half-filled Add-Party form.
+  const requestCloseModal = async () => {
+    if (isDirty(defaultForm, form, PARTY_FIELDS)) {
+      const ok = await confirm({ mode: 'discard', entity: form.name?.trim() || 'this party' })
+      if (!ok) return
+    }
+    setShowModal(false)
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
-    setSubmitting(true)
     const isCustomer = form.party_type === 'customer'
+
+    // Double-check step — summarise the new party before it's created.
+    const summary = summariseFields(form, PARTY_FIELDS)
+    const entity = form.name?.trim() || (isCustomer ? 'this customer' : 'this vendor')
+    if (!(await confirm({ mode: 'create', entity, summary }))) return
+
+    setSubmitting(true)
     const endpoint = isCustomer ? '/billing/customers' : '/billing/vendors'
 
     // Build a schema-clean payload — strip frontend-only fields
@@ -286,10 +316,13 @@ export default function Parties({ embedded = false, headerTabs = null }) {
   }
 
   const handleViewPurchases = (vendor) => {
-    const vendPurchs = purchases.filter(p => p.supplier_id === vendor.id)
     // Vendor purchases: still use local state (no dedicated Purchases tab yet).
     // TODO: add a Purchases tab to the workspace and navigate similarly.
-    window.alert(`Purchases view for ${vendor.name} — coming soon in the workspace.`)
+    confirm({
+      mode: 'alert',
+      title: 'Coming soon',
+      message: `Purchases view for ${vendor.name} — coming soon in the workspace.`,
+    })
   }
 
   const handleWhatsAppReminder = (party) => {
@@ -713,7 +746,7 @@ export default function Parties({ embedded = false, headerTabs = null }) {
       {/* Add Party Modal */}
       {/* Add Party Modal — extracted to components/parties/PartyFormModal */}
       {showModal && (
-        <PartyFormModal form={form} setField={setField} handleSubmit={handleSubmit} submitting={submitting} setShowModal={setShowModal} />
+        <PartyFormModal form={form} setField={setField} handleSubmit={handleSubmit} submitting={submitting} setShowModal={requestCloseModal} />
       )}
 
       {/* PartyDetailModal removed — "View Invoices" now navigates to the Invoices

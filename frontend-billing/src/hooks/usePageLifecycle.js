@@ -22,6 +22,7 @@
 
 import { useEffect, useRef, useState, useCallback, useContext } from 'react'
 import { UNSAFE_NavigationContext, useLocation } from 'react-router-dom'
+import { useForegroundRefresh } from './useForegroundRefresh'
 
 /**
  * @param {object}   opts
@@ -36,16 +37,18 @@ export function usePageLifecycle({
   dirtyMessage = 'You have unsaved changes. Are you sure you want to leave?',
   onPause,
   onResume,
+  // Don't re-fetch if the page was refreshed within this window. A quick glance
+  // at another tab/app and back shouldn't trigger a full reload; only a return
+  // after the data has plausibly gone stale should.
+  staleMs = 30000,
 } = {}) {
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const isDirtyRef  = useRef(isDirty)
-  const onPauseRef  = useRef(onPause)
-  const onResumeRef = useRef(onResume)
-
-  // Keep refs current so effects don't go stale
   useEffect(() => { isDirtyRef.current  = isDirty  })
-  useEffect(() => { onPauseRef.current  = onPause  })
-  useEffect(() => { onResumeRef.current = onResume })
+
+  // Foreground refresh (throttled focus/visibility resume) lives in its own
+  // router-free hook so it can be reused anywhere; usePageLifecycle just adds
+  // the react-router navigation blocker on top.
+  const { isRefreshing } = useForegroundRefresh({ onResume, onPause, staleMs })
 
   // ── React Router navigation blocker (custom history-blocker) ────────────────
   const { navigator } = useContext(UNSAFE_NavigationContext)
@@ -102,33 +105,6 @@ export function usePageLifecycle({
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [])
-
-  // ── Visibility / Page Lifecycle (onPause + onResume) ───────────────────────
-  useEffect(() => {
-    async function handleVisibilityChange() {
-      if (document.visibilityState === 'hidden') {
-        // onPause — page going to background
-        if (onPauseRef.current) {
-          try { onPauseRef.current() } catch { /* best-effort */ }
-        }
-      } else {
-        // onResume — page coming back to foreground
-        if (onResumeRef.current) {
-          setIsRefreshing(true)
-          try {
-            const result = onResumeRef.current()
-            if (result && typeof result.then === 'function') {
-              await result
-            }
-          } catch { /* best-effort */ }
-          finally { setIsRefreshing(false) }
-        }
-      }
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [])
 
   return {

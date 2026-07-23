@@ -4,6 +4,7 @@ import { buildInvoicePayload } from '../utils/invoiceMath'
 import { newClientRequestId } from '../sync/uuid'
 import { IS_LOCAL_APP } from '../config'
 import { getFromDateStr } from '../utils/format'
+import { useConfirm } from '../contexts/ConfirmContext'
 
 // Module-level save lock — shared across ALL instances of this hook.
 // Prevents duplicate POSTs when React StrictMode mounts two instances
@@ -33,6 +34,7 @@ export default function usePaymentFlow({
   barcodeRef,
   enqueueOffline,
 }) {
+  const confirm = useConfirm()
   const [showPaymentPopup, setShowPaymentPopup] = useState(false)
   const [paymentFocusTarget, setPaymentFocusTarget] = useState('amountReceived')
 
@@ -66,18 +68,53 @@ export default function usePaymentFlow({
     const lockTimer = setTimeout(() => _saveLock.delete(lockKey), 5000)
     
     const pay = (payable ?? grandTotal)
-    const isCredit = form.payment_mode === 'credit'
+    // Both may flip to credit if the cashier chooses "Add to credit" at the
+    // confirmation step below, so they're mutable.
+    let isCredit = form.payment_mode === 'credit'
     // Credit → record only what was actually received now (may be 0 / partial).
     // Any other mode → "Paid": the full payable is settled at the counter.
-    const paidNow = isCredit ? (parseFloat(form.amount_received) || 0) : pay
+    let paidNow = isCredit ? (parseFloat(form.amount_received) || 0) : pay
+    // The form values that actually get saved. setForm is async, so when the
+    // cashier flips to credit below we can't rely on the state update landing
+    // before we build the payload — carry the override explicitly.
+    let formForSave = form
+
+    const releaseLock = () => { _saveLock.delete(lockKey); clearTimeout(lockTimer) }
 
     if (!skipConfirm) {
       if (isCredit) {
-        const confirmCredit = window.confirm(`Save on CREDIT — ₹${(pay - paidNow).toFixed(2)} will be due. Proceed?`)
-        if (!confirmCredit) return false
+        // Already on credit — just confirm the amount going on the books.
+        const ok = await confirm({
+          mode: 'update',
+          title: 'Save on credit?',
+          message: `Save on CREDIT — ₹${(pay - paidNow).toFixed(2)} will be due.`,
+          confirmText: 'Save on credit',
+          cancelText: 'Go back & edit',
+        })
+        if (!ok) { releaseLock(); return false }
       } else {
-        const confirmPaid = window.confirm(`Mark PAID ₹${pay.toFixed(2)} (${(form.payment_mode || 'cash').toUpperCase()}) and print?`)
-        if (!confirmPaid) return false
+        // Three-way check: did we actually collect the money, is it going on
+        // credit instead, or does the cashier want to keep editing?
+        const choice = await confirm({
+          mode: 'update',
+          title: 'Payment received?',
+          message: `Collect ₹${pay.toFixed(2)} via ${(form.payment_mode || 'cash').toUpperCase()}? Confirm you received it, or put it on the customer's credit.`,
+          confirmText: 'Yes, received — print',
+          confirmValue: 'paid',
+          tertiaryText: 'Add to credit',
+          tertiaryValue: 'credit',
+          cancelText: 'Go back & edit',
+          cancelValue: 'cancel',
+        })
+        if (choice === 'cancel' || !choice) { releaseLock(); return false }
+        if (choice === 'credit') {
+          // Not collected — record the full payable as due and switch the tab
+          // to credit so the receipt/ledger/shift tallies reflect it.
+          isCredit = true
+          paidNow = 0
+          formForSave = { ...form, payment_mode: 'credit', amount_received: '0' }
+          setForm(f => ({ ...f, payment_mode: 'credit', amount_received: '0' }))
+        }
       }
     }
 
@@ -85,7 +122,7 @@ export default function usePaymentFlow({
     logger.info('[SALES] saving invoice', activeTab.name, '· items', form.items.length, '· payable', pay, '· paid', paidNow, isCredit ? '(credit)' : '(paid)')
     const reqKey = activeTab.name
     const clientRequestId = reqIdFor(reqKey)
-    const payload = buildInvoicePayload({ invoiceNo: activeTab.name, form, gstEnabled: gstAmt > 0, billDiscount: billDiscountAmt, cashDiscount: cashDiscountAmt, paidAmount: paidNow, markPaid: !isCredit })
+    const payload = buildInvoicePayload({ invoiceNo: activeTab.name, form: formForSave, gstEnabled: gstAmt > 0, billDiscount: billDiscountAmt, cashDiscount: cashDiscountAmt, paidAmount: paidNow, markPaid: !isCredit })
 
     // Local reset for the offline path — close the tab + refocus WITHOUT a server
     // refetch (which would fail offline). The next bill's number is still kept
@@ -245,7 +282,7 @@ export default function usePaymentFlow({
       _saveLock.delete(lockKey)
       setSubmitting(false)
     }
-  }, [form, authFetch, activeTab.name, activeTabId, closeTab, gstAmt, settings, grandTotal, payable, cashDiscountAmt, changeToReturn, billDiscountAmt, setAlert, setSubmitting, setDbInvoices, setTabs, syncTabNames, barcodeRef, enqueueOffline])
+  }, [form, authFetch, activeTab.name, activeTabId, closeTab, gstAmt, settings, grandTotal, payable, cashDiscountAmt, changeToReturn, billDiscountAmt, setAlert, setSubmitting, setDbInvoices, setTabs, syncTabNames, barcodeRef, enqueueOffline, confirm])
 
   const openPaymentFlow = useCallback((focusTarget = 'amountReceived') => {
     if (form.items.length === 0) return
@@ -259,7 +296,9 @@ export default function usePaymentFlow({
   }, [form.items.length, grandTotal, payable, setForm])
 
   const executeSaveInvoice = useCallback(async (print) => {
-    const success = await handleSaveInvoice(print, true)
+    // skipConfirm=false → show the "Payment received? / Add to credit / Go back"
+    // check after the cashier clicks Pay in the checkout popup.
+    const success = await handleSaveInvoice(print, false)
     if (success) {
       setShowPaymentPopup(false)
     }

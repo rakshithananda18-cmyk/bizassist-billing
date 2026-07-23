@@ -56,15 +56,22 @@ export default function Dashboard() {
   const [viewingInvoiceNo, setViewingInvoiceNo] = useState(null)
   const [ctxMenu, setCtxMenu]   = useState(null)
 
+  // Coalesce overlapping refreshes: if a load is already in flight (e.g. a burst
+  // of sync events, or a slow cloud response), don't stack another pair of
+  // requests on top — that's what produced the "hundreds of pending calls".
+  const loadingRef = useRef(false)
   const load = useCallback(() => {
+    if (loadingRef.current) return
+    loadingRef.current = true
     setLoading(true)
     Promise.all([
       authFetch('/dashboard-summary').then(r => r.ok ? r.json() : null).catch(() => null),
-      authFetch('/payments').then(r => r.ok ? r.json() : []).catch(() => [])
+      // Dashboard only shows the 5 most recent — don't pull the whole history.
+      authFetch('/payments?limit=5').then(r => r.ok ? r.json() : []).catch(() => [])
     ]).then(([summaryData, paymentsData]) => {
       setStats(summaryData)
       setPayments(Array.isArray(paymentsData) ? paymentsData : (paymentsData?.items ?? []))
-    }).finally(() => setLoading(false))
+    }).finally(() => { setLoading(false); loadingRef.current = false })
   }, [authFetch])
 
   // Page lifecycle: refresh when tab regains focus (onResume)
@@ -80,13 +87,19 @@ export default function Dashboard() {
       const currentSettings = settingsRef.current
       const isRealtimeGlobalEnabled = currentSettings?.general?.realtime_sync_global !== false
       if (!isRealtimeGlobalEnabled) return
+      // Only refresh on real data changes. sync.progress fires many times per
+      // batch (and sync.reconnect is a control signal) — reloading on those
+      // hammered the backend with dashboard-summary/payments calls.
+      const entity = e?.detail?.entity
+      const isReconnect = e?.detail?.type === 'sync.reconnect'
+      if (!isReconnect && !['invoice', 'payment', 'purchase', 'product', 'party', 'order', 'godown'].includes(entity)) return
       logger.debug('[DASHBOARD] Real-time sync event received:', e.detail)
       load()
     }
-    window.addEventListener('focus', load)
+    // Foreground refresh (focus/visibility) is handled by usePageLifecycle,
+    // throttled — no separate 'focus' listener here (that caused a double reload).
     window.addEventListener('sync-event', handleSync)
     return () => {
-      window.removeEventListener('focus', load)
       window.removeEventListener('sync-event', handleSync)
     }
   }, [load])

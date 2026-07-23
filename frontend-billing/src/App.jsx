@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { LockProvider } from './contexts/LockContext'
+import { ConfirmProvider } from './contexts/ConfirmContext'
 import LockScreen from './components/LockScreen'
 import PageLoader from './components/PageLoader'
 import Modal from './components/Modal'
@@ -295,12 +296,14 @@ export default function App() {
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
         <LockProvider>
-          {/* Lock screen intercepts entire UI when session is locked */}
-          <LockScreen />
-          <RealtimeSyncListener />
-          {/* Slide-in banner: offline bills pending sync + same-user multi-device warning */}
-          <SyncPromptBanner />
-          <AppRoutes />
+          <ConfirmProvider>
+            {/* Lock screen intercepts entire UI when session is locked */}
+            <LockScreen />
+            <RealtimeSyncListener />
+            {/* Slide-in banner: offline bills pending sync + same-user multi-device warning */}
+            <SyncPromptBanner />
+            <AppRoutes />
+          </ConfirmProvider>
         </LockProvider>
       </AuthProvider>
     </BrowserRouter>

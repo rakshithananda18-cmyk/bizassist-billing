@@ -9,6 +9,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useLock } from '../contexts/LockContext'
 import { useAuth } from '../contexts/AuthContext'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { useNavigate } from 'react-router-dom'
 import { BuildingMark } from './Logo'
 import { LockIcon } from './Icons'
@@ -17,6 +18,7 @@ import { logger } from '../utils/logger'
 export default function LockScreen() {
   const { isLocked, hasLock, unlock } = useLock()
   const { user, logout }              = useAuth()
+  const confirm                       = useConfirm()
   const navigate = useNavigate()
 
   const [pin,      setPin]      = useState('')
@@ -65,8 +67,14 @@ export default function LockScreen() {
     }
   }
 
-  const handleSignOut = () => {
-    if (window.confirm('Sign out? Your session will end and the passcode will be reset on next login.')) {
+  const handleSignOut = async () => {
+    const ok = await confirm({
+      mode: 'delete',
+      title: 'Sign out?',
+      message: 'Sign out? Your session will end and the passcode will be reset on next login.',
+      confirmText: 'Sign out',
+    })
+    if (ok) {
       logout()
       navigate('/login')
       logger.info('[LOCK] User signed out from lock screen')

@@ -133,28 +133,49 @@ def _invoice_out(inv: Invoice) -> dict:
 
 @router.get("/payments")
 def list_payments(
+    limit: Optional[int] = None,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
 ):
-    """List all payments for the business."""
+    """List payments for the business (newest first).
+
+    Pass ?limit=N to cap the result — the dashboard only needs the latest few,
+    so it avoids shipping the entire payment history over the network.
+    """
     bid = current_user["id"]
-    payments = (
+    q = (
         db.query(InvoicePayment)
         .filter(InvoicePayment.business_id == bid)
         .order_by(InvoicePayment.created_at.desc())
-        .all()
     )
+    if limit and limit > 0:
+        q = q.limit(limit)
+    payments = q.all()
+
+    # Resolve invoice + customer names in TWO batched queries instead of one
+    # (or two) per payment row — the old N+1 that made this route slow.
+    inv_ids = {p.invoice_id for p in payments if p.invoice_id}
+    invs = {
+        i.id: i for i in db.query(Invoice)
+        .filter(Invoice.business_id == bid, Invoice.id.in_(inv_ids)).all()
+    } if inv_ids else {}
+    cust_ids = {p.customer_id for p in payments if p.customer_id}
+    custs = {
+        c.id: c for c in db.query(Customer)
+        .filter(Customer.business_id == bid, Customer.id.in_(cust_ids)).all()
+    } if cust_ids else {}
+
     result = []
     for p in payments:
-        inv = db.query(Invoice).filter(Invoice.id == p.invoice_id, Invoice.business_id == bid).first()
+        inv = invs.get(p.invoice_id)
         inv_no = inv.invoice_id if inv else f"#{p.invoice_id}"
-        
+
         party_name = inv.customer if inv else None
         if not party_name and p.customer_id:
-            c = db.query(Customer).filter(Customer.id == p.customer_id, Customer.business_id == bid).first()
+            c = custs.get(p.customer_id)
             if c:
                 party_name = c.name
-                
+
         result.append({
             "id": p.id,
             "date": p.payment_date or (p.created_at.strftime("%Y-%m-%d") if p.created_at else None),

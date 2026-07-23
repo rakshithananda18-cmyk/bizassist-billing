@@ -264,7 +264,7 @@ export default function ActivityFeed({ compact = false, recentCount = 6 }) {
     if (!compact) return
     let cancelled = false
     authFetch(`/activity?limit=${recentCount}`)
-      .then(r => (r.ok ? r.json() : null))
+      .then(r => (r && r.ok ? r.json() : null))
       .then(d => { if (!cancelled && d) setRecent(d) })
       .catch(err => logger.warn('[ACTIVITY] recent load failed', err))
     return () => { cancelled = true }

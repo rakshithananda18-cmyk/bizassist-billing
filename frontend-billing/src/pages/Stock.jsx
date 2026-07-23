@@ -189,10 +189,10 @@ export default function Stock({ embedded = false, headerTabs = null }) {
         load()
       }
     }
-    window.addEventListener('focus', load)
+    // Foreground refresh (focus/visibility) is handled by usePageLifecycle,
+    // throttled — no separate 'focus' listener here (that caused a double reload).
     window.addEventListener('sync-event', handleSync)
     return () => {
-      window.removeEventListener('focus', load)
       window.removeEventListener('sync-event', handleSync)
     }
   }, [load])

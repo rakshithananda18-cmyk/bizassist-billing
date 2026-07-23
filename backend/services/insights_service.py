@@ -49,8 +49,8 @@ def uploads_list(user_id: int, db: Session) -> list:
 def dashboard_summary(user_id: int, db: Session) -> dict:
     from datetime import datetime, timedelta
     from database.models import Invoice, Product, PurchaseInvoice, Customer
-    from core.models import InvoicePayment
-    from core.stock import ledger as SL
+    from core.models import InvoicePayment, StockLedger
+    from sqlalchemy import func as _func
     import json
     
     invoices = db.query(Invoice).filter(Invoice.business_id == user_id).all()
@@ -92,11 +92,23 @@ def dashboard_summary(user_id: int, db: Session) -> dict:
     if rev_30d > 0:
         gross_margin = round(max(-999.0, ((rev_30d - purchases_30d) / rev_30d) * 100), 1)
     
+    # Stock for every product in ONE grouped query instead of a per-product
+    # SUM (the old N+1 that dominated dashboard latency in cloud). Matches
+    # current_stock's product_id path exactly: SUM(qty_delta) per product_id.
+    stock_rows = (
+        db.query(StockLedger.product_id,
+                 _func.coalesce(_func.sum(StockLedger.qty_delta), 0.0))
+        .filter(StockLedger.business_id == user_id)
+        .group_by(StockLedger.product_id)
+        .all()
+    )
+    stock_by_pid = {pid: float(qty or 0.0) for pid, qty in stock_rows}
+
     low_stock_items = []
     low_stock_count = 0
     for p in products:
         if p.track_inventory:
-            stock = SL.current_stock(db, user_id, product_id=p.id)
+            stock = stock_by_pid.get(p.id, 0.0)
             min_s = 0.0
             if p.attributes:
                 try:

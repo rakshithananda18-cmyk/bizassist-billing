@@ -15,6 +15,7 @@ import PageLoader from '../components/PageLoader'
 import InvoiceAccountPanel from '../components/invoice/InvoiceAccountPanel'
 import { PhoneIcon, DownloadIcon } from '../components/Icons'
 import { useDocLabels } from '../hooks/useDocLabels'
+import { useConfirm } from '../contexts/ConfirmContext'
 const LAST_USED_KEY = (bizId) => `invoice.template.${bizId || 'default'}`
 
 /** WhatsApp glyph (no dedicated icon in Icons.jsx). */
@@ -73,6 +74,7 @@ class TemplateBoundary extends Component {
 
 export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedded = false, onBack = null }) {
   const label = useDocLabels()
+  const confirm = useConfirm()
   // Embedded mode (e.g. inside the Payments page): the invoice number comes in
   // as a prop and Back returns to the host page instead of navigating away.
   // ALL toolbar functionality (templates, duplicate, credit note, set default,
@@ -158,21 +160,21 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
         invoice_no: invoiceNo, template_type: entry.key,
         extra: { channel: result.method },
       })
-      alert(`Invoice link shared via ${result.method === 'native' ? 'device share' : 'clipboard'}.`)
+      confirm({ mode: 'alert', title: 'Link shared', message: `Invoice link shared via ${result.method === 'native' ? 'device share' : 'clipboard'}.` })
     } catch (e) {
-      if (e.message) alert(e.message)
+      if (e.message) confirm({ mode: 'alert', title: 'Share failed', message: e.message })
     }
-  }, [invoiceNo, entry.key, payload])
+  }, [invoiceNo, entry.key, payload, confirm])
 
   const onShareWhatsApp = useCallback(() => {
-    if (!payload?.invoice?.uid_token) return alert("Invoice doesn't have a public link.")
+    if (!payload?.invoice?.uid_token) { confirm({ mode: 'alert', title: 'No public link', message: "Invoice doesn't have a public link." }); return }
     const link = buildPublicInvoiceLink(payload.invoice.uid_token)
     const text = `Here is your invoice ${invoiceNo} for ${payload.totals?.total_amount}.\nView it here: ${link}`
     // If we had the customer phone we could pre-fill it here
     const waLink = buildWhatsAppLink(payload.buyer?.phone || '', text)
     window.open(waLink, '_blank')
     beacon('shared', { invoice_no: invoiceNo, template_type: entry.key, extra: { channel: 'whatsapp' } })
-  }, [invoiceNo, entry.key, payload])
+  }, [invoiceNo, entry.key, payload, confirm])
 
   const onDuplicate = useCallback(() => {
     navigate('/sales', { state: { duplicateFrom: invoiceNo } })

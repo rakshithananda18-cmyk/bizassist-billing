@@ -8,6 +8,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
 import { useAuth } from '../contexts/AuthContext'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, WarehouseIcon, SearchIcon, ExpandIcon, SummaryIcon, SparkleIcon, InfoIcon, AlertIcon, ChevronDownIcon } from '../components/Icons'
 
 import { logger } from '../utils/logger'
@@ -43,6 +44,7 @@ const defaultForm = {
 
 export default function Payments({ embedded = false, headerTabs = null }) {
   const { authFetch, settings, user } = useAuth()
+  const confirm = useConfirm()
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -125,10 +127,10 @@ export default function Payments({ embedded = false, headerTabs = null }) {
         load()
       }
     }
-    window.addEventListener('focus', load)
+    // Foreground refresh (focus/visibility) is handled by usePageLifecycle,
+    // throttled — no separate 'focus' listener here (that caused a double reload).
     window.addEventListener('sync-event', handleSync)
     return () => {
-      window.removeEventListener('focus', load)
       window.removeEventListener('sync-event', handleSync)
     }
   }, [load])
@@ -549,7 +551,13 @@ export default function Payments({ embedded = false, headerTabs = null }) {
   }
 
   const handleExpenseDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this expense record?')) return
+    const ok = await confirm({
+      mode: 'delete',
+      title: 'Delete expense?',
+      message: 'Are you sure you want to delete this expense record?',
+      confirmText: 'Delete',
+    })
+    if (!ok) return
     try {
       const res = await authFetch(`/billing/expenses/${id}`, {
         method: 'DELETE',
@@ -605,9 +613,20 @@ export default function Payments({ embedded = false, headerTabs = null }) {
                     {!isCashier && getFilteredPayments().some(p => p.type === 'pending_due') && (
                       <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={() => {
                         // Arrived via "Settle" on a contact (?customer=Name): carry
-                        // that customer into the modal so it's pre-selected + locked
-                        // instead of forcing a re-pick from the dropdown.
-                        setSettlePreset(customerFilter ? { customerName: customerFilter } : null)
+                        // that customer into the modal so it's pre-selected + locked,
+                        // AND pre-fill the amount from their total pending dues
+                        // (summing the visible Pending rows for this customer) so the
+                        // cashier doesn't have to re-type the balance.
+                        if (customerFilter) {
+                          const dueRows = getFilteredPayments().filter(
+                            p => p.type === 'pending_due' && p.party_name === customerFilter
+                          )
+                          const totalDue = dueRows.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0)
+                          const custId = dueRows.find(p => p._customerId)?._customerId ?? null
+                          setSettlePreset({ customerName: customerFilter, customerId: custId, outstanding: totalDue })
+                        } else {
+                          setSettlePreset(null)
+                        }
                         setShowSettleModal(true)
                       }}>
                         <CheckIcon size={13} /> Settle Dues

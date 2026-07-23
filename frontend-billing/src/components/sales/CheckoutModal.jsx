@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react'
-import { AlertIcon, CashIcon, CheckIcon, CloseIcon, EditIcon, PhoneIcon, PlusIcon, UserIcon, VolumeIcon } from '../../components/Icons'
+import { AlertIcon, CashIcon, CloseIcon, EditIcon, PhoneIcon, PlusIcon, UserIcon } from '../../components/Icons'
 import InvoiceBreakdownCard from './InvoiceBreakdownCard'
 import TenderChips from './TenderChips'
 import { changeDue, paymentBalance } from '../../utils/invoiceMath'
@@ -8,9 +8,19 @@ import { logger } from '../../utils/logger'
 import CustomSelect from '../../components/common/CustomSelect'
 import { useBillingProfile } from '../../hooks/useBillingProfile'
 import { useAuth } from '../../contexts/AuthContext'
+import { useConfirm } from '../../contexts/ConfirmContext'
+import { diffFields, summariseFields } from '../../utils/diffFields'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
+
+// Fields shown in the customer add / edit confirmation inside the checkout drawer.
+const CUSTOMER_FIELDS = [
+  { key: 'name', label: 'Name' },
+  { key: 'phone', label: 'Phone' },
+  { key: 'gstin', label: 'GSTIN' },
+  { key: 'price_tier', label: 'Price tier', map: { standard: 'Standard', wholesale: 'Wholesale', distributor: 'Distributor' } },
+]
 
 export default function CheckoutModal({
   open,
@@ -40,6 +50,8 @@ export default function CheckoutModal({
 }) {
   const auth = useAuth()
   const settings = auth?.settings
+  const confirm = useConfirm()
+  const custBaselineRef = useRef(null)   // customer values when the drawer opened → edit diff
   const customerRef = useRef(null)
   const godownRef = useRef(null)
   const invoiceDateRef = useRef(null)
@@ -91,6 +103,8 @@ export default function CheckoutModal({
   // Automatically focus customer drawer Name field when drawer opens
   useEffect(() => {
     if (showCustDrawer) {
+      // Snapshot the values at open time so an edit can be diffed on save.
+      custBaselineRef.current = { ...custModalFields }
       setTimeout(() => {
         drawerNameRef.current?.focus()
         drawerNameRef.current?.select()
@@ -150,47 +164,6 @@ export default function CheckoutModal({
     document.addEventListener('focusin', handleFocusIn)
     return () => document.removeEventListener('focusin', handleFocusIn)
   }, [open, showCustomerDropdown])
-  // const [soundboxStatus, setSoundboxStatus] = useState('idle')
-  // 
-  // useEffect(() => {
-  //   let autoCheckoutTimer;
-  //   let timer;
-  // 
-  //   if (open && form.payment_mode === 'upi' && grandTotal > 0) {
-  //     setSoundboxStatus('waiting');
-  //     
-  //     timer = setTimeout(() => {
-  //       setSoundboxStatus('success');
-  //       
-  //       // Voice synthesis announcement
-  //       if (window.speechSynthesis) {
-  //         try {
-  //           window.speechSynthesis.cancel();
-  //           const text = `Payment of Rupees ${Math.round(grandTotal)} received on UPI!`;
-  //           const utterance = new SpeechSynthesisUtterance(text);
-  //           utterance.lang = 'en-IN';
-  //           window.speechSynthesis.speak(utterance);
-  //         } catch (err) {
-  //           console.error('SpeechSynthesis error:', err);
-  //         }
-  //       }
-  // 
-  //       autoCheckoutTimer = setTimeout(() => {
-  //         onSaveInvoice(true);
-  //       }, 1500);
-  //     }, 4000);
-  //   } else {
-  //     setSoundboxStatus('idle');
-  //   }
-  // 
-  //   return () => {
-  //     if (timer) clearTimeout(timer);
-  //     if (autoCheckoutTimer) clearTimeout(autoCheckoutTimer);
-  //     if (window.speechSynthesis) {
-  //       window.speechSynthesis.cancel();
-  //     }
-  //   };
-  // }, [open, form.payment_mode, grandTotal, onSaveInvoice]);
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }))
   // What the customer actually pays = grand total − post-tax cash discount.
@@ -542,6 +515,18 @@ export default function CheckoutModal({
   const handleSaveCustomer = async (e) => {
     if (e && typeof e.preventDefault === 'function') e.preventDefault()
     if (!custModalFields.name.trim()) return
+
+    // Double-check step — confirm exactly what's being added / changed.
+    const editing = !!custModalFields.id
+    const entity = custModalFields.name.trim()
+    if (editing) {
+      const changes = diffFields(custBaselineRef.current || {}, custModalFields, CUSTOMER_FIELDS)
+      if (!(await confirm({ mode: 'update', entity, changes }))) return
+    } else {
+      const summary = summariseFields(custModalFields, CUSTOMER_FIELDS)
+      if (!(await confirm({ mode: 'create', entity, summary }))) return
+    }
+
     setSavingCustomer(true)
     try {
       const isEdit = !!custModalFields.id
@@ -1330,46 +1315,6 @@ export default function CheckoutModal({
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
                     VPA: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{upiVpa}</span>
                   </div>
-                  {/* Soundbox Simulator Panel
-                  <div style={{
-                    width: '100%',
-                    padding: '10px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: soundboxStatus === 'waiting' ? '#eff6ff' : soundboxStatus === 'success' ? '#f0fdf4' : '#fafaf9',
-                    border: soundboxStatus === 'waiting' ? '1px solid #bfdbfe' : soundboxStatus === 'success' ? '1px solid #bbf7d0' : '1px solid var(--border)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'all 0.3s ease',
-                    marginTop: '4px'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '1.1rem' }}><VolumeIcon size={16} /></span>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 800, color: soundboxStatus === 'waiting' ? '#1d4ed8' : soundboxStatus === 'success' ? '#15803d' : '#475569' }}>
-                        UPI Soundbox Simulator
-                      </span>
-                    </div>
-
-                    {soundboxStatus === 'waiting' && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: '#2563eb', fontWeight: 600 }}>
-                        <span className="spinner" style={{ width: 12, height: 12, border: '2px solid #2563eb', borderTopColor: 'transparent', display: 'inline-block', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                        Waiting for payment... (4s)
-                      </div>
-                    )}
-
-                    {soundboxStatus === 'success' && (
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                        <span style={{ fontSize: '0.7rem', color: '#16a34a', fontWeight: 700 }}>
-                          <CheckIcon size={18} style={{ color: 'var(--success)', display: 'inline-block', verticalAlign: 'middle', marginRight: 6 }} /> Payment Successful!
-                        </span>
-                        <span style={{ fontSize: '0.65rem', color: '#15803d', textAlign: 'center' }}>
-                          Voice confirmation played. Auto-printing...
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  */}
                 </div>
               )}
 

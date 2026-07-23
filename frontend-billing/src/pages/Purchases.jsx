@@ -7,6 +7,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import PageShell from '../components/common/PageShell'
 import { useAuth } from '../contexts/AuthContext'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { BillsIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIcon, ImportIcon, InfoIcon, SearchIcon, SyncIcon, UploadIcon, ExpandIcon } from '../components/Icons'
 import CustomSelect from '../components/common/CustomSelect'
 import PurchaseOcrModal from '../components/purchases/PurchaseOcrModal'
@@ -25,6 +26,7 @@ const fmt = (n) =>
 // ============================================================================
 export default function Purchases({ embedded = false, headerTabs = null }) {
   const { authFetch, settings } = useAuth()
+  const confirm = useConfirm()
 
   const settingsRef = useRef(settings)
   useEffect(() => {
@@ -70,7 +72,7 @@ export default function Purchases({ embedded = false, headerTabs = null }) {
   const { blocker, isRefreshing, dirtyMessage } = usePageLifecycle({
     isDirty:      () => showModal && step === 'review' && extracted !== null,
     dirtyMessage: 'You are reviewing a scanned bill. Leave and discard changes?',
-    onResume:     () => { /* silent refresh handled inline */ },
+    onResume:     () => load(),   // throttled refresh on return (was a window 'focus' listener)
   })
 
   const handleSort = (key) => {
@@ -204,10 +206,10 @@ export default function Purchases({ embedded = false, headerTabs = null }) {
         load()
       }
     }
-    window.addEventListener('focus', load)
+    // Foreground refresh (focus/visibility) is handled by usePageLifecycle,
+    // throttled — no separate 'focus' listener here (that caused a double reload).
     window.addEventListener('sync-event', handleSync)
     return () => {
-      window.removeEventListener('focus', load)
       window.removeEventListener('sync-event', handleSync)
     }
   }, [load])
@@ -301,6 +303,18 @@ export default function Purchases({ embedded = false, headerTabs = null }) {
 
   const handleConfirm = async () => {
     if (!extracted) return
+    const summary = []
+    if (extracted.supplier_name) summary.push({ key: 'supplier', label: 'Supplier', value: extracted.supplier_name })
+    if (extracted.total_amount != null) summary.push({ key: 'total', label: 'Total', value: fmt(extracted.total_amount) })
+    if (Array.isArray(extracted.lines)) summary.push({ key: 'items', label: 'Items', value: String(extracted.lines.length) })
+    const ok = await confirm({
+      mode: 'create',
+      title: 'Add purchase bill?',
+      message: 'Confirm this bill and add it to purchases — stock and the supplier ledger will update.',
+      summary,
+      confirmText: 'Confirm & add',
+    })
+    if (!ok) return
     setConfirming(true)
     try {
       const res = await authFetch('/purchases/confirm', {
@@ -380,6 +394,14 @@ export default function Purchases({ embedded = false, headerTabs = null }) {
       setAlert({ type: 'danger', msg: `Return quantity for ${invalidLine.product_name} cannot exceed original quantity (${invalidLine.max_quantity}).` })
       return
     }
+
+    const ok = await confirm({
+      mode: 'create',
+      title: 'Record purchase return?',
+      message: `Record this debit note for ${activeLines.length} item${activeLines.length > 1 ? 's' : ''}? Stock and the supplier ledger will update.`,
+      confirmText: 'Record return',
+    })
+    if (!ok) return
 
     setConfirming(true)
     try {

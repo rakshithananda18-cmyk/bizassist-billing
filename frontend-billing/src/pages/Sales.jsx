@@ -9,6 +9,7 @@ import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { IS_LOCAL_APP } from '../config'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
+import { useConfirm } from '../contexts/ConfirmContext'
 import { AlertIcon, BillsIcon, CheckIcon, ChevronRightIcon, CloseIcon } from '../components/Icons'
 import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
@@ -88,6 +89,7 @@ export default function Sales(props = {}) {
   const { profile: billingProfile } = useBillingProfile()
   const { config, attributesSchema, t } = useBusinessConfig()
   const navigate = useNavigate()
+  const confirm = useConfirm()
   const [searchParams, setSearchParams] = useSearchParams()
   const liveCounter = searchParams.get('live_counter')
   const liveClientId = searchParams.get('client_id')
@@ -1232,16 +1234,21 @@ export default function Sales(props = {}) {
   // ============================================================================
   // ── 10. TABS & CARTS MUTATORS ──
   // ============================================================================
-  const closeTab = useCallback((tabId, e, forceClose = false) => {
+  const closeTab = useCallback(async (tabId, e, forceClose = false) => {
     if (e) e.stopPropagation()
     if (isLiveView && editState !== 'granted') return
     const tabToClose = tabs.find(t => t.id === tabId)
     if (!forceClose && tabToClose && tabToClose.form.items.length > 0) {
-      if (!window.confirm(`Are you sure you want to close ${tabToClose.name}? Unsaved changes will be lost.`)) {
-        return
-      }
+      const ok = await confirm({
+        mode: 'discard',
+        title: 'Close this bill?',
+        message: `Close ${tabToClose.name}? Unsaved changes will be lost.`,
+        confirmText: 'Close bill',
+        cancelText: 'Keep editing',
+      })
+      if (!ok) return
     }
-    
+
     setPriceSelectorIndex(null)
     setSelectedPriceOptIndex(0)
 
@@ -1277,7 +1284,7 @@ export default function Sales(props = {}) {
       const remainingTab = newTabs[newTabs.length - 1]
       setActiveTabId(remainingTab.id)
     }
-  }, [tabs, activeTabId, godowns, authFetch, syncTabNames, mergePending, dbInvoices])
+  }, [tabs, activeTabId, godowns, authFetch, syncTabNames, mergePending, dbInvoices, confirm])
 
   const handleMinimize = () => {
     const targetUid = user?.user_id || user?.id
@@ -1807,9 +1814,16 @@ export default function Sales(props = {}) {
 
 
 
-  const handleClear = () => {
+  const handleClear = async () => {
     if (form.items.length > 0) {
-      if (!window.confirm('Reset current bill fields? Unsaved changes will be lost.')) return
+      const ok = await confirm({
+        mode: 'discard',
+        title: 'Reset this bill?',
+        message: 'Reset current bill fields? Unsaved changes will be lost.',
+        confirmText: 'Reset',
+        cancelText: 'Keep editing',
+      })
+      if (!ok) return
     }
     setForm({
       ...defaultForm,
@@ -1825,16 +1839,32 @@ export default function Sales(props = {}) {
   }
 
   // Accidental exit prevention handler
-  const handleCloseConfirm = useCallback(() => {
+  const handleCloseConfirm = useCallback(async () => {
     const lastPage = sessionStorage.getItem('last_page') || '/'
+    // Closing the counter discards the bill — so wipe the auto-saved cart too,
+    // otherwise it's restored from localStorage and "reappears" on reopen.
+    const clearPersistedCart = () => {
+      const uid = user?.user_id || user?.id
+      if (!uid) return
+      localStorage.removeItem(`pos_minimized_tabs_${uid}`)
+      localStorage.removeItem(`pos_minimized_active_id_${uid}`)
+      localStorage.removeItem(`pos_minimized_${uid}`)
+      window.dispatchEvent(new Event('pos_minimized_changed'))
+    }
     if (form.items.length > 0) {
-      if (window.confirm('Are you sure you want to close this bill? Unsaved changes will be lost.')) {
-        navigate(lastPage)
-      }
+      const ok = await confirm({
+        mode: 'discard',
+        title: 'Close this bill?',
+        message: 'Are you sure you want to close this bill? Unsaved changes will be lost.',
+        confirmText: 'Close bill',
+        cancelText: 'Keep editing',
+      })
+      if (ok) { clearPersistedCart(); navigate(lastPage) }
     } else {
+      clearPersistedCart()
       navigate(lastPage)
     }
-  }, [form.items, navigate])
+  }, [form.items, navigate, confirm, user?.user_id, user?.id])
 
   // Helper selectors to focus cells for hotkeys
   const focusLastQty = () => {
