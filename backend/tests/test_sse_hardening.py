@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from unittest.mock import patch, MagicMock
 
 # Set test environment database and mock api keys
-os.environ["DATABASE_URL"] = "sqlite:///./test_bizassist.db"
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 os.environ["GROQ_API_KEY"] = "mock_groq_api_key"
 os.environ["JWT_SECRET"] = "mock_jwt_secret_key_minimum_32_bytes_long"
 

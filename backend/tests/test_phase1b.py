@@ -15,7 +15,7 @@ import sys
 import uuid
 from datetime import datetime
 
-os.environ["DATABASE_URL"] = "sqlite:///./test_bizassist.db"
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 os.environ["GROQ_API_KEY"] = "mock_groq_api_key"
 
 # Clean up any leftover databases from previous runs before importing main_groq

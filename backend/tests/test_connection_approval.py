@@ -22,7 +22,7 @@ Covered here:
 import os
 import sys
 
-os.environ["DATABASE_URL"] = "sqlite:///./test_bizassist.db"
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 
 backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if backend_path not in sys.path:

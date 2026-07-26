@@ -375,6 +375,16 @@ def report_pnl(
          "amount": round(journal_discount_allowed, 2), "section": "journal"},
         {"metric": "Net Revenue (Journal, after discounts)",
          "amount": round(journal_net_revenue, 2), "section": "journal"},
+        # Journal-basis BOTTOM LINE. Without these two rows the only figures called
+        # "Gross Profit" and "Net Income" were the invoice-basis ones, which include
+        # the GST collected — so an owner reading "Net Income" still saw a number
+        # overstated by the tax they owe the government. Same COGS and expenses;
+        # revenue net of GST. (M-14)
+        {"metric": "Gross Profit (Journal basis, GST-exclusive)",
+         "amount": round(journal_net_revenue - cogs, 2), "section": "journal"},
+        {"metric": "Net Income (Journal basis, GST-exclusive)",
+         "amount": round(journal_net_revenue - cogs - total_exp, 2),
+         "section": "journal"},
         {"metric": "Journal-Invoice reconciliation delta (0 = fully posted)",
          "amount": journal_recon_delta,
          "section": "journal",

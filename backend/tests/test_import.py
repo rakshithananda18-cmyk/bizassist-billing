@@ -9,7 +9,7 @@ backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, backend_path)
 
 db_file = os.path.join(backend_path, "test_bizassist.db").replace("\\", "/")
-os.environ["DATABASE_URL"] = f"sqlite:///{db_file}"
+os.environ.setdefault("DATABASE_URL", f"sqlite:///{db_file}")
 os.environ["GROQ_API_KEY"] = "mock_groq_api_key"
 
 import pytest

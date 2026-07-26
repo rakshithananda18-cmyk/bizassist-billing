@@ -5,10 +5,17 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 # Set test environment variables
-os.environ["DATABASE_URL"] = "sqlite:///./test_bizassist_rag.db"
+# conftest.py resolves DATABASE_URL before this module imports (per-xdist-worker
+# file, or the Postgres override), so this default is never used. Kept as a
+# setdefault rather than a hard assignment because hard-setting it here is what
+# collapsed every xdist worker onto one database file.
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 os.environ["OPENAI_API_KEY"] = "mock_openai_api_key"
 
 # Clean up any leftover databases
+# NOTE: this module no longer has a database of its own — it shares the suite's,
+# and clears its rows in the fixture below. These paths are cleaned only in case
+# an older run left one behind.
 for db_path in ["test_bizassist_rag.db", "backend/test_bizassist_rag.db"]:
     if os.path.exists(db_path):
         try:

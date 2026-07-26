@@ -1929,6 +1929,38 @@ the journal.** Cross-report agreement is necessary and not sufficient — the
 reports must also agree with the ledger. Corrected only because I went to
 `journal_lines` for ground truth instead of trusting a second report.
 
+### CLOSED (27 Jul 2026, commit d34de0a) — verified
+
+Fixed by the owner, and **verified against journal ground truth**, not taken on
+trust:
+
+| | Now reports | Journal says |
+|---|---|---|
+| Trial balance "Sales (GST-exclusive)" | Cr **500.00** | Cr 500.00 ✓ |
+| Trial balance "GST Payable" | Cr **90.00** — now visible | Cr 90.00 ✓ |
+| Trial balance totals | Dr 590 / Cr 590, foots | — |
+| P&L "Sales Revenue (Journal, GST-exclusive)" | **500.00** | ✓ |
+| P&L "GST Payable (Tax collected — liability, not income)" | **90.00** | ✓ |
+
+The approach taken was **better than the one recommended here**. Rather than
+silently restating every owner's profit, the P&L became DUAL-SECTION: the
+invoice-basis figures are retained with explicit "GST-inclusive" labels, and a
+journal-basis section is added beside them. The trial balance now reads
+`journal_lines` for its nominal accounts.
+
+It also added a row this review had not thought to ask for and should have:
+**"Journal-Invoice reconciliation delta (0 = fully posted)"** — a self-check that
+would have surfaced M-2 the day it happened.
+
+**One gap closed afterwards (this pass):** the only rows named "Gross Profit" and
+"Net Income" were still the invoice-basis ones, so an owner reading "Net Income"
+saw a figure overstated by the tax collected. Added
+**"Gross Profit (Journal basis, GST-exclusive)"** and **"Net Income (Journal
+basis, GST-exclusive)"** — verified 200 / 200 against an invoice-basis 290 on a
+5 x ₹100 @ 18% day.
+
+### Original hand-back reasoning, retained
+
 **NOT fixed, and this is a deliberate hand-back.** Pointing these two reports at
 `journal_entries` is a small code change with a large business consequence: every
 owner's reported revenue and profit drops by the tax they collected, and those
@@ -1956,6 +1988,16 @@ Encoded as `xfail(strict=True)` rather than left as a comment, so it **flips to 
 failure the moment it is fixed** instead of sitting as a permanently-tolerated red
 mark.
 
+### CLOSED (27 Jul 2026, commit d34de0a) — verified
+
+`/reports/outstanding` now returns
+`{"party_name": "Walk-in / No Customer", "total_amount": 590.0,
+"paid_amount": 236.0, "outstanding_amount": 354.0}` — exactly the explicit
+null-bucket recommended. **The strict xfail did its job**: it began failing when
+the fix landed, forcing the marker to be removed rather than allowing a stale
+red mark to accumulate. That is the mechanism working as designed, and it is the
+argument for rule 43.
+
 ## 54. Recommendations, ordered
 
 1. **M-14 — point `report_pnl` and `report_trial_balance` at `journal_entries`.**
@@ -1969,7 +2011,461 @@ mark.
 4. **Close shift 4** (₹8,113) so the M-11 index can install.
 5. **`run_tests.bat`** to confirm the frontend banner change.
 
-## 55. Architectural rules added
+## 56. M-16 (owner-found) and M-17 · 🟠 High (NEW) — phantom line items
+
+### M-16 — closed by the owner, and the most valuable single number in this audit
+
+Found independently, not by any check here: **a batch script inserted 63 spurious
+`invoice_line_items` rows on 2026-07-17** into businesses 6 and 7. Repaired by
+`backend/scripts/repair_duplicate_line_items.py`.
+
+**Brownie Factory's P&L went from a ₹-6,715 fake loss to its real ₹+4,648
+profit.** That is the largest correction in this entire review, and it was
+invisible to everything: invoice headers were right, the journal footed, the hash
+chain verified. Only the *lines* were inflated — and until now nothing compared
+the lines to the document they belong to. COGS is computed from
+`invoice_line_items x Product.cost_price`, so duplicated lines inflate cost and
+sink profit.
+
+### Audit check I added (rule 35)
+
+Needing to find something by hand is the signal it belongs in the automated audit.
+`scripts/audit_money_integrity.py` gained check **I**:
+
+```
+SUM(line_total)  ==  total_amount + cash_discount - round_off
+```
+
+**My first version of this check was wrong** and produced five false positives on
+business 7. It compared against `total_amount` alone, but a post-tax cash discount
+and the round-off live on the HEADER, not on the lines. Verified on real rows
+(`LCL-OW-0027`: 337.65 == 323 + 15 − 0.35). Recording it because a check that
+cries wolf is a check people learn to skip — which is exactly how section B's
+legacy-import noise nearly buried the real M-2 gaps.
+
+### M-17 — the same corruption, an EARLIER occurrence, still live in business 6
+
+With the formula corrected, check I reports **6 invoices in business 6** whose
+lines do not foot, totalling **₹3,298.26 of phantom line value**:
+
+| Invoice | Header | Lines | Delta | Lines |
+|---|---|---|---|---|
+| `C1-0004` | 566.00 | 2,608.94 | **+2,043.28** | 11 |
+| `C1-0001` | 942.00 (+50 disc) | 1,557.64 | **+565.68** | 7 |
+| `C1-0003` | 396.00 | 651.31 | **+255.44** | 2 |
+| `OW-0003` | 124.00 | 310.21 | **+186.50** | 2 |
+| `OW-0001` | 187.00 | 310.21 | **+123.70** | 2 |
+| `C1-0002` | 2,533.00 (+500 disc) | 3,157.10 | **+123.66** | 5 |
+
+Every delta equals a whole number of real line items (₹123.70 = Coffee Powder,
+₹255.45 = Wheat Flour, ₹186.51 = Sugar), so these are duplicates, not arithmetic
+drift. Business 7 is clean.
+
+**Why the M-16 repair did not catch them — mechanism, from the code.** Line 58 of
+the repair script scopes itself to a single calendar day:
+
+```sql
+WHERE li.created_at >= '2026-07-17' AND li.created_at < '2026-07-18'
+```
+
+Business 6's phantom rows were created on **2026-06-29, 06-30, 07-01 and 07-03** —
+appended a day or more after each invoice's genuine lines. So the script now
+correctly reports "0 rows"; its window is empty, and the corruption outside that
+window is untouched. **This is a second, earlier occurrence of the same class**,
+which means the inserting process ran more than once.
+
+### M-17 CLOSED — repaired by the invariant, not by a date
+
+`backend/scripts/repair_line_items_by_invariant.py`.
+
+**The discriminator is insertion order, not `created_at`.** Line items are written
+with their invoice, so the genuine rows are the ones that came first. The tool
+walks the lines in `id` order accumulating `line_total` and finds the PREFIX that
+reconciles to the header; everything after it is an intruder. That rule is
+self-validating — it only ever acts when the surviving rows match a figure the
+invoice already stored independently, and **if no prefix reconciles it deletes
+nothing and flags the invoice for a human.**
+
+A date could not have done this. Two of the six invoices have the genuine AND the
+phantom row written on the same calendar day:
+
+| Invoice | Target Σ(lines) | Prefix that reconciles | Rows deleted |
+|---|---|---|---|
+| `C1-0001` | 991.96 | 4 → 991.98 | 3 |
+| `C1-0002` | 3,033.44 | 4 → 3,033.40 | 1 |
+| `C1-0003` | 395.87 | 1 → 395.86 | 1 |
+| `C1-0004` | 565.66 | 3 → 565.66 | 8 |
+| `OW-0001` | 186.51 | 1 → 186.51 | 1 *(same-day)* |
+| `OW-0003` | 123.71 | 1 → 123.70 | 1 *(same-day)* |
+
+**Proven on a copy of the real database, with a money diff (rule 29):**
+
+| | before | after | delta |
+|---|---|---|---|
+| invoice_value | 290,949.25 | 290,949.25 | **0** |
+| paid_total · payments_sum | 46,352.00 · 22,293.00 | identical | **0** |
+| journal Dr · Cr | 295,764.00 · 295,764.00 | identical | **0** |
+| stock_rows | 239 | 239 | **0** |
+| line_items | 193 | **178** | −15 |
+| line_value | 75,079.18 | **71,780.88** | −3,298.30 |
+
+Afterwards: **all nine audit checks A–I clean**, `integrity_check: ok`,
+`foreign_key_check: 0`, and the invariant re-checked at 0 repairable / 0 needing
+review. Every deleted row exported to timestamped JSON before the first write.
+
+**The business impact.** COGS is `invoice_line_items × Product.cost_price`, so
+business 6's cost was overstated by **₹2,422.57** and its gross profit understated:
+**219,898.15 → 222,320.72**. Business 7 unchanged (already repaired by M-16).
+
+Pinned by `tests/test_line_item_invariant.py` — 13 tests covering both halves: the
+invariant holds for invoices the billing command writes (including with a cash
+discount), and the detector separates same-day rows, accounts for the discount,
+**refuses when no prefix reconciles**, ignores zero-value CSV imports, and exports
+before the first write.
+
+### Original hand-back reasoning, retained
+
+Not repaired at the time: which side is authoritative needed the owner's
+judgement. The evidence favoured the header (for `C1-0004`, `subtotal` 505.06 x
+1.12 + 0.34 round-off = 566.00, and the three lines dated 06-30 sum to 565.66 — so
+the eight rows dated 07-01 are the intruders), but deleting billed line items is
+not a call to make from a pattern match. The prefix rule turned that judgement
+into something the tool can prove for itself.
+
+### Fixes applied to the repair script itself
+
+| Problem | Fix |
+|---|---|
+| Lived at repo-root `scripts/`, the only repair script outside `backend/scripts/` (breaks F-9/N10) | Moved to `backend/scripts/` |
+| `DB = "backend/bizassist.db"` — relative, so it only ran from the repo root and died from `backend/` | Resolves from `__file__`; `--db` override added; exits with an explicit message rather than guessing |
+
+That relative path mattered more than it looks: the repo root also holds a stale,
+**empty** `bizassist.db`, and a relative path can find the wrong one first. That
+trap already produced one incorrect "nothing to repair" conclusion earlier in this
+audit. It failed loudly rather than silently — verified — but only by luck of the
+missing parent directory.
+
+## 57. SonarCloud quality gate — why it was failing
+
+Two independent causes, both measured.
+
+### 1. ~800 new uncovered lines from operational scripts
+
+`sonar.sources=backend` with no coverage exclusions, so `backend/scripts/`
+counted as new code:
+
+```
+backend/scripts/  ->  798 statements, 0% line coverage
+```
+
+audit_money_integrity, backfill_journals, quarantine_fk_orphans,
+resolve_duplicate_invoice_numbers, repair_m7_rollback, reconcile_orphans,
+cloud_cleanup_counters, quarantine_misattached_payments, fk_teardown_scan. They
+are one-shot tools a human runs from a terminal; nothing imports them, by design.
+Against the default **Coverage on New Code >= 80%** condition that alone fails the
+gate however well the application is tested.
+
+Fixed with `sonar.coverage.exclusions` — **not** `sonar.exclusions`. The
+distinction is the point: these files are still fully analysed for bugs, smells
+and security hotspots, because several of them delete or rewrite money rows and
+are exactly the code that deserves scrutiny. They are only out of the coverage
+ratio. The dishonest alternative — tests that import each `main()` — would measure
+argparse plumbing and inflate the number without adding safety; they are instead
+validated the way §44.3 requires (dry-run, proven on a copy, money diff, JSON
+export before the first write).
+
+Also coverage-excluded: `backend/alembic/**`, the root `check_*`/`reset_*`/
+`dump_schema`/`scan_db` inspection scripts, `main_groq.py` (ASGI wiring executed
+by import side effects), and `**/*.jsx` — the React suite is component-level, so
+the frontend coverage number should come from the `.js` logic modules
+(sync/outbox, lib/, hooks/, utils/), which are deliberately **not** excluded.
+
+`sonar.cpd.exclusions` for the scripts too: their shared shape (dry-run banner,
+`--apply` guard, JSON export, before/after verification) is a safety property, not
+duplication to refactor — one shared helper would let a single bug change the
+behaviour of every money repair at once.
+
+### 2. Deprecated scanner action
+
+The workflow used `SonarSource/sonarcloud-github-action@master`. That action is
+**deprecated** — its own repository description now reads *"Deprecated. Use
+https://github.com/SonarSource/sonarqube-scan-action instead."* Since v4.1.0
+`sonarqube-scan-action` is the single entrypoint for both SonarQube Server and
+Cloud and is a drop-in replacement, but it **requires `SONAR_HOST_URL`**, which the
+old action inferred.
+
+Migrated to `SonarSource/sonarqube-scan-action@v4` with
+`SONAR_HOST_URL: https://sonarcloud.io`. Pinned to a major version rather than
+`@master`: a scanner that can change under you between runs makes "the gate went
+red" unattributable.
+
+### Also corrected in the workflow
+
+`DATABASE_URL` was exported at job level. `tests/conftest.py` owns that variable —
+it resolves a per-xdist-worker file (or honours `BIZASSIST_TEST_DATABASE_URL` for
+the Postgres run) before any module imports, and `database/db.py` fails closed
+unless the URL names a test DB. The export was a second source of truth that
+conftest then overwrote. Removed, and `CLOUD_API_URL: http://127.0.0.1:9` added as
+a belt to the S-5 guard.
+
+## 58. The `setdefault` sweep — verified
+
+46 test files changed `os.environ["DATABASE_URL"] = ...` to
+`os.environ.setdefault(...)`. Correct, and it fixes something real: every module
+was hard-overwriting the value `conftest.py` had just chosen. Proven empirically —
+an `-n 2` run now creates `test_bizassist_gw0.db` and `test_bizassist_gw1.db`,
+where before all workers collapsed onto one file, which is the flakiness conftest's
+own comment describes. It also un-blocks `BIZASSIST_TEST_DATABASE_URL`, so the
+cross-dialect Postgres job was silently running on SQLite for those modules.
+
+Only `conftest.py` still hard-sets it, which is right — it is the authority.
+
+`test_rag.py`'s isolated `test_bizassist_rag.db` is now unreachable as a
+consequence; it shares the suite database and clears its rows in the fixture. The
+stale filename references are annotated rather than deleted, in case an older run
+left a file behind.
+
+## 59. N4b — the line-item overfill guard: prevention, not detection
+
+M-16 and M-17 were the same corruption twice, so detection was not enough. The
+write is now **refused by the database**.
+
+### The obvious constraint was unimplementable, and shipping it would have been an outage
+
+The natural rule is `SUM(line_total) == total_amount + cash_discount - round_off`.
+As a row-level trigger it rejects almost every legitimate write. Verified in the
+code before designing anything, not assumed:
+
+| Path | Order of writes | Consequence |
+|---|---|---|
+| `create_sale_invoice` | header WITH final total (`total_amount=grand`, `db.add`, `db.flush`) → **then** line items one at a time | after line 1 of 3 the equality is false |
+| Sync **pull** | `invoice_line_items` is in `_child_last`, so the invoice lands first carrying its final total, lines arrive after, one row at a time | same transient state, on **every synced document** |
+
+An equality trigger would therefore have rejected every multi-line sale and every
+synced line item — the latter landing them in the conflict log via M-12, which is
+a far worse failure than the defect being prevented.
+
+### What the guard actually asserts
+
+The asymmetry. A legitimate build-up only ever fills **up to** the header target;
+the corruption **exceeds** it:
+
+```
+SUM(existing lines) + NEW.line_total  <=  total_amount + cash_discount - round_off + 1.00
+```
+
+This is safe because the write surface is small and was verified: the **only** code
+that creates `InvoiceLineItem` rows is `create_sale_invoice` and
+`create_credit_note`, both inside the transaction that just wrote the header, and
+**there is no invoice-edit or add-line route anywhere in the app**.
+
+`database/migration.py::_ensure_line_item_overfill_guard`. Two dialects, because a
+Postgres `CHECK` cannot contain a subquery:
+
+* **SQLite** — `BEFORE INSERT … WHEN <subquery condition> … RAISE(ABORT)`
+* **Postgres** — a `plpgsql` trigger function raising an exception
+
+Existing over-filled rows do **not** block installation (unlike the M-3/M-11 unique
+indexes, a trigger constrains future writes only) but are reported at ERROR with
+the repair command, so they are never mistaken for clean.
+
+### Verified — both halves
+
+| Assertion | Result |
+|---|---|
+| Appending a phantom line to a completed invoice | **refused** — `M-17 guard: line items would exceed the invoice total` |
+| Multi-line sale through the API (3 lines) | **201**, lines total 1,534.00 == target |
+| Sale with a header cash discount (target > total) | **201** |
+| Credit note | passes |
+| **Sync apply: header first, then lines one at a time** | **allowed** — the test that protects push/pull |
+| Zero-total CSV-imported invoice | guard inert, lines import normally |
+| 0.40 paise overshoot | allowed (tolerance 1.00; smallest real phantom row was ₹123.70) |
+| Re-running the installer | idempotent |
+
+22 tests in `tests/test_line_item_invariant.py`. Regression-checked against
+`test_billing`, `test_money_reconciliation`, `test_sync_pull`,
+`test_sync_paid_state_parity`, `test_journal_repost_on_sync`, `test_phase4_sync`,
+`test_import`, `test_data_transfer`, `test_uid_cross_db` — all green.
+
+### A failure worth recording
+
+The first version did not install at all: the SQLite trigger body used implicit
+string concatenation across lines (`'part one' 'part two'`), which is a Python
+construct, not SQL. It failed **loudly** — `_ensure_line_item_overfill_guard` logs
+at ERROR and the boot continued — and the test asserting the guard is present
+caught it immediately. Recorded because the alternative design (install silently,
+assume success) would have shipped an absent guard that every test reported as
+working.
+
+## 60. M-18 · 🔴 Critical (NEW) — the corruption reached the two-party table, and B2BLedger has no writer
+
+Two findings from auditing the ecosystem layer. Both measured on the live database.
+
+### M-18 — 2 of 2 live B2B orders have inflated line items
+
+| Order | Header | Σ(lines) | Delta | Lines |
+|---|---|---|---|---|
+| `ORD-20260630-2QTE` | 836.90 | 1,423.84 | **+586.95** | 6 |
+| `ORD-20260702-J17T` | 774.11 | 1,298.27 | **+524.16** | 4 genuine + 2 |
+
+**₹1,111.11 of phantom line value across every B2B order in the system.** Same
+signature as M-16/M-17: the first 4 lines sum to exactly the header total, and
+lines 5–6 duplicate two earlier products.
+
+This is worse than the single-tenant case. A B2B order is a record **two
+businesses quote to each other**. A buyer reading a total the seller does not
+recognise is precisely the failure the shared-ledger thesis cannot tolerate.
+
+**What I verified, and what I could not.** Facts:
+
+* `core/order/service.create_order` is **correct** — read line by line. It builds
+  one `B2BOrderLineItem` per input item and computes the header totals in the same
+  loop, so it cannot produce this.
+* All 12 line-item uids are **distinct and non-NULL**, so a uid collision is not
+  the cause. *(This disproved my first hypothesis, which was uid-matching failure
+  on the cloud→local mirror. Recorded because it was wrong.)*
+* All 12 rows carry `created_at = 2026-07-24 20:36:24` while the order dates are
+  30 Jun and 2 Jul — a **bulk insert weeks after the fact**.
+* No script or route in the tree writes `B2BOrderLineItem` by name.
+
+Unproven hypothesis, stated as such: `b2b_orders` / `b2b_order_line_items` are
+`PULL_ONLY` (cloud→local mirror) and the sync apply writes them **generically via
+`MODEL_MAP`**, which would not appear in a name search. A mirror rebuild that
+re-inserted rows its uid matching could not pair would produce exactly this. I
+cannot confirm it without the cloud's uids, which I cannot reach.
+
+### Closed — detection, prevention and repair, all three
+
+| Layer | Change |
+|---|---|
+| **Detection** | Audit check **J** — B2B order lines vs header. Found both orders immediately |
+| **Prevention** | The overfill guard generalised to a table spec and installed on `b2b_order_line_items` as well as `invoice_line_items`. Verified: building up to the header total is allowed, a 4th line is **refused** |
+| **Repair** | `repair_line_items_by_invariant.py` driven from the same spec — the prefix rule handles both families |
+
+Proven on a copy: `b2b_lines` 12 → 8, `b2b_line_value` 2,722.12 → 1,611.01
+(−1,111.11), **every other figure unchanged** (invoice value, paid, payments,
+journal Dr/Cr 295,764 both sides, invoice line items, stock). Audit **A–J clean**,
+`integrity_check: ok`, `foreign_key_check: 0`.
+
+`b2b_orders` carries no `cash_discount` / `round_off`, so its target is the plain
+`total_amount` — using the invoice expression would reference columns that do not
+exist. Pinned by a test.
+
+### B2BLedger has NO WRITER — the ⭐ Verified Ledger rests on an empty table
+
+`grep` across `core/`, `routes/`, `services/`: the only occurrence of
+`B2BLedger(` is the class definition. **Nothing ever inserts a row.** Confirmed
+empty on the live database (`b2b_ledgers: 0`).
+
+Meanwhile the table is referenced in ~20 places that all treat it as live:
+`sync_map.MODEL_MAP`, `_SYNC_TABLES`, `routes/sync.py`,
+**`apply_hooks.FINANCIAL_ENTITIES`** (so the system is prepared to log sync
+conflicts on a table that can never have rows), `purge_business_data`, the
+activity-feed labels, the data-transfer allow-lists, a uid migration, and the pull
+ordering.
+
+This is **not a bug** — it is an unimplemented feature whose entire supporting
+infrastructure already exists. But §3 of this review calls `B2BLedger` "the
+sleeping giant" and §7-P2 ⭐ makes the counter-signed Verified Ledger *the*
+standout move. That thesis currently rests on a table with no writer, and the
+review said so nowhere. Stating it plainly: the schema is ready, the plumbing is
+ready, and the ledger is never written.
+
+### Correction to my own reporting
+
+I previously told the owner that `core/api/orders.py` was "6 of 7 functions
+untested" and `core/api/connections.py` "14/14 untested". Those came from the
+**name-reference proxy**, which cannot see a function exercised over HTTP. Real
+line coverage, measured with `pytest-cov`:
+
+| Module | Real | Name proxy said |
+|---|---|---|
+| `core/connection/service.py` | **88%** | 13/15 missing |
+| `core/api/connections.py` | **76%** | 14/14 missing |
+| `core/order/service.py` | **74%** | 3/5 missing |
+| `core/api/orders.py` | **72%** | 6/7 missing |
+| `core/connection/transfer.py` | **10%** | — |
+
+The B2B layer is far better covered than I reported. The real gap is
+`core/connection/transfer.py` at **10%** — the data-transfer importer, which is
+the module that produced M-1 by copying `requested_by_business_id` verbatim from
+another tenant's database. That is where the next B2B testing effort belongs, not
+in the route handlers.
+
+## 61. M-19 · 🟠 High (NEW) — the B2B importer dropped rows and reported success
+
+Third venue for the M-12/M-13 pattern, found while covering
+`core/connection/transfer.py`.
+
+`import_b2b_tables` counted its skips and then **threw the count away** — it
+returned `applied` only, and `routes/data_transfer.py` reported that as
+`imported[table] = n`. So an import that dropped a counterparty relationship, an
+order, or an order line told the operator *"42 rows imported"* and nothing else,
+while the rows were simply gone.
+
+The individual skips matter more than the count:
+
+| Skipped | Reason | Consequence |
+|---|---|---|
+| connection | counterparty BizID absent | the business's B2B network is silently thinner |
+| order | party unresolvable | order history missing on one side |
+| **order line** | **product absent in this DB** | **the order's lines no longer sum to its header** — the M-18 invariant, broken from the *under-filled* side, by this importer |
+
+**Closed.** `import_b2b_tables(..., skipped_out=[...])` records one dict per
+dropped row with its reason; the route collects them, logs at ERROR, and returns
+them as `b2b_skipped` in the response. Same shape as the `unparsed` list on the
+S-3 scanner and the `rejected` list on the push — reporting what was NOT done is
+part of the result, not diagnostics.
+
+### A fourth skip site I missed, and the test that caught it
+
+My first patch wired three of the four `skipped += 1` sites. The fourth — a line
+item whose **parent order** is absent — had no `_skip()` call and **no log line at
+all**; the row vanished behind a bare counter bump. The symptom was a log reading
+`SKIPPED=1 ... rows: []`: a count and a list disagreeing.
+
+A test asserting the two agree now exists, so a fifth site added without recording
+the row fails the build rather than shipping. That assertion is worth more than the
+four fixes.
+
+### `_remap_requester`'s docstring was lying about its own coverage
+
+Its final line reads *"Pure — takes the raw row, returns an id or None.
+**Unit-tested directly.**"* Measured: **nothing in the test corpus named the
+function, and no test reached lines 170-176 — its entire branch logic.** This is
+the M-1 consent fix, the one that stopped the importer naming a third party as the
+requester of a B2B link and thereby letting the importer "approve" a connection
+nobody asked for.
+
+A security fix whose documentation asserts coverage it does not have is worse than
+one that admits it has none, because it stops anyone looking. Now covered by 8
+direct tests, including the third-party case, both parties, the malformed-row
+case, and a guard that the mapping compares against SOURCE ids rather than local
+ones (matching local ids would look correct in any same-database test and be wrong
+in the only case the function exists for). One test asserts the docstring still
+makes the claim, so deleting the tests without editing the docstring restores the
+lie loudly.
+
+### `_claim_uid` swallowed a failed uniqueness check
+
+`except Exception: taken = False` — a lookup that **failed** was treated as *"the
+uid is free"*, which then inserts a possibly-colliding uid and 500s the whole
+import on the partial unique index: precisely the outcome the function exists to
+prevent. Now mints a fresh uid (the safe direction — one row loses cross-database
+identity, nothing breaks) and logs at ERROR. Rule 13: fail-open is often right;
+fail-open *and silent* never is.
+
+### Coverage, and a second correction to my own reporting
+
+`core/connection/transfer.py`: **82% → 92%**.
+
+I had told the owner this module was at **10%**. That figure was an artefact of
+measuring it under the *connections* test file, which does not exercise it —
+`tests/test_b2b_transfer.py` already covered 82%. Two wrong coverage claims in two
+consecutive reports, both from measuring carelessly rather than from the code
+changing. The lesson is in rule 54 and now in rule 57.
+
+## 62. Architectural rules added
 
 17. **Fail-closed is a property of every outbound resource a test can reach, not just the database.** `database/db.py` refuses a non-test `DATABASE_URL`; nothing refused a production socket, so the suite authenticated against a live deployment with a stored token. Any component that speaks outward with a credential must be inert in a test context by default. (S-5)
 18. **A test whose verdict can come from the network is not evidence.** If an assertion's outcome changes with connectivity, it is measuring the environment, not the code. (S-5)
@@ -1999,3 +2495,17 @@ mark.
 41. **A docstring's stated assumption is a fact with an expiry date.** `report_trial_balance` still says "no posted journal"; there has been a hash-chained one for months. When an architectural assumption changes, grep for the code that was written under it. (M-14)
 42. **Aggregating by a nullable foreign key silently drops rows.** `/reports/outstanding` groups by `customer_id` and skips NULL, so a walk-in credit sale is owed money on no list. Any GROUP BY on a nullable column needs an explicit bucket for the nulls. (M-15, and rule 9 again)
 43. **A known, unfixed defect belongs in a strict xfail, not a comment.** `xfail(strict=True)` keeps the suite green while the defect stands and turns into a failure the moment it is fixed, so the test cannot rot into a permanently-ignored red mark. (M-15)
+44. **A dated repair is a repair of one day, not of a defect.** The M-16 script scoped itself to `created_at >= '2026-07-17' AND < '2026-07-18'`, so a second, earlier occurrence of the identical corruption survived it and the script still reports "0 rows". Scope a repair by the INVARIANT it restores, not by when you noticed the breakage — and re-run the audit afterwards, not the repair. (M-17)
+45. **A repair script must resolve its own database from `__file__`.** A relative path means the script works from one directory and not another, and this repo has two files named `bizassist.db` — one of them empty. A repair that opens the wrong database reports "nothing to repair" and is believed. (M-17)
+46. **`sonar.coverage.exclusions` is not `sonar.exclusions`.** Operational scripts should leave the coverage ratio while staying under analysis for bugs and security hotspots. Excluding them from analysis to fix a gate is how you stop scanning the code that rewrites money. (§57)
+47. **Do not write tests to satisfy a coverage gate.** Importing a script's `main()` measures argparse, not money. If a class of code cannot honestly be unit-tested, exclude it from the ratio and state how it IS validated instead. (§57)
+48. **A pinned toolchain is a precondition for attributing a red build.** `@master` on a scanner action means the gate can change without the code changing. (§57)
+49. **Verify the write ORDER before constraining a total.** `SUM(children) == parent.total` is transiently false in every system that writes the parent first, and this one writes the header before its lines on both the command path and the sync apply. Constrain the direction the defect actually moves in — here, "never exceed" — not the equality you wish held. (N4b)
+50. **A guard on a shared table must be tested against the SYNC apply, not just the happy path.** The pull applies children after their parent, one row at a time, which is indistinguishable from the corruption at row level. A guard that cannot tell them apart converts a data defect into rejected sync rows, which is worse. (N4b)
+51. **Prove a guard installed; never assume DDL succeeded.** The first version of this trigger was invalid SQL and did not exist, while every functional test still passed. A test asserting the guard's PRESENCE is as necessary as the tests asserting its behaviour. (N4b)
+52. **A guard proven on one table belongs on every table with the same shape.** The invoice header/lines corruption recurred on `b2b_orders` — and there it is worse, because two businesses quote the same record. Generalise the guard from a table spec rather than copying it, or the second copy drifts. (M-18)
+53. **Infrastructure readiness is not implementation.** `B2BLedger` is in the sync map, the financial-conflict set, the purge path, the activity feed and a migration — and has no writer at all. Plumbing that references a table is not evidence the table is used; grep for the INSERT. (M-18)
+54. **A name-reference coverage proxy cannot see HTTP-exercised code, and will understate route modules badly.** It said 6/7 untested where real line coverage was 72%. Use it to find candidates, never to report a figure. (M-18)
+55. **A counter and the list it summarises must be asserted equal.** Four call sites bumped a skip counter; three recorded the row. The mismatch (`SKIPPED=1 ... rows: []`) is the only visible symptom, so assert the two agree rather than trusting every site is wired. (M-19)
+56. **"Unit-tested directly" in a docstring is a claim to verify, not to trust.** `_remap_requester` said it and had zero coverage of its branch logic — on the M-1 consent fix. If a docstring asserts test coverage, add a test that fails when the claim stops being true. (M-19)
+57. **Measure coverage with the tests that exercise the module, and say which run produced the number.** A module reported at 10% was at 82%; the difference was the test selection, not the code. A coverage figure without its command is not a measurement. (M-19)

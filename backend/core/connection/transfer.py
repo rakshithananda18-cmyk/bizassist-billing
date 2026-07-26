@@ -195,18 +195,51 @@ def _claim_uid(db, data: dict, model) -> dict:
         return data
     try:
         taken = db.query(model.id).filter(model.uid == uid).first() is not None
-    except Exception:
-        taken = False
+    except Exception as exc:
+        # NOT a silent `taken = False`. Assuming the uid is free after a FAILED
+        # lookup is the worst of the two guesses: it inserts a possibly-colliding
+        # uid and 500s the whole import on the partial unique index — the exact
+        # outcome this function exists to prevent. Mint a fresh uid instead (the
+        # safe direction: a genuine transfer loses uid stability, nothing breaks)
+        # and say so, because a uniqueness check that failed must never look like
+        # a uniqueness check that passed (architecture rule 13).
+        logger.error(
+            "[B2B_TRANSFER] uid-availability check FAILED for %s uid=%s (%s) — "
+            "minting a fresh uid; this row will not match its source across "
+            "databases", model.__name__, uid, exc)
+        data["uid"] = str(_uuid.uuid4())
+        return data
     if taken:
         data["uid"] = str(_uuid.uuid4())
     return data
 
 
-def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int) -> int:
+def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int,
+                      skipped_out: list = None) -> int:
     """Upsert one B2B relationship table from an export payload. Returns the
-    number of rows applied (created or updated); skips are logged, never fatal."""
+    number of rows APPLIED (created or updated).
+
+    ``skipped_out`` — pass a list to receive one dict per row that was NOT
+    imported, with the reason. This is not diagnostics; it is half the result.
+
+    WHY (review finding M-19). The skip count used to be logged and then
+    **discarded** — the function returned `applied` only, and
+    `routes/data_transfer.py` reported that as `imported[table] = n`. So an import
+    that dropped a connection, an order, or a line item told the operator "42
+    rows imported" and nothing else, while the rows were gone. That is the
+    M-12/M-13 pattern in a third venue: a partial operation reporting success.
+
+    The skips matter individually, too. A line item dropped because its product
+    is absent leaves the order's lines no longer summing to its header — the
+    M-18 invariant, broken from the under-filled side, by this importer.
+    """
     users: dict = {}
     applied = skipped = 0
+    skipped_out = skipped_out if skipped_out is not None else []
+
+    def _skip(kind: str, reason: str, **ident):
+        skipped_out.append({"table": table_name, "kind": kind,
+                            "reason": reason, **ident})
 
     if table_name == "b2b_connections":
         for row in rows:
@@ -214,7 +247,10 @@ def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int) -> in
             buyer = _resolve_user(db, users, row.get("buyer_bizid"), row.get("buyer_name"))
             if not seller or not buyer:
                 skipped += 1
-                logger.warning("[B2B_TRANSFER] skip connection %s↔%s — party unresolvable",
+                _skip("connection", "party unresolvable in this database",
+                      seller_bizid=row.get("seller_bizid"),
+                      buyer_bizid=row.get("buyer_bizid"))
+                logger.warning("[B2B_TRANSFER] skip connection %s<->%s — party unresolvable",
                                row.get("seller_bizid"), row.get("buyer_bizid"))
                 continue
             data = _clean(row, B2BConnection)
@@ -255,6 +291,8 @@ def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int) -> in
             buyer = _resolve_user(db, users, row.get("buyer_bizid"), row.get("buyer_name"))
             if not seller or not buyer:
                 skipped += 1
+                _skip("order", "party unresolvable in this database",
+                      order_number=row.get("order_number"))
                 logger.warning("[B2B_TRANSFER] skip order %s — party unresolvable",
                                row.get("order_number"))
                 continue
@@ -294,7 +332,17 @@ def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int) -> in
                 .first()
             )
             if order is None:
+                # The FOURTH skip site, and it had no log line at all — a line
+                # item whose parent order is absent vanished with nothing but a
+                # counter bump. Found because a test asserted the reported count
+                # and the reported LIST agreed, and they did not.
                 skipped += 1
+                _skip("order_line", "parent order not present in this database",
+                      product_name=row.get("product_name"),
+                      order_number=row.get("order_number_ref"))
+                logger.warning(
+                    "[B2B_TRANSFER] skip line '%s' — parent order %s not in this DB",
+                    row.get("product_name"), row.get("order_number_ref"))
                 continue
             # Idempotency per line (not per parent — several lines of the same
             # new order import in one pass): same order + name + qty + total
@@ -321,6 +369,11 @@ def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int) -> in
                 )
             if product is None:
                 skipped += 1
+                # Dropping a line leaves its order's lines no longer summing to
+                # the header — audit check J will report that order.
+                _skip("order_line", "product not present in this database",
+                      product_name=row.get("product_name"),
+                      order_number=row.get("order_number_ref"))
                 logger.warning("[B2B_TRANSFER] skip line '%s' on %s — product not in this DB",
                                row.get("product_name"), row.get("order_number_ref"))
                 continue
@@ -329,7 +382,13 @@ def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int) -> in
             db.add(B2BOrderLineItem(**_claim_uid(db, data, B2BOrderLineItem)))
             applied += 1
 
-    if applied or skipped:
-        logger.info("[B2B_TRANSFER] import %s applied=%s skipped=%s dest_owner=%s",
-                    table_name, applied, skipped, dest_owner_id)
+    if skipped:
+        # ERROR, not INFO: these rows are MISSING from this database.
+        logger.error(
+            "[B2B_TRANSFER] import %s: applied=%s but SKIPPED=%s — those rows are "
+            "not in this database: %s",
+            table_name, applied, skipped, skipped_out)
+    elif applied:
+        logger.info("[B2B_TRANSFER] import %s applied=%s dest_owner=%s",
+                    table_name, applied, dest_owner_id)
     return applied

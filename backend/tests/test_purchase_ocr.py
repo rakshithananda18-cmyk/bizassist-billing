@@ -2,7 +2,7 @@ import os
 import sys
 from unittest.mock import MagicMock, patch
 
-os.environ["DATABASE_URL"] = "sqlite:///./test_bizassist.db"
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 
 # Mock missing OCR dependencies in sys.modules before imports occur
 import importlib.machinery

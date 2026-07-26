@@ -33,10 +33,18 @@ jobs:
           cd backend
           python -m pytest -q --ignore=tests/test_rls_postgres.py --cov=. --cov-report=xml
         env:
-          DATABASE_URL: "sqlite:///./test_bizassist.db"
+          # DATABASE_URL is deliberately NOT set here. tests/conftest.py owns it:
+          # it resolves a per-xdist-worker SQLite file (or honours
+          # BIZASSIST_TEST_DATABASE_URL for the cross-dialect Postgres run) BEFORE
+          # any module imports, and database/db.py fails closed unless the URL
+          # names a test DB. Exporting it from the workflow only created a second
+          # source of truth that conftest then overwrote.
           JWT_SECRET: "dev-test-secret-please-change-0123456789abcdef"
           GROQ_API_KEY: "mock_groq_api_key"
           ALLOW_TEST_USERS: "1"
+          # Keep the B2B cloud proxy pointed at a dead address as a belt to the
+          # S-5 test guard: the suite must never reach a real deployment.
+          CLOUD_API_URL: "http://127.0.0.1:9"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -55,8 +63,18 @@ jobs:
         run: |
           npx vitest run --coverage --coverage.reporter=lcov
 
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
+      # SonarSource DEPRECATED `sonarcloud-github-action` — its own repo
+      # description now reads "Deprecated. Use
+      # https://github.com/SonarSource/sonarqube-scan-action instead." Since
+      # v4.1.0 `sonarqube-scan-action` is the single entrypoint for both
+      # SonarQube Server and Cloud, and it is a drop-in replacement. It does
+      # require SONAR_HOST_URL, which the old action inferred.
+      #
+      # Pinned to a major version rather than @master: a scanner that can change
+      # under you between runs makes "the gate went red" unattributable.
+      - name: SonarQube Cloud Scan
+        uses: SonarSource/sonarqube-scan-action@v4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io

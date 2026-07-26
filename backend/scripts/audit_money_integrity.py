@@ -38,6 +38,28 @@ E. Duplicate invoice numbers (F-3)
 F. Journal entries that do not foot
    Σ debits != Σ credits. Should be impossible — `post_entry` refuses to write
    an unbalanced entry — so a hit here means something wrote the table directly.
+
+G. Foreign-key violations (N4)
+   Orphaned children. SQLite shipped with `PRAGMA foreign_keys` OFF, so 18 real
+   orphans accumulated before enforcement was turned on.
+
+H. Overlapping open shifts (M-11)
+   One operator, two open drawers. Found in production holding ₹2,485 of cash
+   sales that reached no tally, because the second shift carried a `user_id`
+   from another database and was therefore invisible to the one-open-shift check.
+
+I. Line items that do not foot to their invoice (M-16/M-17)
+   Σ(line_total) != total_amount + cash_discount - round_off. A batch script
+   inserted 63 spurious line items on 2026-07-17 and another 15 across
+   2026-06-29..07-03; header totals and the journal stayed correct, so nothing
+   objected — but Brownie Factory's P&L read a ₹-6,715 loss instead of its real
+   ₹+4,648 profit, and business 6's COGS was overstated by ₹2,422.57.
+
+J. B2B order lines that do not foot to the order (M-18)
+   The same corruption on the two-party table. Both live b2b_orders were
+   affected — ₹1,111.10 of phantom line value across 2 of 2 orders. A buyer and
+   a seller reading different totals for one order is the failure the shared
+   ledger cannot tolerate.
 """
 import argparse
 import os
@@ -310,6 +332,109 @@ def audit(c, biz=None):
         screen — the expected figure is computed from the payment ledger. They are
         NOT closed automatically: a closing cash amount is a COUNT, not a
         calculation, and inventing one fabricates evidence.
+    """)
+
+    # ── I. Line items that do not foot to their invoice (M-16) ─────────────
+    # Added because M-16 was found BY HAND: a batch script on 2026-07-17 inserted
+    # 63 spurious `invoice_line_items` rows into businesses 6 and 7, which made
+    # Brownie Factory's P&L read a -6,715 loss instead of its real +4,648 profit.
+    # Nothing detected it — every subsystem was individually consistent, the
+    # journal footed, the invoice totals were untouched; only the LINE ITEMS were
+    # inflated, and no check compared them to the document they belong to.
+    #
+    # Needing to look for something by hand is the signal it belongs in the
+    # automated audit (architecture rule 35). This is that check.
+    #
+    # THE FORMULA MATTERS, and my first version of this check got it wrong —
+    # it compared Sigma(line_total) against `total_amount` alone and produced FIVE
+    # false positives on business 7. A post-tax cash discount and the round-off
+    # live on the HEADER, not on the lines, so the identity is:
+    #
+    #     Sigma(line_total) == total_amount + cash_discount - round_off
+    #
+    # Verified against real rows (LCL-OW-0027: 337.65 == 323 + 15 - 0.35).
+    # Getting this wrong matters more than it looks: a check that cries wolf is a
+    # check people learn to skip, which is precisely how section B's legacy-import
+    # noise nearly buried the real M-2 gaps.
+    #
+    # 1.00 of tolerance then absorbs paise-level rounding only.
+    #
+    # Zero-value CSV-imported invoices are skipped for the same reason section B
+    # skips them: they carry no totals and no lines to compare.
+    rows = []
+    if _table_exists(c, "invoice_line_items"):
+        rows = [
+            f"biz {r['business_id']} {r['num']}: header {r['total']} "
+            f"(+disc {r['disc']} -roff {r['roff']}) vs lines {r['line_sum']} "
+            f"({r['n']} line(s), delta {r['delta']})"
+            for r in c.execute(f"""
+                SELECT i.business_id, i.invoice_id num,
+                       ROUND(COALESCE(i.total_amount,0),2)      total,
+                       ROUND(COALESCE(SUM(li.line_total),0),2)  line_sum,
+                       ROUND(COALESCE(i.cash_discount,0),2)     disc,
+                       ROUND(COALESCE(i.round_off,0),2)         roff,
+                       ROUND(COALESCE(SUM(li.line_total),0)
+                             - (COALESCE(i.total_amount,0)
+                                + COALESCE(i.cash_discount,0)
+                                - COALESCE(i.round_off,0)), 2)  delta,
+                       COUNT(li.id) n
+                  FROM invoices i
+                  JOIN invoice_line_items li ON li.invoice_id = i.id
+                 WHERE COALESCE(i.total_amount,0) <> 0{bfilter.replace('business_id','i.business_id')}
+                 GROUP BY i.id
+                HAVING ABS(ROUND(COALESCE(SUM(li.line_total),0)
+                                 - (COALESCE(i.total_amount,0)
+                                    + COALESCE(i.cash_discount,0)
+                                    - COALESCE(i.round_off,0)), 2)) > 1.00
+                 ORDER BY ABS(delta) DESC""")]
+    rep.add("I. Line items that do not foot to their invoice (M-16)", rows, """
+        The invoice header and the rows it is made of disagree. This is how the
+        M-16 duplicate-line-item corruption looked: totals and journal both
+        correct, line items inflated, the P&L wrong by the difference. A positive
+        delta means MORE line value than the customer was billed (duplicates); a
+        negative delta means lines are missing.
+        Investigate before repairing — the header may be right and the lines
+        wrong, or the reverse, and only the printed/filed copy settles it.
+    """)
+
+    # ── J. B2B order lines that do not foot to their order (M-18) ───────────
+    # The M-16/M-17 corruption, found on the TWO-PARTY table. Measured on real
+    # data: BOTH live b2b_orders had inflated line items — Rs1,111.10 of phantom
+    # line value across 2 of 2 orders.
+    #
+    # This matters more than the single-tenant case, because a B2B order is a
+    # record two businesses quote to each other. A buyer reading a total the
+    # seller does not recognise is the failure mode the whole shared-ledger
+    # thesis depends on not happening.
+    #
+    # b2b_orders carries no cash_discount/round_off column, so the target is the
+    # plain total_amount.
+    rows = []
+    if _table_exists(c, "b2b_order_line_items"):
+        rows = [
+            f"order {r['order_number']} (seller {r['seller_business_id']} -> "
+            f"buyer {r['buyer_business_id']}): header {r['total']} vs lines "
+            f"{r['line_sum']} ({r['n']} line(s), delta {r['delta']})"
+            for r in c.execute("""
+                SELECT o.order_number, o.seller_business_id, o.buyer_business_id,
+                       ROUND(COALESCE(o.total_amount,0),2)      total,
+                       ROUND(COALESCE(SUM(li.line_total),0),2)  line_sum,
+                       ROUND(COALESCE(SUM(li.line_total),0)
+                             - COALESCE(o.total_amount,0), 2)   delta,
+                       COUNT(li.id) n
+                  FROM b2b_orders o
+                  JOIN b2b_order_line_items li ON li.order_id = o.id
+                 WHERE COALESCE(o.total_amount,0) <> 0
+                 GROUP BY o.id
+                HAVING ABS(ROUND(COALESCE(SUM(li.line_total),0)
+                                 - COALESCE(o.total_amount,0), 2)) > 1.00
+                 ORDER BY ABS(delta) DESC""")]
+    rep.add("J. B2B order lines that do not foot to the order (M-18)", rows, """
+        A B2B order is a record TWO businesses quote to each other, so a header
+        and lines that disagree means the buyer and the seller can read different
+        numbers for the same order. Same shape as M-16/M-17 on the shared table.
+        Repair with: python scripts/repair_line_items_by_invariant.py --apply
+        (it handles b2b_orders as well as invoices).
     """)
 
     return rep

@@ -806,6 +806,10 @@ def import_data(
     dest_owner_id = _resolve_owner_id(current_user, db)
     existing = _existing_tables(db)
     imported: dict[str, int] = {}
+    # M-19: rows the B2B importer could not apply. Declared here so the response
+    # can report them; the importer used to log skips and discard the count, so a
+    # partial import was indistinguishable from a complete one.
+    b2b_skipped: list = []
 
     # Detect the source owner id embedded in the exported payload. Direction-
     # neutral: for a local→cloud upload this is the local owner; for a cloud→local
@@ -842,7 +846,14 @@ def import_data(
                 # Two-sided B2B rows: both parties re-resolved by BizID; rows
                 # whose counterparty isn't in this DB are skipped + logged.
                 if table_name in existing:
-                    n = b2b_transfer.import_b2b_tables(db, table_name, rows, dest_owner_id)
+                    # M-19: collect the SKIPPED rows. The importer used to log
+                    # them and return only the applied count, so an import that
+                    # dropped a connection, an order or a line item reported
+                    # "n imported" and nothing else. A dropped line item also
+                    # breaks the order's header/lines invariant (audit check J).
+                    n = b2b_transfer.import_b2b_tables(
+                        db, table_name, rows, dest_owner_id,
+                        skipped_out=b2b_skipped)
                 else:
                     n = 0
             elif remap_ids:
@@ -878,6 +889,14 @@ def import_data(
     result = {"imported": imported, "total": total, "mode": _mode}
     if remap_info:
         result["id_remap"] = remap_info
+    if b2b_skipped:
+        # Returned to the caller AND logged at ERROR. An import that silently
+        # drops a counterparty relationship, an order, or an order line is the
+        # M-12/M-13 failure shape in the transfer path (M-19).
+        logger.error(
+            "migrate/import: %s B2B row(s) were SKIPPED and are NOT in this "
+            "database: %s", len(b2b_skipped), b2b_skipped)
+        result["b2b_skipped"] = b2b_skipped
     return result
 
 

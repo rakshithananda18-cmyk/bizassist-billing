@@ -10,7 +10,7 @@ Batch-4 owner requirements:
 """
 import os
 
-os.environ["DATABASE_URL"] = "sqlite:///./test_bizassist.db"
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 os.environ["GROQ_API_KEY"] = "mock_groq_api_key"
 
 import sys

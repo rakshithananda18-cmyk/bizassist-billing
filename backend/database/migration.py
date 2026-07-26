@@ -477,6 +477,175 @@ def _ensure_single_open_shift_index(conn):
         logger.error("[Migration] M-11: failed to create %s: %s", idx_name, e)
 
 
+def _ensure_line_item_overfill_guard(conn):
+    """Make it IMPOSSIBLE to append a line item to a completed invoice (M-16/M-17).
+
+    THE DEFECT THIS PREVENTS, twice over
+    -----------------------------------
+    A batch process appended `invoice_line_items` rows to invoices that were
+    already complete. It happened on 2026-07-17 (M-16: 63 rows, businesses 6 and
+    7 — Brownie Factory's P&L read a ₹-6,715 loss instead of its real ₹+4,648
+    profit) and again across 2026-06-29..07-03 (M-17: 15 rows, business 6,
+    ₹3,298.30, COGS overstated by ₹2,422.57).
+
+    Nothing detected either one, because every subsystem was individually correct:
+    the invoice headers were untouched, the journal is posted FROM the headers so
+    it footed and the hash chain verified, and the payment ledger agreed. Only the
+    lines were inflated. COGS is `invoice_line_items x Product.cost_price`, so the
+    P&L was wrong and nothing objected.
+
+    WHY THIS IS AN "OVERFILL" GUARD AND NOT `SUM(lines) == total`
+    ------------------------------------------------------------
+    The obvious constraint is unimplementable, and shipping it would have broken
+    every sale. Verified in the code, not assumed:
+
+      * `create_sale_invoice` writes the header WITH its final total first
+        (`total_amount=grand`, `db.add(inv)`, `db.flush()`) and only THEN adds the
+        line items one at a time. So after line 1 of 3, `SUM(line_total)` is a
+        third of `total_amount` — the equality is transiently false on every
+        multi-line sale.
+      * The sync pull applies `invoice_line_items` in its `_child_last` group,
+        i.e. AFTER the invoice, one row at a time. Same transient state, and it is
+        the normal case for every synced document.
+
+    A row-level equality trigger would therefore reject every multi-line sale and
+    every synced line item. What it CAN assert is the asymmetry: a legitimate
+    build-up only ever fills *up to* the header target, while the corruption
+    *exceeds* it. So:
+
+        SUM(existing lines) + NEW.line_total  <=  target + tolerance
+        where target = total_amount + cash_discount - round_off
+
+    (The discount and round-off live on the header, not the lines — omitting them
+    is what produced five false positives the first time audit check I was
+    written; `LCL-OW-0027` is 337.65 == 323 + 15 - 0.35.)
+
+    This is precise because the write surface is small and was verified: the ONLY
+    code that creates `InvoiceLineItem` rows is `create_sale_invoice` and
+    `create_credit_note`, both inside the transaction that just wrote the header,
+    and there is no invoice-edit or add-line route anywhere in the app.
+
+    WHAT IT DOES NOT CATCH, stated plainly
+    --------------------------------------
+    * MISSING lines (an under-filled invoice). Not the observed defect, and
+      audit check I covers that direction.
+    * UPDATEs that inflate an existing line. Guarding those would risk rejecting a
+      legitimate header/line recomputation, and no such path exists today; check I
+      catches it after the fact.
+    * A writer that also rewrites the header to match. Nothing can distinguish
+      that from a real invoice.
+
+    Existing over-filled rows do NOT block installation — unlike the M-3 and M-11
+    unique indexes, a trigger constrains future writes only. They are reported at
+    ERROR so they are not mistaken for clean.
+    """
+    from sqlalchemy import inspect as sa_inspect
+    inspector = sa_inspect(conn)
+    tables = set(inspector.get_table_names())
+
+    TOL = 1.00
+    is_pg = conn.dialect.name == "postgresql"
+
+    # (child table, parent table, FK column, parent target expression, fn suffix)
+    #
+    # TWO tables, because the corruption has now been found on both:
+    #   * invoices / invoice_line_items      -> M-16, M-17
+    #   * b2b_orders / b2b_order_line_items  -> M-18 (2 of 2 live orders affected)
+    #
+    # The B2B pair carries no discount or round-off column, so its target is the
+    # plain total. Driving both from one spec keeps the rule in a single place
+    # rather than growing a second near-identical installer that can drift.
+    SPECS = [
+        ("invoice_line_items", "invoices", "invoice_id",
+         "COALESCE(total_amount,0) + COALESCE(cash_discount,0) - COALESCE(round_off,0)",
+         "line_item"),
+        ("b2b_order_line_items", "b2b_orders", "order_id",
+         "COALESCE(total_amount,0)",
+         "b2b_order_line"),
+    ]
+
+    for child, parent, fk, TARGET, suffix in SPECS:
+        if not {parent, child} <= tables:
+            continue
+        _install_overfill_guard(conn, child, parent, fk, TARGET, suffix, TOL, is_pg)
+
+
+def _install_overfill_guard(conn, child, parent, fk, TARGET, suffix, TOL, is_pg):
+    """Install one overfill guard. See _ensure_line_item_overfill_guard for the
+    reasoning; this is the per-table mechanics."""
+    name = f"ck_{child}_no_overfill"
+    try:
+        # Report — never silently — any invoice already over-filled.
+        qualified = TARGET.replace("COALESCE(", "COALESCE(p.")
+        bad = conn.execute(text(f"""
+            SELECT p.id, ROUND(SUM(c.line_total) - ({qualified}), 2) AS over
+              FROM {parent} p JOIN {child} c ON c.{fk} = p.id
+             WHERE COALESCE(p.total_amount,0) <> 0
+             GROUP BY p.id
+            HAVING SUM(c.line_total) > ({qualified}) + {TOL}
+        """)).fetchall()
+        if bad:
+            logger.error(
+                "[Migration] overfill: %s %s row(s) already hold MORE line value "
+                "than was billed (ids: %s). The guard only constrains NEW writes; "
+                "these are existing corruption. Repair with: python "
+                "scripts/repair_line_items_by_invariant.py --apply",
+                len(bad), parent,
+                "; ".join(f"{b[0]} +{b[1]}" for b in bad[:25]),
+            )
+
+        if is_pg:
+            already = conn.execute(text(
+                "SELECT 1 FROM pg_trigger WHERE tgname = :n"), {"n": name}).fetchone()
+            if already:
+                return
+            # A CHECK constraint cannot contain a subquery, so Postgres needs a
+            # real trigger function.
+            fn = f"bizassist_guard_{suffix}_overfill"
+            conn.execute(text(f"""
+                CREATE OR REPLACE FUNCTION {fn}()
+                RETURNS trigger AS $$
+                DECLARE tgt numeric; cur numeric;
+                BEGIN
+                    SELECT {TARGET} INTO tgt FROM {parent} WHERE id = NEW.{fk};
+                    IF tgt IS NULL OR tgt = 0 THEN RETURN NEW; END IF;
+                    SELECT COALESCE(SUM(line_total), 0) INTO cur
+                      FROM {child} WHERE {fk} = NEW.{fk};
+                    IF (cur + COALESCE(NEW.line_total, 0)) > tgt + {TOL} THEN
+                        RAISE EXCEPTION 'overfill guard: line items for {parent} % would total %, exceeding the billed amount % - refusing to append to a completed document',
+                          NEW.{fk}, cur + COALESCE(NEW.line_total,0), tgt;
+                    END IF;
+                    RETURN NEW;
+                END $$ LANGUAGE plpgsql;"""))
+            conn.execute(text(f"""
+                CREATE TRIGGER {name}
+                BEFORE INSERT ON {child}
+                FOR EACH ROW EXECUTE FUNCTION {fn}();"""))
+        else:
+            already = conn.execute(text(
+                "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name = :n"),
+                {"n": name}).fetchone()
+            if already:
+                return
+            tgt_sql = f"(SELECT {TARGET} FROM {parent} WHERE id = NEW.{fk})"
+            cur_sql = (f"COALESCE((SELECT SUM(line_total) FROM {child} "
+                       f"WHERE {fk} = NEW.{fk}), 0)")
+            conn.execute(text(f"""
+                CREATE TRIGGER IF NOT EXISTS {name}
+                BEFORE INSERT ON {child}
+                FOR EACH ROW
+                WHEN {tgt_sql} > 0
+                 AND ({cur_sql} + COALESCE(NEW.line_total, 0)) > {tgt_sql} + {TOL}
+                BEGIN
+                    SELECT RAISE(ABORT, 'overfill guard: line items would exceed the document total - refusing to append a line to a completed document');
+                END;"""))
+        conn.commit()
+        logger.info("[Migration] overfill guard installed on %s (%s)",
+                    child, conn.dialect.name)
+    except Exception as e:
+        logger.error("[Migration] failed to install %s: %s", name, e)
+
+
 def _ensure_money_invariants(conn):
     """Install the DB-level money invariants (review finding N4).
 
@@ -940,6 +1109,11 @@ def run_migrations_and_seed():
         # because a guard installed before its column exists would be skipped and
         # then have to wait a whole boot cycle. Never raises; it reports which
         # rules it could not install and why.
+        # M-16/M-17: make appending a line to a completed invoice impossible.
+        # Installed AFTER _ensure_money_invariants so the simple row-level guards
+        # are in place first; this one needs a subquery and therefore its own
+        # trigger on both dialects.
+        _ensure_line_item_overfill_guard(conn)
         _ensure_money_invariants(conn)
         _migrate_session_nulls(conn)
         _resync_postgres_sequences(conn)

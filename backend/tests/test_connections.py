@@ -2,7 +2,7 @@ import os
 import sys
 
 # Set test environment database to a temporary file
-os.environ["DATABASE_URL"] = "sqlite:///./test_bizassist.db"
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 
 # Clean up any leftover databases from previous runs before importing main_groq
 for db_path in ["test_bizassist.db", "backend/test_bizassist.db"]:

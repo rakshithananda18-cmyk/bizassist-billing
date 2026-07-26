@@ -10,7 +10,7 @@ REVIEW_1 follow-up batch:
 """
 import os
 
-os.environ["DATABASE_URL"] = "sqlite:///./test_bizassist.db"
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 os.environ["GROQ_API_KEY"] = "mock_groq_api_key"
 os.environ["ADMIN_API_ENABLED"] = "1"
 

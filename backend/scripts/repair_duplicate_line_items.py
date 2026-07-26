@@ -18,10 +18,33 @@ VERIFICATION LOGIC:
 SAFETY: dry-run by default. --apply to execute. Full rollback on error.
 """
 
-import sqlite3, sys
+import os
+import sqlite3
+import sys
 
 DRY_RUN = "--apply" not in sys.argv
-DB = "backend/bizassist.db"
+# Resolve the DB from THIS FILE's location, never from the caller's cwd.
+# The original `DB = "backend/bizassist.db"` was relative, so the script only ran
+# from the repo root; from `backend/` (where every other repair script is run) it
+# died with "unable to open database file". Worse, the repo root ALSO holds a
+# stale, empty `bizassist.db` — two files with one name, and the empty one is the
+# one a relative path can find first. That trap already cost one wrong "nothing to
+# repair" conclusion during this audit.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_DEFAULT_DB = os.path.join(os.path.dirname(_HERE), "bizassist.db")   # backend/bizassist.db
+
+def _resolve_db(argv):
+    """--db PATH overrides; otherwise the DB next to this script's parent."""
+    if "--db" in argv:
+        return argv[argv.index("--db") + 1]
+    return _DEFAULT_DB
+
+DB = _resolve_db(sys.argv)
+if not os.path.exists(DB):
+    sys.exit(f"database not found: {DB}\n"
+             f"Pass --db <path> explicitly. Refusing to create or guess one — a "
+             f"repair script that silently opens the wrong database reports "
+             f"'nothing to repair' and is believed.")
 c = sqlite3.connect(DB)
 c.row_factory = sqlite3.Row
 

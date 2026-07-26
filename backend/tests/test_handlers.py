@@ -11,7 +11,7 @@ Run:  pytest tests/test_handlers.py -v
 import os
 import sys
 
-os.environ["DATABASE_URL"] = "sqlite:///./test_handlers.db"
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_handlers.db")
 os.environ["GROQ_API_KEY"] = "mock_key"
 
 for db_path in ["test_handlers.db", "backend/test_handlers.db"]:

@@ -9,7 +9,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 
-os.environ["DATABASE_URL"] = "sqlite:///./test_bizassist.db"
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 os.environ["GROQ_API_KEY"] = "mock_groq_api_key"
 
 backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

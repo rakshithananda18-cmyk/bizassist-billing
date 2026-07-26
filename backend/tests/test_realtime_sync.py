@@ -5,7 +5,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 # Set test environment database and mock api keys
-os.environ["DATABASE_URL"] = "sqlite:///./test_bizassist.db"
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 os.environ["GROQ_API_KEY"] = "mock_groq_api_key"
 
 # Ensure backend folder is in path

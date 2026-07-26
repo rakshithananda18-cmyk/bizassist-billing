@@ -2,7 +2,7 @@ import os
 import sys
 
 # Set test environment database to a temporary file and mock api keys
-os.environ["DATABASE_URL"] = "sqlite:///./test_bizassist.db"
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 os.environ["GROQ_API_KEY"] = "mock_groq_api_key"
 
 # Clean up any leftover databases from previous runs before importing main_groq
