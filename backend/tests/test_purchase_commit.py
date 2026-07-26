@@ -77,22 +77,8 @@ def api_auth():
 def _setup(api_auth):
     db = SessionLocal()
     try:
-        # Everything that FKs to `products` or `invoices` must go first. SQLite
-        # ignored foreign keys until N4 turned enforcement on to match the
-        # Postgres cloud; this teardown used to orphan invoice line items
-        # (written by sibling test modules sharing the DB) rather than fail.
-        db.query(PurchaseInvoiceLineItem).delete()
-        db.query(PurchaseInvoice).delete()
-        db.query(InvoiceLineItem).delete()
-        db.query(InvoicePayment).delete()
-        db.query(Invoice).delete()
-        db.query(StockLedger).delete()
-        db.query(ProductBarcode).delete()
-        db.query(Inventory).delete()
-        db.query(Product).delete()
-        db.query(Customer).delete()
-        db.query(Vendor).delete()
-        db.commit()
+        from tests._fk_cleanup import wipe_all
+        wipe_all(db, keep_users=True)
     finally:
         db.close()
 

@@ -884,7 +884,7 @@ def _seed_users(db):
     db.commit()
 
     for user in db.query(User).all():
-        if not user.password.startswith("$2b$") and not user.password.startswith("$2a$"):
+        if user.password and not user.password.startswith(("$2b$", "$2a$", "$2y$", "$2x$", "$2$")):
             user.password = hash_password(user.password)
     db.commit()
 
