@@ -143,6 +143,7 @@ export default function Sales(props = {}) {
   const [shift, setShift] = useState(undefined)
   const [showCloseShiftModal, setShowCloseShiftModal] = useState(false)
   const [shiftSummary, setShiftSummary] = useState(null)   // closed shift → printable summary
+  const shiftSummaryRequested = useRef(false)              // set synchronously by onSummary before onClosed fires
   const [showCashMovementModal, setShowCashMovementModal] = useState(false)
 
   const refreshShift = useCallback(async () => {
@@ -2241,15 +2242,28 @@ export default function Sales(props = {}) {
           authFetch={authFetch}
           shift={shift && !shift.offline ? shift : null}
           onClose={() => setShowCloseShiftModal(false)}
-          onClosed={() => { setShowCloseShiftModal(false); setShift(null) }}
-          onSummary={(closedShift) => setShiftSummary(closedShift)}
+          onClosed={(closedShift) => {
+            setShowCloseShiftModal(false)
+            setShift(null)
+            if (!shiftSummaryRequested.current) {
+              // Plain "Done" — go home so OpenShiftModal doesn't flash on /sales
+              navigate('/')
+            }
+            // "View & Print Summary": onSummary already set shiftSummaryRequested + shiftSummary;
+            // navigation happens when the summary modal is dismissed.
+            shiftSummaryRequested.current = false
+          }}
+          onSummary={(closedShift) => {
+            shiftSummaryRequested.current = true
+            setShiftSummary(closedShift)
+          }}
         />
         {shiftSummary && (
           <ShiftSummaryModal
             shift={shiftSummary}
             authFetch={authFetch}
             operatorName={user?.username}
-            onClose={() => setShiftSummary(null)}
+            onClose={() => { setShiftSummary(null); navigate('/') }}
           />
         )}
         <CashMovementModal

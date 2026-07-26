@@ -38,7 +38,8 @@ def clear_windows():
 
 
 def _admin_login(otp=None):
-    body = {"username": "admin", "password": "admin123"}
+    admin_pw = os.environ.get("ADMIN_SEED_PASSWORD", "admin123")
+    body = {"username": "admin", "password": admin_pw}
     if otp is not None:
         body["otp"] = otp
     return client.post("/login", json=body)

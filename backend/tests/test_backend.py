@@ -382,9 +382,10 @@ def test_chat_history_endpoints():
 
 def test_admin_endpoints():
     # 1. Login as admin
+    admin_pw = os.environ.get("ADMIN_SEED_PASSWORD", "admin123")
     admin_login = client.post("/login", json={
         "username": "admin",
-        "password": "admin123"
+        "password": admin_pw
     })
     assert admin_login.status_code == 200
     admin_token = admin_login.json()["token"]
@@ -732,9 +733,10 @@ def test_upload_rate_limiting():
 
 def test_sanitized_errors():
     # Verify that admin/rate-limits/{user_id} hides the database exception
+    admin_pw = os.environ.get("ADMIN_SEED_PASSWORD", "admin123")
     admin_login = client.post("/login", json={
         "username": "admin",
-        "password": "admin123"
+        "password": admin_pw
     })
     admin_token = admin_login.json()["token"]
     admin_headers = {"Authorization": f"Bearer {admin_token}"}

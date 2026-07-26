@@ -844,17 +844,17 @@ def _backfill_biz_ids(db):
 
 
 def _seed_users(db):
-    is_test = "test" in os.environ.get("DATABASE_URL", "")
+    is_test = "test" in os.environ.get("DATABASE_URL", "") or os.environ.get("BIZASSIST_TESTING") == "1"
+    _admin_pw = os.environ.get("ADMIN_SEED_PASSWORD", "admin123")
 
     if is_test:
         default_users = [
-            {"id": 1, "username": "admin",       "password": "admin123",       "business_name": "Admin Central",          "role": "admin"},
+            {"id": 1, "username": "admin",       "password": _admin_pw,        "business_name": "Admin Central",          "role": "admin"},
             {"id": 2, "username": "pharmacy",    "password": "pharmacy123",    "business_name": "MediCare Pharmacy",       "role": "enterprise"},
             {"id": 3, "username": "supermarket", "password": "supermarket123", "business_name": "Daily Needs Supermarket", "role": "enterprise"},
             {"id": 4, "username": "store",       "password": "store123",       "business_name": "Apna Bazaar Store",       "role": "enterprise"},
         ]
     else:
-        _admin_pw = os.environ.get("ADMIN_SEED_PASSWORD", "admin123")
         default_users = [
             {"id": 1, "username": "admin", "password": _admin_pw,
              "business_name": "Admin Central", "role": "admin"}
@@ -872,12 +872,15 @@ def _seed_users(db):
                 db.commit()
 
     for u in default_users:
-        if not db.query(User).filter(User.username == u["username"]).first():
+        existing = db.query(User).filter(User.username == u["username"]).first()
+        if not existing:
             db.add(User(
                 id=u["id"], username=u["username"],
                 password=hash_password(u["password"]),
                 business_name=u["business_name"], role=u["role"],
             ))
+        elif u["username"] == "admin" and (is_test or os.environ.get("ADMIN_SEED_PASSWORD")):
+            existing.password = hash_password(u["password"])
     db.commit()
 
     for user in db.query(User).all():

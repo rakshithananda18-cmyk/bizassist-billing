@@ -53,7 +53,8 @@ def _signup_or_login(creds):
 
 
 def _admin_headers():
-    r = client.post("/login", json={"username": "admin", "password": "admin123"})
+    admin_pw = os.environ.get("ADMIN_SEED_PASSWORD", "admin123")
+    r = client.post("/login", json={"username": "admin", "password": admin_pw})
     assert r.status_code == 200, r.text
     return {"Authorization": f"Bearer {r.json()['token']}"}
 
