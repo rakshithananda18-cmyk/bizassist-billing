@@ -1,4 +1,15 @@
 // ============================================================================
+// ⚠️ SUPERSEDED — DO NOT ADD FEATURES HERE (Jul 2026)
+// ----------------------------------------------------------------------------
+// Replaced by the unified B2B workspace: pages/B2B.jsx, with the ordering,
+// outgoing-queue, incoming-queue and connections surfaces split into
+// components/b2b/{OrderDeskTab,OrdersTab,ConnectionsTab}.jsx and their data in
+// hooks/{useB2BOrders,useB2BConnections,useB2BRealtime}.js.
+//
+// `/b2b-orders` now redirects to `/b2b?tab=outgoing`, so nothing routes here.
+// The file is retained only so the existing render test keeps a reference
+// implementation to compare against; delete it once that test is retired.
+// ============================================================================
 // Page: Orders.jsx
 // Description: B2B Order Management module. Implements purchase order creation,
 //              status transition tracking (draft, confirmed, shipped, received),

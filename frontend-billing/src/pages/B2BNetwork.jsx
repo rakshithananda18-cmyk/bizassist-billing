@@ -1,4 +1,12 @@
 // ============================================================================
+// ⚠️ SUPERSEDED — DO NOT ADD FEATURES HERE (Jul 2026)
+// ----------------------------------------------------------------------------
+// Replaced by components/b2b/ConnectionsTab.jsx inside the unified pages/B2B.jsx
+// workspace. Critically, THIS page's connect flow reflected the old model where
+// a BizID request was auto-accepted; connections are now request→approve, so the
+// UI here is not just redundant, it is wrong. `/b2b-network` redirects to
+// `/b2b?tab=connections`. Nothing routes here.
+// ============================================================================
 // Page: Connections.jsx
 // Description: B2B vendor/buyer connection requests, rules, policy setups,
 //              and connection codes. Enables merchants to request, establish,

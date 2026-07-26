@@ -51,8 +51,26 @@ def _round2(x: float) -> float:
 
 
 def _norm_mode(mode: Optional[str]) -> str:
-    """Normalise free-form payment_mode strings into tally buckets."""
-    m = (mode or "cash").strip().lower()
+    """Normalise free-form payment_mode strings into tally buckets.
+
+    Two rules, and they pull in opposite directions on purpose:
+
+    · **Absent means cash.** ``None``, ``""`` and whitespace all bucket to cash:
+      the counter's default tender is cash, and legacy rows predate the column.
+    · **Unrecognised means `other`, never cash.** A tender this function does not
+      know ("wallet", "netbanking", a typo) must not be expected in the drawer,
+      or the cashier shows a shortfall for money that never entered it.
+
+    The blank normalisation was ``(mode or "cash").strip().lower()``, which
+    handled ``None`` and ``""`` but not ``"   "`` — a whitespace-only mode
+    survived the ``or``, stripped to empty, matched no bucket and fell through to
+    ``other``. Same fact, two answers. It erred toward a false SURPLUS rather
+    than a false shortfall, which is why nobody noticed: a drawer with more than
+    expected reads as a rounding oddity, not as an alarm. Found by
+    ``tests/test_shift_service_unit.py``; the strip now happens BEFORE the
+    default, so blank is blank however it is spelled.
+    """
+    m = ((mode or "").strip().lower()) or "cash"
     if m in ("cash",):
         return "cash"
     if m in ("upi", "gpay", "phonepe", "paytm", "qr"):

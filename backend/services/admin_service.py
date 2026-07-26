@@ -814,15 +814,51 @@ def effective_plan(user: User) -> str:
 # ── Existing admin ops ───────────────────────────────────────────────────────
 
 def wipe_all_data(db: Session) -> dict:
-    db.query(Invoice).delete()
-    db.query(Inventory).delete()
-    db.query(LegacyPayment).delete()
-    db.query(UploadedFile).delete()
-    db.query(DocumentEmbedding).delete()
-    db.query(ChatMessage).delete()
+    """Admin action: erase every business's data, keeping the accounts.
+
+    DELEGATES to :func:`purge_business_data`, per business, and that is the whole
+    point of this function's shape.
+
+    It used to be six unordered `delete()` calls — `Invoice`, `Inventory`,
+    `LegacyPayment`, `UploadedFile`, `DocumentEmbedding`, `ChatMessage` — sitting
+    directly above `purge_business_data`, which documents itself as "the single
+    source of truth for erasing a business's rows so callers can't drift". This
+    was the caller that drifted, and it drifted in two ways:
+
+    1. **It left orphans.** Deleting `invoices` without first deleting
+       `invoice_line_items`, `invoice_payments` and `payments` leaves children
+       pointing at rows that no longer exist. This was invisible while SQLite had
+       `PRAGMA foreign_keys` OFF; with N4's enforcement on it surfaced as a hard
+       `IntegrityError` — the endpoint returned **500** and wiped nothing.
+    2. **It left the books referring to deleted documents.** `journal_entries`
+       links to its source by `source_id`, which is not a foreign key, so no
+       error was ever raised — the entries simply survived their invoices. That is
+       the M-2 failure in reverse: books describing sales that no longer exist,
+       and nothing anywhere reporting it.
+
+    So the fix is not "add the missing tables to the list" — that just makes two
+    lists to keep in step. There is now one purge implementation, and this
+    function's job is to choose which businesses to run it for.
+
+    Accounts are preserved (`delete_owner=False`, `delete_staff=False`): this is
+    "wipe the data", not "delete the tenants" — `wipe_user_data` is the endpoint
+    that removes an account.
+    """
+    owner_ids = [
+        r[0] for r in db.query(User.id).filter(User.parent_business_id.is_(None)).all()
+    ]
+    wiped = 0
+    for business_id in owner_ids:
+        purge_business_data(business_id, db, delete_owner=False, delete_staff=False)
+        wiped += 1
     db.commit()
     invalidate()
-    return {"status": "success", "message": "All business data deleted and cache flushed."}
+    logger.warning("[ADMIN] Wiped ALL business data for %d business(es); accounts kept.", wiped)
+    return {
+        "status": "success",
+        "businesses_wiped": wiped,
+        "message": f"All business data deleted for {wiped} business(es) and cache flushed.",
+    }
 
 
 def record_business_tombstone(db: Session, *, public_id: str = None, username: str = None,

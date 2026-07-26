@@ -82,39 +82,49 @@ export default function usePaymentFlow({
     const releaseLock = () => { _saveLock.delete(lockKey); clearTimeout(lockTimer) }
 
     if (!skipConfirm) {
-      if (isCredit) {
-        // Already on credit — just confirm the amount going on the books.
-        const ok = await confirm({
-          mode: 'update',
-          title: 'Save on credit?',
-          message: `Save on CREDIT — ₹${(pay - paidNow).toFixed(2)} will be due.`,
-          confirmText: 'Save on credit',
-          cancelText: 'Go back & edit',
-        })
-        if (!ok) { releaseLock(); return false }
-      } else {
-        // Three-way check: did we actually collect the money, is it going on
-        // credit instead, or does the cashier want to keep editing?
-        const choice = await confirm({
-          mode: 'update',
-          title: 'Payment received?',
-          message: `Collect ₹${pay.toFixed(2)} via ${(form.payment_mode || 'cash').toUpperCase()}? Confirm you received it, or put it on the customer's credit.`,
-          confirmText: 'Yes, received — print',
-          confirmValue: 'paid',
-          tertiaryText: 'Add to credit',
-          tertiaryValue: 'credit',
-          cancelText: 'Go back & edit',
-          cancelValue: 'cancel',
-        })
-        if (choice === 'cancel' || !choice) { releaseLock(); return false }
-        if (choice === 'credit') {
-          // Not collected — record the full payable as due and switch the tab
-          // to credit so the receipt/ledger/shift tallies reflect it.
-          isCredit = true
-          paidNow = 0
-          formForSave = { ...form, payment_mode: 'credit', amount_received: '0' }
-          setForm(f => ({ ...f, payment_mode: 'credit', amount_received: '0' }))
+      // Wrap in try/finally: if confirm() throws (e.g. the ConfirmProvider is
+      // unmounted mid-flight) the lock must still be released so the POS isn't
+      // frozen until the 5s safety timer fires.
+      try {
+        if (isCredit) {
+          // Already on credit — just confirm the amount going on the books.
+          const ok = await confirm({
+            mode: 'update',
+            title: 'Save on credit?',
+            message: `Save on CREDIT — ₹${(pay - paidNow).toFixed(2)} will be due.`,
+            confirmText: 'Save on credit',
+            cancelText: 'Go back & edit',
+          })
+          if (!ok) { releaseLock(); return false }
+        } else {
+          // Three-way check: did we actually collect the money, is it going on
+          // credit instead, or does the cashier want to keep editing?
+          const choice = await confirm({
+            mode: 'update',
+            title: 'Payment received?',
+            message: `Collect ₹${pay.toFixed(2)} via ${(form.payment_mode || 'cash').toUpperCase()}? Confirm you received it, or put it on the customer's credit.`,
+            confirmText: 'Yes, received — print',
+            confirmValue: 'paid',
+            tertiaryText: 'Add to credit',
+            tertiaryValue: 'credit',
+            cancelText: 'Go back & edit',
+            cancelValue: 'cancel',
+          })
+          if (choice === 'cancel' || !choice) { releaseLock(); return false }
+          if (choice === 'credit') {
+            // Not collected — record the full payable as due and switch the tab
+            // to credit so the receipt/ledger/shift tallies reflect it.
+            isCredit = true
+            paidNow = 0
+            formForSave = { ...form, payment_mode: 'credit', amount_received: '0' }
+            setForm(f => ({ ...f, payment_mode: 'credit', amount_received: '0' }))
+          }
         }
+      } catch (confirmErr) {
+        // confirm() itself threw — release the lock and surface a generic error.
+        logger.error('[SALES] confirm dialog threw unexpectedly', confirmErr)
+        releaseLock()
+        return false
       }
     }
 
@@ -206,7 +216,9 @@ export default function usePaymentFlow({
         }
 
 
-        if (printAfterSave) {
+        if (printAfterSave && !isCredit) {
+          // Credit bills do not trigger a print — there is no cash collected to
+          // hand over a receipt for. Only print when the sale was paid now.
           const invoiceNo = serverInvoiceNo
           const isThermal = settings?.print?.thermal_printer_mode === true
           if (isThermal) {
@@ -282,7 +294,7 @@ export default function usePaymentFlow({
       _saveLock.delete(lockKey)
       setSubmitting(false)
     }
-  }, [form, authFetch, activeTab.name, activeTabId, closeTab, gstAmt, settings, grandTotal, payable, cashDiscountAmt, changeToReturn, billDiscountAmt, setAlert, setSubmitting, setDbInvoices, setTabs, syncTabNames, barcodeRef, enqueueOffline, confirm])
+  }, [form, authFetch, activeTab.name, activeTabId, closeTab, gstAmt, settings, grandTotal, payable, cashDiscountAmt, billDiscountAmt, setAlert, setSubmitting, setDbInvoices, setTabs, syncTabNames, barcodeRef, enqueueOffline, confirm])
 
   const openPaymentFlow = useCallback((focusTarget = 'amountReceived') => {
     if (form.items.length === 0) return

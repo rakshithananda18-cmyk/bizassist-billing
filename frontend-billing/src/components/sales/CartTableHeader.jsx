@@ -4,12 +4,18 @@
 // sticky positioning. Extracted VERBATIM from Sales.jsx (R5, first safe slice of
 // CartTable): pure presentational, no handlers/refs. Returns a <thead> so it sits
 // directly inside the existing <table className="pos-cart-table">.
+//
+// `cols` (optional) is the useResizableColumns handle. When supplied, every
+// non-collapsed header gets a drag grip on its right edge and the persisted
+// width is applied. Omitting it leaves the header behaving exactly as before,
+// which keeps the existing unit tests and any other caller working unchanged.
 import React from 'react'
 import { colLabels, colShortLabels, NON_COLLAPSIBLE } from '../../lib/posColumns'
+import ColumnResizer from '../common/ColumnResizer'
 
 // collapsedCols: { [col]: true } — fold-collapsed columns render as a narrow
 // strip; click expands. onHeaderContextMenu(col, event) opens the fold menu.
-export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets, t, hasItems, extraAttrFields = [], collapsedCols = {}, onExpandColumn, onHeaderContextMenu }) {
+export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets, t, hasItems, extraAttrFields = [], collapsedCols = {}, onExpandColumn, onHeaderContextMenu, cols = null }) {
   return (
     <thead>
       <tr>
@@ -140,11 +146,24 @@ export default function CartTableHeader({ columnOrder, colVisible, stickyOffsets
           const headerEl = renderHeader();
           if (headerEl) {
             const extraClasses = `col-${col} ${isSticky ? 'pos-sticky-header sticky-left' : 'pos-sticky-header'} ${col === 'name' && isSticky ? 'pos-sticky-cell-name' : ''}`.trim();
+
+            // Resizable mode: merge the hook's data-col + persisted width and
+            // append the drag grip as the last child of the header cell. The
+            // grip stops propagation itself, so right-click/fold still work.
+            const rp = cols ? cols.headerProps(col) : null;
+            const children = cols
+              ? [
+                  ...React.Children.toArray(headerEl.props.children),
+                  <ColumnResizer key="__resizer" {...cols.resizerProps(col)} />,
+                ]
+              : headerEl.props.children;
+
             return React.cloneElement(headerEl, {
-              className: `${headerEl.props.className || ''} ${extraClasses}`.trim(),
-              style: { ...headerEl.props.style, ...style },
+              ...(rp ? { 'data-col': rp['data-col'] } : {}),
+              className: `${headerEl.props.className || ''} ${extraClasses} ${rp?.className || ''}`.trim(),
+              style: { ...headerEl.props.style, ...style, ...(rp?.style || {}) },
               onContextMenu: e => { if (onHeaderContextMenu) { e.preventDefault(); onHeaderContextMenu(col, e) } }
-            });
+            }, children);
           }
           return null;
         })}

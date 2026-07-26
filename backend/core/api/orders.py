@@ -6,6 +6,7 @@ FastAPI routes for B2B Ordering and Supplier Catalogue browsing.
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from database.db import get_db
@@ -49,10 +50,29 @@ def _line_out(li: B2BOrderLineItem) -> dict:
         "line_total": li.line_total
     }
 
-def _order_out(order: B2BOrder, db: Session) -> dict:
-    buyer = db.query(User).filter(User.id == order.buyer_business_id).first()
-    seller = db.query(User).filter(User.id == order.seller_business_id).first()
-    
+def _business_map(db: Session, orders) -> dict:
+    """One query resolving every buyer/seller referenced by ``orders``.
+
+    Review finding F-5: ``_order_out`` used to issue two ``User`` lookups per
+    order, so a 300-order history cost 600 extra round-trips per page load.
+    """
+    ids = set()
+    for o in orders:
+        ids.add(o.buyer_business_id)
+        ids.add(o.seller_business_id)
+    ids.discard(None)
+    if not ids:
+        return {}
+    rows = db.query(User.id, User.business_name, User.public_id).filter(User.id.in_(ids)).all()
+    return {r.id: r for r in rows}
+
+
+def _order_out(order: B2BOrder, db: Session, businesses: dict = None) -> dict:
+    if businesses is None:
+        businesses = _business_map(db, [order])
+    buyer = businesses.get(order.buyer_business_id)
+    seller = businesses.get(order.seller_business_id)
+
     return {
         "id": order.id,
         "order_number": order.order_number,
@@ -117,17 +137,44 @@ async def place_order(req: OrderRequest, current_user: dict = Depends(restrict_c
         raise HTTPException(status_code=500, detail="Could not place order")
 
 @router.get("/orders")
-def list_orders(role: str = Query(..., description="buyer | seller"), current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
-    """List incoming or outgoing orders for the logged-in user."""
+def list_orders(
+    role: str = Query(..., description="buyer | seller"),
+    status: Optional[str] = Query(None, description="Filter by order status"),
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(restrict_cashier),
+    db: Session = Depends(get_db),
+):
+    """List incoming (role=seller) or outgoing (role=buyer) orders.
+
+    Returns a bare JSON array for backward compatibility with existing clients;
+    pagination metadata travels in the ``X-Total-Count`` / ``X-Limit`` /
+    ``X-Offset`` response headers so no caller has to change to keep working.
+    """
     bid = current_user["id"]
     if role == "buyer":
-        orders = db.query(B2BOrder).filter(B2BOrder.buyer_business_id == bid).order_by(B2BOrder.id.desc()).all()
+        q = db.query(B2BOrder).filter(B2BOrder.buyer_business_id == bid)
     elif role == "seller":
-        orders = db.query(B2BOrder).filter(B2BOrder.seller_business_id == bid).order_by(B2BOrder.id.desc()).all()
+        q = db.query(B2BOrder).filter(B2BOrder.seller_business_id == bid)
     else:
         raise HTTPException(status_code=400, detail="Invalid role. Must be 'buyer' or 'seller'.")
-        
-    return [_order_out(o, db) for o in orders]
+
+    if status:
+        q = q.filter(B2BOrder.status == status)
+
+    total = q.count()
+    orders = q.order_by(B2BOrder.id.desc()).offset(offset).limit(limit).all()
+    businesses = _business_map(db, orders)
+
+    return JSONResponse(
+        content=[_order_out(o, db, businesses) for o in orders],
+        headers={
+            "X-Total-Count": str(total),
+            "X-Limit": str(limit),
+            "X-Offset": str(offset),
+            "Access-Control-Expose-Headers": "X-Total-Count, X-Limit, X-Offset",
+        },
+    )
 
 @router.get("/orders/{id}")
 def get_order_details(id: int, current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):

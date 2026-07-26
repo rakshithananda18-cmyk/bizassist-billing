@@ -150,6 +150,58 @@ def _clean(row: dict, model) -> dict:
             and k not in _EXPORT_ONLY_FIELDS}
 
 
+def _remap_requester(row: dict, *, seller_local: int, buyer_local: int):
+    """Translate an exported ``requested_by_business_id`` into a LOCAL id.
+
+    The exported value is a ``users.id`` from the source database. The only
+    thing we can say about it reliably is whether it equalled that row's own
+    seller or buyer there — so that is the only mapping we make. Anything else
+    (a stale id, a third party, a missing field) becomes ``None``.
+
+    ``None`` is the safe answer: under R3 a pending row with no recorded
+    requester cannot be approved by anyone, so an unmappable value degrades to
+    "ask again" rather than to "somebody gets to approve this".
+
+    Pure — takes the raw row, returns an id or None. Unit-tested directly.
+    """
+    raw = row.get("requested_by_business_id")
+    if raw is None:
+        return None
+    src_seller = row.get("seller_business_id")
+    src_buyer = row.get("buyer_business_id")
+    if src_seller is not None and raw == src_seller:
+        return seller_local
+    if src_buyer is not None and raw == src_buyer:
+        return buyer_local
+    return None
+
+
+def _claim_uid(db, data: dict, model) -> dict:
+    """Keep the source row's ``uid`` only if it is FREE in this database.
+
+    ``uid`` is the durable cross-DB key the B2B cloud→local mirror matches on,
+    and it now carries a partial-unique index. Preserving it across a transfer is
+    what makes a re-import idempotent — but an export can legitimately be
+    reshaped before import (a row re-pointed at a different counterparty is a
+    DIFFERENT relationship, yet still carries the original uid). Inserting that
+    verbatim collides on the unique index and 500s the whole import.
+
+    So: reuse the uid when it is unclaimed, mint a fresh one when it is taken.
+    Genuine transfers keep stable identity; reshaped rows get their own.
+    """
+    uid = data.get("uid")
+    if not uid:
+        data.pop("uid", None)          # let the column default mint one
+        return data
+    try:
+        taken = db.query(model.id).filter(model.uid == uid).first() is not None
+    except Exception:
+        taken = False
+    if taken:
+        data["uid"] = str(_uuid.uuid4())
+    return data
+
+
 def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int) -> int:
     """Upsert one B2B relationship table from an export payload. Returns the
     number of rows applied (created or updated); skips are logged, never fatal."""
@@ -166,6 +218,15 @@ def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int) -> in
                                row.get("seller_bizid"), row.get("buyer_bizid"))
                 continue
             data = _clean(row, B2BConnection)
+            # `requested_by_business_id` is a users.id in the SOURCE database and
+            # is meaningless here — carrying it verbatim would name whichever
+            # local business happens to hold that integer as the requester. That
+            # is a consent bug, not just bad data: name the counterparty as
+            # requester and the importer can "approve" a link nobody asked for.
+            # Re-point it through the same mapping as the two parties; anything
+            # we cannot map becomes NULL, which fails closed under R3.
+            data["requested_by_business_id"] = _remap_requester(
+                row, seller_local=seller, buyer_local=buyer)
             data["seller_business_id"], data["buyer_business_id"] = seller, buyer
             existing = (
                 db.query(B2BConnection)
@@ -179,8 +240,13 @@ def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int) -> in
                           "catalog_category", "status"):
                     if k in data and data[k] is not None:
                         setattr(existing, k, data[k])
+                # Only ever FILL a missing requester — never overwrite one this
+                # database already recorded, which is the local consent trail.
+                if (getattr(existing, "requested_by_business_id", None) is None
+                        and data["requested_by_business_id"] is not None):
+                    existing.requested_by_business_id = data["requested_by_business_id"]
             else:
-                db.add(B2BConnection(**data))
+                db.add(B2BConnection(**_claim_uid(db, data, B2BConnection)))
             applied += 1
 
     elif table_name == "b2b_orders":
@@ -216,7 +282,7 @@ def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int) -> in
                 if data.get("seller_invoice_id") and not existing.seller_invoice_id:
                     existing.seller_invoice_id = data["seller_invoice_id"]
             else:
-                db.add(B2BOrder(**data))
+                db.add(B2BOrder(**_claim_uid(db, data, B2BOrder)))
             applied += 1
         db.flush()   # line items (next table in order) need the new order ids
 
@@ -260,7 +326,7 @@ def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int) -> in
                 continue
             data = _clean(row, B2BOrderLineItem)
             data["order_id"], data["product_id"] = order.id, product.id
-            db.add(B2BOrderLineItem(**data))
+            db.add(B2BOrderLineItem(**_claim_uid(db, data, B2BOrderLineItem)))
             applied += 1
 
     if applied or skipped:

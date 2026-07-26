@@ -32,8 +32,11 @@ def _clear():
         ids = [r.id for r in db.query(Invoice.id).filter(Invoice.business_id == BID).all()]
         if ids:
             db.query(InvoiceLineItem).filter(InvoiceLineItem.invoice_id.in_(ids)).delete(synchronize_session=False)
-        db.query(Invoice).filter(Invoice.business_id == BID).delete()
+        # Payments FK to invoices, so they must go FIRST. SQLite ignored
+        # foreign keys until N4 turned enforcement on to match the Postgres
+        # cloud; this delete order used to "work" by silently orphaning rows.
         db.query(InvoicePayment).filter(InvoicePayment.business_id == BID).delete()
+        db.query(Invoice).filter(Invoice.business_id == BID).delete()
         ent = [r.id for r in db.query(JournalEntry.id).filter(JournalEntry.business_id == BID).all()]
         if ent:
             db.query(JournalLine).filter(JournalLine.entry_id.in_(ent)).delete(synchronize_session=False)

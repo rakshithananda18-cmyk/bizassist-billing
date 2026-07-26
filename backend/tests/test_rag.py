@@ -30,29 +30,45 @@ from services.embeddings import (
     semantic_search_records
 )
 from services.tools import query_semantic_index
+from tests._fk_cleanup import wipe_all
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_db():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     
-    # Clear existing data to avoid conflicts with previous tests sharing the DB instance
-    db.query(Invoice).delete()
-    db.query(Inventory).delete()
-    db.query(LegacyPayment).delete()
-    db.query(DocumentEmbedding).delete()
-    db.query(User).delete()
-    db.commit()
+    # Clear transactional data so this module's assertions see only its own rows.
+    # The deletes are unfiltered on a database shared with the whole suite, so the
+    # order comes from the FK graph rather than a hand-written list — see
+    # tests/_fk_cleanup.py.
+    #
+    # ACCOUNTS ARE KEPT. This fixture used to remove them (first via drop_all,
+    # then via a users wipe), which left every module that happened to run
+    # afterwards unable to log in — a 401 or a KeyError('token') pointing at an
+    # innocent test. Nothing here needs the other businesses gone; it only needs
+    # its own to exist.
+    wipe_all(db, keep_users=True)
 
-    # Create test user/business
-    user = User(id=10, username="rag_user", password="hashed_password", business_name="RAG Store", role="enterprise")
-    db.add(user)
-    db.commit()
+    # Create test user/business (idempotent: the row may survive a previous run)
+    user = db.query(User).filter(User.id == 10).first()
+    if user is None:
+        user = User(id=10, username="rag_user", password="hashed_password",
+                    business_name="RAG Store", role="enterprise")
+        db.add(user)
+        db.commit()
     db.close()
     
     yield
     
-    Base.metadata.drop_all(bind=engine)
+    # NOT drop_all, and NOT a users wipe: this module shares the suite's SQLite
+    # file, so dropping the tables (or the accounts) on the way out sabotages
+    # whichever module runs next. Clear this module's rows and leave the
+    # accounts alone.
+    db = SessionLocal()
+    try:
+        wipe_all(db, keep_users=True)
+    finally:
+        db.close()
     try:
         os.remove("test_bizassist_rag.db")
     except Exception:

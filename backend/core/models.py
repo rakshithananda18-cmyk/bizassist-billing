@@ -268,6 +268,65 @@ class IdempotencyKey(Base):
 
 
 # ---------------------------------------------------------------------------
+# DOCUMENT NUMBERING — monotonic per-(business, series) counter  (F-3)
+# ---------------------------------------------------------------------------
+
+class DocumentSequence(Base):
+    """
+    The authoritative, MONOTONIC counter behind every auto-generated document
+    number (invoice series ``INV``/``C1``/``C2``…, credit notes ``CN``, …).
+
+    WHY THIS TABLE EXISTS (review finding F-3)
+    ------------------------------------------
+    Numbers used to be derived as ``COUNT(invoices in this series) + 1``. A
+    count is a function of the rows that happen to exist RIGHT NOW, so deleting
+    any invoice made the next sale mint a number that had already been issued.
+    Rule 46 of the CGST Rules requires the serial number of a tax invoice to be
+    *unique for the financial year* — reissuing a number is a compliance
+    breach, and it silently corrupts the audit trail (two different bills, one
+    number) rather than failing loudly.
+
+    ``last_number`` is derived from nothing. It is stored, it only ever moves
+    UP, and deleting rows from ``invoices`` cannot move it. A gap in the series
+    (a voided or rolled-back sale) is legal and auditable; a REUSED number is
+    neither.
+
+    ALLOCATION IS ATOMIC. ``core/billing/sequence.py`` reserves a value with a
+    single ``UPDATE … SET last_number = last_number + 1``, which takes the row
+    lock on Postgres and the write lock on SQLite, so two concurrent counters
+    can never read the same value. The read-then-write race the COUNT approach
+    had is gone by construction.
+
+    SCOPE: ``(business_id, series)``. Each POS terminal owns its own series via
+    ``counter_prefix`` (§9.3), so terminals advance independently.
+
+    NOT SYNCED. This is per-database counter state, not business data — it is
+    absent from ``database/sync_map.MODEL_MAP`` on purpose, exactly like the
+    COUNT it replaces (which was also computed per database). A local install
+    and the cloud therefore keep independent counters, and rows arriving from
+    the other side can leapfrog a counter. ``sequence.next_number`` handles
+    that by HEALING the counter upward off the observed maximum whenever the
+    number it reserved turns out to be taken — it never heals downward, so the
+    monotonic guarantee survives the repair.
+    """
+    __tablename__ = "document_sequences"
+    __table_args__ = (
+        UniqueConstraint("business_id", "series", name="uq_docseq_biz_series"),
+        Index("ix_docseq_biz_series", "business_id", "series"),
+    )
+
+    id          = Column(Integer, primary_key=True, index=True)
+    business_id = Column(Integer, nullable=False, index=True)
+    # Number series / prefix, normalised WITHOUT the trailing '-' ("INV", "C1", "CN").
+    series      = Column(String(40), nullable=False)
+    # Highest value ever handed out for this series. Monotonic — never lowered.
+    last_number = Column(Integer, nullable=False, default=0)
+
+    created_at  = Column(DateTime, default=utc_now)
+    updated_at  = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+
+# ---------------------------------------------------------------------------
 # B2B ECOSYSTEM — Connections and Ordering (Phase 3)
 # ---------------------------------------------------------------------------
 
@@ -275,6 +334,31 @@ class B2BConnection(Base, TimestampMixin):
     """
     Consented connection between two businesses.
     A connection represents a private communication pipe.
+
+    CONSENT MODEL (hardened Jul-2026)
+    ---------------------------------
+    BizID is a *public* identifier — it is printed on invoices and shared freely
+    so counterparties can find each other. It therefore MUST NOT be sufficient,
+    on its own, to open a pipe into someone's catalog and stock levels.
+
+    A connection is now created in ``status="pending"`` and only becomes
+    ``"accepted"`` when the OTHER party approves it. Until then
+    ``core.order.service`` refuses to serve the catalog or accept orders (both
+    already filter on ``status == "accepted"``).
+
+    Status machine::
+
+        (none) --request--> pending --approve--> accepted --revoke--> revoked
+                              |                                          |
+                              +--reject--> rejected                      |
+                              +--cancel--> (row deleted, requester only) |
+                                                                         |
+                     re-request after revoke -> pending (needs approval) -+
+
+    ``requested_by_business_id`` records who initiated, which is what lets the
+    API answer "is this request MINE to approve, or am I waiting on them?"
+    without inferring it from the buyer/seller roles (a seller can be the one
+    who initiates, so role is not a proxy for direction).
     """
     __tablename__ = "b2b_connections"
     __table_args__ = (
@@ -284,19 +368,35 @@ class B2BConnection(Base, TimestampMixin):
         ),
         Index("ix_b2b_connections_seller", "seller_business_id"),
         Index("ix_b2b_connections_buyer", "buyer_business_id"),
+        Index("ix_b2b_connections_status", "status"),
     )
 
     id                  = Column(Integer, primary_key=True, index=True)
+    # Durable cross-DB key. B2B rows are MIRRORED cloud -> local (see
+    # database/sync_map.PULL_ONLY_TABLES), and integer ids differ between the
+    # two databases, so uid is what the pull-apply matches on.
+    uid                 = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     seller_business_id  = Column(Integer, ForeignKey("users.id"), nullable=False)
     buyer_business_id   = Column(Integer, ForeignKey("users.id"), nullable=False)
-    
+
     price_tier          = Column(String, nullable=False, default="standard")  # standard|wholesale|distributor
     discount_pct        = Column(Float, nullable=False, default=0.0)          # direct percentage discount (e.g. 5.0)
     credit_limit        = Column(Float, nullable=False, default=0.0)
     outstanding_balance = Column(Float, nullable=False, default=0.0)
     stock_visibility    = Column(String, nullable=False, default="exact")     # exact|band|hidden
     catalog_category    = Column(String, nullable=True)                       # category filter (none=all)
-    status              = Column(String, nullable=False, default="accepted")    # accepted|revoked
+    # pending|accepted|rejected|revoked — see the status machine above.
+    # NOTE: default is deliberately "pending". Anything that needs an instantly
+    # live link (invite-code redemption, where consent was given by handing over
+    # the code) must set "accepted" EXPLICITLY.
+    status              = Column(String, nullable=False, default="pending")
+
+    # Who asked for this link. Always one of {seller_business_id, buyer_business_id}.
+    requested_by_business_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # Free-text note the requester can attach ("Hi, we buy your paints monthly").
+    request_message     = Column(Text, nullable=True)
+    # When the counterparty approved / rejected. NULL while pending.
+    responded_at        = Column(DateTime, nullable=True)
 
     created_at          = Column(DateTime, default=utc_now)
     updated_at          = Column(DateTime, default=utc_now, onupdate=utc_now)
@@ -330,6 +430,7 @@ class B2BOrder(Base, TimestampMixin):
     )
 
     id                 = Column(Integer, primary_key=True, index=True)
+    uid                = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     buyer_business_id  = Column(Integer, ForeignKey("users.id"), nullable=False)
     seller_business_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     
@@ -367,6 +468,7 @@ class B2BOrderLineItem(Base, TimestampMixin):
     )
 
     id            = Column(Integer, primary_key=True, index=True)
+    uid           = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     order_id      = Column(Integer, ForeignKey("b2b_orders.id"), nullable=False)
     product_id    = Column(Integer, ForeignKey("products.id"), nullable=False)
     

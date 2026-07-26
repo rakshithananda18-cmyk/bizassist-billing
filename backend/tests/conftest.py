@@ -185,12 +185,20 @@ def _clear_sqlite_sidecars():
             pass
 
 
-@pytest.fixture(scope="module", autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def setup_and_dispose_db():
     import time
     from database.db import engine
     from database.models import Base
     from database.migration import run_migrations_and_seed
+    # Ensure ALL SQLAlchemy models are registered on Base.metadata before
+    # create_all() runs. database.models covers the main tables; core.models
+    # covers B2BConnection, B2BInviteCode, B2BOrder, JournalEntry etc. If
+    # core.models is not imported first those tables are silently absent from the
+    # schema — routes can still INSERT (app startup imports core.models) but a
+    # fresh per-module DB created here won't have the tables, causing "Invalid
+    # connection code" 400s in any test that tries to redeem a B2B invite code.
+    import core.models as _core_models  # noqa: F401 — side-effect: registers tables
 
     last_err = None
     for attempt in range(3):

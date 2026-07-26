@@ -28,6 +28,13 @@ export function ConfirmProvider({ children }) {
   const resolverRef = useRef(null)
 
   const confirm = useCallback((opts = {}) => new Promise((resolve) => {
+    // If a dialog is already open (e.g. a keyboard shortcut fires while another
+    // confirm is pending), resolve the stale promise with false so it doesn't
+    // leak, then open the new one. This is equivalent to the user having pressed
+    // Cancel on the buried dialog.
+    if (resolverRef.current) {
+      resolverRef.current(false)
+    }
     resolverRef.current = resolve
     setOptions(opts)
   }), [])

@@ -821,6 +821,15 @@ export function AuthProvider({ children }) {
 
   // Authenticated fetch helper
   const authFetch = useCallback(async (path, opts = {}) => {
+    // DELIBERATELY NO ABSOLUTE-URL PASSTHROUGH.
+    // A revision that allowed callers to pass a fully-qualified URL here caused
+    // a cross-tenant bug: the session token is issued by, and only valid on, the
+    // backend the user logged into. Sending a LOCAL token to the cloud made the
+    // cloud resolve the user id against its own users table, where the same
+    // integer is a DIFFERENT business — one tenant saw another's BizID.
+    // authFetch attaches THIS session's token, so it must only ever target THIS
+    // session's backend. Anything that needs the cloud goes through the local
+    // backend, which holds a cloud-issued token of its own.
     let apiPath = path
     if (apiPath.startsWith('/billing/')) {
       apiPath = '/' + apiPath.slice('/billing/'.length)

@@ -22,7 +22,11 @@ export const EMPTY_PRODUCT = {
 }
 
 // Fields shown in the save / discard confirmation — labels + formatting.
-const PRODUCT_FIELDS = [
+// Edit mode omits opening_stock: it is a stock-ledger entry written only at
+// creation time. The PATCH endpoint has no opening_stock field; showing it in
+// the diff would imply it gets saved when it does not. Use a stock adjustment
+// (Inventory → Adjust stock) to change the running balance instead.
+const PRODUCT_FIELDS_ADD = [
   { key: 'name', label: 'Name' },
   { key: 'brand', label: 'Brand' },
   { key: 'category', label: 'Category' },
@@ -41,6 +45,7 @@ const PRODUCT_FIELDS = [
   { key: 'opening_stock', label: 'Opening stock' },
   { key: 'barcode', label: 'Barcode' },
 ]
+const PRODUCT_FIELDS_EDIT = PRODUCT_FIELDS_ADD.filter(f => f.key !== 'opening_stock')
 
 const num = (v) => (v === '' || v === null || v === undefined ? 0 : parseFloat(v) || 0)
 const numOrNull = (v) => (v === '' || v === null || v === undefined ? null : parseFloat(v) || 0)
@@ -143,6 +148,8 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
     onChange?.(k, v)
   }
 
+  const PRODUCT_FIELDS = isEdit ? PRODUCT_FIELDS_EDIT : PRODUCT_FIELDS_ADD
+
   // Dirty-aware close: prompt before throwing away unsaved edits.
   const attemptClose = async () => {
     if (submitting) return
@@ -188,6 +195,9 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
         mrp: numOrNull(form.mrp),
         cgst_rate: num(form.cgst_rate),
         sgst_rate: num(form.sgst_rate),
+        // min_stock is stored in product.attributes on the backend; the PATCH
+        // schema accepts it as a top-level Optional[float] field.
+        min_stock: num(form.min_stock),
       }
       let res
       if (isEdit) {

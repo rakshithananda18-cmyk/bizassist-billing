@@ -81,6 +81,54 @@ This is the single most complex technical decision. The buyer/seller chain force
 
 **Why:** because money is **append-only** and the cloud is **authoritative** (D2/D5), you don't need a heavy sync framework for the pilot — a simple **outbox** (queue local writes) + **delta pull** (since-last-sync) + **idempotency keys** is enough and fully under your control. Adopt PowerSync only if hand-rolled sync becomes a burden at scale. **Do not** attempt multi-master.
 
+#### 2.5a The four rules hand-rolled sync keeps teaching us (Jul-2026)
+
+"Fully under your control" is the honest cost of this choice, and it has been paid
+four times. Findings **M-7**, **M-8**, **M-11** and **M-12** were all the same
+defect wearing different clothes, and anyone touching the sync layer should read
+these before changing it. Full write-ups in `STRATEGIC_REVIEW_JUL2026.md` §21–24,
+§45, §49.
+
+**1. There are always TWO apply paths, and the pull one is weaker.**
+`routes/sync.py::push_changes` answers a caller that inspects the response body.
+`services/sync_worker.py`'s pull answers nobody. So every safeguard added to push
+must go in **`core/sync/apply_hooks.py`**, which both import, and be asserted in
+both directions. Three separate invariants were once private to `routes/sync.py`
+and therefore enforced in one direction only:
+
+| Safeguard | Was | Now |
+|---|---|---|
+| Invoice paid-state projection | push only (M-7) | `apply_hooks.run_post_apply` |
+| Financial-conflict logging | push only (M-8) | `apply_hooks.log_financial_conflict` |
+| Rejected-row recording | push only (M-12) | `apply_hooks.log_apply_failure` |
+
+*Never* add an apply-time invariant inside one of the two sync modules.
+
+**2. A per-row SAVEPOINT stops a batch failing; it does not make the row optional.**
+Isolating a bad row is correct. Deciding what happens to it afterwards is a
+separate decision, and the default answer — log and continue — silently loses data.
+The cursor is the difference between *retried* and *lost*: it is now **held** while
+rows are failing, bounded by `_PULL_MAX_FAILED_STREAK` so one unappliable row
+cannot stall the stream, and every branch logs.
+
+**3. Progress counters must count what LANDED.**
+`_pull_done += len(records)` cannot represent a partial batch, so it reported
+`done == total` — a green "sync complete" — over dropped rows. That single line was
+the user-visible face of M-12.
+
+**4. Derived records are re-derived on the destination, never replicated.**
+Journals are a deterministic function of their source document and carry a
+per-database hash chain, so the apply side re-posts them idempotently
+(`core/accounting/repost.py`). Copying them would either break the chain or force a
+rebuild. `period_locks` are ordinary owner-scoped data and *do* replicate — and
+needed **three** registrations (`MODEL_MAP`, `_SYNC_TABLES`,
+`APPEND_ONLY_DELETE_BLOCKLIST`), because `MODEL_MAP` alone is pull-only.
+
+**Enforced by tests, not by memory:** `tests/test_sync_paid_state_parity.py` fails
+if either module re-implements the paid-state projection locally;
+`tests/test_sync_pull_failure_visibility.py` fails if the pull returns to
+warn-and-skip or if the progress counter goes back to counting batches.
+
 ### 2.6 Realtime (order pings, invoice-ready)
 | Option | Pros | Cons | Verdict |
 |---|---|---|---|

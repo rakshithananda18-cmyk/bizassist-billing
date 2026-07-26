@@ -154,6 +154,19 @@ _COLUMN_MIGRATIONS = [
     {"table": "customers", "column": "credit_balance", "ddl": "ALTER TABLE customers ADD COLUMN credit_balance REAL DEFAULT 0.0"},
     # b2b_orders additions
     {"table": "b2b_orders", "column": "seller_invoice_id", "ddl": "ALTER TABLE b2b_orders ADD COLUMN seller_invoice_id INTEGER"},
+    # b2b_connections — consent hardening (Jul-2026, review findings F-1/F-2).
+    # A connection requested by BizID is now created 'pending' and only the
+    # COUNTERPARTY can accept it, so we must record who asked and when it was
+    # answered. Mirrors alembic revision e5c9a1d7b3f2 for local SQLite installs
+    # that boot through this path instead of the alembic chain.
+    {"table": "b2b_connections", "column": "requested_by_business_id", "ddl": "ALTER TABLE b2b_connections ADD COLUMN requested_by_business_id INTEGER"},
+    {"table": "b2b_connections", "column": "request_message",          "ddl": "ALTER TABLE b2b_connections ADD COLUMN request_message TEXT"},
+    {"table": "b2b_connections", "column": "responded_at",             "ddl": "ALTER TABLE b2b_connections ADD COLUMN responded_at DATETIME"},
+    # uid on the B2B tables — durable cross-DB key for the cloud->local mirror
+    # (alembic f6a2d8c4b1e9). Backfilled by _backfill_null_uids via _UID_TABLES.
+    {"table": "b2b_connections",      "column": "uid", "ddl": "ALTER TABLE b2b_connections ADD COLUMN uid TEXT"},
+    {"table": "b2b_orders",           "column": "uid", "ddl": "ALTER TABLE b2b_orders ADD COLUMN uid TEXT"},
+    {"table": "b2b_order_line_items", "column": "uid", "ddl": "ALTER TABLE b2b_order_line_items ADD COLUMN uid TEXT"},
     # journal_entries additions
     {"table": "journal_entries", "column": "prev_hash", "ddl": "ALTER TABLE journal_entries ADD COLUMN prev_hash TEXT"},
     {"table": "journal_entries", "column": "entry_hash", "ddl": "ALTER TABLE journal_entries ADD COLUMN entry_hash TEXT"},
@@ -218,6 +231,8 @@ _UID_TABLES = [
     "rate_limit_configs", "alert_configs", "stock_ledger", "product_barcodes",
     "business_settings", "invoice_payments", "b2b_ledgers", "stock_transfer_line_items",
     "register_shifts", "shift_cash_movements",
+    # B2B mirror tables — uid is the cross-DB key the cloud->local pull matches on.
+    "b2b_connections", "b2b_orders", "b2b_order_line_items",
 ]
 
 
@@ -315,6 +330,369 @@ def _backfill_null_uids(conn):
         except Exception as e:
             logger.error(f"[Migration] Backfill uid {table}: {e}")
     conn.commit()
+
+
+def _ensure_invoice_number_unique_index(conn):
+    """Enforce invoice-number uniqueness IN THE DATABASE (review finding M-3).
+
+    ``core/billing/sequence.py`` guarantees a number is never issued twice — but
+    only for callers that go through it. An import, a sync apply, or a repair
+    script writing an ``Invoice`` directly can still land a duplicate, and the
+    first anyone would notice is a mismatched GSTR filing. Application-level
+    uniqueness is not uniqueness (architecture rule 11).
+
+    PARTIAL index (``WHERE invoice_id IS NOT NULL``): CSV-imported rows may carry
+    no number at all, and multiple NULLs must not conflict with each other.
+
+    REFUSES TO CREATE OVER EXISTING DUPLICATES. If a business already holds two
+    invoices with one number, creating the index would fail — and the honest
+    response is to report exactly which documents are affected, not to "fix" them.
+    Renumbering an already-issued tax invoice is not ours to do silently: the
+    number may be printed on a customer's copy and filed in a GST return. So we
+    log them at ERROR and skip, and the index goes in on the next boot once the
+    owner has resolved them.
+    """
+    from sqlalchemy import inspect as sa_inspect
+    inspector = sa_inspect(conn)
+    if "invoices" not in set(inspector.get_table_names()):
+        return
+
+    idx_name = "uix_invoices_biz_number_notnull"
+    is_pg = conn.dialect.name == "postgresql"
+    try:
+        if is_pg:
+            already = conn.execute(text(
+                "SELECT 1 FROM pg_indexes WHERE indexname = :n"), {"n": idx_name}).fetchone()
+        else:
+            already = conn.execute(text(
+                "SELECT 1 FROM sqlite_master WHERE type='index' AND name = :n"),
+                {"n": idx_name}).fetchone()
+        if already:
+            return                      # already enforced — no scan needed
+
+        dupes = conn.execute(text(
+            "SELECT business_id, invoice_id, COUNT(*) AS n FROM invoices "
+            "WHERE invoice_id IS NOT NULL "
+            "GROUP BY business_id, invoice_id HAVING COUNT(*) > 1"
+        )).fetchall()
+        if dupes:
+            logger.error(
+                "[Migration] M-3: cannot enforce invoice-number uniqueness — %s "
+                "duplicate number(s) already exist and need manual resolution "
+                "(a number printed on a customer's copy must not be silently "
+                "reassigned): %s",
+                len(dupes),
+                "; ".join(f"biz {d[0]} '{d[1]}' x{d[2]}" for d in dupes[:25]),
+            )
+            return
+
+        conn.execute(text(
+            f"CREATE UNIQUE INDEX IF NOT EXISTS {idx_name} "
+            f"ON invoices (business_id, invoice_id) WHERE invoice_id IS NOT NULL"
+        ))
+        conn.commit()
+        logger.info("[Migration] M-3: invoice-number uniqueness now enforced by the DB")
+    except Exception as e:
+        logger.error("[Migration] M-3: failed to create %s: %s", idx_name, e)
+
+
+def _ensure_single_open_shift_index(conn):
+    """One OPEN shift per (business, operator) — enforced by the DATABASE (M-11).
+
+    `core/shifts/service.py` states the rule in its first line of documentation
+    ("ONE OPEN shift per user at a time") and `open_shift` enforces it by calling
+    `get_open_shift` first. That check is keyed on `(business_id, user_id)`, and
+    **`user_id` is a column sync can populate wrongly** — `register_shifts` is in
+    `sync_map._USER_FK_REPOINT_ENTITIES` precisely because a shift arriving from
+    another database carries that database's integer user id.
+
+    Found in real data on 26 Jul 2026, business 7:
+
+        shift 3  user=7  OPEN  08 Jul 18:26 -> 10 Jul 22:36
+        shift 4  user=9  OPEN  08 Jul 18:30 -> never closed
+
+    Shift 4 opened FOUR MINUTES into shift 3 and was accepted, because with
+    `user_id=9` the one-open-shift check was asking about a different operator.
+    Nobody could see it (`get_open_shift` looks up the logged-in user) and nobody
+    could close it. **Three cash sales totalling ₹2,485 were rung against it**,
+    and that cash never reached a drawer tally anyone could reconcile — an owner
+    counting the till would have been ₹2,485 over with no explanation.
+
+    Same shape as M-2 and M-7: every subsystem individually correct (the invoices,
+    the receipts and the journal are all right), the defect living *between* them
+    in the reconciliation layer, and nothing looking broken.
+
+    Architecture rule 11 — application-level uniqueness is not uniqueness. A
+    partial unique index makes the overlap impossible regardless of what any
+    caller believes about `user_id`.
+
+    REFUSES TO CREATE OVER EXISTING DUPLICATES, like the M-3 index: closing a
+    shift writes `closing_cash_actual`, which is a COUNTED figure. A migration
+    inventing a cash count would be fabricating evidence. It reports them instead,
+    and installs once the owner has closed the extra shift.
+    """
+    from sqlalchemy import inspect as sa_inspect
+    inspector = sa_inspect(conn)
+    if "register_shifts" not in set(inspector.get_table_names()):
+        return
+
+    idx_name = "uix_register_shifts_one_open_per_user"
+    is_pg = conn.dialect.name == "postgresql"
+    try:
+        if is_pg:
+            already = conn.execute(text(
+                "SELECT 1 FROM pg_indexes WHERE indexname = :n"), {"n": idx_name}).fetchone()
+        else:
+            already = conn.execute(text(
+                "SELECT 1 FROM sqlite_master WHERE type='index' AND name = :n"),
+                {"n": idx_name}).fetchone()
+        if already:
+            return
+
+        dupes = conn.execute(text(
+            "SELECT business_id, user_id, COUNT(*) AS n FROM register_shifts "
+            "WHERE status = 'OPEN' GROUP BY business_id, user_id HAVING COUNT(*) > 1"
+        )).fetchall()
+        if dupes:
+            logger.error(
+                "[Migration] M-11: cannot enforce one-open-shift-per-operator — %s "
+                "operator(s) already hold more than one OPEN shift: %s. Each extra "
+                "shift may hold real receipts that never entered a drawer tally. "
+                "Close them from the register screen (the tally is computed from "
+                "the payment ledger); they are NOT being closed automatically "
+                "because a closing cash figure is a COUNT, not a calculation. "
+                "The guard installs on the next boot.",
+                len(dupes),
+                "; ".join(f"biz {d[0]} user {d[1]} x{d[2]}" for d in dupes[:25]),
+            )
+            return
+
+        conn.execute(text(
+            f"CREATE UNIQUE INDEX IF NOT EXISTS {idx_name} "
+            f"ON register_shifts (business_id, user_id) WHERE status = 'OPEN'"
+        ))
+        conn.commit()
+        logger.info("[Migration] M-11: one-open-shift-per-operator now enforced by the DB")
+    except Exception as e:
+        logger.error("[Migration] M-11: failed to create %s: %s", idx_name, e)
+
+
+def _ensure_money_invariants(conn):
+    """Install the DB-level money invariants (review finding N4).
+
+    Thin wrapper: the rules and the per-dialect DDL live in
+    ``core/accounting/db_invariants.py`` so they sit next to
+    ``core/accounting/integrity.py``, which already defines what "intact" means
+    for the books. Detection and prevention should not be able to drift apart.
+
+    Deliberately never raises. A guard that cannot be installed must not stop the
+    app booting — the owner still needs to bill. It reports instead, at ERROR,
+    naming the rows that block it.
+    """
+    try:
+        from core.accounting.db_invariants import ensure_invariants
+        report = ensure_invariants(conn)
+        if report["skipped_violations"]:
+            logger.error(
+                "[Migration] N4: %s money invariant(s) NOT enforced because "
+                "existing rows violate them: %s",
+                len(report["skipped_violations"]), report["skipped_violations"],
+            )
+        if report["errors"]:
+            logger.error("[Migration] N4: invariant install errors: %s", report["errors"])
+        return report
+    except Exception as e:
+        logger.error("[Migration] N4: money invariants step failed: %s", e, exc_info=True)
+        return None
+
+
+def _repair_invoice_paid_state(conn):
+    """Repair invoices whose paid_amount/status disagree with their payment ledger.
+
+    WHY THIS EXISTS (review finding M-7)
+    ------------------------------------
+    ``Invoice.paid_amount`` and ``Invoice.status`` are a PROJECTION of the
+    append-only ``invoice_payments`` ledger. The cloud re-derived them on every
+    push; the local pull worker did not, because the reconciliation lived inside
+    ``routes/sync.py`` where the worker could not reach it. Every invoice pulled
+    cloud→local therefore kept whatever status was serialised on the cloud at
+    snapshot time — the reported "history shows the payment but the invoice is
+    still Pending".
+
+    The code fix (``core/sync/apply_hooks.py``) only protects FUTURE syncs. Rows
+    already written are still wrong, and a wrong status is not cosmetic: it
+    drives receivables, the pending-dues list and customer chasing. So this runs
+    once on boot and re-derives them from the ledger.
+
+    DIRECTION SAFETY — THE HARD-WON RULE
+    ------------------------------------
+    The first version of this repair treated the payment ledger as complete
+    truth and rewrote ``paid_amount`` to match it in BOTH directions. Run
+    against real data it immediately did harm::
+
+        C1-0002 (biz 6): Paid/2533.00  ->  Partial/104.00
+        OW-0003 (biz 6): Paid/124.00   ->  Paid/311.00
+
+    The first invented a ₹2,429 debt against a customer who may well have paid.
+    The second recorded a ₹187 overpayment on a ₹124 invoice.
+
+    The error was assuming the ledger is COMPLETE. In a system we have just
+    proved was silently dropping rows across sync, the absence of a payment row
+    is not evidence that no payment happened. And the M-7 bug only ever
+    manifested as UNDER-reporting — "history shows the payment, invoice says
+    Pending". It never inflated a paid figure. So the repair only needs to move
+    in one direction, and moving in the other is pure risk.
+
+    Rules, by case:
+
+    ``ledger > recorded`` and ``ledger <= total``
+        RAISE. There are payment rows evidencing money that the invoice does not
+        reflect. This is the M-7 bug and the only case that is written.
+
+    ``ledger > total``
+        REPORT ONLY. Almost always a payment row attached to the wrong invoice.
+        Writing it would invent a customer credit — as wrong as inventing a debt.
+
+    ``ledger < recorded``
+        REPORT ONLY. Either payment rows have not synced down yet, or the
+        recorded figure is inflated. We cannot tell from here, and guessing
+        wrong means chasing a customer for money they already paid.
+
+    Both anomaly classes are printed at ERROR with the numbers so a human can
+    settle them against the actual receipts. Refusing to guess and saying so is
+    the correct behaviour for money.
+
+    OTHER SAFETY
+    ------------
+    · Only touches invoices that HAVE payment rows. Legacy invoices marked paid
+      with no ledger rows are left exactly as they are.
+    · Only writes rows that actually disagree, so it is a no-op from the second
+      boot onwards and never churns ``updated_at`` into a sync loop.
+    · Reports what it changed at WARNING with the invoice numbers. A silent
+      repair of money data is not a repair, it is a second mystery.
+    """
+    try:
+        rows = conn.execute(text(
+            """
+            SELECT i.id,
+                   i.business_id,
+                   i.invoice_id,
+                   COALESCE(i.total_amount, i.amount, 0)  AS grand,
+                   COALESCE(i.paid_amount, 0)             AS stored_paid,
+                   i.status                               AS stored_status,
+                   COALESCE(SUM(p.amount_paid), 0)        AS ledger_paid
+              FROM invoices i
+              JOIN invoice_payments p
+                ON p.invoice_id = i.id
+               AND p.business_id = i.business_id
+             GROUP BY i.id, i.business_id, i.invoice_id,
+                      i.total_amount, i.amount, i.paid_amount, i.status
+            """
+        )).fetchall()
+    except Exception as e:
+        # Table may not exist yet on a brand-new DB — nothing to repair.
+        logger.info("[Migration] paid-state repair skipped: %s", e)
+        return
+
+    def _status_for(paid: float, total: float) -> str:
+        if total > 0 and paid >= total:
+            return "Paid"
+        return "Partial" if paid > 0 else "Pending"
+
+    fixed, over_ledger, under_ledger = [], [], []
+    for r in rows:
+        inv_id, biz, number, grand, stored_paid, stored_status, ledger_paid = r
+        ledger = round(float(ledger_paid or 0.0), 2)
+        recorded = round(float(stored_paid or 0.0), 2)
+        grand = round(float(grand or 0.0), 2)
+        label = f"{number or inv_id}(biz {biz})"
+
+        # ── Anomalies: report, never write. See the docstring. ──────────────
+        if ledger > grand + 0.01:
+            over_ledger.append(
+                f"{label}: total {grand}, but payment rows sum to {ledger} "
+                f"(recorded {recorded}) — a receipt is probably attached to the "
+                f"wrong invoice")
+            continue
+        if ledger < recorded - 0.01:
+            under_ledger.append(
+                f"{label}: recorded paid {recorded}, but payment rows sum to only "
+                f"{ledger} — either receipts have not synced down or the recorded "
+                f"figure is wrong. NOT changed.")
+            continue
+
+        # ── The M-7 case: ledger evidences money the invoice doesn't show ───
+        if ledger > recorded + 0.01:
+            status = _status_for(ledger, grand)
+            try:
+                conn.execute(
+                    text("UPDATE invoices SET paid_amount = :p, status = :s WHERE id = :i"),
+                    {"p": ledger, "s": status, "i": inv_id})
+                fixed.append(f"{label}: {stored_status}/{recorded} -> {status}/{ledger}")
+            except Exception as e:
+                logger.error("[Migration] paid-state repair FAILED for invoice %s: %s",
+                             inv_id, e)
+            continue
+
+        # ── Amounts agree; only the status label is stale ───────────────────
+        status = _status_for(recorded, grand)
+        if stored_status != status:
+            try:
+                conn.execute(text("UPDATE invoices SET status = :s WHERE id = :i"),
+                             {"s": status, "i": inv_id})
+                fixed.append(f"{label}: status {stored_status} -> {status} "
+                             f"(amount {recorded} unchanged)")
+            except Exception as e:
+                logger.error("[Migration] status repair FAILED for invoice %s: %s",
+                             inv_id, e)
+
+    if fixed:
+        conn.commit()
+        logger.warning(
+            "[Migration] M-7 repair: raised paid state on %s invoice(s) whose "
+            "payment rows evidenced money the invoice did not show: %s",
+            len(fixed), "; ".join(fixed[:25]) + (" …" if len(fixed) > 25 else ""),
+        )
+    for bucket, headline in (
+        (under_ledger, "invoice(s) record MORE paid than their payment rows show"),
+        (over_ledger, "invoice(s) have payment rows exceeding the invoice total"),
+    ):
+        if bucket:
+            logger.error(
+                "[Migration] M-7 anomaly — %s %s. NOT auto-corrected: guessing "
+                "wrong here either invents a debt or invents a credit. Settle "
+                "these against the actual receipts: %s",
+                len(bucket), headline,
+                "; ".join(bucket[:25]) + (" …" if len(bucket) > 25 else ""),
+            )
+
+
+def _backfill_b2b_connection_consent(conn):
+    """Jul-2026 consent hardening (review findings F-1/F-2).
+
+    Connections created under the old auto-accept behaviour are LEFT ACCEPTED —
+    back-dating them to 'pending' would silently sever live supplier
+    relationships and strand in-flight orders. They only need `responded_at`
+    stamped so the UI classifies them as settled rather than parking them in the
+    "awaiting your approval" inbox forever.
+
+    Also creates the status index the Approved/Pending/Sent tabs filter on.
+    Idempotent — only touches NULLs, and the index create is guarded."""
+    try:
+        conn.execute(text(
+            "UPDATE b2b_connections "
+            "SET responded_at = COALESCE(responded_at, updated_at, created_at) "
+            "WHERE status = 'accepted' AND responded_at IS NULL"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_b2b_connections_status "
+            "ON b2b_connections (status)"
+        ))
+        conn.commit()
+    except Exception as e:
+        # A fresh DB may not have the table yet on the very first boot; the ORM
+        # create_all above normally handles that, so this is only defensive.
+        logger.warning(f"[Migration] Backfill b2b connection consent: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -544,6 +922,22 @@ def run_migrations_and_seed():
         _backfill_null_uids(conn)
         _ensure_uid_unique_indexes(conn)  # dedup once + create partial unique index (no-op after first boot)
         _backfill_staff_login_name(conn)
+        _backfill_b2b_connection_consent(conn)
+        # M-7: re-derive any invoice whose paid state drifted from its ledger
+        # (pull-side reconciliation was missing until Jul-2026).
+        _repair_invoice_paid_state(conn)
+        # M-3: DB-level backstop for the invoice-number allocator.
+        _ensure_invoice_number_unique_index(conn)
+        # M-11: one OPEN shift per operator. Keyed on user_id, which sync can
+        # populate wrongly — so it needs a DB guard, not just the service check.
+        _ensure_single_open_shift_index(conn)
+        # N4: the remaining money invariants, pushed down to the DB so paths that
+        # bypass the command layer (imports, sync applies, repair scripts) cannot
+        # write a row the books cannot represent. Runs AFTER the backfills above,
+        # because a guard installed before its column exists would be skipped and
+        # then have to wait a whole boot cycle. Never raises; it reports which
+        # rules it could not install and why.
+        _ensure_money_invariants(conn)
         _migrate_session_nulls(conn)
         _resync_postgres_sequences(conn)
 

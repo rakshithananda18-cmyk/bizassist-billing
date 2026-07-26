@@ -21,6 +21,8 @@ import IntakePurchasePanel from '../components/stock/IntakePurchasePanel'
 import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import ContextMenu from '../components/common/ContextMenu'
 import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
+import { useResizableColumns } from '../hooks/useResizableColumns'
+import ColumnResizer from '../components/common/ColumnResizer'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -83,8 +85,31 @@ function getStatus(product) {
   return 'In Stock'
 }
 
+// ── In-stock (catalogue) grid column model ───────────────────────────────────
+// Declared once so the header row, the resize hook and the body's colSpan all
+// read from a single source of truth. `width` is the *default* only — once the
+// owner drags a column, the persisted width wins (see useResizableColumns).
+const INV_COLUMNS = [
+  { key: 'code',     label: 'Code',     align: 'left' },
+  { key: 'name',     label: 'Name',     align: 'left' },
+  { key: 'hsn',      label: 'HSN' },
+  { key: 'stock',    label: 'Stock',    align: 'right' },
+  { key: 'unit',     label: 'Unit' },
+  { key: 'mrp',      label: 'MRP ₹',    align: 'right' },
+  { key: 'cost',     label: 'Cost ₹',   align: 'right' },
+  { key: 'sell',     label: 'Sell ₹',   align: 'right' },
+  { key: 'tax',      label: 'Tax%',     align: 'right', title: 'Total GST rate' },
+  { key: 'disc',     label: 'Disc%',    align: 'right', title: 'Discount off MRP' },
+  { key: 'roi',      label: 'ROI%',     align: 'right', title: 'Return on cost = (Sell−Cost)/Cost' },
+  { key: 'profit',   label: 'Profit%',  align: 'right', title: 'Margin on selling = (Sell−Cost)/Sell' },
+  { key: 'netcost',  label: 'NetCost',  align: 'right', title: 'Landed cost incl. GST' },
+  { key: 'netmrp',   label: 'NetMRP',   align: 'right', title: 'MRP net of GST (taxable value)' },
+  { key: 'status',   label: 'Status' },
+  { key: 'actions',  label: 'Actions',  width: 88 },
+]
+
 export default function Stock({ embedded = false, headerTabs = null }) {
-  const { authFetch, settings } = useAuth()
+  const { authFetch, settings, user } = useAuth()
   const { attributesSchema } = useBusinessConfig()
   const settingsRef = useRef(settings)
   useEffect(() => {
@@ -99,6 +124,13 @@ export default function Stock({ embedded = false, headerTabs = null }) {
   const [catFilter, setCatFilter]           = useState('')
   const [activeTab, setActiveTab]           = useState('catalogue') // 'catalogue' | 'intake' | 'godowns'
   const [isFullScreen, setIsFullScreen] = useState(false)
+
+  // Drag-resizable, per-user persisted widths for the in-stock grid.
+  const invCols = useResizableColumns({
+    tableId: 'stock.catalogue',
+    userId: user?.id,
+    columns: INV_COLUMNS.map(c => c.key),
+  })
   const [showAddModal, setShowAddModal]     = useState(false)
   const [showLabelModal, setShowLabelModal] = useState(false)
   const [showScanModal, setShowScanModal]   = useState(false)
@@ -809,6 +841,26 @@ export default function Stock({ embedded = false, headerTabs = null }) {
                       <span className="spin" /> Refreshing…
                     </span>
                   )}
+                  {/* Column-width controls. Widths are also drag-adjustable
+                      straight from the header edges; these are the discoverable
+                      equivalents plus the reset the drag can't offer. */}
+                  <button
+                    type="button"
+                    className="col-layout-btn"
+                    onClick={() => invCols.autoFitAll()}
+                    title="Size every column to fit its widest value"
+                  >
+                    Fit columns
+                  </button>
+                  <button
+                    type="button"
+                    className="col-layout-btn"
+                    onClick={() => invCols.resetWidths()}
+                    disabled={!invCols.isCustomized}
+                    title={invCols.isCustomized ? 'Restore the default column widths' : 'Column widths are already at their defaults'}
+                  >
+                    Reset widths
+                  </button>
                   <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>
                     {filtered.length} of {products.length} products
                   </span>
@@ -829,24 +881,20 @@ export default function Stock({ embedded = false, headerTabs = null }) {
                   {loading ? (
                     <div className="page-loader"><span className="spinner" /> Loading…</div>
                   ) : (
-                    <table className="data-table inv-dense">
+                    <table ref={invCols.tableRef} className={`data-table inv-dense ${invCols.tableClassName}`.trim()}>
                       <thead><tr>
-                        <th style={{ textAlign: 'left' }}>Code</th>
-                        <th style={{ textAlign: 'left' }}>Name</th>
-                        <th>HSN</th>
-                        <th style={{ textAlign: 'right' }}>Stock</th>
-                        <th>Unit</th>
-                        <th style={{ textAlign: 'right' }}>MRP ₹</th>
-                        <th style={{ textAlign: 'right' }}>Cost ₹</th>
-                        <th style={{ textAlign: 'right' }}>Sell ₹</th>
-                        <th style={{ textAlign: 'right' }} title="Total GST rate">Tax%</th>
-                        <th style={{ textAlign: 'right' }} title="Discount off MRP">Disc%</th>
-                        <th style={{ textAlign: 'right' }} title="Return on cost = (Sell−Cost)/Cost">ROI%</th>
-                        <th style={{ textAlign: 'right' }} title="Margin on selling = (Sell−Cost)/Sell">Profit%</th>
-                        <th style={{ textAlign: 'right' }} title="Landed cost incl. GST">NetCost</th>
-                        <th style={{ textAlign: 'right' }} title="MRP net of GST (taxable value)">NetMRP</th>
-                        <th>Status</th>
-                        <th style={{ width: 88 }}>Actions</th>
+                        {INV_COLUMNS.map(c => (
+                          <th
+                            key={c.key}
+                            {...invCols.headerProps(c.key, {
+                              style: { textAlign: c.align || 'center', ...(c.width && !invCols.widths[c.key] ? { width: c.width } : {}) },
+                              title: c.title,
+                            })}
+                          >
+                            {c.label}
+                            <ColumnResizer {...invCols.resizerProps(c.key)} />
+                          </th>
+                        ))}
                       </tr></thead>
                       <tbody>
                         {filtered.length === 0 ? (

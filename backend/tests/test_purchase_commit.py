@@ -14,8 +14,9 @@ import pytest
 from fastapi.testclient import TestClient
 from main_groq import app
 from database.db import SessionLocal
-from database.models import Base, Product, Customer, Vendor, PurchaseInvoice, PurchaseInvoiceLineItem, User, Inventory
-from core.models import StockLedger, ProductBarcode
+from database.models import (Base, Product, Customer, Vendor, Invoice, InvoiceLineItem,
+                             PurchaseInvoice, PurchaseInvoiceLineItem, User, Inventory)
+from core.models import StockLedger, ProductBarcode, InvoicePayment
 from core.stock import ledger as SL
 
 client = TestClient(app)
@@ -76,8 +77,15 @@ def api_auth():
 def _setup(api_auth):
     db = SessionLocal()
     try:
+        # Everything that FKs to `products` or `invoices` must go first. SQLite
+        # ignored foreign keys until N4 turned enforcement on to match the
+        # Postgres cloud; this teardown used to orphan invoice line items
+        # (written by sibling test modules sharing the DB) rather than fail.
         db.query(PurchaseInvoiceLineItem).delete()
         db.query(PurchaseInvoice).delete()
+        db.query(InvoiceLineItem).delete()
+        db.query(InvoicePayment).delete()
+        db.query(Invoice).delete()
         db.query(StockLedger).delete()
         db.query(ProductBarcode).delete()
         db.query(Inventory).delete()

@@ -24,8 +24,7 @@ import Money     from './pages/Money'
 import Godown    from './pages/Godown'
 import Reports   from './pages/Reports'
 import Import    from './pages/Import'
-import B2BNetwork from './pages/B2BNetwork'
-import B2BOrders      from './pages/B2BOrders'
+import B2B       from './pages/B2B'
 import Profile     from './pages/Profile'
 import Settings    from './pages/Settings'
 import POSLiveCounter from './pages/POSLiveCounter'
@@ -64,8 +63,12 @@ function AppRoutes() {
       <Route path="/stock/:tab"   element={<ProtectedRoute><Godown /></ProtectedRoute>} />
       <Route path="/reports"  element={<ProtectedRoute><Reports   /></ProtectedRoute>} />
       <Route path="/import"   element={<ProtectedRoute><Import    /></ProtectedRoute>} />
-      <Route path="/b2b-network" element={<ProtectedRoute><B2BNetwork /></ProtectedRoute>} />
-      <Route path="/b2b-orders"      element={<ProtectedRoute><B2BOrders      /></ProtectedRoute>} />
+      {/* Unified B2B workspace (Order · Outgoing · Incoming · Connections).
+          The two legacy routes redirect into the matching tab so existing
+          bookmarks, nav links and help deep-links keep working. */}
+      <Route path="/b2b"         element={<ProtectedRoute><B2B /></ProtectedRoute>} />
+      <Route path="/b2b-network" element={<Navigate to="/b2b?tab=connections" replace />} />
+      <Route path="/b2b-orders"  element={<Navigate to="/b2b?tab=outgoing" replace />} />
       <Route path="/profile"     element={<ProtectedRoute><Profile     /></ProtectedRoute>} />
       <Route path="/settings"    element={<ProtectedRoute><Settings    /></ProtectedRoute>} />
       <Route path="/support"     element={<ProtectedRoute><Support     /></ProtectedRoute>} />

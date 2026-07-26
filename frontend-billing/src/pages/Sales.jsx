@@ -43,6 +43,7 @@ import { syncManager } from '../sync/syncManager'
 import { pendingInvoiceRows } from '../sync/pendingInvoices'
 // POS logic split out of this monolith (MASTER_REVIEW §2.5) — pure + tested.
 import { colLabels, DEFAULT_COLUMN_ORDER, normalizeColumnOrder, moveColumn, getStickyLeftOffsets, NON_COLLAPSIBLE } from '../lib/posColumns'
+import { useResizableColumns } from '../hooks/useResizableColumns'
 import ContextMenu from '../components/common/ContextMenu'
 import { DEFAULT_FUNC_KEYS as defaultFuncKeys, loadFuncKeys, matchesKey } from '../lib/posKeys'
 import { getPriceOptions as buildPriceOptions, withQty as withQtyFor } from '../lib/priceOptions'
@@ -222,6 +223,16 @@ export default function Sales(props = {}) {
     setColumnOrder(nextOrder)
     localStorage.setItem('pos_column_order', JSON.stringify(nextOrder))
   }
+
+  // ── Column WIDTHS (order lives above; widths are a separate concern) ───────
+  // Drag any header's right edge to resize; double-click the grip to fit the
+  // column to its widest cell. Persisted per user + per table so two cashiers
+  // sharing a counter PC each keep their own layout.
+  const cartCols = useResizableColumns({
+    tableId: 'pos.cart',
+    userId: user?.id,
+    columns: columnOrder,
+  })
 
   // ============================================================================
   // ── 6. BATCHES & PRICE SELECTOR RESOLVERS ──
@@ -2117,6 +2128,13 @@ export default function Sales(props = {}) {
         try { localStorage.removeItem('pos_collapsed_columns') } catch { /* ignore */ }
       } })
     }
+    // ── Width controls (drag the header edge, or use these) ──
+    items.push({ divider: true })
+    items.push({ label: `Fit "${colLabels[col] || col}" to content`, action: () => cartCols.autoFit(col) })
+    items.push({ label: 'Fit all columns to content', action: () => cartCols.autoFitAll() })
+    if (cartCols.isCustomized) {
+      items.push({ label: 'Reset column widths', action: () => cartCols.resetWidths() })
+    }
     items.push({ divider: true })
     items.push({ label: 'Column settings…', action: () => { setSettingsInitialTab('columns'); setShowSettingsModal(true) } })
     setHeaderCtxMenu({ x: e.clientX, y: e.clientY, items })
@@ -2321,7 +2339,11 @@ export default function Sales(props = {}) {
             {/* Cart Table list container */}
             <div className="pos-cart-wrapper" style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
               <div ref={tableContainerRef} className="pos-cart-container" style={{ flex: 1, overflow: 'auto' }}>
-                <table className="pos-cart-table" style={{ pointerEvents: (isLiveView && editState !== 'granted') ? 'none' : 'auto' }}>
+                <table
+                  ref={cartCols.tableRef}
+                  className={`pos-cart-table ${cartCols.tableClassName}`.trim()}
+                  style={{ pointerEvents: (isLiveView && editState !== 'granted') ? 'none' : 'auto' }}
+                >
                   <CartTableHeader
                     columnOrder={columnOrder}
                     colVisible={colVisible}
@@ -2332,6 +2354,7 @@ export default function Sales(props = {}) {
                     collapsedCols={collapsedCols}
                     onExpandColumn={(col) => setColumnCollapsed(col, false)}
                     onHeaderContextMenu={handleHeaderContextMenu}
+                    cols={cartCols}
                   />
                   <tbody>
                     {form.items.length === 0 ? (

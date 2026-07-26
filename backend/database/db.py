@@ -45,12 +45,32 @@ if _IN_TEST and "test" not in DATABASE_URL.lower():
     )
 
 if DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(
-        DATABASE_URL,
-        connect_args={
-            "check_same_thread": False
-        }
-    )
+    # In test mode use NullPool: every get_db() call gets a brand-new connection.
+    # With the default QueuePool, a connection recycled from the pool can carry a
+    # SQLite read-transaction snapshot that was opened *before* a concurrent write
+    # committed (e.g. the connection code row written by POST /connections/code is
+    # invisible to the pooled connection used by POST /connections/redeem in the
+    # next request). This causes "Invalid connection code" (400) failures in
+    # pytest-xdist parallel runs where multiple module-scoped setup_and_dispose_db
+    # fixtures race. NullPool makes every request start with a clean connection and
+    # an up-to-date view of the file — eliminating this class of test flakiness.
+    # Production SQLite (non-test) uses the default pool for performance.
+    # `timeout` is the DBAPI-level lock wait (seconds). Python's sqlite3 default
+    # is 5s, and SQLAlchemy does not raise it — but the real problem is that a
+    # writer which cannot get the lock raises "database is locked" IMMEDIATELY
+    # unless a busy handler is installed, which is what `timeout` /
+    # `PRAGMA busy_timeout` does. This backend has several concurrent writers on
+    # one SQLite file (the request thread, the sync worker, the scheduler, the
+    # immediate-sync force push), so lock contention is normal operation, not an
+    # exceptional condition. Symptom when it is unhandled: signup returns
+    # "Internal server signup error" (a 500) because `db.commit()` raised
+    # OperationalError — an owner cannot create their account because a
+    # background thread happened to be mid-write.
+    _sqlite_kwargs = {"connect_args": {"check_same_thread": False, "timeout": 30.0}}
+    if _IN_TEST:
+        from sqlalchemy.pool import NullPool
+        _sqlite_kwargs["poolclass"] = NullPool
+    engine = create_engine(DATABASE_URL, **_sqlite_kwargs)
 else:
     engine = create_engine(
         DATABASE_URL,
@@ -59,6 +79,55 @@ else:
         pool_recycle=1800,
         pool_pre_ping=True
     )
+
+# ── SQLite: enforce the foreign keys we declare (review finding N4) ─────────
+# SQLite ships with `PRAGMA foreign_keys = OFF` and the setting is PER
+# CONNECTION, not per database — so every `ForeignKey(...)` and every
+# `ondelete="CASCADE"` in database/models.py and core/models.py was DECLARED but
+# never enforced on a local install. Verified, not assumed: a fresh connection
+# reported `PRAGMA foreign_keys = 0`.
+#
+# That is a cross-dialect divergence in the money layer, which is the specific
+# risk the review flagged as "SQLite's weak typing can let bad data into cloud".
+# The cloud is Postgres, where the same constraints ARE enforced, so the two
+# halves of a hybrid install disagreed about what a legal row is:
+#
+#   · deleting an invoice locally left its line items, its payment rows and its
+#     journal source reference orphaned instead of cascading;
+#   · a child row could be written pointing at a parent id that does not exist,
+#     and it would push to the cloud and be rejected there — a row that syncs
+#     forever and never lands.
+#
+# Turned on for every connection via the DBAPI-level `connect` event, which is
+# the only hook that runs before the connection is handed to a session. Scoped to
+# sqlite3 connections so the Postgres path is untouched.
+if DATABASE_URL.startswith("sqlite"):
+    from sqlalchemy import event as _sa_event
+
+    @_sa_event.listens_for(engine, "connect")
+    def _sqlite_connection_pragmas(dbapi_connection, _connection_record):
+        cur = dbapi_connection.cursor()
+        try:
+            cur.execute("PRAGMA foreign_keys=ON")
+            # Belt to the `timeout` connect_arg above. Both set the same busy
+            # handler, but the pragma is per connection and survives a driver
+            # that ignores or resets the constructor argument — and it makes the
+            # intent visible next to the FK pragma, where the next person
+            # debugging "database is locked" will look.
+            cur.execute("PRAGMA busy_timeout=30000")
+        finally:
+            cur.close()
+
+    # NOT enabled here, deliberately: `PRAGMA journal_mode=WAL`.
+    # WAL would reduce lock contention further (one writer concurrent with many
+    # readers) and the test conftest already knows how to clean up `-wal`/`-shm`
+    # sidecars. It is left off because it changes the on-disk representation into
+    # THREE files, and this product's backup/restore and local→cloud transfer
+    # paths copy the `.db` file. A copy taken without its WAL is a copy missing
+    # the most recent committed transactions — silently. Turning WAL on is a
+    # reasonable next step, but only together with an audit of every path that
+    # copies the database file, and that is a bigger change than the lock fix.
+
 
 SessionLocal = sessionmaker(
     autocommit=False,

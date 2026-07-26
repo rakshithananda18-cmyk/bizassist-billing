@@ -24,6 +24,10 @@ from sqlalchemy.exc import IntegrityError
 
 from database.db import get_db, sync_disabled_var
 from services.auth import get_active_user, require_plan
+# (M-10) Shared with the push path so the pull payload carries the SAME parent
+# uid enrichment. A bare column dump leaves the receiver with raw source-database
+# foreign keys and nothing to resolve them against — see the call site.
+from database.models import _serialize_orm_obj
 from database.models import (
     Base, User, Customer, Vendor, Product, Invoice, InvoiceLineItem,
     Inventory, LegacyPayment, ConflictLog, SyncLog, SyncQueue,
@@ -40,9 +44,14 @@ logger = logging.getLogger("bizassist.routes.sync")
 from database.sync_map import (
     MODEL_MAP as _MODEL_MAP,
     ENTITY_BROADCAST_MAP,
+    TWO_SIDED_OWNER_COLUMNS,
     resolve_parent_fk_uids,
     _USER_FK_REPOINT_ENTITIES,
 )
+# (M-7) Post-apply invariants are SHARED with services/sync_worker.py's pull
+# path. They used to be private functions in this module, which is exactly why
+# the pull direction silently never ran them — see core/sync/apply_hooks.py.
+from core.sync import apply_hooks as _apply_hooks
 
 
 APPEND_ONLY_DELETE_BLOCKLIST = frozenset({
@@ -59,6 +68,11 @@ APPEND_ONLY_DELETE_BLOCKLIST = frozenset({
     # Stock/accounting ledgers are historical truth, not mutable state.
     "stock_ledger",
     "b2b_ledgers",
+    # The lock/unlock history is the evidence that the books were closed. A
+    # sync-borne DELETE here would erase a close event and silently re-open a
+    # locked period on the destination — the books must be re-opened by an
+    # explicit unlock EVENT (a new row), never by deleting the lock. (M-2)
+    "period_locks",
 })
 
 
@@ -69,74 +83,27 @@ APPEND_ONLY_DELETE_BLOCKLIST = frozenset({
 # behaviour where the "local won" branch clobbered the cloud row with no trace
 # (the silent-lost-edit failure mode, review P0). Resolution behaviour is
 # UNCHANGED (LWW still lands the data); we only remove the silence.
-FINANCIAL_ENTITIES = frozenset({
-    "invoices",
-    "invoice_line_items",
-    "payments",
-    "invoice_payments",
-    "purchase_invoices",
-    "purchase_invoice_line_items",
-    "purchase_orders",
-    "purchase_order_line_items",
-    "expenses",
-    "stock_ledger",
-    "b2b_ledgers",
-})
+# (M-8) MOVED to core/sync/apply_hooks.py so the pull direction shares it.
+# Re-exported for any existing importer; do not fork a second copy here.
+FINANCIAL_ENTITIES = _apply_hooks.FINANCIAL_ENTITIES
 
 
+# ── Paid-state reconciliation: MOVED to core/sync/apply_hooks.py (M-7) ──────
+#
+# These were private functions here, so `services/sync_worker.py` could not
+# reach them and the pull direction silently never reconciled — an invoice
+# pulled cloud→local kept whatever status was serialised on the cloud, showing
+# "Pending" while its payment history showed the money. Re-exported under their
+# original names so any existing caller/test keeps working; NEW code should call
+# `apply_hooks.run_post_apply`, which runs every invariant rather than this one.
+#
+# Do not reintroduce a local copy. That duplication IS the bug.
 def _reconcile_invoice_paid_state(db, inv) -> None:
-    """Re-derive Invoice.paid_amount + status from the append-only invoice_payments
-    ledger — the source of truth.
-
-    Invoice.paid_amount/status are a PROJECTION of the payment rows. A stale
-    device must never be able to push paid_amount=0 / status=Pending and "un-pay"
-    an invoice that was settled elsewhere (the "shows Pending but already paid"
-    bug). So on every invoice/payment sync the server recomputes these from its
-    OWN payment rows and ignores whatever the client sent.
-
-    Only overrides when the invoice actually has ledger rows, so legacy paid
-    invoices with no invoice_payments (older data) are left untouched. Bumps
-    updated_at only on a real change, so the correction propagates on the next
-    pull without creating a sync loop.
-    """
-    if inv is None or getattr(inv, "id", None) is None:
-        return
-    from core.models import InvoicePayment
-    total_paid, n = (
-        db.query(func.coalesce(func.sum(InvoicePayment.amount_paid), 0.0),
-                 func.count(InvoicePayment.id))
-        .filter(InvoicePayment.business_id == inv.business_id,
-                InvoicePayment.invoice_id == inv.id)
-        .one()
-    )
-    if not n:
-        return  # no ledger rows → don't touch (legacy / payment not yet synced)
-    total_paid = round(total_paid or 0.0, 2)
-    grand = round((inv.total_amount or getattr(inv, "amount", 0.0) or 0.0), 2)
-    if grand > 0 and total_paid >= grand:
-        new_status = "Paid"
-    elif total_paid > 0:
-        new_status = "Partial"
-    else:
-        new_status = "Pending"
-    if round(inv.paid_amount or 0.0, 2) != total_paid or inv.status != new_status:
-        inv.paid_amount = total_paid
-        inv.status = new_status
-        if hasattr(inv, "updated_at"):
-            inv.updated_at = utc_now()
+    _apply_hooks.reconcile_invoice_paid_state(db, inv)
 
 
 def _reconcile_parent_invoice_of_payment(db, pay) -> None:
-    """When an invoice_payment syncs, re-derive its parent invoice's paid state."""
-    inv_id = getattr(pay, "invoice_id", None)
-    if not inv_id:
-        return
-    inv = (
-        db.query(Invoice)
-        .filter(Invoice.id == inv_id, Invoice.business_id == pay.business_id)
-        .first()
-    )
-    _reconcile_invoice_paid_state(db, inv)
+    _apply_hooks.reconcile_parent_invoice_of_payment(db, pay)
 
 
 # ---------------------------------------------------------------------------
@@ -160,15 +127,12 @@ class PushPayload(BaseModel):
 # ---------------------------------------------------------------------------
 
 def _row_to_dict(row) -> dict:
-    """Serialize a row/ORM object to plain dict, stripping internal SA state."""
-    if hasattr(row, "__dict__"):
-        d = {k: v for k, v in row.__dict__.items() if k != "_sa_instance_state"}
-    else:
-        d = dict(row._mapping)
-    for k, v in list(d.items()):
-        if isinstance(v, datetime):
-            d[k] = v.isoformat()
-    return d
+    """Serialize a row/ORM object to plain dict, stripping internal SA state.
+
+    Delegates to the shared implementation (M-8) — a second copy here is how the
+    conflict predicate drifted out of the pull path in the first place.
+    """
+    return _apply_hooks.row_to_dict(row)
 
 
 def _safe_json_load(s: Any):
@@ -185,33 +149,18 @@ def _safe_json_load(s: Any):
 
 
 def _payloads_differ(incoming: dict, existing: dict) -> bool:
-    """True when the incoming push carries a MEANINGFUL change vs the current
-    row — compared only on the keys the push actually sends, and ignoring
-    bookkeeping columns that always differ (timestamps, sync cursors) so we
-    don't flag a no-op re-sync as a conflict. Values compared as strings so
-    123 == "123" across the SQLite↔Postgres boundary."""
-    ignore = {"updated_at", "created_at", "synced_at", "last_synced_at",
-              "sync_status", "id", "_sa_instance_state"}
-    for k, v in incoming.items():
-        if k in ignore:
-            continue
-        if k not in existing:
-            continue
-        if str(existing.get(k)) != str(v):
-            return True
-    return False
+    """True when the incoming push carries a MEANINGFUL change vs the current row.
+
+    Delegates to the shared implementation (M-8) — see `_row_to_dict` above.
+    """
+    return _apply_hooks.payloads_differ(incoming, existing)
 
 
 def _parse_dt(dt_str: Any) -> Optional[datetime]:
-    if not dt_str:
-        return None
-    if isinstance(dt_str, datetime):
-        return dt_str
-    try:
-        clean_str = str(dt_str).replace("Z", "+00:00")
-        return datetime.fromisoformat(clean_str)
-    except Exception:
-        return None
+    """Delegates to the shared parser (M-5): an unparseable NON-empty timestamp
+    is a real data defect that used to vanish silently here, stopping the row
+    from ever syncing. Behaviour is unchanged; the silence is not."""
+    return _apply_hooks.parse_dt(dt_str)
 
 
 def _resolve_business_id_by_username(user: dict, db: Session) -> int:
@@ -365,6 +314,11 @@ def push_changes(
     token = sync_disabled_var.set(True)
     processed_count = 0
     entities_to_broadcast = set()
+    # Post-apply invariants that failed (M-2 / M-7). Collected rather than raised
+    # so one bad row can't stall the outbox — but reported in the response and
+    # logged at ERROR, never swallowed.
+    apply_failures = []
+    rejected = []          # M-13: rows the cloud REFUSED to store
 
     entity_map = ENTITY_BROADCAST_MAP
 
@@ -464,30 +418,26 @@ def push_changes(
                 # (P0) Local-wins on a FINANCIAL row = the previously-SILENT
                 # overwrite. Data still lands (LWW below), but a financial record
                 # being edited on two devices is something the owner must see, so
-                # log a review_needed conflict capturing the cloud version BEFORE
-                # we clobber it. Guarded to a genuine change (differing timestamp
-                # and differing content) so normal edit→sync propagation of an
-                # unchanged row doesn't spam the review list.
-                if (change.entity in FINANCIAL_ENTITIES
-                        and cloud_updated_at and local_updated_at > cloud_updated_at):
-                    cloud_snapshot = _row_to_dict(existing)
-                    if _payloads_differ(data, cloud_snapshot):
-                        db.add(ConflictLog(
-                            business_id=business_id,
-                            entity=change.entity,
-                            entity_id=change.entity_id,
-                            local_updated_at=local_updated_at,
-                            cloud_updated_at=cloud_updated_at,
-                            local_payload=json.dumps(data, default=str),
-                            cloud_payload=json.dumps(cloud_snapshot, default=str),
-                            resolved_at=None,               # unreviewed
-                            resolution="review_needed",
-                        ))
-                        logger.warning(
-                            "sync/push: financial overwrite flagged for review — %s.id=%s "
-                            "(local %s > cloud %s)",
-                            change.entity, change.entity_id, local_updated_at, cloud_updated_at,
-                        )
+                # a review_needed conflict capturing the cloud version is written
+                # BEFORE we clobber it. Guarded to a genuine change (differing
+                # timestamp AND differing content) so normal edit→sync
+                # propagation of an unchanged row doesn't spam the review list.
+                #
+                # (M-8) The predicate and the write now live in the SHARED hooks
+                # module. They used to be inline here, which is exactly why an
+                # overwrite arriving by PULL was never flagged — the same
+                # one-directional blind spot as M-7. Do not re-inline this.
+                _apply_hooks.log_financial_conflict(
+                    db,
+                    business_id=business_id,
+                    entity=change.entity,
+                    entity_id=change.entity_id,
+                    incoming=data,
+                    existing_row=existing,
+                    incoming_updated_at=local_updated_at,
+                    existing_updated_at=cloud_updated_at,
+                    log_prefix="sync/push",
+                )
 
             # Resolve FKs via the parent's durable uid (shared helper — same logic
             # as the pull-apply worker). If a parent_uid is present but the parent
@@ -522,12 +472,18 @@ def push_changes(
                     db.flush()
                     # Payment state is server-authoritative: re-derive it from the
                     # payment ledger so a stale client can't un-pay a settled invoice.
-                    if change.entity == "invoices":
-                        _reconcile_invoice_paid_state(db, target_obj)
-                        db.flush()
-                    elif change.entity == "invoice_payments":
-                        _reconcile_parent_invoice_of_payment(db, target_obj)
-                        db.flush()
+                    # Every post-apply invariant, from the SHARED module both
+                    # sync directions use (M-7). Payment state is
+                    # server-authoritative (re-derived from this database's own
+                    # ledger, so a stale client can't un-pay a settled invoice)
+                    # and the journal is re-derived here (M-2). Adding a hook to
+                    # apply_hooks enforces it in both directions at once — which
+                    # is the whole point, since the paid-state reconcile used to
+                    # live in this file and therefore ran on push only.
+                    _hook = _apply_hooks.run_post_apply(
+                        db, change.entity, target_obj, log_prefix="sync/push")
+                    if not _hook.ok:
+                        apply_failures.append(_hook)
                 processed_count += 1
                 ent_name = entity_map.get(change.entity)
                 if ent_name:
@@ -553,22 +509,68 @@ def push_changes(
                                                 val = _parse_dt(val)
                                             setattr(dup, key, val)
                                     db.flush()
-                                    # Re-derive server-authoritative payment state.
-                                    if change.entity == "invoices":
-                                        _reconcile_invoice_paid_state(db, dup)
-                                        db.flush()
-                                    elif change.entity == "invoice_payments":
-                                        _reconcile_parent_invoice_of_payment(db, dup)
-                                        db.flush()
+                                    # Same shared hooks on the dedupe path — an
+                                    # integrity-deduped row is still an applied
+                                    # row, and skipping them here would leave
+                                    # exactly the invoices that raced looking
+                                    # unpaid.
+                                    _dup_hook = _apply_hooks.run_post_apply(
+                                        db, change.entity, dup, log_prefix="sync/push-dedupe")
+                                    if not _dup_hook.ok:
+                                        apply_failures.append(_dup_hook)
                                 deduped = "updated"
                             else:
                                 deduped = "kept-newer-cloud"
                 except Exception as ie2:
+                    deduped = "dedupe-failed"
                     logger.warning("sync/push: dedupe-update failed for %s uid=%s: %s", change.entity, uid_val, ie2)
-                logger.info(
-                    "sync/push: %s.id=%s integrity-deduped by uid (%s): %s",
-                    change.entity, change.entity_id, deduped, getattr(ie, "orig", ie),
-                )
+
+                if deduped in ("updated", "kept-newer-cloud"):
+                    # A genuine uid collision, resolved. The row IS represented in
+                    # the cloud, so acking it is correct and nothing is lost.
+                    logger.info(
+                        "sync/push: %s.id=%s integrity-deduped by uid (%s): %s",
+                        change.entity, change.entity_id, deduped, getattr(ie, "orig", ie),
+                    )
+                else:
+                    # M-13 — the row was REJECTED, not deduplicated.
+                    #
+                    # `deduped == "skipped"` means the IntegrityError was NOT a uid
+                    # collision: no uid on the payload, the model has no uid column,
+                    # or no existing row carries it. So the constraint that fired was
+                    # something else — a foreign key, one of the N4 money CHECKs, or
+                    # the M-11 one-open-shift index — and the incoming row landed
+                    # NOWHERE.
+                    #
+                    # This used to be `logger.info(...)` followed unconditionally by
+                    # `processed_count += 1`, i.e. the row was acked and the device's
+                    # outbox dropped it forever. That silently discards a LOCAL write
+                    # — the shop's own sale — which is the M-12 defect pointing the
+                    # other way, and the N4 constraints make it far more reachable
+                    # than it used to be.
+                    #
+                    # The ack STAYS: refusing it would stall the outbox behind a row
+                    # that can never apply, which is the same poison-row trade the
+                    # per-row SAVEPOINT and `_PULL_MAX_FAILED_STREAK` already make.
+                    # What changes is that acking is no longer silent — the row is
+                    # recorded for review with its full payload, logged at ERROR, and
+                    # returned to the caller in `rejected`, so the device knows its
+                    # write did not survive.
+                    _apply_hooks.log_apply_failure(
+                        db,
+                        business_id=business_id,
+                        entity=change.entity,
+                        entity_id=change.entity_id,
+                        payload=data,
+                        error=ie,
+                        log_prefix="sync/push",
+                    )
+                    rejected.append({
+                        "entity": change.entity,
+                        "row_id": change.entity_id,
+                        "uid": uid_val,
+                        "reason": str(getattr(ie, "orig", ie)).strip().splitlines()[0],
+                    })
                 processed_count += 1  # ack either way so it isn't re-sent every cycle
                 continue
 
@@ -586,7 +588,35 @@ def push_changes(
     finally:
         sync_disabled_var.reset(token)
 
-    return {"status": "success", "applied": processed_count}
+    if apply_failures:
+        # Surfaced, not swallowed: the client sees it, the log records it, and
+        # the books-integrity audit can act on it. The push itself still
+        # succeeded — the documents landed; it is an invariant over them that
+        # didn't hold, and re-pushing the same rows retries the hooks.
+        logger.error("sync/push: %s post-apply invariant(s) FAILED for biz=%s: %s",
+                     len(apply_failures), business_id,
+                     [f"{h.entity}#{h.row_id}: {'; '.join(h.errors)}" for h in apply_failures])
+
+    if rejected:
+        # ERROR, and returned to the caller. An acked row that never stored is
+        # the one failure a client cannot detect for itself (M-13).
+        logger.error(
+            "sync/push: %s row(s) REJECTED by the cloud for biz=%s — acked so the "
+            "outbox drains, recorded for review, and reported to the device. These "
+            "writes are NOT in the cloud: %s",
+            len(rejected), business_id,
+            [f"{r['entity']}#{r['row_id']}: {r['reason']}" for r in rejected],
+        )
+
+    return {
+        "status": "success",
+        "applied": processed_count,
+        "apply_failures": [
+            {"entity": h.entity, "row_id": h.row_id, "errors": h.errors}
+            for h in apply_failures
+        ],
+        "rejected": rejected,
+    }
 
 
 @router.get("/api/sync/pull")
@@ -615,6 +645,25 @@ def pull_changes(
                 query = query.filter((model_cls.id == business_id) | (model_cls.parent_business_id == business_id))
             elif "business_id" in cols:
                 query = query.filter(model_cls.business_id == business_id)
+            elif table_name in TWO_SIDED_OWNER_COLUMNS:
+                # B2B rows belong to BOTH parties, so they are scoped by two
+                # owner columns rather than one `business_id`. Either side may
+                # mirror the row down; RLS on these tables enforces the same
+                # buyer-or-seller predicate server-side.
+                a, b = TWO_SIDED_OWNER_COLUMNS[table_name]
+                query = query.filter(
+                    (getattr(model_cls, a) == business_id) | (getattr(model_cls, b) == business_id)
+                )
+            elif table_name == "b2b_order_line_items":
+                # No owner column at all — scoped through its parent order.
+                query = query.filter(
+                    model_cls.order_id.in_(
+                        db.query(_MODEL_MAP["b2b_orders"].id).filter(
+                            (_MODEL_MAP["b2b_orders"].seller_business_id == business_id)
+                            | (_MODEL_MAP["b2b_orders"].buyer_business_id == business_id)
+                        )
+                    )
+                )
             else:
                 continue
 
@@ -624,7 +673,30 @@ def pull_changes(
 
             rows = query.all()
             if rows:
-                changes[table_name] = [_row_to_dict(r) for r in rows]
+                # (M-10) Enrich with PARENT UIDs, exactly as the push path does
+                # (`database/models.py::_serialize_orm_obj`).
+                #
+                # This used to be a bare `_row_to_dict(r)` — a plain column dump
+                # carrying raw source-database integer foreign keys and no uid at
+                # all. `resolve_parent_fk_uids` on the receiving side therefore
+                # had NOTHING to resolve against and fell through to writing the
+                # source id verbatim, which points at whatever unrelated local row
+                # happens to hold that integer.
+                #
+                # That is the ROOT CAUSE of the mis-attached payments found in
+                # production on 26 Jul 2026: two receipts landed on the wrong
+                # customers' invoices (M-9). The push direction was never affected
+                # because it has always enriched; only pull was blind.
+                #
+                # It is also what made the M-9 guard bite: with no uid in the
+                # payload, a NOT NULL child FK (invoice_line_items.invoice_id,
+                # invoice_payments.invoice_id) can never be verified, so those
+                # rows would defer forever. Supplying the uid fixes both — the
+                # guard becomes a backstop rather than the primary mechanism.
+                #
+                # Cost: one small SELECT per foreign key per row. The push path
+                # has always paid it; correctness on money links is worth it.
+                changes[table_name] = [_serialize_orm_obj(r, db) for r in rows]
 
         except Exception as e:
             logger.warning("sync/pull: failed querying table %s — %s", table_name, e)

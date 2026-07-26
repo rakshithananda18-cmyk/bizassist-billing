@@ -10,8 +10,10 @@ if backend_path not in sys.path:
 
 import pytest
 from database.db import SessionLocal
-from database.models import Base, Product, Customer, Inventory, Invoice, PurchaseInvoice
-from core.models import Godown, StockTransfer, StockTransferLineItem, StockLedger
+from database.models import (Base, Product, Customer, Inventory, Invoice, InvoiceLineItem,
+                             PurchaseInvoice, PurchaseInvoiceLineItem)
+from core.models import (Godown, StockTransfer, StockTransferLineItem, StockLedger,
+                         InvoicePayment, ProductBarcode)
 from core.stock import ledger as SL
 from core.billing import commands as billing_commands
 from core.purchase import commands as purchase_commands
@@ -28,14 +30,40 @@ def _ensure_schema():
 def _clear():
     db = SessionLocal()
     try:
+        # STRICT child-before-parent order. SQLite used to ignore foreign keys
+        # (PRAGMA foreign_keys defaulted to OFF), so this teardown could delete
+        # `products` while invoice/transfer line items still referenced them and
+        # nothing complained — it silently orphaned rows. N4 turned enforcement on
+        # to match the Postgres cloud, which made the real dependency order
+        # mandatory. Line items first, then their documents, then the catalog.
+        inv_ids = [r[0] for r in db.query(Invoice.id).filter(
+            Invoice.business_id == BID).all()]
+        if inv_ids:
+            db.query(InvoiceLineItem).filter(
+                InvoiceLineItem.invoice_id.in_(inv_ids)).delete(synchronize_session=False)
+            db.query(InvoicePayment).filter(
+                InvoicePayment.invoice_id.in_(inv_ids)).delete(synchronize_session=False)
+        pur_ids = [r[0] for r in db.query(PurchaseInvoice.id).filter(
+            PurchaseInvoice.business_id == BID).all()]
+        if pur_ids:
+            db.query(PurchaseInvoiceLineItem).filter(
+                PurchaseInvoiceLineItem.purchase_invoice_id.in_(pur_ids)
+            ).delete(synchronize_session=False)
+        tr_ids = [r[0] for r in db.query(StockTransfer.id).filter(
+            StockTransfer.business_id == BID).all()]
+        if tr_ids:
+            db.query(StockTransferLineItem).filter(
+                StockTransferLineItem.transfer_id.in_(tr_ids)).delete(synchronize_session=False)
+
+        db.query(Invoice).filter(Invoice.business_id == BID).delete()
+        db.query(PurchaseInvoice).filter(PurchaseInvoice.business_id == BID).delete()
+        db.query(StockTransfer).filter(StockTransfer.business_id == BID).delete()
         db.query(StockLedger).filter(StockLedger.business_id == BID).delete()
         db.query(Inventory).filter(Inventory.business_id == BID).delete()
+        db.query(ProductBarcode).filter(ProductBarcode.business_id == BID).delete()
         db.query(Product).filter(Product.business_id == BID).delete()
         db.query(Customer).filter(Customer.business_id == BID).delete()
         db.query(Godown).filter(Godown.business_id == BID).delete()
-        db.query(StockTransfer).filter(StockTransfer.business_id == BID).delete()
-        db.query(Invoice).filter(Invoice.business_id == BID).delete()
-        db.query(PurchaseInvoice).filter(PurchaseInvoice.business_id == BID).delete()
         db.commit()
     finally:
         db.close()

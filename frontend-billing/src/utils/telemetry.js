@@ -67,8 +67,24 @@ function buildBatch(events) {
 
 function post(base, body, useBeacon = false) {
   const url = `${base}/api/telemetry/log`
+  // Cross-origin here means: the dev server (:5174) talking to the local backend
+  // (:8001), or any origin talking to the cloud.
+  const crossOrigin = typeof window !== 'undefined' &&
+    !String(base).startsWith(window.location.origin)
+
   try {
-    if (useBeacon && navigator.sendBeacon) {
+    // `navigator.sendBeacon` ALWAYS uses credentials mode "include". The API
+    // authenticates with Bearer tokens, not cookies, so it correctly sets
+    // `allow_credentials=False` — and a credentialed request against that is
+    // rejected at preflight with:
+    //   "The value of the 'Access-Control-Allow-Credentials' header ... is ''
+    //    which must be 'true' when the request's credentials mode is 'include'"
+    // Raising allow_credentials to satisfy a telemetry ping would weaken CORS
+    // for the whole API (the origin regex matches any localhost/LAN address),
+    // so the fix belongs here: beacon only same-origin, and use fetch with
+    // `keepalive` — the standard sendBeacon replacement, which survives unload
+    // and lets us omit credentials — for everything else.
+    if (useBeacon && !crossOrigin && navigator.sendBeacon) {
       navigator.sendBeacon(url, new Blob([JSON.stringify(body)], { type: 'application/json' }))
       return
     }
@@ -77,6 +93,7 @@ function post(base, body, useBeacon = false) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       keepalive: true,
+      credentials: 'omit',   // never send cookies — the API is token-authenticated
     }).catch(() => {})
   } catch { /* never break the app over telemetry */ }
 }

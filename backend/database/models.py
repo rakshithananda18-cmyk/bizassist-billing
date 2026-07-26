@@ -884,6 +884,13 @@ _SYNC_TABLES = {
     # so children can resolve their parent and drain.
     "register_shifts",
     "shift_cash_movements",
+    # M-2: period locks must travel in BOTH directions. Listing them only in the
+    # apply-side MODEL_MAP would enable pull and not push — the same asymmetry
+    # that left register_shifts stuck above. A period the owner closed on one
+    # device was not closed on the other, so a backdated write still landed
+    # there. Append-only and event-sourced, so LWW has nothing to discard: the
+    # effective lock is the latest row on either side.
+    "period_locks",
 }
 
 
@@ -943,6 +950,18 @@ def _queue_change(connection, target, operation):
     # 3. Only sync tables in our export/sync set
     if tbl not in _SYNC_TABLES:
         return
+
+    # 3b. PULL-ONLY tables are mirrored cloud->local and must never be pushed
+    # back up. B2B rows are shared between two tenants, so a local push with
+    # last-write-wins could discard the counterparty's write. They are already
+    # absent from _SYNC_TABLES above; this is the explicit belt-and-braces so a
+    # future edit to that set can't silently re-enable the wrong direction.
+    try:
+        from database.sync_map import PULL_ONLY_TABLES
+        if tbl in PULL_ONLY_TABLES:
+            return
+    except Exception:
+        pass
     
     # 4. Only queue if dialect is sqlite (local client)
     if connection.dialect.name != "sqlite":

@@ -339,17 +339,31 @@ def test_import_does_not_merge_different_uid_invoices_sharing_a_number():
         inserted = _import_with_remap(db, "invoices", local_row, bid, LOCAL_OWNER, existing, {})
         assert inserted == 1, "the different-uid bill must be INSERTED, not natural-merged away"
 
-        # Both bills survive — two distinct uids under the same number.
-        cnt = db.execute(
-            text("SELECT COUNT(*) FROM invoices WHERE invoice_id = 'C1-0001' AND business_id = :b"),
-            {"b": bid},
-        ).scalar()
-        assert cnt == 2
-        uids = {r[0] for r in db.execute(
-            text("SELECT uid FROM invoices WHERE invoice_id = 'C1-0001' AND business_id = :b"),
-            {"b": bid},
-        ).fetchall()}
-        assert uids == {uid_cloud, uid_local}
+        # ── CONTRACT CHANGED (M-3 × §9.3b, Jul-2026) ─────────────────────────
+        # This test previously asserted BOTH bills keep the number 'C1-0001'.
+        # That is no longer permitted: invoices now carries a partial unique
+        # index on (business_id, invoice_id), because a reused invoice number is
+        # a Rule 46 breach and made two documents indistinguishable in the audit
+        # trail.
+        #
+        # The original INTENT — never silently lose a sale — is unchanged and
+        # still asserted below. What changed is how the clash is resolved: the
+        # second bill is RENUMBERED into the next free slot in its series (the
+        # same thing `create_sale_invoice(renumber_on_conflict=True)` does when
+        # two counters clash), rather than being merged away or duplicating a
+        # number. Both sales survive; neither number is shared.
+        both = db.execute(
+            text("SELECT uid, invoice_id FROM invoices "
+                 "WHERE uid IN (:u1, :u2) AND business_id = :b"),
+            {"u1": uid_cloud, "u2": uid_local, "b": bid},
+        ).fetchall()
+        assert len(both) == 2, "a sale was lost — the §9.3b guarantee still holds"
+        assert {r[0] for r in both} == {uid_cloud, uid_local}
+
+        numbers = {r[0]: r[1] for r in both}
+        assert numbers[uid_cloud] == "C1-0001", "the first bill keeps its number"
+        assert numbers[uid_local] != "C1-0001", "the clashing bill must be renumbered"
+        assert str(numbers[uid_local]).startswith("C1-"), "renumbered within its own series"
     finally:
         db.rollback()
         db.close()

@@ -51,13 +51,35 @@ def lookup_bizid(code: str, current_user: dict = Depends(restrict_cashier), db: 
         is not None
     )
 
+    # ── Network reachability ────────────────────────────────────────────────
+    # B2B is cloud-mediated: a connection request is a row in the CLOUD database
+    # that the counterparty's app has to read. A business running in pure LOCAL
+    # mode never talks to the cloud, so a request addressed to it would sit
+    # there unseen forever. Telling the sender that up front beats letting them
+    # wait on a reply that can't arrive.
+    #
+    # `reachable` is deliberately coarse and non-identifying — it says whether
+    # this business can receive network traffic, nothing about its data.
+    hosting_mode = "local"
+    try:
+        import json as _json
+        blob = _json.loads(target.settings) if target.settings else {}
+        hosting_mode = (blob.get("general") or {}).get("hosting_mode") or "local"
+    except Exception:
+        pass
+    reachable = hosting_mode in ("hybrid", "cloud")
+
     out = {
         "public_id": target.public_id,
         "business_name": target.business_name,
         "business_type": biz_type,
         "state_code": target.state_code,
-        "accepts_orders": True,
+        "accepts_orders": reachable,
         "connected": connected,
+        "reachable": reachable,
+        # 'cloud' | 'hybrid' | 'local' — coarse enough to be safe to expose, and
+        # it is what the connect form needs to explain WHY a request would fail.
+        "network_mode": hosting_mode,
     }
     if connected:
         out.update({"address": target.address, "phone": target.phone, "email": target.email})

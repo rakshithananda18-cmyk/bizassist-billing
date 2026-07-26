@@ -17,7 +17,9 @@ Usage:
   start_scheduler()   # call once at app startup
 """
 
+import atexit
 import logging
+import threading
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -25,9 +27,40 @@ logger = logging.getLogger("bizassist.scheduler")
 
 _scheduler: BackgroundScheduler = None
 
+# ── Interpreter-shutdown guard ───────────────────────────────────────────────
+# Symptom this fixes: an endless stream of
+#     RuntimeError: cannot schedule new futures after interpreter shutdown
+# once every job interval, forever, after the process was asked to stop.
+#
+# Why it happened: APScheduler's BackgroundScheduler runs its own thread and
+# submits each due job to a ThreadPoolExecutor. `concurrent.futures.thread`
+# registers an atexit hook at IMPORT time which flips a module-global
+# `_shutdown` flag, after which every `submit()` raises. If the scheduler is
+# still ticking at that point, it raises on every single tick and logs a full
+# traceback each time.
+#
+# Normally `stop_scheduler()` runs from the FastAPI lifespan and this never
+# arises. But under `uvicorn --reload` the app runs in a spawned CHILD process
+# that the reloader terminates directly — on Windows especially, the child can
+# die without the lifespan shutdown ever completing. The scheduler thread then
+# outlives the orderly shutdown and spams until the process is finally reaped.
+#
+# The fix is ordering: atexit handlers run LIFO, and `concurrent.futures.thread`
+# registered its hook when it was first imported (early). Registering ours AT
+# MODULE IMPORT — before any scheduler exists — therefore guarantees we run
+# BEFORE the pool is torn down, so the scheduler is already stopped by the time
+# `submit()` would start failing.
+_SHUTTING_DOWN = threading.Event()
+
 
 def start_scheduler():
     global _scheduler
+
+    if _SHUTTING_DOWN.is_set():
+        # A late startup during teardown would resurrect the exact loop the
+        # atexit hook exists to prevent.
+        logger.info("[SCHED] Interpreter is shutting down — not starting.")
+        return
 
     if _scheduler and _scheduler.running:
         logger.info("[SCHED] Already running — skipping re-init.")
@@ -175,10 +208,35 @@ def start_scheduler():
 
 
 def stop_scheduler():
+    """Stop the scheduler. Idempotent and never raises.
+
+    Called from BOTH the FastAPI lifespan (orderly shutdown) and the atexit hook
+    below (hard shutdown, e.g. a `--reload` child being terminated), so it has to
+    tolerate being invoked twice, and to swallow anything the interpreter throws
+    while it is already tearing itself down.
+    """
     global _scheduler
-    if _scheduler and _scheduler.running:
-        _scheduler.shutdown(wait=False)
-        logger.info("[SCHED] Stopped.")
+    _SHUTTING_DOWN.set()
+    sched = _scheduler
+    if not sched:
+        return
+    try:
+        if sched.running:
+            # wait=False: never block shutdown on an in-flight job. A sync tick
+            # is fully restartable — its work is queue-driven and idempotent.
+            sched.shutdown(wait=False)
+            logger.info("[SCHED] Stopped.")
+    except Exception:
+        # Logging can itself fail once the interpreter is far enough gone, so
+        # this must stay silent rather than raise out of an atexit handler.
+        pass
+    finally:
+        _scheduler = None
+
+
+# Registered at IMPORT time, not inside start_scheduler(), so it is guaranteed
+# to sit ABOVE `concurrent.futures.thread`'s hook in the LIFO atexit order.
+atexit.register(stop_scheduler)
 
 
 def get_scheduler() -> BackgroundScheduler:

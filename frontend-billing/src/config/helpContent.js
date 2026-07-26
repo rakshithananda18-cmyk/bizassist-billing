@@ -107,31 +107,24 @@ export const HELP_CONTENT = {
     ],
   },
 
-  '/b2b-network': {
-    title: 'B2B Network',
-    intro: 'Link with the businesses you trade with so orders, pricing and stock visibility flow automatically.',
+  '/b2b': {
+    title: 'B2B',
+    intro: 'One workspace for trading with other businesses: order from your suppliers, fulfil what your buyers order, and control who you\'re connected to.',
     steps: [
-      { t: 'Exchange BizIDs', d: 'Every business has one permanent BizID (yours is on this page). Share it like a phone number — WhatsApp, in person, however.' },
-      { t: 'Connect once', d: 'Type the other business\'s BizID and say what THEY are to YOU — your supplier (you buy from them) or your customer (you sell to them).' },
-      { t: 'Set the policy per customer', d: 'For each connected customer you control their price tier, discount, credit limit, stock visibility and catalog categories — edit any row\'s Policies.' },
-      { t: 'Trade flows automatically', d: 'Connected partners appear in B2B Orders; their pricing applies automatically and they only see the stock you allow.' },
+      { t: 'Connections first', d: 'Share your BizID (it\'s safe to publish) or enter theirs to send a request. Nothing is shared until the other business APPROVES — a request on its own gives nobody access to your catalogue, prices or stock.' },
+      { t: 'Approve what comes in', d: 'Requests addressed to you sit in Connections → Pending approval. Approve to open the pipe, decline to close it. You can revoke any time, and a revoked business cannot reconnect on its own.' },
+      { t: 'Order', d: 'Pick a supplier, search their catalogue at your negotiated tier, set quantities, and place the order. It lands in their Incoming Orders instantly.' },
+      { t: 'Outgoing Orders', d: 'Everything you\'ve ordered, with live status. When the supplier marks an order complete, the items are auto-received into your stock as a purchase.' },
+      { t: 'Incoming Orders', d: 'What your buyers ordered from you. Drive the rail: Accept → Pack → Ship → Deliver. Completing an order posts the sale on your side and the stock-in on theirs.' },
+      { t: 'Set the policy per customer', d: 'For each connected customer you control price tier, discount, credit limit, stock visibility and category access — Connections → Approved → Policy.' },
     ],
     tips: [
-      'Revoking a connection ends pricing agreements and catalog access immediately; order history stays visible.',
-      'A connection is one-directional pipes both ways: you can be someone\'s supplier AND their customer at the same time.',
+      'Stock visibility is per customer. "Exact" reveals your real inventory levels — use "Band" (In / Low / Out) for customers who also compete with you.',
+      'Revoking ends catalogue access and pricing immediately; order history stays intact. They cannot restore access themselves — a new request comes back to you for approval.',
+      'You can be someone\'s supplier AND their customer at the same time; the two links are independent.',
       'Same stock, different selling points: your products already hold Retail / Wholesale / Distributor prices. Walk-ins get retail at the counter, the cashier can switch a line\'s price option for a trade buyer, and each connected B2B customer is pinned to a tier (plus optional discount) here — one inventory, every channel priced correctly.',
+      'Drag any order-table column edge to resize it, or double-click the edge to fit it to the content. Your widths are remembered per device.',
     ],
-  },
-
-  '/b2b-orders': {
-    title: 'B2B Orders',
-    intro: 'Purchase orders between you and your connected businesses.',
-    steps: [
-      { t: 'Order from a supplier', d: 'Browse their catalog (at your negotiated tier), build the order, submit — they see it instantly.' },
-      { t: 'Fulfil customer orders', d: 'Orders from your connected customers arrive here; accept and convert to an invoice in one step.' },
-      { t: 'Track status', d: 'Draft → submitted → accepted → invoiced; both sides see the same status.' },
-    ],
-    tips: ['No businesses here yet? Connect first on the B2B Network page.'],
   },
 
   '/profile': {

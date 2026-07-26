@@ -42,12 +42,27 @@ CLOUD_URL = os.environ.get("CLOUD_API_URL") or os.environ.get("VITE_API_URL") or
 # Keep track of last execution times in-memory
 _LAST_RUN: Dict[int, datetime] = {}
 
+# Last cloud->local PULL per business. Separate from _LAST_RUN because push runs
+# on the fast tick (seconds) while the pull is deliberately slower — it exists to
+# collect writes made by off-LAN counters against the cloud backend, which is a
+# minutes-scale concern, not a seconds-scale one.
+_LAST_PULL: Dict[int, datetime] = {}
+
 # (R-2) Per-business pull cursor, expressed in the CLOUD's clock. We seed it from
 # the cloud's own `pulled_at` response so the next `last_sync_at` we send is never
 # compared across two machines' clocks — eliminating the skew that silently
 # dropped freshly-updated cloud rows. In-memory: after a restart the first cycle
 # falls back to the SyncLog-derived timestamp, then re-pins to the cloud clock.
 _PULL_CURSOR: Dict[int, str] = {}
+
+# M-12: how many consecutive pull cycles have ended with at least one row the
+# apply path REJECTED. The cursor is HELD while this is non-zero so the failed
+# rows are re-pulled instead of being skipped forever — but it is bounded,
+# because a permanently-unappliable row must not stall every later row behind it.
+# That trade (retry, then escalate and move on) is the same one the per-row
+# SAVEPOINT makes at the row level, applied at the batch level.
+_PULL_FAILED_STREAK: Dict[int, int] = {}
+_PULL_MAX_FAILED_STREAK = 3
 
 # (H-2) Remember the last logged connectivity state per business so we only write
 # a SyncLog row on a state *change* (online↔offline), not every failed cycle.
@@ -151,6 +166,106 @@ def _invalidate_cloud_token(business_id: int):
             business_id,
         )
 
+# ── Sliding refresh of the stored cloud token ────────────────────────────────
+# The cloud token is a normal 24 h access token, and until now it was ONLY ever
+# minted at login (frontend `_provisionCloudSyncToken`). That was survivable
+# while the token merely backed background sync — a lapsed token just paused the
+# backup until the next login. It is NOT survivable now that the B2B proxy
+# (routes/b2b_proxy.py) depends on it: B2B writes would start failing every 24 h
+# until the owner happened to log in again while online.
+#
+# The cloud already exposes `POST /auth/refresh`, which exchanges a VALID token
+# for a fresh one with claims re-read from the DB (so a role/plan/token_version
+# change is picked up, and a revoked token is rejected). So we simply renew
+# before expiry. A device that is online at least once a day never lapses; one
+# that stays offline past expiry degrades exactly as before — reads from the
+# local mirror, writes refused — and recovers at the next online login.
+_REFRESH_WHEN_UNDER = timedelta(hours=6)
+
+# Businesses whose refresh attempt failed recently, so a dead network doesn't
+# mean one refresh POST per scheduler tick.
+_REFRESH_BACKOFF: Dict[int, datetime] = {}
+_REFRESH_RETRY_AFTER = timedelta(minutes=15)
+
+
+def _token_expiry(token: str) -> Optional[datetime]:
+    """Read a token's `exp` WITHOUT verifying the signature.
+
+    Deliberate: this token was signed by the CLOUD's JWT_SECRET, which a
+    packaged local install generally does NOT share. Verifying here would fail
+    on exactly the installs that need the refresh most. We are not trusting the
+    contents — the cloud re-verifies on /auth/refresh — we only need to know
+    roughly when to renew.
+    """
+    try:
+        import jwt as _jwt
+        payload = _jwt.decode(token, options={"verify_signature": False})
+        exp = payload.get("exp")
+        return datetime.utcfromtimestamp(int(exp)) if exp else None
+    except Exception:
+        return None
+
+
+def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
+    """Renew the stored cloud token when it is close to expiring.
+
+    Returns the token now in force (possibly unchanged), or None if this
+    business has no cloud identity. Never raises — a failed renewal must not
+    take down the sync tick that called it.
+    """
+    token = _get_cloud_token(business_id)
+    if not token:
+        return None
+
+    exp = _token_expiry(token)
+    if exp is not None and (exp - utc_now()) > _REFRESH_WHEN_UNDER:
+        return token                                    # still comfortably valid
+
+    backoff_until = _REFRESH_BACKOFF.get(business_id)
+    if backoff_until and utc_now() < backoff_until:
+        return token
+
+    try:
+        resp = httpx.post(
+            f"{CLOUD_URL}/auth/refresh",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10.0,
+        )
+    except Exception as e:
+        _REFRESH_BACKOFF[business_id] = utc_now() + _REFRESH_RETRY_AFTER
+        logger.info("[SYNC_WORKER] Cloud token refresh deferred for business %s (offline: %s)",
+                    business_id, e)
+        return token
+
+    if resp.status_code == 401:
+        # Already expired, or revoked server-side. Nothing to salvage — drop it
+        # so we stop presenting a dead credential, and let the next online login
+        # provision a new one.
+        _invalidate_cloud_token(business_id)
+        _REFRESH_BACKOFF.pop(business_id, None)
+        return None
+
+    if resp.status_code != 200:
+        _REFRESH_BACKOFF[business_id] = utc_now() + _REFRESH_RETRY_AFTER
+        logger.info("[SYNC_WORKER] Cloud token refresh returned %s for business %s",
+                    resp.status_code, business_id)
+        return token
+
+    try:
+        fresh = (resp.json() or {}).get("token")
+    except Exception:
+        fresh = None
+
+    if not fresh:
+        _REFRESH_BACKOFF[business_id] = utc_now() + _REFRESH_RETRY_AFTER
+        return token
+
+    store_cloud_token(business_id, fresh)
+    _REFRESH_BACKOFF.pop(business_id, None)
+    logger.info("[SYNC_WORKER] Cloud token refreshed for business %s (slid before expiry)", business_id)
+    return fresh
+
+
 def _safe_broadcast(business_id: int, event: dict):
     """Broadcast an SSE event from the sync-worker thread.
 
@@ -175,6 +290,10 @@ from database.sync_map import (
     resolve_parent_fk_uids,
     _USER_FK_REPOINT_ENTITIES,
 )
+# (M-7) Post-apply invariants, SHARED with routes/sync.py's push path so the two
+# directions can never drift again. Includes the invoice paid-state projection
+# and the journal re-derivation. See core/sync/apply_hooks.py.
+from core.sync import apply_hooks as _apply_hooks
 
 
 def _row_to_dict(row) -> dict:
@@ -189,15 +308,10 @@ def _row_to_dict(row) -> dict:
 
 
 def _parse_dt(dt_str) -> Optional[datetime]:
-    if not dt_str:
-        return None
-    if isinstance(dt_str, datetime):
-        return dt_str
-    try:
-        clean_str = str(dt_str).replace("Z", "+00:00")
-        return datetime.fromisoformat(clean_str)
-    except Exception:
-        return None
+    """Delegates to the shared parser (M-5): an unparseable NON-empty timestamp
+    is a real data defect that used to vanish silently here, stopping the row
+    from ever syncing. Behaviour is unchanged; the silence is not."""
+    return _apply_hooks.parse_dt(dt_str)
 
 
 # ============================================================================
@@ -227,6 +341,17 @@ def run_hybrid_sync():
                 # Check dynamic sync interval
                 sync_interval = int(general.get("sync_interval", 30))
                 business_id = user.id
+
+                # Slide the cloud token forward BEFORE the idle-skip below. The
+                # token is a 24 h access token that was previously only minted at
+                # login, and the B2B proxy now depends on it — so letting it
+                # lapse would break B2B writes daily. This is a local `exp` read
+                # on every tick and a network call only in the last few hours of
+                # its life, so it costs nothing in the steady state.
+                try:
+                    ensure_fresh_cloud_token(business_id)
+                except Exception as e:
+                    logger.debug("[SYNC_WORKER] token refresh check failed for %s: %s", business_id, e)
                 
                 last_run = _LAST_RUN.get(business_id)
                 now = utc_now()
@@ -244,16 +369,48 @@ def run_hybrid_sync():
                             SyncQueue.synced_at.is_(None))
                     .first()
                 )
-                if pending is None:
+
+                # ── Scheduled cloud → local pull ──────────────────────────────
+                # Push alone is not enough once a business has counters that
+                # AREN'T on the owner's LAN. Those devices fall back to the cloud
+                # backend, so their invoices are written cloud-side and the
+                # owner's local DB never learns about them. An empty local outbox
+                # is exactly the state where that gap is invisible — so the
+                # idle-skip above must not also skip the pull.
+                #
+                # Opt-out via settings.general.cloud_pull_enabled = false, and
+                # rate-limited to its own (longer) interval so a 5s push tick
+                # doesn't turn into a 5s cloud poll.
+                pull_enabled = general.get("cloud_pull_enabled", True) is not False
+                pull_interval = max(int(general.get("cloud_pull_interval", 120)), 30)
+
+                # First sighting of this business: START the clock rather than
+                # firing immediately. Two reasons — an idle install must stay
+                # completely silent on its first tick (no cloud probe, no log
+                # line), and every business waking at once on service start
+                # would otherwise stampede the cloud in the same second.
+                last_pull = _LAST_PULL.get(business_id)
+                if last_pull is None:
+                    _LAST_PULL[business_id] = now
+                    last_pull = now
+
+                due_for_pull = (
+                    pull_enabled
+                    and (now - last_pull).total_seconds() >= pull_interval
+                )
+
+                if pending is None and not due_for_pull:
                     _LAST_RUN[business_id] = now
                     continue
 
                 # Perform sync (tag the worker's log lines with this business's BizID)
                 _t = current_bizid_var.set(user.public_id or "-")
                 try:
-                    sync_business(db, user, sync_interval)
+                    sync_business(db, user, sync_interval, do_pull=due_for_pull)
                 finally:
                     current_bizid_var.reset(_t)
+                if due_for_pull:
+                    _LAST_PULL[business_id] = now
                 _LAST_RUN[business_id] = now
             except Exception as e:
                 logger.error("[SYNC_WORKER] Error checking settings for user %s: %s", user.username, e)
@@ -306,6 +463,18 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
 
 def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool = False, do_pull: bool = False):
     business_id = user.id
+
+    # M-12: rows the pull's apply path REJECTED. Declared at FUNCTION scope, not
+    # inside the pull block, because the cursor decision at the end of this
+    # function has to be able to read it on every path — including the paths
+    # where the pull block never ran. A NameError there would be caught by the
+    # outer handler and turn this whole guard back into a silent skip.
+    _pull_row_failures: list = []
+
+    # M-13: rows the CLOUD refused to store, reported back in the push response.
+    # Function scope for the same reason as above — the summary below must be able
+    # to read it on every path.
+    _push_rejected: list = []
 
     # 0. Subscription check: if the user does not have a Pro plan and subscription is enforced,
     # background sync is paused (only required login/identity is synced during auth).
@@ -446,6 +615,34 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 if resp.status_code != 200 or resp.json().get("status") != "success":
                     raise Exception(f"HTTP {resp.status_code}: {resp.text}")
 
+                # M-13 — the cloud ACKS rows it rejected, so a 200 does NOT mean
+                # every row stored. It acks deliberately (refusing would stall the
+                # outbox behind an unappliable row), and reports what it refused in
+                # `rejected`. Reading that field is the only way this device can
+                # learn its own write did not survive; ignoring it is what made the
+                # loss silent on this side too.
+                _push_body = resp.json() or {}
+                _rejected = _push_body.get("rejected") or []
+                _pf = _push_body.get("apply_failures") or []
+                if _rejected:
+                    logger.error(
+                        "[SYNC_WORKER] the cloud REJECTED %s of %s pushed row(s) for "
+                        "biz=%s. They are acked (so the queue drains) but they are "
+                        "NOT stored in the cloud and are in its conflicts review "
+                        "list: %s",
+                        len(_rejected), len(chunk_changes), business_id,
+                        [f"{r.get('entity')}#{r.get('row_id')}: {r.get('reason')}"
+                         for r in _rejected],
+                    )
+                    _push_rejected.extend(_rejected)
+                if _pf:
+                    logger.error(
+                        "[SYNC_WORKER] %s pushed row(s) landed in the cloud but "
+                        "their derived state (paid status and/or journal entry) did "
+                        "not, for biz=%s: %s",
+                        len(_pf), business_id, _pf,
+                    )
+
                 # Chunk pushed successfully — mark just this chunk synced.
                 now = utc_now()
                 for (it, _c) in chunk:
@@ -454,10 +651,13 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 db.commit()
                 total_pushed += len(chunk_changes)
 
-                # Broadcast progress AFTER success so UI reflects shrinking queue
+                # Broadcast progress AFTER success so UI reflects shrinking queue.
+                # `rejected` rides along so the UI can distinguish "queue drained"
+                # from "queue drained and everything stored" (M-13).
                 _safe_broadcast(business_id, {
                     "type":    "sync.progress",
                     "phase":   "push",
+                    "rejected": len(_push_rejected),
                     "entities": chunk_entities,
                     "done":    total_pushed,
                     "total":   total_pairs,
@@ -549,9 +749,11 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
             else:
                 logger.info("[SYNC_WORKER] Already fully in sync for business_id=%s. Updated last synced timestamp.", business_id)
 
-    # The hybrid worker is PUSH-ONLY (local → cloud backup). Cloud data is
-    # subscription-gated, so we never auto-pull it down. A cloud→local data sync
-    # happens only on explicit user action ("Back up now") or during a migration.
+    # Pull is opt-in per call. The scheduler now sets do_pull on its own slower
+    # cadence (see run_hybrid_sync) so cloud-authored rows — off-LAN counters'
+    # invoices, and the B2B mirror — reach the owner's local DB without anyone
+    # pressing "Back up now". Explicit user action and migrations still pass
+    # do_pull=True directly.
     if not do_pull:
         return
 
@@ -580,7 +782,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         resp = httpx.get(f"{CLOUD_URL}/api/sync/pull", params=params, headers=headers, timeout=10.0)
         if resp.status_code == 401:
             _invalidate_cloud_token(business_id)
-            raise Exception(f"HTTP 401: token rejected by cloud — will refresh next cycle")
+            raise Exception("HTTP 401: token rejected by cloud — will refresh next cycle")
         if resp.status_code != 200:
             raise Exception(f"HTTP {resp.status_code}: {resp.text}")
 
@@ -610,12 +812,23 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                     "purchase_invoice_line_items", "invoice_payments",
                     "stock_transfer_line_items", "product_barcodes",
                     "stock_ledger", "b2b_ledgers", "shift_cash_movements",
+                    # B2B line items hang off b2b_orders, which must land first.
+                    "b2b_order_line_items",
                 )
                 _ordered = sorted(pulled.items(), key=lambda kv: 1 if kv[0] in _child_last else 0)
 
                 # Pre-compute total for progress reporting
                 _pull_total    = sum(len(recs) for _, recs in _ordered if recs)
                 _pull_done     = 0
+                # Post-apply invariants that failed (M-2 / M-7). Collected,
+                # logged at ERROR after the batch, and never swallowed — a
+                # document whose journal or paid state is missing means this
+                # database is showing wrong money, which has to be visible
+                # rather than buried in a warning.
+                _apply_failures = []
+                _pull_row_failures.clear()   # M-12: rejected rows, this cycle
+                # (M-8) Financial overwrites flagged for the owner to review.
+                _conflicts_logged = 0
 
                 for table_name, records in _ordered:
                     model_cls = _MODEL_MAP.get(table_name)
@@ -830,7 +1043,30 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                             if local_updated_at and local_updated_at > cloud_updated_at:
                                 # Local version is newer, skip cloud version
                                 continue
-                        
+
+                            # (M-8) The cloud version is newer and is about to
+                            # overwrite a LOCAL financial row. LWW is correct and
+                            # unchanged — but a money record edited in two places
+                            # must not have one version vanish without trace.
+                            # Snapshot the losing side BEFORE we clobber it.
+                            #
+                            # This check existed on the push path only, so an
+                            # overwrite arriving by PULL was silently lost — the
+                            # same one-directional blind spot as M-7.
+                            if _apply_hooks.log_financial_conflict(
+                                db,
+                                business_id=business_id,
+                                entity=table_name,
+                                entity_id=getattr(existing, "id", rec_id),
+                                incoming=dict(record),
+                                existing_row=existing,
+                                incoming_updated_at=cloud_updated_at,
+                                existing_updated_at=local_updated_at,
+                                log_prefix="[SYNC_WORKER]",
+                            ):
+                                _conflicts_logged += 1
+
+
                         # Apply field updates inside a per-row SAVEPOINT so a
                         # single bad row (e.g. a UNIQUE/constraint clash) is
                         # skipped instead of rolling back the entire pull batch.
@@ -869,27 +1105,99 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                                         setattr(target_obj, key, val)
                                 if not existing:
                                     db.add(target_obj)
+                                db.flush()   # need the LOCAL id for the hooks
+
+                            # (M-7) The SAME post-apply invariants the cloud runs
+                            # on push. These used to live as private functions in
+                            # routes/sync.py, unreachable from here, so the pull
+                            # direction silently ran NONE of them — which is why
+                            # an invoice pulled cloud→local showed "Pending"
+                            # while its payment history showed the money.
+                            #
+                            # Note the ordering interaction: invoice_payments is
+                            # in _child_last, so an invoice is applied BEFORE its
+                            # payments. Reconciling at invoice time correctly
+                            # finds an empty ledger and does nothing; the fix
+                            # lands when the payment arrives and reconciles its
+                            # parent. Both hooks are required — neither alone
+                            # closes the bug.
+                            #
+                            # Outside the savepoint above deliberately: the hooks
+                            # open their own, so a row whose invariants fail
+                            # still lands and only the derived state is missing.
+                            _hook = _apply_hooks.run_post_apply(
+                                db, table_name, target_obj, log_prefix="[SYNC_WORKER]")
+                            if not _hook.ok:
+                                _apply_failures.append(_hook)
                         except Exception as row_err:
-                            orig = getattr(row_err, "orig", row_err)
-                            logger.warning(
-                                "[SYNC_WORKER] Pull skip %s id=%s: %s",
-                                table_name, rec_id, str(orig).strip().splitlines()[0],
+                            # M-12: a rejected row is a MISSING row, not a log
+                            # line. Recorded for review, counted, and the cursor
+                            # is held below so it is re-pulled — it used to be a
+                            # WARNING that was then counted as applied and
+                            # skipped forever.
+                            _pull_row_failures.append({
+                                "entity": table_name,
+                                "row_id": rec_id,
+                                "error": str(getattr(row_err, "orig", row_err)
+                                             ).strip().splitlines()[0],
+                            })
+                            _apply_hooks.log_apply_failure(
+                                db,
+                                business_id=business_id,
+                                entity=table_name,
+                                entity_id=rec_id,
+                                payload=dict(record),
+                                error=row_err,
+                                log_prefix="[SYNC_WORKER]",
                             )
 
                     if records:
-                            _pull_done += len(records)
+                            # Successes only. Adding len(records) here regardless
+                            # is what let the progress bar reach 100% on a batch
+                            # that had dropped rows (M-12).
+                            _pull_done += max(
+                                0, len(records)
+                                - sum(1 for f in _pull_row_failures
+                                      if f["entity"] == table_name))
+
+                if _pull_row_failures:
+                    logger.error(
+                        "[SYNC_WORKER] %s row(s) were REJECTED and are MISSING "
+                        "from this database for biz=%s — recorded in the "
+                        "conflicts review list; the pull cursor is held so they "
+                        "are retried next cycle: %s",
+                        len(_pull_row_failures), business_id,
+                        [f"{f['entity']}#{f['row_id']}: {f['error']}"
+                         for f in _pull_row_failures],
+                    )
+
+                if _apply_failures:
+                    logger.error(
+                        "[SYNC_WORKER] %s post-apply invariant(s) FAILED for biz=%s — "
+                        "these rows landed but their derived state (paid status "
+                        "and/or journal entry) is missing, so this database is "
+                        "showing wrong money until they re-apply: %s",
+                        len(_apply_failures), business_id,
+                        [f"{h.entity}#{h.row_id}: {'; '.join(h.errors)}"
+                         for h in _apply_failures],
+                    )
 
                 db.commit()
 
-                # Final progress event — done == total clears the banner in 2.5 s
+                # Final progress event. `done == total` clears the banner as a
+                # clean success, so it must NOT be sent when rows were rejected —
+                # that is the green banner over missing data (M-12). Report the
+                # applied count and the failure count instead, and let the UI
+                # say so.
                 if _pull_total > 0:
                     _safe_broadcast(business_id, {
                         "type":     "sync.progress",
                         "phase":    "pull",
                         "entities": [],
-                        "done":     _pull_total,
+                        "done":     _pull_total if not _pull_row_failures else _pull_done,
                         "total":    _pull_total,
                         "chunk_size": 0,
+                        "failed":   len(_pull_row_failures),
                     })
 
                 
@@ -910,8 +1218,33 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         # to pull). ONLY NOW is it safe to advance the cursor. If the fetch timed
         # out or the apply raised, we never reach here — so the same window is
         # re-pulled next cycle instead of being silently skipped.
+        # M-12 — the cursor is the difference between "retried" and "lost".
+        # It used to advance unconditionally, so any row the apply path rejected
+        # was never seen again. Now it is HELD while rows are failing, bounded by
+        # _PULL_MAX_FAILED_STREAK so one permanently-unappliable row cannot stall
+        # every later row behind it forever.
         if _cloud_cursor:
-            _PULL_CURSOR[business_id] = _cloud_cursor
+            _failed_now = len(_pull_row_failures)
+            if _failed_now:
+                streak = _PULL_FAILED_STREAK.get(business_id, 0) + 1
+                _PULL_FAILED_STREAK[business_id] = streak
+                if streak < _PULL_MAX_FAILED_STREAK:
+                    logger.error(
+                        "[SYNC_WORKER] HOLDING the pull cursor for biz=%s "
+                        "(attempt %s/%s) so the %s rejected row(s) are re-pulled.",
+                        business_id, streak, _PULL_MAX_FAILED_STREAK, _failed_now)
+                else:
+                    logger.critical(
+                        "[SYNC_WORKER] biz=%s: %s row(s) still REJECTED after %s "
+                        "attempts. Advancing the cursor so later rows are not "
+                        "blocked — THESE ROWS REMAIN MISSING and are in the "
+                        "conflicts review list. They need a human.",
+                        business_id, _failed_now, streak)
+                    _PULL_FAILED_STREAK[business_id] = 0
+                    _PULL_CURSOR[business_id] = _cloud_cursor
+            else:
+                _PULL_FAILED_STREAK[business_id] = 0
+                _PULL_CURSOR[business_id] = _cloud_cursor
 
     except Exception as e:
         logger.error("[SYNC_WORKER] Pull failed for business_id=%s: %s", business_id, e)

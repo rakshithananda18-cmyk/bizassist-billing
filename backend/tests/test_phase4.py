@@ -10,7 +10,9 @@ if backend_path not in sys.path:
 
 import pytest
 from database.db import SessionLocal
-from database.models import Base, Product, Customer, Invoice, PurchaseInvoice, User
+from core.models import InvoicePayment, ProductBarcode, StockLedger
+from database.models import (Base, Product, Customer, Invoice, InvoiceLineItem,
+                             PurchaseInvoice, PurchaseInvoiceLineItem, User, Inventory)
 from core.billing import commands as billing_commands
 from core.purchase import commands as purchase_commands
 
@@ -19,7 +21,12 @@ BID = 880002
 def _ensure_schema():
     db = SessionLocal()
     try:
-        Base.metadata.drop_all(bind=db.get_bind())
+        # NOT drop_all. The whole suite shares one SQLite file, so dropping every
+        # table here destroys the seeded accounts (`admin`, `pharmacy`, …) that
+        # the session fixture created, and every module that happens to run
+        # afterwards then fails to log in — a 401 that has nothing to do with the
+        # test that caused it. `_clear()` below already gives this module the
+        # clean slate it wanted, in correct FK order.
         Base.metadata.create_all(bind=db.get_bind())
     finally:
         db.close()
@@ -27,8 +34,29 @@ def _ensure_schema():
 def _clear():
     db = SessionLocal()
     try:
+        # Child rows FIRST. SQLite ignored foreign keys until N4 turned
+        # enforcement on to match the Postgres cloud; before that, deleting these
+        # parents silently orphaned their line items instead of failing.
+        inv_ids = [r[0] for r in db.query(Invoice.id).filter(
+            Invoice.business_id == BID).all()]
+        if inv_ids:
+            db.query(InvoiceLineItem).filter(
+                InvoiceLineItem.invoice_id.in_(inv_ids)).delete(synchronize_session=False)
+            db.query(InvoicePayment).filter(
+                InvoicePayment.invoice_id.in_(inv_ids)).delete(synchronize_session=False)
+        pur_ids = [r[0] for r in db.query(PurchaseInvoice.id).filter(
+            PurchaseInvoice.business_id == BID).all()]
+        if pur_ids:
+            db.query(PurchaseInvoiceLineItem).filter(
+                PurchaseInvoiceLineItem.purchase_invoice_id.in_(pur_ids)
+            ).delete(synchronize_session=False)
         db.query(Invoice).filter(Invoice.business_id == BID).delete()
         db.query(PurchaseInvoice).filter(PurchaseInvoice.business_id == BID).delete()
+        db.query(ProductBarcode).filter(ProductBarcode.business_id == BID).delete()
+        # stock_ledger and inventory also FK to products — the purchase-commit
+        # tests in this module write both, so they have to clear first.
+        db.query(StockLedger).filter(StockLedger.business_id == BID).delete()
+        db.query(Inventory).filter(Inventory.business_id == BID).delete()
         db.query(Product).filter(Product.business_id == BID).delete()
         db.query(Customer).filter(Customer.business_id == BID).delete()
         db.query(User).filter(User.id == BID).delete()

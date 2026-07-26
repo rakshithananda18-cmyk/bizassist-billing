@@ -5,9 +5,10 @@ Business logic for the /insights, /database, /dashboard-* endpoints.
 Routes call these functions and return the result directly.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from database.models import Invoice, Inventory, LegacyPayment, UploadedFile, DocumentEmbedding, ChatMessage
+from services.dates import biz_today_str, biz_now
 
 logger = logging.getLogger("bizassist.insights_service")
 
@@ -60,8 +61,12 @@ def dashboard_summary(user_id: int, db: Session) -> dict:
     total_revenue = sum(i.total_amount or 0 for i in valid_invoices)
     invoice_count = len(valid_invoices)
     
-    thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    # Use biz_today_str() / biz_now() so IST-local dates match what the counter
+    # stamps on invoices and payments. datetime.now() is server-local (UTC on
+    # the HF instance) and would miscount bills from 00:00–05:30 IST as
+    # "yesterday". This is the same IST-aware function used everywhere else.
+    today_str = biz_today_str()
+    thirty_days_ago = (biz_now() - timedelta(days=30)).strftime("%Y-%m-%d")
     
     rev_30d = sum(i.total_amount or 0 for i in valid_invoices if i.invoice_date and i.invoice_date >= thirty_days_ago)
     

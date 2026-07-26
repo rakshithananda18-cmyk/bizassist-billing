@@ -316,6 +316,69 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
 # UPSERT HELPER
 # ---------------------------------------------------------------------------
 
+def _free_invoice_number_on_import(db: Session, business_id, number: str, uid):
+    """Return ``number``, or a fresh number in the same series if it is already
+    held by a DIFFERENT bill in this business.
+
+    See the call site for why this exists (M-3 × §9.3b). Uses the same allocator
+    as the counter, so the replacement cannot collide with anything now or later.
+
+    Returns ``number`` unchanged when it is free, or when it is held by the SAME
+    document (matching uid) — that is a re-import, which must update in place
+    rather than fork a second copy.
+    """
+    if not business_id or not number:
+        return number
+    try:
+        row = db.execute(
+            text('SELECT uid FROM invoices WHERE business_id = :b AND invoice_id = :n'),
+            {"b": business_id, "n": number},
+        ).fetchone()
+        if row is None:
+            return number                    # free
+        if uid and row[0] and str(row[0]) == str(uid):
+            return number                    # same document — re-import, not a clash
+
+        from core.billing import sequence as SEQ
+        from core.billing import commands as billing
+        head, _, tail = str(number).rpartition("-")
+        series = head if (head and tail.isdigit()) else str(number)
+        fresh = SEQ.next_number(
+            db, business_id, series,
+            scan_max=lambda: billing._series_max(db, business_id, series),
+            is_taken=lambda n: billing._invoice_number_taken(db, business_id, n),
+        )
+        logger.warning(
+            "[MIGRATE] invoice number %s already used by a different bill in "
+            "business %s — importing this one as %s so neither sale is lost (M-3)",
+            number, business_id, fresh,
+        )
+        return fresh
+    except Exception as e:
+        # The allocator failed. Returning `number` here would be the WORST
+        # option, even though it looks like the conservative one: the row then
+        # violates the unique index, the caller's `except` at the bottom of
+        # _import_with_remap catches the IntegrityError and SKIPS the row — so
+        # the bill is silently dropped. (I wrote that fallback believing the
+        # index would "reject it loudly"; it does not, because the caller
+        # swallows it. Found by accident when a broken test harness made the
+        # allocator raise.)
+        #
+        # Fall back to a suffix derived from the row's own uid, which is unique
+        # by construction. The bill LANDS, the original number stays visible in
+        # the new one, and a human can renumber it deliberately afterwards.
+        suffix = (str(uid).replace("-", "")[:8] if uid else "DUP")
+        salvaged = f"{number}-DUP{suffix.upper()}"
+        logger.error(
+            "[MIGRATE] could not allocate a clean number for clashing invoice %s "
+            "in business %s (%s) — importing it as %s so the sale is not lost. "
+            "Renumber it deliberately with "
+            "scripts/resolve_duplicate_invoice_numbers.py.",
+            number, business_id, e, salvaged,
+        )
+        return salvaged
+
+
 def _upsert_rows(
     db: Session,
     table_name: str,
@@ -370,6 +433,28 @@ def _upsert_rows(
                     v != 0 if isinstance(v, (int, float))
                     else str(v).strip().lower() in ("1", "true", "t", "yes", "y")
                 )
+
+        # ── (M-3 × §9.3b) Invoice-number collision on import ─────────────────
+        # Two rules used to be in direct conflict here:
+        #
+        #   §9.3b  two DIFFERENT bills that independently minted the same number
+        #          must BOTH survive an import — merging them loses a real sale.
+        #   M-3    a number must never appear twice (Rule 46; now enforced by the
+        #          partial unique index on invoices(business_id, invoice_id)).
+        #
+        # Inserting the second bill verbatim satisfies the first and violates the
+        # second; skipping it satisfies the second and loses money. Neither is
+        # acceptable, and the resolution is the one the counter already uses when
+        # two terminals clash (`create_sale_invoice(renumber_on_conflict=True)`):
+        # KEEP THE BILL, GIVE IT A FRESH NUMBER. Nothing is lost and nothing is
+        # duplicated.
+        #
+        # Only fires when the number is taken by a row with a DIFFERENT uid —
+        # i.e. genuinely a different document. Re-importing the same bill still
+        # matches on uid upstream and updates in place.
+        if table_name == "invoices" and filtered.get("invoice_id"):
+            filtered["invoice_id"] = _free_invoice_number_on_import(
+                db, filtered.get("business_id"), filtered["invoice_id"], filtered.get("uid"))
 
         col_list = list(filtered.keys())
         placeholders = ", ".join(f":{c}" for c in col_list)
@@ -620,6 +705,17 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
             if old_id is not None:
                 table_map[old_id] = existing_id
             continue
+
+        # (M-3 × §9.3b) Renumber a bill whose number is already held by a
+        # DIFFERENT document here, instead of losing it or duplicating a number.
+        # See _free_invoice_number_on_import. Applied here as well as in
+        # _upsert_rows because these are two separate insert paths — migrate and
+        # sync-mirror — and an invariant that lives in only one of two paths is
+        # the exact defect M-7 was.
+        if table_name == "invoices" and filtered.get("invoice_id"):
+            filtered["invoice_id"] = _free_invoice_number_on_import(
+                db, filtered.get("business_id") or dest_owner_id,
+                filtered["invoice_id"], filtered.get("uid"))
 
         cols = list(filtered.keys())
         col_str = ", ".join(f'"{c}"' for c in cols)

@@ -235,6 +235,26 @@ _allowed_origins = [
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(title="BizAssist API", lifespan=lifespan)
 
+# ── B2B cloud proxy ──────────────────────────────────────────────────────────
+# B2B rows are shared between two businesses, so the cloud is their single
+# authority. A browser cannot call the cloud itself (its token is only valid on
+# the backend that issued it — doing so leaked one tenant's identity into
+# another's session), so the LOCAL backend forwards these requests upstream
+# using the cloud-issued token it already holds for the sync worker.
+# Inert on the cloud deployment; falls back to the local read-only mirror when
+# offline. See routes/b2b_proxy.py.
+#
+# ORDERING IS LOAD-BEARING: Starlette's add_middleware() PREPENDS, so whatever is
+# registered LAST ends up OUTERMOST. This proxy short-circuits — it returns the
+# upstream response without calling call_next — so anything registered after it
+# would never run for a proxied request. Registered here, BEFORE CORSMiddleware,
+# CORS stays outside it and still stamps Access-Control-* on proxied responses.
+# Registered after CORS (as it briefly was), every B2B call from the browser died
+# with "No 'Access-Control-Allow-Origin' header is present" even though the
+# backend had answered 200.
+from routes.b2b_proxy import b2b_cloud_proxy, router as b2b_status_router
+app.middleware("http")(b2b_cloud_proxy)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
@@ -415,4 +435,5 @@ app.include_router(sync_staff_router)     # Phase 5 - Immediate staff sync
 app.include_router(sync_profile_router)   # Phase 5 - Immediate profile sync
 app.include_router(campaigns_router)      # Promotions & offers + sync doctor (REVIEW_1 §4.2-4.3)
 app.include_router(activity_router)       # Owner activity feed — every action, human-readable
+app.include_router(b2b_status_router)   # B2B link state, so the UI can explain a degraded mode
 app.include_router(core_router)           # billing ecosystem (sales + business templates + future)

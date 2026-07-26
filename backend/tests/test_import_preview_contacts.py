@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 from main_groq import app
 from database.db import SessionLocal
 from database.models import Base, Customer, Vendor
+from tests._fk_cleanup import wipe_tables
 
 client = TestClient(app)
 
@@ -57,9 +58,11 @@ def owner():
 def _clean(owner):
     db = SessionLocal()
     try:
-        db.query(Customer).delete()
-        db.query(Vendor).delete()
-        db.commit()
+        # Unfiltered, on a DB shared with the whole suite: other modules'
+        # invoices reference these customers and their purchase invoices
+        # reference these vendors, so the referencing rows have to go first.
+        # wipe_tables pulls them in transitively from the FK graph.
+        wipe_tables(db, "customers", "vendors")
     finally:
         db.close()
 

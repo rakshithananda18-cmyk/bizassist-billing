@@ -25,7 +25,7 @@ sys.path.insert(0, backend_path)
 import pytest
 from database.db import SessionLocal
 from database.models import Base, Product, Invoice, InvoiceLineItem, Inventory, User
-from core.models import StockLedger, InvoicePayment, JournalEntry, JournalLine
+from core.models import StockLedger, InvoicePayment, JournalEntry, JournalLine, DocumentSequence
 from core.billing import commands as billing
 from core.stock import ledger as SL
 
@@ -58,6 +58,13 @@ def _clear():
         db.query(StockLedger).filter(StockLedger.business_id == BID).delete()
         db.query(Inventory).filter(Inventory.business_id == BID).delete()
         db.query(Product).filter(Product.business_id == BID).delete()
+        # Invoice numbering is now a STORED monotonic counter (F-3), not a COUNT
+        # of surviving rows — deleting the invoices deliberately does NOT rewind
+        # it. A fixture that wipes a business's books must therefore wipe its
+        # counters too, or tests asserting exact numbers would see the previous
+        # test's high-water mark. (test_invoice_sequence.py pins the real
+        # behaviour: a deletion alone must NEVER rewind the counter.)
+        db.query(DocumentSequence).filter(DocumentSequence.business_id == BID).delete()
         db.query(User).filter(User.id == BID).delete()
         db.commit()
     finally:

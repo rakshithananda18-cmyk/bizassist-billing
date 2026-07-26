@@ -5,14 +5,67 @@ Domain service logic for B2B Ordering and Catalog visibility.
 """
 from services.dates import utc_now
 import logging
-import random
 from datetime import datetime
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from core.models import B2BConnection, B2BOrder, B2BOrderLineItem
+from core.billing import sequence as SEQ
 from database.models import Product, Inventory, User
 
 logger = logging.getLogger("bizassist.order")
+
+
+def _next_order_number(db: Session) -> str:
+    """Allocate the next B2B order number: ``ORD-YYYYMMDD-NNNN``.
+
+    REPLACES AN UNBOUNDED RANDOM-RETRY LOOP (review finding M-4)
+    -----------------------------------------------------------
+    The old implementation span ``while True`` generating a 4-character suffix
+    from a 32-character alphabet and re-querying until it found a free one.
+    Three problems, all of which get worse exactly as the product succeeds:
+
+      · **Birthday collisions.** 32^4 ≈ 1.05M values, but collision probability
+        follows the birthday bound — around 1,000 orders in a day it is already
+        ~50% likely that two draws collide, and every collision costs another
+        round trip.
+      · **No attempt cap.** ``while True`` with a shrinking pool of free values
+        is an unbounded loop inside a request. As a day fills up it degrades
+        from "one extra query" to "hangs".
+      · **Check-then-insert is not atomic.** Two concurrent orders can both see
+        the number as free; ``B2BOrder.order_number`` is ``unique=True``, so one
+        of them dies with a 500 on insert — after the caller already believed
+        the order was placed.
+
+    All three are properties of *guessing*. Counting instead removes them: the
+    number is reserved with a single atomic UPDATE, bounded, and collision-free
+    by construction.
+
+    SCOPE is ``SEQ.SYSTEM_SCOPE``, not a business. ``order_number`` is globally
+    unique because an order is a shared record two tenants both quote, so a
+    per-buyer counter would have every buyer minting ...-0001 on the same
+    morning and all but one failing the constraint. Safe because B2B is
+    cloud-authoritative (architecture rule 2) — order creation only ever runs
+    against the one cloud database.
+
+    The series is date-scoped, so numbering restarts at 0001 each day and the
+    date in the reference stays meaningful.
+    """
+    series = f"ORD-{utc_now().strftime('%Y%m%d')}"
+    return SEQ.next_number(
+        db, SEQ.SYSTEM_SCOPE, series,
+        # Bounded to one day's orders, and only consulted when the counter is
+        # brand new or has fallen behind — never on the hot path.
+        scan_max=lambda: SEQ.max_suffix(
+            (r[0] for r in db.query(B2BOrder.order_number)
+             .filter(B2BOrder.order_number.like(SEQ.like_prefix(series), escape="\\"))
+             .all()),
+            series,
+        ),
+        # The uniqueness constraint is global, so the probe must be too — no
+        # business_id filter here, deliberately.
+        is_taken=lambda num: db.query(B2BOrder.id).filter(
+            B2BOrder.order_number == num).first() is not None,
+    )
 
 def get_supplier_catalog(db: Session, buyer_business_id: int, seller_business_id: int) -> List[Dict[str, Any]]:
     """
@@ -36,7 +89,46 @@ def get_supplier_catalog(db: Session, buyer_business_id: int, seller_business_id
         query = query.filter(Product.category == conn.catalog_category)
         
     products = query.order_by(Product.name.asc()).all()
-    
+    product_ids = [p.id for p in products]
+
+    # ── Barcodes, resolved in ONE query for the whole catalogue ──────────────
+    # Barcodes travel with the catalogue so the buyer can SCAN to order: a GTIN
+    # is identical in both businesses' systems, so the buyer's existing counter
+    # scanner works against the supplier's list with zero setup.
+    # Batched deliberately — a per-product lookup would be an N+1 over a list
+    # that can run to thousands of SKUs.
+    barcodes_by_product = {}
+    if product_ids:
+        try:
+            from database.models import ProductBarcode
+            rows = (
+                db.query(ProductBarcode.product_id, ProductBarcode.barcode)
+                .filter(
+                    ProductBarcode.business_id == seller_business_id,
+                    ProductBarcode.product_id.in_(product_ids),
+                    ProductBarcode.active == True,  # noqa: E712
+                )
+                .all()
+            )
+            for pid, code in rows:
+                if code:
+                    barcodes_by_product.setdefault(pid, []).append(code)
+        except Exception as e:
+            # Barcodes are an ordering convenience, never a correctness
+            # requirement — a failure here must not take the catalogue down.
+            logger.warning("Catalogue barcode lookup failed: %s", e)
+
+    # Inventory, also batched (was one query per product).
+    stock_by_product = {}
+    if product_ids:
+        for pid, qty in (
+            db.query(Inventory.product_id, Inventory.stock)
+            .filter(Inventory.business_id == seller_business_id,
+                    Inventory.product_id.in_(product_ids))
+            .all()
+        ):
+            stock_by_product[pid] = qty
+
     catalog = []
     for p in products:
         # Resolve base price based on price tier
@@ -50,12 +142,8 @@ def get_supplier_catalog(db: Session, buyer_business_id: int, seller_business_id
         discount_factor = 1.0 - (conn.discount_pct / 100.0)
         custom_price = base_price * discount_factor
         
-        # Get stock level
-        stock_row = db.query(Inventory).filter(
-            Inventory.product_id == p.id,
-            Inventory.business_id == seller_business_id
-        ).first()
-        raw_stock = stock_row.stock if stock_row else 0
+        # Get stock level (pre-resolved above)
+        raw_stock = stock_by_product.get(p.id, 0) or 0
         
         # Apply stock visibility policy
         if conn.stock_visibility == "exact":
@@ -70,10 +158,17 @@ def get_supplier_catalog(db: Session, buyer_business_id: int, seller_business_id
         else:
             stock_display = None
             
+        # `barcode` is the primary/display code; `barcodes` carries every active
+        # packaging-revision code (a product accumulates many over its life).
+        alt_codes = barcodes_by_product.get(p.id, [])
+
         catalog.append({
             "product_id": p.id,
             "name": p.name,
             "description": p.description,
+            "sku": p.sku,
+            "barcode": p.barcode,
+            "barcodes": sorted(set(alt_codes + ([p.barcode] if p.barcode else []))),
             "hsn_sac": p.hsn_sac,
             "unit": p.unit or "Nos",
             "original_selling_price": p.selling_price,
@@ -112,16 +207,9 @@ def create_order(
     if not items:
         raise ValueError("Order must contain at least one item")
         
-    # Generate unique order number (e.g. ORD-20260616-XXXX)
-    date_str = utc_now().strftime("%Y%m%d")
-    chars = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-    while True:
-        suffix = "".join(random.choice(chars) for _ in range(4))
-        order_num = f"ORD-{date_str}-{suffix}"
-        exists = db.query(B2BOrder).filter(B2BOrder.order_number == order_num).first()
-        if not exists:
-            break
-            
+    order_num = _next_order_number(db)
+
+
     # Calculate tax totals
     subtotal = 0.0
     cgst_total = 0.0

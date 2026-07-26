@@ -65,12 +65,21 @@ def _gst_total(doc) -> float:
 
 
 def post_entry(db, *, business_id, entry_date, source_type, source_id,
-               ref_no, narration, lines):
+               ref_no, narration, lines, enforce_period_lock: bool = True):
     """Idempotently post ONE balanced journal entry. Composes WITHOUT committing.
 
     `lines`: iterable of (account, debit, credit). Zero-only lines are dropped.
     Idempotent on (business_id, source_type, source_id). Raises ValueError if the
     entry does not foot (a guard that a buggy caller can never write bad books).
+
+    ``enforce_period_lock=False`` is for REPLICATION ONLY (``core.accounting.repost``,
+    reached from the sync apply paths). A period lock exists to stop a *user*
+    writing new history into closed books. A document that syncs in was already
+    posted, legitimately, in the database that authored it — the two sides simply
+    locked their books on different days. Refusing it there would leave the
+    destination holding an invoice with no journal entry, i.e. an unbalanced set
+    of books, which is a strictly worse outcome than a late entry in a closed
+    period. Never pass False from a user-facing command path.
     """
     existing = db.query(JournalEntry).filter(
         JournalEntry.business_id == business_id,
@@ -91,8 +100,9 @@ def post_entry(db, *, business_id, entry_date, source_type, source_id,
     # protecting every money write path (sale/payment/note/purchase/expense) —
     # each composes its journal entry here before the caller commits, so a raise
     # aborts the whole command.
-    from core.accounting import period_lock  # lazy import: avoid cycle
-    period_lock.assert_period_open(db, business_id, entry_date)
+    if enforce_period_lock:
+        from core.accounting import period_lock  # lazy import: avoid cycle
+        period_lock.assert_period_open(db, business_id, entry_date)
 
     clean = [(a, _r2(dr), _r2(cr)) for (a, dr, cr) in lines if _r2(dr) or _r2(cr)]
     td = _r2(sum(dr for _, dr, _ in clean))
@@ -225,52 +235,57 @@ def build_expense_lines(exp):
 
 # ── Document-specific posting (reuses builders, composes without committing) ──────────
 
-def post_sale(db, inv):
+def post_sale(db, inv, *, enforce_period_lock: bool = True):
     return post_entry(
         db, business_id=inv.business_id, entry_date=inv.invoice_date,
         source_type="sale", source_id=inv.id, ref_no=inv.invoice_id,
         narration=f"Sale — {inv.customer or 'customer'}",
         lines=build_sale_lines(inv),
+        enforce_period_lock=enforce_period_lock,
     )
 
 
-def post_credit_note(db, inv):
+def post_credit_note(db, inv, *, enforce_period_lock: bool = True):
     return post_entry(
         db, business_id=inv.business_id, entry_date=inv.invoice_date,
         source_type="credit_note", source_id=inv.id, ref_no=inv.invoice_id,
         narration=f"Sales return — {inv.customer or 'customer'}",
         lines=build_credit_note_lines(inv),
+        enforce_period_lock=enforce_period_lock,
     )
 
 
-def post_purchase(db, pur):
+def post_purchase(db, pur, *, enforce_period_lock: bool = True):
     return post_entry(
         db, business_id=pur.business_id, entry_date=pur.invoice_date,
         source_type="purchase", source_id=pur.id, ref_no=pur.invoice_number,
         narration=f"Purchase — {pur.supplier_name or 'supplier'}",
         lines=build_purchase_lines(pur),
+        enforce_period_lock=enforce_period_lock,
     )
 
 
-def post_debit_note(db, pur):
+def post_debit_note(db, pur, *, enforce_period_lock: bool = True):
     return post_entry(
         db, business_id=pur.business_id, entry_date=pur.invoice_date,
         source_type="debit_note", source_id=pur.id, ref_no=pur.invoice_number,
         narration=f"Purchase return — {pur.supplier_name or 'supplier'}",
         lines=build_debit_note_lines(pur),
+        enforce_period_lock=enforce_period_lock,
     )
 
 
-def post_expense(db, exp):
+def post_expense(db, exp, *, enforce_period_lock: bool = True):
     return post_entry(
         db, business_id=exp.business_id, entry_date=exp.expense_date,
         source_type="expense", source_id=exp.id, ref_no=f"EXP-{exp.id}",
         narration=exp.category or "Expense",
         lines=build_expense_lines(exp),
+        enforce_period_lock=enforce_period_lock,
     )
 
 
-def post_payment(db, pay, debit_account: str = ACC_CASH):
+def post_payment(db, pay, debit_account: str = ACC_CASH, *, enforce_period_lock: bool = True):
     """A later receipt against an invoice: Dr <debit_account>, Cr Accounts
     Receivable.
 
@@ -288,10 +303,12 @@ def post_payment(db, pay, debit_account: str = ACC_CASH):
         source_type="payment", source_id=pay.id, ref_no=f"REC-{pay.id}",
         narration=narration,
         lines=[(debit_account, amt, 0.0), (ACC_AR, 0.0, amt)],
+        enforce_period_lock=enforce_period_lock,
     )
 
 
-def post_advance_receipt(db, *, business_id, entry_date, amount, source_id, ref_no):
+def post_advance_receipt(db, *, business_id, entry_date, amount, source_id, ref_no,
+                         enforce_period_lock: bool = True):
     """Cash received beyond a customer's dues (a lump-sum settlement leftover):
     Dr Cash & Bank, Cr Customer Advances. Books the cash immediately and parks
     the unearned portion as a liability until it's applied to a future invoice
@@ -305,4 +322,5 @@ def post_advance_receipt(db, *, business_id, entry_date, amount, source_id, ref_
         source_type="advance_receipt", source_id=source_id, ref_no=ref_no,
         narration="Advance received",
         lines=[(ACC_CASH, amt, 0.0), (ACC_ADVANCE, 0.0, amt)],
+        enforce_period_lock=enforce_period_lock,
     )

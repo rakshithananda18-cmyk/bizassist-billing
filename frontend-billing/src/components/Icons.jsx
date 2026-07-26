@@ -244,6 +244,24 @@ export function SearchIcon({ size, strokeWidth, className }) {
   )
 }
 
+/** Barcode — the scan affordance on ScanSearchField. Deliberately a real
+ *  barcode glyph (variable-weight bars inside a frame) rather than the ⌗ / ⚡
+ *  stand-ins that were being used, which read as "hash" and "quick action". */
+export function BarcodeIcon({ size, strokeWidth, className }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth, className)}>
+      <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+      <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+      <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+      <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+      <line x1="7" y1="8" x2="7" y2="16" />
+      <line x1="10.5" y1="8" x2="10.5" y2="16" />
+      <line x1="13.5" y1="8" x2="13.5" y2="16" />
+      <line x1="17" y1="8" x2="17" y2="16" />
+    </svg>
+  )
+}
+
 export function AlertIcon({ size, strokeWidth, className }) {
   return (
     <svg {...defaultSvgProps(size, strokeWidth, className)}>

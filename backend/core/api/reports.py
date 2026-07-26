@@ -231,9 +231,23 @@ def report_pnl(
     current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
 ):
-    """Profit & Loss overview."""
+    """Profit & Loss overview.
+
+    Returns two sections:
+
+    ``section=invoice``  — invoice-based figures (billing / AR view). Revenue
+    here is GST-inclusive because it is the contractual amount owed by the
+    customer, which the owner needs for statements and receivables tracking.
+
+    ``section=journal``  — double-entry ledger truth (M-14 fix). Revenue here is
+    GST-EXCLUSIVE (what you actually EARNED). GST Payable is surfaced explicitly
+    as a LIABILITY — it is money collected on behalf of the government, not
+    income. Discount Allowed (contra-revenue) is also shown. A non-zero
+    ``Journal↔Invoice reconciliation delta`` means some documents are not yet
+    backfilled — run scripts/backfill_journals.py.
+    """
     bid = current_user["id"]
-    
+
     # 1. Sales revenue & returns (excluding credit notes vs credit notes)
     rev_q = db.query(
         func.coalesce(func.sum(case((func.coalesce(Invoice.invoice_type, "") != "credit_note", Invoice.total_amount), else_=0.0)), 0.0).label("revenue_normal"),
@@ -245,8 +259,8 @@ def report_pnl(
         rev_q = rev_q.filter(Invoice.invoice_date <= to_date)
     revenue_normal, returns_sales = rev_q.first() or (0.0, 0.0)
     net_revenue = revenue_normal - returns_sales
-    
-    # 2. Cost of Goods Sold (COGS) - optimized via join instead of loops
+
+    # 2. Cost of Goods Sold (COGS)
     cogs_query = db.query(
         Invoice.invoice_type,
         InvoiceLineItem.quantity,
@@ -255,20 +269,16 @@ def report_pnl(
         Invoice, Invoice.id == InvoiceLineItem.invoice_id
     ).outerjoin(
         Product, Product.id == InvoiceLineItem.product_id
-    ).filter(
-        Invoice.business_id == bid
-    )
+    ).filter(Invoice.business_id == bid)
     if from_date:
         cogs_query = cogs_query.filter(Invoice.invoice_date >= from_date)
     if to_date:
         cogs_query = cogs_query.filter(Invoice.invoice_date <= to_date)
-        
     cogs = 0.0
     for inv_type, qty, cost_price in cogs_query.all():
         sign = -1.0 if inv_type == "credit_note" else 1.0
-        cost = cost_price or 0.0
-        cogs += sign * (cost * (qty or 0.0))
-            
+        cogs += sign * ((cost_price or 0.0) * (qty or 0.0))
+
     # 3. Purchases
     pur_q = db.query(
         func.coalesce(func.sum(case((func.coalesce(PurchaseInvoice.invoice_type, "") != "debit_note", PurchaseInvoice.total_amount), else_=0.0)), 0.0).label("purchases_normal"),
@@ -292,21 +302,83 @@ def report_pnl(
         exp_q = exp_q.filter(Expense.expense_date <= to_date)
     direct_exp, indirect_exp = exp_q.first() or (0.0, 0.0)
     total_exp = direct_exp + indirect_exp
-    
+
     gross_profit = net_revenue - cogs
     net_income = gross_profit - total_exp
-    
+
+    # 5. Journal reconciliation (M-14 fix)
+    # Read the posted double-entry ledger to surface GST Payable (previously invisible),
+    # Discount Allowed, and GST-exclusive Sales credit (the owner's true earned revenue).
+    jl_q = (
+        db.query(
+            JournalLine.account,
+            func.coalesce(func.sum(JournalLine.debit), 0.0).label("dr"),
+            func.coalesce(func.sum(JournalLine.credit), 0.0).label("cr"),
+        )
+        .join(JournalEntry, JournalEntry.id == JournalLine.entry_id)
+        .filter(
+            JournalEntry.business_id == bid,
+            JournalLine.account.in_([
+                ACC_SALES, ACC_GST_OUT, "Discount Allowed",
+                "Sales Returns", ACC_GST_IN, ACC_PURCHASES,
+            ])
+        )
+    )
+    if from_date:
+        jl_q = jl_q.filter(JournalEntry.entry_date >= from_date)
+    if to_date:
+        jl_q = jl_q.filter(JournalEntry.entry_date <= to_date)
+    jl_q = jl_q.group_by(JournalLine.account)
+    jl_rows = {row.account: (float(row.dr or 0.0), float(row.cr or 0.0)) for row in jl_q.all()}
+
+    journal_sales_credit = jl_rows.get(ACC_SALES, (0.0, 0.0))[1]
+    journal_gst_payable = jl_rows.get(ACC_GST_OUT, (0.0, 0.0))[1]
+    journal_discount_allowed = jl_rows.get("Discount Allowed", (0.0, 0.0))[0]
+    journal_net_revenue = journal_sales_credit - journal_discount_allowed
+    journal_recon_delta = round(net_revenue - (journal_sales_credit + journal_gst_payable), 2)
+    if abs(journal_recon_delta) > 0.01:
+        logger.warning(
+            "[REPORT][M-14] P&L reconciliation gap bid=%s: invoice_net=%.2f "
+            "journal(sales+gst)=%.2f delta=%.2f — run backfill_journals.py",
+            bid, net_revenue, journal_sales_credit + journal_gst_payable, journal_recon_delta,
+        )
+
     return [
-        {"metric": "Gross Sales Revenue", "amount": round(revenue_normal, 2)},
-        {"metric": "Sales Returns (Credit Notes)", "amount": round(returns_sales, 2)},
-        {"metric": "Net Sales Revenue", "amount": round(net_revenue, 2)},
-        {"metric": "Cost of Goods Sold (COGS)", "amount": round(cogs, 2)},
-        {"metric": "Gross Profit", "amount": round(gross_profit, 2)},
-        {"metric": "Direct Expenses (OPEX)", "amount": round(direct_exp, 2)},
-        {"metric": "Indirect Expenses (OPEX)", "amount": round(indirect_exp, 2)},
-        {"metric": "Total Expenses (OPEX)", "amount": round(total_exp, 2)},
-        {"metric": "Net Purchases (Inventory)", "amount": round(net_purchases, 2)},
-        {"metric": "Net Income", "amount": round(net_income, 2)},
+        # ── Invoice-based section (billing / AR view) ─────────────────────────
+        {"metric": "Gross Sales Revenue (Invoice Total, GST-inclusive)",
+         "amount": round(revenue_normal, 2), "section": "invoice"},
+        {"metric": "Sales Returns / Credit Notes",
+         "amount": round(returns_sales, 2), "section": "invoice"},
+        {"metric": "Net Sales Revenue (Invoice, GST-inclusive)",
+         "amount": round(net_revenue, 2), "section": "invoice"},
+        {"metric": "Cost of Goods Sold (COGS)",
+         "amount": round(cogs, 2), "section": "invoice"},
+        {"metric": "Gross Profit (Invoice basis)",
+         "amount": round(gross_profit, 2), "section": "invoice"},
+        {"metric": "Direct Expenses (OPEX)",
+         "amount": round(direct_exp, 2), "section": "invoice"},
+        {"metric": "Indirect Expenses (OPEX)",
+         "amount": round(indirect_exp, 2), "section": "invoice"},
+        {"metric": "Total Expenses (OPEX)",
+         "amount": round(total_exp, 2), "section": "invoice"},
+        {"metric": "Net Purchases (Inventory)",
+         "amount": round(net_purchases, 2), "section": "invoice"},
+        {"metric": "Net Income (Invoice basis)",
+         "amount": round(net_income, 2), "section": "invoice"},
+        # ── Journal-based section (accounting / ledger truth) ──────────────────
+        # M-14: revenue is GST-EXCLUSIVE. GST Payable is a LIABILITY — was invisible before.
+        {"metric": "Sales Revenue (Journal, GST-exclusive)",
+         "amount": round(journal_sales_credit, 2), "section": "journal"},
+        {"metric": "GST Payable (Tax collected — liability, not income)",
+         "amount": round(journal_gst_payable, 2), "section": "journal"},
+        {"metric": "Discount Allowed (Contra-revenue)",
+         "amount": round(journal_discount_allowed, 2), "section": "journal"},
+        {"metric": "Net Revenue (Journal, after discounts)",
+         "amount": round(journal_net_revenue, 2), "section": "journal"},
+        {"metric": "Journal-Invoice reconciliation delta (0 = fully posted)",
+         "amount": journal_recon_delta,
+         "section": "journal",
+         "ok": abs(journal_recon_delta) <= 0.01},
     ]
 
 
@@ -596,10 +668,26 @@ def report_outstanding(
         Invoice.business_id == bid
     ).group_by(Invoice.customer_id).all()
     
+    # M-15 fix: include walk-in invoices (customer_id IS NULL) in a synthetic
+    # bucket. Previously these were silently dropped (`if row.customer_id is not
+    # None`), so a walk-in credit sale appeared on the balance sheet as a
+    # receivable but was invisible on the outstanding / chasing-list report.
     cust_map = {
         row.customer_id: (row.total_amt or 0.0, row.paid_amt or 0.0)
         for row in cust_aggregates if row.customer_id is not None
     }
+    # Aggregate walk-ins (customer_id IS NULL) separately so they're never lost.
+    walkin_total = sum(r.total_amt or 0.0 for r in cust_aggregates if r.customer_id is None)
+    walkin_paid = sum(r.paid_amt or 0.0 for r in cust_aggregates if r.customer_id is None)
+    walkin_outstanding = max(walkin_total - walkin_paid, 0.0)
+    if walkin_outstanding > 0:
+        result.append({
+            "party_name": "Walk-in / No Customer",
+            "party_type": "Customer",
+            "total_amount": round(walkin_total, 2),
+            "paid_amount": round(walkin_paid, 2),
+            "outstanding_amount": round(walkin_outstanding, 2),
+        })
     
     for c in customers:
         total_amt, paid_amt = cust_map.get(c.id, (0.0, 0.0))
@@ -1402,34 +1490,48 @@ def report_trial_balance(
     """Trial Balance — every ledger account's net balance on its normal side,
     with Dr and Cr columns that MUST be equal.
 
-    This is a single-entry / incomplete-records system (no posted journal), so
-    the trial balance is *derived* from the same source figures as the P&L and
-    Balance Sheet and balanced with a Capital (owner's equity) plug:
-
-        Dr: Cash & Bank, Accounts Receivable, Inventory, Purchases, Expenses
-        Cr: Accounts Payable, Sales, Capital (the balancing figure)
-
-    Capital absorbs the residual, so total Dr always equals total Cr (the plug
-    equals opening owner's equity = Net Worth − period result). The real
-    accounts (Cash/AR/Inventory/AP) are cumulative point-in-time and tie to the
-    Balance Sheet; the nominal accounts (Sales/Purchases/Expenses) honour the
-    from/to window and tie to the P&L. A negative balance is shown on the
     opposite column so the statement still foots.
     """
     bid = current_user["id"]
 
-    # ── Nominal accounts (date-bounded, tie to P&L) ──────────────────────────
-    sales_q = db.query(
-        func.coalesce(func.sum(case((func.coalesce(Invoice.invoice_type, "") != "credit_note", Invoice.total_amount), else_=0.0)), 0.0).label("sales_normal"),
-        func.coalesce(func.sum(case((Invoice.invoice_type == "credit_note", Invoice.total_amount), else_=0.0)), 0.0).label("returns_sales")
-    ).filter(Invoice.business_id == bid)
+    # ── Nominal accounts (M-14 fix) — read the posted journal, not invoices ──
+    # The old implementation summed Invoice.total_amount (GST-inclusive) for
+    # "Sales" and used a Capital plug to make the statement foot. That meant:
+    #   (1) Sales was overstated by every rupee of GST collected,
+    #   (2) GST Payable — the largest short-term liability — was absent,
+    #   (3) the statement always footed BY CONSTRUCTION and could not detect an
+    #       M-2 scenario (38 invoices, 0 journal entries → all zeros but balanced).
+    # Now we read JournalLine aggregates so the TB ties to the ledger.
+    # Fallback: if no journal entries exist yet (backfill not run), the amounts
+    # are zero and the reconciliation delta in the P&L report will surface that.
+    jl_nom_q = (
+        db.query(
+            JournalLine.account,
+            func.coalesce(func.sum(JournalLine.debit), 0.0).label("dr"),
+            func.coalesce(func.sum(JournalLine.credit), 0.0).label("cr"),
+        )
+        .join(JournalEntry, JournalEntry.id == JournalLine.entry_id)
+        .filter(JournalEntry.business_id == bid)
+    )
     if from_date:
-        sales_q = sales_q.filter(Invoice.invoice_date >= from_date)
+        jl_nom_q = jl_nom_q.filter(JournalEntry.entry_date >= from_date)
     if to_date:
-        sales_q = sales_q.filter(Invoice.invoice_date <= to_date)
-    sales_normal, returns_sales = sales_q.first() or (0.0, 0.0)
-    sales_net = sales_normal - returns_sales
+        jl_nom_q = jl_nom_q.filter(JournalEntry.entry_date <= to_date)
+    jl_nom_q = jl_nom_q.group_by(JournalLine.account)
+    jl_nom = {row.account: (float(row.dr or 0.0), float(row.cr or 0.0)) for row in jl_nom_q.all()}
 
+    def _dr(acct):  return jl_nom.get(acct, (0.0, 0.0))[0]
+    def _cr(acct):  return jl_nom.get(acct, (0.0, 0.0))[1]
+
+    sales_net = _cr(ACC_SALES) - _dr(ACC_SALES)            # net Sales credit
+    purchases_net = _dr(ACC_PURCHASES) - _cr(ACC_PURCHASES) # net Purchases debit
+    expenses_total = sum(_dr(a) for a in jl_nom if a not in (
+        ACC_SALES, ACC_GST_OUT, ACC_GST_IN, ACC_PURCHASES,
+        ACC_CASH, ACC_AR, ACC_AP,
+        "Accounts Receivable", "Cash & Bank",
+    ))
+
+    # Also carry forward purchase totals for the real-account (cumulative) section.
     pur_q = db.query(
         func.coalesce(func.sum(case((func.coalesce(PurchaseInvoice.invoice_type, "") != "debit_note", PurchaseInvoice.total_amount), else_=0.0)), 0.0).label("purchases_normal"),
         func.coalesce(func.sum(case((PurchaseInvoice.invoice_type == "debit_note", PurchaseInvoice.total_amount), else_=0.0)), 0.0).label("returns_purchases")
@@ -1438,15 +1540,18 @@ def report_trial_balance(
         pur_q = pur_q.filter(PurchaseInvoice.invoice_date >= from_date)
     if to_date:
         pur_q = pur_q.filter(PurchaseInvoice.invoice_date <= to_date)
-    purchases_normal, returns_purchases = pur_q.first() or (0.0, 0.0)
-    purchases_net = purchases_normal - returns_purchases
+    _purchases_normal_inv, _returns_purchases_inv = pur_q.first() or (0.0, 0.0)
 
-    exp_q = db.query(func.coalesce(func.sum(Expense.amount), 0.0)).filter(Expense.business_id == bid)
+    exp_q_inv = db.query(func.coalesce(func.sum(Expense.amount), 0.0)).filter(Expense.business_id == bid)
     if from_date:
-        exp_q = exp_q.filter(Expense.expense_date >= from_date)
+        exp_q_inv = exp_q_inv.filter(Expense.expense_date >= from_date)
     if to_date:
-        exp_q = exp_q.filter(Expense.expense_date <= to_date)
-    expenses_total = exp_q.scalar() or 0.0
+        exp_q_inv = exp_q_inv.filter(Expense.expense_date <= to_date)
+    expenses_total_inv = exp_q_inv.scalar() or 0.0
+
+    # gst_payable is a LIABILITY — it must appear on the credit side.
+    gst_payable = _cr(ACC_GST_OUT) - _dr(ACC_GST_OUT)
+    discount_allowed = _dr("Discount Allowed") - _cr("Discount Allowed")
 
     # ── Real accounts (cumulative, tie to Balance Sheet) ─────────────────────
     sales_receipts = db.query(func.coalesce(func.sum(Invoice.paid_amount), 0.0)).filter(Invoice.business_id == bid).scalar()
@@ -1531,13 +1636,25 @@ def report_trial_balance(
     add("Accounts Receivable", "Assets", receivables, "Dr")
     add("Inventory", "Assets", inventory_val, "Dr")
     add("Accounts Payable", "Liabilities", payables, "Cr")
-    add("Sales", "Income", sales_net, "Cr")
+    # M-14 fix: Sales is now the journal-sourced GST-exclusive credit.
+    # GST Payable is added as an explicit liability row — it was previously
+    # absent, making it impossible for the TB to detect M-2 (a business with
+    # zero journal entries still footed because Capital was a plug).
+    add("Sales (GST-exclusive)", "Income", sales_net, "Cr")
+    add("GST Payable", "Liabilities", gst_payable, "Cr")
+    if discount_allowed > 0:
+        add("Discount Allowed", "Expenses", discount_allowed, "Dr")
     add("Purchases", "Expenses", purchases_net, "Dr")
     add("Operating Expenses", "Expenses", expenses_total, "Dr")
 
     subtotal_debit = sum(r["debit"] for r in accounts)
     subtotal_credit = sum(r["credit"] for r in accounts)
-    # Capital / Owner's Equity is the plug that makes the two columns foot.
+    # Capital / Owner's Equity remains the balancing plug. With a correct
+    # double-entry ledger (Dr == Cr for every entry), the plug equals opening
+    # owner's equity and the statement foots without fabrication. If there are
+    # unposted documents (journal empty / partial), the plug absorbs the gap
+    # and the memo section exposes it — so the statement no longer silently
+    # hides M-2.
     capital = subtotal_debit - subtotal_credit
     add("Capital / Owner's Equity", "Equity", capital, "Cr")
 

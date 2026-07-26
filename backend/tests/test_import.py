@@ -16,9 +16,11 @@ import pytest
 from fastapi.testclient import TestClient
 from main_groq import app
 from database.db import SessionLocal
-from database.models import Base, Product, Customer, Vendor, Invoice, User, Inventory
+from database.models import (Base, Product, Customer, Vendor, Invoice, InvoiceLineItem,
+                             LegacyPayment, User, Inventory)
 from core.models import StockLedger, ProductBarcode, InvoicePayment
 from core.stock import ledger as SL
+from tests._fk_cleanup import wipe_all
 
 client = TestClient(app)
 
@@ -80,15 +82,13 @@ def _setup(api_auth):
     # Clear all data tables before each test function, but keep User records
     db = SessionLocal()
     try:
-        db.query(InvoicePayment).delete()
-        db.query(Invoice).delete()
-        db.query(StockLedger).delete()
-        db.query(ProductBarcode).delete()
-        db.query(Inventory).delete()
-        db.query(Product).delete()
-        db.query(Customer).delete()
-        db.query(Vendor).delete()
-        db.commit()
+        # These deletes are UNFILTERED, and the whole suite shares one SQLite
+        # file — so they collide with rows written by unrelated modules (a
+        # product still referenced by test_purchases' line items, a customer by
+        # test_billing's invoices). The correct order is therefore a property of
+        # the SCHEMA, not of this module, so it is derived from the mapper
+        # metadata instead of listed here. See tests/_fk_cleanup.py.
+        wipe_all(db, keep_users=True)
     finally:
         db.close()
 

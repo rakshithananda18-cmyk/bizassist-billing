@@ -1,13 +1,12 @@
 // ============================================================================
-// B2B order status flow — moved verbatim from pages/B2BOrders.jsx
-// (repo restructure) so the page and modal components share one source.
+// MOVED → src/b2b/orderStatus.js
+// ----------------------------------------------------------------------------
+// The B2B code now lives in one self-contained module (src/b2b) so it can be
+// lifted whole into a future retail customer app. This file is a re-export shim
+// kept only so any straggling import path keeps resolving — it holds NO logic,
+// so the two locations can never drift.
+//
+// New code should import from the module's public API instead:
+//     import { STATUS_FLOW } from '../b2b'
 // ============================================================================
-export const STATUS_FLOW = {
-  pending: { label: 'Pending', variant: 'warning', next: 'accepted', nextLabel: 'Accept' },
-  accepted: { label: 'Accepted', variant: 'info', next: 'packed', nextLabel: 'Pack' },
-  packed: { label: 'Packed', variant: 'info', next: 'dispatched', nextLabel: 'Ship' },
-  dispatched: { label: 'Dispatched', variant: 'info', next: 'completed', nextLabel: 'Deliver' },
-  completed: { label: 'Completed', variant: 'success' },
-  cancelled: { label: 'Cancelled', variant: 'danger' },
-  rejected: { label: 'Rejected', variant: 'danger' }
-}
+export * from '../../b2b/orderStatus'

@@ -30,6 +30,7 @@ import {
   ZapIcon, InventoryIcon, AlertIcon, SyncIcon, PackageIcon,
   EditIcon, PrinterIcon
 } from '../Icons'
+import ScanSearchField from '../common/ScanSearchField'
 import ContextMenu from '../common/ContextMenu'
 
 // ── Intake grid columns (order MUST match the <tbody> cell order) ────────────
@@ -252,7 +253,6 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
   const [summary, setSummary] = useState(null)
   const [scanCode, setScanCode] = useState('')
   const [searching, setSearching] = useState(false)
-  const [searchQ, setSearchQ] = useState('')
   const [showDrop, setShowDrop] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadErr, setUploadErr] = useState(null)
@@ -398,9 +398,13 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
 
   // ── Barcode scan ────────────────────────────────────────────────────────
 
-  const handleScan = useCallback(async () => {
-    const code = scanCode.trim()
-    if (!code) return
+  /** Resolve a scanned/typed code to a row.
+   *  Takes the code as an argument (rather than reading state) and returns TRUE
+   *  when it was consumed, so the shared ScanSearchField knows whether to clear
+   *  itself — an unresolved value stays put and keeps filtering the dropdown. */
+  const handleScan = useCallback(async (raw) => {
+    const code = String(raw ?? scanCode).trim()
+    if (!code) return false
     setScanErr(null); setSearching(true)
     try {
       const res = await authFetch(`/billing/sales/barcode/${encodeURIComponent(code)}`)
@@ -413,25 +417,26 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
             const exists = prev.find(r => r._type === 'existing' && r.product_id === p.id)
             if (exists) {
               // Flash the row instead of duplicating
-              setScanCode('')
               return prev
             }
-            setScanCode('')
             // The /sales/barcode payload is lean (no stock/cost). Enrich from
             // the full catalogue record we already hold so Current + Cost + the
             // "was ₹" reference show correctly instead of 0.
             const full = products.find(x => x.id === p.id)
             return [...prev, ROW_FROM_PRODUCT(full ? { ...p, ...full } : p)]
           })
-          return
+          setScanCode('')
+          return true
         }
       }
       // Not found — open a NEW row with this barcode
       addNewRow(code)
       setScanCode('')
+      return true
     } catch (err) {
       logger.warn('[INTAKE] scan failed', err)
       setScanErr('Lookup failed — check connection')
+      return false
     } finally {
       setSearching(false)
       setTimeout(() => scanRef.current?.focus(), 60)
@@ -440,16 +445,19 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
 
   // ── Product search dropdown ─────────────────────────────────────────────
 
-  const filteredProducts = searchQ.trim()
+  // Scanning and searching share ONE field, so the dropdown filters on the same
+  // `scanCode` value the scanner writes into. Typing narrows the list; pressing
+  // Enter tries the value as an exact code.
+  const filteredProducts = scanCode.trim()
     ? products.filter(p => {
-        const q = searchQ.toLowerCase()
+        const q = scanCode.toLowerCase()
         return p.name?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q) || p.barcode?.includes(q)
       }).slice(0, 10)
     : []
 
   const pickSearchProduct = (p) => {
     addExistingRow(p)
-    setSearchQ(''); setShowDrop(false)
+    setScanCode(''); setShowDrop(false)
     setTimeout(() => scanRef.current?.focus(), 60)
   }
 
@@ -690,57 +698,27 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
         display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap',
         padding: '10px 0', borderBottom: '2px solid var(--border)', flexShrink: 0,
       }}>
-        {/* Scanner input */}
-        <div style={{ display: 'flex', gap: 6, flex: '0 0 auto' }}>
-          <div style={{ position: 'relative' }}>
-            <span style={{
-              position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
-              color: 'var(--accent)', display: 'flex', pointerEvents: 'none',
-            }}>
-              <ZapIcon size={15} />
-            </span>
-            <input
-              ref={scanRef}
-              className="form-input"
-              style={{
-                paddingLeft: 32, width: 240, fontFamily: "'Geist Mono',monospace",
-                fontSize: '0.85rem', border: '2px solid var(--accent)',
-                borderRadius: 8,
-              }}
-              placeholder="Scan barcode… (Enter)"
-              value={scanCode}
-              onChange={e => { setScanCode(e.target.value); setScanErr(null) }}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleScan() } }}
-              disabled={saving}
-            />
-          </div>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={handleScan}
-            disabled={saving || searching || !scanCode.trim()}
-            style={{ whiteSpace: 'nowrap' }}
-          >
-            {searching ? '…' : 'Find'}
-          </button>
-        </div>
-
-        {/* Product name search */}
-        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: 260 }}>
-          <span style={{
-            position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)',
-            color: 'var(--text-muted)', display: 'flex', pointerEvents: 'none',
-          }}>
-            <SearchIcon size={14} />
-          </span>
-          <input
-            className="form-input"
-            style={{ paddingLeft: 30, fontSize: '0.82rem' }}
-            placeholder="Search existing product…"
-            value={searchQ}
-            onChange={e => { setSearchQ(e.target.value); setShowDrop(true) }}
-            onFocus={() => setShowDrop(true)}
-            onBlur={() => setTimeout(() => setShowDrop(false), 180)}
+        {/* ONE field for scanning AND searching (was two adjacent inputs — a
+            loud accent-bordered scan box next to a plain search box, i.e. two
+            controls for what the user experiences as one action). Type to
+            filter the dropdown; scan or press Enter to resolve it as a code. */}
+        {/* The dropdown closes on a delay so a mousedown on a result still
+            registers before blur tears it down. */}
+        <div
+          style={{ position: 'relative', flex: '1 1 260px', maxWidth: 360 }}
+          onFocusCapture={() => setShowDrop(true)}
+          onBlurCapture={() => setTimeout(() => setShowDrop(false), 180)}
+        >
+          <ScanSearchField
+            ref={scanRef}
+            value={scanCode}
+            onChange={(v) => { setScanCode(v); setScanErr(null); setShowDrop(true) }}
+            onScan={handleScan}
+            busy={searching}
+            error={scanErr}
             disabled={saving}
+            placeholder="Scan barcode or search items…"
+            style={{ maxWidth: 'none', width: '100%' }}
           />
           {showDrop && filteredProducts.length > 0 && (
             <div style={{

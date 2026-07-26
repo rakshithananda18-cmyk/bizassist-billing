@@ -367,6 +367,7 @@ def test_idle_hybrid_business_is_skipped(monkeypatch):
     _enable_hybrid(owner)
     _drain_queue(owner["bid"])                     # empty outbox → idle
     sw._LAST_RUN.pop(owner["bid"], None)
+    sw._LAST_PULL.pop(owner["bid"], None)
 
     called = {}
 
@@ -378,6 +379,39 @@ def test_idle_hybrid_business_is_skipped(monkeypatch):
 
     assert owner["bid"] not in called              # never entered the sync path
     assert owner["bid"] in sw._LAST_RUN            # but was stamped as checked
+    # The cloud-pull clock STARTS on first sight rather than firing immediately,
+    # so an idle install's first tick stays completely silent.
+    assert owner["bid"] in sw._LAST_PULL
+
+
+def test_idle_hybrid_business_still_pulls_on_the_slow_cadence(monkeypatch):
+    """An empty local outbox does NOT mean there is nothing to fetch.
+
+    A counter that is off the owner's LAN falls back to the CLOUD backend, so its
+    invoices are written cloud-side and the owner's local DB never learns about
+    them. Push-only sync makes that gap invisible precisely because the local
+    outbox looks idle — so the idle-skip must not also skip the pull once the
+    (slower) pull interval has elapsed.
+    """
+    owner = _signup()
+    _enable_hybrid(owner)
+    _drain_queue(owner["bid"])                     # empty outbox → idle
+    sw._LAST_RUN.pop(owner["bid"], None)
+    # Pretend the last pull was long ago so this tick is due for one. Use the
+    # worker's own clock helper — it returns NAIVE UTC, and mixing in an aware
+    # datetime here would raise on the first comparison.
+    sw._LAST_PULL[owner["bid"]] = sw.utc_now() - timedelta(hours=1)
+
+    seen = {}
+
+    def spy(db, user, *a, **kwargs):
+        seen[user.id] = kwargs.get("do_pull")
+
+    monkeypatch.setattr(sw, "sync_business", spy)
+    sw.run_hybrid_sync()
+
+    assert owner["bid"] in seen, "an idle business must still be pulled on the slow cadence"
+    assert seen[owner["bid"]] is True, "the slow tick must request a PULL, not just a push"
 
 
 # ---------------------------------------------------------------------------

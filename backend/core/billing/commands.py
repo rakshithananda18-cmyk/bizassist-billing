@@ -26,6 +26,7 @@ from sqlalchemy import func
 
 from database.models import Invoice, InvoiceLineItem, Product, User
 from core.models import InvoicePayment
+from core.billing import sequence as SEQ
 from core.stock import ledger as SL
 
 logger = logging.getLogger("bizassist.billing")
@@ -154,25 +155,53 @@ def _compute_line(line: dict, product: Optional[Product], *, intra: bool, tax_in
     }
 
 
+def _series_max(db, business_id: int, series: str) -> int:
+    """Highest number already present in this invoice series (0 if none).
+
+    Feeds ``sequence.next_number``: it seeds a brand-new counter so an existing
+    install continues its series instead of restarting at 1, and it heals a
+    counter that rows from elsewhere (a cloud pull, an import, a hand-typed
+    ``invoice_no``) have leapfrogged. The LIKE only narrows the scan —
+    ``sequence.max_suffix`` re-validates every candidate against the exact
+    series, so an over-broad match cannot pull a neighbouring series in.
+    """
+    rows = (
+        db.query(Invoice.invoice_id)
+        .filter(Invoice.business_id == business_id,
+                Invoice.invoice_id.like(SEQ.like_prefix(series), escape="\\"))
+        .all()
+    )
+    return SEQ.max_suffix((r[0] for r in rows), series)
+
+
 def _next_invoice_number(db, business_id: int, counter_prefix: Optional[str] = None) -> str:
-    """Per-business, PER-COUNTER sequential number when the caller doesn't supply one.
+    """RESERVE the next per-counter invoice number. **This consumes a number.**
 
     Multi-terminal POS (plan §9.3): each terminal owns its own number series via a
     distinct ``counter_prefix`` (e.g. ``C1``, ``C2``, ``OW``) so two counters can
-    never mint the same number for different sales. We count only invoices already
-    in THIS prefix's series, so a brand-new counter starts at 1 independently.
+    never mint the same number for different sales. A brand-new counter starts at
+    1 independently. ``counter_prefix`` may arrive with or without a trailing '-';
+    normalised by ``sequence.normalize_series``. Falls back to the legacy ``INV``
+    series for single-counter / unspecified callers.
 
-    ``counter_prefix`` may arrive with or without a trailing '-'; normalised here.
-    Falls back to the legacy ``INV`` series for single-counter / unspecified callers.
+    NUMBERING IS NO LONGER DERIVED FROM A COUNT (review finding F-3). It used to
+    be ``COUNT(invoices in series) + 1``, which meant deleting an invoice made the
+    next sale reissue a number that had already been used — a Rule 46 breach and a
+    corrupted audit trail. The counter now lives in ``document_sequences`` and only
+    ever moves up, so deletions cannot walk it backwards.
+
+    Reservation happens in the CALLER's transaction: if the sale is rolled back
+    (validation failure, negative-stock block) the number is released with it, so
+    the common failure path leaves no gap. A number is never handed out twice.
+
+    Not a preview — call ``sequence.peek_number`` for that.
     """
-    prefix = (counter_prefix or "INV").strip().rstrip("-") or "INV"
-    n = (
-        db.query(func.count(Invoice.id))
-        .filter(Invoice.business_id == business_id, Invoice.invoice_id.like(f"{prefix}-%"))
-        .scalar()
-        or 0
+    series = SEQ.normalize_series(counter_prefix)
+    return SEQ.next_number(
+        db, business_id, series,
+        scan_max=lambda: _series_max(db, business_id, series),
+        is_taken=lambda num: _invoice_number_taken(db, business_id, num),
     )
-    return f"{prefix}-{n + 1:04d}"
 
 
 def _invoice_number_taken(db, business_id: int, number: str) -> bool:
@@ -208,14 +237,29 @@ def _negative_stock_blocked(db, business_id: int) -> bool:
     sees in Settings → Transactions; until now it was a dead toggle (stored but
     never enforced). ``business_id`` is the owner's user id, so the owner row
     carries the authoritative setting for the whole tenant. Any problem reading
-    it → False (fail-open: never block billing on a config hiccup)."""
+    it → False (fail-open: never block billing on a config hiccup).
+
+    FAIL-OPEN, BUT NEVER SILENT (review finding M-5). Fail-open is the right
+    product call — a counter must not stop selling because a settings blob is
+    malformed. But the previous ``except: return False`` meant that if the JSON
+    ever failed to parse, the owner's negative-stock guard was quietly ignored on
+    EVERY sale, with no signal anywhere. The toggle would appear enabled in
+    Settings while doing nothing. So the behaviour is unchanged and the silence
+    is removed: a genuine failure is logged at ERROR, identifying the business.
+    """
     try:
         owner = db.query(User).filter(User.id == business_id).first()
         if not owner or not owner.settings:
-            return False
+            return False        # not configured — not an error
         blob = json.loads(owner.settings)
         return bool((blob.get("transactions") or {}).get("prevent_negative_stock", False))
-    except Exception:
+    except Exception as e:
+        logger.error(
+            "[BILLING] could not read prevent_negative_stock for biz=%s (%s) — "
+            "proceeding WITHOUT the negative-stock guard for this sale. The "
+            "owner's setting is being ignored until this is fixed.",
+            business_id, e, exc_info=True,
+        )
         return False
 
 
@@ -849,14 +893,18 @@ def create_credit_note(db, *, business_id: int,
     if orig is None:
         raise ValueError(f"Invoice {original_invoice_id} not found for this business")
 
-    # Auto-generate credit note number
+    # Auto-generate credit note number.
+    # Same monotonic counter as sales (F-3): the old COUNT(credit notes) + 1
+    # reissued a credit-note number after any deletion, and a credit note is a
+    # tax document too — Rule 46 applies to it exactly as it does to an invoice.
+    # ``CN`` is its own series, so a return never consumes a sale's number.
     cn_number = (credit_note_no or "").strip()
     if not cn_number:
-        n = db.query(func.count(Invoice.id)).filter(
-            Invoice.business_id == business_id,
-            Invoice.invoice_type == "credit_note"
-        ).scalar() or 0
-        cn_number = f"CN-{n + 1:04d}"
+        cn_number = SEQ.next_number(
+            db, business_id, SEQ.CREDIT_NOTE_SERIES,
+            scan_max=lambda: _series_max(db, business_id, SEQ.CREDIT_NOTE_SERIES),
+            is_taken=lambda num: _invoice_number_taken(db, business_id, num),
+        )
 
     # ── Collect product info and compute lines ─────────────────────────────────
     cn_lines = []

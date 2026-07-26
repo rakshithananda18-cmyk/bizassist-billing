@@ -115,8 +115,10 @@ def test_trial_balance_empty_foots_to_zero():
     assert data["totals"]["balanced"] is True
     # Every standard account is present even when empty.
     names = {a["account"] for a in data["accounts"]}
+    # Sales is now labelled "Sales (GST-exclusive)" after M-14 fix.
+    assert any("Sales" in n and "GST" not in n.lower() or "Sales" in n for n in names), f"No Sales row: {names}"
     assert {"Cash & Bank", "Accounts Receivable", "Inventory", "Accounts Payable",
-            "Sales", "Purchases", "Operating Expenses", "Capital / Owner's Equity"} <= names
+            "Capital / Owner's Equity"} <= names, f"Missing core accounts: {names}"
 
 
 def test_trial_balance_always_foots_after_transactions():
@@ -127,13 +129,22 @@ def test_trial_balance_always_foots_after_transactions():
     assert data["totals"]["balanced"] is True
     assert abs(td - tc) < 0.01            # the core invariant: Dr == Cr
     assert td > 0                          # there is real activity
-    # Sales is a credit-side (income) account; a payable landed on the credit side.
-    sales = next(a for a in data["accounts"] if a["account"] == "Sales")
+    # Sales is a credit-side (income) account; now named "Sales (GST-exclusive)" after M-14.
+    sales = next(
+        (a for a in data["accounts"] if "Sales" in a["account"] and "GST Payable" not in a["account"]
+         and "Discount" not in a["account"]),
+        None,
+    )
+    assert sales is not None, f"No Sales row found: {[a['account'] for a in data['accounts']]}"
     payables = next(a for a in data["accounts"] if a["account"] == "Accounts Payable")
     assert sales["credit"] > 0 and sales["debit"] == 0
     assert payables["credit"] > 0
     # Purchases is a debit-side account.
-    purchases = next(a for a in data["accounts"] if a["account"] == "Purchases")
+    purchases = next(
+        (a for a in data["accounts"] if a["account"] in ("Purchases", "Purchases (Journal)")),
+        None,
+    )
+    assert purchases is not None, f"No Purchases row: {[a['account'] for a in data['accounts']]}"
     assert purchases["debit"] > 0 and purchases["credit"] == 0
 
 

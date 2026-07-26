@@ -28,8 +28,7 @@ const NAV = [
     section: 'Supply & Inflow',
     items: [
       { to: '/stock',     icon: <InventoryIcon size={16} className="nav-anim-inventory" />, label: 'Stock & Purchases' },
-      { to: '/b2b-orders', icon: <OrderIcon size={16} className="nav-anim-b2border" />, label: 'B2B Orders' },
-      { to: '/b2b-network', icon: <ConnectionIcon size={16} className="nav-anim-b2bnet" />, label: 'B2B Network' },
+      { to: '/b2b', icon: <OrderIcon size={16} className="nav-anim-b2border" />, label: 'B2B' },
       { to: '/import', icon: <ImportIcon size={16} className="nav-anim-import" />, label: 'Data Migration' },
     ]
   },
@@ -73,8 +72,7 @@ const PAGE_TITLES = {
   '/sales':         'Billing Counter',
   '/parties':       'Contacts & Payments',
   '/stock':         'Stock & Purchases',
-  '/b2b-network':   'B2B Network',
-  '/b2b-orders':    'B2B Orders',
+  '/b2b':           'B2B',
   '/reports':       'GST & Tax Reports',
   '/import':        'Data Migration',
   '/profile':       'My Profile',
@@ -119,11 +117,11 @@ export default function AppLayout({ children, title }) {
       { label: 'Open Reports',         icon: <ReportsIcon size={14} />,   action: () => nav('/reports') },
       { label: 'GST Summary',          icon: <TaxIcon size={14} />,       action: () => nav('/reports?tab=gst') },
     ],
-    '/b2b-orders':  (nav) => [
-      { label: 'View B2B Orders',      icon: <OrderIcon size={14} />,     action: () => nav('/b2b-orders') },
-    ],
-    '/b2b-network': (nav) => [
-      { label: 'View B2B Network',     icon: <ConnectionIcon size={14} />,action: () => nav('/b2b-network') },
+    '/b2b':         (nav) => [
+      { label: 'Place an order',       icon: <OrderIcon size={14} />,      action: () => nav('/b2b?tab=order') },
+      { label: 'Outgoing orders',      icon: <OrderIcon size={14} />,      action: () => nav('/b2b?tab=outgoing') },
+      { label: 'Incoming orders',      icon: <OrderIcon size={14} />,      action: () => nav('/b2b?tab=incoming') },
+      { label: 'Connections',          icon: <ConnectionIcon size={14} />, action: () => nav('/b2b?tab=connections') },
     ],
     '/import':      (nav) => [
       { label: 'Data Migration',       icon: <ImportIcon size={14} />,    action: () => nav('/import') },
@@ -282,8 +280,14 @@ export default function AppLayout({ children, title }) {
   })
 
   // Live sync progress from SSE sync.progress events
-  // { entities: ['invoices','customers'], done: 3, total: 7 } | null
+  // { entities: ['invoices','customers'], done: 3, total: 7,
+  //   failed: 0, rejected: 0 } | null
   const [syncProgress, setSyncProgress] = React.useState(null)
+  // Rows the sync could not apply, kept after the progress banner clears.
+  // Findings M-12 / M-13: the backend used to drop such rows silently and still
+  // report a clean sync, so there was nothing here to show. Now that it reports
+  // them, "sync finished" must not be allowed to mean "everything arrived".
+  const [syncRowProblems, setSyncRowProblems] = React.useState(0)
   const syncProgressTimerRef = React.useRef(null)
 
   const [lastAutoRefresh, setLastAutoRefresh] = React.useState(() => {
@@ -303,9 +307,18 @@ export default function AppLayout({ children, title }) {
     const handleSyncProgress = (e) => {
       const d = e.detail || {}
       if (d.type === 'sync.progress') {
-        setSyncProgress({ entities: d.entities || [], done: d.done || 0, total: d.total || 0, phase: d.phase || 'push' })
-        // Auto-clear progress banner 2.5s after the batch completes
-        if (d.done >= d.total && d.total > 0) {
+        // `failed`  — rows the PULL apply path rejected (M-12)
+        // `rejected` — rows the cloud refused to store on PUSH (M-13)
+        const problems = (d.failed || 0) + (d.rejected || 0)
+        setSyncProgress({
+          entities: d.entities || [], done: d.done || 0, total: d.total || 0,
+          phase: d.phase || 'push', problems,
+        })
+        if (problems > 0) setSyncRowProblems(problems)
+        // Auto-clear the progress banner 2.5s after the batch completes — but
+        // ONLY when every row landed. Clearing it on a partial batch is exactly
+        // the "green banner over missing data" this pair of findings was about.
+        if (d.done >= d.total && d.total > 0 && problems === 0) {
           clearTimeout(syncProgressTimerRef.current)
           syncProgressTimerRef.current = setTimeout(() => setSyncProgress(null), 2500)
         }
@@ -414,7 +427,7 @@ export default function AppLayout({ children, title }) {
   const isSupplyAdder = staffRole === 'supply adder'
   // '/purchases' stays listed so the legacy redirect can't be ridden into the
   // purchases tab by a cashier; Godown.jsx additionally hides that tab by role.
-  const OWNER_ONLY_PATHS = React.useMemo(() => new Set(['/stock/purchase', '/b2b-network', '/b2b-orders', '/reports', '/import', '/staff', '/dashboard', '/pos-live-counter']), [])
+  const OWNER_ONLY_PATHS = React.useMemo(() => new Set(['/stock/purchase', '/b2b', '/b2b-network', '/b2b-orders', '/reports', '/import', '/staff', '/dashboard', '/pos-live-counter']), [])
   // What each staff sector is allowed to SEE (backend still enforces writes).
   // '/stock' is the supply adder's whole sector (stock/inventory + purchase bills).
   const SUPPLY_ADDER_PATHS = React.useMemo(() => new Set(['/', '/stock', '/profile', '/support', '/settings']), [])
@@ -1146,6 +1159,42 @@ export default function AppLayout({ children, title }) {
                                   {fmtEntity(ent)} <span style={{ opacity: 0.75 }}>×{cnt}</span>
                                 </span>
                               ))}
+                            </div>
+                          )}
+
+                          {/* ROWS THAT DID NOT ARRIVE (findings M-12 / M-13).
+                              Sits ABOVE the progress banner and does NOT
+                              auto-dismiss. A sync that finishes having dropped
+                              rows used to report a clean success — the backend
+                              now reports the count, and this is the only place an
+                              owner can see it without reading a log file. */}
+                          {syncRowProblems > 0 && (
+                            <div style={{
+                              background: 'rgba(245,101,101,0.09)',
+                              border: '1px solid rgba(245,101,101,0.32)',
+                              borderRadius: 8, padding: '8px 10px',
+                              display: 'flex', flexDirection: 'column', gap: 4,
+                            }}>
+                              <span style={{ fontSize: '0.73rem', fontWeight: 700, color: '#fc8181' }}>
+                                {syncRowProblems} record{syncRowProblems === 1 ? '' : 's'} could not be synced
+                              </span>
+                              <span style={{ fontSize: '0.67rem', color: 'var(--text-muted, #a0aec0)', lineHeight: 1.45 }}>
+                                They are saved for review, not lost. Everything else
+                                synced normally. Ask support to check the sync review
+                                list if this keeps happening.
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setSyncRowProblems(0)}
+                                style={{
+                                  alignSelf: 'flex-start', marginTop: 2,
+                                  background: 'transparent', border: 'none', padding: 0,
+                                  color: '#fc8181', fontSize: '0.67rem', fontWeight: 700,
+                                  cursor: 'pointer', textDecoration: 'underline',
+                                }}
+                              >
+                                Dismiss
+                              </button>
                             </div>
                           )}
 

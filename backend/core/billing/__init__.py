@@ -1,4 +1,5 @@
 """core.billing — sale invoice command handlers (deterministic GST, atomic)."""
+from core.billing import sequence  # noqa: F401  (monotonic document numbering, F-3)
 from core.billing.commands import (  # noqa: F401
     create_sale_invoice,
     _compute_line, _line_rates, _is_intra_state, _state_code,
