@@ -628,6 +628,7 @@ _SCRIPTS = [
     os.path.join(_BACKEND, "scripts", "audit_money_integrity.py"),
     os.path.join(_BACKEND, "scripts", "repair_line_items_by_invariant.py"),
     os.path.join(_BACKEND, "scripts", "diagnose_money_findings.py"),
+    os.path.join(_BACKEND, "scripts", "reconcile_local_vs_cloud.py"),
 ]
 
 # Each entry: (name, regex, why it breaks). Checked against source with comments

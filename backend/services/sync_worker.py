@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
 import httpx
-from sqlalchemy import text
+from sqlalchemy import text, func
 from sqlalchemy.orm import Session
 
 from database.db import SessionLocal, engine, sync_disabled_var
@@ -71,6 +71,123 @@ _PULL_MAX_FAILED_STREAK = 3
 # cost but disk. The bound exists to make a stuck parent LOUD, not to give up.
 _PUSH_MAX_DEFER_STREAK = 3
 _DEFER_STREAK: dict = {}
+
+
+def find_unqueued_syncable_rows(db, business_id: int, entities=None, limit=200):
+    """Syncable rows this device has NEVER put in the outbox.
+
+    THE SAFETY NET FOR M-20a, and deliberately NOT a theory about its cause.
+
+    `register_shifts` 7, 8 and 9 were never enqueued. Every hypothesis for WHY
+    has so far failed to survive contact with the evidence — the observed
+    `sync_disabled_var` suppressions were all correct ones, on rows that had
+    genuinely come from the cloud. Rather than guess, this catches the symptom
+    whatever the cause: a row that ought to be in the outbox and is not.
+
+    SCOPED ON PURPOSE. It only considers rows NEWER than the oldest outbox entry
+    for the business. Older rows legitimately have no outbox row — they predate
+    hybrid mode, or their queue entries were pruned — and queueing those would
+    re-push years of history. That bound is what makes this safe to run
+    automatically; without it the check would be right and useless.
+
+    Read-only: returns what it found. Queueing is the caller's decision.
+    """
+    from database.models import SyncQueue as _SQ
+    out = []
+    if entities is None:
+        # Parents first: a missing parent strands its children, so recovering it
+        # unblocks the most.
+        entities = ["register_shifts", "customers", "products",
+                    "invoices", "invoice_payments", "shift_cash_movements"]
+
+    floor = db.query(func.min(_SQ.id)).filter(_SQ.business_id == business_id).scalar()
+    if floor is None:
+        return out                      # nothing has ever been queued; not our call
+    oldest = db.query(_SQ.created_at).filter(_SQ.id == floor).scalar()
+    if oldest is None:
+        return out
+
+    for entity in entities:
+        try:
+            rows = db.execute(text(
+                f"SELECT r.id FROM {entity} r "
+                f"WHERE r.business_id = :bid AND r.created_at >= :since "
+                f"AND NOT EXISTS (SELECT 1 FROM sync_queue q "
+                f"                 WHERE q.entity = :ent AND q.entity_id = r.id) "
+                f"ORDER BY r.id LIMIT :lim"),
+                {"bid": business_id, "since": oldest, "ent": entity,
+                 "lim": limit}).fetchall()
+        except Exception as e:
+            # A table that cannot be read is NOT a table with nothing to find
+            # (rule 33). Reported, and the scan continues.
+            logger.warning("[SYNC_HEAL] could not scan %s for biz=%s: %s",
+                           entity, business_id, e)
+            continue
+        for r in rows:
+            out.append({"entity": entity, "row_id": int(r[0])})
+    return out
+
+
+class PushOutcome:
+    """What the cloud did with a pushed chunk, and what the device must do.
+
+    EXTRACTED SO IT CAN BE TESTED. This decision used to live inline in a
+    200-line function, so the only way to check it was to grep the source for
+    strings — a test that passes on a refactor which breaks the behaviour, and
+    fails on a comment reword. Both happened while M-20 was being fixed.
+
+    Pure: no database, no network, no logging. Give it what was sent and what
+    the cloud replied, and it says which rows may be acked and which must be
+    kept. Every rule that lost a sale is expressible here as an assertion.
+    """
+
+    __slots__ = ("deferred", "rejected", "skipped", "applied", "sent",
+                 "unaccounted", "hold_keys")
+
+    def __init__(self, chunk_changes, body):
+        body = body or {}
+        self.sent = len(chunk_changes)
+        self.deferred = body.get("deferred") or []
+        self.rejected = body.get("rejected") or []
+        self.skipped = body.get("skipped") or []
+        self.applied = body.get("applied")
+
+        # THE INVARIANT: received == applied + deferred + skipped.
+        #
+        # `applied` already includes rejected rows — routes/sync.py does
+        # `processed_count += 1  # ack either way` in the IntegrityError branch,
+        # so adding `rejected` here double-counts and yields an impossible
+        # NEGATIVE shortfall (seen in production as "-3 row(s) vanished").
+        #
+        # `applied` absent means an older cloud: nothing can be concluded, so
+        # nothing is claimed (rule 33) rather than treating it as zero.
+        if isinstance(self.applied, int):
+            explained = self.applied + len(self.deferred) + len(self.skipped)
+            self.unaccounted = max(0, self.sent - explained)
+        else:
+            self.unaccounted = 0
+
+        # Rows to KEEP queued. Deferred rows always; everything in the chunk if
+        # the cloud could not account for some row, because without `deferred`
+        # naming them there is no way to know WHICH — and acking the wrong one
+        # destroys the last copy of a sale. Fail closed.
+        self.hold_keys = {(d.get("entity"), d.get("row_id"))
+                          for d in self.deferred}
+
+    def should_hold(self, entity, row_id) -> bool:
+        if self.unaccounted:
+            return True
+        return (entity, row_id) in self.hold_keys
+
+    @property
+    def ack_count(self) -> int:
+        return sum(1 for _ in ()) if self.unaccounted else (
+            self.sent - len(self.hold_keys))
+
+    @property
+    def is_clean(self) -> bool:
+        """Everything the device sent is accounted for and nothing is held."""
+        return not self.unaccounted and not self.deferred
 
 # (H-2) Remember the last logged connectivity state per business so we only write
 # a SyncLog row on a state *change* (online↔offline), not every failed cycle.
@@ -567,6 +684,31 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 item.synced_at = utc_now()
                 continue
             payload_dict = None
+            if not item.payload:
+                # (R-6 gap) A NULL payload took the SAME dangerous path the
+                # corrupt-payload branch below exists to prevent: it fell
+                # through with `payload_dict = None` and was pushed as
+                # `payload: null`. The cloud then applies `data = payload or {}`
+                # — an empty write, which for a row with NOT NULL columns comes
+                # back as a rejection and for one without would create a blank
+                # record.
+                #
+                # The guard below was written for `json.loads` failing and never
+                # fired for a payload that was never there. Found on 2026-07-28
+                # when a requeue tool inserted outbox rows without one.
+                #
+                # Dead-lettered like a corrupt payload: a row with no payload
+                # cannot be sent, and pretending otherwise is how an empty write
+                # reaches a money table.
+                logger.warning(
+                    "[SYNC_WORKER] queue id=%s (%s.%s) has NO payload - "
+                    "dead-lettering. It cannot be pushed, and pushing it empty "
+                    "would apply a blank row on the cloud.",
+                    item.id, item.entity, item.entity_id,
+                )
+                item.error = "No payload: cannot be pushed"
+                item.synced_at = utc_now()
+                continue
             if item.payload:
                 try:
                     payload_dict = json.loads(item.payload)
@@ -684,17 +826,46 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 # applied; this compares that against what was sent and accounts
                 # for every difference. Had this existed, M-20 was a one-line
                 # discrepancy on the very first push: sent 5, applied 4.
-                _applied = _push_body.get("applied")
+                # THE ARITHMETIC, corrected. My first version added the
+                # `rejected` count on top of `applied`, and produced
+                # "-3 row(s) vanished" on the first real push - a NEGATIVE
+                # shortfall, which is impossible and was the tell.
+                #
+                # `applied` (processed_count) ALREADY INCLUDES rejected rows:
+                # `routes/sync.py` does `processed_count += 1  # ack either way`
+                # inside the IntegrityError handler, because a refused row is
+                # still acked so it cannot stall the queue. Adding `rejected`
+                # again double-counts it.
+                #
+                # And the cloud has a third acked-but-not-stored outcome it was
+                # not reporting at all — an unknown entity, or an LWW decision
+                # that the cloud copy is newer. Those `continue`d silently, so
+                # the sum could never close even after removing the double count.
+                # `skipped` now carries them.
+                #
+                # The invariant is therefore exactly:
+                #     received == applied + deferred + skipped
+                _outcome = PushOutcome(chunk_changes, _push_body)
+                _applied = _outcome.applied
+                _skipped = _outcome.skipped
                 if isinstance(_applied, int):
-                    _explained = _applied + len(_deferred) + len(_rejected)
+                    _explained = _applied + len(_deferred) + len(_skipped)
+                    if _skipped:
+                        logger.info(
+                            "[SYNC_WORKER] the cloud SKIPPED %s row(s) for biz=%s "
+                            "deliberately (acked, not an error): %s",
+                            len(_skipped), business_id,
+                            [f"{s.get('entity')}#{s.get('row_id')}: {s.get('reason')}"
+                             for s in _skipped][:10],
+                        )
                     if _explained != len(chunk_changes):
                         logger.error(
                             "[SYNC_WORKER] UNACCOUNTED ROWS for biz=%s: sent %s, "
-                            "cloud applied %s, deferred %s, rejected %s — %s row(s) "
-                            "vanished with no explanation. They are being KEPT in "
-                            "the outbox rather than acked.",
+                            "cloud applied %s (incl. %s rejected), deferred %s, "
+                            "skipped %s - %s row(s) unexplained. They are being "
+                            "KEPT in the outbox rather than acked.",
                             business_id, len(chunk_changes), _applied,
-                            len(_deferred), len(_rejected),
+                            len(_rejected), len(_deferred), len(_skipped),
                             len(chunk_changes) - _explained,
                         )
                         # Fail CLOSED: if the cloud cannot account for a row, the
@@ -716,11 +887,11 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 now = utc_now()
                 _acked = 0
                 for (it, _c) in chunk:
-                    if (_c["entity"], _c["entity_id"]) in _defer_keys:
-                        it.error = "deferred by cloud: parent not present yet"
-                        continue
-                    if _unaccounted:
-                        it.error = "cloud did not account for this row; kept queued"
+                    # ONE decision function, shared with the tests (PushOutcome).
+                    if _outcome.should_hold(_c["entity"], _c["entity_id"]):
+                        it.error = ("deferred by cloud: parent not present yet"
+                                    if (_c["entity"], _c["entity_id"]) in _defer_keys
+                                    else "cloud did not account for this row; kept queued")
                         continue
                     it.synced_at = now
                     it.error = None
@@ -935,6 +1106,16 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         # (see end of this try). Advancing here risked skipping rows if the apply
         # step failed after the cursor had already moved past them.
         _cloud_cursor = _resp_json.get("pulled_at")
+        # Tables the cloud could not read this cycle. An absent table is NOT an
+        # empty one, so the cursor must not advance past them (see below).
+        _pull_failed_tables = _resp_json.get("failed_tables") or []
+        if _pull_failed_tables:
+            logger.error(
+                "[SYNC_WORKER] the cloud reported %s UNREADABLE table(s) for "
+                "biz=%s; this pull is PARTIAL: %s",
+                len(_pull_failed_tables), business_id,
+                [f"{t.get('table')}: {str(t.get('error'))[:80]}"
+                 for t in _pull_failed_tables][:10])
         total_pulled = sum(len(v) for v in pulled.values())
         
         if total_pulled > 0:
@@ -1384,6 +1565,31 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                         business_id, _failed_now, streak)
                     _PULL_FAILED_STREAK[business_id] = 0
                     _PULL_CURSOR[business_id] = _cloud_cursor
+            elif _pull_failed_tables:
+                # ── PARTIAL PULL: hold the cursor (rule 58 / M-12 shape) ──────
+                #
+                # The cloud could not read some tables — on Postgres, one failed
+                # query aborts the transaction and every later table dies with
+                # InFailedSqlTransaction, so a single failure can cost twenty
+                # tables. `changes` then simply has no key for them, which is
+                # indistinguishable from "that table had no changes".
+                #
+                # Advancing the cursor here would move `last_sync_at` past rows
+                # this device NEVER RECEIVED, and they would never be offered
+                # again. That is M-12 exactly, on the read side.
+                #
+                # So the cursor is HELD and the same window is re-pulled next
+                # cycle. Unlike a rejected row, this needs no bound: a table that
+                # fails forever is a cloud-side defect that must be fixed, and
+                # re-reading a window costs nothing but a query.
+                logger.error(
+                    "[SYNC_WORKER] PARTIAL PULL for biz=%s: the cloud could not "
+                    "read %s table(s) — %s. HOLDING the pull cursor so the same "
+                    "window is re-pulled; advancing it would skip rows this "
+                    "device never received.",
+                    business_id, len(_pull_failed_tables),
+                    [t.get("table") for t in _pull_failed_tables][:10],
+                )
             else:
                 _PULL_FAILED_STREAK[business_id] = 0
                 _PULL_CURSOR[business_id] = _cloud_cursor

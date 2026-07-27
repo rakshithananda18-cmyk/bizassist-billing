@@ -288,6 +288,10 @@ export default function AppLayout({ children, title }) {
   // report a clean sync, so there was nothing here to show. Now that it reports
   // them, "sync finished" must not be allowed to mean "everything arrived".
   const [syncRowProblems, setSyncRowProblems] = React.useState(0)
+  // M-20: rows the cloud is holding until a parent arrives. Deliberately NOT
+  // folded into syncRowProblems — they are waiting, not failing, and the owner
+  // should not be told a sale "could not be synced" when it is queued and safe.
+  const [syncDeferred, setSyncDeferred] = React.useState(0)
   const syncProgressTimerRef = React.useRef(null)
 
   const [lastAutoRefresh, setLastAutoRefresh] = React.useState(() => {
@@ -307,14 +311,28 @@ export default function AppLayout({ children, title }) {
     const handleSyncProgress = (e) => {
       const d = e.detail || {}
       if (d.type === 'sync.progress') {
-        // `failed`  — rows the PULL apply path rejected (M-12)
-        // `rejected` — rows the cloud refused to store on PUSH (M-13)
+        // THREE outcomes, and they are NOT interchangeable:
+        //   `failed`   — rows the PULL apply path rejected (M-12)
+        //   `rejected` — rows the cloud REFUSED to store on PUSH (M-13).
+        //                Acked, so they will not be re-sent. Genuinely lost
+        //                unless someone acts.
+        //   `deferred` — rows the cloud is HOLDING because a parent has not
+        //                arrived yet (M-20). NOT acked, still in the outbox,
+        //                re-sent every cycle. Nothing is lost and nobody needs
+        //                to do anything unless it persists.
+        //
+        // Counting deferrals as failures would put "could not be synced" over
+        // rows that are simply queued — alarming the owner about the mechanism
+        // that is protecting their data. Counting them as success would be the
+        // M-20 defect again, one layer up. So they get their own, calmer line.
         const problems = (d.failed || 0) + (d.rejected || 0)
+        const deferred = d.deferred || 0
         setSyncProgress({
           entities: d.entities || [], done: d.done || 0, total: d.total || 0,
-          phase: d.phase || 'push', problems,
+          phase: d.phase || 'push', problems, deferred,
         })
         if (problems > 0) setSyncRowProblems(problems)
+        setSyncDeferred(deferred)
         // Auto-clear the progress banner 2.5s after the batch completes — but
         // ONLY when every row landed. Clearing it on a partial batch is exactly
         // the "green banner over missing data" this pair of findings was about.
@@ -1162,12 +1180,44 @@ export default function AppLayout({ children, title }) {
                             </div>
                           )}
 
+                          {/* ROWS WAITING ON A PARENT (finding M-20).
+                              Amber, not red, and worded as a delay rather than a
+                              failure — because that is what it is. These rows are
+                              still in the outbox and are re-sent every cycle; the
+                              cloud is holding them only until a related record
+                              arrives. Before M-20 they were acked and deleted, so
+                              this state had nothing to show and a real Rs641 sale
+                              disappeared with a success message over it. */}
+                          {syncDeferred > 0 && (
+                            <div style={{
+                              background: 'rgba(237,137,54,0.09)',
+                              border: '1px solid rgba(237,137,54,0.32)',
+                              borderRadius: 8, padding: '8px 10px',
+                              display: 'flex', flexDirection: 'column', gap: 4,
+                            }}>
+                              <span style={{ fontSize: '0.73rem', fontWeight: 700, color: '#ed8936' }}>
+                                {syncDeferred} record{syncDeferred === 1 ? '' : 's'} waiting on a related record
+                              </span>
+                              <span style={{ fontSize: '0.67rem', color: 'var(--text-muted, #a0aec0)', lineHeight: 1.45 }}>
+                                Nothing is lost. They are still in the outbox and
+                                will send automatically once the record they depend
+                                on arrives. If this does not clear on its own, ask
+                                support to check which record they are waiting for.
+                              </span>
+                            </div>
+                          )}
+
                           {/* ROWS THAT DID NOT ARRIVE (findings M-12 / M-13).
                               Sits ABOVE the progress banner and does NOT
                               auto-dismiss. A sync that finishes having dropped
                               rows used to report a clean success — the backend
                               now reports the count, and this is the only place an
-                              owner can see it without reading a log file. */}
+                              owner can see it without reading a log file.
+
+                              DEFERRED rows are deliberately NOT counted here: they
+                              are queued and safe, and telling an owner a sale
+                              "could not be synced" when it is simply waiting would
+                              make them distrust the one mechanism protecting it. */}
                           {syncRowProblems > 0 && (
                             <div style={{
                               background: 'rgba(245,101,101,0.09)',

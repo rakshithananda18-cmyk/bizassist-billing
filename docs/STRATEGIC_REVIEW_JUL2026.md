@@ -3242,3 +3242,129 @@ and that the decline reasons actually emit.
 instrumentation makes the next occurrence a single grep rather than a four-hour
 investigation, but it cannot explain a decline that has already happened
 unlogged. Open a shift and watch for `[SYNC_QUEUE]`.
+
+## 67. Closing out — three of my own defects, and what is genuinely fixed
+
+### 67.1 A correction I owe: the M-20a hypothesis is WEAKER than I said
+
+I called `sync_disabled_var` "the leading hypothesis", and after the
+instrumentation caught it firing I wrote that the mechanism was "confirmed live".
+The mechanism firing is confirmed. **That it explains shifts 7/8/9 is not, and
+the evidence now points away from it.**
+
+`database/db.py:175`:
+
+```python
+sync_disabled_var = contextvars.ContextVar("sync_disabled", default=False)
+```
+
+It is a **ContextVar**. A shift opened by an HTTP request runs in that request's
+own context; the pull-apply sets the flag only in the scheduler thread's
+context. So a shift created while a pull happens to be running would **not** be
+suppressed. Every suppression actually observed in the logs was correct — rows
+that had genuinely arrived from the cloud (`stock_ledger`, `inventory`,
+`conflict_logs` during an apply).
+
+For the hypothesis to hold, the shift would have to have been created *by* the
+apply path itself, and there is no evidence of that.
+
+**So M-20a's cause is unknown.** I stated more confidence than the evidence
+carried, which is the specific failure this review exists to catch.
+
+### 67.2 The symptom is covered without guessing at the cause
+
+`services/sync_worker.find_unqueued_syncable_rows` finds syncable rows that
+never reached the outbox — whatever the reason. Parents first, because a missing
+parent strands its children.
+
+**The bound is what makes it safe.** It only considers rows newer than the
+OLDEST outbox entry for that business. Most of the 861 local invoices predate
+hybrid mode and legitimately have no queue row; without that bound the check
+would be correct and useless, trying to re-push years of history. A business
+with no outbox history at all is left alone entirely, and a table that cannot be
+scanned is reported rather than counted clean (rule 33).
+
+### 67.3 Rule 58 reached the pull path
+
+`GET /api/sync/pull` queries ~25 tables on one session and rolled back nowhere,
+so on Postgres one failure aborted the transaction and every later table died
+with `InFailedSqlTransaction`. Observed 2026-07-28 00:29: **one failure reported
+as twenty**.
+
+Same defect as §63, different path. Now: rollback per table, and the response
+carries `failed_tables` — because `changes` having no key for a table is
+indistinguishable from that table having no changes.
+
+**The half that protects data** is on the client: it now **holds the pull
+cursor** when any table failed. Advancing past tables it never received would
+skip those rows permanently — M-12's shape, on the read side. Unlike a rejected
+row this needs no bound: re-reading a window costs one query, and a table that
+fails forever is a cloud defect to fix rather than data to skip.
+
+### 67.4 The tests were not solid; now they are
+
+Most M-20 tests asserted that phrases appeared in the source. That is weak in
+both directions, and **both directions happened while the fix was being
+written**: they failed twice on harmless comment rewording, and would have
+passed on a refactor that kept the strings and broke the behaviour.
+
+The decision was inline in a 200-line function, so string matching was the only
+option available. `PushOutcome` extracts it — pure, no DB, no network — and the
+worker now calls it, so the tested code is the code that runs.
+
+`tests/test_push_outcome.py`, 25 tests, no string matching. **Mutation-verified
+against every defect from this session:**
+
+| Mutation | Result |
+|---|---|
+| Ack deferred rows (the original M-20) | **7 failed** |
+| Add `rejected` to the sum (the `-3` bug) | **9 failed** |
+| Don't fail closed on an unexplained shortfall | **2 failed** |
+| Treat a missing `applied` as zero | **2 failed** |
+| Remove the pull rollback | **1 failed** |
+| Advance the cursor on a partial pull | **2 failed** |
+| all restored | 35 passed |
+
+Both production incidents are pinned by their exact numbers, plus an exhaustive
+property check that the shortfall can never be negative.
+
+### 67.5 My three defects in this fix, recorded
+
+| # | Defect | How it was caught |
+|---|---|---|
+| 1 | Requeue inserted `payload = NULL`; I documented that the worker rebuilds it. It does not — it pushes `payload: null` and the cloud applies an empty write | The cloud rejected it on NOT NULL: `null value in column "user_id"` |
+| 2 | Reconciliation added `rejected` to `applied`, which already contains it | `-3 row(s) vanished` — an impossible negative |
+| 3 | Requeue's reopen path cleared `synced_at` without refreshing the payload, so a payload-less row was re-queued to be dead-lettered again, forever | Spotted in the report before it ran a second cycle |
+
+Each was found within minutes, and none lost data — because every check now
+states what it can and cannot see. That is the actual result of this session,
+more than any individual fix.
+
+A fourth, in the enqueue path rather than mine: `(R-6)`'s corrupt-payload guard
+was written for `json.loads` failing and never fired for a payload that was
+never there. NULL payloads are now dead-lettered the same way.
+
+### 67.6 Status
+
+**Fixed and verified in production:** M-20 (both halves), the §63 migration
+cascade, the money tooling on Postgres, the NULL-payload guard, the enqueue
+instrumentation, the pull cascade, the cursor hold.
+
+**Recovered:** all 7 stranded rows, including the ₹641 sale. Reconcile reports
+*"Every compared row is present on the cloud."*
+
+**Open, and honestly so:**
+
+* **M-20a's cause** — unknown, hypothesis weakened, symptom covered by the
+  safety net but the hole itself is not closed.
+* **§65 repairs** — ₹20,525 across 33 documents; 18 of 31 invoices still have no
+  reconciling prefix and no known cause.
+* **`skipped` not yet deployed** to the Space; until it is, an LWW skip reads as
+  an unexplained shortfall and holds the whole chunk.
+* Supabase credential rotation, three open cloud shifts, `SUBSCRIPTION_ENFORCED=0`,
+  the `.gitattributes` BOM, and the test suite writing into the production log.
+
+69. **A ContextVar-scoped flag does not span threads or requests, so it cannot explain a row missed in a different context.** `sync_disabled_var` was called the leading cause of M-20a and its firing was confirmed in the log — but every observed suppression was correct, and a shift opened by an HTTP request never sees the scheduler thread's flag. Confirming that a mechanism EXISTS is not confirming that it caused the thing you are looking at. (§67.1)
+70. **When the cause resists proof, cover the symptom without inventing one.** A syncable row that never reached the outbox is detectable regardless of why, and a self-healing check bounded to rows newer than the oldest outbox entry is safe to run automatically — where the same check unbounded would try to re-push all history and be switched off. (§67.2)
+71. **A rule fixed in one place is not a rule applied.** Rule 58 was written for the migration runner after N4b-PG; the pull path queried 25 tables on one session with no rollback and turned one failure into twenty. After fixing a class of defect, grep for the shape rather than the location. (§67.3)
+72. **A test that greps source text passes on a refactor that breaks the behaviour and fails on a reworded comment.** Both happened here within hours. If a decision is untestable, that is a reason to extract it, not a reason to test its spelling. (§67.4)

@@ -322,6 +322,12 @@ def push_changes(
     # M-20: rows the cloud DEFERRED — a THIRD state, and the one that was
     # invisible. See the deferral site below and `_defer` for the full finding.
     deferred = []
+    # M-20 (arithmetic): rows the cloud deliberately SKIPPED and acked — an
+    # unknown entity, or an LWW decision that the cloud's copy is newer. They are
+    # correct outcomes, but they were reported nowhere, so `applied + deferred`
+    # could never equal `received` and the device's reconciliation had a
+    # permanent unexplained remainder. Every row must land in exactly one bucket.
+    skipped = []
 
     entity_map = ENTITY_BROADCAST_MAP
 
@@ -330,6 +336,8 @@ def push_changes(
             model_cls = _MODEL_MAP.get(change.entity)
             if not model_cls:
                 logger.warning("sync/push: unknown entity %s", change.entity)
+                skipped.append({"entity": change.entity, "row_id": change.entity_id,
+                                "reason": "unknown entity on this server"})
                 continue
 
             data = change.payload or {}
@@ -400,6 +408,9 @@ def push_changes(
                         "sync/push: %s.id=%s has no updated_at — keeping cloud version (cannot resolve LWW)",
                         change.entity, change.entity_id,
                     )
+                    skipped.append({"entity": change.entity,
+                                    "row_id": change.entity_id,
+                                    "reason": "no updated_at; cloud version kept"})
                     continue
                 if cloud_updated_at and local_updated_at < cloud_updated_at:
                     # LWW conflict: cloud version is newer, discard change and log
@@ -416,6 +427,9 @@ def push_changes(
                     )
                     db.add(conflict)
                     logger.info("sync/push: LWW conflict resolved (cloud won) for %s.id=%s", change.entity, change.entity_id)
+                    skipped.append({"entity": change.entity,
+                                    "row_id": change.entity_id,
+                                    "reason": "cloud copy is newer (LWW)"})
                     continue
 
                 # (P0) Local-wins on a FINANCIAL row = the previously-SILENT
@@ -663,6 +677,9 @@ def push_changes(
             for h in apply_failures
         ],
         "rejected": rejected,
+        # Acked and NOT stored as sent, but deliberately so. Counted separately
+        # from `applied` for the device's arithmetic; NOT a failure.
+        "skipped": skipped,
         # M-20. An older client that does not know this field will ignore it and
         # behave exactly as before — no worse, and the cloud-side log above still
         # records the deferral. A CURRENT client keeps these rows queued.
@@ -685,6 +702,9 @@ def pull_changes(
     last_sync_dt = _parse_dt(last_sync_at) or datetime(1970, 1, 1)
 
     changes: Dict[str, List[dict]] = {}
+    # Tables this pull could NOT read. Returned to the client so a missing table
+    # is distinguishable from an empty one (rule 33) — see the except block.
+    failed_tables: List[dict] = []
 
     for table_name, model_cls in _MODEL_MAP.items():
         try:
@@ -750,11 +770,55 @@ def pull_changes(
                 changes[table_name] = [_serialize_orm_obj(r, db) for r in rows]
 
         except Exception as e:
+            # ── RULE 58 ON THE PULL PATH ──────────────────────────────────────
+            #
+            # On Postgres a failed statement ABORTS the whole transaction, and
+            # every later statement raises `InFailedSqlTransaction` until
+            # someone rolls back. This loop queries ~25 tables on ONE session,
+            # and nothing rolled back — so a single bad query silently took out
+            # every table after it.
+            #
+            # Observed in production 2026-07-28 00:29: one failure cascaded
+            # through shift_cash_movements, invoices, inventory, payments,
+            # stock_ledger, product_barcodes, business_settings,
+            # invoice_payments, expenses, godowns, stock_transfers,
+            # purchase_invoices, purchase_orders, alert_configs,
+            # rate_limit_configs, table_alterations, period_locks,
+            # b2b_connections, b2b_orders and b2b_order_line_items — twenty
+            # tables reported as "failed querying" when ONE had actually failed.
+            #
+            # This is the same defect as N4b-PG (§63) in the migration runner,
+            # on a different path. The rule was written after that one; this is
+            # it being applied where it had not yet been.
+            #
+            # The pull still returns whatever DID load — a partial pull is far
+            # better than none — but the client is told, because a `changes`
+            # dict that is missing a table is indistinguishable from a table
+            # with no changes (rule 33).
+            failed_tables.append({"table": table_name, "error": str(e)[:200]})
             logger.warning("sync/pull: failed querying table %s — %s", table_name, e)
+            try:
+                db.rollback()
+            except Exception as rb:
+                # Acceptable swallow (rule 13): cleanup inside an error path
+                # already reported above. Logged so a dead session is not silent.
+                logger.warning("sync/pull: rollback after %s failed: %s",
+                               table_name, rb)
+
+    if failed_tables:
+        logger.error(
+            "sync/pull: %s of %s table(s) could NOT be read for biz=%s. The "
+            "client is receiving a PARTIAL pull and is told which tables are "
+            "missing — an absent table is not an empty one: %s",
+            len(failed_tables), len(_MODEL_MAP), business_id,
+            [f["table"] for f in failed_tables],
+        )
 
     return {
         "pulled_at": datetime.now(timezone.utc).isoformat(),
         "changes": changes,
+        # Rule 33: the receiver must be able to tell "no rows" from "not read".
+        "failed_tables": failed_tables,
     }
 
 

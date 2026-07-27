@@ -47,6 +47,12 @@ other. It was a third state that neither side named.
 
 WHAT THESE TESTS PIN
 --------------------
+NOTE: the ACK DECISION itself is tested behaviourally in
+`tests/test_push_outcome.py`, against the real `PushOutcome` object the worker
+uses. What remains here are source-level guards for things that are NOT
+observable from behaviour — a silent swallow leaves no trace to assert on, so
+the only way to stop one returning is to look at the code.
+
   * a deferred row keeps `synced_at = NULL` and is re-sent;
   * once the parent lands, the row goes through and the sale is NOT lost;
   * a rejected row still drains (M-13 behaviour is unchanged);
@@ -145,16 +151,6 @@ def _ack_block():
     return src[start:src.index("total_pushed += _acked") + 40]
 
 
-def test_a_deferred_row_is_not_stamped_synced():
-    """THE FIX. Everything else is reporting; this is the line that stops a sale
-    being deleted."""
-    blk = _ack_block()
-    assert "_defer_keys" in blk
-    assert "in _defer_keys" in blk and "continue" in blk, (
-        "deferred rows are still being stamped synced_at — the outbox loses its "
-        "only copy and the cloud's expected retry can never happen")
-
-
 def test_the_count_reflects_what_was_ACKED_not_what_was_SENT():
     """`total_pushed += len(chunk_changes)` is what made the log say
     'Successfully pushed 5 changes' for four applied rows."""
@@ -162,42 +158,6 @@ def test_the_count_reflects_what_was_ACKED_not_what_was_SENT():
     assert "total_pushed += len(chunk_changes)" not in src, (
         "the worker is still counting what it sent rather than what landed")
     assert "total_pushed += _acked" in src
-
-
-def test_applied_is_reconciled_against_what_was_sent():
-    """Had this existed, M-20 was a one-line discrepancy on the first push:
-    sent 5, applied 4."""
-    blk = _ack_block()
-    assert '_push_body.get("applied")' in blk
-    assert "UNACCOUNTED ROWS" in blk
-    assert "_explained" in blk
-
-
-def test_an_unaccounted_row_is_KEPT_not_acked():
-    """Fail closed. If the cloud cannot account for a row, the device holds its
-    copy — acking is what destroys the last copy of a sale."""
-    blk = _ack_block()
-    assert "_unaccounted" in blk
-    idx = blk.index("if _unaccounted:")
-    assert "continue" in blk[idx:idx + 200]
-
-
-def test_an_older_cloud_without_the_field_still_works():
-    """`applied` absent means nothing can be concluded, so nothing is claimed
-    (rule 33) — it must not be treated as zero and trigger a false alarm."""
-    blk = _ack_block()
-    assert "isinstance(_applied, int)" in blk
-    tail = blk[blk.index("else:", blk.index("isinstance(_applied, int)")):]
-    assert "_unaccounted = False" in tail
-
-
-def test_a_rejected_row_still_drains_unchanged():
-    """M-13's deliberate behaviour: a refused row is acked so it cannot stall
-    the queue behind it. The M-20 fix must not silently change that."""
-    blk = _ack_block()
-    assert "_defer_keys" in blk
-    assert "_reject" not in blk.split("for (it, _c) in chunk:")[1], (
-        "rejected rows must still be acked; only DEFERRED rows are held")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -464,3 +424,109 @@ def test_declining_never_raises_into_the_business_write():
     blk = _queue_change_block()
     assert "raise" not in blk.replace("raise a", ""), (
         "the enqueue path must never raise into the caller's transaction")
+
+
+def test_a_queue_row_with_NO_payload_is_dead_lettered_not_pushed():
+    """R-6 GAP, found 2026-07-28.
+
+    The corrupt-payload guard was written for `json.loads` failing. A payload
+    that was never there took a different route: `if item.payload:` was simply
+    False, `payload_dict` stayed None, and the row was pushed as
+    `payload: null`. The cloud applies `data = change.payload or {}` — an empty
+    write. For a table with NOT NULL columns that comes back as a rejection;
+    for one without, it would create a blank record on a money table.
+
+    Found because a requeue tool inserted outbox rows without a payload, on the
+    written-down assumption that the worker rebuilt it. It does not. The
+    assumption was asserted rather than read.
+    """
+    src = _worker_source()
+    blk = src[src.index("payload_dict = None"):]
+    blk = blk[:blk.index("pairs.append(")]
+    assert "if not item.payload:" in blk, (
+        "a NULL payload still falls through to the push as payload: null")
+    assert "No payload: cannot be pushed" in blk
+    # It must dead-letter, exactly like a corrupt payload, not silently skip.
+    guard = blk[blk.index("if not item.payload:"):]
+    guard = guard[:guard.index("if item.payload:")]
+    assert "item.synced_at = utc_now()" in guard
+    assert "continue" in guard
+    assert "logger.warning" in guard
+
+
+def test_the_requeue_tool_builds_a_real_payload():
+    """It inserted `payload = NULL` and documented that the worker would rebuild
+    it. The worker does not. Pinned so the claim cannot come back."""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
+                     "scripts", "reconcile_local_vs_cloud.py")
+    src = open(p, encoding="utf-8").read()
+    assert "def _row_payload(" in src
+    blk = src[src.index("for uid, rid in f[\"never\"]:"):]
+    blk = blk[:blk.index("return reopened, inserted")]
+    assert "_row_payload(local, f[\"entity\"], rid)" in blk
+    assert "'INSERT', ?, CURRENT_TIMESTAMP)" in blk, (
+        "the INSERT must bind a payload, not a literal NULL")
+    assert "if payload is None:" in blk, (
+        "a row that cannot be read must be declined, not queued empty")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 6. The reconciliation arithmetic — my bug, found in production
+# ══════════════════════════════════════════════════════════════════════════════
+# First real push after the fix printed:
+#   "sent 7, cloud applied 3, deferred 4, rejected 3 - -3 row(s) vanished"
+# A NEGATIVE shortfall, which is impossible and was the tell. `applied`
+# (processed_count) ALREADY includes rejected rows — routes/sync.py does
+# `processed_count += 1  # ack either way` inside the IntegrityError handler —
+# so adding `rejected` double-counted. And the cloud had a third acked outcome
+# it reported nowhere (unknown entity, LWW cloud-wins), so the sum could not
+# close even after removing the double count.
+
+def _reconcile(sent, applied, deferred, rejected, skipped):
+    """The corrected invariant: received == applied + deferred + skipped."""
+    return sent - (applied + deferred + skipped)
+
+
+def test_the_cloud_reports_its_deliberate_skips():
+    """LWW cloud-wins and unknown-entity used to `continue` silently, so the
+    device's arithmetic had a permanent unexplained remainder. Every row must
+    land in exactly one bucket."""
+    src = _push_source()
+    assert "skipped = []" in src
+    assert '"skipped": skipped' in src
+    assert "unknown entity on this server" in src
+    assert "cloud copy is newer (LWW)" in src
+    assert "no updated_at; cloud version kept" in src
+
+
+def test_a_skip_is_reported_at_INFO_not_as_a_failure():
+    """A deliberate skip is a correct outcome. Logging it as an error would put
+    three different meanings behind one alarming word."""
+    blk = _ack_block()
+    assert "SKIPPED" in blk
+    assert "deliberately (acked, not an error)" in blk
+
+
+def test_requeue_refreshes_the_payload_it_does_not_only_clear_synced_at():
+    """THE LOOP I CREATED, minutes after adding the dead-letter guard.
+
+    A row dead-lettered for having NO payload is ACKED (`synced_at` set), so it
+    lands in the requeue tool's "acked but absent" branch. The first version of
+    that branch only did `SET synced_at = NULL` — putting the same unusable row
+    straight back to be dead-lettered again. Reopen, dead-letter, reopen.
+
+    Refreshing is also more correct in general: the outbox payload is a snapshot
+    from write time and a re-push should carry what the row says now.
+    """
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
+                     "scripts", "reconcile_local_vs_cloud.py")
+    src = open(p, encoding="utf-8").read()
+    blk = src[src.index('for uid, rid in f["acked"]:'):]
+    blk = blk[:blk.index('for uid, rid in f["never"]:')]
+    assert "_row_payload(local, f[\"entity\"], rid)" in blk, (
+        "the reopen path does not rebuild the payload; a payload-less row will "
+        "be dead-lettered again on the next cycle, forever")
+    assert "SET synced_at = NULL, payload = ?" in blk
+    assert "if payload is None:" in blk, (
+        "a row that no longer exists locally must not be reopened — there is "
+        "nothing to send")
