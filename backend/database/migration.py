@@ -240,6 +240,38 @@ _UID_TABLES = [
 # MIGRATION RUNNER
 # ---------------------------------------------------------------------------
 
+def _rollback_quietly(conn, where: str) -> None:
+    """Clear a failed transaction so the NEXT migration step can still run.
+
+    ARCHITECTURE RULE 58 — added after the 2026-07-26 22:00 cloud boot.
+    ------------------------------------------------------------------
+    On SQLite a failed statement is just a failed statement. On Postgres it
+    ABORTS the whole transaction: every subsequent statement on that connection
+    raises ``InFailedSqlTransaction`` until someone rolls back. All of section 3
+    of ``run_migrations_and_seed`` shares ONE connection, and not one except
+    block in this module rolled back — so a single broken statement silently
+    converted into "the cloud database has no money guards at all":
+
+        _install_overfill_guard   ROUND(double precision, integer) -> UndefinedFunction
+          -> ck_invoice_line_items_no_overfill      not installed
+          -> ck_b2b_order_line_items_no_overfill    not installed
+          -> all 6 N4 money invariants              not installed
+          -> _migrate_session_nulls                 skipped
+
+    Nothing raised to the boot log as a failure of those steps; they each caught
+    their own InFailedSqlTransaction and logged it as their own problem. The
+    cascade is the defect, not the ROUND.
+
+    Every step must therefore fail IN ISOLATION. Failure of the rollback itself
+    is an acceptable swallow under rule 13 — it is cleanup inside an error path
+    that has already been reported — but it is logged, never silent.
+    """
+    try:
+        conn.rollback()
+    except Exception as rb:
+        logger.warning("[Migration] rollback after %s failed: %s", where, rb)
+
+
 def _run_column_migrations(conn):
     from sqlalchemy import inspect
     inspector = inspect(conn)
@@ -249,11 +281,19 @@ def _run_column_migrations(conn):
             columns = [c["name"] for c in inspector.get_columns(table)]
             if column not in columns:
                 conn.execute(text(ddl))
+                # Commit EACH added column. Postgres has transactional DDL, so
+                # batching every ALTER into one commit meant a single failure at
+                # the end discarded all the successful ones too (commit on an
+                # aborted transaction rolls back, and does so without raising).
+                conn.commit()
                 logger.info(f"[Migration] Added {table}.{column}")
                 # Refresh inspector because schema changed
                 inspector = inspect(conn)
         except Exception as e:
             logger.error(f"[Migration] Failed to add {table}.{column}: {e}")
+            # Rule 58: without this, one bad ALTER makes every later
+            # get_columns() raise and the whole column migration silently stops.
+            _rollback_quietly(conn, f"ALTER for {table}.{column}")
     conn.commit()
 
 
@@ -570,34 +610,70 @@ def _ensure_line_item_overfill_guard(conn):
         _install_overfill_guard(conn, child, parent, fk, TARGET, suffix, TOL, is_pg)
 
 
-def _install_overfill_guard(conn, child, parent, fk, TARGET, suffix, TOL, is_pg):
-    """Install one overfill guard. See _ensure_line_item_overfill_guard for the
-    reasoning; this is the per-table mechanics."""
-    name = f"ck_{child}_no_overfill"
+def _report_existing_overfill(conn, child, parent, fk, TARGET, TOL):
+    """Diagnostic only: name any parent row that already holds more line value
+    than it billed.
+
+    SEPARATE from the installer, and deliberately so. This used to share one
+    ``try`` with the DDL below, which meant a failing SELECT also skipped the
+    guard — and on Postgres it did worse than skip (see the rounding note).
+    A report that cannot run must not cost us the prevention.
+
+    NO SQL ROUND HERE — 2026-07-26 cloud defect
+    -------------------------------------------
+    This query used ``ROUND(SUM(c.line_total) - (...), 2)``. Every money column
+    involved is ``Column(Float)``, i.e. ``double precision`` on Postgres, and
+    Postgres has no ``round(double precision, integer)`` — only the 1-arg form
+    and ``round(numeric, integer)``. SQLite's ROUND accepts (real, int), so the
+    guard passed locally and threw ``UndefinedFunction`` on the first cloud boot.
+
+    ``ROUND(CAST(x AS numeric), 2)`` would be valid on both, but rounding in
+    Python instead removes the dialect question entirely rather than trading it
+    for a second assumption I still cannot execute against Postgres. The HAVING
+    clause never needed rounding — TOL is 1.00, far wider than float noise.
+    """
+    qualified = TARGET.replace("COALESCE(", "COALESCE(p.")
     try:
-        # Report — never silently — any invoice already over-filled.
-        qualified = TARGET.replace("COALESCE(", "COALESCE(p.")
         bad = conn.execute(text(f"""
-            SELECT p.id, ROUND(SUM(c.line_total) - ({qualified}), 2) AS over
+            SELECT p.id, SUM(c.line_total) - ({qualified}) AS over
               FROM {parent} p JOIN {child} c ON c.{fk} = p.id
              WHERE COALESCE(p.total_amount,0) <> 0
              GROUP BY p.id
             HAVING SUM(c.line_total) > ({qualified}) + {TOL}
         """)).fetchall()
-        if bad:
-            logger.error(
-                "[Migration] overfill: %s %s row(s) already hold MORE line value "
-                "than was billed (ids: %s). The guard only constrains NEW writes; "
-                "these are existing corruption. Repair with: python "
-                "scripts/repair_line_items_by_invariant.py --apply",
-                len(bad), parent,
-                "; ".join(f"{b[0]} +{b[1]}" for b in bad[:25]),
-            )
+    except Exception as e:
+        # Rule 33: a check that cannot see something must not report there is
+        # nothing to see. Say the scan failed; then clear the transaction so the
+        # installer below — and every later migration step — still runs.
+        logger.error(
+            "[Migration] overfill: could NOT scan %s for existing over-filled "
+            "rows (%s). This is not a clean result — it is an unknown one. "
+            "The guard install is attempted anyway.", parent, e, exc_info=True,
+        )
+        _rollback_quietly(conn, f"overfill scan on {parent}")
+        return
+    if bad:
+        logger.error(
+            "[Migration] overfill: %s %s row(s) already hold MORE line value "
+            "than was billed (ids: %s). The guard only constrains NEW writes; "
+            "these are existing corruption. Repair with: python "
+            "scripts/repair_line_items_by_invariant.py --apply",
+            len(bad), parent,
+            "; ".join(f"{b[0]} +{round(float(b[1] or 0.0), 2)}" for b in bad[:25]),
+        )
 
+
+def _install_overfill_guard(conn, child, parent, fk, TARGET, suffix, TOL, is_pg):
+    """Install one overfill guard. See _ensure_line_item_overfill_guard for the
+    reasoning; this is the per-table mechanics."""
+    name = f"ck_{child}_no_overfill"
+    _report_existing_overfill(conn, child, parent, fk, TARGET, TOL)
+    try:
         if is_pg:
             already = conn.execute(text(
                 "SELECT 1 FROM pg_trigger WHERE tgname = :n"), {"n": name}).fetchone()
             if already:
+                _rollback_quietly(conn, f"{name} already-installed check")
                 return
             # A CHECK constraint cannot contain a subquery, so Postgres needs a
             # real trigger function.
@@ -626,6 +702,7 @@ def _install_overfill_guard(conn, child, parent, fk, TARGET, suffix, TOL, is_pg)
                 "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name = :n"),
                 {"n": name}).fetchone()
             if already:
+                _rollback_quietly(conn, f"{name} already-installed check")
                 return
             tgt_sql = f"(SELECT {TARGET} FROM {parent} WHERE id = NEW.{fk})"
             cur_sql = (f"COALESCE((SELECT SUM(line_total) FROM {child} "
@@ -643,7 +720,14 @@ def _install_overfill_guard(conn, child, parent, fk, TARGET, suffix, TOL, is_pg)
         logger.info("[Migration] overfill guard installed on %s (%s)",
                     child, conn.dialect.name)
     except Exception as e:
-        logger.error("[Migration] failed to install %s: %s", name, e)
+        logger.error("[Migration] failed to install %s: %s", name, e, exc_info=True)
+        # Rule 58. Without this, the failed statement leaves the Postgres
+        # transaction ABORTED and every later migration step dies with
+        # InFailedSqlTransaction — which is exactly what happened on the
+        # 2026-07-26 22:00 cloud boot: one bad ROUND took out the second
+        # overfill guard, all six N4 invariants and _migrate_session_nulls,
+        # leaving the cloud DB with none of its money guards.
+        _rollback_quietly(conn, f"install of {name}")
 
 
 def _ensure_money_invariants(conn):
@@ -1071,8 +1155,37 @@ def _resync_postgres_sequences(conn):
     for tbl in tables:
         try:
             conn.execute(text(f"SELECT setval(pg_get_serial_sequence('{tbl}', 'id'), COALESCE((SELECT MAX(id) FROM {tbl}), 0) + 1, false);"))
-        except Exception:
-            pass
+            conn.commit()
+        except Exception as e:
+            # WAS `except Exception: pass`. A silent swallow around the thing
+            # that stops the next INSERT colliding on a primary key is a defect
+            # by itself; worse, with no rollback the FIRST missing table aborted
+            # the transaction and every remaining sequence silently went
+            # unresynced. Fail-open is right here, silent is not.
+            logger.warning("[Migration] sequence resync skipped for %s: %s", tbl, e)
+            _rollback_quietly(conn, f"sequence resync for {tbl}")
+
+
+def _step(conn, fn):
+    """Run one migration step in isolation on a shared connection (rule 58).
+
+    Belt to _rollback_quietly's braces. The individual steps each catch their
+    own exceptions and now roll back, but this is the structural guarantee: it
+    does not matter whether a future step remembers to. Whatever happens inside
+    ``fn``, the connection handed to the NEXT step is not in a failed
+    transaction, and the failure is named — the boot log gets the step's own
+    name, not four downstream InFailedSqlTransaction messages that hide it.
+
+    Deliberately does not re-raise. A guard that cannot install must not stop
+    the app booting; the owner still needs to bill. Reported at ERROR, never
+    swallowed.
+    """
+    try:
+        return fn(conn)
+    except Exception as e:
+        logger.error("[Migration] step %s FAILED: %s", fn.__name__, e, exc_info=True)
+        _rollback_quietly(conn, f"step {fn.__name__}")
+        return None
 
 
 def run_migrations_and_seed():
@@ -1089,20 +1202,25 @@ def run_migrations_and_seed():
         _check_schema_integrity(conn)
 
     # 3. Backfills & sequence resync
+    #
+    # ONE connection is shared by every step below, so per rule 58 each step is
+    # run through _step(), which guarantees the connection is left usable no
+    # matter how that step failed. Before this existed, the first Postgres
+    # failure aborted the transaction and silently took out everything after it.
     with engine.connect() as conn:
-        _backfill_null_business_ids(conn)
-        _backfill_null_uids(conn)
-        _ensure_uid_unique_indexes(conn)  # dedup once + create partial unique index (no-op after first boot)
-        _backfill_staff_login_name(conn)
-        _backfill_b2b_connection_consent(conn)
+        _step(conn, _backfill_null_business_ids)
+        _step(conn, _backfill_null_uids)
+        _step(conn, _ensure_uid_unique_indexes)  # dedup once + create partial unique index (no-op after first boot)
+        _step(conn, _backfill_staff_login_name)
+        _step(conn, _backfill_b2b_connection_consent)
         # M-7: re-derive any invoice whose paid state drifted from its ledger
         # (pull-side reconciliation was missing until Jul-2026).
-        _repair_invoice_paid_state(conn)
+        _step(conn, _repair_invoice_paid_state)
         # M-3: DB-level backstop for the invoice-number allocator.
-        _ensure_invoice_number_unique_index(conn)
+        _step(conn, _ensure_invoice_number_unique_index)
         # M-11: one OPEN shift per operator. Keyed on user_id, which sync can
         # populate wrongly — so it needs a DB guard, not just the service check.
-        _ensure_single_open_shift_index(conn)
+        _step(conn, _ensure_single_open_shift_index)
         # N4: the remaining money invariants, pushed down to the DB so paths that
         # bypass the command layer (imports, sync applies, repair scripts) cannot
         # write a row the books cannot represent. Runs AFTER the backfills above,
@@ -1113,10 +1231,10 @@ def run_migrations_and_seed():
         # Installed AFTER _ensure_money_invariants so the simple row-level guards
         # are in place first; this one needs a subquery and therefore its own
         # trigger on both dialects.
-        _ensure_line_item_overfill_guard(conn)
-        _ensure_money_invariants(conn)
-        _migrate_session_nulls(conn)
-        _resync_postgres_sequences(conn)
+        _step(conn, _ensure_line_item_overfill_guard)
+        _step(conn, _ensure_money_invariants)
+        _step(conn, _migrate_session_nulls)
+        _step(conn, _resync_postgres_sequences)
 
     # 4. Seed users
     db = SessionLocal()

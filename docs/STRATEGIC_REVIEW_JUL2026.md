@@ -2509,3 +2509,160 @@ changing. The lesson is in rule 54 and now in rule 57.
 55. **A counter and the list it summarises must be asserted equal.** Four call sites bumped a skip counter; three recorded the row. The mismatch (`SKIPPED=1 ... rows: []`) is the only visible symptom, so assert the two agree rather than trusting every site is wired. (M-19)
 56. **"Unit-tested directly" in a docstring is a claim to verify, not to trust.** `_remap_requester` said it and had zero coverage of its branch logic — on the M-1 consent fix. If a docstring asserts test coverage, add a test that fails when the claim stops being true. (M-19)
 57. **Measure coverage with the tests that exercise the module, and say which run produced the number.** A module reported at 10% was at 82%; the difference was the test selection, not the code. A coverage figure without its command is not a measurement. (M-19)
+58. **A migration step must roll back its own failed transaction.** On Postgres one failing statement aborts the whole transaction and every later step on that connection dies with `InFailedSqlTransaction`, turning one broken guard into a silently unguarded database — two overfill guards, six money invariants and a backfill, all lost to a single bad `ROUND`. Steps sharing a connection must fail in isolation, and the runner must guarantee it rather than trusting each step to remember. (N4b-PG, §63)
+59. **The same money expression on two engines is two implementations.** `ROUND(x, 2)` is one function on SQLite and does not exist on Postgres for `double precision`. When a guard must run on both, prefer an expression that calls *no* dialect-specific function — do the arithmetic in SQL and the formatting in Python — over a portable-looking cast you still cannot execute on the other engine. (N4b-PG, §63)
+60. **`commit()` on an aborted transaction rolls back, and does not raise.** Batching many DDL statements into one terminal commit means a single late failure silently discards every earlier success. Commit each unit of schema change on its own. (N4b-PG, §63)
+
+## 63. N4b-PG · 🔴 Critical (NEW) — my guard threw on the cloud, and took every other guard with it
+
+### 63.1 My mistake, stated plainly
+
+I wrote the N4b overfill guard in §59 and verified it on SQLite only. I told the
+owner the Postgres path was **unverified**. It is now **confirmed broken**, and
+it did far more damage than "one guard missing".
+
+The 2026-07-26 22:00 Hugging Face boot log:
+
+```
+psycopg2.errors.UndefinedFunction:
+    function round(double precision, integer) does not exist
+```
+
+`_install_overfill_guard` scanned for already-over-filled parents with
+`ROUND(SUM(c.line_total) - (...), 2)`. Every column in that expression is
+`Column(Float)` → `double precision` on Postgres, and Postgres has **no**
+`round(double precision, integer)` — only the one-argument form and
+`round(numeric, integer)`. SQLite's `ROUND` accepts `(real, int)` happily, so the
+guard was green locally on every run and threw on its first contact with the
+cloud. **Rule 51 already said to prove a guard on every dialect. I wrote the rule
+and then did not follow it.**
+
+### 63.2 The real defect was the cascade, not the ROUND
+
+A missing guard is one problem. What actually shipped was *no guards at all*.
+
+All of section 3 of `run_migrations_and_seed` shares **one connection**. On
+Postgres a failed statement aborts the entire transaction: every subsequent
+statement raises `InFailedSqlTransaction` until someone rolls back. **Not one
+`except` block in `database/migration.py` rolled back** — there were zero
+occurrences of `rollback` in the file. So one bad `SELECT` produced:
+
+| Step | Outcome on cloud |
+|---|---|
+| `ck_invoice_line_items_no_overfill` | not installed |
+| `ck_b2b_order_line_items_no_overfill` | not installed |
+| all 6 N4 money invariants | not installed |
+| `_migrate_session_nulls` | skipped |
+
+The production database had none of its money guards while SQLite local had all
+of them. Worse for diagnosis: each step caught its *own* `InFailedSqlTransaction`
+and logged it as its own local problem, so the boot log showed four unrelated-
+looking failures instead of one root cause. This is the §-recurring shape again —
+every step individually correct, the defect in the seam.
+
+### 63.3 What was changed
+
+`backend/database/migration.py`, +149 / −31.
+
+1. **No SQL `ROUND` in the scan at all.** `ROUND(CAST(x AS numeric), 2)` is valid
+   on both dialects and was the obvious fix — I did not take it. It trades one
+   assumption I cannot execute against Postgres for another, and that trade is
+   what caused this finding. The difference is now computed in SQL and rounded in
+   **Python**, so the query calls no rounding function on any dialect. The
+   `HAVING` clause never needed rounding: `TOL` is ₹1.00, orders of magnitude
+   wider than float noise.
+2. **`_report_existing_overfill` split out of `_install_overfill_guard`.** The
+   scan is a *diagnostic*; it shared a `try` with the DDL, so its failure also
+   cost us the *prevention*. A failed scan now reports "this is not a clean
+   result — it is an unknown one" (rule 33), rolls back, and the guard installs
+   anyway.
+3. **`_rollback_quietly(conn, where)`** — the rule-58 primitive. Called in every
+   `except` on the shared connection, and on the early `return` paths where the
+   already-installed probe left an open transaction.
+4. **`_step(conn, fn)`** wraps all twelve section-3 steps in the runner. The
+   structural guarantee: it does not matter whether a step added next year
+   remembers to roll back. It also names the failing step in the log instead of
+   letting four downstream `InFailedSqlTransaction` messages hide it. It does not
+   re-raise — a guard that cannot install must not stop the owner billing.
+5. **`_run_column_migrations` now commits each ALTER individually** and rolls back
+   on failure. Postgres has transactional DDL, so batching every ALTER into one
+   terminal `commit()` meant a single failure discarded all the *successful* ones
+   too — and `commit()` on an aborted transaction rolls back **without raising**,
+   so that loss would have been silent.
+6. **`_resync_postgres_sequences` no longer swallows silently.** It was
+   `except Exception: pass` around the thing that stops the next INSERT colliding
+   on a primary key, with no rollback, so the first missing table aborted the
+   transaction and every remaining sequence went unresynced in silence. Fail-open
+   is right here; silent is not.
+
+### 63.4 What I proved, and what I did not
+
+`backend/tests/test_migration_step_isolation.py` — 9 tests.
+
+The honest problem is that there is no Postgres in CI or in the authoring
+sandbox, and "it passed on SQLite" is precisely the evidence that failed. So the
+tests attack the two halves separately:
+
+* **The ROUND bug** is asserted on the *generated SQL* — no two-argument `ROUND`,
+  no `ROUND` at all. A query that never calls the function cannot depend on which
+  dialect implements it. That is a property provable without a server, which is
+  the whole reason the fix rounds in Python.
+* **The cascade** is tested against a `PgLikeConn` fake that reproduces **Postgres
+  abort semantics**: after any failed `execute`, every subsequent statement raises
+  `InFailedSqlTransaction` until `rollback()` is called. The real migration
+  functions run against it and the cascade either propagates or it does not.
+
+**Run against the pre-fix file (`git show HEAD:...`), 8 of the 9 fail** — including
+`test_failed_guard_install_does_not_poison_the_next_step`, which fails with
+exactly the shipped symptom: *"the B2B guard was lost because the invoice guard
+failed first"*. They are a reproduction, not a rubber stamp.
+
+Executed evidence, post-fix:
+
+| What | Result |
+|---|---|
+| `tests/test_migration_step_isolation.py` | 9 passed |
+| + `test_line_item_invariant` | 33 passed |
+| + `test_db_invariants`, `test_sync_migration_fixes`, `test_money_pure_functions` | 239 passed |
+| `test_financial_invariants`, `test_money_reconciliation`, `test_shifts`, `test_shift_service_unit`, `test_sync_shift_and_push_hardening` | 101 passed |
+| Full `run_migrations_and_seed()` on a fresh SQLite DB | 14 triggers — both overfill guards **and** all 6 N4 invariants |
+| Guard behaviour | invoice guard fires; B2B guard fires on the ₹11.11 M-18 shape; 3-line build-up accepted; `LCL-OW-0027` (323 + 15 − 0.35 = 337.65) accepted |
+| Existing-corruption scan | corrupted a committed row → boot logged `overfill: 1 invoices row(s) ... (ids: 9003 +300.0)` |
+| Column-migration isolation | forced one ALTER to fail — the column before **and** the column after it were both added |
+
+Commands (rule 57):
+
+```
+cd backend
+CLOUD_API_URL="http://127.0.0.1:9" BIZASSIST_TEST_DATABASE_URL="sqlite:////tmp/test_X.db" \
+  python -m pytest -q -p no:cacheprovider --no-header tests/test_migration_step_isolation.py
+```
+
+**NOT proved — say it out loud.** None of this executed against a real
+PostgreSQL server; the sandbox has no `psycopg2` and cannot install a server. The
+trigger DDL and the plpgsql function body themselves are still verified only on
+the SQLite branch plus reading. **The verdict on this fix comes from the next HF
+boot log**, and until that log is clean, the cloud must be assumed unguarded.
+That is the same gap that produced this finding — it is narrower now (the scan
+calls no dialect-specific function), but it is not closed.
+
+### 63.5 Correction to the handover: the B2B repair was already done
+
+The open item read *"Run the B2B repair locally: 2 orders, 4 rows, ₹1,111.11."*
+Executed on a copy of `backend/bizassist.db` (rule 29 — never on the live file):
+
+* both B2B orders reconcile to their headers **exactly**, diff `0.00`
+  (`ORD-20260630-2QTE` 836.90, `ORD-20260702-J17T` 774.11, 4 lines each);
+* `repair_line_items_by_invariant.py` → *"Every invoice's line items reconcile to
+  its header. Nothing to do."*;
+* `audit_money_integrity.py` → **clean**, all ten checks including **I (M-16)**
+  and **J (M-18)** at 0.
+
+The copy is faithful: `journal_mode=delete` and no `-wal` alongside the file, so
+there are no uncopied commits. **No `--apply` run is needed locally.** Two
+loose ends this leaves: the `repair_line_items_by_invariant.py` banner still says
+`(M-17)` and "invoice line items" although it now drives both specs — a stale
+label on a money script; and the ₹1,111.11 in the handover is unaccounted for in
+this file (line-item ids 5 and 6 are absent from `b2b_order_line_items`, which is
+consistent with a prior deletion I have no record of). I could not prove *when* or
+*by what* it was repaired.
