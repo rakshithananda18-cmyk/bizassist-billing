@@ -64,6 +64,14 @@ _PULL_CURSOR: Dict[int, str] = {}
 _PULL_FAILED_STREAK: Dict[int, int] = {}
 _PULL_MAX_FAILED_STREAK = 3
 
+# M-20. How many consecutive pushes may defer the same rows before this stops
+# being "ordering will sort itself out" and becomes "the parent is never coming".
+# The rows are NEVER discarded at this point — unlike the pull side, which must
+# eventually advance its cursor, the outbox can hold a row indefinitely at no
+# cost but disk. The bound exists to make a stuck parent LOUD, not to give up.
+_PUSH_MAX_DEFER_STREAK = 3
+_DEFER_STREAK: dict = {}
+
 # (H-2) Remember the last logged connectivity state per business so we only write
 # a SyncLog row on a state *change* (online↔offline), not every failed cycle.
 _OFFLINE_STATE: Dict[int, bool] = {}
@@ -475,6 +483,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
     # Function scope for the same reason as above — the summary below must be able
     # to read it on every path.
     _push_rejected: list = []
+    _push_deferred: list = []      # M-20: kept in the outbox, re-sent next cycle
 
     # 0. Subscription check: if the user does not have a Pro plan and subscription is enforced,
     # background sync is paused (only required login/identity is synced during auth).
@@ -643,21 +652,91 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                         len(_pf), business_id, _pf,
                     )
 
-                # Chunk pushed successfully — mark just this chunk synced.
+                # -- M-20 (CRITICAL): DEFERRED rows must stay in the outbox ----────────
+                #
+                # This block used to stamp `synced_at` on EVERY row in the chunk
+                # and add `len(chunk_changes)` to the count, unconditionally. So
+                # a row the cloud had DEFERRED — held back because its parent was
+                # not there yet, expecting the device to send it again — was
+                # marked done and deleted from the only place it still existed.
+                #
+                # Reproduced on production 2026-07-27: a ₹641 sale deferred for a
+                # missing `register_shifts` parent, acked here, gone forever.
+                #
+                # A deferral is NOT a rejection. Rejected means "stop sending
+                # this". Deferred means "not yet — keep it". So these rows keep
+                # `synced_at = NULL` and go again next cycle.
+                _deferred = _push_body.get("deferred") or []
+                _defer_keys = {(d.get("entity"), d.get("row_id")) for d in _deferred}
+                if _deferred:
+                    _push_deferred.extend(_deferred)
+                    logger.warning(
+                        "[SYNC_WORKER] the cloud DEFERRED %s of %s pushed row(s) "
+                        "for biz=%s — their parent is not on the cloud yet. They "
+                        "are being KEPT in the outbox and re-sent next cycle: %s",
+                        len(_deferred), len(chunk_changes), business_id,
+                        [f"{d.get('entity')}#{d.get('row_id')}: {d.get('reason')}"
+                         for d in _deferred],
+                    )
+
+                # ARITHMETIC CHECK. The cloud reports how many rows it actually
+                # applied; this compares that against what was sent and accounts
+                # for every difference. Had this existed, M-20 was a one-line
+                # discrepancy on the very first push: sent 5, applied 4.
+                _applied = _push_body.get("applied")
+                if isinstance(_applied, int):
+                    _explained = _applied + len(_deferred) + len(_rejected)
+                    if _explained != len(chunk_changes):
+                        logger.error(
+                            "[SYNC_WORKER] UNACCOUNTED ROWS for biz=%s: sent %s, "
+                            "cloud applied %s, deferred %s, rejected %s — %s row(s) "
+                            "vanished with no explanation. They are being KEPT in "
+                            "the outbox rather than acked.",
+                            business_id, len(chunk_changes), _applied,
+                            len(_deferred), len(_rejected),
+                            len(chunk_changes) - _explained,
+                        )
+                        # Fail CLOSED: if the cloud cannot account for a row, the
+                        # device keeps its copy. An unexplained row is exactly the
+                        # case where acking destroys the last copy of a sale.
+                        _unaccounted = True
+                    else:
+                        _unaccounted = False
+                else:
+                    # An older cloud does not send `applied`. Nothing can be
+                    # concluded, so nothing is claimed (rule 33) — behave as
+                    # before rather than inventing a verdict.
+                    _unaccounted = False
+
+                # Chunk pushed — mark synced ONLY the rows the cloud accounted for
+                # as stored (or explicitly refused). Deferred and unaccounted rows
+                # keep synced_at NULL so they are re-sent.
                 now = utc_now()
+                _acked = 0
                 for (it, _c) in chunk:
+                    if (_c["entity"], _c["entity_id"]) in _defer_keys:
+                        it.error = "deferred by cloud: parent not present yet"
+                        continue
+                    if _unaccounted:
+                        it.error = "cloud did not account for this row; kept queued"
+                        continue
                     it.synced_at = now
                     it.error = None
+                    _acked += 1
                 db.commit()
-                total_pushed += len(chunk_changes)
+                total_pushed += _acked
 
                 # Broadcast progress AFTER success so UI reflects shrinking queue.
                 # `rejected` rides along so the UI can distinguish "queue drained"
-                # from "queue drained and everything stored" (M-13).
+                # from "queue drained and everything stored" (M-13), and
+                # `deferred` so it can distinguish both of those from "still
+                # queued, waiting on a parent" (M-20) — three different states
+                # that all used to render as a shrinking number.
                 _safe_broadcast(business_id, {
                     "type":    "sync.progress",
                     "phase":   "push",
                     "rejected": len(_push_rejected),
+                    "deferred": len(_push_deferred),
                     "entities": chunk_entities,
                     "done":    total_pushed,
                     "total":   total_pairs,
@@ -720,11 +799,57 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 # chunks already committed above stay synced (progress preserved).
                 return
 
+        # ── M-20: a durable record of what did NOT reach the cloud ─────────────
+        #
+        # Rejections and deferrals were logged at ERROR/WARNING and broadcast to
+        # the UI, and that was all. `sync_logs` had rows for cloud outages and
+        # auth failures but none for "the cloud did not store this sale", so the
+        # only surviving evidence of a lost write was a log line that rotates
+        # away — which is how the ₹641 sale took a full investigation to find.
+        #
+        # Money that failed to sync must be a QUERY, not an archaeology exercise.
+        for _kind, _rows in (("rejected", _push_rejected),
+                             ("deferred", _push_deferred)):
+            for _r in _rows[:50]:      # bounded: a stuck parent must not flood
+                db.add(SyncLog(
+                    business_id=business_id,
+                    entity=_r.get("entity"),
+                    entity_id=_r.get("row_id"),
+                    operation="push",
+                    status=f"push_{_kind}",
+                    error=(f"{_kind}: {_r.get('reason')}"
+                           f"{' uid=' + str(_r.get('uid')) if _r.get('uid') else ''}"),
+                    synced_at=utc_now(),
+                ))
+        if _push_rejected or _push_deferred:
+            db.commit()
+
         unsynced_count = (
             db.query(SyncQueue)
             .filter(SyncQueue.business_id == business_id, SyncQueue.synced_at.is_(None))
             .count()
         )
+
+        # A deferral that never resolves is a stuck parent, and the retry alone
+        # will spin forever without telling anyone. Bounded the same way the pull
+        # side bounds its retries (M-12): report loudly, keep the data.
+        if _push_deferred:
+            _streak = _DEFER_STREAK.get(business_id, 0) + 1
+            _DEFER_STREAK[business_id] = _streak
+            if _streak >= _PUSH_MAX_DEFER_STREAK:
+                logger.critical(
+                    "[SYNC_WORKER] biz=%s: %s row(s) have been DEFERRED by the "
+                    "cloud on %s consecutive pushes. Their parent is not arriving "
+                    "on its own. The rows are SAFE and still queued locally, but "
+                    "they are NOT on the cloud and will not get there until the "
+                    "parent does. This needs a human: %s",
+                    business_id, len(_push_deferred), _streak,
+                    [f"{d.get('entity')}#{d.get('row_id')}: {d.get('reason')}"
+                     for d in _push_deferred[:10]],
+                )
+        else:
+            _DEFER_STREAK.pop(business_id, None)
+
         if total_pushed or unsynced_count == 0:
             last_success = (
                 db.query(SyncLog)

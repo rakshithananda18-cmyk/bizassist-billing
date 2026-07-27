@@ -319,6 +319,9 @@ def push_changes(
     # logged at ERROR, never swallowed.
     apply_failures = []
     rejected = []          # M-13: rows the cloud REFUSED to store
+    # M-20: rows the cloud DEFERRED — a THIRD state, and the one that was
+    # invisible. See the deferral site below and `_defer` for the full finding.
+    deferred = []
 
     entity_map = ENTITY_BROADCAST_MAP
 
@@ -445,6 +448,36 @@ def push_changes(
             # with the source-DB integer id (wrong-row / orphan); it re-applies on
             # a later sync once the parent exists.
             if resolve_parent_fk_uids(db, model_cls, data, log_prefix=f"sync/push[{change.entity}.id={change.entity_id}]"):
+                # -- M-20 (CRITICAL): the row is DEFERRED, the client MUST be told --
+                #
+                # Deferring is correct: writing the source database's integer FK
+                # would be M-9, money on the wrong customer's invoice. The
+                # contract in `resolve_parent_fk_uids` is that the row "re-applies
+                # on a later sync once the parent lands".
+                #
+                # That contract was broken on the other side. This `continue`
+                # used to skip the row without recording it anywhere: it is not
+                # counted in `processed_count`, and `rejected` is appended to
+                # only inside the IntegrityError handler below. So the response
+                # said `{"applied": 4, "rejected": []}` for five rows sent, and
+                # `services/sync_worker.py` — which counts what it SENT and never
+                # reads `applied` — stamped `synced_at` on all five. The outbox
+                # row was gone, so the "later sync" could never happen.
+                #
+                # Reproduced on production 2026-07-27: a ₹641 sale (invoice 860,
+                # LCL-OW-0028) deferred for a missing `register_shifts` parent,
+                # acked by the client, and permanently absent from the cloud.
+                #
+                # A deferred row is NOT a rejected row. Rejected means "we refuse
+                # this, stop sending it". Deferred means "not yet, keep it and
+                # send it again". Collapsing the two loses data in one direction
+                # and spins forever in the other, so they are reported separately.
+                deferred.append({
+                    "entity": change.entity,
+                    "row_id": change.entity_id,
+                    "uid": data.get("uid"),
+                    "reason": "parent not resolvable in this database yet",
+                })
                 continue
 
             # Apply fields to model instance
@@ -608,14 +641,32 @@ def push_changes(
             [f"{r['entity']}#{r['row_id']}: {r['reason']}" for r in rejected],
         )
 
+    if deferred:
+        # WARNING, not ERROR: a deferral is a legitimate ordering outcome and is
+        # expected to resolve on the next cycle. It becomes an error only if it
+        # never resolves, which the CLIENT is positioned to detect (it knows how
+        # many times it has re-sent the row) — see `_PUSH_MAX_DEFER_STREAK`.
+        logger.warning(
+            "sync/push: %s row(s) DEFERRED for biz=%s — their parent is not in "
+            "this database yet. They are NOT stored and NOT acked; the device "
+            "must keep them queued and re-send: %s",
+            len(deferred), business_id,
+            [f"{d['entity']}#{d['row_id']}: {d['reason']}" for d in deferred],
+        )
+
     return {
         "status": "success",
         "applied": processed_count,
+        "received": len(payload.changes),
         "apply_failures": [
             {"entity": h.entity, "row_id": h.row_id, "errors": h.errors}
             for h in apply_failures
         ],
         "rejected": rejected,
+        # M-20. An older client that does not know this field will ignore it and
+        # behave exactly as before — no worse, and the cloud-side log above still
+        # records the deferral. A CURRENT client keeps these rows queued.
+        "deferred": deferred,
     }
 
 

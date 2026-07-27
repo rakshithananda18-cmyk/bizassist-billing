@@ -2384,13 +2384,19 @@ line coverage, measured with `pytest-cov`:
 | `core/api/connections.py` | **76%** | 14/14 missing |
 | `core/order/service.py` | **74%** | 3/5 missing |
 | `core/api/orders.py` | **72%** | 6/7 missing |
-| `core/connection/transfer.py` | **10%** | — |
+| `core/connection/transfer.py` | ~~**10%**~~ **82%** — see below | — |
 
-The B2B layer is far better covered than I reported. The real gap is
-`core/connection/transfer.py` at **10%** — the data-transfer importer, which is
-the module that produced M-1 by copying `requested_by_business_id` verbatim from
-another tenant's database. That is where the next B2B testing effort belongs, not
-in the route handlers.
+The B2B layer is far better covered than I reported.
+
+> **⚠️ Correction, added later — the 10% in this table was also wrong.**
+> I wrote that `core/connection/transfer.py` was the real gap at 10% and that the
+> next testing effort belonged there. That figure was an artefact of measuring the
+> module under the *connections* test file, which does not exercise it;
+> `tests/test_b2b_transfer.py` already covered **82%**, since raised to **92%**.
+> Two wrong coverage claims in two consecutive reports, both from careless
+> measurement rather than from the code changing — see §61 and rules 54 and 57.
+> The paragraph above is left standing rather than quietly edited, because the
+> mistake is the point.
 
 ## 61. M-19 · 🟠 High (NEW) — the B2B importer dropped rows and reported success
 
@@ -2512,6 +2518,14 @@ changing. The lesson is in rule 54 and now in rule 57.
 58. **A migration step must roll back its own failed transaction.** On Postgres one failing statement aborts the whole transaction and every later step on that connection dies with `InFailedSqlTransaction`, turning one broken guard into a silently unguarded database — two overfill guards, six money invariants and a backfill, all lost to a single bad `ROUND`. Steps sharing a connection must fail in isolation, and the runner must guarantee it rather than trusting each step to remember. (N4b-PG, §63)
 59. **The same money expression on two engines is two implementations.** `ROUND(x, 2)` is one function on SQLite and does not exist on Postgres for `double precision`. When a guard must run on both, prefer an expression that calls *no* dialect-specific function — do the arithmetic in SQL and the formatting in Python — over a portable-looking cast you still cannot execute on the other engine. (N4b-PG, §63)
 60. **`commit()` on an aborted transaction rolls back, and does not raise.** Batching many DDL statements into one terminal commit means a single late failure silently discards every earlier success. Commit each unit of schema change on its own. (N4b-PG, §63)
+61. **The converse of rule 33: a check that DID look must say what it looked at.** The repair script examined invoices *and* `b2b_orders` but reported "Every **invoice**'s line items reconcile" under an `(M-17)` banner, so a clean B2B result was indistinguishable from a B2B family never examined — and it was read that way. A verdict must print its scope before its conclusion. (§63.6)
+62. **A clean verdict over an empty scan is not a clean verdict.** `--business 99` matched no documents and printed the same all-clear as a real one. Zero-in-scope is a distinct outcome and needs a distinct message and exit code. (§63.6)
+63. **`absent` is not `0`.** Zero is a measurement; a missing table is the absence of one, and a diff must not be able to claim a quantity it could not read. Guard every figure on the table existing, report a sentinel, and refuse to compute a delta across it — a repair script that crashes on an older schema fails on exactly the installs most likely to need it. (§63.6)
+64. **A tool that can only read one dialect can only make claims about one dialect.** Both money scripts called `sqlite3.connect` directly, so every integrity figure in this review was a statement about the local file — and when the cloud guard reported 33 corrupt documents, nothing in the tree could open the database to look. Diagnostic tooling must reach every environment the code runs in, or the environments it cannot reach are the ones that go unexamined. (§65)
+65. **A gate with a false negative is worse than no gate.** The first portability analyser exempted any string that did not *look* like SQL, so it skipped `execute("PRAGMA foreign_key_check")` — the one line it existed to police — while reporting green. Prove a gate fails on the defect it was written for, in both directions, before trusting a pass. (§65.7)
+66. **Verify inside the transaction, not after the commit.** A repair that commits and then re-checks has nothing left to do when the check comes back dirty. Run the invariant re-scan and the money diff before `COMMIT`, and roll back on any surprise — the difference is invisible next to a local `.bak` and total against a cloud database. (§65.6)
+67. **A safety rail must not depend on a failure it does not control.** The `--apply` refusal originally ran after `connect()`, so against a machine without `psycopg2` the operator saw "driver not installed", installed it, re-ran the same command — and the rail had never been what stopped them. Check the refusal on the inputs, before touching anything. (§65.6)
+68. **A repair's export is written to disk and pasted into tickets.** It must record a redacted connection label, never the DSN. (§65.5)
 
 ## 63. N4b-PG · 🔴 Critical (NEW) — my guard threw on the cloud, and took every other guard with it
 
@@ -2659,10 +2673,500 @@ Executed on a copy of `backend/bizassist.db` (rule 29 — never on the live file
   and **J (M-18)** at 0.
 
 The copy is faithful: `journal_mode=delete` and no `-wal` alongside the file, so
-there are no uncopied commits. **No `--apply` run is needed locally.** Two
-loose ends this leaves: the `repair_line_items_by_invariant.py` banner still says
-`(M-17)` and "invoice line items" although it now drives both specs — a stale
-label on a money script; and the ₹1,111.11 in the handover is unaccounted for in
-this file (line-item ids 5 and 6 are absent from `b2b_order_line_items`, which is
-consistent with a prior deletion I have no record of). I could not prove *when* or
-*by what* it was repaired.
+there are no uncopied commits. **No `--apply` run is needed locally.**
+
+**And the ₹1,111.11 is fully accounted for — the repair was already applied.** I
+first wrote that I could not prove when or by what. That was me not checking my
+own document. §60 records the repair proven on a copy as `b2b_lines` 12 → 8 and
+`b2b_line_value` 2,722.12 → **1,611.01**. Measured on the live file now:
+
+| | §60 post-repair (proven on a copy) | Live `backend/bizassist.db` today |
+|---|---|---|
+| `b2b_lines` | 8 | **8** |
+| `b2b_line_value` | 1,611.01 | **1,611.01** |
+
+The surviving ids are `1,2,3,4` and `7,8,9,10` — exactly four rows deleted,
+`5,6` from `ORD-20260630-2QTE` and `11,12` from `ORD-20260702-J17T`, which is
+precisely the "4 genuine + 2" split §60 measured on each order. The live state is
+the proven post-repair state to the paisa. **The `--apply` run happened; the
+handover's open item was stale.**
+
+### 63.6 The repair script's report said less than it knew — fixed
+
+`repair_line_items_by_invariant.py` bannered itself `(M-17)` / "Remove phantom
+**invoice** line items" and printed *"Every **invoice**'s line items reconcile to
+its header"* — although it has driven both `SPECS` since §60. That is why §63.5
+above was nearly written as "the B2B family was never checked": the output named
+half of what it examined. **Rule 33's converse: a check that DID look must say
+what it looked at.**
+
+It now prints its scope before its verdict:
+
+```
+  Scanned:
+      invoices         108 document(s) with a non-zero total,   178 line item(s)
+      b2b_orders         2 document(s) with a non-zero total,     8 line item(s)
+
+  All 110 document(s) above reconcile to their headers. Nothing to do.
+```
+
+Two further defects fell out of writing that, both found by running the script
+rather than by reading it:
+
+* **A clean verdict over an empty scan.** `--business 99` matched nothing and
+  printed the same reassuring all-clear as a real one. It now says
+  `NOTHING WAS SCANNED - 0 documents matched --business 99. This is NOT an
+  all-clear.` and exits **2**, so a scripted caller cannot mistake it for success.
+* **`money_snapshot` crashed on a database without the B2B mirror tables** —
+  `sqlite3.OperationalError: no such table: b2b_order_line_items`, raised *before*
+  a single invoice was repaired. A repair script that dies on an older schema
+  fails on exactly the installs most likely to need it. Every figure is now
+  guarded, an absent table reports the sentinel `TABLE ABSENT` rather than `0`
+  (zero is a measurement; absent is not), and the money diff prints
+  `NOT MEASURED` instead of subtracting a string.
+
+Six tests added in `tests/test_line_item_invariant.py`. Verified by execution:
+real all-clear → exit 0 with both families named; empty scope → exit 2; B2B table
+dropped → `NOT SCANNED - table absent`, invoices still scanned and reported.
+
+The `--apply` path was re-proved end-to-end on a copy after these changes: 4
+phantom rows removed, `b2b_lines` 12 → 8, `b2b_line_value` 2,236.53 → 1,611.01,
+**every other figure delta 0.0** (invoice value, paid, payments, journal Dr/Cr,
+invoice line items, stock), invariant re-checked 0/0, `integrity_check: ok`,
+`foreign_key_check: 0`.
+
+**An unplanned proof arrived with it.** My first attempt to inject the phantom
+rows into the copy failed:
+
+```
+sqlite3.IntegrityError: overfill guard: line items would exceed the document
+total - refusing to append a line to a completed document
+```
+
+The N4b guard is **live on `backend/bizassist.db`** and refused the exact M-18
+corruption on real data, unprompted. That is the first evidence in this review of
+the guard firing outside a fixture. (The injection had to drop the trigger,
+insert, and re-create it before the repair path could be tested at all.)
+
+## 64. Coverage on the money routes — measured first, then written
+
+Rule 54 says the name-reference proxy cannot see HTTP-exercised code. Rule 57
+says a coverage figure without its command is not a measurement. Both were needed
+here, and **I nearly broke rule 57 again inside this very section**: my first
+measurement of `core/api/sales.py` used three plausible test files, showed
+`create_sale_invoice_frontend` — the POS "Save Bill" route — at **zero**, and I
+was one step from reporting that the most money-critical route in the app was
+untested. It is exercised by five *other* files. Measuring the module against the
+corpus that actually reaches it moved the figure from 57% to 69%. The lesson has
+now cost three wrong claims; the difference this time is that it was caught
+before it was written down.
+
+### Measured (pytest-cov line coverage, not the name proxy)
+
+| Module | Start | Now | Statements |
+|---|---|---|---|
+| `core/api/reports.py` | 76% | **84%** | 727 |
+| `core/api/payments.py` | 65% → 70% (corpus) | **78%** | 222 |
+| `core/api/sales.py` | 57% → **69%** (corpus) | 69% | 258 |
+
+The producing commands, run from `backend/` with
+`COVERAGE_FILE=/tmp/.coverage CLOUD_API_URL="http://127.0.0.1:9" BIZASSIST_TEST_DATABASE_URL="sqlite:////tmp/test_X.db"`:
+
+```
+pytest --cov=core.api.reports  tests/test_reports_agree.py tests/test_accounting.py \
+       tests/test_party_ledger.py tests/test_phase4.py tests/test_journal.py tests/test_purchases.py
+pytest --cov=core.api.payments tests/test_phase1b.py tests/test_accounting.py tests/test_journal.py \
+       tests/test_backend.py tests/test_pending_invoices.py tests/test_money_reconciliation.py \
+       tests/test_invoice_account.py
+pytest --cov=core.api.sales    tests/test_sales_api.py tests/test_billing.py tests/test_cash_discount.py \
+       tests/test_line_item_invariant.py tests/test_reports_agree.py tests/test_serial_line_field.py \
+       tests/test_shifts.py tests/test_sync_idempotency.py
+```
+
+### The real find: `GET /invoices/{invoice_id}/account` was a true zero
+
+Not "under-credited by the proxy" — **no test file in the corpus referenced the
+path at all**, and the 55-line block was the largest untested region in
+`payments.py`. It is the per-invoice money view: what the bill totalled, what has
+been received, what is still owed, every receipt, every return. It is what the
+owner reads out when a customer asks what they owe.
+
+Three of its properties were defects already found and fixed *elsewhere in this
+review*, living on in this route with nothing pinning them:
+
+| Property | The defect it prevents |
+|---|---|
+| `paid` derived from `invoice_payments`, not `Invoice.paid_amount` | **M-7.** The column is a projection and a pulled invoice kept it at 0 while receipts existed — the customer chased for money they had paid |
+| Credit notes matched on `"Credit note against <no>."` **with the trailing dot** | The route's own comment records that a bare `LIKE` matched `INV-1` inside `INV-10`/`INV-100` and showed a customer **someone else's return** |
+| Invoice *and* payments both filtered by `business_id` | Cross-tenant read; "not yours" must be indistinguishable from "does not exist" (rule 19) |
+
+`tests/test_invoice_account.py` — 16 tests, all passing.
+
+**Mutation-tested, because a regression test that does not fail on the bug is
+decoration.** Each mutation was applied to `core/api/payments.py`, the suite run,
+and the file restored byte-identically (confirmed with `diff` and `git status`):
+
+| Mutation | Result |
+|---|---|
+| `paid = round(inv.paid_amount or 0.0, 2)` (M-7 returns) | **4 failed** — incl. `test_paid_is_read_from_the_ledger_when_the_column_is_stale` |
+| marker loses its trailing `.` | **1 failed** — `test_an_invoice_number_that_is_a_PREFIX_of_another_does_not_steal_returns` |
+| payments filter loses `business_id` | **1 failed** — `test_payments_are_scoped_to_the_business_not_only_to_the_invoice` |
+| restored | 16 passed |
+
+### What is still uncovered, named rather than rounded away
+
+* `reports.py` — `stock_ledger` (161-210, the largest single block), and the
+  error/empty branches of `report_stock_movement`, `report_shift_reconciliations`,
+  `report_outstanding` and `report_gstr3b`.
+* `payments.py` — branches inside `record_payment` (301-315, 364-369),
+  `create_expense` (480-488) and `list_credit_notes` (526-532). `record_payment`
+  is a money **write** and is the next target.
+* `sales.py` — `get_invoice_pdf` (309-348), `list_invoices` (462-481),
+  `post_print_event` (278-292), `products_meta` (431-441), and in the POS route
+  the customer-name resolution (518-520), the notes write (560-562) and the
+  422/500 handlers (567-572).
+
+**Not proved:** line coverage is not behaviour coverage. 84% of `reports.py`
+executing says nothing about whether the numbers are right — that is what §52's
+journal-basis work and audit checks A–J are for, and they remain the stronger
+evidence.
+
+## 65. The cloud boot verified §63 — and immediately found ₹17,416 of corruption no tool could reach
+
+### 65.1 The fix worked
+
+The 2026-07-27 19:29 Hugging Face boot:
+
+```
+19:29:02 [Migration] overfill guard installed on invoice_line_items (postgresql)
+19:29:03 [Migration] overfill guard installed on b2b_order_line_items (postgresql)
+19:29:22 [Migration] Done.
+```
+
+No `UndefinedFunction`. No `InFailedSqlTransaction`. Both guards installed on
+Postgres, the cascade did not occur, and §63's "the verdict comes from the next
+boot log" is now answered. The rounding fix and rule 58 are **verified on the
+dialect that broke**.
+
+### 65.2 What the guard found the moment it could see
+
+| | Rows | Phantom line value |
+|---|---|---|
+| `invoices` | **31** | **₹17,416.01** across the 25 ids the log printed (6 more truncated) |
+| `b2b_orders` (ids 2, 3) | 2 | +586.95 and +524.16 = **₹1,111.11** |
+
+That is larger than M-16 (63 rows) and M-17 (₹3,298.30) combined, on production
+data. COGS is `invoice_line_items × cost_price`, so 31 businesses' P&L are
+reading low right now.
+
+The B2B pair is the same two deltas as the local M-18, on different row ids —
+the cloud copy of corruption already repaired locally.
+
+### 65.3 And nothing in the tree could audit it, let alone repair it
+
+`audit_money_integrity.py:76` and `repair_line_items_by_invariant.py:123` both
+called `sqlite3.connect`. **Every integrity claim in this review was a claim
+about the local SQLite file only.** The scripts could not open the database that
+the guard had just reported 33 corrupt documents in.
+
+### 65.4 `scripts/_dbcompat.py` — one layer, deliberately small
+
+Shaped by §63 rather than by generality. It handles only what cannot be avoided:
+paramstyle (`?` vs `%s`, plus psycopg2's `%`-escaping once parameters exist), row
+access (`sqlite3.Row` does name AND position; psycopg2 gives tuples), catalogue
+lookups, integrity checks, and **engine-enforced read-only** — `?mode=ro` on
+SQLite, `default_transaction_read_only` on Postgres.
+
+`ensure()` normalises a bare `sqlite3` connection at each public entry point, so
+`find_offenders(sqlite3.connect(...))` — valid for the whole life of these
+scripts, and used by the existing tests — keeps working.
+
+### 65.5 Portability defects found and fixed, each one a §63 in waiting
+
+| Defect | Consequence on Postgres |
+|---|---|
+| **14 two-argument `ROUND`s** across both scripts | `UndefinedFunction` — the exact 2026-07-26 failure, in the tools you would reach for to diagnose it |
+| **`HAVING ABS(dr - cr)`** referencing SELECT aliases (audit section F) | SQLite resolves output aliases in `HAVING`; Postgres does **not** — `column "dr" does not exist` |
+| **`PRAGMA integrity_check` / `foreign_key_check`** unguarded | Syntax error, which aborts the transaction and takes every later statement with it (rule 58) |
+| **`sqlite_master`** | No such catalogue |
+| **`?` placeholders** | Syntax error at every parameterised query |
+| **Export path joined onto the DB path** | A Postgres URL has no directory; produced a path under `postgresql:/` |
+| **Export recorded `args.db`** | Would have written the **DSN password** into a JSON file that gets pasted into tickets. Now `con.label`, redacted at the source |
+
+Every `ROUND` was removed rather than replaced with `ROUND(CAST(x AS numeric), 2)`.
+The cast is valid on both — and is a second assumption I still cannot execute
+against Postgres. The arithmetic stays in SQL, the rounding moves to Python, and
+the queries call no dialect-specific function at all (rules 51, 59).
+
+### 65.6 Production rails on the repair
+
+The old shape deleted, **committed**, then re-checked the invariant and printed
+the money diff. If the re-check came back dirty the rows were already gone.
+Survivable next to a local `.bak`; not the right shape for a cloud database
+serving live businesses.
+
+* **Verify before commit.** The invariant re-scan and the money diff now run
+  INSIDE the transaction. If anything outside the line-item counts moved, or any
+  document still violates the invariant, it **rolls back and exits 1** having
+  changed nothing.
+* **`--i-have-a-restorable-backup` is required** for `--apply` against Postgres,
+  and is checked on the target string **before the connection is opened**. Ordered
+  the other way round the operator's first response is "psycopg2 is not
+  installed", they install it, re-run the same command, and the rail was the only
+  thing standing between them and a live delete. Not a y/n prompt: this must be
+  answerable in a runbook and visible in shell history.
+* **`BIZASSIST_AUDIT_DATABASE_URL`, never `DATABASE_URL`.** A money script that
+  silently inherits whatever the app is pointed at is one stray shell export away
+  from repairing production while you believe you are on a copy.
+
+### 65.7 Proving it with no Postgres server — and the gate's own false negative
+
+`tests/test_dbcompat_and_sql_portability.py`, 42 tests. Two mechanisms:
+
+1. A **fake psycopg2** reproducing its paramstyle (a `?` is a syntax error), its
+   `%`-escaping rule, and its abort-on-error semantics.
+2. An **AST-based SQL portability gate** over the scripts' own source (rule 20:
+   where there is no engine to move the rule into, the rule goes into a
+   checked-in analyser with a gate).
+
+**The first gate I wrote had a false negative, and I found it by checking rather
+than by trusting it.** It skipped any string literal that did not *look* like SQL,
+on the reasoning that such a string must be prose — so
+`c.execute("PRAGMA foreign_key_check")`, containing no `SELECT` or `FROM`, was
+exempted. The gate was skipping the one line in the tree it was written to
+police. A gate with a false negative is worse than no gate: it is a green tick
+over an unchecked file.
+
+It also had the opposite failure: a case-insensitive `round\(.*,\s*\d\)` flagged
+**Python's** `round(v, 2)` — which is the fix. A gate that fires on correct code
+is a gate people switch off.
+
+Both are gone. Docstrings are now identified by the AST, and the real gate walks
+`execute()` call sites, reconstructs f-string literals, and asks whether an
+enclosing `if` tests the dialect — so a guarded `PRAGMA` passes and an unguarded
+one fails.
+
+**Mutation-tested, file restored byte-identically each time (`diff` verified):**
+
+| Mutation | Result |
+|---|---|
+| Reintroduce `ROUND(SUM(...), 2)` — the 2026-07-26 expression | **caught** |
+| Move the `PRAGMA` out of its dialect branch | **caught** |
+| (control) unmodified | 42 passed |
+
+Regression: **332 passed** across the money, migration, invariant and coverage
+suites. The audit still reports **clean** on a copy of the live SQLite file, and
+still **fires on injected corruption** in checks F, I and J — a clean run proves
+nothing about SQL that was just rewritten. The `--apply` path was re-proved
+end-to-end: 4 rows removed, `b2b_lines` 12 → 8, value 2,236.53 → 1,611.01, every
+other delta 0.0, invariant re-checked 0/0 before commit.
+
+One bug was found only by running it: `_Result` had no `rowcount`, which the
+repair's `DELETE` needs. It surfaced *after* the export was written and the
+transaction rolled back cleanly — which is the behaviour the verify-before-commit
+rework exists for, demonstrated by accident.
+
+### 65.8 NOT PROVED — read this before running anything against the cloud
+
+**Nothing here has executed against a real PostgreSQL server.** There is none in
+CI, and none could be installed in the sandbox this was written in (`apt` is
+denied, `psycopg2` is absent). What is proved is that the SQL calls no function
+Postgres lacks, that the translation layer produces what psycopg2 requires, and
+that the gate catches the regression. That is strictly more than §63 had, and it
+is **not** the same as a successful run.
+
+**Runbook, in this order:**
+
+1. `BIZASSIST_AUDIT_DATABASE_URL=postgresql://... python scripts/audit_money_integrity.py`
+   — read-only, engine-enforced. This is the verification. If it completes, the
+   portability work is confirmed on the dialect that matters.
+2. Read the section I and J output and reconcile it against the boot log's 31 + 2.
+3. Take a `pg_dump` / restorable snapshot.
+4. Dry run the repair. Read every line it lists.
+5. Only then `--apply --i-have-a-restorable-backup`.
+
+Do not skip step 1. It is the step that costs nothing and is the only one that
+can tell you whether step 5 is safe.
+
+## 66. M-20 · 🔴 CRITICAL (NEW, LIVE) — the cloud defers a row, the client acks it, the sale is gone
+
+### 66.1 Reproduced on demand, on production, today
+
+A ₹641 sale was rung on BA-Y0DAFT to test whether the §65 journal fix worked.
+It never reached the cloud. Both sides logged success.
+
+| Where | Evidence |
+|---|---|
+| Local `invoices` | id 860, `LCL-OW-0028`, ₹641, 2 lines, 2026-07-27 16:37:26 UTC |
+| Local `sync_queue` | row 559 `invoices INSERT`, **`synced_at` = 16:38:16, `error` NULL** |
+| Local log | `22:08:16 [SYNC_WORKER] Successfully pushed 5 changes for business_id=7` |
+| Cloud log | `22:08:15 sync/push: business_id=42 received 5 changes` |
+| Cloud log | `22:08:16 sync/push[invoices.id=860]: deferring invoices — parent register_shifts uid=2419a393-… not in this DB yet` |
+| Cloud `invoices` | **NOT PRESENT** — unfiltered search by number and uid |
+
+### 66.2 The mechanism, read from the code
+
+`routes/sync.py::push_changes`:
+
+```python
+if resolve_parent_fk_uids(db, model_cls, data, log_prefix=...):
+    continue
+```
+
+`resolve_parent_fk_uids` returns True when a parent FK cannot be resolved in the
+destination database. That is **correct and deliberate** — writing the source
+database's integer id would create a wrong-row link, which is M-9, money on the
+wrong customer's invoice. Its docstring states the contract:
+
+> "The caller skips it; **it re-applies on a later sign once the parent lands**."
+
+But the `continue` does three things, and only the first is intended:
+
+1. skips the row — correct;
+2. does **not** increment `processed_count`;
+3. does **not** append to `rejected`.
+
+`rejected.append(...)` appears exactly **once** in the file, inside the
+`IntegrityError` handler. A deferred row is therefore invisible in the response:
+`{"status": "success", "applied": 4, "rejected": []}` for five rows sent.
+
+And `services/sync_worker.py` never looks:
+
+```python
+total_pushed += len(chunk_changes)     # what was SENT
+...
+for (it, _c) in chunk:
+    it.synced_at = now                 # ALL of them, unconditionally
+```
+
+It counts what it sent, ignores the `applied` field entirely, and stamps every
+row synced. **The later sync the cloud is waiting for never comes**, because the
+outbox row is gone.
+
+Two correct-in-isolation halves. The cloud defers and expects a retry; the client
+acks and guarantees there won't be one. The defect lives entirely in the contract
+between them — the recurring shape of this whole review, now on the one path
+where the cost is a deleted sale.
+
+### 66.3 Why M-13's fix did not catch it
+
+M-13 taught the client to read `rejected`, and that machinery works — it logs at
+ERROR and extends `_push_rejected`. It cannot help here because **a deferred row
+is not a rejected row**. It is a third state that neither side names, and the
+response has no field for it.
+
+Worth stating: a rejection is not durable either. It is logged and broadcast, and
+nothing else — `sync_logs` has rows for cloud outages and auth failures, none for
+"the cloud refused this sale". Money that fails to sync must be queryable, not
+merely loggable.
+
+### 66.4 The upstream cause, and why it is not one lost sale
+
+The unresolvable parent is `register_shifts` uid `2419a393-…` — the shift the
+sale was rung on. It is not on the cloud.
+
+Measured on the live local database: **shift id=9, status OPEN, uid
+`2419a393-…` — the uid the cloud named — has NO `sync_queue` row at all.** The
+outbox never captured it, so it cannot arrive and the deferral is permanent, not
+transient.
+
+(I first wrote that `register_shifts` had never been queued at all. That was
+wrong and is corrected here: the outbox holds 8 such rows historically. The
+pattern is sharper than "never":
+
+| shift | opened | queued? |
+|---|---|---|
+| 1–6 | 2026-07-05 .. 07-10 | **yes** |
+| 7 | 2026-07-26 18:56 | no |
+| 8 | 2026-07-26 18:58 | no |
+| 9 | 2026-07-26 21:50 | no |
+
+Invoices kept queueing throughout — row 559 on 07-27 — so this is not the
+hosting-mode gate, which would stop everything. `register_shifts` is in
+`_SYNC_TABLES` and is NOT in `PULL_ONLY_TABLES`, so neither of those explains it
+either. **Why shift enqueueing stopped on 2026-07-26 is not yet established.**
+The remaining candidate in `_queue_change` is `sync_disabled_var` being set at
+creation time — i.e. the shift being written inside a pull-apply context, where
+suppression is correct — but that is a hypothesis and is recorded as one.)
+
+What IS established: while that parent is absent, **every invoice rung on that
+shift is deferred, acked, and lost, indefinitely.** This is not one ₹641 sale; it
+is an open register whose takings silently fail to reach the cloud for as long as
+the shift stays unresolvable.
+
+The 2026-07-27 boot log shows the related M-11 state on the same business:
+
+```
+M-11: cannot enforce one-open-shift-per-operator — 1 operator(s) already hold
+more than one OPEN shift: biz 42 user 42 x3
+```
+
+### 66.5 What must change
+
+1. **The response needs a `deferred` list**, distinct from `rejected`, and the
+   client must NOT stamp `synced_at` on those rows — that is the whole fix for
+   the loss. A deferred row is the one case where the outbox genuinely should
+   hold the row and retry.
+2. **The client must compare `applied` against what it sent** and refuse to
+   report success on a mismatch. Had it done so, this was a one-line discrepancy:
+   sent 5, applied 4.
+3. **Persist rejections and deferrals** to `sync_logs` (or a conflicts table) so
+   a lost sale is a query, not a log line that rotates away.
+4. **Find out why `register_shifts` was never queued.** Until that is answered,
+   the parent cannot land and the retry in (1) would spin.
+
+### 66.6 FIXED — `deferred` is now a first-class state on both sides
+
+| Where | Change |
+|---|---|
+| `routes/sync.py` | the FK-deferral site appends to a new `deferred` list (entity, row_id, uid, reason) and the response returns it, plus `received` so the device can reconcile |
+| `services/sync_worker.py` | reads `deferred` and **does not stamp `synced_at`** on those rows — they stay queued and re-send. THE fix; everything else is reporting |
+| `services/sync_worker.py` | `total_pushed += _acked`, not `len(chunk_changes)` — it counts what LANDED, not what it sent |
+| `services/sync_worker.py` | reconciles `applied + deferred + rejected` against rows sent; an unexplained shortfall **keeps** the rows (fail closed) |
+| `services/sync_worker.py` | writes `push_deferred` / `push_rejected` rows to `sync_logs`, bounded at 50 |
+| `services/sync_worker.py` | `_PUSH_MAX_DEFER_STREAK = 3` escalates a never-resolving deferral to CRITICAL — the rows are never discarded, the bound only makes a stuck parent loud |
+| broadcast | `deferred` rides alongside `rejected` so the UI can tell three states apart |
+
+A deferral is logged at WARNING on the cloud, not ERROR: on any one cycle it is
+a legitimate ordering outcome. It becomes an error only when it never resolves,
+and the **client** is the side that can count that.
+
+**Backwards compatible in both directions.** An older client ignores the new
+field and behaves exactly as before, no worse. An older cloud sends no `applied`,
+so nothing can be concluded and nothing is claimed (rule 33) — the reconciliation
+is skipped rather than treated as a shortfall.
+
+### 66.7 Evidence
+
+`tests/test_sync_deferred_rows.py` — 20 tests. The behavioural half runs the
+production sequence against a fake cloud: invoice 860 deferred for a missing
+`register_shifts` parent, **not acked**, still queued; parent pushed; retry
+lands. Plus fail-closed on an unexplained shortfall, rejected rows still
+draining (M-13 unchanged), the happy path still draining, and an older cloud.
+
+**Mutation-tested**, both files restored byte-identically (`diff` verified):
+
+| Mutation | Result |
+|---|---|
+| client acks deferred rows again (the original bug) | **caught** — `test_a_deferred_row_is_not_stamped_synced` |
+| `total_pushed += len(chunk_changes)` restored | **caught** — 7 failures |
+| cloud stops returning `deferred` | **caught** |
+| all restored | 20 passed |
+
+Regression: 57 passed across the sync suites, 58 across sync/journal/realtime,
+354 across the money, migration and portability suites.
+
+An existing gate — `test_no_stray_non_ascii_in_the_sync_modules`, written after
+an earlier editing slip left a CJK character in this very module — rejected an
+emoji in my new comment. It did its job; the comment is now ASCII.
+
+### 66.8 What is still open
+
+* **M-20a: why `register_shifts` stopped being enqueued on 2026-07-26.** Shifts
+  1-6 were queued, 7/8/9 were not, while invoices kept queueing throughout. Not
+  the hosting-mode gate (that stops everything), not `PULL_ONLY_TABLES`, not
+  `_SYNC_TABLES`. Remaining candidate is `sync_disabled_var` set at creation
+  time. **Unproven, and the parent cannot land until it is answered.**
+* The ₹641 sale is safe locally. It will sync **once the shift does** — the fix
+  makes the invoice wait rather than vanish, but it cannot conjure the parent.
+* Nothing from §65 has been repaired.

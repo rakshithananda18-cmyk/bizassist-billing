@@ -64,24 +64,41 @@ J. B2B order lines that do not foot to the order (M-18)
 import argparse
 import os
 import re
-import sqlite3
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _dbcompat import (connect, ensure, resolve_target,  # noqa: E402
+                       is_postgres_target, out, use_utf8_stdout)
 
 _INITIAL_PAYMENT = re.compile(r"^Initial payment for invoice (.+)$")
 
+# 1.00 absorbs paise-level float noise on the line-item identity; 0.01 is the
+# paid/ledger tolerance. Both are far wider than any float representation error,
+# which is WHY this file contains no SQL rounding at all — see _r().
+TOL_LINE = 1.00
+TOL_PAID = 0.01
 
-def _connect(path):
-    if not os.path.exists(path):
-        sys.exit(f"database not found: {path}")
-    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    con.row_factory = sqlite3.Row
-    return con
+
+def _r(v):
+    """Round for DISPLAY and comparison, in Python, never in SQL.
+
+    NO 2-ARGUMENT SQL `ROUND` ANYWHERE IN THIS FILE — finding N4b-PG (§63).
+    Every money column here is `Column(Float)` -> `double precision` on Postgres,
+    and Postgres has no `round(double precision, integer)`. SQLite's ROUND takes
+    `(real, int)` happily, so this file ran green locally for months and would
+    have thrown `UndefinedFunction` on its first contact with the cloud — the
+    identical failure that took out every migration guard on the 2026-07-26 boot.
+
+    `ROUND(CAST(x AS numeric), 2)` is valid on both, and is deliberately NOT used:
+    it trades one untestable assumption for another. Doing the arithmetic in SQL
+    and the rounding here means the queries call no dialect-specific function, so
+    there is nothing left to be wrong about. (rules 51, 59)
+    """
+    return round(float(v or 0.0), 2)
 
 
 def _table_exists(c, name):
-    return c.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
-    ).fetchone() is not None
+    return c.table_exists(name)
 
 
 def _where_biz(biz, col="business_id"):
@@ -101,17 +118,20 @@ class Report:
     def render(self):
         for title, rows, note in self.sections:
             mark = "FAIL" if rows else " ok "
-            print(f"\n[{mark}] {title}  ({len(rows)})")
+            out(f"\n[{mark}] {title}  ({len(rows)})")
             if note and rows:
                 for line in note.strip().splitlines():
-                    print(f"       {line.strip()}")
+                    out(f"       {line.strip()}")
             for r in rows[:40]:
-                print(f"   - {r}")
+                out(f"   - {r}")
             if len(rows) > 40:
-                print(f"   … and {len(rows) - 40} more")
+                out(f"   … and {len(rows) - 40} more")
 
 
 def audit(c, biz=None):
+    # Normalise: `audit` is called directly from tests and consoles with a bare
+    # sqlite3 connection, which was valid before the compat layer existed.
+    c = ensure(c)
     rep = Report()
     bfilter = f" AND business_id = {int(biz)}" if biz else ""
 
@@ -187,30 +207,33 @@ def audit(c, biz=None):
         is non-empty. Fix with: python scripts/backfill_journals.py --apply
     """)
     if legacy:
-        print(f"\n[info] {len(legacy)} zero-value CSV-imported invoice(s) have no "
+        out(f"\n[info] {len(legacy)} zero-value CSV-imported invoice(s) have no "
               f"journal entry, which is correct — they carry no totals to post. "
               f"Excluded from section B.")
 
     # ── C. Paid state vs ledger ─────────────────────────────────────────────
     under, over, mismatch = [], [], []
-    for r in c.execute(f"""
+    for row in c.execute(f"""
         SELECT i.id, i.business_id, i.invoice_id, i.status,
-               ROUND(COALESCE(i.total_amount, i.amount, 0), 2) AS total,
-               ROUND(COALESCE(i.paid_amount, 0), 2)            AS recorded,
-               ROUND(COALESCE(SUM(p.amount_paid), 0), 2)       AS ledger
+               COALESCE(i.total_amount, i.amount, 0) AS total,
+               COALESCE(i.paid_amount, 0)            AS recorded,
+               COALESCE(SUM(p.amount_paid), 0)       AS ledger
           FROM invoices i
           JOIN invoice_payments p ON p.invoice_id = i.id AND p.business_id = i.business_id
          WHERE 1=1{bfilter.replace('business_id', 'i.business_id')}
-         GROUP BY i.id"""):
-        if r["ledger"] > r["total"] + 0.01:
-            over.append(f"biz {r['business_id']} {r['invoice_id']}: total ₹{r['total']}, "
-                        f"payment rows sum to ₹{r['ledger']}")
-        elif r["ledger"] < r["recorded"] - 0.01:
-            under.append(f"biz {r['business_id']} {r['invoice_id']}: recorded ₹{r['recorded']}, "
-                         f"payment rows only ₹{r['ledger']}")
-        elif abs(r["ledger"] - r["recorded"]) > 0.01:
-            mismatch.append(f"biz {r['business_id']} {r['invoice_id']}: recorded ₹{r['recorded']}, "
-                            f"ledger ₹{r['ledger']} — the M-7 repair will raise this")
+         GROUP BY i.id, i.business_id, i.invoice_id, i.status,
+                  i.total_amount, i.amount, i.paid_amount"""):
+        total, recorded, ledger = (_r(row["total"]), _r(row["recorded"]),
+                                   _r(row["ledger"]))
+        if ledger > total + TOL_PAID:
+            over.append(f"biz {row['business_id']} {row['invoice_id']}: total ₹{total}, "
+                        f"payment rows sum to ₹{ledger}")
+        elif ledger < recorded - TOL_PAID:
+            under.append(f"biz {row['business_id']} {row['invoice_id']}: recorded ₹{recorded}, "
+                         f"payment rows only ₹{ledger}")
+        elif abs(ledger - recorded) > TOL_PAID:
+            mismatch.append(f"biz {row['business_id']} {row['invoice_id']}: recorded ₹{recorded}, "
+                            f"ledger ₹{ledger} — the M-7 repair will raise this")
     rep.add("C1. Payment rows EXCEED the invoice total", over, """
         Usually a receipt attached to the wrong invoice — cross-check against
         section A before concluding a customer overpaid.
@@ -254,15 +277,23 @@ def audit(c, biz=None):
     # ── F. Unbalanced journal entries ───────────────────────────────────────
     rows = []
     if _table_exists(c, "journal_entries"):
+        # TWO portability fixes here, both silent killers on Postgres:
+        #   * the 2-arg ROUND (see _r);
+        #   * `HAVING ABS(dr - cr)` referenced the SELECT aliases. SQLite resolves
+        #     output aliases in HAVING; Postgres does NOT (they are legal only in
+        #     GROUP BY and ORDER BY) and raises `column "dr" does not exist`.
+        #     The expression is spelled out instead of aliased.
         rows = [f"entry #{r['id']} biz {r['business_id']} {r['source_type']}#{r['source_id']}: "
-                f"Dr {r['dr']} vs Cr {r['cr']}"
+                f"Dr {_r(r['dr'])} vs Cr {_r(r['cr'])}"
                 for r in c.execute(f"""
                     SELECT e.id, e.business_id, e.source_type, e.source_id,
-                           ROUND(SUM(COALESCE(l.debit,0)),2)  dr,
-                           ROUND(SUM(COALESCE(l.credit,0)),2) cr
+                           SUM(COALESCE(l.debit,0))  AS dr,
+                           SUM(COALESCE(l.credit,0)) AS cr
                       FROM journal_entries e JOIN journal_lines l ON l.entry_id = e.id
                      WHERE 1=1{bfilter.replace('business_id','e.business_id')}
-                     GROUP BY e.id HAVING ABS(dr - cr) > 0.01""")]
+                     GROUP BY e.id, e.business_id, e.source_type, e.source_id
+                    HAVING ABS(SUM(COALESCE(l.debit,0))
+                               - SUM(COALESCE(l.credit,0))) > {TOL_PAID}""")]
     rep.add("F. Journal entries that do not foot", rows)
 
     # ── G. Foreign-key violations (N4) ──────────────────────────────────────
@@ -279,16 +310,33 @@ def audit(c, biz=None):
     #
     # Not scoped by --business: `foreign_key_check` is a whole-database pragma
     # and has no notion of a tenant. Reported in full deliberately.
+    #
+    # DIALECT: `foreign_key_check` is a SQLite pragma. On Postgres every FK is
+    # validated by the engine on write, so violating rows cannot accumulate the
+    # way they did here — EXCEPT behind a `NOT VALID` constraint, which is the
+    # one case worth counting and is what _dbcompat reports there. A check that
+    # cannot run must say so rather than return an empty list that renders as
+    # "ok" (rule 33) — that is why the failure branch below emits a row.
     rows = []
-    try:
-        if c.execute("PRAGMA foreign_keys").fetchone() is not None:
+    if c.dialect == "sqlite":
+        try:
             from collections import Counter
             violations = c.execute("PRAGMA foreign_key_check").fetchall()
             grouped = Counter((v[0], v[2]) for v in violations)
             rows = [f"{child}: {n} row(s) pointing at a missing {parent}"
                     for (child, parent), n in grouped.most_common()]
-    except Exception as e:                       # non-SQLite backend, etc.
-        rows = [] if "no such pragma" in str(e).lower() else [f"check failed: {e}"]
+        except Exception as e:
+            rows = [f"NOT CHECKED — foreign_key_check failed: {e}"]
+    else:
+        try:
+            bad = c.execute(
+                "SELECT conrelid::regclass::text AS child, conname "
+                "FROM pg_constraint WHERE contype='f' AND NOT convalidated"
+            ).fetchall()
+            rows = [f"{r['child']}: constraint {r['conname']} is NOT VALID, so "
+                    f"it may be holding violating rows" for r in bad]
+        except Exception as e:
+            rows = [f"NOT CHECKED — NOT VALID constraint scan failed: {e}"]
     rep.add("G. Foreign-key violations (N4)", rows, """
         Orphaned child rows: a line item, stock movement or barcode whose parent
         no longer exists. Accumulated while SQLite was not enforcing foreign
@@ -314,8 +362,8 @@ def audit(c, biz=None):
     rows = []
     if _table_exists(c, "register_shifts"):
         for r in c.execute(f"""
-                SELECT business_id, user_id, COUNT(*) n,
-                       ROUND(SUM(COALESCE(opening_cash,0)),2) floats
+                SELECT business_id, user_id, COUNT(*) AS n,
+                       SUM(COALESCE(opening_cash,0)) AS floats
                   FROM register_shifts
                  WHERE status = 'OPEN'{bfilter}
                  GROUP BY business_id, user_id HAVING COUNT(*) > 1"""):
@@ -325,7 +373,7 @@ def audit(c, biz=None):
                 (r["business_id"], r["user_id"]))]
             rows.append(
                 f"biz {r['business_id']} operator {r['user_id']}: {r['n']} OPEN "
-                f"shifts (ids {', '.join(ids)}), floats total {r['floats']}")
+                f"shifts (ids {', '.join(ids)}), floats total {_r(r['floats'])}")
     rep.add("H. Overlapping open shifts (M-11)", rows, """
         An operator can hold only one open drawer. Extra open shifts may carry
         real receipts that never entered a tally. Close them from the register
@@ -364,29 +412,33 @@ def audit(c, biz=None):
     rows = []
     if _table_exists(c, "invoice_line_items"):
         rows = [
-            f"biz {r['business_id']} {r['num']}: header {r['total']} "
-            f"(+disc {r['disc']} -roff {r['roff']}) vs lines {r['line_sum']} "
-            f"({r['n']} line(s), delta {r['delta']})"
+            f"biz {r['business_id']} {r['num']}: header {_r(r['total'])} "
+            f"(+disc {_r(r['disc'])} -roff {_r(r['roff'])}) vs lines {_r(r['line_sum'])} "
+            f"({r['n']} line(s), delta {_r(r['delta'])})"
             for r in c.execute(f"""
-                SELECT i.business_id, i.invoice_id num,
-                       ROUND(COALESCE(i.total_amount,0),2)      total,
-                       ROUND(COALESCE(SUM(li.line_total),0),2)  line_sum,
-                       ROUND(COALESCE(i.cash_discount,0),2)     disc,
-                       ROUND(COALESCE(i.round_off,0),2)         roff,
-                       ROUND(COALESCE(SUM(li.line_total),0)
+                SELECT i.business_id, i.invoice_id AS num,
+                       COALESCE(i.total_amount,0)     AS total,
+                       SUM(COALESCE(li.line_total,0)) AS line_sum,
+                       COALESCE(i.cash_discount,0)    AS disc,
+                       COALESCE(i.round_off,0)        AS roff,
+                       SUM(COALESCE(li.line_total,0))
                              - (COALESCE(i.total_amount,0)
                                 + COALESCE(i.cash_discount,0)
-                                - COALESCE(i.round_off,0)), 2)  delta,
-                       COUNT(li.id) n
+                                - COALESCE(i.round_off,0))  AS delta,
+                       COUNT(li.id) AS n
                   FROM invoices i
                   JOIN invoice_line_items li ON li.invoice_id = i.id
                  WHERE COALESCE(i.total_amount,0) <> 0{bfilter.replace('business_id','i.business_id')}
-                 GROUP BY i.id
-                HAVING ABS(ROUND(COALESCE(SUM(li.line_total),0)
-                                 - (COALESCE(i.total_amount,0)
-                                    + COALESCE(i.cash_discount,0)
-                                    - COALESCE(i.round_off,0)), 2)) > 1.00
-                 ORDER BY ABS(delta) DESC""")]
+                 GROUP BY i.id, i.business_id, i.invoice_id, i.total_amount,
+                          i.cash_discount, i.round_off
+                HAVING ABS(SUM(COALESCE(li.line_total,0))
+                           - (COALESCE(i.total_amount,0)
+                              + COALESCE(i.cash_discount,0)
+                              - COALESCE(i.round_off,0))) > {TOL_LINE}
+                 ORDER BY ABS(SUM(COALESCE(li.line_total,0))
+                              - (COALESCE(i.total_amount,0)
+                                 + COALESCE(i.cash_discount,0)
+                                 - COALESCE(i.round_off,0))) DESC""")]
     rep.add("I. Line items that do not foot to their invoice (M-16)", rows, """
         The invoice header and the rows it is made of disagree. This is how the
         M-16 duplicate-line-item corruption looked: totals and journal both
@@ -413,22 +465,24 @@ def audit(c, biz=None):
     if _table_exists(c, "b2b_order_line_items"):
         rows = [
             f"order {r['order_number']} (seller {r['seller_business_id']} -> "
-            f"buyer {r['buyer_business_id']}): header {r['total']} vs lines "
-            f"{r['line_sum']} ({r['n']} line(s), delta {r['delta']})"
-            for r in c.execute("""
+            f"buyer {r['buyer_business_id']}): header {_r(r['total'])} vs lines "
+            f"{_r(r['line_sum'])} ({r['n']} line(s), delta {_r(r['delta'])})"
+            for r in c.execute(f"""
                 SELECT o.order_number, o.seller_business_id, o.buyer_business_id,
-                       ROUND(COALESCE(o.total_amount,0),2)      total,
-                       ROUND(COALESCE(SUM(li.line_total),0),2)  line_sum,
-                       ROUND(COALESCE(SUM(li.line_total),0)
-                             - COALESCE(o.total_amount,0), 2)   delta,
-                       COUNT(li.id) n
+                       COALESCE(o.total_amount,0)     AS total,
+                       SUM(COALESCE(li.line_total,0)) AS line_sum,
+                       SUM(COALESCE(li.line_total,0))
+                             - COALESCE(o.total_amount,0) AS delta,
+                       COUNT(li.id) AS n
                   FROM b2b_orders o
                   JOIN b2b_order_line_items li ON li.order_id = o.id
                  WHERE COALESCE(o.total_amount,0) <> 0
-                 GROUP BY o.id
-                HAVING ABS(ROUND(COALESCE(SUM(li.line_total),0)
-                                 - COALESCE(o.total_amount,0), 2)) > 1.00
-                 ORDER BY ABS(delta) DESC""")]
+                 GROUP BY o.id, o.order_number, o.seller_business_id,
+                          o.buyer_business_id, o.total_amount
+                HAVING ABS(SUM(COALESCE(li.line_total,0))
+                           - COALESCE(o.total_amount,0)) > {TOL_LINE}
+                 ORDER BY ABS(SUM(COALESCE(li.line_total,0))
+                              - COALESCE(o.total_amount,0)) DESC""")]
     rep.add("J. B2B order lines that do not foot to the order (M-18)", rows, """
         A B2B order is a record TWO businesses quote to each other, so a header
         and lines that disagree means the buyer and the seller can read different
@@ -441,22 +495,35 @@ def audit(c, biz=None):
 
 
 def main():
+    use_utf8_stdout()
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--db", default=os.path.join(os.path.dirname(__file__), "..", "bizassist.db"))
+    ap.add_argument("--db", default=None,
+                    help="SQLite file path OR a postgresql:// URL. Defaults to "
+                         "$BIZASSIST_AUDIT_DATABASE_URL, then backend/bizassist.db.")
     ap.add_argument("--business", type=int, default=None)
     args = ap.parse_args()
 
-    path = os.path.abspath(args.db)
-    c = _connect(path)
-    print("=" * 74)
-    print(f"MONEY INTEGRITY AUDIT   {path}"
+    target = resolve_target(args.db)
+    # READ-ONLY, enforced by the engine — see _dbcompat.connect. This audit is
+    # now pointed at production databases, so "it only runs SELECTs" being true
+    # today is not the same as it being unable to write.
+    c = connect(target, readonly=True)
+    out("=" * 74)
+    out(f"MONEY INTEGRITY AUDIT   {c.label}"
           + (f"   business {args.business}" if args.business else "   all businesses"))
-    print("=" * 74)
+    out(f"engine: {c.dialect}   mode: read-only")
+    out("=" * 74)
     rep = audit(c, args.business)
     rep.render()
-    print("\n" + "=" * 74)
-    print(f"{rep.failures} issue(s) found" if rep.failures else "clean")
-    print("=" * 74)
+
+    integ = c.integrity_report()
+    out(f"\n[info] integrity: {integ['integrity']}   "
+          f"fk: {integ['fk_violations']} — {integ['note']}")
+
+    out("\n" + "=" * 74)
+    out(f"{rep.failures} issue(s) found" if rep.failures else "clean")
+    out("=" * 74)
+    c.close()
     return 1 if rep.failures else 0
 
 

@@ -540,3 +540,110 @@ def test_b2b_orders_have_no_discount_column_in_their_target():
         if parent == "b2b_orders":
             assert "cash_discount" not in target and "round_off" not in target
             assert "total_amount" in target
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# The REPORT the repair prints — 2026-07-27
+# ══════════════════════════════════════════════════════════════════════════════
+# A repair script's output is the only thing an operator ever reads, and this one
+# said less than it knew. It banners "(M-17)" and printed "Every INVOICE's line
+# items reconcile to its header" after checking BOTH families, so a clean B2B
+# result was indistinguishable from a B2B family that had never been looked at —
+# and in the 2026-07-27 session that is exactly the wrong conclusion it invited.
+# Rule 33's converse: a check that DID look must say what it looked at.
+
+def _mini_both(tmp_path, name="both.db"):
+    """Both document families, minimal columns."""
+    p = tmp_path / name
+    con = sqlite3.connect(p)
+    con.executescript("""
+        CREATE TABLE invoices (id INTEGER PRIMARY KEY, business_id INT,
+            invoice_id TEXT, total_amount REAL, cash_discount REAL,
+            round_off REAL, paid_amount REAL, invoice_type TEXT);
+        CREATE TABLE invoice_line_items (id INTEGER PRIMARY KEY, invoice_id INT,
+            product_name TEXT, quantity REAL, unit_price REAL, line_total REAL,
+            created_at TEXT);
+        CREATE TABLE b2b_orders (id INTEGER PRIMARY KEY, seller_business_id INT,
+            buyer_business_id INT, order_number TEXT, total_amount REAL);
+        CREATE TABLE b2b_order_line_items (id INTEGER PRIMARY KEY, order_id INT,
+            product_name TEXT, quantity REAL, unit_price REAL, line_total REAL,
+            created_at TEXT);
+        INSERT INTO invoices VALUES (1,1,'INV-1',200.0,0.0,0.0,0.0,NULL);
+        INSERT INTO invoice_line_items VALUES (1,1,'A',1,200.0,200.0,'2026-07-01');
+        INSERT INTO b2b_orders VALUES (1,6,87,'ORD-1',300.0);
+        INSERT INTO b2b_order_line_items VALUES (1,1,'B',1,300.0,300.0,'2026-07-01');
+    """)
+    con.commit()
+    con.row_factory = sqlite3.Row
+    return con
+
+
+def test_scan_scope_names_BOTH_families_and_what_each_covered(tmp_path):
+    scope = RLI.scan_scope(_mini_both(tmp_path))
+    by = {s["parent"]: s for s in scope}
+    assert set(by) == {"invoices", "b2b_orders"}, (
+        "the scope report must name every family in SPECS, or a clean verdict "
+        "again has no stated subject")
+    assert by["invoices"]["parents_scanned"] == 1
+    assert by["invoices"]["children_scanned"] == 1
+    assert by["b2b_orders"]["parents_scanned"] == 1
+    assert by["b2b_orders"]["children_scanned"] == 1
+    assert all(s["present"] for s in scope)
+
+
+def test_an_ABSENT_family_is_reported_as_not_scanned_not_as_clean(tmp_path):
+    """Rule 33. A family whose tables do not exist was not examined, and must
+    never be folded into the all-clear."""
+    con = _mini_both(tmp_path, "nob2b.db")
+    con.execute("DROP TABLE b2b_order_line_items")
+    con.commit()
+    by = {s["parent"]: s for s in RLI.scan_scope(con)}
+    assert by["b2b_orders"]["present"] is False
+    assert by["invoices"]["present"] is True
+
+
+def test_money_snapshot_survives_a_database_without_the_b2b_tables(tmp_path):
+    """It used to raise `no such table` and kill the run BEFORE repairing a
+    single invoice — on exactly the older installs most likely to need it."""
+    con = _mini_both(tmp_path, "nob2b2.db")
+    con.execute("DROP TABLE b2b_order_line_items")
+    con.commit()
+    snap = RLI.money_snapshot(con)                  # must not raise
+    assert snap["b2b_lines"] == RLI.MISSING
+    assert snap["b2b_line_value"] == RLI.MISSING
+    assert snap["invoices"] == 1, "the measurable figures must still be measured"
+
+
+def test_absent_is_reported_as_absent_and_never_as_zero(tmp_path):
+    """`0` is a measurement; `absent` is not. A diff must not be able to claim a
+    quantity it could not read."""
+    con = _mini_both(tmp_path, "nob2b3.db")
+    con.execute("DELETE FROM b2b_order_line_items")
+    con.commit()
+    assert RLI.money_snapshot(con)["b2b_lines"] == 0      # empty, but readable
+    con.execute("DROP TABLE b2b_order_line_items")
+    con.commit()
+    assert RLI.money_snapshot(con)["b2b_lines"] == RLI.MISSING
+
+
+def test_scope_respects_the_business_filter(tmp_path):
+    """The scope report and the scan share `_business_filter`, so they cannot
+    disagree about what was in scope — a scope line that overstates coverage
+    would be worse than no scope line at all."""
+    con = _mini_both(tmp_path, "scoped.db")
+    by = {s["parent"]: s for s in RLI.scan_scope(con, business_id=99)}
+    assert by["invoices"]["parents_scanned"] == 0
+    assert by["b2b_orders"]["parents_scanned"] == 0, (
+        "b2b_orders is scoped by seller OR buyer; business 99 owns neither")
+    by6 = {s["parent"]: s for s in RLI.scan_scope(con, business_id=6)}
+    assert by6["b2b_orders"]["parents_scanned"] == 1, (
+        "business 6 is the SELLER on ORD-1 and must be in scope")
+
+
+def test_find_offenders_with_scope_agrees_with_find_offenders(tmp_path):
+    """The two entry points must not drift; the scope variant is the same scan."""
+    con = _mini_both(tmp_path, "agree.db")
+    r1, u1 = RLI.find_offenders(con)
+    r2, u2, scope = RLI.find_offenders_with_scope(con)
+    assert (r1, u1) == (r2, u2)
+    assert len(scope) == len(RLI.SPECS)
