@@ -484,6 +484,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
     # to read it on every path.
     _push_rejected: list = []
     _push_deferred: list = []      # M-20: kept in the outbox, re-sent next cycle
+    _push_unaccounted = 0          # M-20: shortfall an older cloud did not explain
 
     # 0. Subscription check: if the user does not have a Pro plan and subscription is enforced,
     # background sync is paused (only required login/identity is synced during auth).
@@ -700,6 +701,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                         # device keeps its copy. An unexplained row is exactly the
                         # case where acking destroys the last copy of a sale.
                         _unaccounted = True
+                        _push_unaccounted += len(chunk_changes) - _explained
                     else:
                         _unaccounted = False
                 else:
@@ -833,9 +835,24 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         # A deferral that never resolves is a stuck parent, and the retry alone
         # will spin forever without telling anyone. Bounded the same way the pull
         # side bounds its retries (M-12): report loudly, keep the data.
-        if _push_deferred:
+        # `_push_unaccounted` counts the OLD-CLOUD case: a cloud that has not yet
+        # been upgraded sends no `deferred` field, so the shortfall is detected
+        # by the arithmetic instead. The rows are held either way, but without
+        # `deferred` we cannot tell WHICH rows failed, so the whole chunk is
+        # kept and re-sent every cycle. That is safe and it is also a spin, so it
+        # must escalate exactly like a deferral rather than logging forever.
+        if _push_deferred or _push_unaccounted:
             _streak = _DEFER_STREAK.get(business_id, 0) + 1
             _DEFER_STREAK[business_id] = _streak
+            if _push_unaccounted and not _push_deferred:
+                logger.warning(
+                    "[SYNC_WORKER] biz=%s: the cloud did not account for %s "
+                    "row(s) and did not say why. It is probably running a build "
+                    "older than the `deferred` field; until it is updated the "
+                    "WHOLE chunk is held and re-sent each cycle. Deploy the "
+                    "cloud side to narrow this to just the blocked rows.",
+                    business_id, _push_unaccounted,
+                )
             if _streak >= _PUSH_MAX_DEFER_STREAK:
                 logger.critical(
                     "[SYNC_WORKER] biz=%s: %s row(s) have been DEFERRED by the "

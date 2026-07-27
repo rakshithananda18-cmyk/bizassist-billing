@@ -127,11 +127,37 @@ def main() -> int:
     if newest_inv is None:
         out("  No invoices at all in this database.")
     elif pending > 0:
-        out(f"  {pending} row(s) are QUEUED BUT NOT PUSHED.")
-        out("  Billing and the outbox both worked; the sync WORKER is the")
-        out("  problem - not running, or unable to reach the cloud.")
-        if errored:
-            out(f"  {errored} of them recorded an error - read the error column.")
+        # WHY they are pending matters, and the first version of this verdict got
+        # it wrong: it said "the sync WORKER is the problem - not running, or
+        # unable to reach the cloud" for rows that were pushed perfectly well and
+        # deliberately HELD by the M-20 fix. A row kept on purpose and a row
+        # stuck because sync is down look identical in a count; they are opposite
+        # situations and the error column already distinguishes them.
+        held = c.scalar(
+            "SELECT COUNT(*) FROM sync_queue WHERE synced_at IS NULL AND ("
+            "error LIKE '%deferred by cloud%' OR error LIKE '%did not account%')",
+            default=0)
+        if held:
+            out(f"  {held} row(s) are being HELD ON PURPOSE (M-20).")
+            out("  They were pushed; the cloud did not store them, so the outbox")
+            out("  keeps them rather than acking a write that never landed.")
+            out("  THE DATA IS SAFE and will be re-sent every cycle. It cannot")
+            out("  land until the blocking parent reaches the cloud - see the")
+            out("  shift section above.")
+            out("")
+            out("  Before the M-20 fix these rows would have been stamped synced")
+            out("  and the sales deleted, exactly as LCL-OW-0028 (Rs641) was.")
+        if pending - held > 0:
+            out(f"  {pending - held} other row(s) are QUEUED BUT NOT PUSHED -")
+            out("  billing and the outbox worked, so the sync WORKER is the")
+            out("  problem: not running, or unable to reach the cloud.")
+        other_errs = c.execute(
+            "SELECT DISTINCT error FROM sync_queue WHERE synced_at IS NULL "
+            "AND error IS NOT NULL AND error != '' "
+            "AND error NOT LIKE '%deferred by cloud%' "
+            "AND error NOT LIKE '%did not account%'").fetchall()
+        for e in other_errs[:5]:
+            out(f"      other error: {str(e['error'])[:70]}")
     elif newest_q is not None and str(newest_inv["created_at"]) > str(newest_q["created_at"]):
         out(f"  The newest invoice ({newest_inv['invoice_id']}, "
             f"{str(newest_inv['created_at'])[:19]}) is NEWER than the newest")

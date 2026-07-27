@@ -1,7 +1,7 @@
 """
 tests/test_sync_deferred_rows.py — M-20: the deferred row that got acked
 ========================================================================
-🔴 A REAL SALE WAS DELETED BY THIS, ON PRODUCTION, ON 2026-07-27.
+CRITICAL - A REAL SALE WAS DELETED BY THIS, ON PRODUCTION, ON 2026-07-27.
 
 WHAT HAPPENED
 -------------
@@ -222,7 +222,7 @@ def test_a_never_resolving_deferral_escalates():
     same way the pull side bounds its retries (M-12)."""
     src = _worker_source()
     assert "_PUSH_MAX_DEFER_STREAK" in src
-    blk = src[src.index("if _push_deferred:"):]
+    blk = src[src.index("if _push_deferred or _push_unaccounted:"):]
     blk = blk[:blk.index("if total_pushed or unsynced_count == 0:")]
     assert "logger.critical" in blk
     assert "needs a human" in blk
@@ -233,7 +233,7 @@ def test_a_never_resolving_deferral_escalates():
 
 def test_the_streak_resets_once_the_parent_lands():
     src = _worker_source()
-    blk = src[src.index("if _push_deferred:"):]
+    blk = src[src.index("if _push_deferred or _push_unaccounted:"):]
     blk = blk[:blk.index("if total_pushed or unsynced_count == 0:")]
     assert "_DEFER_STREAK.pop(business_id, None)" in blk
 
@@ -372,3 +372,95 @@ def test_an_older_cloud_response_drains_as_before():
     body = {"status": "success"}          # no applied / deferred / rejected
     acked, kept = _ack(chunk, body)
     assert acked == chunk and kept == []
+
+
+def test_an_older_cloud_shortfall_also_escalates():
+    """The OLD-CLOUD case, observed live on 2026-07-27 23:36: a cloud without
+    the `deferred` field reports `applied: 4` for 6 rows sent. The rows are held
+    (good) but the whole chunk is held, and it re-sends every cycle. That is a
+    spin, so it must escalate on the same counter as a deferral rather than
+    logging the same ERROR forever."""
+    src = _worker_source()
+    assert "_push_unaccounted" in src
+    blk = src[src.index("if _push_deferred or _push_unaccounted:"):]
+    blk = blk[:blk.index("if total_pushed or unsynced_count == 0:")]
+    assert "_push_unaccounted and not _push_deferred" in blk
+    assert "older than the `deferred` field" in blk, (
+        "the operator must be told the remedy is to deploy the cloud side")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 5. M-20a — the enqueue path must say why it declined
+# ══════════════════════════════════════════════════════════════════════════════
+# `register_shifts` rows 1-6 were queued; 7, 8 and 9 were not, while invoices
+# kept queueing throughout. No log line anywhere recorded a refusal, so "this
+# row is not in the outbox" had no explanation — and every sale rung on shift 9
+# is now stranded behind a parent the cloud will never receive.
+
+def _models_source():
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
+                     "database", "models.py")
+    return open(p, encoding="utf-8").read()
+
+
+def _queue_change_block():
+    src = _models_source()
+    start = src.index("def _queue_change(connection, target, operation):")
+    return src[start:src.index("@event.listens_for(Mapper,", start)]
+
+
+def test_the_sync_queue_insert_no_longer_fails_silently():
+    """THE SWALLOW THAT CAN LOSE A REGISTER'S TAKINGS.
+
+    It was `except Exception as e: pass  # Fail silently to prevent blocking
+    main database writes`. Failing OPEN is right — a sync bookkeeping problem
+    must never stop the counter taking money. Failing open and SILENT is not:
+    this is the single INSERT that decides whether a sale ever leaves the
+    device, and when it throws the outbox looks perfectly drained.
+    """
+    blk = _queue_change_block()
+    ins = blk[blk.index("INSERT INTO sync_queue"):]
+    assert "pass" not in ins.split("except Exception as e:")[1][:400], (
+        "the sync_queue INSERT is swallowing its exception silently again")
+    assert "FAILED to queue" in ins
+    assert "will NEVER be pushed" in ins
+    assert "exc_info=True" in ins
+
+
+def test_a_serialisation_failure_is_reported():
+    """A row queued with payload=NULL is a promise the outbox cannot keep."""
+    blk = _queue_change_block()
+    ser = blk[blk.index("_serialize_orm_obj"):]
+    ser = ser[:ser.index("INSERT INTO sync_queue")]
+    assert "could NOT serialise" in ser
+    assert "exc_info=True" in ser
+
+
+def test_every_decline_states_a_reason():
+    """Each early `return` used to be silent. The routine ones are DEBUG; the
+    two that indicate a bug (unresolvable business, no primary key) are
+    WARNING, because a syncable row is being dropped."""
+    blk = _queue_change_block()
+    assert "sync_disabled_var is set" in blk
+    assert "not in _SYNC_TABLES" in blk
+    assert "PULL_ONLY table" in blk
+    assert 'level="warning"' in blk
+    assert "business_id could not be resolved" in blk
+    assert "no primary key value" in blk
+
+
+def test_the_pull_apply_decline_says_the_row_is_never_pushed():
+    """The leading M-20a hypothesis. Suppressing an echo is correct; doing it
+    silently is how a shift can vanish from the outbox unnoticed."""
+    blk = _queue_change_block()
+    site = blk[blk.index("sync_disabled_var.get() == True"):]
+    site = site[:site.index("return") + 6]
+    assert "NEVER be pushed" in site
+
+
+def test_declining_never_raises_into_the_business_write():
+    """Fail-open is the correct behaviour and must be preserved: logging a
+    decline must not become a new way to break a sale."""
+    blk = _queue_change_block()
+    assert "raise" not in blk.replace("raise a", ""), (
+        "the enqueue path must never raise into the caller's transaction")

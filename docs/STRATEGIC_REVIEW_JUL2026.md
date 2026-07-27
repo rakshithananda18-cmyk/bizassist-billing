@@ -3162,11 +3162,83 @@ emoji in my new comment. It did its job; the comment is now ASCII.
 
 ### 66.8 What is still open
 
-* **M-20a: why `register_shifts` stopped being enqueued on 2026-07-26.** Shifts
-  1-6 were queued, 7/8/9 were not, while invoices kept queueing throughout. Not
-  the hosting-mode gate (that stops everything), not `PULL_ONLY_TABLES`, not
-  `_SYNC_TABLES`. Remaining candidate is `sync_disabled_var` set at creation
-  time. **Unproven, and the parent cannot land until it is answered.**
+* **M-20a: why `register_shifts` stopped being enqueued on 2026-07-26.** See
+  §66.9 — the enqueue path is now instrumented, and it contained a swallow that
+  could produce exactly this.
 * The ₹641 sale is safe locally. It will sync **once the shift does** — the fix
   makes the invoice wait rather than vanish, but it cannot conjure the parent.
 * Nothing from §65 has been repaired.
+
+### 66.9 M-20a — the enqueue path had a silent swallow around the sale's only exit
+
+Confirmed live at 2026-07-27 23:36, first push after restarting on the fixed
+build:
+
+```
+ERROR [SYNC_WORKER] UNACCOUNTED ROWS for biz=7: sent 6, cloud applied 4,
+deferred 0, rejected 0 - 2 row(s) vanished with no explanation.
+They are being KEPT in the outbox rather than acked.
+```
+
+A second sale, `LCL-OW-0029` (₹461), was **held instead of deleted**. Under the
+previous build those six rows would have been stamped synced and that sale would
+be gone exactly as the ₹641 was. `deferred 0` because the cloud half is not yet
+deployed — the arithmetic reconciliation caught it on its own, which is the
+belt working without the braces.
+
+**Then reading the enqueue path for M-20a found this**, in
+`database/models.py::_queue_change`:
+
+```python
+    except Exception as e:
+        # Fail silently to prevent blocking main database writes
+        pass
+```
+
+A bare swallow around **the single INSERT that decides whether a sale ever
+leaves the device.** Failing OPEN is right — a sync bookkeeping problem must
+never stop the counter taking money. Failing open and SILENT is not: when that
+INSERT throws, the row is never queued, never pushed, and never missed, and the
+outbox looks perfectly drained. That is precisely the observed M-20a shape.
+
+A second swallow sat around the payload serialisation, which would queue a row
+with `payload = NULL` — a promise the outbox cannot keep.
+
+And every early `return` in the function was silent, so "this row is not in the
+outbox" had no explanation anywhere.
+
+**All of it now reports:**
+
+| Path | Level | Says |
+|---|---|---|
+| INSERT fails | ERROR + traceback | names entity, id, operation, business, and that a parent row will strand its children |
+| serialisation fails | ERROR + traceback | the row is being queued without a payload |
+| `sync_disabled_var` set (pull-apply) | DEBUG | "this row will NEVER be pushed" — the leading M-20a hypothesis |
+| not in `_SYNC_TABLES` / `PULL_ONLY` | DEBUG | routine |
+| business unresolvable | **WARNING** | a syncable row is being dropped, probably a bug |
+| no primary key | **WARNING** | same |
+
+Routine declines are DEBUG because this fires on every write; the two that
+indicate a defect are WARNING. Nothing raises into the caller's transaction —
+fail-open is preserved and pinned by a test.
+
+Also corrected: `check_local_sync_backlog.py` reported *"the sync WORKER is the
+problem — not running, or unable to reach the cloud"* for rows that pushed
+perfectly and were **held on purpose**. Opposite situations, identical count. It
+now reads the error column and says the data is safe.
+
+And the old-cloud shortfall now feeds the same escalation counter as a deferral.
+Without the `deferred` list the whole chunk is held and re-sent every cycle —
+safe, but a spin that would have logged the same ERROR forever without ever
+escalating.
+
+**Evidence:** 26 tests in `test_sync_deferred_rows.py`. Mutation-tested —
+restoring the silent `pass` fails `test_the_sync_queue_insert_no_longer_fails_
+silently`; `models.py` restored byte-identically. 82 passed across sync, billing
+and shifts. Verified by execution that a hybrid-mode insert still queues (2 rows)
+and that the decline reasons actually emit.
+
+**Still not proven:** which of these paths skipped shifts 7/8/9. The
+instrumentation makes the next occurrence a single grep rather than a four-hour
+investigation, but it cannot explain a decline that has already happened
+unlogged. Open a shift and watch for `[SYNC_QUEUE]`.

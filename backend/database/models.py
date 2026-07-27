@@ -938,17 +938,50 @@ def _get_business_id(obj) -> int | None:
         return obj.parent_business_id or obj.id
     return None
 
+def _sync_queue_logger():
+    """Lazily resolved so importing models.py never depends on logging setup."""
+    import logging
+    return logging.getLogger("bizassist.sync_queue")
+
+
+def _decline(tbl, target, operation, why, level="debug"):
+    """Record WHY a row was not queued for sync, then decline.
+
+    M-20a. Every `return` in `_queue_change` was silent, so "this row is not in
+    the outbox" had no explanation anywhere — and on 2026-07-27 that turned into
+    a register whose shift never reached the cloud, which in turn stranded every
+    sale rung on it. Three shifts were skipped and no line of any log said so.
+
+    Most declines are entirely normal and fire on nearly every write, so they
+    are DEBUG. The two that are NOT routine — a business that cannot be resolved,
+    and a row with no primary key — are WARNING: those mean a syncable row is
+    being dropped for a reason that is probably a bug.
+    """
+    getattr(_sync_queue_logger(), level)(
+        "[SYNC_QUEUE] not queued: %s#%s (%s) - %s",
+        tbl, getattr(target, "id", "?"), operation, why)
+
+
 def _queue_change(connection, target, operation):
     from database.db import sync_disabled_var
+    tbl = target.__tablename__
     # 1. Skip if sync is disabled (e.g. during pull updates)
+    #
+    # This is the leading hypothesis for M-20a: a row written INSIDE a pull-apply
+    # is suppressed here, correctly (it came FROM the cloud, pushing it back is
+    # an echo). If a shift is ever created while this flag is set — a repair, a
+    # restore, a migration that reuses the pull path — it is silently never
+    # queued and can never reach the cloud. Now it says so.
     if sync_disabled_var.get() == True:
+        _decline(tbl, target, operation, "sync_disabled_var is set (pull-apply "
+                                         "context) - this row will NEVER be pushed")
         return
     # 2. Skip tracking tables
-    tbl = target.__tablename__
     if tbl in ("sync_queue", "sync_logs", "conflict_logs"):
         return
     # 3. Only sync tables in our export/sync set
     if tbl not in _SYNC_TABLES:
+        _decline(tbl, target, operation, "table is not in _SYNC_TABLES")
         return
 
     # 3b. PULL-ONLY tables are mirrored cloud->local and must never be pushed
@@ -959,16 +992,26 @@ def _queue_change(connection, target, operation):
     try:
         from database.sync_map import PULL_ONLY_TABLES
         if tbl in PULL_ONLY_TABLES:
+            _decline(tbl, target, operation, "PULL_ONLY table (cloud is the "
+                                             "authority; pushing would clobber "
+                                             "the counterparty)")
             return
-    except Exception:
-        pass
-    
+    except Exception as e:
+        _sync_queue_logger().warning(
+            "[SYNC_QUEUE] could not check PULL_ONLY_TABLES for %s: %s", tbl, e)
+
     # 4. Only queue if dialect is sqlite (local client)
     if connection.dialect.name != "sqlite":
         return
 
     bid = _get_business_id(target)
     if bid is None:
+        # WARNING, not debug: this is a SYNCABLE table whose owning business
+        # could not be determined, so a real row is being dropped from the
+        # outbox for a reason that is probably a bug.
+        _decline(tbl, target, operation,
+                 "business_id could not be resolved - row is NOT queued",
+                 level="warning")
         return
 
     # Check if hybrid mode is configured for this specific business ID.
@@ -1010,19 +1053,29 @@ def _queue_change(connection, target, operation):
             entity_id = getattr(target, pks[0], None)
 
     if entity_id is None:
+        _decline(tbl, target, operation,
+                 "no primary key value - row is NOT queued", level="warning")
         return
 
     payload = None
     if operation != "DELETE":
         try:
             payload = json.dumps(_serialize_orm_obj(target, connection), default=str)
-        except Exception:
-            pass
+        except Exception as e:
+            # WAS `except Exception: pass`. A row queued with payload=NULL is a
+            # row the cloud can never apply — the outbox holds a promise it
+            # cannot keep, and nothing said so.
+            _sync_queue_logger().error(
+                "[SYNC_QUEUE] could NOT serialise %s#%s for biz=%s: %s. The row "
+                "is being queued WITHOUT a payload and the cloud will not be "
+                "able to apply it.", tbl, entity_id, bid, e, exc_info=True)
     else:
         try:
             payload = json.dumps({"id": entity_id, "business_id": bid}, default=str)
-        except Exception:
-            pass
+        except Exception as e:
+            _sync_queue_logger().error(
+                "[SYNC_QUEUE] could NOT serialise DELETE of %s#%s for biz=%s: %s",
+                tbl, entity_id, bid, e, exc_info=True)
 
     # Insert into sync_queue using connection
     try:
@@ -1041,8 +1094,33 @@ def _queue_change(connection, target, operation):
             }
         )
     except Exception as e:
-        # Fail silently to prevent blocking main database writes
-        pass
+        # ── M-20a · the swallow that can lose a whole register's takings ───────
+        #
+        # This was `except Exception as e: pass  # Fail silently to prevent
+        # blocking main database writes`.
+        #
+        # Failing OPEN is right: a sync bookkeeping problem must never stop the
+        # counter taking money. Failing open and SILENT is not, and this is the
+        # single INSERT that decides whether a sale ever leaves this device.
+        # When it throws, the row is never queued, never pushed, and never
+        # missed by anything — the outbox looks perfectly drained.
+        #
+        # That is exactly the observed M-20a shape: `register_shifts` rows 1-6
+        # were queued, 7/8/9 were not, invoices kept queueing throughout, and no
+        # log line anywhere recorded a refusal. Every invoice rung on shift 9 is
+        # now stuck behind a parent the cloud will never receive.
+        #
+        # Still swallowed — the write must not be rolled back — but at ERROR
+        # with the entity, the id and the reason, so the next occurrence is one
+        # grep instead of a four-hour investigation. (rule 13: a swallow is
+        # judged by what it protects; this one protects the sale, not the
+        # silence.)
+        _sync_queue_logger().error(
+            "[SYNC_QUEUE] FAILED to queue %s#%s (%s) for biz=%s: %s. This row "
+            "will NEVER be pushed to the cloud and nothing else will notice. If "
+            "it is a parent row (register_shifts, customers, products), every "
+            "child that references it will be deferred by the cloud forever.",
+            tbl, entity_id, operation, bid, e, exc_info=True)
 
 
 @event.listens_for(Mapper, "after_insert")
