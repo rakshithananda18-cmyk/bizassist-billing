@@ -113,6 +113,7 @@ export default function OrderDeskTab({
   onSelectSupplier,
   catalog = [],
   catalogLoading = false,
+  connectionsLoading = false,
   onPlaceOrder,
   placing = false,
   onGoToConnections,
@@ -202,7 +203,16 @@ export default function OrderDeskTab({
     if (ok) { cart.clear(); setCartOpen(false) }
   }
 
-  // ── No suppliers at all → the only useful action is to go connect ─────────
+  // ── 1. Connections loading from backend ──────────────────────────────────
+  if (connectionsLoading) {
+    return (
+      <div className="page-loader" style={{ padding: '48px 24px' }}>
+        <span className="spinner" /> Loading connected suppliers…
+      </div>
+    )
+  }
+
+  // ── 2. No suppliers at all → the only useful action is to go connect ─────────
   if (suppliers.length === 0) {
     return (
       <div className="empty-state" style={{ padding: '48px 24px' }}>

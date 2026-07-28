@@ -15,7 +15,7 @@
 import React, { useEffect, useState } from 'react'
 import {
   AlertIcon, BillsIcon, CartIcon, CheckIcon, CloseIcon, ConnectionIcon,
-  SettingsIcon, ShieldIcon,
+  HandshakeIcon, SettingsIcon, ShieldIcon,
 } from '../../components/Icons'
 import CustomSelect from '../../components/common/CustomSelect'
 
@@ -194,21 +194,25 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
     sendRequest, approve, reject, cancel, revoke, savePolicy, probe,
   } = connections
 
-  const [view, setView] = useState('approved')  // approved | pending | sent
+  const [activeTab, setActiveTab] = useState('suppliers')  // suppliers | customers | requests
+  const [subStatus, setSubStatus] = useState('approved')  // approved | pending | sent
+
   const [bizid, setBizid] = useState('')
   const [connectAs, setConnectAs] = useState('buyer')
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
-  // Pre-flight result for the typed BizID: undefined = not checked yet,
-  // null = no such business, object = the public profile.
   const [target, setTarget] = useState(undefined)
   const [probing, setProbing] = useState(false)
   const [policyFor, setPolicyFor] = useState(null)
   const [revokeFor, setRevokeFor] = useState(null)
 
-  // Check the BizID as soon as the user stops typing a plausible one. Sending a
-  // request to a local-only business creates a row nobody will ever see, so it
-  // is worth saying so BEFORE they press the button, not after.
+  // Categorize requests by role
+  const incomingSuppliers = incoming.filter(c => c.my_role !== 'seller')
+  const incomingCustomers = incoming.filter(c => c.my_role === 'seller')
+  const outgoingSuppliers = outgoing.filter(c => c.my_role !== 'seller')
+  const outgoingCustomers = outgoing.filter(c => c.my_role === 'seller')
+
+  // Check the BizID as soon as the user stops typing a plausible one.
   useEffect(() => {
     const code = bizid.trim()
     if (code.length < 6) { setTarget(undefined); return }
@@ -225,59 +229,71 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
     e.preventDefault()
     if (!bizid.trim()) return
     setSending(true)
-    const ok = await sendRequest({ bizid, connectAs, message })
+    const ok = await sendRequest({ bizid, role: connectAs, message })
     setSending(false)
-    if (ok) { setBizid(''); setMessage(''); setTarget(undefined); setView('sent') }
+    if (ok) { setBizid(''); setMessage(''); setTarget(undefined); setActiveTab(connectAs === 'buyer' ? 'suppliers' : 'customers'); setSubStatus('sent') }
   }
 
   return (
     <div className="b2b-connections">
-      {/* ── Identity + request form ────────────────────────────────────────── */}
-      <div className="grid grid-2 gap-4 mb-4">
-        <div className="card b2b-id-card">
+      {/* ── Identity + Request Form: Single Unified Header Card ─────────── */}
+      <div className="card b2b-header-card mb-4">
+        {/* Left Column: My Network Address */}
+        <div className="b2b-header-col">
           <div>
-            <div className="b2b-card-eyebrow">My network address</div>
+            <div className="b2b-card-eyebrow">
+              <ConnectionIcon size={14} style={{ color: 'var(--accent)', marginRight: 6, verticalAlign: 'middle' }} />
+              My network address
+            </div>
             <div className="b2b-card-sub">
-              Share your BizID so other businesses can request a connection. Sharing it is safe —
-              a request gives them nothing until you approve it.
+              Share your BizID so other businesses can request a connection. Requests require your explicit approval.
             </div>
           </div>
-          <div className="b2b-bizid-box">
+          <div className="b2b-bizid-box" style={{ marginTop: 12 }}>
             <span className="td-mono b2b-bizid">{myBizId || 'Loading…'}</span>
             {myBizId && (
-              <button className="btn btn-secondary btn-sm" onClick={onCopyBizId} style={{ minWidth: 64, height: 32 }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={onCopyBizId} style={{ minWidth: 64, height: 32 }}>
                 {copied ? 'Copied' : 'Copy'}
               </button>
             )}
           </div>
+          <div className="b2b-card-hint" style={{ marginTop: 8 }}>
+            <ShieldIcon size={12} style={{ marginRight: 4, verticalAlign: 'middle', color: 'var(--success)' }} />
+            Safe to share — gives zero access until you approve.
+          </div>
         </div>
 
-        <div className="card b2b-id-card">
+        {/* Vertical Divider */}
+        <div className="b2b-header-divider" />
+
+        {/* Right Column: Request a Connection */}
+        <div className="b2b-header-col">
           <div>
             <div className="b2b-card-eyebrow">
-              <ConnectionIcon size={14} style={{ color: 'var(--accent)', marginRight: 6, verticalAlign: 'middle' }} />
+              <HandshakeIcon size={14} style={{ color: 'var(--accent)', marginRight: 6, verticalAlign: 'middle' }} />
               Request a connection
             </div>
             <div className="b2b-card-sub">
-              Enter their BizID and say what they are to you. They'll get a request to approve.
+              Enter their BizID and select your relationship. They will receive a request to approve.
             </div>
           </div>
-          <form onSubmit={submitRequest} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <form onSubmit={submitRequest} style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
             <div style={{ display: 'flex', gap: 8 }}>
               <input
                 className="form-input td-mono"
-                style={{ textTransform: 'uppercase', letterSpacing: '0.5px', flex: 1 }}
+                style={{ textTransform: 'uppercase', letterSpacing: '0.5px', flex: 1, height: 34 }}
                 placeholder="E.G. BA-ABC123"
                 value={bizid}
                 onChange={e => setBizid(e.target.value)}
                 required
               />
-              <CustomSelect className="form-select" value={connectAs} onChange={e => setConnectAs(e.target.value)} style={{ width: 190 }}>
+              <CustomSelect className="form-select" value={connectAs} onChange={e => setConnectAs(e.target.value)} style={{ width: 170, height: 34 }}>
                 <option value="buyer">They're my supplier</option>
                 <option value="seller">They're my customer</option>
               </CustomSelect>
             </div>
-            {/* Pre-flight verdict on the typed BizID. */}
+
+            {/* Pre-flight verdict on the typed BizID */}
             {probing && bizid.trim().length >= 6 && (
               <div className="b2b-probe is-checking">Checking {bizid.trim().toUpperCase()}…</div>
             )}
@@ -288,183 +304,280 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
             )}
             {!probing && target && target.reachable === false && (
               <div className="b2b-probe is-warn">
-                <b>{target.business_name}</b> is running in offline (local-only) mode, so it
-                can't receive connection requests yet. You can still send one — it will
-                appear for them the moment they turn on cloud sync.
+                <b>{target.business_name}</b> is running in offline mode. Request will deliver when they sync.
               </div>
             )}
             {!probing && target && target.reachable !== false && (
               <div className="b2b-probe is-good">
-                Found <b>{target.business_name}</b>
-                {target.state_code ? ` · state ${target.state_code}` : ''} — ready to receive your request.
+                Found <b>{target.business_name}</b> — ready to receive your request.
               </div>
             )}
 
-            <input
-              className="form-input"
-              style={{ fontSize: '0.82rem' }}
-              placeholder="Optional note — e.g. “We buy paint from you monthly, shop in Jayanagar”"
-              maxLength={500}
-              value={message}
-              onChange={e => setMessage(e.target.value)}
-            />
-            <button type="submit" className="btn btn-primary" disabled={sending || !bizid.trim()}>
-              {sending ? 'Sending…' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ConnectionIcon size={14} /> Send request</span>}
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                className="form-input"
+                style={{ fontSize: '0.82rem', flex: 1, height: 34 }}
+                placeholder="Optional note — e.g. “We buy paint monthly”"
+                maxLength={500}
+                value={message}
+                onChange={e => setMessage(e.target.value)}
+              />
+              <button type="submit" className="btn btn-primary btn-sm" style={{ height: 34, flexShrink: 0, padding: '0 14px' }} disabled={sending || !bizid.trim()}>
+                {sending ? 'Sending…' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ConnectionIcon size={14} /> Send request</span>}
+              </button>
+            </div>
           </form>
         </div>
       </div>
 
-      {/* ── Sub-tabs ───────────────────────────────────────────────────────── */}
-      <div className="tabs page-subbar">
-        <button className={`tab${view === 'approved' ? ' active' : ''}`} onClick={() => setView('approved')}>
-          <CheckIcon size={13} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-          Approved <span className="b2b-tab-count">{customers.length + suppliers.length}</span>
+      {/* ── Main Party Tabs: My Suppliers · My Customers ──── */}
+      <div className="tabs page-subbar mb-3">
+        <button
+          className={`tab${activeTab === 'suppliers' ? ' active' : ''}`}
+          onClick={() => { setActiveTab('suppliers'); setSubStatus('approved') }}
+        >
+          <CartIcon size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+          My Suppliers <span className="b2b-tab-count">{suppliers.length}</span>
+          {incomingSuppliers.length > 0 && (
+            <span className="b2b-tab-count is-alert" style={{ marginLeft: 6 }}>
+              {incomingSuppliers.length} pending
+            </span>
+          )}
         </button>
-        <button className={`tab${view === 'pending' ? ' active' : ''}`} onClick={() => setView('pending')}>
-          <AlertIcon size={13} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-          Pending approval
-          {incoming.length > 0 && <span className="b2b-tab-count is-alert">{incoming.length}</span>}
-        </button>
-        <button className={`tab${view === 'sent' ? ' active' : ''}`} onClick={() => setView('sent')}>
-          Sent by me <span className="b2b-tab-count">{outgoing.length}</span>
+
+        <button
+          className={`tab${activeTab === 'customers' ? ' active' : ''}`}
+          onClick={() => { setActiveTab('customers'); setSubStatus('approved') }}
+        >
+          <ShieldIcon size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+          My Customers <span className="b2b-tab-count">{customers.length}</span>
+          {incomingCustomers.length > 0 && (
+            <span className="b2b-tab-count is-alert" style={{ marginLeft: 6 }}>
+              {incomingCustomers.length} pending
+            </span>
+          )}
         </button>
       </div>
 
       {loading ? (
         <div className="page-loader"><span className="spinner" /> Loading your network…</div>
-      ) : view === 'pending' ? (
-        incoming.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon"><CheckIcon size={22} /></div>
-            <h3>Nothing waiting on you</h3>
-            <p>Connection requests from other businesses land here. Nobody can see your catalogue or stock until you approve them.</p>
-          </div>
-        ) : (
-          <div className="b2b-request-list">
-            {incoming.map(c => (
-              <RequestCard key={c.id} conn={c} mine={false} busy={busyId === c.id}
-                onApprove={approve} onReject={reject} onCancel={cancel} />
-            ))}
-          </div>
-        )
-      ) : view === 'sent' ? (
-        outgoing.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon"><ConnectionIcon size={22} /></div>
-            <h3>No outstanding requests</h3>
-            <p>Requests you send are listed here until the other business approves or declines them.</p>
-          </div>
-        ) : (
-          <div className="b2b-request-list">
-            {outgoing.map(c => (
-              <RequestCard key={c.id} conn={c} mine busy={busyId === c.id}
-                onApprove={approve} onReject={reject} onCancel={cancel} />
-            ))}
-          </div>
-        )
       ) : (
-        <div className="b2b-approved">
-          {/* Customers */}
-          <section>
-            <div className="b2b-section-head">
-              <ShieldIcon size={14} /> My Customers <span className="b2b-pane-count">{customers.length}</span>
+        /* ── Integrated Table / Request Card Container ────────────────────────── */
+        <div className="card b2b-table-card" style={{ padding: 0, overflow: 'hidden' }}>
+          {/* Integrated Header Bar with Status Filter Pills */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-3)'
+          }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                type="button"
+                className={`btn btn-sm ${subStatus === 'approved' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setSubStatus('approved')}
+                style={{ height: 32 }}
+              >
+                <CheckIcon size={13} style={{ marginRight: 4 }} />
+                Connected {activeTab === 'suppliers' ? `(${suppliers.length})` : `(${customers.length})`}
+              </button>
+
+              <button
+                type="button"
+                className={`btn btn-sm ${subStatus === 'pending' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setSubStatus('pending')}
+                style={{ height: 32 }}
+              >
+                <AlertIcon size={13} style={{ marginRight: 4 }} />
+                Requests Received
+                {activeTab === 'suppliers'
+                  ? (incomingSuppliers.length > 0 && <span className="b2b-tab-count is-alert" style={{ marginLeft: 4 }}>{incomingSuppliers.length}</span>)
+                  : (incomingCustomers.length > 0 && <span className="b2b-tab-count is-alert" style={{ marginLeft: 4 }}>{incomingCustomers.length}</span>)}
+              </button>
+
+              <button
+                type="button"
+                className={`btn btn-sm ${subStatus === 'sent' ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => setSubStatus('sent')}
+                style={{ height: 32 }}
+              >
+                Requests Sent
+                {activeTab === 'suppliers'
+                  ? (outgoingSuppliers.length > 0 && <span className="b2b-tab-count" style={{ marginLeft: 4 }}>{outgoingSuppliers.length}</span>)
+                  : (outgoingCustomers.length > 0 && <span className="b2b-tab-count" style={{ marginLeft: 4 }}>{outgoingCustomers.length}</span>)}
+              </button>
             </div>
-            {customers.length === 0 ? (
-              <div className="b2b-inline-empty">No customers connected yet.</div>
+          </div>
+
+          {/* Body Content */}
+          {activeTab === 'suppliers' ? (
+            /* ── MY SUPPLIERS TAB ──────────────────────────────────────────────── */
+            subStatus === 'pending' ? (
+              <div style={{ padding: '16px' }}>
+                {incomingSuppliers.length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-icon"><CheckIcon size={22} /></div>
+                    <h3>No pending supplier requests</h3>
+                    <p>When a supplier requests to connect with you, their request appears here.</p>
+                  </div>
+                ) : (
+                  <div className="b2b-request-list">
+                    {incomingSuppliers.map(c => (
+                      <RequestCard key={c.id} conn={c} mine={false} busy={busyId === c.id}
+                        onApprove={approve} onReject={reject} onCancel={cancel} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : subStatus === 'sent' ? (
+              <div style={{ padding: '16px' }}>
+                {outgoingSuppliers.length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-icon"><ConnectionIcon size={22} /></div>
+                    <h3>No sent requests to suppliers</h3>
+                    <p>Requests you send to suppliers will appear here until they approve.</p>
+                  </div>
+                ) : (
+                  <div className="b2b-request-list">
+                    {outgoingSuppliers.map(c => (
+                      <RequestCard key={c.id} conn={c} mine busy={busyId === c.id}
+                        onApprove={approve} onReject={reject} onCancel={cancel} />
+                    ))}
+                  </div>
+                )}
+              </div>
             ) : (
-              <div className="data-table-wrap">
-                <table className="data-table">
-                  <thead><tr>
-                    <th>Customer</th><th>BizID</th><th>Price tier</th><th>Discount</th>
-                    <th>Credit limit</th><th>Stock visibility</th><th>Categories</th><th style={{ width: 150 }}>Actions</th>
-                  </tr></thead>
-                  <tbody>
-                    {customers.map(c => (
-                      <tr key={c.id}>
-                        <td>
-                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.counterparty_name || c.buyer_name}</div>
-                          <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>Connected {since(c.responded_at || c.created_at)}</div>
-                        </td>
-                        <td className="td-mono">{c.counterparty_bizid || c.buyer_bizid}</td>
-                        <td><span className="badge badge-info" style={{ textTransform: 'capitalize' }}>{c.price_tier}</span></td>
-                        <td>{c.discount_pct > 0 ? `${c.discount_pct}%` : 'None'}</td>
-                        <td>{c.credit_limit > 0 ? fmt(c.credit_limit) : 'Unlimited'}</td>
-                        <td>
-                          <span className={`badge ${c.stock_visibility === 'exact' ? 'badge-success' : c.stock_visibility === 'band' ? 'badge-warning' : 'badge-danger'}`} style={{ textTransform: 'capitalize' }}>
-                            {c.stock_visibility}
-                          </span>
-                        </td>
-                        <td style={{ color: c.catalog_category ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                          {c.catalog_category || 'All'}
-                        </td>
-                        <td>
-                          <div className="flex gap-1" style={{ justifyContent: 'center' }}>
-                            <button className="btn btn-secondary btn-sm" onClick={() => setPolicyFor(c)} title="Configure pricing and visibility">
-                              <SettingsIcon size={12} /> Policy
-                            </button>
+              /* Approved / Connected Suppliers Table */
+              suppliers.length === 0 ? (
+                <div style={{ padding: '16px' }}>
+                  <div className="empty-state">
+                    <div className="empty-icon"><CartIcon size={24} /></div>
+                    <h3>No connected suppliers yet</h3>
+                    <p>Use "Request a connection" above to connect with your suppliers and order from their catalogue.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="data-table-wrap" style={{ border: 'none' }}>
+                  <table className="data-table">
+                    <thead><tr>
+                      <th>Supplier</th><th>BizID</th><th>My price tier</th><th>My discount</th>
+                      <th>Credit limit</th><th>Outstanding</th><th style={{ width: 110 }}>Actions</th>
+                    </tr></thead>
+                    <tbody>
+                      {suppliers.map(c => (
+                        <tr key={c.id}>
+                          <td>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.counterparty_name || c.seller_name}</div>
+                            <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>Connected {since(c.responded_at || c.created_at)}</div>
+                          </td>
+                          <td className="td-mono">{c.counterparty_bizid || c.seller_bizid}</td>
+                          <td><span className="badge badge-info" style={{ textTransform: 'capitalize' }}>{c.price_tier}</span></td>
+                          <td>{c.discount_pct > 0 ? `${c.discount_pct}%` : 'None'}</td>
+                          <td>{c.credit_limit > 0 ? fmt(c.credit_limit) : 'Unlimited'}</td>
+                          <td style={{ fontWeight: 600 }}>
+                            {c.outstanding_balance > 0
+                              ? <span className="badge badge-danger">{fmt(c.outstanding_balance)}</span>
+                              : <span className="badge badge-success">Nil</span>}
+                          </td>
+                          <td>
                             <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => setRevokeFor(c)}>
                               Revoke
                             </button>
-                          </div>
-                        </td>
-                      </tr>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            )
+          ) : (
+            /* ── MY CUSTOMERS TAB ──────────────────────────────────────────────── */
+            subStatus === 'pending' ? (
+              <div style={{ padding: '16px' }}>
+                {incomingCustomers.length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-icon"><CheckIcon size={22} /></div>
+                    <h3>No pending customer requests</h3>
+                    <p>When a business requests to connect as your customer, their request appears here.</p>
+                  </div>
+                ) : (
+                  <div className="b2b-request-list">
+                    {incomingCustomers.map(c => (
+                      <RequestCard key={c.id} conn={c} mine={false} busy={busyId === c.id}
+                        onApprove={approve} onReject={reject} onCancel={cancel} />
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                )}
               </div>
-            )}
-          </section>
-
-          {/* Suppliers */}
-          <section style={{ marginTop: 22 }}>
-            <div className="b2b-section-head">
-              <CartIcon size={14} /> My Suppliers <span className="b2b-pane-count">{suppliers.length}</span>
-            </div>
-            {suppliers.length === 0 ? (
-              <div className="b2b-inline-empty">No suppliers connected yet.</div>
+            ) : subStatus === 'sent' ? (
+              <div style={{ padding: '16px' }}>
+                {outgoingCustomers.length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-icon"><ConnectionIcon size={22} /></div>
+                    <h3>No sent requests to customers</h3>
+                    <p>Requests you send to customers will appear here until they approve.</p>
+                  </div>
+                ) : (
+                  <div className="b2b-request-list">
+                    {outgoingCustomers.map(c => (
+                      <RequestCard key={c.id} conn={c} mine busy={busyId === c.id}
+                        onApprove={approve} onReject={reject} onCancel={cancel} />
+                      ))}
+                  </div>
+                )}
+              </div>
             ) : (
-              <div className="data-table-wrap">
-                <table className="data-table">
-                  <thead><tr>
-                    <th>Supplier</th><th>BizID</th><th>My price tier</th><th>My discount</th>
-                    <th>Credit limit</th><th>Outstanding</th><th style={{ width: 110 }}>Actions</th>
-                  </tr></thead>
-                  <tbody>
-                    {suppliers.map(c => (
-                      <tr key={c.id}>
-                        <td>
-                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.counterparty_name || c.seller_name}</div>
-                          <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>Connected {since(c.responded_at || c.created_at)}</div>
-                        </td>
-                        <td className="td-mono">{c.counterparty_bizid || c.seller_bizid}</td>
-                        <td><span className="badge badge-info" style={{ textTransform: 'capitalize' }}>{c.price_tier}</span></td>
-                        <td>{c.discount_pct > 0 ? `${c.discount_pct}%` : 'None'}</td>
-                        <td>{c.credit_limit > 0 ? fmt(c.credit_limit) : 'Unlimited'}</td>
-                        <td style={{ fontWeight: 600 }}>
-                          {c.outstanding_balance > 0
-                            ? <span className="badge badge-danger">{fmt(c.outstanding_balance)}</span>
-                            : <span className="badge badge-success">Nil</span>}
-                        </td>
-                        <td>
-                          <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => setRevokeFor(c)}>
-                            Revoke
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
-          {customers.length === 0 && suppliers.length === 0 && (
-            <div className="empty-state" style={{ marginTop: 8 }}>
-              <div className="empty-icon"><BillsIcon size={22} /></div>
-              <h3>Your network is empty</h3>
-              <p>Send a request with a business's BizID above, or share yours so they can request you.</p>
-            </div>
+              /* Approved / Connected Customers Table */
+              customers.length === 0 ? (
+                <div style={{ padding: '16px' }}>
+                  <div className="empty-state">
+                    <div className="empty-icon"><ShieldIcon size={24} /></div>
+                    <h3>No connected customers yet</h3>
+                    <p>Share your BizID above so your buyers can connect with you and order from your catalogue.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="data-table-wrap" style={{ border: 'none' }}>
+                  <table className="data-table">
+                    <thead><tr>
+                      <th>Customer</th><th>BizID</th><th>Price tier</th><th>Discount</th>
+                      <th>Credit limit</th><th>Stock visibility</th><th>Categories</th><th style={{ width: 150 }}>Actions</th>
+                    </tr></thead>
+                    <tbody>
+                      {customers.map(c => (
+                        <tr key={c.id}>
+                          <td>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.counterparty_name || c.buyer_name}</div>
+                            <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>Connected {since(c.responded_at || c.created_at)}</div>
+                          </td>
+                          <td className="td-mono">{c.counterparty_bizid || c.buyer_bizid}</td>
+                          <td><span className="badge badge-info" style={{ textTransform: 'capitalize' }}>{c.price_tier}</span></td>
+                          <td>{c.discount_pct > 0 ? `${c.discount_pct}%` : 'None'}</td>
+                          <td>{c.credit_limit > 0 ? fmt(c.credit_limit) : 'Unlimited'}</td>
+                          <td>
+                            <span className={`badge ${c.stock_visibility === 'exact' ? 'badge-success' : c.stock_visibility === 'band' ? 'badge-warning' : 'badge-danger'}`} style={{ textTransform: 'capitalize' }}>
+                              {c.stock_visibility}
+                            </span>
+                          </td>
+                          <td style={{ color: c.catalog_category ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                            {c.catalog_category || 'All'}
+                          </td>
+                          <td>
+                            <div className="flex gap-1" style={{ justifyContent: 'center' }}>
+                              <button className="btn btn-secondary btn-sm" onClick={() => setPolicyFor(c)} title="Configure pricing and visibility">
+                                <SettingsIcon size={12} /> Policy
+                              </button>
+                              <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => setRevokeFor(c)}>
+                                Revoke
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            )
           )}
         </div>
       )}

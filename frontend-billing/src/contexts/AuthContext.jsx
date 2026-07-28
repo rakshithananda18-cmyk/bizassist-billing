@@ -4,8 +4,31 @@ import { logger, setBizId } from '../utils/logger'
 import { reconcileBizIdOnLogin } from '../utils/loginSync'
 import { discoverLocalBackend, getNetworkMode, clearDiscoveryCache } from '../utils/networkDiscovery'
 import { reconcileDeviceModeOnLogin } from '../utils/deviceMode'
+import { syncManager } from '../sync/syncManager'
 
 const AuthContext = createContext(null)
+const AUTH_REQUEST_TIMEOUT_MS = 8000
+
+// Authentication is a security boundary, but it must also have a bounded wait.
+// An unavailable local service used to leave the login screen spinning forever.
+const authFetchWithTimeout = async (url, options, timeoutMs = AUTH_REQUEST_TIMEOUT_MS) => {
+  if (typeof AbortController === 'undefined') return fetch(url, options)
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...options, signal: controller.signal })
+  } catch (err) {
+    if (controller.signal.aborted || err?.name === 'AbortError') {
+      const timeoutError = new Error(`Request timed out after ${Math.ceil(timeoutMs / 1000)} seconds.`)
+      timeoutError.code = 'AUTH_REQUEST_TIMEOUT'
+      throw timeoutError
+    }
+    throw err
+  } finally {
+    clearTimeout(timeout)
+  }
+}
 
 const decodeToken = (token) => {
   try {
@@ -19,6 +42,14 @@ const decodeToken = (token) => {
   } catch (e) {
     return null
   }
+}
+
+// Offline financial work must never cross either a business or user boundary.
+// Without a stable BizID and person identity, durable sync remains disabled.
+const syncScopeFor = (user) => {
+  const bizId = user?.public_id
+  const userId = user?.user_id
+  return bizId && userId ? `biz:${bizId}|user:${userId}` : null
 }
 
 export function AuthProvider({ children }) {
@@ -52,6 +83,9 @@ export function AuthProvider({ children }) {
           }
         }
         setUser(userObj)
+        const restoredScope = syncScopeFor(userObj)
+        if (restoredScope) syncManager.setScope(restoredScope)
+        else syncManager.clearScope()
         setBizId(userObj.public_id)   // restore [BizId=…] logging context
         logger.info('Session restored successfully for user from localStorage')
       } else {
@@ -102,6 +136,13 @@ export function AuthProvider({ children }) {
 
     setToken(tok)
     setUser(userObj)
+    const sessionScope = syncScopeFor(userObj)
+    if (sessionScope) {
+      syncManager.setScope(sessionScope)
+    } else {
+      syncManager.clearScope()
+      logger.warn('[SYNC] Offline queue disabled until a stable BizID and user ID are available.')
+    }
     setBizId(userObj.public_id)   // stamp every subsequent log line with [BizId=…]
     // Store which backend this account lives on (db_mode: 'local' | 'cloud').
     // We log a warning if the account's home backend doesn't match the current
@@ -199,11 +240,20 @@ export function AuthProvider({ children }) {
     logger.info('Attempting login for username:', username)
 
     // 1. Try the platform's primary backend (local on the downloaded app).
-    const res = await fetch(`${API_BASE}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    })
+    let res
+    try {
+      res = await authFetchWithTimeout(`${API_BASE}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      })
+    } catch (err) {
+      if (err?.code === 'AUTH_REQUEST_TIMEOUT') {
+        const target = IS_LOCAL_APP && API_BASE === LOCAL_URL ? 'local billing service' : 'sign-in service'
+        throw new Error(`The ${target} is not responding. Wait a moment, then restart BizAssist if it persists.`)
+      }
+      throw err
+    }
     if (res.ok) {
       const data = await res.json()
       logger.info('Login successful for user:', data.username, 'role:', data.role)
@@ -368,11 +418,20 @@ export function AuthProvider({ children }) {
     const body = JSON.stringify({ owner_username: ownerUsername, staff_login_name: staffLoginName, password })
 
     // 1. Try the platform's primary backend (local on the desktop app).
-    const res = await fetch(`${API_BASE}/login/staff`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body,
-    })
+    let res
+    try {
+      res = await authFetchWithTimeout(`${API_BASE}/login/staff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      })
+    } catch (err) {
+      if (err?.code === 'AUTH_REQUEST_TIMEOUT') {
+        const target = IS_LOCAL_APP && API_BASE === LOCAL_URL ? 'local billing service' : 'sign-in service'
+        throw new Error(`The ${target} is not responding. Wait a moment, then restart BizAssist if it persists.`)
+      }
+      throw err
+    }
     if (res.ok) {
       const data = await res.json()
       logger.info('Staff login successful:', data.username, 'role:', data.role)
@@ -573,6 +632,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('billing_token')
     localStorage.removeItem('billing_user')
     localStorage.removeItem('bizassist_cloud_token')
+    syncManager.clearScope()
     localStorage.removeItem('bizassist_user_home_mode')  // clear home mode — next user gets their own
     setToken(null)
     setUser(null)

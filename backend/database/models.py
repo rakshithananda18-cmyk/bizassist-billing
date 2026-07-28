@@ -927,7 +927,35 @@ def _serialize_orm_obj(obj, connection=None) -> dict:
                     pass
     return d
 
-def _get_business_id(obj) -> int | None:
+# M-21 — child tables that carry NO business_id column of their own.
+#
+# `_get_business_id` used to return None for these, and `_queue_change` declines
+# on None, so EVERY row of every table below was refused by the outbox. They are
+# all listed in `_SYNC_TABLES` and all present in the cloud's apply-side
+# MODEL_MAP: the cloud has always been able to receive them, the client has
+# never once sent one. Measured on the real database 2026-07-28:
+#
+#     invoice_line_items   184 rows local   0 EVER queued
+#
+# That is the same asymmetry as register_shifts (apply-side supported,
+# push-side impossible) with a different mechanism, and it is why invoice
+# LCL-OW-0030 reached the cloud showing "No items on this invoice" while the
+# local copy had two.
+#
+#     table -> (parent table, FK column on the child)
+_BUSINESS_ID_VIA_PARENT = {
+    "invoice_line_items": ("invoices", "invoice_id"),
+    "purchase_invoice_line_items": ("purchase_invoices", "purchase_invoice_id"),
+    "purchase_order_line_items": ("purchase_orders", "purchase_order_id"),
+    # NOT stock_transfer_id — the column is `transfer_id`. Guessing the name
+    # from the table would have silently resolved to None here, i.e. produced
+    # exactly the defect being fixed. Every entry above is verified against
+    # __table__.columns by test_child_fk_columns_all_exist.
+    "stock_transfer_line_items": ("stock_transfers", "transfer_id"),
+}
+
+
+def _get_business_id(obj, connection=None) -> int | None:
     bid = getattr(obj, "business_id", None)
     if bid is not None:
         try:
@@ -936,6 +964,34 @@ def _get_business_id(obj) -> int | None:
             pass
     if obj.__tablename__ == "users":
         return obj.parent_business_id or obj.id
+
+    # Child row: borrow the owner from its parent. Needs the connection because
+    # the parent may have been INSERTed in this very flush and not be readable
+    # from any other session yet.
+    spec = _BUSINESS_ID_VIA_PARENT.get(obj.__tablename__)
+    if spec is not None and connection is not None:
+        parent_tbl, fk_col = spec
+        fk_val = getattr(obj, fk_col, None)
+        if fk_val is None:
+            return None
+        try:
+            row = connection.execute(
+                text(f'SELECT business_id FROM "{parent_tbl}" WHERE id = :i'),
+                {"i": fk_val}).fetchone()
+        except Exception as e:
+            # A resolver that fails quietly is how this defect survived in the
+            # first place (rule 33).
+            _sync_queue_logger().warning(
+                "[SYNC_QUEUE] could not resolve business_id for %s#%s via "
+                "%s.%s=%s: %s. The row is NOT queued.",
+                obj.__tablename__, getattr(obj, "id", "?"), parent_tbl, fk_col,
+                fk_val, e)
+            return None
+        if row is not None and row[0] is not None:
+            try:
+                return int(row[0])
+            except (ValueError, TypeError):
+                return None
     return None
 
 def _sync_queue_logger():
@@ -962,6 +1018,37 @@ def _decline(tbl, target, operation, why, level="debug"):
         tbl, getattr(target, "id", "?"), operation, why)
 
 
+_NOT_HYBRID_SEEN: set = set()
+
+# Counters for pull-apply suppression noise. Each key is (table, operation);
+# the value is the count of rows suppressed in the current pull-apply block.
+# Reset at the start of every pull (via sync_disabled_var context) via the
+# summary log path: first hit = INFO summary, subsequent hits = silent count.
+# This collapses hundreds of DEBUG lines per sync cycle into one INFO per table.
+_PULL_APPLY_SUPPRESS_SEEN: dict = {}
+
+
+def _note_not_hybrid(bid, tbl, mode) -> bool:
+    """True the FIRST time this (business, table, mode) declines in this process.
+
+    A local-only business declines on every single write, so logging each one
+    would bury the signal it exists to provide (and rule 33's point is that a
+    check nobody reads is a check that cannot see). One line per combination
+    per process answers "why is nothing syncing" and then stays quiet.
+
+    Keyed on the mode too, so a hybrid -> local flip mid-process is reported
+    rather than swallowed by an earlier entry.
+    """
+    key = (bid, tbl, mode)
+    if key in _NOT_HYBRID_SEEN:
+        return False
+    # Bounded: a runaway key set must never be the thing that ends the process.
+    if len(_NOT_HYBRID_SEEN) > 2000:
+        _NOT_HYBRID_SEEN.clear()
+    _NOT_HYBRID_SEEN.add(key)
+    return True
+
+
 def _queue_change(connection, target, operation):
     from database.db import sync_disabled_var
     tbl = target.__tablename__
@@ -973,8 +1060,21 @@ def _queue_change(connection, target, operation):
     # restore, a migration that reuses the pull path — it is silently never
     # queued and can never reach the cloud. Now it says so.
     if sync_disabled_var.get() == True:
-        _decline(tbl, target, operation, "sync_disabled_var is set (pull-apply "
-                                         "context) - this row will NEVER be pushed")
+        # Pull-apply context: sync_disabled_var is set — this row came FROM the cloud,
+        # so pushing it back would be an echo. It is suppressed here and will NEVER be pushed.
+        # Collapse the per-row DEBUG spam into a per-table summary so the logs stay readable.
+        # The first time we see (table, operation) in this context we log once
+        # at DEBUG; after that we count silently. The summary is cheap: bounded
+        # by the number of distinct (table, op) pairs in any pull batch.
+        key = (tbl, operation)
+        prev = _PULL_APPLY_SUPPRESS_SEEN.get(key, 0)
+        _PULL_APPLY_SUPPRESS_SEEN[key] = prev + 1
+        if prev == 0:
+            # First hit — log once so the category is greppable
+            _sync_queue_logger().debug(
+                "[SYNC_QUEUE] pull-apply: suppressing %s %s rows from outbox "
+                "(expected — rows came from cloud, not pushing back)",
+                operation, tbl)
         return
     # 2. Skip tracking tables
     if tbl in ("sync_queue", "sync_logs", "conflict_logs"):
@@ -1004,7 +1104,7 @@ def _queue_change(connection, target, operation):
     if connection.dialect.name != "sqlite":
         return
 
-    bid = _get_business_id(target)
+    bid = _get_business_id(target, connection)
     if bid is None:
         # WARNING, not debug: this is a SYNCABLE table whose owning business
         # could not be determined, so a real row is being dropped from the
@@ -1015,17 +1115,38 @@ def _queue_change(connection, target, operation):
         return
 
     # Check if hybrid mode is configured for this specific business ID.
+    #
+    # M-20a — THE CAUSE, FOUND 2026-07-28. This block held FOUR silent `return`s
+    # and was the last unexplained exit in the enqueue path. It is why business 7
+    # wrote 42 syncable rows between 2026-07-12 16:20 and 2026-07-26 21:59 and
+    # queued NONE of them, including the three register_shifts whose absence
+    # stranded the invoices rung on them (M-20).
+    #
+    # Declining is CORRECT for a local-only or cloud-only business — that is the
+    # whole point of the setting. Declining SILENTLY is the defect: "hosting_mode
+    # is not hybrid" and "sync is broken" produced byte-identical evidence, i.e.
+    # none, so the gap could only be found by diffing tables against the outbox
+    # a fortnight later. Proven on real data: after business 8 was switched to
+    # 'local' it wrote 12 syncable rows, queued 0, and logged 0.
+    #
+    # The mode itself is not recoverable after the fact — flipping AWAY from
+    # hybrid is the one settings write this same gate refuses to queue, so it
+    # leaves no trace anywhere. The log line below is the trace.
     try:
         res = connection.execute(
             text("SELECT parent_business_id, settings FROM users WHERE id = :bid"),
             {"bid": bid}
         ).fetchone()
-        
+
         if not res:
+            # A syncable row whose owning user does not exist. Not routine.
+            _decline(tbl, target, operation,
+                     f"no users row for business_id={bid} - cannot read "
+                     f"hosting_mode, so the row is NOT queued", level="warning")
             return
-            
+
         parent_id, settings_str = res[0], res[1]
-        
+
         # If parent_business_id is set, settings are on the parent owner's user record
         if parent_id is not None:
             res_parent = connection.execute(
@@ -1034,15 +1155,38 @@ def _queue_change(connection, target, operation):
             ).fetchone()
             if res_parent:
                 settings_str = res_parent[0]
-                
+
         if not settings_str:
+            _decline(tbl, target, operation,
+                     f"business_id={bid} has no settings at all - hosting_mode "
+                     f"is unknown and the row is NOT queued", level="warning")
             return
-            
+
         s = json.loads(settings_str)
-        if s.get("general", {}).get("hosting_mode") != "hybrid":
+        mode = s.get("general", {}).get("hosting_mode")
+        if mode != "hybrid":
+            # Routine and correct for a local/cloud business, so this must not
+            # spam: one line per (business, table, mode) per process. That is
+            # enough to answer "why is nothing syncing" and cheap enough to
+            # leave on in production.
+            if _note_not_hybrid(bid, tbl, mode):
+                _sync_queue_logger().info(
+                    "[SYNC_QUEUE] business_id=%s has hosting_mode=%r (not "
+                    "'hybrid'), so %s rows are NOT being queued for sync. This "
+                    "is correct for a local-only or cloud-only business. If you "
+                    "expected this device to sync, change the mode - nothing "
+                    "written while it is set will be pushed later on its own.",
+                    bid, mode, tbl)
             return
-    except Exception:
-        # users table might not exist yet during initial DB creation/seeds, or query failed
+    except Exception as e:
+        # users table might not exist yet during initial DB creation/seeds, or
+        # query failed. Either way a syncable row just fell out of the outbox,
+        # so it does not get to be silent (WAS: bare `return`).
+        _sync_queue_logger().warning(
+            "[SYNC_QUEUE] could not read hosting_mode for business_id=%s while "
+            "queueing %s#%s (%s): %s. The row is NOT queued and will never be "
+            "pushed. Expected only during initial DB creation/seeding.",
+            bid, tbl, getattr(target, "id", "?"), operation, e)
         return
 
     # 5. Extract values and queue it

@@ -444,7 +444,7 @@ export default function Purchases({ embedded = false, headerTabs = null }) {
   // ============================================================================
   return (
     <PageShell embedded={embedded} title="Purchases">
-      <div className={`slide-up${headerTabs ? ' ws-embed' : ''}`}>
+      <div className={`${headerTabs ? 'fade-in ws-embed' : 'slide-up'}`}>
 
         {/* Embedded (Godown): the SAME 48px workspace bar as the Stock tab —
             workspace tabs · divider · view tabs · actions · window controls. */}

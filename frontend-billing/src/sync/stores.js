@@ -14,7 +14,7 @@
 //   getMeta(key)       → arbitrary value (used for the pull cursor) or null
 //   setMeta(key, val)  → persist an arbitrary value
 
-const OUTBOX_DB = 'bizassist_sync'
+const OUTBOX_DB_PREFIX = 'bizassist_sync_v2_'
 const OUTBOX_VERSION = 1
 const OUTBOX_OPS = 'ops'      // the queue
 const OUTBOX_META = 'meta'    // cursor + misc
@@ -55,9 +55,18 @@ export function createMemoryStore() {
 }
 
 // ── IndexedDB store (browser, durable across reloads) ───────────────────────
-function idbOpen() {
+function dbNameForScope(scope) {
+  if (typeof scope !== 'string' || !scope.trim()) {
+    throw new Error('A business/user sync scope is required for durable offline storage')
+  }
+  // A separate physical IndexedDB database prevents records/cursors from one
+  // signed-in tenant being enumerated or replayed in another tenant's session.
+  return OUTBOX_DB_PREFIX + encodeURIComponent(scope)
+}
+
+function idbOpen(scope) {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(OUTBOX_DB, OUTBOX_VERSION)
+    const req = indexedDB.open(dbNameForScope(scope), OUTBOX_VERSION)
     req.onupgradeneeded = () => {
       const db = req.result
       if (!db.objectStoreNames.contains(OUTBOX_OPS)) {
@@ -92,9 +101,9 @@ function reqP(r) {
   })
 }
 
-export function createIdbStore() {
+export function createIdbStore(scope) {
   let dbp = null
-  const db = () => (dbp ||= idbOpen())
+  const db = () => (dbp ||= idbOpen(scope))
   let counter = 0
   return {
     async add(record) {
@@ -133,9 +142,9 @@ export function createIdbStore() {
 
 // Pick the durable store when IndexedDB exists, else memory (keeps the app
 // working in private-mode/SSR/old runners without crashing).
-export function createDefaultStore() {
+export function createDefaultStore(scope) {
   try {
-    if (typeof indexedDB !== 'undefined') return createIdbStore()
+    if (typeof indexedDB !== 'undefined') return createIdbStore(scope)
   } catch {
     /* fall through */
   }

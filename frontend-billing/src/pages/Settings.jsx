@@ -487,6 +487,7 @@ export default function Settings() {
   const lb  = settings.labels || {}
   const g   = gen
   const t   = tx
+  const subscription = settings.subscription || null   // { plan: 'pro'|'free', ... }
 
   // ── Customisable receipt header: drag to reorder, click L/C/R to align ──────
   const headerLayout = getHeaderLayout(pr)
@@ -2097,7 +2098,7 @@ export default function Settings() {
                 }}
               />
               {IS_LOCAL_APP && g.hosting_mode === 'hybrid' && (
-                <SettingRow label="Sync Interval" description="How frequently local changes are synced to the cloud.">
+                <SettingRow label="Push Interval" description="How frequently local changes are pushed to the cloud.">
                   <CustomSelect
                     className="form-input"
                     style={{ width: 220 }}
@@ -2109,6 +2110,60 @@ export default function Settings() {
                     <option value={60}>Every 1 Minute</option>
                     <option value={300}>Every 5 Minutes</option>
                   </CustomSelect>
+                </SettingRow>
+              )}
+              {IS_LOCAL_APP && g.hosting_mode === 'hybrid' && (
+                <SettingRow
+                  label="Cloud → Local Pull"
+                  description="How often the app checks the cloud for updates made on other devices or via the web dashboard. Lower = faster convergence after cloud edits."
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <Toggle
+                      id="cloud_pull_enabled"
+                      checked={g.cloud_pull_enabled !== false}
+                      onChange={v => patch('general', 'cloud_pull_enabled', v)}
+                    />
+                    {g.cloud_pull_enabled !== false && (
+                      <CustomSelect
+                        className="form-input"
+                        style={{ width: 180 }}
+                        value={g.cloud_pull_interval ?? 120}
+                        onChange={e => patch('general', 'cloud_pull_interval', parseInt(e.target.value))}
+                      >
+                        <option value={30}>Every 30 Seconds</option>
+                        <option value={60}>Every 1 Minute</option>
+                        <option value={120}>Every 2 Minutes</option>
+                        <option value={300}>Every 5 Minutes</option>
+                        <option value={600}>Every 10 Minutes</option>
+                        <option value={1800}>Every 30 Minutes</option>
+                      </CustomSelect>
+                    )}
+                  </div>
+                </SettingRow>
+              )}
+              {IS_LOCAL_APP && g.hosting_mode === 'hybrid' && (
+                <SettingRow
+                  label="Instant Pull (Pro)"
+                  description={subscription?.plan === 'pro'
+                    ? 'Cloud edits appear on this device in under 1 second via server push — no polling needed.'
+                    : 'Upgrade to Pro to receive cloud edits instantly via server push instead of periodic polling.'}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {subscription?.plan !== 'pro' ? (
+                      <span style={{
+                        fontSize: '0.72rem', fontWeight: 700,
+                        background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                        color: '#fff', padding: '3px 10px', borderRadius: 12,
+                        letterSpacing: '0.03em'
+                      }}>PRO ONLY</span>
+                    ) : (
+                      <Toggle
+                        id="cloud_push_ping_enabled"
+                        checked={g.cloud_push_ping_enabled !== false}
+                        onChange={v => patch('general', 'cloud_push_ping_enabled', v)}
+                      />
+                    )}
+                  </div>
                 </SettingRow>
               )}
 

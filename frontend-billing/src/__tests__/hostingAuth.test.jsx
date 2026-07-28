@@ -303,6 +303,43 @@ describe('Login staff resolution (T2)', () => {
       expect(screen.getByText(/cashier1/)).toBeInTheDocument()
     })
   })
+
+  it('navigates after a valid owner login without waiting for the optional staff refresh', async () => {
+    const delayedStaffFetch = vi.fn(async (url, options) => {
+      if (String(url).endsWith('/staff')) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+        return { ok: true, status: 200, json: async () => [], clone() { return this } }
+      }
+      return globalMockFetch(url, options)
+    })
+    vi.stubGlobal('fetch', delayedStaffFetch)
+
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/" element={<div>Dashboard reached</div>} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.change(screen.getByLabelText('Business Owner Username'), { target: { value: 'owner1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await screen.findByLabelText('Owner Password')
+    fireEvent.change(screen.getByLabelText('Owner Password'), { target: { value: 'password123' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign In as Owner' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Dashboard reached')).toBeInTheDocument()
+    }, { timeout: 250 })
+
+    expect(delayedStaffFetch).toHaveBeenCalledWith(
+      'http://local-backend/staff',
+      expect.objectContaining({ headers: { Authorization: 'Bearer mock-cloud-token' } })
+    )
+  })
 })
 
 describe('Signup hosting auto-config (T3)', () => {

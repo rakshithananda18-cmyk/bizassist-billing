@@ -116,8 +116,11 @@ export function useRealtimeLeader(token, settings, user) {
       // Only the leader triggers syncManager.pull() to avoid concurrent duplicate requests.
       // Fire-and-forget with a 5s timeout so a slow/offline cloud NEVER blocks the live
       // counter UI. The pull is best-effort — the next SSE event will try again.
-      if (isLeaderOrigin && ['invoice', 'payment', 'purchase', 'product', 'party', 'order', 'godown'].includes(data.entity)) {
-        logger.info('[REALTIME] Leader pulling deltas for entity:', data.entity)
+      const isPullPing = data.type === 'sync.pull_ping' || data.entity === 'pull_ping'
+      const isRelevantEntity = ['invoice', 'payment', 'purchase', 'product', 'party', 'order', 'godown'].includes(data.entity)
+
+      if (isLeaderOrigin && (isRelevantEntity || isPullPing)) {
+        logger.info('[REALTIME] Leader pulling deltas for entity:', data.entity || 'pull_ping')
         const pullWithTimeout = Promise.race([
           syncManager.pull(),
           new Promise((_, reject) => setTimeout(() => reject(new Error('pull timeout')), 5000))

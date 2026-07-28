@@ -965,7 +965,9 @@ export default function Sales(props = {}) {
           if (
             meta &&
             meta.count  === cached.meta?.count &&
-            meta.max_id === cached.meta?.max_id
+            meta.max_id === cached.meta?.max_id &&
+            (cached.meta?.sum_price == null || meta.sum_price === cached.meta?.sum_price) &&
+            (cached.meta?.sum_qty == null || meta.sum_qty === cached.meta?.sum_qty)
           ) {
             // Cache is still valid — skip the full 200KB fetch.
             logger.debug('[SALES] Product cache valid (meta match) — skipping full fetch')
@@ -1127,12 +1129,21 @@ export default function Sales(props = {}) {
         window.dispatchEvent(new CustomEvent('sync-flushed'))
       }).catch(() => { /* best-effort */ })
     }
+    const handleProductsUpdated = () => {
+      logger.info('[SALES] Products updated — invalidating cache and reloading POS catalog')
+      try {
+        Object.keys(localStorage).filter(k => k.includes('cache_') && k.includes('products')).forEach(k => localStorage.removeItem(k))
+      } catch { /* ignore */ }
+      load()
+    }
     window.addEventListener('online', handleOnline)
     window.addEventListener('sync-event', handleSync)
+    window.addEventListener('bizassist:products_updated', handleProductsUpdated)
     return () => {
       clearTimeout(syncDebounceTimer)
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('sync-event', handleSync)
+      window.removeEventListener('bizassist:products_updated', handleProductsUpdated)
     }
   }, [load])
 
@@ -1678,20 +1689,16 @@ export default function Sales(props = {}) {
       }
     })
 
-    const hasNonStandardPrices = options.some(opt => {
-      const pVal = parseFloat(opt.price)
-      return !standardBasePrices.includes(pVal)
-    })
-
-    const shouldShowSelector = hasNonStandardPrices && !isAlreadyPresent
+    const shouldShowSelector = options.length > 1
 
     if (shouldShowSelector) {
       setForm(f => {
         const targetIdx = f.items.findIndex(it => it.product_id === product.id)
-        if (targetIdx !== -1) {
-          setPriceSelectorIndex(targetIdx)
+        const idxToSet = targetIdx !== -1 ? targetIdx : (f.items.length ? f.items.length - 1 : 0)
+        setTimeout(() => {
+          setPriceSelectorIndex(idxToSet)
           setSelectedPriceOptIndex(0)
-        }
+        }, 20)
         return f
       })
     } else {

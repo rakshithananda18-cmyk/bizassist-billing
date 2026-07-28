@@ -19,9 +19,9 @@ import Home      from './pages/Home'
 import Dashboard from './pages/Dashboard'
 import Sales     from './pages/Sales'
 import LiveView  from './pages/LiveView'
-import Khata     from './pages/Khata'
+import ContactsPayments from './pages/ContactsPayments'
 import Money     from './pages/Money'
-import Godown    from './pages/Godown'
+import StockPurchases from './pages/StockPurchases'
 import Reports   from './pages/Reports'
 import Import    from './pages/Import'
 import B2B       from './pages/B2B'
@@ -54,13 +54,13 @@ function AppRoutes() {
       <Route path="/live-view" element={<ProtectedRoute><LiveView /></ProtectedRoute>} />
       {/* Merged workspaces: Parties = Contacts+Payments · Stock = Inventory+Purchases.
           Each view is a real ROUTE (/parties/payments, /stock/inventory). */}
-      <Route path="/parties"      element={<ProtectedRoute><Khata  /></ProtectedRoute>} />
-      <Route path="/parties/:tab" element={<ProtectedRoute><Khata  /></ProtectedRoute>} />
+      <Route path="/parties"      element={<ProtectedRoute><ContactsPayments /></ProtectedRoute>} />
+      <Route path="/parties/:tab" element={<ProtectedRoute><ContactsPayments /></ProtectedRoute>} />
       {/* New unified Money workspace (runs alongside /parties until verified) */}
       <Route path="/money"        element={<ProtectedRoute><Money  /></ProtectedRoute>} />
       <Route path="/money/:view"  element={<ProtectedRoute><Money  /></ProtectedRoute>} />
-      <Route path="/stock"        element={<ProtectedRoute><Godown /></ProtectedRoute>} />
-      <Route path="/stock/:tab"   element={<ProtectedRoute><Godown /></ProtectedRoute>} />
+      <Route path="/stock"        element={<ProtectedRoute><StockPurchases /></ProtectedRoute>} />
+      <Route path="/stock/:tab"   element={<ProtectedRoute><StockPurchases /></ProtectedRoute>} />
       <Route path="/reports"  element={<ProtectedRoute><Reports   /></ProtectedRoute>} />
       <Route path="/import"   element={<ProtectedRoute><Import    /></ProtectedRoute>} />
       {/* Unified B2B workspace (Order · Outgoing · Incoming · Connections).

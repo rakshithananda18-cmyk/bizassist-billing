@@ -40,27 +40,28 @@ import ContextMenu from '../common/ContextMenu'
 // +Qty) are non-collapsible.
 const INTAKE_COLS = [
   { key: 'sno',     label: '#',         width: 32,  collapsible: false },
-  { key: 'product', label: 'Product',   width: 148, collapsible: false, align: 'left' },
+  { key: 'product', label: 'Product',   width: 156, collapsible: false, align: 'left' },
   { key: 'type',    label: 'Type',      short: 'TYPE',    width: 56 },
   { key: 'current', label: 'Current',   short: 'CURRENT', width: 58,  align: 'right' },
   { key: 'qty',     label: '+ Qty *',   width: 64,  align: 'right', collapsible: false },
   { key: 'free',    label: 'Free',      short: 'FREE',    width: 52,  align: 'right', title: 'Free units received (added to stock, no cost)' },
-  { key: 'cost',    label: 'Cost ₹',    short: 'COST',    width: 84,  align: 'right', title: 'Purchase rate per unit (before tax)' },
-  { key: 'sell',    label: 'Sell ₹',    short: 'SELL',    width: 84,  align: 'right', title: 'Selling price per unit' },
-  { key: 'mrp',     label: 'MRP ₹',     short: 'MRP',     width: 96,  align: 'right' },
-  { key: 'disc',    label: 'Disc%',     short: 'DISC%',   width: 52,  align: 'right', title: 'Discount off MRP' },
-  { key: 'discamt', label: 'Disc Amt',  short: 'DISC ₹',  width: 70,  align: 'right', title: 'MRP − Sell, per unit' },
-  { key: 'tax',     label: 'Tax%',      short: 'TAX%',    width: 48,  align: 'right', title: 'GST rate on this item' },
-  { key: 'taxamt',  label: 'Tax Amt',   short: 'TAX ₹',   width: 76,  align: 'right', title: 'GST on the amount' },
-  { key: 'amount',  label: 'Amount ₹',  short: 'AMOUNT',  width: 82,  align: 'right', title: 'Qty × Cost (before tax)' },
-  { key: 'netamt',  label: 'Net Amt ₹', short: 'NET AMT', width: 98,  align: 'right', title: 'Amount + Tax (payable to supplier)' },
-  { key: 'roi',     label: 'ROI%',      short: 'ROI%',    width: 54,  align: 'right', title: 'Return on cost = (Sell−Cost)/Cost' },
-  { key: 'profit',  label: 'Profit%',   short: 'PROFIT',  width: 58,  align: 'right', title: 'Margin on selling = (Sell−Cost)/Sell' },
-  { key: 'netcost', label: 'NetCost',   short: 'NETCOST', width: 82,  align: 'right', title: 'Landed cost incl. GST' },
-  { key: 'batch',   label: 'Batch / Lot', short: 'BATCH', width: 92 },
-  { key: 'expiry',  label: 'Expiry',    short: 'EXPIRY',  width: 96 },
-  { key: 'reason',  label: 'Reason',    short: 'REASON',  width: 120 },
-  { key: 'status',  label: 'Status',    short: 'STATUS',  width: 70 },
+  { key: 'mrp',     label: 'MRP ₹',     short: 'MRP',     width: 80,  align: 'right', title: 'Maximum Retail Price' },
+  { key: 'cost',    label: 'Cost ₹',    short: 'COST',    width: 80,  align: 'right', title: 'Purchase rate per unit (before tax)' },
+  { key: 'sell',    label: 'Sell ₹',    short: 'SELL',    width: 80,  align: 'right', title: 'Selling price per unit' },
+  { key: 'disc',    label: 'Disc%',     short: 'DISC%',   width: 54,  align: 'right', title: 'Discount off MRP' },
+  { key: 'discamt', label: 'Disc Amt',  short: 'DISC ₹',  width: 68,  align: 'right', title: 'MRP − Sell, per unit' },
+  { key: 'cgst',    label: 'CGST%',     short: 'CGST%',   width: 54,  align: 'right', title: 'Central GST rate %' },
+  { key: 'sgst',    label: 'SGST%',     short: 'SGST%',   width: 54,  align: 'right', title: 'State GST rate %' },
+  { key: 'tax',     label: 'GST%',      short: 'GST%',    width: 56,  align: 'right', title: 'Total GST rate %' },
+  { key: 'taxamt',  label: 'Tax Amt',   short: 'TAX ₹',   width: 74,  align: 'right', title: 'GST on the amount' },
+  { key: 'amount',  label: 'Amount ₹',  short: 'AMOUNT',  width: 80,  align: 'right', title: 'Qty × Cost (before tax)' },
+  { key: 'netamt',  label: 'Net Amt ₹', short: 'NET AMT', width: 88,  align: 'right', title: 'Amount + Tax (payable to supplier)' },
+  { key: 'roi',     label: 'ROI%',      short: 'ROI%',    width: 52,  align: 'right', title: 'Return on cost = (Sell−Cost)/Cost' },
+  { key: 'profit',  label: 'Profit%',   short: 'PROFIT',  width: 56,  align: 'right', title: 'Margin on selling = (Sell−Cost)/Sell' },
+  { key: 'netcost', label: 'NetCost',   short: 'NETCOST', width: 78,  align: 'right', title: 'Landed cost incl. GST' },
+  { key: 'batch',   label: 'Batch / Lot', short: 'BATCH', width: 90 },
+  { key: 'expiry',  label: 'Expiry',    short: 'EXPIRY',  width: 100 },
+  { key: 'reason',  label: 'Reason',    short: 'REASON',  width: 110 },
 ]
 const INTAKE_COLLAPSED_W = 26   // folded strip width (px)
 
@@ -241,7 +242,6 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
   const settings = auth?.settings
 
   const showMrpCol = settings?.inventory?.mrp_enabled !== false
-  const showWholesaleIntake = settings?.inventory?.wholesale_price !== false
 
   const intakeCols = React.useMemo(() => INTAKE_COLS.filter(c => {
     if (c.key === 'mrp' && !showMrpCol) return false
@@ -633,10 +633,18 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
           pid = created.id
         }
 
-        // Stock adjustment
+        // Stock adjustment (records movement + batch inventory position)
         const adjRes = await authFetch(`/billing/products/${pid}/stock/adjustment`, {
           method: 'POST',
-          body: JSON.stringify({ qty_delta: num(row.qty) + num(row.free), note }),
+          body: JSON.stringify({
+            qty_delta: num(row.qty) + num(row.free),
+            note,
+            batch_no: row.batch ? row.batch.trim() : null,
+            expiry_date: row.expiry || null,
+            selling_price: num(row.selling_price) > 0 ? num(row.selling_price) : null,
+            cost_price: num(row.cost_price) > 0 ? num(row.cost_price) : null,
+            mrp: num(row.mrp) > 0 ? num(row.mrp) : null,
+          }),
         })
         if (!adjRes.ok) {
           const err = await adjRes.json().catch(() => ({}))
@@ -683,7 +691,13 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
 
     setSaving(false)
     setSummary({ ok, failed })
-    if (ok > 0) onSaved?.(ok)
+    if (ok > 0) {
+      try {
+        Object.keys(localStorage).filter(k => k.includes('cache_') && k.includes('products')).forEach(k => localStorage.removeItem(k))
+        window.dispatchEvent(new CustomEvent('bizassist:products_updated'))
+      } catch { /* ignore */ }
+      onSaved?.(ok)
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -834,37 +848,62 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
           <>
           {/* Match the POS cart table look */}
           <style>{`
-            .intake-grid { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; }
-            .intake-grid thead tr { background: var(--bg-3); }
+            .pos-cart-container.intake-container {
+              border-radius: var(--radius-lg, 10px);
+              background: var(--bg-2);
+              border: 1px solid var(--border);
+              box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,0.04));
+              overflow: hidden;
+            }
+            .intake-grid {
+              width: 100%; border-collapse: separate; border-spacing: 0; text-align: left;
+              font-family: inherit;
+            }
+            .intake-grid thead tr {
+              background: color-mix(in srgb, var(--bg-3) 80%, var(--bg-2));
+              position: sticky; top: 0; z-index: 10;
+            }
             .intake-grid th {
-              padding: 6px 7px; font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
+              padding: 7px 8px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
               text-transform: uppercase; color: var(--text-secondary); white-space: nowrap;
               border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
             }
             .intake-grid td {
-              padding: 3px 5px; font-size: 12px; vertical-align: middle;
+              padding: 4px 6px; font-size: 12.5px; vertical-align: middle;
               border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
+              color: var(--text-primary);
             }
             .intake-grid th:last-child, .intake-grid td:last-child { border-right: none; }
-            .intake-grid tbody tr:hover { background: var(--accent-glow); }
+            .intake-grid tbody tr { transition: background 0.15s ease; }
+            .intake-grid tbody tr:hover { background: var(--accent-glow, rgba(192,97,42,.08)); }
             .intake-grid .form-input {
-              border: 1px solid var(--border) !important; border-radius: 4px !important;
-              background: var(--bg-2) !important; height: 27px !important;
-              padding: 3px 4px !important; text-align: center; box-shadow: none !important;
+              border: 1px solid var(--border) !important; border-radius: 5px !important;
+              background: var(--bg) !important; height: 28px !important;
+              padding: 2px 6px !important; text-align: center; font-size: 0.8rem !important;
+              font-weight: 600; color: var(--text-primary) !important;
+              transition: border-color 0.15s, box-shadow 0.15s !important;
             }
             .intake-grid .form-input:focus {
-              border-color: var(--accent) !important; background: var(--bg) !important;
+              border-color: var(--accent) !important;
+              box-shadow: 0 0 0 2px var(--accent-muted, rgba(192,97,42,.2)) !important;
+              background: var(--bg) !important;
             }
             .intake-grid .row-del { display: none; }
             .intake-grid tbody tr:hover .row-sno { display: none; }
             .intake-grid tbody tr:hover .row-del { display: inline-flex; }
-            .intake-grid .row-edit-btn { display: none; }
-            .intake-grid tbody tr:hover .row-edit-btn { display: inline-flex; }
-            .intake-grid .row-edit-btn.is-active { display: inline-flex; }
+            .intake-grid .row-edit-btn {
+              display: inline-flex !important; border: none !important; background: transparent !important;
+              padding: 0 2px !important; color: var(--text-muted); cursor: pointer;
+              vertical-align: middle; transition: color 0.15s; width: auto !important; height: auto !important;
+            }
+            .intake-grid .row-edit-btn:hover, .intake-grid .row-edit-btn.is-active {
+              color: var(--accent) !important;
+            }
            `}</style>
           {/* Folded-column body strips (POS-style). Header th are folded inline. */}
           {collapsedBodyCss && <style>{collapsedBodyCss}</style>}
-          <table className="intake-grid" style={{ fontSize: '0.78rem', minWidth: intakeTableMinWidth }}>
+          <div className="pos-cart-container intake-container" style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+          <table className="pos-cart-table intake-grid" style={{ fontSize: '0.78rem', minWidth: intakeTableMinWidth }}>
             <thead>
               <tr>
                 {intakeCols.map((c) => {
@@ -947,13 +986,35 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                         </button>
                       </TCell>
 
-                      {/* Product name + inline edit pencil (edit/delete no longer own columns) */}
+                      {/* Product name + inline edit pencil (fixed & clean inline) */}
                       <TCell>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             {r._type === 'existing' ? (
                               <div>
-                                <div style={{ fontWeight: 600, fontSize: '0.82rem', lineHeight: 1.2 }}>{r.name}</div>
+                                <div style={{ fontWeight: 600, fontSize: '0.82rem', lineHeight: 1.2 }}>
+                                  {r.name}
+                                  <button
+                                    type="button"
+                                    className={`row-edit-btn ${editingRowKey === r._key ? 'is-active' : ''}`}
+                                    onClick={() => {
+                                      const nextKey = editingRowKey === r._key ? null : r._key
+                                      setEditingRowKey(nextKey)
+                                      if (nextKey && isSidebarCollapsed) {
+                                        setIsSidebarCollapsed(false)
+                                      }
+                                    }}
+                                    title={r._type === 'new' ? 'More fields' : 'Edit details'}
+                                    style={{
+                                      background: 'transparent', border: 'none', cursor: 'pointer',
+                                      padding: '0 2px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                      color: editingRowKey === r._key ? 'var(--accent)' : 'var(--text-muted)',
+                                      marginLeft: 4, verticalAlign: 'middle',
+                                    }}
+                                  >
+                                    <EditIcon size={12} />
+                                  </button>
+                                </div>
                                 {r._confidence != null && r._confidence < 0.95 && (
                                   <div style={{ fontSize: '0.63rem', color: '#eab308' }}>
                                     ⚠ {Math.round(r._confidence * 100)}% match from bill
@@ -980,40 +1041,41 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                                   >
                                     {r._price_mode === 'update' ? '↑ Update price' : '⊕ New Batch'}
                                   </button>
+                                  {r._status && <StatusChip status={r._status} />}
                                 </div>
                               </div>
                             ) : (
-                              <TextCell
-                                value={r.name}
-                                placeholder="Product name *"
-                                disabled={cellDisabled}
-                                onChange={v => setRow(r._key, { name: v })}
-                              />
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <TextCell
+                                  value={r.name}
+                                  placeholder="Product name *"
+                                  disabled={cellDisabled}
+                                  onChange={v => setRow(r._key, { name: v })}
+                                />
+                                {r._status && <StatusChip status={r._status} />}
+                                <button
+                                  type="button"
+                                  className={`row-edit-btn ${editingRowKey === r._key ? 'is-active' : ''}`}
+                                  onClick={() => {
+                                    const nextKey = editingRowKey === r._key ? null : r._key
+                                    setEditingRowKey(nextKey)
+                                    if (nextKey && isSidebarCollapsed) {
+                                      setIsSidebarCollapsed(false)
+                                    }
+                                  }}
+                                  title="Edit details"
+                                  style={{
+                                    background: 'transparent', border: 'none', cursor: 'pointer',
+                                    padding: '0 2px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                    color: editingRowKey === r._key ? 'var(--accent)' : 'var(--text-muted)',
+                                    marginLeft: 2, verticalAlign: 'middle',
+                                  }}
+                                >
+                                  <EditIcon size={12} />
+                                </button>
+                              </div>
                             )}
                           </div>
-                          <button
-                            type="button"
-                            className={`row-edit-btn ${editingRowKey === r._key ? 'is-active' : ''}`}
-                            onClick={() => {
-                              const nextKey = editingRowKey === r._key ? null : r._key
-                              setEditingRowKey(nextKey)
-                              if (nextKey && isSidebarCollapsed) {
-                                setIsSidebarCollapsed(false)
-                              }
-                            }}
-                            title={r._type === 'new' ? 'More fields' : 'Edit details'}
-                            style={{
-                              flexShrink: 0, marginTop: 2,
-                              background: editingRowKey === r._key ? 'var(--accent-muted, rgba(192,97,42,.14))' : 'transparent',
-                              border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer',
-                              padding: 0, alignItems: 'center', justifyContent: 'center',
-                              color: editingRowKey === r._key ? 'var(--accent)' : 'var(--text-muted)',
-                              borderColor: editingRowKey === r._key ? 'var(--accent)' : 'var(--border)',
-                              height: 22, width: 22
-                            }}
-                          >
-                            <EditIcon size={11} />
-                          </button>
                         </div>
                       </TCell>
 
@@ -1058,6 +1120,18 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                         />
                       </TCell>
 
+                      {/* MRP (editable — persists with the row) */}
+                      {showMrpCol && (
+                        <TCell>
+                          <NumCell
+                            value={r.mrp}
+                            onChange={v => setRow(r._key, { mrp: v })}
+                            disabled={cellDisabled}
+                            placeholder="mrp"
+                          />
+                        </TCell>
+                      )}
+
                       {/* Cost price (Rate — before tax) */}
                       <TCell>
                         <NumCell
@@ -1078,31 +1152,58 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                         />
                       </TCell>
 
-                      {/* MRP (editable — persists with the row) */}
-                      <TCell>
-                        <NumCell
-                          value={r.mrp}
-                          onChange={v => setRow(r._key, { mrp: v })}
-                          disabled={cellDisabled}
-                          placeholder="mrp"
-                        />
-                      </TCell>
-
-                      {/* Disc% off MRP (computed) */}
+                      {/* Disc% off selling price (computed) */}
                       <TCell style={{ textAlign: 'right', verticalAlign: 'middle' }}>
                         <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
                           {_disc != null ? `${_disc.toFixed(1)}%` : '—'}
                         </span>
                       </TCell>
 
-                      {/* Disc Amt (MRP − Sell per unit) */}
+                      {/* Disc Amt */}
                       <TCell style={{ textAlign: 'right', verticalAlign: 'middle' }}>
                         <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{_money2(_discAmt)}</span>
                       </TCell>
 
-                      {/* Tax% (GST rate) */}
-                      <TCell style={{ textAlign: 'right', verticalAlign: 'middle' }}>
-                        <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{_gst ? `${_gst.toFixed(0)}%` : '—'}</span>
+                      {/* CGST% (editable) */}
+                      <TCell>
+                        <NumCell
+                          value={r.cgst_rate}
+                          onChange={v => {
+                            const val = parseFloat(v) || 0
+                            const sgstVal = parseFloat(r.sgst_rate) || val
+                            setRow(r._key, { cgst_rate: v, sgst_rate: r.sgst_rate || v, igst_rate: val + sgstVal })
+                          }}
+                          disabled={cellDisabled}
+                          placeholder="0"
+                        />
+                      </TCell>
+
+                      {/* SGST% (editable) */}
+                      <TCell>
+                        <NumCell
+                          value={r.sgst_rate}
+                          onChange={v => {
+                            const val = parseFloat(v) || 0
+                            const cgstVal = parseFloat(r.cgst_rate) || 0
+                            setRow(r._key, { sgst_rate: v, igst_rate: cgstVal + val })
+                          }}
+                          disabled={cellDisabled}
+                          placeholder="0"
+                        />
+                      </TCell>
+
+                      {/* GST% Total (editable) */}
+                      <TCell>
+                        <NumCell
+                          value={r.igst_rate != null ? r.igst_rate : (_gst || '')}
+                          onChange={v => {
+                            const total = parseFloat(v) || 0
+                            const half = total / 2
+                            setRow(r._key, { cgst_rate: half, sgst_rate: half, igst_rate: total })
+                          }}
+                          disabled={cellDisabled}
+                          placeholder="0"
+                        />
                       </TCell>
 
                       {/* Tax Amt (GST on amount) */}
@@ -1150,7 +1251,7 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                           value={r.batch}
                           onChange={v => setRow(r._key, { batch: v })}
                           disabled={cellDisabled}
-                          placeholder={today()}
+                          placeholder="Batch / Lot #"
                         />
                       </TCell>
 
@@ -1159,8 +1260,8 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                         <input
                           type="date"
                           className="form-input"
-                          style={{ width: '100%', height: 32, padding: '3px 6px', fontSize: '0.76rem' }}
-                          value={r.expiry}
+                          style={{ width: '100%', height: 28, padding: '2px 4px', fontSize: '0.74rem', boxSizing: 'border-box' }}
+                          value={r.expiry || ''}
                           disabled={cellDisabled}
                           onChange={e => setRow(r._key, { expiry: e.target.value })}
                         />
@@ -1176,11 +1277,6 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                         />
                       </TCell>
 
-                      {/* Status */}
-                      <TCell style={{ verticalAlign: 'middle' }}>
-                        <StatusChip status={r._status} />
-                      </TCell>
-
                     </tr>
 
                   </React.Fragment>
@@ -1188,6 +1284,7 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
               })}
             </tbody>
           </table>
+          </div>
           </>
         )}
       </div>

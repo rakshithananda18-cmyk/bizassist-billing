@@ -181,6 +181,83 @@ def restrict_cashier_only(current_user: dict = Depends(get_active_user)) -> dict
 require_owner = restrict_cashier
 
 
+def require_business_owner(current_user: dict = Depends(get_active_user)) -> dict:
+    """Require the token to belong to the business-owner identity itself.
+
+    Business routes intentionally use ``id`` as the tenant scope, so staff JWTs
+    carry their owner's id there. That is correct for floor work, but not for
+    control-plane operations such as sync, imports, staff replication, or cloud
+    token provisioning. Those actions require the authenticated person
+    (``user_id``) to be the owner of that business as well.
+
+    Fail closed for legacy tokens without a person identity. Re-authentication
+    is safer than silently granting a staff session owner-level authority.
+    """
+    role = (current_user.get("role") or "").lower()
+    if role in ("cashier", "supply adder"):
+        raise HTTPException(status_code=403, detail="Permission denied: owner authentication required")
+
+    business_id = current_user.get("id")
+    user_id = current_user.get("user_id")
+    try:
+        if business_id is None or user_id is None or int(business_id) != int(user_id):
+            raise HTTPException(status_code=403, detail="Permission denied: owner authentication required")
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=403, detail="Permission denied: owner authentication required")
+    return current_user
+
+
+def resolve_business_id_in_db(current_user: dict, db) -> int:
+    """Resolve a token's business to this database's *local* owner id.
+
+    ``users.id`` is deliberately database-local: the same business can be id
+    122 in the desktop database and id 7 in the cloud database. ``public_id``
+    (BizID) is the stable identity shared by both. Never use a token's numeric
+    ``id`` across a local/cloud boundary when a BizID is present.
+
+    Tokens issued before BizID was added can use the guarded legacy lookup, but
+    a token that presents an unknown BizID fails closed. Falling back from an
+    unknown BizID to an unrelated numeric id is a cross-tenant data leak.
+    """
+    from database.models import User
+
+    public_id = str(current_user.get("public_id") or "").strip()
+    username = str(current_user.get("username") or current_user.get("sub") or "").strip()
+
+    if public_id:
+        owner = db.query(User).filter(
+            User.public_id == public_id,
+            User.parent_business_id.is_(None),
+        ).first()
+        if owner:
+            return int(owner.id)
+        logger.warning(
+            "[AUTH] refusing business resolution for unknown BizID=%s user=%s",
+            public_id, username or "-",
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="BizID is not linked to a business on this server. Re-link this device before continuing.",
+        )
+
+    # Legacy-token compatibility is intentionally limited to records verified
+    # in the current database. New tokens always carry public_id.
+    if username:
+        account = db.query(User).filter(User.username == username).first()
+        if account:
+            return int(account.parent_business_id or account.id)
+
+    claimed_id = current_user.get("parent_business_id") or current_user.get("id")
+    try:
+        account = db.query(User).filter(User.id == int(claimed_id)).first()
+    except (TypeError, ValueError):
+        account = None
+    if account:
+        return int(account.parent_business_id or account.id)
+
+    raise HTTPException(status_code=403, detail="Business identity could not be resolved on this server.")
+
+
 # ── SSE Ticket Authentication ────────────────────────────────────────────────
 # Stateless HMAC-signed tickets (BUG-4 / MASTER_REVIEW §2.3 #9).
 # The previous in-memory dict dropped every outstanding ticket on a server

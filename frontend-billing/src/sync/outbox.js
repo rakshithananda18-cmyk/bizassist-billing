@@ -26,13 +26,17 @@ export const OUTBOX_STATUS = { PENDING: 'pending', FAILED: 'failed' }
 export const DEFAULT_MAX_ATTEMPTS = 5
 
 /** Append a mutation. Returns the stored record (its `id` is the client-request id). */
-export async function enqueue(store, { method, path, body, clientRequestId } = {}) {
+export async function enqueue(store, { method, path, body, clientRequestId, scope } = {}) {
   if (!method || !path) throw new Error('outbox.enqueue requires { method, path }')
   const record = {
     id: clientRequestId || newClientRequestId(),
     method,
     path,
     body: body ?? null,
+    // Immutable identity stamp. The physical IndexedDB database is also scoped,
+    // but this protects injected/test stores and prevents an accidental future
+    // store migration from replaying another account's work.
+    scope: scope || null,
     status: OUTBOX_STATUS.PENDING,
     attempts: 0,
     createdAt: new Date().toISOString(),
@@ -41,13 +45,17 @@ export async function enqueue(store, { method, path, body, clientRequestId } = {
 }
 
 /** Ops still awaiting delivery, FIFO. */
-export async function pending(store) {
-  return (await store.all()).filter((o) => o.status === OUTBOX_STATUS.PENDING)
+export async function pending(store, { scope } = {}) {
+  return (await store.all()).filter((o) =>
+    o.status === OUTBOX_STATUS.PENDING && (!scope || o.scope === scope)
+  )
 }
 
 /** Dead-lettered ops (4xx or retry-exhausted) — surfaced for a "needs attention" UI. */
-export async function deadLetters(store) {
-  return (await store.all()).filter((o) => o.status === OUTBOX_STATUS.FAILED)
+export async function deadLetters(store, { scope } = {}) {
+  return (await store.all()).filter((o) =>
+    o.status === OUTBOX_STATUS.FAILED && (!scope || o.scope === scope)
+  )
 }
 
 const isPermanent = (status) => status >= 400 && status < 500
@@ -57,9 +65,9 @@ const isPermanent = (status) => status >= 400 && status < 500
  * error carrying a numeric `status` (0 = network down) on failure; resolve on
  * success. Returns a summary.
  */
-export async function flush(store, sender, { maxAttempts = DEFAULT_MAX_ATTEMPTS } = {}) {
-  const summary = { sent: 0, deadLettered: 0, stopped: false, remaining: 0 }
-  const ops = await pending(store)
+export async function flush(store, sender, { maxAttempts = DEFAULT_MAX_ATTEMPTS, scope } = {}) {
+  const summary = { sent: 0, deadLettered: 0, stopped: false, remaining: 0, scopeSkipped: 0 }
+  const ops = await pending(store, { scope })
 
   for (const op of ops) {
     try {
@@ -96,6 +104,6 @@ export async function flush(store, sender, { maxAttempts = DEFAULT_MAX_ATTEMPTS 
     }
   }
 
-  summary.remaining = (await pending(store)).length
+  summary.remaining = (await pending(store, { scope })).length
   return summary
 }

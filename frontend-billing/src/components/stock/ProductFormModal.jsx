@@ -221,6 +221,10 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
         throw new Error(err.detail || 'Save failed.')
       }
       const savedProd = await res.json().catch(() => ({}))
+      try {
+        Object.keys(localStorage).filter(k => k.includes('cache_') && k.includes('products')).forEach(k => localStorage.removeItem(k))
+        window.dispatchEvent(new CustomEvent('bizassist:products_updated'))
+      } catch { /* ignore */ }
       onSaved?.(isEdit ? 'updated' : 'created', savedProd)
     } catch (err) {
       setError(err.message || 'Network error.')

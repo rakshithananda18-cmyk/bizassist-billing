@@ -370,6 +370,59 @@ def log_financial_conflict(db, *, business_id: int, entity: str, entity_id,
         return False
 
 
+def log_master_data_conflict(
+    db, *, business_id: int, entity: str, entity_id,
+    incoming: dict, existing_row,
+    incoming_updated_at, existing_updated_at,
+    resolution: str = "cloud_won",
+    log_prefix: str = "sync",
+) -> bool:
+    """Record a ConflictLog when a non-financial master-data row (products,
+    customers, inventory, etc.) is silently overwritten by LWW.
+
+    Financial rows are handled by ``log_financial_conflict`` with resolution
+    ``review_needed``. Master-data rows don't need owner review, but the losing
+    version should not vanish without trace — it's logged with resolution
+    ``cloud_won`` / ``local_won`` so the history is queryable.
+
+    Skips rows where payloads don't actually differ (no-op re-syncs) to avoid
+    noise in the audit log.
+    """
+    if entity in FINANCIAL_ENTITIES:
+        return False   # handled by log_financial_conflict with review_needed
+    if existing_row is None:
+        return False
+    if incoming_updated_at is None or existing_updated_at is None:
+        return False
+    if not payloads_differ(incoming, row_to_dict(existing_row)):
+        return False   # identical content — no point logging
+    try:
+        db.add(ConflictLog(
+            business_id=business_id,
+            entity=entity,
+            entity_id=entity_id,
+            local_updated_at=incoming_updated_at,
+            cloud_updated_at=existing_updated_at,
+            local_payload=json.dumps(incoming, default=str),
+            cloud_payload=json.dumps(row_to_dict(existing_row), default=str),
+            resolved_at=None,
+            resolution=resolution,
+        ))
+        logger.info(
+            "[SYNC_HOOKS] %s: master-data LWW overwrite logged (%s) — %s.id=%s "
+            "(incoming %s, existing %s)",
+            log_prefix, resolution, entity, entity_id,
+            incoming_updated_at, existing_updated_at,
+        )
+        return True
+    except Exception as e:
+        logger.error(
+            "[SYNC_HOOKS] %s: FAILED to record master-data conflict for %s.id=%s: %s",
+            log_prefix, entity, entity_id, e, exc_info=True,
+        )
+        return False
+
+
 def run_post_apply(db, entity: str, obj, *, log_prefix: str = "sync") -> ApplyResult:
     """Enforce every post-apply invariant for one just-written synced row.
 

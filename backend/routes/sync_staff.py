@@ -16,7 +16,7 @@ Auth: same cloud-issued JWT that the sync worker already uses.
 """
 from __future__ import annotations
 import logging
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from database.db import get_db
 from database.models import User
-from services.auth import get_active_user
+from services.auth import require_business_owner, resolve_business_id_in_db
 
 logger = logging.getLogger("bizassist.sync.staff")
 router = APIRouter(tags=["sync"])
@@ -37,7 +37,9 @@ class StaffRecord(BaseModel):
     staff_login_name: str            # bare per-business name, e.g. "counter_1"
     internal_username: str           # globally-unique username stored in DB
     hashed_password: str             # bcrypt/argon2 hash — never plaintext
-    role: str = "cashier"
+    # This endpoint replicates staff accounts; it can never provision an
+    # owner-level role from a client-controlled payload.
+    role: Literal["cashier", "supply adder"] = "cashier"
     counter_prefix: Optional[str] = None
     deleted: bool = False            # True → remove this staff from cloud
 
@@ -51,7 +53,7 @@ class StaffPushRequest(BaseModel):
 @router.post("/api/sync/staff-push")
 def sync_staff_push(
     req: StaffPushRequest,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
     """
@@ -61,7 +63,9 @@ def sync_staff_push(
     The caller is the local backend acting as the business owner — JWT `id`
     claim resolves to the owner business_id on cloud (same as /api/sync/push).
     """
-    owner_id: int = current_user["id"]
+    # Numeric user ids differ between the local and cloud databases. Resolve
+    # the shared BizID in this database before touching staff records.
+    owner_id = resolve_business_id_in_db(current_user, db)
 
     # Sanity: owner must exist on cloud
     owner = db.query(User).filter(

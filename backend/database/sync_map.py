@@ -10,7 +10,7 @@ stopped syncing in one direction. Both modules now import from here so they
 can never drift.
 """
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from sqlalchemy import text
 
@@ -102,6 +102,19 @@ PULL_ONLY_TABLES: frozenset = frozenset({
     "b2b_connections",
     "b2b_orders",
     "b2b_order_line_items",
+    # M-21, found 2026-07-28 by the regression gate that was written for
+    # invoice_line_items. `b2b_ledgers` was listed as syncable but is scoped by
+    # TWO owners (seller_business_id, buyer_business_id) and has no
+    # `business_id`, so `_get_business_id` returned None and every row was
+    # declined SILENTLY. It is the same shared two-party ledger as the three
+    # above and belongs to the same rule: the cloud is the authority, and a
+    # last-write-wins push from one side would discard the other's write.
+    #
+    # Zero rows exist and the class has no writer anywhere in the codebase
+    # (§60), so this changes no behaviour today. It makes the refusal explicit
+    # and logged BEFORE the first writer is added, rather than after someone
+    # spends a day asking why the ledger never leaves the device.
+    "b2b_ledgers",
 })
 
 
@@ -124,7 +137,14 @@ _USER_FK_REPOINT_ENTITIES = frozenset({"register_shifts", "shift_cash_movements"
 logger = logging.getLogger("bizassist.sync_map")
 
 
-def resolve_parent_fk_uids(db, model_cls, data: dict, log_prefix: str = "sync") -> bool:
+def resolve_parent_fk_uids(
+    db,
+    model_cls,
+    data: dict,
+    *,
+    business_id: Optional[int] = None,
+    log_prefix: str = "sync",
+) -> bool:
     """(Step 3 / R-3) Resolve a synced row's parent foreign keys from the durable
     parent ``uid`` carried in the payload (``<fk>_uid`` / ``<base>_uid``),
     rewriting each FK column to the LOCAL parent id.
@@ -195,10 +215,16 @@ def resolve_parent_fk_uids(db, model_cls, data: dict, log_prefix: str = "sync") 
 
         if parent_uid_val:
             try:
-                row = db.execute(
-                    text(f'SELECT "{parent_pk}" FROM "{parent_table}" WHERE uid = :uid'),
-                    {"uid": parent_uid_val},
-                ).fetchone()
+                parent_cols = {c.name for c in fk.column.table.columns}
+                query = f'SELECT "{parent_pk}" FROM "{parent_table}" WHERE uid = :uid'
+                params = {"uid": parent_uid_val}
+                # A child UID must resolve only through a parent owned by the
+                # authenticated business.  Without this, a valid foreign parent
+                # UID could attach an incoming line/payment to another tenant.
+                if business_id is not None and "business_id" in parent_cols:
+                    query += " AND business_id = :business_id"
+                    params["business_id"] = business_id
+                row = db.execute(text(query), params).fetchone()
                 if row:
                     data[fk_col] = row[0]
                     continue
@@ -231,14 +257,18 @@ def resolve_parent_fk_uids(db, model_cls, data: dict, log_prefix: str = "sync") 
             # Same-tenant check where the parent carries an owner column — an id
             # that exists but belongs to ANOTHER business is the worst case: a
             # valid-looking link across tenants.
-            if "business_id" in parent_cols and data.get("business_id") is not None:
+            owner_id = business_id if business_id is not None else data.get("business_id")
+            if "business_id" in parent_cols and owner_id is not None:
                 q += " AND business_id = :b"
-                params["b"] = data["business_id"]
+                params["b"] = owner_id
             if db.execute(text(q), params).fetchone() is None:
                 if fk.parent.nullable:
                     # Drop the link, keep the row. See the docstring: stranding a
                     # whole invoice because its customer is unresolvable loses a
                     # sale, which is worse than an invoice with no customer.
+                    # (R-10) Write a queryable ConflictLog so the owner can find
+                    # which rows lost their FK link and why, rather than only
+                    # having a log file entry.
                     logger.warning(
                         "%s: %s.%s=%s carries NO parent uid and does not resolve "
                         "to a local %s row — writing the row with %s = NULL rather "
@@ -246,6 +276,31 @@ def resolve_parent_fk_uids(db, model_cls, data: dict, log_prefix: str = "sync") 
                         "can be restored; a dropped row cannot.",
                         log_prefix, table_name, fk_col, raw, parent_table, fk_col,
                     )
+                    try:
+                        from database.models import ConflictLog
+                        _biz_id = data.get("business_id")
+                        _row_id = data.get("id")
+                        if _biz_id is not None:
+                            db.add(ConflictLog(
+                                business_id=_biz_id,
+                                entity=table_name,
+                                entity_id=_row_id,
+                                local_updated_at=None,
+                                cloud_updated_at=None,
+                                local_payload="{}",
+                                cloud_payload=__import__('json').dumps(
+                                    {"fk_col": fk_col, "raw_value": raw,
+                                     "parent_table": parent_table, "action": "set_null"},
+                                    default=str,
+                                ),
+                                resolved_at=None,
+                                resolution="fk_nulled",
+                            ))
+                    except Exception as _e:
+                        logger.error(
+                            "%s: could not write fk_nulled ConflictLog for %s.id=%s: %s",
+                            log_prefix, table_name, data.get("id"), _e,
+                        )
                     data[fk_col] = None
                     continue
                 logger.warning(

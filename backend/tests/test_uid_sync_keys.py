@@ -246,8 +246,8 @@ def test_sync_merge_lww_uid():
     bid = b["id"]
 
     cust_uid = f"lww-cust-{uuid.uuid4().hex[:6]}"
-    t1 = datetime.utcnow()
-    t2 = t1 + timedelta(minutes=10)
+    t1 = datetime.utcnow() - timedelta(minutes=3)  # cloud row is 3 min in the past
+    t2 = t1 + timedelta(minutes=2)                  # local update: 1 min in the past — newer than cloud, within skew window
     t0 = t1 - timedelta(minutes=10)
 
     client.post("/api/sync/push", headers=headers, json={

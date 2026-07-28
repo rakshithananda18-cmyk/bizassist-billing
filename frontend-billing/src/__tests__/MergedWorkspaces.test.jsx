@@ -7,8 +7,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import Khata from '../pages/Khata'
-import Godown from '../pages/Godown'
+import ContactsPayments from '../pages/ContactsPayments'
+import StockPurchases from '../pages/StockPurchases'
 
 // Passthrough layout — avoids pulling in nav/sidebar internals.
 vi.mock('../layouts/AppLayout', () => ({
@@ -46,7 +46,7 @@ const renderAt = (ui, base, path) => render(
 
 describe('Parties (Contacts & Payments workspace)', () => {
   it('defaults to the Contacts view and mounts ONLY it', async () => {
-    renderAt(<Khata />, '/parties', '/parties')
+    renderAt(<ContactsPayments />, '/parties', '/parties')
     expect(await screen.findByText('PARTIES_VIEW')).toBeInTheDocument()
     expect(screen.queryByText('PAYMENTS_VIEW')).not.toBeInTheDocument()
     expect(screen.getByText('Contacts')).toBeInTheDocument()
@@ -54,39 +54,39 @@ describe('Parties (Contacts & Payments workspace)', () => {
   })
 
   it('serves /parties/payments as a real route', async () => {
-    renderAt(<Khata />, '/parties', '/parties/payments')
+    renderAt(<ContactsPayments />, '/parties', '/parties/payments')
     expect(await screen.findByText('PAYMENTS_VIEW')).toBeInTheDocument()
     expect(screen.queryByText('PARTIES_VIEW')).not.toBeInTheDocument()
   })
 
   it('still honors legacy ?tab=payments deep links', async () => {
-    renderAt(<Khata />, '/parties', '/parties?tab=payments')
+    renderAt(<ContactsPayments />, '/parties', '/parties?tab=payments')
     expect(await screen.findByText('PAYMENTS_VIEW')).toBeInTheDocument()
   })
 
   it('falls back to the remembered tab on bare /parties', async () => {
     localStorage.setItem('khata_last_tab', 'payments')
-    renderAt(<Khata />, '/parties', '/parties')
+    renderAt(<ContactsPayments />, '/parties', '/parties')
     expect(await screen.findByText('PAYMENTS_VIEW')).toBeInTheDocument()
   })
 })
 
 describe('Stock (Stock & Purchases workspace)', () => {
   it('defaults to the Inventory view with both tabs for owners', async () => {
-    renderAt(<Godown />, '/stock', '/stock')
+    renderAt(<StockPurchases />, '/stock', '/stock')
     expect(await screen.findByText('STOCK_VIEW')).toBeInTheDocument()
     expect(screen.getByText('Purchase Bills')).toBeInTheDocument()
   })
 
   it('serves /stock/purchase as a real route', async () => {
-    renderAt(<Godown />, '/stock', '/stock/purchase')
+    renderAt(<StockPurchases />, '/stock', '/stock/purchase')
     expect(await screen.findByText('PURCHASES_VIEW')).toBeInTheDocument()
     expect(screen.queryByText('STOCK_VIEW')).not.toBeInTheDocument()
   })
 
   it('hides the Purchase Bills tab from cashiers and refuses the deep link', async () => {
     mockUser = { id: 2, role: 'cashier' }
-    renderAt(<Godown />, '/stock', '/stock/purchase')
+    renderAt(<StockPurchases />, '/stock', '/stock/purchase')
     // deep link to purchase falls back to inventory; the tab is not rendered
     expect(await screen.findByText('STOCK_VIEW')).toBeInTheDocument()
     expect(screen.queryByText('Purchase Bills')).not.toBeInTheDocument()

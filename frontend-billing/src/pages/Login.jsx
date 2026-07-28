@@ -12,6 +12,8 @@ import { API_BASE, CLOUD_URL, IS_LOCAL_APP } from '../config'
 import CustomSelect from '../components/common/CustomSelect'
 import BootHealthCheck from '../components/BootHealthCheck'
 
+const RECENT_STAFF_TIMEOUT_MS = 1500
+
 export default function Login() {
   const { login, staffLogin } = useAuth()
   const navigate  = useNavigate()
@@ -86,6 +88,66 @@ export default function Login() {
   const [standardStep, setStandardStep] = useState('username')  // username | choose | owner | staff
   const [bizLookup, setBizLookup] = useState(null)              // { business_name, staff:[{login_name, counter_prefix, role}] }
 
+  // A saved-login shortcut must never hold up a successful sign-in.  The staff
+  // list is only convenience metadata; authentication and navigation do not
+  // depend on it.  Keep any cached list immediately, then refresh it quietly.
+  const readRecentLogins = () => {
+    try {
+      const value = JSON.parse(localStorage.getItem('bizassist_recent_logins') || '[]')
+      return Array.isArray(value) ? value : []
+    } catch {
+      return []
+    }
+  }
+
+  const saveRecentLogins = (value) => {
+    try {
+      localStorage.setItem('bizassist_recent_logins', JSON.stringify(value))
+      setRecentLogins(value)
+    } catch (err) {
+      logger.debug('Could not save recent-login shortcut:', err?.message)
+    }
+  }
+
+  const rememberOwnerLogin = (loggedUser, token) => {
+    const saveOwner = (staffAccounts) => {
+      const recent = readRecentLogins()
+      const updatedRecent = recent.filter(item => item.username !== loggedUser.username)
+      updatedRecent.unshift({
+        username: loggedUser.username,
+        businessName: loggedUser.business_name || 'My Business',
+        staffAccounts: staffAccounts.map(s => ({ username: s.username, role: s.role }))
+      })
+      saveRecentLogins(updatedRecent)
+    }
+
+    const cachedOwner = readRecentLogins().find(item => item.username === loggedUser.username)
+    saveOwner(cachedOwner?.staffAccounts || [])
+
+    // Deliberately not awaited: a slow or unavailable backend must not make a
+    // successful local login appear stuck on this screen.
+    void (async () => {
+      const controller = new AbortController()
+      const timeout = window.setTimeout(() => controller.abort(), RECENT_STAFF_TIMEOUT_MS)
+      try {
+        const res = await fetch(`${API_BASE}/staff`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: controller.signal,
+        })
+        if (res.ok) {
+          const staffList = await res.json()
+          if (Array.isArray(staffList)) saveOwner(staffList)
+        }
+      } catch (err) {
+        if (err?.name !== 'AbortError') {
+          logger.debug('Recent-login staff refresh skipped:', err?.message)
+        }
+      } finally {
+        window.clearTimeout(timeout)
+      }
+    })()
+  }
+
   // Remove a saved business from the recent-logins list (localStorage + state).
   // Only forgets the quick-login shortcut on THIS device — the account itself is
   // untouched and can be signed into again from "Other business".
@@ -119,26 +181,7 @@ export default function Login() {
         if (rememberMe) {
           // If the logged in user is an owner, we should save/update their entry in recent logins
           if (loggedUser.role !== 'cashier' && loggedUser.role !== 'supply adder') {
-            let staffList = []
-            try {
-              const res = await fetch(`${API_BASE}/staff`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-              })
-              if (res.ok) {
-                staffList = await res.json()
-              }
-            } catch (err) {
-              logger.error('Failed to fetch staff list during login memory:', err)
-            }
-            
-            const recent = JSON.parse(localStorage.getItem('bizassist_recent_logins') || '[]')
-            const updatedRecent = recent.filter(item => item.username !== loggedUser.username)
-            updatedRecent.unshift({
-              username: loggedUser.username,
-              businessName: loggedUser.business_name || 'My Business',
-              staffAccounts: staffList.map(s => ({ username: s.username, role: s.role }))
-            })
-            localStorage.setItem('bizassist_recent_logins', JSON.stringify(updatedRecent))
+            rememberOwnerLogin(loggedUser, token)
           } else {
             // If staff member logged in directly from the standard form, find/add them to parent business if recent list has it
             const recent = JSON.parse(localStorage.getItem('bizassist_recent_logins') || '[]')
@@ -188,26 +231,7 @@ export default function Login() {
       const token = localStorage.getItem('billing_token')
       if (savedUserStr && token) {
         const loggedUser = JSON.parse(savedUserStr)
-        let staffList = []
-        try {
-          const res = await fetch(`${API_BASE}/staff`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          })
-          if (res.ok) {
-            staffList = await res.json()
-          }
-        } catch (err) {
-          logger.error('Failed to fetch staff list during quick login memory:', err)
-        }
-        
-        const recent = JSON.parse(localStorage.getItem('bizassist_recent_logins') || '[]')
-        const updatedRecent = recent.filter(item => item.username !== loggedUser.username)
-        updatedRecent.unshift({
-          username: loggedUser.username,
-          businessName: loggedUser.business_name || 'My Business',
-          staffAccounts: staffList.map(s => ({ username: s.username, role: s.role }))
-        })
-        localStorage.setItem('bizassist_recent_logins', JSON.stringify(updatedRecent))
+        rememberOwnerLogin(loggedUser, token)
       }
 
       logger.info('Quick owner login completed successfully!')

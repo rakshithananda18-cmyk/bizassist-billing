@@ -464,7 +464,7 @@ export default function Parties({ embedded = false, headerTabs = null }) {
 
   return (
     <PageShell embedded={embedded} title="Parties & Invoices">
-      <div className={`slide-up${headerTabs ? ' ws-embed' : ''}`}>
+      <div className={`${headerTabs ? 'fade-in ws-embed' : 'slide-up'}`}>
 
         {alert && (
           <div className={`alert alert-${alert.type} mb-4`}>
@@ -473,17 +473,26 @@ export default function Parties({ embedded = false, headerTabs = null }) {
           </div>
         )}
 
-        {/* Embedded (Khata): the SAME 48px workspace bar as Godown's tabs —
-            workspace tabs · divider · view tabs · actions · window controls. */}
+        {/* Signature Page Header — Always at the top */}
+        <div className="page-header">
+          <div className="page-header-left">
+            <h1 className="page-title">
+              <ContactsIcon size={20} style={{ color: 'var(--accent)' }} /> Contacts & Payments
+            </h1>
+            <p className="page-subtitle">Manage customer & vendor accounts, credit limits, outstanding balances, and payment transactions</p>
+          </div>
+          <div className="page-actions">
+            <button className="btn btn-primary" onClick={() => { setForm(defaultForm); setShowModal(true) }}>
+              <PlusIcon size={14} /> Add Party
+            </button>
+          </div>
+        </div>
+
+        {/* Embedded (Godown): 48px workspace bar */}
         {headerTabs && (
           <WorkspaceTopBar
-            settingsTab="transactions"
-            windowControls={false}
-            actions={
-              <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={() => { setForm(defaultForm); setShowModal(true) }}>
-                <PlusIcon size={13} /> Add Party
-              </button>
-            }
+            settingsTab="parties"
+            actions={null}
           >
             {headerTabs}
             <WsDivider />
@@ -497,21 +506,6 @@ export default function Parties({ embedded = false, headerTabs = null }) {
               Other Invoices <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>({invoices.filter(i => !i.customer_id).length})</span>
             </button>
           </WorkspaceTopBar>
-        )}
-
-        {/* Standalone header (legacy /parties route only) */}
-        {!headerTabs && (
-          <div className="page-header">
-            <div className="page-header-left">
-              <h1 className="page-title">Parties & Invoices</h1>
-              <p className="page-subtitle">Manage CRM relationships and view customer invoices</p>
-            </div>
-            <div className="page-actions">
-              <button className="btn btn-primary" onClick={() => { setForm(defaultForm); setShowModal(true) }}>
-                <PlusIcon size={14} /> Add Party
-              </button>
-            </div>
-          </div>
         )}
 
         {/* ── Unified filter bar: Search | FilterDropdown | SortDropdown ── */}

@@ -17,7 +17,15 @@ export const WsDivider = () => (
   <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 4px' }} />
 )
 
-export default function WorkspaceTopBar({ children, actions = null, settingsTab = null, windowControls = true }) {
+export default function WorkspaceTopBar({
+  children,
+  actions = null,
+  settingsTab = null,
+  windowControls = false,
+  showMinimize = true,
+  onClose = null,
+  onMinimize = null,
+}) {
   const navigate = useNavigate()
   return (
     <>
@@ -43,12 +51,11 @@ export default function WorkspaceTopBar({ children, actions = null, settingsTab 
           color: var(--accent, #c0612a);
           border: 1px solid rgba(192,97,42,.25);
         }
-        /* Embedded-page gutter: one consistent 20px content inset so filter
-           rows and tables line up; bar + subbar bleed to full width. */
-        .ws-embed { padding: 0 20px 12px; overflow-y: auto; }
-        .ws-embed .ws-top-bar { margin: 0 -20px; padding: 0 20px; }
+        /* Embedded-page gutter: clean container alignment without negative margin bleeding */
+        .ws-embed { padding: 0 0 12px; width: 100%; box-sizing: border-box; overflow-x: hidden; }
+        .ws-embed .ws-top-bar { margin: 0; padding: 0 16px; width: 100%; box-sizing: border-box; }
         .ws-embed .page-subbar {
-          margin-left: -20px; margin-right: -20px; padding: 10px 20px;
+          margin: 0; padding: 10px 16px; width: 100%; box-sizing: border-box;
           top: 48px;                       /* pin right below the 48px bar */
         }
       `}</style>
@@ -79,25 +86,27 @@ export default function WorkspaceTopBar({ children, actions = null, settingsTab 
 
         {windowControls && (
           <>
-        {/* Window controls — identical to Stock's inv-top-bar */}
+        {/* Window controls — POS / Workspace style */}
         <WsDivider />
-        <button
-          title="Minimize — go back"
-          onClick={() => navigate(-1)}
-          style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)',
-            background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)',
-            transition: 'background .12s, color .12s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.style.color = 'var(--text-primary)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="5.5" width="10" height="1.5" rx="0.75" fill="currentColor"/></svg>
-        </button>
+        {showMinimize && (
+          <button
+            title="Minimize — go back"
+            onClick={onMinimize || (() => navigate(-1))}
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)',
+              background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)',
+              transition: 'background .12s, color .12s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-3)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="5.5" width="10" height="1.5" rx="0.75" fill="currentColor"/></svg>
+          </button>
+        )}
         <button
           title="Close — go to dashboard"
-          onClick={() => navigate('/')}
+          onClick={onClose || (() => navigate('/'))}
           style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)',

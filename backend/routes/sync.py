@@ -13,7 +13,7 @@ Exposes:
 from services.dates import utc_now
 import logging
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Optional, List, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -23,7 +23,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from database.db import get_db, sync_disabled_var
-from services.auth import get_active_user, require_plan
+from services.auth import (
+    get_active_user, require_business_owner, require_plan, resolve_business_id_in_db,
+)
 # (M-10) Shared with the push path so the pull payload carries the SAME parent
 # uid enrichment. A bare column dump leaves the receiver with raw source-database
 # foreign keys and nothing to resolve them against — see the call site.
@@ -45,6 +47,7 @@ from database.sync_map import (
     MODEL_MAP as _MODEL_MAP,
     ENTITY_BROADCAST_MAP,
     TWO_SIDED_OWNER_COLUMNS,
+    PULL_ONLY_TABLES,
     resolve_parent_fk_uids,
     _USER_FK_REPOINT_ENTITIES,
 )
@@ -74,6 +77,47 @@ APPEND_ONLY_DELETE_BLOCKLIST = frozenset({
     # explicit unlock EVENT (a new row), never by deleting the lock. (M-2)
     "period_locks",
 })
+
+
+# Child tables deliberately do not duplicate ``business_id``.  Every mutation
+# must therefore prove ownership through its parent before an existing child can
+# be updated or deleted.  RLS remains a vital database backstop, but this guard
+# makes the HTTP boundary fail closed on SQLite and on any misconfigured DB role.
+_CHILD_OWNER_MODELS = {
+    "invoice_line_items": (InvoiceLineItem, InvoiceLineItem.invoice_id, Invoice),
+    "purchase_invoice_line_items": (
+        PurchaseInvoiceLineItem, PurchaseInvoiceLineItem.purchase_invoice_id, PurchaseInvoice,
+    ),
+    "purchase_order_line_items": (
+        PurchaseOrderLineItem, PurchaseOrderLineItem.purchase_order_id, PurchaseOrder,
+    ),
+    "stock_transfer_line_items": (
+        StockTransferLineItem, StockTransferLineItem.transfer_id, StockTransfer,
+    ),
+}
+
+
+def _record_belongs_to_business(db: Session, entity: str, row, business_id: int) -> bool:
+    """Return true only when an existing sync row belongs to this tenant."""
+    direct_business_id = getattr(row, "business_id", None)
+    if direct_business_id is not None:
+        return int(direct_business_id) == int(business_id)
+
+    child = _CHILD_OWNER_MODELS.get(entity)
+    if child:
+        _child_model, parent_fk, parent_model = child
+        parent_id = getattr(row, parent_fk.key, None)
+        if parent_id is None:
+            return False
+        return bool(
+            db.query(parent_model.id)
+            .filter(parent_model.id == parent_id, parent_model.business_id == business_id)
+            .first()
+        )
+
+    # An entity with no verified owner relation is never mutable through generic
+    # sync. Adding a new entity now requires adding its ownership proof here.
+    return False
 
 
 # Entities where a conflicting concurrent edit must never be resolved SILENTLY.
@@ -163,7 +207,7 @@ def _parse_dt(dt_str: Any) -> Optional[datetime]:
     return _apply_hooks.parse_dt(dt_str)
 
 
-def _resolve_business_id_by_username(user: dict, db: Session) -> int:
+def _resolve_business_id_by_username_legacy(user: dict, db: Session) -> int:
     """
     Resolve the ACTUAL business_id (owner's id) in THIS DB for the token's user.
 
@@ -248,6 +292,13 @@ def _resolve_business_id_by_username(user: dict, db: Session) -> int:
     return int(user.get("parent_business_id") or user.get("id"))
 
 
+# The active resolver is shared with the import/profile/staff paths.  The
+# token's numeric id is local to the issuing database; BizID is the identity
+# contract across desktop and cloud.
+def _resolve_business_id_by_username(user: dict, db: Session) -> int:
+    return resolve_business_id_in_db(user, db)
+
+
 # ---------------------------------------------------------------------------
 # ROUTES
 # ---------------------------------------------------------------------------
@@ -259,7 +310,7 @@ class CloudTokenBody(BaseModel):
 @router.post("/api/sync/cloud-token")
 def save_cloud_token(
     body: CloudTokenBody,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
     """
@@ -276,11 +327,103 @@ def save_cloud_token(
     return {"status": "ok"}
 
 
+@router.post("/api/sync/heal")
+def heal_sync_outbox(
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
+):
+    """(Local) Scan for syncable rows missing from the outbox and queue them.
+
+    Covers EVERY syncable entity type — both top-level tables and child/line-item
+    tables (invoice_line_items, purchase_invoice_line_items, etc.) that previously
+    had no business_id of their own and were silently dropped from the outbox.
+
+    Returns a JSON summary of what was found and queued, grouped by entity type.
+    Idempotent: safe to call multiple times; rows already in the outbox are never
+    double-queued (the scan checks NOT EXISTS in sync_queue).
+
+    Local-only: guarded by the sqlite dialect check so it cannot run on the cloud
+    Postgres backend (which has no local outbox to heal).
+    """
+    from database.db import engine as _engine
+    if _engine.dialect.name != "sqlite":
+        raise HTTPException(
+            status_code=400,
+            detail="Heal endpoint is local-only (SQLite). The cloud backend has no outbox.",
+        )
+
+    from services.sync_worker import find_unqueued_syncable_rows, _heal_unqueued_rows, _row_to_dict, _MODEL_MAP
+    from database.models import _serialize_orm_obj
+    import json as _json
+    from services.dates import utc_now as _utc_now
+
+    business_id = _resolve_business_id_by_username(current_user, db)
+
+    # Scan first (read-only) so we can return a per-entity breakdown
+    missing = find_unqueued_syncable_rows(db, business_id)
+
+    by_entity: dict = {}
+    for item in missing:
+        by_entity.setdefault(item["entity"], []).append(item["row_id"])
+
+    if not missing:
+        return {
+            "status": "ok",
+            "message": "Outbox is complete — no missing rows found.",
+            "queued": 0,
+            "by_entity": {},
+        }
+
+    # Queue them (reuses the same logic as the automatic heal in sync_worker)
+    queued = 0
+    failed = []
+    for entity, row_ids in by_entity.items():
+        model_cls = _MODEL_MAP.get(entity)
+        if not model_cls:
+            continue
+        for row_id in row_ids:
+            try:
+                obj = db.query(model_cls).filter(model_cls.id == row_id).first()
+                if not obj:
+                    continue
+                payload = _json.dumps(_row_to_dict(obj), default=str)
+                db.execute(
+                    text(
+                        "INSERT INTO sync_queue "
+                        "(business_id, entity, entity_id, operation, payload, created_at) "
+                        "VALUES (:bid, :ent, :eid, 'INSERT', :pay, :now)"
+                    ),
+                    {"bid": business_id, "ent": entity,
+                     "eid": row_id,      "pay": payload,
+                     "now": _utc_now()},
+                )
+                queued += 1
+            except Exception as e:
+                failed.append({"entity": entity, "row_id": row_id, "error": str(e)})
+
+    db.commit()
+
+    logger.info(
+        "[SYNC_HEAL] manual heal for biz=%s: queued=%s failed=%s entities=%s",
+        business_id, queued, len(failed),
+        {e: len(ids) for e, ids in by_entity.items()},
+    )
+
+    return {
+        "status": "ok",
+        "message": f"Queued {queued} previously-missing row(s). They will be pushed on the next sync cycle.",
+        "queued": queued,
+        "failed": len(failed),
+        "by_entity": {e: len(ids) for e, ids in by_entity.items()},
+        "errors": failed[:10],  # cap to avoid huge responses
+    }
+
+
 @router.post("/api/sync/push")
 def push_changes(
     payload: PushPayload,
     background_tasks: BackgroundTasks,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     _plan: dict = Depends(require_plan("pro")),   # 402 for free plan when SUBSCRIPTION_ENFORCED=1
     db: Session = Depends(get_db),
 ):
@@ -308,6 +451,16 @@ def push_changes(
                 "DELETE is not allowed for append-only financial entities: "
                 + ", ".join(blocked_delete_entities)
             ),
+        )
+
+    inbound_pull_only = sorted({
+        change.entity for change in payload.changes if change.entity in PULL_ONLY_TABLES
+    })
+    if inbound_pull_only:
+        raise HTTPException(
+            status_code=422,
+            detail="Inbound sync is not allowed for cloud-authoritative entities: "
+                   + ", ".join(inbound_pull_only),
         )
 
     # Temporarily disable trigger hooks to prevent queuing writes back on the cloud
@@ -375,15 +528,12 @@ def push_changes(
 
             # Scope check the existing record
             if existing:
-                # Check tenant ownership
-                existing_bid = getattr(existing, "business_id", None)
-                if change.entity == "users":
-                    if existing.id != business_id and existing.parent_business_id != business_id:
-                        logger.warning("sync/push: tenant mismatch for users.id=%s", change.entity_id)
-                        continue
-                elif existing_bid is not None and int(existing_bid) != business_id:
-                    logger.warning("sync/push: tenant mismatch for %s.id=%s", change.entity, change.entity_id)
-                    continue
+                if not _record_belongs_to_business(db, change.entity, existing, business_id):
+                    logger.warning(
+                        "sync/push: tenant mismatch for %s.id=%s business=%s",
+                        change.entity, change.entity_id, business_id,
+                    )
+                    raise HTTPException(status_code=403, detail="Cross-business sync mutation denied")
 
             if change.operation == "DELETE":
                 if existing:
@@ -398,6 +548,36 @@ def push_changes(
             # Conflict Check: compare updated_at timestamps if available
             local_updated_at_str = data.get("updated_at")
             local_updated_at = _parse_dt(local_updated_at_str)
+
+            # (R-8) Clock-skew guard: a device with its clock set forward >5 min
+            # permanently wins all LWW comparisons. Reject such rows on the cloud
+            # before they land.
+            if local_updated_at:
+                _server_now = utc_now()
+                _server_aware = _server_now.replace(tzinfo=timezone.utc) \
+                    if _server_now.tzinfo is None else _server_now
+                _local_aware = local_updated_at.replace(tzinfo=timezone.utc) \
+                    if local_updated_at.tzinfo is None else local_updated_at
+                if _local_aware > _server_aware + timedelta(minutes=5):
+                    logger.warning(
+                        "sync/push: %s.id=%s rejected — updated_at %s is >5 min ahead "
+                        "of server time %s. Device clock may be skewed.",
+                        change.entity, change.entity_id, local_updated_at, _server_now,
+                    )
+                    db.add(ConflictLog(
+                        business_id=business_id,
+                        entity=change.entity,
+                        entity_id=change.entity_id,
+                        local_updated_at=local_updated_at,
+                        cloud_updated_at=_server_aware,
+                        local_payload=json.dumps(data, default=str),
+                        cloud_payload="{}",
+                        resolved_at=utc_now(),
+                        resolution="clock_skew",
+                    ))
+                    skipped.append({"entity": change.entity, "row_id": change.entity_id,
+                                    "reason": "updated_at more than 5 min in the future (clock skew)"})
+                    continue
 
             if existing and hasattr(existing, "updated_at") and existing.updated_at:
                 cloud_updated_at = _parse_dt(existing.updated_at)
@@ -456,12 +636,31 @@ def push_changes(
                     log_prefix="sync/push",
                 )
 
+                # (R-9) Non-financial master-data LWW overwrite — same loss-of-
+                # version risk as financial rows but lower severity. cloud_updated_at
+                # is in scope here (assigned above in this same if-block).
+                _apply_hooks.log_master_data_conflict(
+                    db,
+                    business_id=business_id,
+                    entity=change.entity,
+                    entity_id=change.entity_id,
+                    incoming=data,
+                    existing_row=existing,
+                    incoming_updated_at=local_updated_at,
+                    existing_updated_at=cloud_updated_at,
+                    resolution="local_won",
+                    log_prefix="sync/push",
+                )
+
             # Resolve FKs via the parent's durable uid (shared helper — same logic
             # as the pull-apply worker). If a parent_uid is present but the parent
             # row isn't in this DB yet, the child is DEFERRED rather than written
             # with the source-DB integer id (wrong-row / orphan); it re-applies on
             # a later sync once the parent exists.
-            if resolve_parent_fk_uids(db, model_cls, data, log_prefix=f"sync/push[{change.entity}.id={change.entity_id}]"):
+            if resolve_parent_fk_uids(db, model_cls, data,
+                business_id=business_id,
+                log_prefix=f"sync/push[{change.entity}.id={change.entity_id}]",
+            ):
                 # -- M-20 (CRITICAL): the row is DEFERRED, the client MUST be told --
                 #
                 # Deferring is correct: writing the source database's integer FK
@@ -623,11 +822,16 @@ def push_changes(
 
         db.commit()
 
-        # Broadcast sync triggers to SSE connections in background
+        # Broadcast sync triggers and instant pull_ping to SSE connections in background
         from services.realtime import realtime_manager
         for ent in entities_to_broadcast:
             background_tasks.add_task(realtime_manager.broadcast, business_id, {"type": "sync.trigger", "entity": ent})
+        if entities_to_broadcast:
+            background_tasks.add_task(realtime_manager.broadcast, business_id, {"type": "sync.pull_ping", "entity": "pull_ping"})
 
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         logger.error("sync/push: fatal error — %s", e, exc_info=True)
@@ -958,3 +1162,54 @@ def flush_sync_queue(
     business_id = _resolve_business_id_by_username(current_user, db)
     background_tasks.add_task(trigger_sync_run, business_id)
     return {"status": "triggered", "business_id": business_id}
+
+
+@router.post("/api/sync/parity")
+def run_parity_check(
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Local Endpoint. Manually triggers a UID-based cross-DB parity check between
+    local SQLite and cloud Postgres for the current business.
+
+    Detects and auto-repairs:
+    - Line items / payments on the wrong cloud invoice (WRONG_INVOICE)
+    - Line items / payments missing from the cloud entirely (MISSING)
+    - Invoices with stale paid_amount / status on the cloud (PAID_STATE)
+
+    The check is rate-limited to once every 6 hours automatically; this endpoint
+    bypasses the rate limit so an admin can force an immediate run.
+    Repairs are queued in the outbox — they push on the next sync cycle.
+    """
+    from services.sync_worker import _cloud_parity_check, _LAST_PARITY
+
+    business_id = _resolve_business_id_by_username(current_user, db)
+
+    def _run_parity(bid: int):
+        # Bypass the rate-limit for a manual trigger
+        _LAST_PARITY.pop(bid, None)
+        db2 = db.__class__(bind=db.bind) if hasattr(db, "bind") else None
+        from database.db import SessionLocal as _SL
+        _db = _SL()
+        try:
+            from logging_config import current_bizid_var
+            user_obj = _db.query(__import__("database.models", fromlist=["User"]).User).filter_by(id=bid).first()
+            _t = current_bizid_var.set(getattr(user_obj, "public_id", None) or "-")
+            try:
+                result = _cloud_parity_check(_db, bid)
+                logger.info("[PARITY] manual run complete for biz=%s: %s", bid, result)
+            finally:
+                current_bizid_var.reset(_t)
+        except Exception as e:
+            logger.error("[PARITY] manual run failed for biz=%s: %s", bid, e)
+        finally:
+            _db.close()
+
+    background_tasks.add_task(_run_parity, business_id)
+    return {
+        "status": "triggered",
+        "business_id": business_id,
+        "note": "Parity check running in background. Results appear in server logs and outbox.",
+    }

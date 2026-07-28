@@ -57,8 +57,17 @@ class ReconcilePasswordRequest(BaseModel):
     public_id: str       # cloud's BizID — MUST match the local account's
 
 
+def _require_loopback_local(request: Request) -> None:
+    """Keep device-recovery mutations off cloud and LAN interfaces."""
+    if _DB_MODE == "cloud":
+        raise HTTPException(status_code=404, detail="This recovery operation is unavailable on cloud servers.")
+    host = (request.client.host if request.client else "").lower()
+    if host not in {"127.0.0.1", "::1", "localhost", "testclient"}:
+        raise HTTPException(status_code=403, detail="This recovery operation is available only from this device.")
+
+
 @router.post("/api/auth/reconcile_password")
-def reconcile_password(req: ReconcilePasswordRequest, db: Session = Depends(get_db)):
+def reconcile_password(req: ReconcilePasswordRequest, request: Request, db: Session = Depends(get_db)):
     """
     Re-sync a LOCAL owner account's password after the SAME credentials
     succeeded on the cloud (password drift → offline login was blocked).
@@ -69,6 +78,7 @@ def reconcile_password(req: ReconcilePasswordRequest, db: Session = Depends(get_
     so we can't silently log someone into the wrong local business. Localhost
     trust model, same as the fresh-device /signup mirror.
     """
+    _require_loopback_local(request)
     uname = (req.username or "").strip()
     user = (db.query(User)
               .filter(User.username == uname, User.parent_business_id.is_(None))
@@ -96,7 +106,7 @@ class ReclaimLocalRequest(BaseModel):
 
 
 @router.post("/api/auth/reclaim_local")
-def reclaim_local(req: ReclaimLocalRequest, db: Session = Depends(get_db)):
+def reclaim_local(req: ReclaimLocalRequest, request: Request, db: Session = Depends(get_db)):
     """
     LOCAL-ONLY: re-key an ORPHANED local owner account onto a freshly-minted cloud
     identity, then log in. This handles re-registering a username whose CLOUD
@@ -111,8 +121,7 @@ def reclaim_local(req: ReclaimLocalRequest, db: Session = Depends(get_db)):
     businesses. It is non-destructive to any existing local data on the row —
     the caller can start fresh separately if they want a clean slate.
     """
-    if _DB_MODE == "cloud":
-        raise HTTPException(status_code=400, detail="Reclaim is a local-only operation.")
+    _require_loopback_local(request)
     if not (req.public_id or "").strip():
         raise HTTPException(status_code=400, detail="public_id (new cloud BizID) is required.")
 

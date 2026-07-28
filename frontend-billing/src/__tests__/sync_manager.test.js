@@ -93,3 +93,47 @@ describe('syncManager.pull', () => {
     expect(await store.getMeta(SYNC_CURSOR_KEY)).toEqual({ invoice: 4 })
   })
 })
+
+describe('syncManager tenant scope', () => {
+  it('never replays one business/user queue under another login', async () => {
+    const store = createMemoryStore()
+    const ownerA = createSyncManager({
+      transport: { request: vi.fn(), get: vi.fn() }, store, isOnline: () => false,
+    })
+    ownerA.setScope('biz:BA-ALPHA|user:10')
+    await ownerA.mutate({ method: 'POST', path: '/invoices', body: { invoice_no: 'A-1' } })
+
+    const request = vi.fn(async () => ({ ok: true }))
+    const ownerB = createSyncManager({
+      transport: { request, get: vi.fn() }, store, isOnline: () => true,
+    })
+    ownerB.setScope('biz:BA-BRAVO|user:20')
+
+    const summary = await ownerB.flushOutbox()
+    expect(summary.sent).toBe(0)
+    expect(await ownerB.pendingCount()).toBe(0)
+    expect(request).not.toHaveBeenCalled()
+
+    // The original tenant can still recover its own work after signing back in.
+    ownerA.setScope('biz:BA-ALPHA|user:10')
+    const retry = createSyncManager({
+      transport: { request, get: vi.fn() }, store, isOnline: () => true,
+    })
+    retry.setScope('biz:BA-ALPHA|user:10')
+    expect((await retry.flushOutbox()).sent).toBe(1)
+    expect(request.mock.calls[0][2].headers['X-Client-Request-Id']).toBeTruthy()
+  })
+
+  it('partitions pull cursors by business and user even in an injected store', async () => {
+    const store = createMemoryStore()
+    const get = vi.fn(async () => ({ changes: {}, cursor: { invoice: 7 }, has_more: false }))
+    const a = createSyncManager({ transport: { request: vi.fn(), get }, store, isOnline: () => true })
+    a.setScope('biz:BA-ALPHA|user:10')
+    await a.pull()
+
+    const b = createSyncManager({ transport: { request: vi.fn(), get }, store, isOnline: () => true })
+    b.setScope('biz:BA-BRAVO|user:20')
+    await b.pull()
+    expect(get.mock.calls[1][1].since).toBeUndefined()
+  })
+})

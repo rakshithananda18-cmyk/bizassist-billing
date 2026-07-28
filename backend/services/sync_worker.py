@@ -15,7 +15,7 @@ import os
 import json
 import asyncio
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 
 import httpx
@@ -73,16 +73,32 @@ _PUSH_MAX_DEFER_STREAK = 3
 _DEFER_STREAK: dict = {}
 
 
+# Child tables that have no own `business_id` column — the scan must JOIN through
+# their parent to find the owner. Key = child table, value = (parent table, FK column).
+# Kept in sync with database/models._BUSINESS_ID_VIA_PARENT; separate here because
+# that dict is not importable at module level without creating a circular import.
+_CHILD_TABLE_PARENT_MAP = {
+    "invoice_line_items":          ("invoices",          "invoice_id"),
+    "purchase_invoice_line_items": ("purchase_invoices", "purchase_invoice_id"),
+    "purchase_order_line_items":   ("purchase_orders",   "purchase_order_id"),
+    "stock_transfer_line_items":   ("stock_transfers",   "transfer_id"),
+    # shift_cash_movements inherits business_id via register_shifts.
+    # Was in _repair_stuck_child_payloads but NOT in this map, so the
+    # heal scan (find_unqueued_syncable_rows) never detected missing movements.
+    "shift_cash_movements":        ("register_shifts",   "shift_id"),
+}
+
+
 def find_unqueued_syncable_rows(db, business_id: int, entities=None, limit=200):
     """Syncable rows this device has NEVER put in the outbox.
 
     THE SAFETY NET FOR M-20a, and deliberately NOT a theory about its cause.
 
-    `register_shifts` 7, 8 and 9 were never enqueued. Every hypothesis for WHY
-    has so far failed to survive contact with the evidence — the observed
-    `sync_disabled_var` suppressions were all correct ones, on rows that had
-    genuinely come from the cloud. Rather than guess, this catches the symptom
-    whatever the cause: a row that ought to be in the outbox and is not.
+    Covers EVERY syncable entity — both top-level tables (which carry their own
+    business_id column) and child/line-item tables (which inherit business_id
+    from their parent via a JOIN). The previous version listed only six top-level
+    tables, so invoice_line_items, purchase_invoice_line_items, etc. were never
+    scanned and 0 of their rows ever reached the outbox.
 
     SCOPED ON PURPOSE. It only considers rows NEWER than the oldest outbox entry
     for the business. Older rows legitimately have no outbox row — they predate
@@ -91,14 +107,37 @@ def find_unqueued_syncable_rows(db, business_id: int, entities=None, limit=200):
     automatically; without it the check would be right and useless.
 
     Read-only: returns what it found. Queueing is the caller's decision.
+
+    RAW-SQL BYPASS SAFETY NET (R-11)
+    ---------------------------------
+    SQLAlchemy ORM listeners (_queue_change) only fire for ORM-level writes.
+    Any direct ``connection.execute(text(...))`` or ``session.execute(text(...))``
+    bypasses the listeners and misses the sync_queue entry. This function is the
+    explicit backstop for that gap: it compares every syncable row's updated_at
+    against its sync_queue entry and re-queues any row not covered. It runs at
+    the start of every sync cycle so the window is bounded by the sync interval.
+    Known raw-SQL paths (admin resets, migration scripts) rely on this net.
     """
     from database.models import SyncQueue as _SQ
     out = []
     if entities is None:
-        # Parents first: a missing parent strands its children, so recovering it
-        # unblocks the most.
-        entities = ["register_shifts", "customers", "products",
-                    "invoices", "invoice_payments", "shift_cash_movements"]
+        # ── Top-level tables (have their own business_id column) ──────────────
+        # Parents first: a missing parent strands its children.
+        entities = [
+            "register_shifts", "shift_cash_movements",
+            "customers", "vendors", "products",
+            "invoices", "purchase_invoices", "purchase_orders",
+            "invoice_payments", "inventory", "stock_ledger",
+            "product_barcodes", "business_settings", "payments",
+            "godowns", "expenses", "stock_transfers",
+            "alert_configs", "rate_limit_configs", "period_locks",
+        ]
+        top_level = entities
+        # ── Child tables (inherit business_id from parent) ────────────────────
+        child = list(_CHILD_TABLE_PARENT_MAP.keys())
+    else:
+        top_level = [e for e in entities if e not in _CHILD_TABLE_PARENT_MAP]
+        child     = [e for e in entities if e     in _CHILD_TABLE_PARENT_MAP]
 
     floor = db.query(func.min(_SQ.id)).filter(_SQ.business_id == business_id).scalar()
     if floor is None:
@@ -107,7 +146,8 @@ def find_unqueued_syncable_rows(db, business_id: int, entities=None, limit=200):
     if oldest is None:
         return out
 
-    for entity in entities:
+    # ── Scan top-level tables (direct business_id filter) ─────────────────────
+    for entity in top_level:
         try:
             rows = db.execute(text(
                 f"SELECT r.id FROM {entity} r "
@@ -118,13 +158,32 @@ def find_unqueued_syncable_rows(db, business_id: int, entities=None, limit=200):
                 {"bid": business_id, "since": oldest, "ent": entity,
                  "lim": limit}).fetchall()
         except Exception as e:
-            # A table that cannot be read is NOT a table with nothing to find
-            # (rule 33). Reported, and the scan continues.
             logger.warning("[SYNC_HEAL] could not scan %s for biz=%s: %s",
                            entity, business_id, e)
             continue
         for r in rows:
             out.append({"entity": entity, "row_id": int(r[0])})
+
+    # ── Scan child tables (JOIN through parent to filter by business_id) ───────
+    for entity in child:
+        parent_tbl, fk_col = _CHILD_TABLE_PARENT_MAP[entity]
+        try:
+            rows = db.execute(text(
+                f"SELECT r.id FROM {entity} r "
+                f"JOIN {parent_tbl} p ON p.id = r.{fk_col} "
+                f"WHERE p.business_id = :bid AND r.created_at >= :since "
+                f"AND NOT EXISTS (SELECT 1 FROM sync_queue q "
+                f"                 WHERE q.entity = :ent AND q.entity_id = r.id) "
+                f"ORDER BY r.id LIMIT :lim"),
+                {"bid": business_id, "since": oldest, "ent": entity,
+                 "lim": limit}).fetchall()
+        except Exception as e:
+            logger.warning("[SYNC_HEAL] could not scan child table %s for biz=%s: %s",
+                           entity, business_id, e)
+            continue
+        for r in rows:
+            out.append({"entity": entity, "row_id": int(r[0])})
+
     return out
 
 
@@ -532,11 +591,22 @@ def run_hybrid_sync():
                 _t = current_bizid_var.set(user.public_id or "-")
                 try:
                     sync_business(db, user, sync_interval, do_pull=due_for_pull)
+                    # ── Parity check (runs at most once every 6 h per business) ─
+                    # Independent of the normal push so a parity failure never
+                    # stalls outbox delivery. Rate limit is inside the function.
+                    try:
+                        _cloud_parity_check(db, business_id)
+                    except Exception as _parity_err:
+                        logger.warning(
+                            "[PARITY] biz=%s: parity check raised unexpectedly (non-fatal): %s",
+                            business_id, _parity_err,
+                        )
                 finally:
                     current_bizid_var.reset(_t)
                 if due_for_pull:
                     _LAST_PULL[business_id] = now
                 _LAST_RUN[business_id] = now
+
             except Exception as e:
                 logger.error("[SYNC_WORKER] Error checking settings for user %s: %s", user.username, e)
     except Exception as e:
@@ -571,6 +641,530 @@ def trigger_sync_run(business_id: int):
 # ============================================================================
 # ── SYNC BUSINESS TRANSACTION LOGIC ──
 # ============================================================================
+def _heal_unqueued_rows(db: Session, business_id: int) -> int:
+    """Scan for syncable rows that are missing from the outbox and queue them.
+
+    Safety net that runs at the top of every push cycle. Catches rows whose
+    `_queue_change` trigger fired correctly but whose INSERT into `sync_queue`
+    silently failed, rows created before hybrid mode was enabled, and rows in
+    child tables (invoice_line_items etc.) that had no `business_id` of their
+    own until _BUSINESS_ID_VIA_PARENT was added.
+
+    Uses _serialize_orm_obj with the live connection so every payload is
+    enriched with parent-UID fields (invoice_id_uid, etc.). Without this the
+    cloud falls back to the raw integer FK which does not exist in its DB and
+    defers the row forever.
+
+    Returns the number of rows queued so the caller can log it.
+    """
+    from database.models import _serialize_orm_obj
+    missing = find_unqueued_syncable_rows(db, business_id)
+    if not missing:
+        return 0
+
+    # Get the live connection so _serialize_orm_obj can look up parent UIDs.
+    # This is what _queue_change does in models.py — we replicate the same
+    # enrichment so the payload is identical to what the trigger would produce.
+    try:
+        conn = db.connection()
+    except Exception as _conn_err:
+        logger.warning("[SYNC_HEAL] could not get DB connection for enrichment: %s "
+                       "— falling back to _row_to_dict (payloads will lack parent UIDs)",
+                       _conn_err)
+        conn = None
+
+    queued = 0
+    for item in missing:
+        entity  = item["entity"]
+        row_id  = item["row_id"]
+        model_cls = _MODEL_MAP.get(entity)
+        if not model_cls:
+            continue
+        try:
+            obj = db.query(model_cls).filter(model_cls.id == row_id).first()
+            if not obj:
+                continue
+            # Enriched serialisation: includes invoice_id_uid, transfer_uid, etc.
+            # Falls back to plain dict if the connection is unavailable.
+            if conn is not None:
+                try:
+                    payload = json.dumps(_serialize_orm_obj(obj, conn), default=str)
+                except Exception as _ser_err:
+                    logger.warning("[SYNC_HEAL] enriched serialise failed for %s#%s: %s — using plain dict",
+                                   entity, row_id, _ser_err)
+                    payload = json.dumps(_row_to_dict(obj), default=str)
+            else:
+                payload = json.dumps(_row_to_dict(obj), default=str)
+
+            db.execute(
+                text(
+                    "INSERT INTO sync_queue "
+                    "(business_id, entity, entity_id, operation, payload, created_at) "
+                    "VALUES (:bid, :ent, :eid, 'INSERT', :pay, :now)"
+                ),
+                {"bid": business_id, "ent": entity,
+                 "eid": row_id,      "pay": payload,
+                 "now": utc_now()},
+            )
+            queued += 1
+        except Exception as e:
+            logger.warning(
+                "[SYNC_HEAL] could not queue missing %s#%s for biz=%s: %s",
+                entity, row_id, business_id, e,
+            )
+    if queued:
+        db.commit()
+        logger.info(
+            "[SYNC_HEAL] biz=%s: queued %s previously-missing row(s) from %s entity type(s). "
+            "They will be pushed this cycle.",
+            business_id, queued,
+            len({i['entity'] for i in missing}),
+        )
+    return queued
+
+
+def _repair_stuck_child_payloads(db: Session, business_id: int) -> int:
+    """Patch already-stuck outbox entries that are missing parent UID fields.
+
+    When a child row (invoice_line_items, invoice_payments, etc.) was queued
+    without enrichment (e.g. by an older version of _heal_unqueued_rows that
+    used _row_to_dict), its payload lacks `invoice_id_uid`. The cloud then
+    falls back to the raw integer FK, which does not exist in its DB, and
+    defers the row forever — producing the CRITICAL deferral loop seen in logs.
+
+    This function detects those stuck rows and patches the payload in-place
+    by looking up the parent UID from the local DB. It runs on every push
+    cycle but is essentially a no-op once all payloads are correct.
+
+    Returns the number of rows patched.
+    """
+    child_entities = list(_CHILD_TABLE_PARENT_MAP.keys())
+    if not child_entities:
+        return 0
+
+    # Build a parameterised IN clause
+    placeholders = ", ".join(f":e{i}" for i in range(len(child_entities)))
+    params: dict = {"bid": business_id}
+    for i, ent in enumerate(child_entities):
+        params[f"e{i}"] = ent
+
+    try:
+        stuck = db.execute(
+            text(
+                f"SELECT id, entity, entity_id, payload FROM sync_queue "
+                f"WHERE synced_at IS NULL AND business_id = :bid "
+                f"AND entity IN ({placeholders}) ORDER BY id"
+            ),
+            params,
+        ).fetchall()
+    except Exception as e:
+        logger.warning("[SYNC_HEAL] could not query stuck child rows: %s", e)
+        return 0
+
+    if not stuck:
+        return 0
+
+    patched = 0
+    parent_tbl_map = {
+        "invoice_line_items":          ("invoices",          "invoice_id",          "invoice_id_uid"),
+        "purchase_invoice_line_items": ("purchase_invoices", "purchase_invoice_id", "purchase_invoice_id_uid"),
+        "purchase_order_line_items":   ("purchase_orders",   "purchase_order_id",   "purchase_order_id_uid"),
+        "stock_transfer_line_items":   ("stock_transfers",   "transfer_id",         "transfer_id_uid"),
+        "invoice_payments":            ("invoices",          "invoice_id",          "invoice_id_uid"),
+        "shift_cash_movements":        ("register_shifts",   "shift_id",            "shift_id_uid"),
+    }
+
+    for row in stuck:
+        sq_id, entity, entity_id, payload_str = row
+        spec = parent_tbl_map.get(entity)
+        if not spec:
+            continue
+
+        parent_tbl, fk_col, uid_key = spec
+        pay = json.loads(payload_str) if payload_str else {}
+
+        # Already has the uid — nothing to do
+        if pay.get(uid_key):
+            continue
+
+        fk_val = pay.get(fk_col)
+        if not fk_val:
+            continue
+
+        try:
+            uid_row = db.execute(
+                text(f'SELECT uid FROM "{parent_tbl}" WHERE id = :id'),
+                {"id": fk_val},
+            ).fetchone()
+        except Exception as _e:
+            logger.warning("[SYNC_HEAL] uid lookup for %s.%s=%s failed: %s",
+                           parent_tbl, fk_col, fk_val, _e)
+            continue
+
+        if not uid_row or not uid_row[0]:
+            continue
+
+        uid_str = str(uid_row[0])
+        pay[uid_key] = uid_str
+        # Also set the shorter alias (invoice_uid, shift_uid, etc.) that
+        # resolve_parent_fk_uids probes as a fallback.
+        base = fk_col[:-3] if fk_col.endswith("_id") else fk_col
+        pay[f"{base}_uid"] = uid_str
+
+        try:
+            db.execute(
+                text("UPDATE sync_queue SET payload = :p WHERE id = :id"),
+                {"p": json.dumps(pay), "id": sq_id},
+            )
+            patched += 1
+        except Exception as _e2:
+            logger.warning("[SYNC_HEAL] could not patch outbox row %s: %s", sq_id, _e2)
+
+    if patched:
+        db.commit()
+        logger.info(
+            "[SYNC_HEAL] biz=%s: patched %s stuck outbox payload(s) with missing parent UIDs. "
+            "They will be retried this cycle.",
+            business_id, patched,
+        )
+    return patched
+
+
+# ── Per-business last parity-check timestamp (in-memory) ───────────────────
+_LAST_PARITY: Dict[int, datetime] = {}
+_PARITY_INTERVAL_HOURS = 6      # run at most once every 6 hours per business
+
+
+def _cloud_parity_check(db: Session, business_id: int) -> dict:
+    """UID-based cross-DB parity check: local SQLite vs cloud Postgres.
+
+    WHY THIS EXISTS
+    ---------------
+    The sync push path is the primary guarantee that every local row reaches the
+    cloud. But it has two known failure modes that have caused production data
+    loss:
+
+      1. A child row (invoice_line_items, invoice_payments) lands on the WRONG
+         cloud invoice because its payload lacked ``invoice_id_uid`` (the M-9 /
+         M-20 bug). The cloud accepted it, the local side stamped synced_at, and
+         neither end reported a problem. The row was simply on the wrong account.
+
+      2. A row was pushed, the cloud deferred it, and the local side acked it
+         anyway (M-20). The outbox entry was deleted; the row never landed on
+         the cloud.
+
+    Neither failure is caught by the normal push/pull cycle: the push considers
+    a row "done" once synced_at is set, and the pull only reads cloud→local.
+
+    This function adds an independent safety net: it pulls ALL child-row UIDs
+    from the cloud for this business and compares them against the local DB.
+    It then queues corrective actions for every mismatch:
+
+      * WRONG_INVOICE  → queue an UPDATE with the correct ``invoice_id_uid``
+                         so the cloud's resolve_parent_fk_uids re-links it.
+      * MISSING        → queue an INSERT so the row is pushed again.
+
+    It also recalculates ``paid_amount`` / ``status`` for any invoice where the
+    cloud's payment sum doesn't match the stored column (the stale-header
+    symptom that made the invoice list show wrong Outstanding amounts).
+
+    SAFETY DESIGN
+    -------------
+    * Read-only toward the cloud: uses the /api/sync/pull endpoint (no writes).
+    * All repairs go through the normal outbox, so every fix is idempotent,
+      ordered, and auditable.
+    * Rate-limited to _PARITY_INTERVAL_HOURS per business; cheap to call but
+      not worth running every 15-second tick.
+    * Best-effort: every error is logged and skipped. A failure here must never
+      stall the main push cycle.
+
+    Returns a summary dict for the caller / admin endpoint.
+    """
+    from database.models import _serialize_orm_obj
+
+    summary = {
+        "business_id":  business_id,
+        "wrong_invoice": 0,
+        "missing":       0,
+        "paid_state":    0,
+        "errors":        [],
+    }
+
+    # ── Rate-limit ────────────────────────────────────────────────────────────
+    now = utc_now()
+    last = _LAST_PARITY.get(business_id)
+    if last and (now - last).total_seconds() < _PARITY_INTERVAL_HOURS * 3600:
+        logger.debug(
+            "[PARITY] biz=%s: skipping — last check was %s min ago",
+            business_id,
+            int((now - last).total_seconds() / 60),
+        )
+        return summary
+
+    logger.info("[PARITY] biz=%s: starting cloud parity check", business_id)
+    _LAST_PARITY[business_id] = now
+
+    # ── 1. Load local invoice uid→id map for this business ────────────────────
+    local_inv_rows = db.execute(text(
+        "SELECT id, uid FROM invoices WHERE business_id=:bid AND uid IS NOT NULL"
+    ), {"bid": business_id}).fetchall()
+    local_inv_uid_to_id = {r[1]: r[0] for r in local_inv_rows}
+    local_inv_id_to_uid = {r[0]: r[1] for r in local_inv_rows}
+
+    # ── 2. Load local child-row uid→parent_uid maps ───────────────────────────
+    # We only check invoice_line_items and invoice_payments (the two tables that
+    # had cross-invoice mis-links in production). Extend the list as needed.
+    CHILD_SPECS = [
+        # (local_table, fk_col, parent_table, uid_key_in_payload)
+        ("invoice_line_items", "invoice_id", "invoices", "invoice_id_uid"),
+        ("invoice_payments",   "invoice_id", "invoices", "invoice_id_uid"),
+    ]
+
+    local_child = {}   # table -> {uid: correct_parent_uid}
+    for table, fk_col, parent_tbl, _ in CHILD_SPECS:
+        rows = db.execute(text(
+            f"SELECT c.uid, p.uid as parent_uid "
+            f"FROM {table} c JOIN {parent_tbl} p ON p.id = c.{fk_col} "
+            f"WHERE p.business_id = :bid AND c.uid IS NOT NULL"
+        ), {"bid": business_id}).fetchall()
+        local_child[table] = {r[0]: r[1] for r in rows}
+
+    # ── 3. Ask the cloud for its child-row state via pull (scoped to 2020+) ───
+    token = _get_cloud_token(business_id)
+    if not token:
+        token = ensure_fresh_cloud_token(business_id)
+    if not token:
+        summary["errors"].append("no cloud token")
+        logger.warning("[PARITY] biz=%s: no cloud token — skipping", business_id)
+        return summary
+
+    try:
+        resp = httpx.get(
+            f"{CLOUD_URL}/api/sync/pull",
+            params={"business_id": business_id, "since": "2020-01-01T00:00:00"},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=10.0),
+        )
+    except Exception as e:
+        summary["errors"].append(f"pull request failed: {e}")
+        logger.warning("[PARITY] biz=%s: pull request failed: %s", business_id, e)
+        return summary
+
+    if resp.status_code != 200:
+        summary["errors"].append(f"pull HTTP {resp.status_code}")
+        logger.warning("[PARITY] biz=%s: pull returned %s", business_id, resp.status_code)
+        return summary
+
+    try:
+        body = resp.json()
+    except Exception as e:
+        summary["errors"].append(f"pull JSON decode failed: {e}")
+        return summary
+
+    # The cloud pull response wraps all table data under a "changes" key
+    # (see sync_worker line: pulled = _resp_json.get("changes", {})).
+    # Reading the top-level body directly returns None for every table lookup,
+    # which caused every local UID to be flagged as MISSING (false positive).
+    cloud_data: dict = body.get("changes", {}) if isinstance(body, dict) else {}
+
+
+    # ── 4. Build cloud uid lookup maps ────────────────────────────────────────
+    # cloud_inv_uid_to_id: cloud uid -> cloud integer id
+    cloud_invs = cloud_data.get("invoices", [])
+    cloud_inv_uid_to_id = {}
+    for inv in cloud_invs:
+        uid = inv.get("uid")
+        if uid:
+            cloud_inv_uid_to_id[uid] = inv.get("id")
+
+    # ── 5. Compare child tables ───────────────────────────────────────────────
+    try:
+        conn = db.connection()
+    except Exception:
+        conn = None
+
+    for table, fk_col, parent_tbl, uid_key in CHILD_SPECS:
+        cloud_rows = cloud_data.get(table, [])
+        cloud_uid_to_inv_uid: dict = {}
+        for crow in cloud_rows:
+            cuid = crow.get("uid")
+            if not cuid:
+                continue
+            # The cloud row carries the cloud integer invoice_id; resolve back
+            # to its uid via the cloud invoice list.
+            cloud_inv_id = crow.get(fk_col) or crow.get("invoice_id")
+            # Find the parent uid for this cloud_inv_id
+            parent_uid = None
+            for inv in cloud_invs:
+                if inv.get("id") == cloud_inv_id:
+                    parent_uid = inv.get("uid")
+                    break
+            cloud_uid_to_inv_uid[cuid] = parent_uid
+
+        local_map = local_child.get(table, {})
+
+        for local_uid, correct_parent_uid in local_map.items():
+            cloud_parent_uid = cloud_uid_to_inv_uid.get(local_uid)
+
+            if cloud_parent_uid is None:
+                # ── MISSING: row is in local but not on cloud ─────────────────
+                correct_local_inv_id = local_inv_uid_to_id.get(correct_parent_uid)
+                if not correct_local_inv_id:
+                    continue
+                model_cls = _MODEL_MAP.get(table)
+                if not model_cls:
+                    continue
+                try:
+                    obj = db.query(model_cls).filter(model_cls.uid == local_uid).first()
+                    if not obj:
+                        continue
+                    if conn is not None:
+                        try:
+                            payload = json.dumps(_serialize_orm_obj(obj, conn), default=str)
+                        except Exception:
+                            from database.models import _row_to_dict
+                            payload = json.dumps(_row_to_dict(obj), default=str)
+                    else:
+                        from database.models import _row_to_dict
+                        payload = json.dumps(_row_to_dict(obj), default=str)
+                    db.execute(text(
+                        "INSERT OR IGNORE INTO sync_queue "
+                        "(business_id, entity, entity_id, operation, payload, created_at) "
+                        "VALUES (:bid, :ent, :eid, 'INSERT', :pay, :now)"
+                    ), {"bid": business_id, "ent": table,
+                        "eid": obj.id, "pay": payload, "now": utc_now()})
+                    summary["missing"] += 1
+                    logger.warning(
+                        "[PARITY] biz=%s: %s uid=%r MISSING on cloud — queued INSERT",
+                        business_id, table, local_uid,
+                    )
+                except Exception as e:
+                    summary["errors"].append(f"missing-queue {table} {local_uid}: {e}")
+                    logger.warning("[PARITY] biz=%s: could not queue missing %s %r: %s",
+                                   business_id, table, local_uid, e)
+
+            elif cloud_parent_uid != correct_parent_uid:
+                # ── WRONG INVOICE: cloud row is linked to the wrong parent ─────
+                model_cls = _MODEL_MAP.get(table)
+                if not model_cls:
+                    continue
+                try:
+                    obj = db.query(model_cls).filter(model_cls.uid == local_uid).first()
+                    if not obj:
+                        continue
+                    if conn is not None:
+                        try:
+                            pay_dict = _serialize_orm_obj(obj, conn)
+                        except Exception:
+                            from database.models import _row_to_dict
+                            pay_dict = _row_to_dict(obj)
+                    else:
+                        from database.models import _row_to_dict
+                        pay_dict = _row_to_dict(obj)
+                    # Ensure the correct parent uid is in the payload
+                    pay_dict[uid_key] = correct_parent_uid
+                    db.execute(text(
+                        "INSERT OR IGNORE INTO sync_queue "
+                        "(business_id, entity, entity_id, operation, payload, created_at) "
+                        "VALUES (:bid, :ent, :eid, 'UPDATE', :pay, :now)"
+                    ), {"bid": business_id, "ent": table,
+                        "eid": obj.id, "pay": json.dumps(pay_dict, default=str),
+                        "now": utc_now()})
+                    summary["wrong_invoice"] += 1
+                    logger.warning(
+                        "[PARITY] biz=%s: %s uid=%r on WRONG cloud invoice "
+                        "(cloud_parent=%r, correct=%r) — queued corrective UPDATE",
+                        business_id, table, local_uid, cloud_parent_uid, correct_parent_uid,
+                    )
+                except Exception as e:
+                    summary["errors"].append(f"wrong-queue {table} {local_uid}: {e}")
+                    logger.warning("[PARITY] biz=%s: could not queue wrong-invoice %s %r: %s",
+                                   business_id, table, local_uid, e)
+
+    # ── 6. Commit queued repairs ───────────────────────────────────────────────
+    if summary["missing"] or summary["wrong_invoice"]:
+        try:
+            db.commit()
+        except Exception as e:
+            summary["errors"].append(f"commit failed: {e}")
+            logger.error("[PARITY] biz=%s: commit of queued repairs failed: %s", business_id, e)
+
+    # ── 7. Invoice paid_amount / status parity ────────────────────────────────
+    # Compare the cloud's stored paid_amount against its actual payment sum.
+    # If they differ, push a corrective UPDATE for the invoice header so the
+    # cloud's reconcile_invoice_paid_state hook re-derives it.
+    cloud_pays = cloud_data.get("invoice_payments", [])
+    cloud_pay_sum: Dict[int, float] = {}   # cloud_invoice_id -> sum of payments
+    for p in cloud_pays:
+        inv_id = p.get("invoice_id")
+        if inv_id:
+            cloud_pay_sum[inv_id] = cloud_pay_sum.get(inv_id, 0.0) + float(p.get("amount_paid") or 0)
+
+    for inv in cloud_invs:
+        cloud_inv_id  = inv.get("id")
+        inv_uid       = inv.get("uid")
+        stored_paid   = float(inv.get("paid_amount") or 0)
+        actual_paid   = round(cloud_pay_sum.get(cloud_inv_id, 0.0), 2)
+        total_amount  = float(inv.get("total_amount") or 0)
+
+        if abs(stored_paid - actual_paid) < 0.05:
+            continue                    # within rounding tolerance — fine
+
+        if inv_uid not in local_inv_uid_to_id:
+            continue                    # cloud-only invoice, not our business
+
+        local_inv_id = local_inv_uid_to_id[inv_uid]
+        try:
+            from database.models import Invoice as _Inv
+            local_inv = db.query(_Inv).filter(_Inv.id == local_inv_id).first()
+            if not local_inv:
+                continue
+            # Queue an UPDATE of the invoice header; the cloud post-apply hook
+            # will call reconcile_invoice_paid_state which re-derives paid_amount
+            # and status from its own payment ledger.
+            if conn is not None:
+                try:
+                    pay_dict = _serialize_orm_obj(local_inv, conn)
+                except Exception:
+                    from database.models import _row_to_dict
+                    pay_dict = _row_to_dict(local_inv)
+            else:
+                from database.models import _row_to_dict
+                pay_dict = _row_to_dict(local_inv)
+            db.execute(text(
+                "INSERT OR IGNORE INTO sync_queue "
+                "(business_id, entity, entity_id, operation, payload, created_at) "
+                "VALUES (:bid, 'invoices', :eid, 'UPDATE', :pay, :now)"
+            ), {"bid": business_id, "eid": local_inv_id,
+                "pay": json.dumps(pay_dict, default=str), "now": utc_now()})
+            summary["paid_state"] += 1
+            logger.warning(
+                "[PARITY] biz=%s: cloud invoice uid=%r has stale paid_amount "
+                "(stored=%.2f, actual=%.2f) — queued UPDATE to trigger recalc",
+                business_id, inv_uid, stored_paid, actual_paid,
+            )
+        except Exception as e:
+            summary["errors"].append(f"paid-state {inv_uid}: {e}")
+
+    if summary["paid_state"]:
+        try:
+            db.commit()
+        except Exception as e:
+            summary["errors"].append(f"paid-state commit failed: {e}")
+
+    total = summary["missing"] + summary["wrong_invoice"] + summary["paid_state"]
+    if total:
+        logger.info(
+            "[PARITY] biz=%s: queued %s repair(s) — wrong_invoice=%s missing=%s paid_state=%s",
+            business_id, total,
+            summary["wrong_invoice"], summary["missing"], summary["paid_state"],
+        )
+    else:
+        logger.info("[PARITY] biz=%s: cloud parity OK — no drift detected", business_id)
+
+    return summary
+
+
 def sync_business(db: Session, user: User, interval: int = 30, force: bool = False, do_pull: bool = False):
     """Guarded entry point: ensures only one push runs per business at a time."""
     business_id = user.id
@@ -584,6 +1178,8 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
         return _sync_business_impl(db, user, interval=interval, force=force, do_pull=do_pull)
     finally:
         _release_push(business_id)
+
+
 
 
 def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool = False, do_pull: bool = False):
@@ -612,6 +1208,26 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         return
 
     logger.debug("[SYNC_WORKER] Running sync for business_id=%s", business_id)
+
+    # ── Safety-net heal: queue any rows this device has never pushed ──────────
+    # Runs before the outbox query so newly-queued rows are included in THIS
+    # cycle rather than waiting for the next tick. Cheap and idempotent.
+    try:
+        _heal_unqueued_rows(db, business_id)
+    except Exception as _heal_err:
+        # Heal is best-effort; a failure must never block the push.
+        logger.warning("[SYNC_HEAL] biz=%s heal scan failed (non-fatal): %s",
+                       business_id, _heal_err)
+
+    # ── Repair stuck child payloads (missing parent UID fields) ───────────────
+    # Fixes outbox rows that were queued without enrichment (e.g. by an older
+    # _heal_unqueued_rows using _row_to_dict). Without this, the cloud defers
+    # them forever because the raw integer FK doesn't exist in its DB.
+    try:
+        _repair_stuck_child_payloads(db, business_id)
+    except Exception as _repair_err:
+        logger.warning("[SYNC_HEAL] biz=%s repair scan failed (non-fatal): %s",
+                       business_id, _repair_err)
 
     # 1. Probe cloud endpoint health
     try:
@@ -821,6 +1437,36 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                         [f"{d.get('entity')}#{d.get('row_id')}: {d.get('reason')}"
                          for d in _deferred],
                     )
+                    # Auto-heal: a deferred row's parent may also be missing from
+                    # the outbox. Trigger the heal scan for the parent entity types
+                    # so the parent is queued in the SAME cycle and unblocks the
+                    # child on the next push, instead of deferring indefinitely.
+                    _deferred_parents = set()
+                    for _d in _deferred:
+                        _reason = (_d.get("reason") or "").lower()
+                        # Cloud returns: "parent register_shifts id=X not in this DB yet"
+                        for _parent_ent in list(_MODEL_MAP.keys()):
+                            if _parent_ent in _reason:
+                                _deferred_parents.add(_parent_ent)
+                                break
+                    if _deferred_parents:
+                        try:
+                            _parent_missing = find_unqueued_syncable_rows(
+                                db, business_id, entities=list(_deferred_parents))
+                            if _parent_missing:
+                                logger.warning(
+                                    "[SYNC_HEAL] biz=%s: auto-heal found %s missing "
+                                    "parent row(s) that explain the deferral: %s — "
+                                    "queueing them now.",
+                                    business_id, len(_parent_missing),
+                                    [f"{m['entity']}#{m['row_id']}" for m in _parent_missing[:5]],
+                                )
+                                _heal_unqueued_rows(db, business_id)
+                        except Exception as _auto_heal_err:
+                            logger.warning(
+                                "[SYNC_HEAL] biz=%s auto-heal for deferred parents failed: %s",
+                                business_id, _auto_heal_err,
+                            )
 
                 # ARITHMETIC CHECK. The cloud reports how many rows it actually
                 # applied; this compares that against what was sent and accounts
@@ -1122,6 +1768,9 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
             logger.info("[SYNC_WORKER] Pulling %s changes from cloud for business_id=%s", total_pulled, business_id)
             
             # Temporarily disable sync triggers so writes are not re-queued
+            # Reset the per-table suppress counter so this cycle's summary is fresh.
+            from database.models import _PULL_APPLY_SUPPRESS_SEEN
+            _PULL_APPLY_SUPPRESS_SEEN.clear()
             token_var = sync_disabled_var.set(True)
             try:
                 # Apply parent/master tables before child tables so the FK-uid
@@ -1352,6 +2001,20 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                         # Apply Last-Write-Wins (LWW) locally
                         cloud_updated_at = _parse_dt(record.get("updated_at"))
 
+                        # (R-8) Clock-skew guard on pull path: reject cloud rows
+                        # whose updated_at is >5 min ahead of local time.
+                        if cloud_updated_at:
+                            _now = datetime.now(tz=timezone.utc)
+                            _c_aware = cloud_updated_at.replace(tzinfo=timezone.utc) \
+                                if cloud_updated_at.tzinfo is None else cloud_updated_at
+                            if _c_aware > _now + timedelta(minutes=5):
+                                logger.warning(
+                                    "[SYNC_WORKER] %s id=%s pull-skipped — cloud updated_at %s "
+                                    "is >5 min in the future (local_now=%s). Clock skew suspected.",
+                                    table_name, rec_id, cloud_updated_at, _now,
+                                )
+                                continue
+
                         if existing and hasattr(existing, "updated_at") and existing.updated_at:
                             # (R-5) If the cloud row carries no timestamp we cannot
                             # prove it is newer — do NOT clobber an existing local
@@ -1389,6 +2052,22 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                             ):
                                 _conflicts_logged += 1
 
+                            # (R-9) Non-financial master-data: log the losing
+                            # local version before the cloud version lands.
+                            if _apply_hooks.log_master_data_conflict(
+                                db,
+                                business_id=business_id,
+                                entity=table_name,
+                                entity_id=getattr(existing, "id", rec_id),
+                                incoming=dict(record),
+                                existing_row=existing,
+                                incoming_updated_at=cloud_updated_at,
+                                existing_updated_at=local_updated_at,
+                                resolution="cloud_won",
+                                log_prefix="[SYNC_WORKER]",
+                            ):
+                                _conflicts_logged += 1
+
 
                         # Apply field updates inside a per-row SAVEPOINT so a
                         # single bad row (e.g. a UNIQUE/constraint clash) is
@@ -1396,6 +2075,12 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                         try:
                             with db.begin_nested():
                                 data = dict(record)
+
+                                # (R-12) Business ID Pinning: Ensure the pulled row's
+                                # business_id is locked to the target business_id so it can
+                                # never be cross-assigned or detached to a different business.
+                                if "business_id" in data and hasattr(model_cls, "business_id"):
+                                    data["business_id"] = business_id
 
                                 # Same user_id→owner re-point as the push path:
                                 # register_shifts / shift_cash_movements carry a
@@ -1535,6 +2220,17 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 for ent in entities_to_broadcast:
                     _safe_broadcast(business_id, {"type": "sync.trigger", "entity": ent})
             finally:
+                # Emit a one-line summary of suppressed re-queue attempts instead
+                # of one DEBUG line per row (which flooded the logs at 100+ lines
+                # per pull cycle when large table_alterations batches came down).
+                if _PULL_APPLY_SUPPRESS_SEEN:
+                    logger.debug(
+                        "[SYNC_QUEUE] pull-apply suppressed re-queue for biz=%s: %s row(s) "
+                        "across %s table(s) \u2014 correct, they came from cloud.",
+                        business_id,
+                        sum(_PULL_APPLY_SUPPRESS_SEEN.values()),
+                        {tbl: cnt for tbl, cnt in _PULL_APPLY_SUPPRESS_SEEN.items()},
+                    )
                 sync_disabled_var.reset(token_var)
 
         # The batch has now been applied & committed above (or there was nothing

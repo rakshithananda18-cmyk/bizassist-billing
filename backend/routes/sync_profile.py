@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from database.db import get_db
 from database.models import User
-from services.auth import get_active_user
+from services.auth import require_business_owner, resolve_business_id_in_db
 
 logger = logging.getLogger("bizassist.sync.profile")
 router = APIRouter(tags=["sync"])
@@ -49,7 +49,7 @@ class ProfilePushRequest(BaseModel):
 @router.post("/api/sync/profile-push")
 def sync_profile_push(
     req: ProfilePushRequest,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
     """
@@ -59,7 +59,9 @@ def sync_profile_push(
     Only fields explicitly included in the request are updated (PATCH semantics):
     a None value means "not provided — leave unchanged".
     """
-    owner_id: int = current_user["id"]
+    # Numeric user ids differ between the local and cloud databases. Resolve
+    # the shared BizID in this database before updating the profile.
+    owner_id = resolve_business_id_in_db(current_user, db)
 
     owner = db.query(User).filter(
         User.id == owner_id,

@@ -34,6 +34,7 @@ from __future__ import annotations  # PEP 604 (X | Y) on Python 3.9 dev venvs
 import logging
 from datetime import datetime, timezone
 from typing import Any
+from uuid import NAMESPACE_URL, uuid5
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -42,7 +43,7 @@ from sqlalchemy import text, inspect
 from sqlalchemy.orm import Session
 
 from database.db import get_db, engine, DATABASE_URL
-from services.auth import get_active_user
+from services.auth import require_business_owner, resolve_business_id_in_db
 from core.connection import transfer as b2b_transfer
 
 router = APIRouter()
@@ -97,6 +98,11 @@ _EXPORT_ORDER: list[str] = [
     "b2b_order_line_items",
 ]
 
+# A payload is never allowed to invent global rows or shared-ledger entries.
+# ``businesses`` is a legacy/global compatibility table and ``b2b_ledgers`` is
+# cloud-authoritative, append-only shared state; neither is a tenant backup row.
+_IMPORTABLE_TABLES = frozenset(set(_EXPORT_ORDER) - {"businesses", "b2b_ledgers"})
+
 
 # ---------------------------------------------------------------------------
 # HELPERS
@@ -110,7 +116,7 @@ def _business_id_for(user: dict) -> int:
     return int(user.get("parent_business_id") or user.get("id"))
 
 
-def _resolve_owner_id(user: dict, db: Session) -> int:
+def _resolve_owner_id_legacy(user: dict, db: Session) -> int:
     """
     Resolve the ACTUAL owner id in THIS DB for the authenticated user.
 
@@ -150,6 +156,14 @@ def _resolve_owner_id(user: dict, db: Session) -> int:
 
     # Fallback: use JWT id (same-DB case)
     return int(user.get("parent_business_id") or user.get("id"))
+
+
+# The active resolver is deliberately shared with sync/profile/staff controls.
+# Retain the old private implementation above only for migration-history
+# reference; its username/numeric fallback is not safe for a BizID-bearing
+# local/cloud token.
+def _resolve_owner_id(user: dict, db: Session) -> int:
+    return resolve_business_id_in_db(user, db)
 
 
 # Backward-compatible alias (old name used elsewhere).
@@ -287,7 +301,6 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
     if "users" not in existing_tables:
         return 0
 
-    dialect = db.bind.dialect.name
     count = 0
 
     try:
@@ -297,6 +310,13 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
     except Exception as exc:
         logger.warning("migrate/import: cannot inspect users for boolean coercion — %s", exc)
         bool_cols = set()
+
+    allowed_staff_roles = {"cashier", "supply adder"}
+    allowed_staff_fields = {
+        "username", "staff_login_name", "password", "business_name", "role",
+        "parent_business_id", "counter_prefix", "created_at", "updated_at",
+    }
+    user_columns = {c["name"] for c in col_info}
 
     for row in rows:
         r = dict(row)
@@ -316,7 +336,6 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
             update_fields = [
                 "business_name", "gstin", "phone", "email",
                 "address", "state_code", "pan", "logo", "settings",
-                "public_id",
             ]
             set_parts = ", ".join(
                 f'"{f}" = :{f}' for f in update_fields if f in r
@@ -324,11 +343,15 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
             if not set_parts:
                 continue
             params = {f: r[f] for f in update_fields if f in r}
-            params["username"] = r["username"]
+            # The destination owner is determined from the authenticated token,
+            # never from a username supplied inside an import file. Otherwise a
+            # crafted payload could update another business that happened to use
+            # the requested username.
+            params["dest_owner_id"] = dest_owner_id
             try:
                 with db.begin_nested():   # (M-1) per-row savepoint
                     db.execute(
-                        text(f'UPDATE "users" SET {set_parts} WHERE username = :username'),
+                        text(f'UPDATE "users" SET {set_parts} WHERE id = :dest_owner_id AND parent_business_id IS NULL'),
                         params,
                     )
                 count += 1
@@ -336,25 +359,44 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
                 logger.warning("migrate/import: owner user update failed for %s — %s", r.get("username"), exc)
         else:
             # Staff: remap parent → cloud owner
+            r = {k: v for k, v in r.items() if k in user_columns and k in allowed_staff_fields}
             r["parent_business_id"] = dest_owner_id
-            # Upsert by username
-            if dialect == "postgresql":
-                cols = [k for k in r if k != "id"]  # let PG assign id for new staff
-                col_str = ", ".join(f'"{c}"' for c in cols)
-                placeholders = ", ".join(f":{c}" for c in cols)
-                update_set = ", ".join(f'"{c}" = EXCLUDED."{c}"' for c in cols if c != "username")
-                sql = text(
-                    f'INSERT INTO "users" ({col_str}) VALUES ({placeholders}) '
-                    f'ON CONFLICT (username) DO UPDATE SET {update_set}'
-                )
-            else:
-                col_list = list(r.keys())
-                col_str = ", ".join(f'"{c}"' for c in col_list)
-                placeholders = ", ".join(f":{c}" for c in col_list)
-                sql = text(f'INSERT OR REPLACE INTO "users" ({col_str}) VALUES ({placeholders})')
+            r["role"] = (r.get("role") or "cashier").lower()
+            if not r.get("username") or r["role"] not in allowed_staff_roles:
+                logger.warning("migrate/import: refused invalid staff record for destination owner %s", dest_owner_id)
+                continue
+
+            existing = db.execute(
+                text('SELECT parent_business_id FROM "users" WHERE username = :username'),
+                {"username": r["username"]},
+            ).first()
             try:
                 with db.begin_nested():   # (M-1) per-row savepoint
-                    db.execute(sql, r)
+                    if existing:
+                        if existing[0] != dest_owner_id:
+                            logger.warning(
+                                "migrate/import: refused staff username collision for '%s' outside business %s",
+                                r["username"], dest_owner_id,
+                            )
+                            continue
+                        update_fields = [
+                            field for field in ("staff_login_name", "password", "business_name", "role", "counter_prefix")
+                            if field in r
+                        ]
+                        if update_fields:
+                            set_parts = ", ".join(f'"{field}" = :{field}' for field in update_fields)
+                            db.execute(
+                                text(
+                                    f'UPDATE "users" SET {set_parts} '
+                                    'WHERE username = :username AND parent_business_id = :parent_business_id'
+                                ),
+                                r,
+                            )
+                    else:
+                        columns = list(r.keys())
+                        col_str = ", ".join(f'"{column}"' for column in columns)
+                        placeholders = ", ".join(f":{column}" for column in columns)
+                        db.execute(text(f'INSERT INTO "users" ({col_str}) VALUES ({placeholders})'), r)
                 count += 1
             except Exception as exc:
                 logger.warning("migrate/import: staff user upsert failed for %s — %s", r.get("username"), exc)
@@ -548,12 +590,10 @@ def _uid_lookup(db: Session, table: str, col_names: set, business_id: int, filte
     """(Step 3 / R-3) Return an existing destination row id matching this row's
     durable ``uid``, or None.
 
-    `uid` is a globally-unique key carried by every BusinessOwnedMixin row, so it
-    identifies "the same row across DBs" exactly — immune to the per-DB ``id``
-    divergence that natural keys (phone/name) only approximate. Scoped to
-    business_id (matches RLS) when the column exists. Returns None for tables
-    without a uid column, or rows that predate the column (uid IS NULL) — the
-    caller then falls back to the natural-key match.
+    A UID identifies the same row across databases only *after ownership is
+    proven*. Business rows are scoped by ``business_id`` and child rows through
+    their parent document; an unscoped child UID lookup could otherwise treat a
+    different tenant's invoice line as the import destination.
     """
     if "uid" not in col_names:
         return None
@@ -564,6 +604,16 @@ def _uid_lookup(db: Session, table: str, col_names: set, business_id: int, filte
         if "business_id" in col_names:
             row = db.execute(
                 text(f'SELECT id FROM "{table}" WHERE business_id = :b AND uid = :u LIMIT 1'),
+                {"b": business_id, "u": uid},
+            ).first()
+        elif table in _CHILD_SCOPES:
+            parent, fk = _CHILD_SCOPES[table]
+            row = db.execute(
+                text(
+                    f'SELECT child.id FROM "{table}" AS child '
+                    f'JOIN "{parent}" AS parent ON child."{fk}" = parent.id '
+                    'WHERE child.uid = :u AND parent.business_id = :b LIMIT 1'
+                ),
                 {"b": business_id, "u": uid},
             ).first()
         else:
@@ -602,6 +652,7 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
         return 0
 
     col_names = {c["name"] for c in col_info}
+    nullable_cols = {c["name"]: c.get("nullable", True) for c in col_info}
     bool_cols = {c["name"] for c in col_info if isinstance(c["type"], sa.Boolean)}
     # single-column FKs that reference <referred_table>.id
     fk_targets = [
@@ -612,6 +663,11 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
     ]
     dialect = db.bind.dialect.name
     table_map = id_maps.setdefault(table_name, {})
+    # Cache whether a referenced table is tenant-scoped.  A source file can
+    # contain a raw FK that was not remapped (for example when its parent row
+    # was omitted).  If that id happens to exist in the destination under a
+    # different business, retaining it would create a cross-tenant link.
+    referenced_table_columns: dict[str, set[str]] = {}
     count = 0
 
     for row in rows:
@@ -619,10 +675,18 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
         filtered = {k: v for k, v in row.items() if k in col_names and k != "id"}
         if not filtered:
             continue
-        # owner remap (business/owner references)
-        for f in ("business_id", "parent_business_id", "user_id"):
-            if f in filtered and filtered[f] == source_owner_id:
-                filtered[f] = dest_owner_id
+        # Tenant fields come exclusively from the authenticated destination
+        # owner.  Do not preserve a foreign value merely because it differs from
+        # the source export's owner id: that is an import-file privilege leak.
+        if "business_id" in filtered:
+            filtered["business_id"] = dest_owner_id
+        if filtered.get("parent_business_id") is not None:
+            filtered["parent_business_id"] = dest_owner_id
+        if filtered.get("user_id") is not None:
+            # Cross-database staff ids are not portable. Attribution falls back
+            # to the verified destination owner rather than linking to an
+            # arbitrary local user id supplied by the file.
+            filtered["user_id"] = dest_owner_id
         # boolean coercion (SQLite int → Postgres BOOLEAN)
         for bc in bool_cols:
             if bc in filtered and filtered[bc] is not None and not isinstance(filtered[bc], bool):
@@ -630,19 +694,104 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
                 filtered[bc] = (v != 0 if isinstance(v, (int, float))
                                 else str(v).strip().lower() in ("1", "true", "t", "yes", "y"))
         # rewrite foreign keys using maps already built for parent tables
+        invalid_required_fk = False
         for col, ref_table in fk_targets:
             if filtered.get(col) is not None:
                 m = id_maps.get(ref_table)
                 if m and filtered[col] in m:
                     filtered[col] = m[filtered[col]]
-                # else leave as-is; a dangling FK will fail and be skipped (logged)
+                if ref_table not in referenced_table_columns:
+                    try:
+                        referenced_table_columns[ref_table] = {
+                            c["name"] for c in inspect(db.bind).get_columns(ref_table)
+                        }
+                    except Exception:
+                        # The database constraint remains the safe fallback if
+                        # schema inspection is unavailable.
+                        referenced_table_columns[ref_table] = set()
+                if "business_id" in referenced_table_columns[ref_table]:
+                    target = db.execute(
+                        text(
+                            f'SELECT 1 FROM "{ref_table}" '
+                            'WHERE id = :id AND business_id = :business_id LIMIT 1'
+                        ),
+                        {"id": filtered[col], "business_id": dest_owner_id},
+                    ).first()
+                    if not target:
+                        if nullable_cols.get(col, True):
+                            logger.warning(
+                                "migrate/import[remap]: cleared foreign %s.%s=%s outside destination business",
+                                table_name, col, filtered[col],
+                            )
+                            filtered[col] = None
+                        else:
+                            logger.warning(
+                                "migrate/import[remap]: skipped %s row with foreign %s=%s outside destination business",
+                                table_name, col, filtered[col],
+                            )
+                            invalid_required_fk = True
+                            break
+
+        if invalid_required_fk:
+            continue
 
         # Idempotent dedup. (Phase C) Match strictly on the durable `uid`.
         existing_id = _uid_lookup(db, table_name, col_names, dest_owner_id, filtered)
+        uid_collision_rewritten = False
+        if existing_id is None and filtered.get("uid"):
+            # `uid` has a database-wide uniqueness constraint. A same-DB test,
+            # a restored clone, or a malicious payload can therefore collide
+            # with another tenant's existing source row. It is not our row (the
+            # scoped lookup above proved that), so derive a destination UID
+            # rather than skipping the row or attaching it across tenants. The
+            # derivation is deterministic, so re-importing the same backup does
+            # not duplicate child rows that do not have a natural key.
+            try:
+                used_elsewhere = db.execute(
+                    text(f'SELECT id FROM "{table_name}" WHERE uid = :u LIMIT 1'),
+                    {"u": filtered["uid"]},
+                ).first()
+            except Exception:
+                used_elsewhere = None
+            if used_elsewhere:
+                logger.warning(
+                    "migrate/import[remap]: regenerated colliding %s uid for destination business %s",
+                    table_name, dest_owner_id,
+                )
+                filtered["uid"] = str(uuid5(
+                    NAMESPACE_URL,
+                    f"bizassist-import:{dest_owner_id}:{table_name}:{filtered['uid']}",
+                ))
+                uid_collision_rewritten = True
+                existing_id = _uid_lookup(
+                    db, table_name, col_names, dest_owner_id, filtered,
+                )
 
-        # Rows without a durable uid may still be imported successfully.
-        # Fall back to a table-specific natural-key lookup when uid is absent.
-        if existing_id is None and not filtered.get("uid"):
+        # Public invoice links are deliberately global and unguessable. They
+        # are not a cross-database business identity, so an imported invoice
+        # must never reuse another tenant's link token. Keep the original when
+        # free; deterministically replace it only on a collision.
+        if existing_id is None and table_name == "invoices" and filtered.get("uid_token"):
+            try:
+                token_used = db.execute(
+                    text('SELECT id FROM "invoices" WHERE uid_token = :token LIMIT 1'),
+                    {"token": filtered["uid_token"]},
+                ).first()
+            except Exception:
+                token_used = None
+            if token_used:
+                logger.warning(
+                    "migrate/import[remap]: regenerated colliding invoice public token for destination business %s",
+                    dest_owner_id,
+                )
+                filtered["uid_token"] = str(uuid5(
+                    NAMESPACE_URL,
+                    f"bizassist-import:{dest_owner_id}:invoices:uid_token:{filtered['uid_token']}",
+                ))
+
+        # Rows without a durable uid, or whose foreign-tenant uid was safely
+        # regenerated above, may still be matched by a scoped natural key.
+        if existing_id is None and (not filtered.get("uid") or uid_collision_rewritten):
             logger.debug("migrate/import[remap]: attempting natural-key lookup for %s", table_name)
             keys = _NATURAL_KEYS.get(table_name, [])
             for key in keys:
@@ -712,7 +861,7 @@ class ImportBody(BaseModel):
 
 @router.get("/api/data-transfer/export")
 def export_data(
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
     """
@@ -777,9 +926,9 @@ def export_data(
 @router.post("/api/data-transfer/import")
 def import_data(
     body: ImportBody,
-    remap_ids: bool = False,
+    remap_ids: bool = True,
     merge: bool = False,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
     """
@@ -791,17 +940,30 @@ def import_data(
     cloud id=7). The owner is resolved in THIS DB by BizID → username → JWT id,
     and every business_id / parent_business_id is remapped local → cloud.
 
-    Two import modes
-    ----------------
-    • default (`remap_ids=false`): id-PRESERVING upsert — keeps source entity
-      ids and upserts by PK. Best when merging into a FRESH cloud account.
-    • `?remap_ids=true`: entity-id REMAP (R-3) — destination assigns fresh ids,
-      foreign keys are rewritten, and natural-key dedup makes it idempotent.
-      Use this to merge into an account that ALREADY has its own rows, so source
-      ids can't collide with / overwrite existing cloud records.
+    Import safety
+    -------------
+    Entity-id remapping is mandatory. The destination assigns fresh ids, then
+    rewrites and tenant-validates foreign keys. ID-preserving upserts are
+    disabled because source primary-key collisions can overwrite unrelated
+    destination records.
 
     Response: {"imported": {...}, "total": N, "id_remap": {"from":122,"to":7}}
     """
+    # ID-preserving import can overwrite a different tenant when primary keys
+    # collide. It is retired: imports always remap source ids to destination ids.
+    if not remap_ids:
+        raise HTTPException(
+            status_code=422,
+            detail="Unsafe id-preserving import is disabled. Use remap_ids=true.",
+        )
+
+    unknown_tables = sorted(set(body.tables) - _IMPORTABLE_TABLES)
+    if unknown_tables:
+        raise HTTPException(
+            status_code=422,
+            detail="Import contains unsupported tables: " + ", ".join(unknown_tables),
+        )
+
     # Resolve the ACTUAL owner id in THIS (destination) DB (BizID-first)
     dest_owner_id = _resolve_owner_id(current_user, db)
     existing = _existing_tables(db)
@@ -824,10 +986,9 @@ def import_data(
         "remap" if remap_ids else ("merge-lww" if merge else "mirror"),
     )
 
-    # Process in canonical dependency order first, then any extras from payload
-    ordered = [t for t in _EXPORT_ORDER if t in body.tables]
-    extras = [t for t in body.tables if t not in _EXPORT_ORDER]
-    process_order = ordered + extras
+    # Process only the canonical allow-list. The table list is never caller-led.
+    ordered = [t for t in _EXPORT_ORDER if t in _IMPORTABLE_TABLES and t in body.tables]
+    process_order = ordered
 
     # Entity-id remap mode keeps old→new id maps so child FKs can be rewritten.
     id_maps: dict[str, dict] = {}
@@ -902,7 +1063,7 @@ def import_data(
 
 @router.get("/api/data-transfer/count")
 def count_records(
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
     """

@@ -1,4 +1,5 @@
-// Page: Godown.jsx — Stock & Purchases workspace (merged Stock + Purchases).
+// ============================================================================
+// Page: StockPurchases.jsx — Stock & Purchases workspace (merged Stock + Purchases).
 // ----------------------------------------------------------------------------
 // One nav destination for goods: what's on the shelf (Stock) and what came in
 // (Purchase Bills). The two views keep their own JSX files (Stock.jsx /
@@ -9,21 +10,17 @@
 //   /stock/inventory    → Stock view
 //   /stock/purchase     → Purchases view
 // (bare /stock redirects to the last-used tab; legacy ?tab= links still work)
-//
-// Only the ACTIVE view is mounted (each fetches on mount — rendering both
-// would double the API load).
 // ============================================================================
-import { lazy, Suspense, useEffect } from 'react'
+import { useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import PageTabs from '../components/common/PageTabs'
-import PageLoader from '../components/PageLoader'
 import { useAuth } from '../contexts/AuthContext'
 import { InventoryIcon, BillsIcon } from '../components/Icons'
 import { useDocLabels } from '../hooks/useDocLabels'
 
-const Stock     = lazy(() => import('./Stock'))
-const Purchases = lazy(() => import('./Purchases'))
+import Stock from './Stock'
+import Purchases from './Purchases'
 
 const ALL_TABS = [
   { id: 'inventory', label: 'Stock & Items',  icon: <InventoryIcon size={16} /> },
@@ -32,7 +29,7 @@ const ALL_TABS = [
 
 const LAST_TAB_KEY = 'godown_last_tab'
 
-export default function Godown() {
+export default function StockPurchases() {
   const { tab: tabParam } = useParams()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -65,8 +62,6 @@ export default function Godown() {
 
   const handleTabChange = (id) => {
     localStorage.setItem(LAST_TAB_KEY, id)
-    // replace:true keeps tab-switches as a single history slot so minimize
-    // (navigate(-1)) exits the workspace rather than going back to a sibling tab.
     navigate(`/stock/${id}`, { replace: true })
   }
 
@@ -75,11 +70,9 @@ export default function Godown() {
 
   return (
     <AppLayout title="Stock & Purchases">
-      <Suspense fallback={<PageLoader />}>
-        {tab === 'purchase'
-          ? <Purchases embedded headerTabs={headerTabs} />
-          : <Stock     embedded headerTabs={headerTabs} />}
-      </Suspense>
+      {tab === 'purchase'
+        ? <Purchases embedded headerTabs={headerTabs} />
+        : <Stock     embedded headerTabs={headerTabs} />}
     </AppLayout>
   )
 }

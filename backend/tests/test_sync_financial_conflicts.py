@@ -142,7 +142,11 @@ def test_financial_noop_resync_does_not_log():
         db.close()
 
 
-def test_non_financial_local_wins_does_not_log():
+def test_non_financial_local_wins_logs_master_data_conflict():
+    """(R-9) Non-financial LWW overwrites (e.g. customers) are now audited with
+    resolution='local_won'. Previously this was a silent gap — the losing cloud
+    version vanished without trace. The data still lands correctly; we only
+    remove the silence."""
     user = _signup("Cust Shop")
     db = SessionLocal()
     try:
@@ -165,8 +169,12 @@ def test_non_financial_local_wins_does_not_log():
     try:
         n = (db.query(ConflictLog)
              .filter(ConflictLog.business_id == user["bid"],
-                     ConflictLog.entity == "customers").count())
-        assert n == 0   # customers is not a FINANCIAL entity
+                     ConflictLog.entity == "customers",
+                     ConflictLog.resolution == "local_won").count())
+        assert n == 1, (
+            f"Expected 1 master-data ConflictLog(local_won) for customers, got {n}. "
+            "Non-financial LWW overwrites must be audited (R-9)."
+        )
     finally:
         db.close()
 

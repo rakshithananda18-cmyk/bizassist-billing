@@ -4,6 +4,7 @@
 //              stock adjustments, barcode bindings, and stock transfers between godowns — v9.
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
@@ -425,6 +426,7 @@ export default function Stock({ embedded = false, headerTabs = null }) {
 
 
   // ─── View state ─────────────────────────────────────────────────────────────
+  const navigate = useNavigate()
   const [activeView, setActiveView] = useState('intake')  // 'intake' | 'catalogue' | 'godowns'
   const [prefillProduct, setPrefillProduct] = useState(null)  // product to pre-load in intake
   const [ctxMenu, setCtxMenu] = useState(null)  // { x, y, items } for right-click context menu
@@ -504,6 +506,32 @@ export default function Stock({ embedded = false, headerTabs = null }) {
     dirtyMessage: `You have ${intakeRows.length} unsaved intake row${intakeRows.length !== 1 ? 's' : ''}. Leave this page?`,
     onResume:     load,   // silently refresh catalogue when tab regains focus
   })
+
+  const clearIntakeState = useCallback(() => {
+    setIntakeRows([])
+    localStorage.removeItem('bizassist_intake_rows')
+    localStorage.removeItem('bizassist_intake_distributor')
+    localStorage.removeItem('bizassist_intake_adjustments')
+    localStorage.removeItem('bizassist_intake_payment')
+    setPrefillProduct(null)
+  }, [])
+
+  // Close button callback: warns if unsaved intake items exist, clears intake state, and exits to home
+  const handleCloseStockPage = useCallback(() => {
+    if (activeView === 'intake' && intakeRows.length > 0) {
+      const confirmed = window.confirm(
+        `You have ${intakeRows.length} unsaved stock intake item${intakeRows.length !== 1 ? 's' : ''}. Closing will clear unsaved intake data. Are you sure you want to exit?`
+      )
+      if (!confirmed) return
+      clearIntakeState()
+    }
+    navigate('/')
+  }, [activeView, intakeRows.length, clearIntakeState, navigate])
+
+  // Minimize button callback: preserves intake data and simply goes back (-1)
+  const handleMinimizeStockPage = useCallback(() => {
+    navigate(-1)
+  }, [navigate])
 
   // Helper to update fields on the currently editing row in parent state
   const setEditingRowField = (field, value) => {
@@ -700,6 +728,10 @@ export default function Stock({ embedded = false, headerTabs = null }) {
         {/* ── Top bar — shared WorkspaceTopBar (identical to Purchases/Parties/Payments) ── */}
         <WorkspaceTopBar
           settingsTab="inventory"
+          windowControls={true}
+          showMinimize={true}
+          onClose={handleCloseStockPage}
+          onMinimize={handleMinimizeStockPage}
           actions={
             <>
               {/* Alert flash */}
@@ -735,7 +767,6 @@ export default function Stock({ embedded = false, headerTabs = null }) {
               <WsDivider />
               <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
                 onClick={() => setShowLabelModal(true)}>
-                {/* TagIcon replaced with InventoryIcon to keep imports clean */}
                 Labels
               </button>
               <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
@@ -759,17 +790,13 @@ export default function Stock({ embedded = false, headerTabs = null }) {
             </>
           }
         >
-          {/* Workspace tabs (Stock | Purchase Bills) from Godown.jsx, or standalone brand */}
-          {headerTabs || (
-            <button
-              className="ws-tab"
-              style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--text-primary)', marginRight: 4 }}
-              onClick={() => setActiveView('intake')}
-              title="Stock Intake — main screen"
-            >
-              <InventoryIcon size={16} /> Inventory
-            </button>
-          )}
+          {/* Page icon & name on the left (matching POS style) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 4 }}>
+            <InventoryIcon size={18} style={{ color: 'var(--accent)' }} />
+            <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+              Stock & Inventory
+            </span>
+          </div>
           <WsDivider />
           {/* Internal view tabs */}
           {TABS.map(tab => (

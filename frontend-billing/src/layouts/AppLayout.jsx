@@ -201,6 +201,14 @@ export default function AppLayout({ children, title }) {
   })
   const [flushing, setFlushing] = React.useState(false)
 
+  // ── Cloud Pull Countdown (hybrid mode only) ───────────────────────────────
+  const pullIntervalSec = Math.max(
+    parseInt(settings?.general?.cloud_pull_interval ?? 120, 10) || 120,
+    30
+  )
+  const [nextPullIn, setNextPullIn] = React.useState(null)   // seconds until next auto-pull
+  const [pulling, setPulling] = React.useState(false)        // "Pull Now" in-flight
+
   const handleSyncFlush = React.useCallback(async () => {
     if (!token) return
     setFlushing(true)
@@ -234,6 +242,34 @@ export default function AppLayout({ children, title }) {
     }
   }, [token])
 
+  // "Pull from Cloud Now" — triggers the backend flush (which also pulls),
+  // then resets the countdown to full interval.
+  const handlePullNow = React.useCallback(async () => {
+    if (!token || pulling) return
+    setPulling(true)
+    try {
+      await fetch(`${API_BASE}/api/sync/flush`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      // Give the server ~2s to complete the pull cycle, then refresh depth
+      setTimeout(async () => {
+        try {
+          const r = await fetch(`${API_BASE}/api/sync/queue-depth`, {
+            headers: { Authorization: `Bearer ${token}` }
+          })
+          if (r.ok) setQueueDepth(await r.json())
+        } catch (e) {}
+        setPulling(false)
+        setNextPullIn(pullIntervalSec)
+        window.dispatchEvent(new CustomEvent('sync-flushed'))
+      }, 2000)
+    } catch (err) {
+      logger.error('Pull from cloud failed:', err)
+      setPulling(false)
+    }
+  }, [token, pulling, pullIntervalSec])
+
   React.useEffect(() => {
     if (effectiveMode !== 'hybrid' || !token) return
 
@@ -262,6 +298,29 @@ export default function AppLayout({ children, title }) {
       window.removeEventListener('sync-flushed', handleSyncFlushed)
     }
   }, [effectiveMode, token])
+
+  // ── Pull countdown tick ───────────────────────────────────────────────────
+  // Counts down to the next periodic pull cycle based on pullIntervalSec (default 120s).
+  // Resets cleanly when manual pull/flush is triggered.
+  React.useEffect(() => {
+    if (effectiveMode !== 'hybrid') return
+    const tick = () => {
+      if (pulling) {
+        setNextPullIn(0)
+        return
+      }
+      const lastStr = queueDepth.last_sync_time
+      const baseMs = lastStr ? new Date(lastStr).getTime() : Date.now()
+      const elapsed = Math.max(0, Math.floor((Date.now() - baseMs) / 1000))
+      // Cyclic remaining seconds in current interval (e.g. 120s cycle)
+      const cyclePos = elapsed % pullIntervalSec
+      const rem = cyclePos === 0 ? 0 : (pullIntervalSec - cyclePos)
+      setNextPullIn(rem)
+    }
+    tick()
+    const t = setInterval(tick, 1000)
+    return () => clearInterval(t)
+  }, [effectiveMode, queueDepth.last_sync_time, pullIntervalSec, pulling])
 
   const userId = user?.id || 'default'
 
@@ -1346,6 +1405,66 @@ export default function AppLayout({ children, title }) {
                     </div>
                   )}
 
+                  {/* ── Cloud pull row (hybrid only, Pro only) ───────────────── */}
+                  {effectiveMode === 'hybrid' && (() => {
+                    const isPro = subscription?.plan === 'pro'
+                    if (!isPro) return null   // Free: this row is not relevant
+
+                    const hasSyncError = syncHealth.status === 'error' || !!syncHealth.last_error
+                    const instantPullOn = settings?.general?.cloud_push_ping_enabled !== false
+
+                    // Helper: format seconds as "1m 30s" or "45s"
+                    const fmt = sec => {
+                      const m = Math.floor(sec / 60), s = sec % 60
+                      return m > 0 ? `${m}m ${String(s).padStart(2,'0')}s` : `${s}s`
+                    }
+
+                    // Pro + Instant Pull ON + no error → green badge
+                    if (instantPullOn && !hasSyncError) {
+                      return (
+                        <div style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          borderTop: '1px solid var(--border)', paddingTop: '6px'
+                        }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>Cloud pull</span>
+                          <span style={{
+                            fontWeight: '700', fontSize: '0.72rem',
+                            color: 'var(--success, #22c55e)',
+                            display: 'flex', alignItems: 'center', gap: 4
+                          }}>
+                            <span>⚡</span> Instant Pull active
+                          </span>
+                        </div>
+                      )
+                    }
+
+                    // Pro + error OR instant pull disabled → show fallback timer
+                    const timerColor = nextPullIn === 0 ? 'var(--success, #22c55e)'
+                      : nextPullIn !== null && nextPullIn <= 15 ? 'var(--warning, #f59e0b)'
+                      : 'var(--text-muted)'
+                    const timerLabel = nextPullIn === null ? '—'
+                      : nextPullIn === 0 ? 'pulling…'
+                      : fmt(nextPullIn)
+
+                    return (
+                      <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        borderTop: '1px solid var(--border)', paddingTop: '6px'
+                      }}>
+                        <span style={{ color: hasSyncError ? 'var(--warning, #f59e0b)' : 'var(--text-secondary)' }}>
+                          {hasSyncError ? '⚠ Fallback pull' : 'Next cloud pull'}
+                        </span>
+                        <span style={{
+                          fontWeight: '600', fontSize: '0.72rem',
+                          color: timerColor,
+                          fontVariantNumeric: 'tabular-nums', letterSpacing: '0.01em'
+                        }}>
+                          {timerLabel}
+                        </span>
+                      </div>
+                    )
+                  })()}
+
                   {effectiveMode !== 'hybrid' && syncHealth.lastSyncTime && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderTop: '1px solid var(--border)', paddingTop: '6px' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Last Synced At</span>
@@ -1398,45 +1517,88 @@ export default function AppLayout({ children, title }) {
                 )}
 
                 {effectiveMode === 'hybrid' && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (isSyncPaused) {
-                        handleCheckPlan(e)
-                      } else {
-                        handleSyncFlush()
-                      }
-                    }}
-                    disabled={flushing || checkingPlan}
-                    style={{
-                      width: '100%',
-                      padding: '6px 12px',
-                      backgroundColor: (flushing || checkingPlan) ? 'rgba(255,255,255,0.08)' : 'var(--accent, #3b82f6)',
-                      color: (flushing || checkingPlan) ? 'var(--text-muted)' : '#fff',
-                      border: 'none',
-                      borderRadius: 'var(--radius-sm, 4px)',
-                      cursor: (flushing || checkingPlan) ? 'not-allowed' : 'pointer',
-                      fontWeight: '600',
-                      fontSize: '0.75rem',
-                      transition: 'background-color 0.2s',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px'
-                    }}
-                  >
-                    {isSyncPaused ? (
-                      <>
-                        <span className={checkingPlan ? 'sync-spinner-small' : ''} />
-                        {checkingPlan ? 'Checking...' : 'Refresh Plan Status'}
-                      </>
-                    ) : (
-                      <>
-                        <SyncIcon size={12} className={flushing ? 'sync-spinner-small' : ''} />
-                        {flushing ? 'Syncing Now...' : 'Sync Now'}
-                      </>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {/* ── Push outbox now ── */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (isSyncPaused) {
+                          handleCheckPlan(e)
+                        } else {
+                          handleSyncFlush()
+                        }
+                      }}
+                      disabled={flushing || checkingPlan}
+                      style={{
+                        width: '100%',
+                        padding: '6px 12px',
+                        backgroundColor: (flushing || checkingPlan) ? 'rgba(255,255,255,0.08)' : 'var(--accent, #3b82f6)',
+                        color: (flushing || checkingPlan) ? 'var(--text-muted)' : '#fff',
+                        border: 'none',
+                        borderRadius: 'var(--radius-sm, 4px)',
+                        cursor: (flushing || checkingPlan) ? 'not-allowed' : 'pointer',
+                        fontWeight: '600',
+                        fontSize: '0.75rem',
+                        transition: 'background-color 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      {isSyncPaused ? (
+                        <>
+                          <span className={checkingPlan ? 'sync-spinner-small' : ''} />
+                          {checkingPlan ? 'Checking...' : 'Refresh Plan Status'}
+                        </>
+                      ) : (
+                        <>
+                          <SyncIcon size={12} className={flushing ? 'sync-spinner-small' : ''} />
+                          {flushing ? 'Syncing Now...' : '↑ Push to Cloud'}
+                        </>
+                      )}
+                    </button>
+
+                    {/* ── Pull from cloud now ── */}
+                    {!isSyncPaused && (
+                      <button
+                        id="sync-pull-now-btn"
+                        onClick={(e) => { e.stopPropagation(); handlePullNow() }}
+                        disabled={pulling || flushing}
+                        style={{
+                          width: '100%',
+                          padding: '6px 12px',
+                          backgroundColor: 'rgba(99, 179, 237, 0.1)',
+                          color: pulling ? 'var(--text-muted)' : 'var(--info, #63b3ed)',
+                          border: '1px solid rgba(99, 179, 237, 0.3)',
+                          borderRadius: 'var(--radius-sm, 4px)',
+                          cursor: (pulling || flushing) ? 'not-allowed' : 'pointer',
+                          fontWeight: '600',
+                          fontSize: '0.75rem',
+                          transition: 'all 0.2s',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          opacity: (pulling || flushing) ? 0.6 : 1
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!pulling && !flushing) {
+                            e.currentTarget.style.backgroundColor = 'rgba(99,179,237,0.18)'
+                            e.currentTarget.style.borderColor = 'rgba(99,179,237,0.55)'
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'rgba(99,179,237,0.1)'
+                          e.currentTarget.style.borderColor = 'rgba(99,179,237,0.3)'
+                        }}
+                        title={`Auto-pull runs every ${pullIntervalSec}s. Click to pull from cloud immediately.`}
+                      >
+                        <SyncIcon size={12} className={pulling ? 'sync-spinner-small' : ''} />
+                        {pulling ? 'Pulling from Cloud…' : '↓ Pull from Cloud Now'}
+                      </button>
                     )}
-                  </button>
+                  </div>
                 )}
 
                 {effectiveMode !== 'hybrid' && (syncHealth.status === 'error' || syncHealth.status === 'connecting') && (

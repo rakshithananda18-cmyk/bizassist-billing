@@ -9,7 +9,7 @@ import PageShell from '../components/common/PageShell'
 import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
 import { useAuth } from '../contexts/AuthContext'
 import { useConfirm } from '../contexts/ConfirmContext'
-import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, PlusIcon, WarehouseIcon, SearchIcon, ExpandIcon, SummaryIcon, SparkleIcon, InfoIcon, AlertIcon, ChevronDownIcon } from '../components/Icons'
+import { BillsIcon, CashIcon, CheckIcon, CloseIcon, ContactsIcon, PhoneIcon, PlusIcon, WarehouseIcon, SearchIcon, ExpandIcon, SummaryIcon, SparkleIcon, InfoIcon, AlertIcon, ChevronDownIcon } from '../components/Icons'
 
 import { logger } from '../utils/logger'
 import CustomSelect from '../components/common/CustomSelect'
@@ -578,7 +578,37 @@ export default function Payments({ embedded = false, headerTabs = null }) {
   return (
     <PageShell embedded={embedded} title="Payments">
       <>
-      <div className={`slide-up${headerTabs ? ' ws-embed' : ''}`}>
+      <div className={`${headerTabs ? 'fade-in ws-embed' : 'slide-up'}`}>
+        {/* Signature Page Header */}
+        <div className="page-header">
+          <div className="page-header-left">
+            <h1 className="page-title">
+              {headerTabs ? (
+                <><ContactsIcon size={20} style={{ color: 'var(--accent)' }} /> Contacts & Payments</>
+              ) : (
+                <><CashIcon size={20} style={{ color: 'var(--accent)' }} /> {activeTab === 'Expenses' ? 'Expenses Ledger' : 'Payments & Cash Book'}</>
+              )}
+            </h1>
+            <p className="page-subtitle">
+              {headerTabs
+                ? 'Manage customer & vendor accounts, credit limits, outstanding balances, and payment transactions'
+                : 'Track cash/bank inflows and outflows, general expenses, and customer payment receipts'}
+            </p>
+          </div>
+          {headerTabs && (
+            <div className="page-actions">
+              {activeTab === 'Expenses' ? (
+                <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={() => { setExpenseForm(defaultExpenseForm); setShowExpenseModal(true) }}>
+                  <PlusIcon size={13} /> Log Expense
+                </button>
+              ) : (
+                <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={() => { setForm(defaultPaymentForm); setShowPaymentModal(true) }}>
+                  <PlusIcon size={13} /> Record Payment
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
 
         {alert && (
@@ -658,83 +688,6 @@ export default function Payments({ embedded = false, headerTabs = null }) {
               )
             })}
           </WorkspaceTopBar>
-        )}
-
-        {/* Standalone header (legacy /payments route only) */}
-        {!headerTabs && (
-        <div className="page-header">
-          <div className="page-header-left">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <h1 className="page-title">{activeTab === 'Expenses' ? 'Expenses' : 'Payments'}</h1>
-              <button
-                onClick={() => setShowStats(!showStats)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  color: showStats ? 'var(--accent)' : 'var(--text-secondary)',
-                  padding: '4px 10px',
-                  borderRadius: '16px',
-                  background: 'var(--bg-3)',
-                  border: '1px solid var(--border)',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <SummaryIcon size={12} />
-                <span>{showStats ? 'Hide Summary' : 'Show Summary'}</span>
-                <span style={{
-                  display: 'inline-flex',
-                  transition: 'transform 0.18s ease',
-                  transform: showStats ? 'rotate(180deg)' : 'none'
-                }}>
-                  <ChevronDownIcon size={12} />
-                </span>
-              </button>
-            </div>
-            <p className="page-subtitle">
-              {activeTab === 'Expenses'
-                ? 'Track operational, rent, utility, and other business expenses'
-                : 'Track all money received and payments made'}
-            </p>
-          </div>
-          <div className="page-actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            {/* Group switch — lives in the header; sub-filters sit next to search */}
-            <div style={{
-              background: 'var(--bg-3)', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-lg)', padding: 3,
-              display: 'flex', gap: 3, alignItems: 'center',
-            }}>
-              {[
-                { key: 'general', label: 'General Operations', firstTab: 'All' },
-                { key: 'expenses', label: 'Expenses & Purchases', firstTab: 'Made' },
-              ].map(g => {
-                const active = (g.key === 'expenses') === ['Made', 'Expenses'].includes(activeTab)
-                return (
-                  <button
-                    key={g.key}
-                    className={`tab${active ? ' active' : ''}`}
-                    onClick={() => { if (!active) setActiveTab(g.firstTab) }}
-                    style={{ margin: 0, padding: '5px 12px', fontSize: '0.8rem', fontWeight: 600 }}
-                  >
-                    {g.label}
-                  </button>
-                )
-              })}
-            </div>
-            {activeTab === 'Expenses' ? (
-              <button className="btn btn-primary" onClick={() => { setExpenseForm(defaultExpenseForm); setShowExpenseModal(true) }}>
-                <PlusIcon size={14} /> Log Expense
-              </button>
-            ) : (
-              <button className="btn btn-primary" onClick={() => { setForm(defaultForm); setShowModal(true) }}>
-                <PlusIcon size={14} /> Record Payment
-              </button>
-            )}
-          </div>
-        </div>
         )}
 
         {/* Cash Flow Summary Cards */}

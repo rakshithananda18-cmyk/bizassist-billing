@@ -88,7 +88,20 @@ class TAG:
 # Third-party loggers that spam INFO/DEBUG — keep them at WARNING.
 _NOISY_LIBS = (
     "httpx", "httpcore", "urllib3", "chromadb", "sentence_transformers",
-    "apscheduler", "groq", "anthropic", "asyncio", "watchfiles", "uvicorn.access",
+    "groq", "anthropic", "asyncio", "watchfiles", "uvicorn.access",
+    # apscheduler has multiple sub-loggers; the scheduler itself is useful
+    # (emits the "job skipped: max instances" warning we want to see), so
+    # only the internal executors and job-store chatter are suppressed.
+    "apscheduler.executors", "apscheduler.jobstores",
+)
+
+# App loggers that are correct at DEBUG but too chatty at INFO level.
+# Listed separately so they stay greppable in production if LOG_LEVEL=DEBUG.
+_VERBOSE_APP_LOGGERS = (
+    # sync_queue emits one line per DB row during pull-apply (correct behaviour
+    # but 100+ lines per pull cycle). We collapse to a summary in the code;
+    # this is the belt-and-braces so stray DEBUG calls don’t leak at INFO.
+    "bizassist.sync_queue",
 )
 
 # ANSI colours for the level column (only used on a TTY).
@@ -248,6 +261,18 @@ def configure_logging(level: str = None, *, color: bool = None) -> None:
     # Hush the noisy libraries.
     for lib in _NOISY_LIBS:
         logging.getLogger(lib).setLevel(logging.WARNING)
+
+    # Let the apscheduler.scheduler logger emit at WARNING (job-skip alerts are
+    # useful) but suppress its internal executor/job-store noise.
+    logging.getLogger("apscheduler.scheduler").setLevel(logging.WARNING)
+
+    # Verbose app loggers: correct behaviour but too chatty at INFO.
+    # Pin to INFO so their DEBUG calls stay invisible in normal operation
+    # but surface when LOG_LEVEL=DEBUG is set for deep investigation.
+    for lib in _VERBOSE_APP_LOGGERS:
+        logging.getLogger(lib).setLevel(
+            max(level_value, logging.INFO)  # never silence real problems
+        )
 
     logging.getLogger("bizassist.logging").info(
         f"{TAG.ADMIN} Logging configured — level={level_name}, color={'on' if color else 'off'}"

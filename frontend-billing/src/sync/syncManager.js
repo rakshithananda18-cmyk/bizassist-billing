@@ -35,8 +35,16 @@ function defaultTransport() {
 
 const isTransient = (status) => status === 0 || status >= 500
 
-export function createSyncManager({ transport = defaultTransport(), store = createDefaultStore(), isOnline } = {}) {
+export function createSyncManager({ transport = defaultTransport(), store: suppliedStore = null, isOnline } = {}) {
   const online = isOnline || (() => (typeof navigator === 'undefined' ? true : navigator.onLine !== false))
+  let activeScope = null
+  let store = suppliedStore
+
+  const requireStore = () => {
+    if (!store) throw new Error('Offline sync is unavailable until an authenticated business/user scope is set')
+    return store
+  }
+  const scopedMetaKey = () => activeScope ? `${SYNC_CURSOR_KEY}:${activeScope}` : SYNC_CURSOR_KEY
 
   // Replay/send one op with its stable id attached.
   const send = (op) =>
@@ -53,9 +61,10 @@ export function createSyncManager({ transport = defaultTransport(), store = crea
    */
   async function mutate({ method, path, body } = {}) {
     const id = newClientRequestId()
+    const scopedStore = requireStore()
 
     if (!online()) {
-      await enqueue(store, { method, path, body, clientRequestId: id })
+      await enqueue(scopedStore, { method, path, body, clientRequestId: id, scope: activeScope })
       logger.info('[SYNC] queued (offline)', method, path)
       return { queued: true, clientRequestId: id }
     }
@@ -66,7 +75,7 @@ export function createSyncManager({ transport = defaultTransport(), store = crea
     } catch (err) {
       const status = err && typeof err.status === 'number' ? err.status : 0
       if (isTransient(status)) {
-        await enqueue(store, { method, path, body, clientRequestId: id })
+        await enqueue(scopedStore, { method, path, body, clientRequestId: id, scope: activeScope })
         logger.warn('[SYNC] send failed — queued for retry', method, path, status)
         return { queued: true, clientRequestId: id, error: err }
       }
@@ -77,7 +86,7 @@ export function createSyncManager({ transport = defaultTransport(), store = crea
   /** Enqueue a mutation WITHOUT trying to send it now (used by the POS offline
    * save path, which has already decided it's offline). Returns the stored op. */
   async function queue({ method, path, body, clientRequestId } = {}) {
-    const rec = await enqueue(store, { method, path, body, clientRequestId })
+    const rec = await enqueue(requireStore(), { method, path, body, clientRequestId, scope: activeScope })
     logger.info('[SYNC] queued', method, path)
     return rec
   }
@@ -85,23 +94,26 @@ export function createSyncManager({ transport = defaultTransport(), store = crea
   /** The pending (not-yet-synced) ops, FIFO — for a "N unsynced" badge and to
    * feed offline invoice numbers back into the client's number allocation. */
   async function listPending() {
-    return pending(store)
+    return store ? pending(store, { scope: activeScope }) : []
   }
 
   /** Drain the outbox if we're online. No-op when offline. */
   async function flushOutbox(opts) {
-    if (!online()) return { skipped: true, sent: 0, remaining: (await pending(store)).length }
-    const summary = await flush(store, send, opts)
+    if (!store) return { skipped: true, reason: 'no_authenticated_scope', sent: 0, remaining: 0 }
+    if (!online()) return { skipped: true, sent: 0, remaining: (await pending(store, { scope: activeScope })).length }
+    const summary = await flush(store, send, { ...opts, scope: activeScope })
     if (summary.sent || summary.deadLettered) logger.info('[SYNC] flush', summary)
     return summary
   }
 
   /** Pull server-side deltas since our stored cursor, advancing it monotonically. */
   async function pull() {
-    const prev = (await store.getMeta(SYNC_CURSOR_KEY)) || {}
+    const scopedStore = requireStore()
+    const key = scopedMetaKey()
+    const prev = (await scopedStore.getMeta(key)) || {}
     const res = await transport.get('/sync/pull', { since: cursorParam(prev) })
     const next = mergeCursor(prev, res && res.cursor)
-    await store.setMeta(SYNC_CURSOR_KEY, next)
+    await scopedStore.setMeta(key, next)
     return { changes: (res && res.changes) || {}, cursor: next, hasMore: !!(res && res.has_more) }
   }
 
@@ -114,16 +126,36 @@ export function createSyncManager({ transport = defaultTransport(), store = crea
     return () => window.removeEventListener('online', onOnline)
   }
 
+  /** Bind durable sync state to one authenticated business and operator. */
+  function setScope(scope) {
+    if (typeof scope !== 'string' || !scope.trim()) {
+      throw new Error('A non-empty business/user sync scope is required')
+    }
+    if (activeScope === scope && store) return
+    activeScope = scope
+    if (!suppliedStore) store = createDefaultStore(scope)
+  }
+
+  /** Drop the active reference on logout; queued records stay quarantined in
+   * their original scope and can never be flushed by the next login. */
+  function clearScope() {
+    activeScope = null
+    if (!suppliedStore) store = null
+  }
+
   return {
     mutate,
     queue,
     flushOutbox,
     pull,
     start,
-    store,
+    setScope,
+    clearScope,
+    getScope: () => activeScope,
+    get store() { return store },
     pending: listPending,
-    pendingCount: async () => (await pending(store)).length,
-    deadLetters: () => deadLetters(store),
+    pendingCount: async () => (store ? (await pending(store, { scope: activeScope })).length : 0),
+    deadLetters: () => (store ? deadLetters(store, { scope: activeScope }) : Promise.resolve([])),
   }
 }
 

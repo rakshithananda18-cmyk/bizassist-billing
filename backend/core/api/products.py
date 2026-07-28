@@ -94,6 +94,11 @@ class AddBarcodeRequest(BaseModel):
 class StockAdjustmentRequest(BaseModel):
     qty_delta: float          # signed: + adds stock, - removes stock
     note: Optional[str] = None
+    batch_no: Optional[str] = None
+    expiry_date: Optional[str] = None
+    selling_price: Optional[float] = None
+    cost_price: Optional[float] = None
+    mrp: Optional[float] = None
 
 
 class OpeningStockItem(BaseModel):
@@ -474,6 +479,40 @@ def stock_adjustment(
             reference_type="manual",
             note=req.note.strip(),
         )
+
+        # Upsert Inventory batch record if batch_no or price details provided
+        batch_no_clean = (req.batch_no or "").strip()
+        if batch_no_clean or req.selling_price is not None or req.mrp is not None:
+            inv_row = db.query(Inventory).filter(
+                Inventory.business_id == bid,
+                Inventory.product_id == product_id,
+                Inventory.batch_no == (batch_no_clean or None)
+            ).first()
+            if not inv_row:
+                inv_row = Inventory(
+                    business_id=bid,
+                    product_id=product_id,
+                    product_name=p.name,
+                    batch_no=batch_no_clean or None,
+                    unit=p.unit,
+                    stock=int(req.qty_delta),
+                    selling_price=req.selling_price if req.selling_price is not None else p.selling_price,
+                    cost_price=req.cost_price if req.cost_price is not None else p.cost_price,
+                    mrp=req.mrp if req.mrp is not None else p.mrp,
+                    expiry_date=req.expiry_date,
+                )
+                db.add(inv_row)
+            else:
+                inv_row.stock = (inv_row.stock or 0) + int(req.qty_delta)
+                if req.selling_price is not None:
+                    inv_row.selling_price = req.selling_price
+                if req.cost_price is not None:
+                    inv_row.cost_price = req.cost_price
+                if req.mrp is not None:
+                    inv_row.mrp = req.mrp
+                if req.expiry_date:
+                    inv_row.expiry_date = req.expiry_date
+
         db.commit()
         from services.immediate_sync import trigger_data_sync
         trigger_data_sync(bid, db)

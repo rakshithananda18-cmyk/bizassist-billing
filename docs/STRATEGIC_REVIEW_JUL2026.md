@@ -3344,7 +3344,130 @@ A fourth, in the enqueue path rather than mine: `(R-6)`'s corrupt-payload guard
 was written for `json.loads` failing and never fired for a payload that was
 never there. NULL payloads are now dead-lettered the same way.
 
-### 67.6 Status
+### 67.6 M-20a's cause, found — and I was wrong about the shape of it
+
+I said the cause was unknown and that the `sync_disabled_var` theory was
+weakened. Both true. But I had been looking at the wrong thing entirely: I was
+asking *why were three shifts skipped*, and the answer is **nothing was
+shift-specific at all**.
+
+Business 7 wrote **42 syncable rows between 2026-07-12 16:20 and 2026-07-26
+21:59 and queued none of them**:
+
+| entity | rows written | queued |
+|---|---|---|
+| stock_ledger | 21 | 0 |
+| invoice_payments | 11 | 0 |
+| invoices | 6 | 0 |
+| register_shifts | 3 | 0 |
+| customers | 1 | 0 |
+
+The three shifts were not singled out. They were simply the rows whose absence
+happened to be *load-bearing* — every sale rung on them stranded on the cloud
+with "parent register_shifts not in this database yet". M-20 is a symptom of
+this, not a neighbour of it.
+
+**The cause** is the hosting-mode gate in `_queue_change`. It held four bare
+`return`s:
+
+```python
+if not res:                                       return   # no users row
+if not settings_str:                              return   # no settings
+if s[...]["hosting_mode"] != "hybrid":            return   # ← this one
+except Exception:                                 return   # anything at all
+```
+
+Declining is **correct** for a local-only or cloud-only business — that is what
+the setting is for. Declining **silently** is the defect: "this business is
+deliberately not syncing" and "sync is broken" produced byte-identical
+evidence, namely none.
+
+**Proven, not inferred.** Business 8 was switched to `hosting_mode='local'` on
+2026-07-05 22:49. Everything it has written since — 2 invoices, 7 stock_ledger,
+2 invoice_payments, 1 customer — is absent from the outbox and absent from every
+log. The gate, working exactly as designed, in silence.
+
+**What cannot be recovered:** which mode business 7 was in during those two
+weeks. Flipping *away* from hybrid is the one settings write this same gate
+refuses to queue — by the time the listener reads `settings` the new value is
+already there and it declines itself — so the flip leaves no trace in the
+outbox, and there is no `updated_at` history. The log line added today is the
+only trace there will ever be.
+
+All four paths now report. The routine one is throttled to one line per
+(business, table, mode) per process, because a local-only business declines on
+every single write and an unthrottled line would bury the signal it exists to
+give. 17 tests in `tests/test_hosting_mode_gate.py`, against a real database
+with the real listener attached.
+
+### 67.7 M-21 · 🔴 Critical (NEW, LIVE) — line items have never synced. Not once.
+
+Found from a screenshot the same day: invoice `LCL-OW-0030` (₹497, two items)
+reached the cloud and rendered there as **"No items on this invoice"** while the
+local copy showed both.
+
+`_queue_change` declines any row whose business cannot be resolved, and
+`_get_business_id` read exactly one place: `obj.business_id`. **Five tables in
+`_SYNC_TABLES` have no such column**, so the resolver returned `None` and the
+outbox refused every row of all five — while the cloud's apply-side `MODEL_MAP`
+has always been able to receive them.
+
+| table | rows local | ever queued |
+|---|---|---|
+| `invoice_line_items` | 184 | **0, across the entire history of the outbox** |
+| purchase_invoice_line_items | 0 | 0 |
+| purchase_order_line_items | 0 | 0 |
+| stock_transfer_line_items | 0 | 0 |
+| b2b_ledgers | 0 | 0 |
+
+This is M-20's asymmetry — apply-side supported, push-side impossible — with a
+different mechanism. M-20 was a table missing from `_SYNC_TABLES`; this is a
+table listed in it that the resolver could never speak for. **Fixing the first
+did nothing for the second**, which is why the new test asserts the *property*
+(every syncable table can name a business) rather than the five names.
+
+**Why it looked fine.** Subtotal, tax and grand total are columns on `invoices`,
+so the cloud document showed correct money with no goods. Worse for auditing: a
+cloud-side line-item check reads a genuinely empty invoice and cannot distinguish
+it from one that was never itemised. That is very likely part of §65's
+₹20,525 — the 18 invoices with no reconciling prefix and "no known cause" are
+invoices whose line items were written by some path other than sync.
+
+**The fix** resolves the owner through the parent, using the connection the
+listener already holds — necessary because the parent invoice is usually
+INSERTed in the same flush and is invisible to any other session. An orphan
+(parent absent) is still declined: filing it under a guess would push one
+tenant's row into another's account.
+
+`b2b_ledgers` was found by the new regression gate rather than by me. It is
+scoped by *two* owners and cannot have a single `business_id` by construction,
+so it joins its three siblings in `PULL_ONLY_TABLES` — the cloud is the
+authority for a shared two-party ledger, and a last-write-wins push from one
+side would discard the other's. It has no writer anywhere in the codebase (§60),
+so this changes no behaviour today; it makes the refusal explicit and logged
+*before* the first writer is added.
+
+**Mutation results:**
+
+| Mutation | Result |
+|---|---|
+| Resolver reverted to `business_id` only (the defect) | **4 failed** |
+| FK column guessed as `stock_transfer_id` (real name: `transfer_id`) | **1 failed** |
+| Orphan misfiled instead of declined | **survived — equivalent mutant** |
+| restored | 9 passed |
+
+That third row is reported rather than quietly dropped. Removing the
+`row is not None` guard changes nothing observable, because the `TypeError` it
+avoids is caught by the same handler two lines below. It is belt-and-braces, not
+tested behaviour, and claiming otherwise would be exactly the kind of clean
+report over an unseen thing this document exists to catch.
+
+**Not fixed by this:** the 184 line items already written. Going forward they
+queue; the existing ones are still absent from the cloud, and
+`reconcile_local_vs_cloud.py --requeue` filters by `business_id`, which they do
+not have. That is tracked separately.
+
+### 67.8 Status
 
 **Fixed and verified in production:** M-20 (both halves), the §63 migration
 cascade, the money tooling on Postgres, the NULL-payload guard, the enqueue
@@ -3355,8 +3478,12 @@ instrumentation, the pull cascade, the cursor hold.
 
 **Open, and honestly so:**
 
-* **M-20a's cause** — unknown, hypothesis weakened, symptom covered by the
-  safety net but the hole itself is not closed.
+* **M-20a** — CAUSE FOUND (§67.6) and fixed: the hosting-mode gate declined 42
+  rows in silence. The safety net stays, because rows written while non-hybrid
+  still never sync on their own.
+* **M-21 backfill** — the 184 pre-fix `invoice_line_items` are still absent from
+  the cloud (§67.7). New code queues them; old rows need a requeue path that
+  works for tables with no `business_id`.
 * **§65 repairs** — ₹20,525 across 33 documents; 18 of 31 invoices still have no
   reconciling prefix and no known cause.
 * **`skipped` not yet deployed** to the Space; until it is, an LWW skip reads as
@@ -3368,3 +3495,8 @@ instrumentation, the pull cascade, the cursor hold.
 70. **When the cause resists proof, cover the symptom without inventing one.** A syncable row that never reached the outbox is detectable regardless of why, and a self-healing check bounded to rows newer than the oldest outbox entry is safe to run automatically — where the same check unbounded would try to re-push all history and be switched off. (§67.2)
 71. **A rule fixed in one place is not a rule applied.** Rule 58 was written for the migration runner after N4b-PG; the pull path queried 25 tables on one session with no rollback and turned one failure into twenty. After fixing a class of defect, grep for the shape rather than the location. (§67.3)
 72. **A test that greps source text passes on a refactor that breaks the behaviour and fails on a reworded comment.** Both happened here within hours. If a decision is untestable, that is a reason to extract it, not a reason to test its spelling. (§67.4)
+
+73. **A row that cannot name its owner cannot sync, and the resolver that returns None says nothing.** Five tables sat in `_SYNC_TABLES` with no `business_id`; `invoice_line_items` never once reached the outbox in the application's entire history. Assert the PROPERTY — every syncable table can produce a queueable row — because the same class of defect recurred three times under three different mechanisms. (§67.7)
+74. **Ask what ELSE is missing before asking why THIS is missing.** Four hours went into "why were three shifts skipped". The shifts were not skipped: 42 rows across five entities were, and the shifts were merely the ones whose absence stranded children. One query comparing every table against the outbox would have found it immediately. (§67.6)
+75. **Correct money with missing goods reads as correct.** Invoice totals are columns on `invoices`, so a cloud invoice with zero line items renders a plausible document — and an auditor cannot distinguish it from one legitimately never itemised. Reconcile CHILD counts, not just parent totals. (§67.7)
+76. **Report equivalent mutants as equivalent.** One of three mutations survived because its `TypeError` is caught two lines below. Saying "3/3 killed" would have been the exact failure — a clean report over something unseen — that this document exists to catch. (§67.7)

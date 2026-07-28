@@ -17,6 +17,7 @@ Money math lives here and is fully unit-tested. Routes stay thin.
 """
 import json
 import logging
+import math
 import re
 from datetime import datetime
 from services.dates import biz_today_str
@@ -93,15 +94,32 @@ def _compute_line(line: dict, product: Optional[Product], *, intra: bool, tax_in
     """
     qty   = float(line.get("quantity", 1) or 0)
     price = float(line.get("unit_price", 0) or 0)
+    if not math.isfinite(qty) or qty <= 0:
+        raise ValueError("Sale quantity must be a finite value greater than zero")
+    if not math.isfinite(price) or price < 0:
+        raise ValueError("Sale unit price must be a finite non-negative value")
     gross = qty * price
 
     # Line discount: absolute `discount` wins; else percent of gross.
     disc = float(line.get("discount") or 0.0)
-    if not disc and line.get("discount_pct"):
-        disc = gross * float(line["discount_pct"]) / 100.0
-    net = max(gross - disc, 0.0)
+    discount_pct = float(line.get("discount_pct") or 0.0)
+    if not math.isfinite(disc) or disc < 0:
+        raise ValueError("Sale discount must be a finite non-negative value")
+    if not math.isfinite(discount_pct) or not 0 <= discount_pct <= 100:
+        raise ValueError("Sale discount percentage must be between 0 and 100")
+    if not disc and discount_pct:
+        disc = gross * discount_pct / 100.0
+    # Preserve the established POS behaviour: an excessive absolute discount
+    # makes the line free, never negative. The stored discount is capped too,
+    # so tax, stock, invoice totals, and journals all see the same safe value.
+    if disc > gross:
+        disc = gross
+    net = gross - disc
 
     cgst_r, sgst_r, igst_r, cess_r = _line_rates(line, product)
+    for label, rate in (("CGST", cgst_r), ("SGST", sgst_r), ("IGST", igst_r), ("cess", cess_r)):
+        if not math.isfinite(rate) or not 0 <= rate <= 100:
+            raise ValueError(f"{label} rate must be a finite value between 0 and 100")
     # Effective GST rate applied depends on intra/inter.
     gst_r = (cgst_r + sgst_r) if intra else igst_r
     total_r = gst_r + cess_r
@@ -131,7 +149,7 @@ def _compute_line(line: dict, product: Optional[Product], *, intra: bool, tax_in
         "quantity":     qty,
         "unit_price":   _round2(price),
         "discount":     _round2(disc),
-        "discount_pct": float(line.get("discount_pct") or 0.0),
+        "discount_pct": discount_pct,
         "batch_no":     line.get("batch_no"),
         "serial_no":    line.get("serial_no"),
         # Sale-time print snapshots (invoice-template system, Phase 1). Nullable,
@@ -345,6 +363,15 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
     if not lines:
         raise ValueError("create_sale_invoice needs at least one line")
 
+    for name, value in (
+        ("paid amount", paid_amount),
+        ("bill discount", bill_discount),
+        ("cash discount", cash_discount),
+    ):
+        number_value = float(value or 0.0)
+        if not math.isfinite(number_value) or number_value < 0:
+            raise ValueError(f"Sale {name} must be a finite non-negative value")
+
     number = (invoice_no or "").strip() or _next_invoice_number(db, business_id, counter_prefix)
 
     # ── Idempotency vs collision ─────────────────────────────────────────────
@@ -383,6 +410,8 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
         if ln.get("product_id") is not None:
             product = db.query(Product).filter(
                 Product.id == ln["product_id"], Product.business_id == business_id).first()
+            if product is None:
+                raise ValueError("Sale product does not belong to this business")
         elif ln.get("product_name"):
             product = db.query(Product).filter(
                 Product.business_id == business_id, Product.name == ln["product_name"]).first()

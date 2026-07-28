@@ -432,78 +432,51 @@ export default function POSLiveCounter() {
       `}</style>
 
       <div className="pos-shell">
-        {/* ── Top bar ── */}
-        <div className="pos-top-bar">
-          {/* Brand */}
-          <button
-            className="pos-tab"
-            style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--text-primary)', marginRight: 4 }}
-            title="POS Live Counters"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
-            </svg>
-            POS Counters
-          </button>
+        {/* Signature Page Header */}
+        <div className="page-header">
+          <div className="page-header-left">
+            <h1 className="page-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+              POS Live Counter
+            </h1>
+            <p className="page-subtitle">Watch each till in real time — active carts, cashier presence, and LAN/cloud network status</p>
+          </div>
+          <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* Stat chips */}
+            {isOwner && tiles.length > 0 && (
+              <>
+                <span className="pos-stat-chip" style={{
+                  background: 'rgba(34,197,94,0.12)', color: 'var(--success, #22c55e)',
+                  borderColor: 'rgba(34,197,94,0.25)',
+                }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--success, #22c55e)', display: 'inline-block', animation: 'pulse-dot 2s infinite' }} />
+                  {onlineCount} Live
+                </span>
+                <span className="pos-stat-chip" style={{
+                  background: 'var(--bg-3)', color: 'var(--text-muted)',
+                  borderColor: 'var(--border)',
+                }}>
+                  {totalCount} Total
+                </span>
+              </>
+            )}
 
-          <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
+            <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
 
-          {/* Subtitle label */}
-          <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-            Watch each till in real time — click any counter to view its live cart.
-          </span>
-
-          <div style={{ flex: 1 }} />
-
-          {/* Stat chips */}
-          {isOwner && tiles.length > 0 && (
-            <>
-              <span className="pos-stat-chip" style={{
-                background: 'rgba(34,197,94,0.12)', color: 'var(--success, #22c55e)',
-                borderColor: 'rgba(34,197,94,0.25)',
-              }}>
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--success, #22c55e)', display: 'inline-block', animation: 'pulse-dot 2s infinite' }} />
-                {onlineCount} Live
-              </span>
-              <span className="pos-stat-chip" style={{
-                background: 'var(--bg-3)', color: 'var(--text-muted)',
-                borderColor: 'var(--border)',
-              }}>
-                {totalCount} Total
-              </span>
-            </>
-          )}
-
-          <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 4px' }} />
-
-          {/* Settings shortcut */}
-          <button
-            className="btn btn-secondary btn-sm"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-            onClick={() => navigate('/settings?tab=hosting')}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-            Configure
-          </button>
-
-          {/* Window controls */}
-          <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 4px' }} />
-          <button
-            title="Close — go to dashboard"
-            onClick={() => navigate('/')}
-            style={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)',
-              background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)',
-              transition: 'background .12s, color .12s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,.12)'; e.currentTarget.style.color = '#ef4444' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
+            {/* Settings shortcut */}
+            <button
+              className="btn btn-secondary btn-sm"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+              onClick={() => navigate('/settings?tab=hosting')}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+              Configure
+            </button>
+          </div>
         </div>
 
         {/* ── Body ── */}

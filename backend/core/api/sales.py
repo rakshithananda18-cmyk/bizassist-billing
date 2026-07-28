@@ -18,12 +18,13 @@ import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from database.db import get_db
 from database.models import Product, Invoice, InvoiceLineItem, User, Customer
+from core.models import StockLedger
 from services.auth import get_active_user
 from services.realtime import realtime_manager
 from core.billing import commands as billing
@@ -43,23 +44,23 @@ logger = logging.getLogger("bizassist.core.api.sales")
 class SaleLine(BaseModel):
     product_id:   Optional[int] = None
     product_name: Optional[str] = None
-    quantity:     float = 1.0
-    unit_price:   float = 0.0
-    discount:     Optional[float] = None
-    discount_pct: Optional[float] = None
+    quantity:     float = Field(default=1.0, gt=0, allow_inf_nan=False)
+    unit_price:   float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    discount:     Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)
+    discount_pct: Optional[float] = Field(default=None, ge=0, le=100, allow_inf_nan=False)
     hsn_sac:      Optional[str] = None
     unit:         Optional[str] = None
     batch_no:     Optional[str] = None
     expiry_date:  Optional[str] = None
     serial_no:    Optional[str] = None
-    cgst_rate:    Optional[float] = None
-    sgst_rate:    Optional[float] = None
-    igst_rate:    Optional[float] = None
-    cess_rate:    Optional[float] = None
+    cgst_rate:    Optional[float] = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    sgst_rate:    Optional[float] = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    igst_rate:    Optional[float] = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    cess_rate:    Optional[float] = Field(default=None, ge=0, le=100, allow_inf_nan=False)
 
 
 class SaleRequest(BaseModel):
-    lines:           List[SaleLine]
+    lines:           List[SaleLine] = Field(min_length=1)
     customer:        Optional[str] = None
     customer_id:     Optional[int] = None
     invoice_no:      Optional[str] = None
@@ -68,13 +69,13 @@ class SaleRequest(BaseModel):
     place_of_supply: Optional[str] = None
     invoice_type:    Optional[str] = None
     payment_mode:    Optional[str] = None
-    paid_amount:     float = 0.0
+    paid_amount:     float = Field(default=0.0, ge=0, allow_inf_nan=False)
     reverse_charge:  bool = False
     tax_inclusive:   Optional[bool] = None   # None → take the business config default
     device_id:       Optional[str] = None
     counter_prefix:  Optional[str] = None   # per-terminal invoice-number series (multi-counter POS §9.3)
     godown_id:       Optional[int] = None
-    cash_discount:   float = 0.0   # POST-tax cash discount / round-off (₹) — reduces payable, not GST (R4)
+    cash_discount:   float = Field(default=0.0, ge=0, allow_inf_nan=False)   # POST-tax cash discount / round-off (₹) — reduces payable, not GST (R4)
     mark_paid:       bool = False   # "Paid & Print": settle the full payable exactly (status Paid)
 
 
@@ -352,12 +353,12 @@ def get_invoice_pdf(
 
 class FrontendInvoiceItem(BaseModel):
     product: str
-    qty: float
-    price: float
+    qty: float = Field(gt=0, allow_inf_nan=False)
+    price: float = Field(ge=0, allow_inf_nan=False)
     product_id: Optional[int] = None
-    cgst_rate: Optional[float] = None
-    sgst_rate: Optional[float] = None
-    igst_rate: Optional[float] = None
+    cgst_rate: Optional[float] = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    sgst_rate: Optional[float] = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    igst_rate: Optional[float] = Field(default=None, ge=0, le=100, allow_inf_nan=False)
     batch_no: Optional[str] = None
     expiry_date: Optional[str] = None
     serial_no: Optional[str] = None   # electronics/mobile/repair verticals (Phase 2 line fields)
@@ -366,14 +367,14 @@ class FrontendInvoiceItem(BaseModel):
 class FrontendInvoiceRequest(BaseModel):
     customer_id: Optional[int] = None
     due_date: Optional[str] = None
-    items: List[FrontendInvoiceItem]
+    items: List[FrontendInvoiceItem] = Field(min_length=1)
     gst_enabled: bool = False
     notes: Optional[str] = None
     invoice_no: Optional[str] = None
     counter_prefix: Optional[str] = None   # per-terminal invoice-number series (multi-counter POS §9.3)
-    bill_discount: float = 0.0   # whole-invoice PRE-tax discount (absolute ₹), resolved on the client
-    cash_discount: float = 0.0   # POST-tax cash discount / round-off (₹) — reduces payable, not GST (R4)
-    paid_amount: float = 0.0     # amount received now → Paid/Partial/Unpaid status (default 0 = unpaid)
+    bill_discount: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    cash_discount: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    paid_amount: float = Field(default=0.0, ge=0, allow_inf_nan=False)
     mark_paid: bool = False      # "Paid & Print": settle the full payable exactly (status Paid)
     payment_mode: Optional[str] = None  # cash|upi|card|credit — drives shift drawer tallies (Phase 3)
 
@@ -420,27 +421,33 @@ def products_meta(
 ):
     """Lightweight cache-validity check for the client product list.
 
-    Returns count and max_id so the frontend can decide in one tiny request
-    whether a full /products?per_page=1000 fetch is needed. The client caches
-    {count, max_id} alongside the product list; if both match on the next open
-    the heavy fetch is skipped entirely.
-
-    Using max(id) as a change sentinel because the Product model has no
-    updated_at column — any INSERT/soft-delete changes max(id) or count.
+    Returns count, max_id, sum_price, and sum_qty so the frontend can detect
+    price and stock updates instantly and refresh the POS product catalog cache.
+    sum_qty is the sum of all StockLedger qty_delta entries (true ledger stock total),
+    which changes whenever a stock adjustment or sale is recorded.
     """
     from sqlalchemy import func as sqlfunc
     bid = current_user["id"]
-    row = (
+    prod_row = (
         db.query(
             sqlfunc.count(Product.id).label("count"),
             sqlfunc.max(Product.id).label("max_id"),
+            sqlfunc.coalesce(sqlfunc.sum(Product.selling_price), 0).label("sum_price"),
         )
         .filter(Product.business_id == bid, Product.is_active == True)
         .first()
     )
+    # Sum all stock ledger movements to detect any stock change
+    ledger_row = (
+        db.query(sqlfunc.coalesce(sqlfunc.sum(StockLedger.qty_delta), 0).label("sum_qty"))
+        .filter(StockLedger.business_id == bid)
+        .first()
+    )
     return {
-        "count":  row.count  if row else 0,
-        "max_id": row.max_id if row else 0,
+        "count":     prod_row.count if prod_row else 0,
+        "max_id":    prod_row.max_id if prod_row else 0,
+        "sum_price": float(prod_row.sum_price) if prod_row else 0.0,
+        "sum_qty":   float(ledger_row.sum_qty) if ledger_row else 0.0,
     }
 
 

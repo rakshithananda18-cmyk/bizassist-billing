@@ -292,22 +292,23 @@ export default function B2B() {
           </div>
         )}
 
-        {/* One 48px workspace bar carries the heading AND the tabs — the exact
-            structure Stock uses: bold workspace name · divider · view tabs ·
-            actions. The old page-header + separate tab strip burned ~140px
-            above the fold and left this page misaligned with every other one. */}
-        {/* windowControls={false}: minimize/close belong to workspaces you DRILL
-            INTO (Stock, Contacts & Payments), where "go back" and "go to
-            dashboard" mean something. B2B is a top-level nav destination — the
-            sidebar already is the way out, so those two buttons would just be
-            decoration that misleads. */}
+        {/* Signature Page Header */}
+        <div className="page-header">
+          <div className="page-header-left">
+            <h1 className="page-title">
+              <ConnectionIcon size={20} style={{ color: 'var(--accent)' }} /> B2B Network & Orders
+            </h1>
+            <p className="page-subtitle">Connect with suppliers & customers, manage purchase orders, and track live order status</p>
+          </div>
+          <div className="page-actions">
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+              {myBizId ? <>BizID <span className="td-mono" style={{ color: 'var(--accent)', fontWeight: 700 }}>{myBizId}</span></> : null}
+            </span>
+          </div>
+        </div>
+
         <WorkspaceTopBar
           windowControls={false}
-          actions={
-            <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-              {myBizId ? <>BizID <span className="td-mono" style={{ color: 'var(--accent)' }}>{myBizId}</span></> : null}
-            </span>
-          }
         >
           <span className="ws-workspace-title">
             <ConnectionIcon size={16} /> B2B
@@ -335,6 +336,7 @@ export default function B2B() {
             onSelectSupplier={setSelectedSupplier}
             catalog={catalog}
             catalogLoading={catalogLoading}
+            connectionsLoading={connections.loading}
             onPlaceOrder={handlePlaceOrder}
             placing={placing}
             onGoToConnections={() => goTab('connections')}

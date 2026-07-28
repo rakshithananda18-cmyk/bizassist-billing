@@ -14,7 +14,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import WorkspaceTopBar from '../components/common/WorkspaceTopBar'
 import { useAuth } from '../contexts/AuthContext'
-import { PlusIcon } from '../components/Icons'
+import { PlusIcon, BillsIcon, ContactsIcon } from '../components/Icons'
 import InvoicesListView from '../components/payments/InvoicesListView'
 import useInvoiceActions from '../hooks/useInvoiceActions'
 import { useDocLabels } from '../hooks/useDocLabels'
@@ -39,35 +39,42 @@ export default function InvoicesPage({ embedded = false, headerTabs = null }) {
 
   return (
     <PageShell embedded={embedded} title="Invoices">
-      <div className={`slide-up${headerTabs ? ' ws-embed' : ''}`}>
+      <div className={`${headerTabs ? 'fade-in ws-embed' : 'slide-up'}`}>
+        {/* Signature Page Header */}
+        <div className="page-header">
+          <div className="page-header-left">
+            <h1 className="page-title">
+              {headerTabs ? (
+                <><ContactsIcon size={20} style={{ color: 'var(--accent)' }} /> Contacts & Payments</>
+              ) : (
+                <><BillsIcon size={20} style={{ color: 'var(--accent)' }} /> Invoices & Sales Ledger</>
+              )}
+            </h1>
+            <p className="page-subtitle">
+              {headerTabs
+                ? 'Manage customer & vendor accounts, credit limits, outstanding balances, and payment transactions'
+                : 'All sales invoices, returns, and payment statuses'}
+            </p>
+          </div>
+          <div className="page-actions">
+            <button
+              className="btn btn-primary"
+              onClick={() => navigate('/sales')}
+            >
+              <PlusIcon size={14} /> New Invoice
+            </button>
+          </div>
+        </div>
 
         {/* Workspace top bar (when embedded in Khata) */}
         {headerTabs && (
           <WorkspaceTopBar
             settingsTab="transactions"
             windowControls={false}
-            actions={
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => navigate('/sales')}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-              >
-                <PlusIcon size={13} /> New Invoice
-              </button>
-            }
+            actions={null}
           >
             {headerTabs}
           </WorkspaceTopBar>
-        )}
-
-        {/* Standalone header (when not embedded) */}
-        {!headerTabs && (
-          <div className="page-header">
-            <div className="page-header-left">
-              <h1 className="page-title">Invoices</h1>
-              <p className="page-subtitle">{`All ${label('sale').toLowerCase()}s and ${label('sale_return').toLowerCase()}s`}</p>
-            </div>
-          </div>
         )}
 
         <InvoicesListView
