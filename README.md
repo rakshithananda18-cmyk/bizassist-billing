@@ -66,18 +66,18 @@ DATABASE_URL=sqlite:///./bizassist.db
 
 ---
 
-## âœ¨ Core Features
+## ✨ Core Features
 
 | Feature Module | Description & Capabilities |
 | :--- | :--- |
-| ðŸ›’ **POS Billing Counter** | Barcode-first scanning, multi-tab carts, keyboard shortcuts, split payments (Cash, UPI QR, Card, Credit). |
-| ðŸ·ï¸ **Dynamic Labels (`useDocLabels`)** | Customize document names (*Sales Invoice*, *Credit Note*, *Debit Note*, *Voucher*). All UI & PDF headers update instantly. |
-| ðŸ”’ **Privacy & Security** | 1-click KPI blur mode for public counters, passcode lock with auto-lock inactivity timers. |
-| ðŸ“œ **Audit Hash Chains** | Append-only double-entry ledger (`JournalEntry`) linked by SHA-256 cryptographic hash chains to detect database tampering. |
-| ðŸ“¦ **Stock Intake & Godowns** | Multi-item purchase intake grid with landed cost, batch expiry tracking, and multi-location warehouse transfers. |
-| ðŸ¤ **B2B Network & Price Tiers** | Connect buyers & suppliers via BizID codes; auto-apply *Wholesale*, *Distributor*, or *Standard* customer pricing tiers. |
-| ðŸ›¡ï¸ **Custom Confirm (`useConfirm`)** | Styled confirmation dialogs with field-level "Before vs. After" visual diffing when editing records. |
-| ðŸ”„ **Dual Hosting & Sync** | Seamless switching between offline local SQLite and cloud PostgreSQL with background delta sync queues. |
+| 🛒 **POS Billing Counter** | Barcode-first scanning, multi-tab carts, keyboard shortcuts, split payments (Cash, UPI QR, Card, Credit). |
+| 🛠️ **Master Self-Healing Engine** | 1-click **Auto-Repair Console** (`backend/services/self_healing.py`) for automated hash chain re-sealing, stock ledger alignment, sync outbox recovery, and staff session invalidation. |
+| 🏷️ **Dynamic Labels (`useDocLabels`)** | Customize document names (*Sales Invoice*, *Credit Note*, *Debit Note*, *Voucher*). All UI & PDF headers update instantly. |
+| 🔒 **Privacy & Security** | 1-click KPI blur mode for public counters, passcode lock, and immediate JWT session invalidation on staff role/password update (`token_version`). |
+| 📜 **Audit Hash Chains** | Append-only double-entry ledger (`JournalEntry`) linked by SHA-256 cryptographic hash chains to detect database tampering. |
+| 📦 **Stock Intake & Godowns** | Multi-item purchase intake grid with landed cost, batch expiry tracking, and multi-location warehouse transfers. |
+| 🤝 **B2B Network & Price Tiers** | Connect buyers & suppliers via BizID codes; auto-apply *Wholesale*, *Distributor*, or *Standard* customer pricing tiers. |
+| 🔄 **Dual Hosting & Solid Sync** | Seamless switching between offline local SQLite and cloud PostgreSQL with aggregate document sync, parent UID re-linking, and paginated outbox queues. |
 
 ---
 
@@ -97,25 +97,33 @@ flowchart TD
 
 ---
 
-## ðŸ§ª Seeding & Benchmarks
+## 🧪 Seeding & Benchmarks
 
-Generate load testing datasets and run query performance checks:
+Generate load testing datasets and run dual-mode latency benchmarks:
 
 ```bash
-# Seed 10,000 invoices with full stock & journal ledgers
+# Run enhanced dual-mode benchmarks (Local SQLite + Hybrid Sync)
 cd backend
-..\venv\Scripts\python seed_load_test.py --count 10000
-
-# Run latency benchmarks
-..\venv\Scripts\python benchmark_reports.py
+..\venv\Scripts\python benchmark_reports_enhanced.py
 ```
 
-#### âš¡ Performance Summary (10,000 Invoices Load Test)
-* ðŸ“Š **Day Book (Today / 1 Year)**: `3.89 ms` (Today) / `136.12 ms` (1-Year window, limit 200)
-* ðŸ§¾ **Audit Journal (1 Year)**: `240.94 ms` *(2,000 entries pre-fetched)*
-* ðŸ“ˆ **Profit & Loss (1 Year)**: `150.73 ms`
-* ðŸ“¦ **Stock Movement (1 Year)**: `91.14 ms` *(2,000 movements)*
-* âš–ï¸ **Trial Balance & Balance Sheet**: `15.37 ms` (Balance Sheet) / `20.18 ms` (Trial Balance)
+#### ⚡ Dual-Mode Latency & Throughput Benchmark Summary
+
+| Hosting Mode | Benchmark Operation | Avg Latency | Min Latency |
+| :--- | :--- | :--- | :--- |
+| **Local (SQLite)** | SHA-256 Hash Chain Verification | `0.91 ms` | `0.52 ms` |
+| **Local (SQLite)** | Stock Movement (1 Year, limit 2000) | `2.29 ms` | `1.99 ms` |
+| **Local (SQLite)** | Day Book (Today, limit 200) | `3.03 ms` | `2.64 ms` |
+| **Local (SQLite)** | Audit Journal (1 Year, limit 2000) | `3.69 ms` | `2.45 ms` |
+| **Local (SQLite)** | Balance Sheet (Instant) | `9.92 ms` | `6.64 ms` |
+| **Local (SQLite)** | P&L Report (1 Year Window) | `9.93 ms` | `8.38 ms` |
+| **Local (SQLite)** | Trial Balance (Instant) | `12.21 ms` | `9.90 ms` |
+| **Local (SQLite)** | Master Self-Healing Diagnostic Run | `15.41 ms` | `10.19 ms` |
+| **Hybrid (Local+Cloud)** | Outbox Payload Serialization (Invoice) | `< 0.05 ms` | `< 0.05 ms` |
+| **Hybrid (Local+Cloud)** | Parent UID FK Resolution Lookup | `< 0.05 ms` | `< 0.05 ms` |
+| **Hybrid (Local+Cloud)** | Sync Outbox Queue Drain Batch (20 Items) | `0.45 ms` | `0.40 ms` |
+| **Hybrid (Local+Cloud)** | Single-Pass O(N) Hash Re-Sealing | `2.01 ms` | `0.96 ms` |
+| **Hybrid (Local+Cloud)** | Redundant Child Line-Item Heal Clearance | `5.54 ms` | `3.96 ms` |
 
 ---
 
