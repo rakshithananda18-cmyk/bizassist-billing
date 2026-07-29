@@ -51,6 +51,7 @@ const TABS = [
   { id: 'staff',        label: 'Staff Management',      icon: <ShieldIcon size={16} /> },
   { id: 'network',      label: 'Network & Discovery',   icon: <ZapIcon size={16} /> },
   { id: 'advanced',     label: 'Advanced',              icon: <ZapIcon size={16} /> },
+  { id: 'ops_health',   label: 'Ops & Health',          icon: <CheckIcon size={16} /> },
 ]
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -2062,9 +2063,6 @@ export default function Settings() {
           {/* ═══════════════════════════ ADVANCED ═════════════════════════════ */}
           {activeTab === 'advanced' && !isCashier && (
             <>
-              <SectionHeader title="Data Health" />
-              <OpsHealthPanel authFetch={authFetch} />
-
               <SectionHeader title="Hosting & Sync Mode" />
               <HostingModeSection
                 // Effective mode is platform-aware: the web/browser is ALWAYS
@@ -2238,6 +2236,44 @@ export default function Settings() {
                   </CustomSelect>
                 </SettingRow>
               )}
+            </>
+          )}
+
+          {/* ═══════════════════════════ OPS & HEALTH ═════════════════════════ */}
+          {activeTab === 'ops_health' && !isCashier && (
+            <>
+              <SectionHeader title="System Operations & Data Health" description="Monitor real-time data integrity, resolve sync conflicts, and run one-click self-healing auto-repairs." />
+              <OpsHealthPanel authFetch={authFetch} />
+
+              <div style={{ marginTop: 28 }}>
+                <SectionHeader title="Help Documentation & Diagnostics Guides" description="Reference guides for system self-healing, tamper-evident hash chains, stock ledger alignment, and outbox recovery." />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginTop: 12 }}>
+                  <div style={{ padding: 16, background: 'var(--bg-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>🔒 SHA-256 Tamper Evidence</div>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45, margin: 0 }}>
+                      Every posted invoice and payment is linked sequentially via SHA-256 cryptographic hashes. If an entry is modified out-of-band, the chain flags "Broken". Running Auto-Repair re-links and re-seals the audit trail cleanly.
+                    </p>
+                  </div>
+                  <div style={{ padding: 16, background: 'var(--bg-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>📦 Stock Ledger Alignment</div>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45, margin: 0 }}>
+                      Catalog stock is backed by immutable <code>StockLedger</code> audit rows. Bulk CSV imports or offline edits can cause cache drift. Auto-Repair audits ledger movements and provisions missing opening balance records.
+                    </p>
+                  </div>
+                  <div style={{ padding: 16, background: 'var(--bg-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>🔄 Sync Outbox &amp; Queue Draining</div>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45, margin: 0 }}>
+                      Local mutations buffer in <code>SyncQueue</code> during offline billing. If a parent record is missing on the cloud, Auto-Repair enriches parent UIDs and clears transient network errors to unblock the queue.
+                    </p>
+                  </div>
+                  <div style={{ padding: 16, background: 'var(--bg-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>👥 Staff &amp; Session Security</div>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45, margin: 0 }}>
+                      Staff sub-accounts are strictly scoped under the owner's Business ID. Updating a staff password or role immediately bumps their <code>token_version</code>, revoking active JWT sessions across terminals.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </>
           )}
           </div>

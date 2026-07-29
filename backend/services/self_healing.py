@@ -223,12 +223,13 @@ def heal_sync_outbox_stalls(db: Session, business_id: int) -> Dict[str, Any]:
         "parents_queued": 0,
         "corrupt_repaired": 0,
         "errors_reset": 0,
+        "redundant_children_cleared": 0,
     }
 
     try:
         with db.begin_nested():
             # 1. Re-enrich child payloads missing parent UIDs
-            child_entities = list(_CHILD_TABLE_PARENT_MAP.keys())
+            child_entities = list(_BUSINESS_ID_VIA_PARENT.keys())
             if child_entities:
                 stuck = db.query(SyncQueue).filter(
                     SyncQueue.business_id == business_id,
@@ -251,24 +252,40 @@ def heal_sync_outbox_stalls(db: Session, business_id: int) -> Dict[str, Any]:
                         continue
                     parent_tbl, fk_col, uid_key = spec
                     pay = json.loads(item.payload) if item.payload else {}
-                    if pay.get(uid_key):
+                    fk_raw = pay.get(fk_col)
+                    if not fk_raw:
                         continue
 
-                    fk_val = pay.get(fk_col)
-                    if not fk_val:
+                    try:
+                        fk_val = int(fk_raw)
+                    except (ValueError, TypeError):
                         continue
 
-                    row = db.execute(
-                        text(f'SELECT uid FROM "{parent_tbl}" WHERE id = :id'),
-                        {"id": fk_val}
+                    # Check if parent document record has already been synced to cloud in sync_queue
+                    parent_sq = db.execute(
+                        text("SELECT id FROM sync_queue WHERE business_id = :bid AND entity = :ent AND entity_id = :eid AND synced_at IS NOT NULL"),
+                        {"bid": int(business_id), "ent": parent_tbl, "eid": int(fk_val)}
                     ).fetchone()
 
-                    if row and row[0]:
-                        uid_str = str(row[0])
-                        pay[uid_key] = uid_str
-                        item.payload = json.dumps(pay)
-                        item.error = None
-                        report["payloads_patched"] += 1
+                    if parent_sq:
+                        # Parent invoice synced aggregate payload — mark child row synced
+                        item.synced_at = utc_now()
+                        item.error = "Already synced via parent aggregate document payload"
+                        report["redundant_children_cleared"] = report.get("redundant_children_cleared", 0) + 1
+                        continue
+
+                    if not pay.get(uid_key):
+                        row = db.execute(
+                            text(f'SELECT uid FROM "{parent_tbl}" WHERE id = :id'),
+                            {"id": fk_val}
+                        ).fetchone()
+
+                        if row and row[0]:
+                            uid_str = str(row[0])
+                            pay[uid_key] = uid_str
+                            item.payload = json.dumps(pay)
+                            item.error = None
+                            report["payloads_patched"] += 1
 
             # 2. Repair corrupt / NULL payloads from live ORM
             corrupt_items = db.query(SyncQueue).filter(
@@ -387,6 +404,8 @@ def diagnose_and_heal_tenant(db: Session, business_id: int) -> Dict[str, Any]:
     # 6. Evaluate final books integrity after repair
     from core.accounting.integrity import run_integrity_check
     final_integrity = run_integrity_check(db, business_id)
+
+    db.commit()
 
     result = {
         "ok": final_integrity.get("ok", False),

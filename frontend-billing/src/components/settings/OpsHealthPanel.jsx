@@ -27,9 +27,12 @@ export default function OpsHealthPanel({ authFetch }) {
   const [health, setHealth] = useState(null)
   const [conflicts, setConflicts] = useState([])
   const [outboxItems, setOutboxItems] = useState([])
+  const [outboxPage, setOutboxPage] = useState(1)
+  const [conflictsPage, setConflictsPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [actionMsg, setActionMsg] = useState(null)
+  const PAGE_SIZE = 10
 
   const load = useCallback(async () => {
     setLoading(true); setError(false)
@@ -160,13 +163,16 @@ export default function OpsHealthPanel({ authFetch }) {
               tone={conflicts.length > 0 ? 'warn' : 'ok'} />
       </div>
 
-      {/* Outbox Details Queue */}
+      {/* Outbox Details Queue (Paginated at 10 items) */}
       {outboxItems.length > 0 && (
         <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-          <div style={{ padding: '8px 12px', background: 'var(--bg-3)', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Sync Outbox Queue &amp; Quarantined Items ({outboxItems.length})
+          <div style={{ padding: '8px 12px', background: 'var(--bg-3)', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Sync Outbox Queue &amp; Quarantined Items ({outboxItems.length})</span>
+            <span style={{ fontSize: '0.72rem', fontWeight: 500, color: 'var(--text-muted)' }}>
+              Page {outboxPage} of {Math.ceil(outboxItems.length / PAGE_SIZE)}
+            </span>
           </div>
-          {outboxItems.map(item => (
+          {outboxItems.slice((outboxPage - 1) * PAGE_SIZE, outboxPage * PAGE_SIZE).map(item => (
             <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', borderTop: '1px solid var(--border)' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -186,16 +192,30 @@ export default function OpsHealthPanel({ authFetch }) {
               </button>
             </div>
           ))}
+          {outboxItems.length > PAGE_SIZE && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 12px', background: 'var(--bg-2)', borderTop: '1px solid var(--border)' }}>
+              <button className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '2px 8px' }} disabled={outboxPage <= 1} onClick={() => setOutboxPage(p => Math.max(1, p - 1))}>
+                ← Previous 10
+              </button>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Showing {(outboxPage - 1) * PAGE_SIZE + 1}–{Math.min(outboxPage * PAGE_SIZE, outboxItems.length)} of {outboxItems.length}</span>
+              <button className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '2px 8px' }} disabled={outboxPage >= Math.ceil(outboxItems.length / PAGE_SIZE)} onClick={() => setOutboxPage(p => p + 1)}>
+                Next 10 →
+              </button>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Conflict review list */}
+      {/* Conflict review list (Paginated at 10 items) */}
       {conflicts.length > 0 && (
         <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-          <div style={{ padding: '8px 12px', background: 'var(--bg-3)', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Financial edits synced from another device — review &amp; clear
+          <div style={{ padding: '8px 12px', background: 'var(--bg-3)', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Financial edits synced from another device — review &amp; clear ({conflicts.length})</span>
+            <span style={{ fontSize: '0.72rem', fontWeight: 500, color: 'var(--text-muted)' }}>
+              Page {conflictsPage} of {Math.ceil(conflicts.length / PAGE_SIZE)}
+            </span>
           </div>
-          {conflicts.map(c => (
+          {conflicts.slice((conflictsPage - 1) * PAGE_SIZE, conflictsPage * PAGE_SIZE).map(c => (
             <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderTop: '1px solid var(--border)' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -210,6 +230,17 @@ export default function OpsHealthPanel({ authFetch }) {
               </button>
             </div>
           ))}
+          {conflicts.length > PAGE_SIZE && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 12px', background: 'var(--bg-2)', borderTop: '1px solid var(--border)' }}>
+              <button className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '2px 8px' }} disabled={conflictsPage <= 1} onClick={() => setConflictsPage(p => Math.max(1, p - 1))}>
+                ← Previous 10
+              </button>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Showing {(conflictsPage - 1) * PAGE_SIZE + 1}–{Math.min(conflictsPage * PAGE_SIZE, conflicts.length)} of {conflicts.length}</span>
+              <button className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '2px 8px' }} disabled={conflictsPage >= Math.ceil(conflicts.length / PAGE_SIZE)} onClick={() => setConflictsPage(p => p + 1)}>
+                Next 10 →
+              </button>
+            </div>
+          )}
           <div style={{ padding: '8px 12px', fontSize: '0.72rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border)' }}>
             The most recent edit is what’s stored. Marking reviewed only clears it from this list — it doesn’t change your data.
           </div>
