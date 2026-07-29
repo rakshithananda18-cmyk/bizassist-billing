@@ -220,6 +220,8 @@ def resolve_business_id_in_db(current_user: dict, db, require_public_id: bool = 
     if is_cloud:
         require_public_id = True
 
+    from database.models import User
+
     public_id = str(current_user.get("public_id") or "").strip()
     username = str(current_user.get("username") or current_user.get("sub") or "").strip()
 
