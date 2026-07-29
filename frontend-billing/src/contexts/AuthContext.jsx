@@ -5,6 +5,7 @@ import { reconcileBizIdOnLogin } from '../utils/loginSync'
 import { discoverLocalBackend, getNetworkMode, clearDiscoveryCache } from '../utils/networkDiscovery'
 import { reconcileDeviceModeOnLogin } from '../utils/deviceMode'
 import { syncManager } from '../sync/syncManager'
+import { tokenStorage } from '../utils/tokenStorage'
 
 const AuthContext = createContext(null)
 const AUTH_REQUEST_TIMEOUT_MS = 8000
@@ -30,23 +31,20 @@ const authFetchWithTimeout = async (url, options, timeoutMs = AUTH_REQUEST_TIMEO
   }
 }
 
-const decodeToken = (token) => {
+// Decode token payload (base64) client-side to read user_id / public_id without network
+function decodeToken(tok) {
+  if (!tok) return null
   try {
-    const base64Url = (token || '').split('.')[1]
-    if (!base64Url) return null
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
-    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
-    }).join(''))
-    return JSON.parse(jsonPayload)
-  } catch (e) {
+    const parts = tok.split('.')
+    if (parts.length < 2) return null
+    const payload = JSON.parse(atob(parts[1]))
+    return payload
+  } catch {
     return null
   }
 }
 
-// Offline financial work must never cross either a business or user boundary.
-// Without a stable BizID and person identity, durable sync remains disabled.
-const syncScopeFor = (user) => {
+function syncScopeFor(user) {
   const bizId = user?.public_id
   const userId = user?.user_id
   return bizId && userId ? `biz:${bizId}|user:${userId}` : null
@@ -54,7 +52,7 @@ const syncScopeFor = (user) => {
 
 export function AuthProvider({ children }) {
   const [user, setUser]   = useState(null)
-  const [token, setToken] = useState(() => localStorage.getItem('billing_token') || null)
+  const [token, setToken] = useState(() => tokenStorage.getItem('billing_token') || null)
   const [loading, setLoading] = useState(true)
   const [businessConfig, setBusinessConfig] = useState(null)
   const [attributesSchema, setAttributesSchema] = useState([])
@@ -64,11 +62,11 @@ export function AuthProvider({ children }) {
   const [networkMode, setNetworkMode] = useState(() => getNetworkMode())
 
 
-  // Restore session from localStorage on mount
+  // Restore session from localStorage/tokenStorage on mount
   useEffect(() => {
     try {
       const savedUser = localStorage.getItem('billing_user')
-      const savedToken = localStorage.getItem('billing_token')
+      const savedToken = tokenStorage.getItem('billing_token')
       if (savedUser) {
         let userObj = JSON.parse(savedUser)
         // Ensure user_id / public_id are populated even for old sessions by
@@ -87,9 +85,9 @@ export function AuthProvider({ children }) {
         if (restoredScope) syncManager.setScope(restoredScope)
         else syncManager.clearScope()
         setBizId(userObj.public_id)   // restore [BizId=…] logging context
-        logger.info('Session restored successfully for user from localStorage')
+        logger.info('Session restored successfully for user from tokenStorage')
       } else {
-        logger.debug('No saved session user found in localStorage.')
+        logger.debug('No saved session user found.')
       }
     } catch (err) {
       logger.error('Failed to restore billing session:', err)
@@ -99,7 +97,7 @@ export function AuthProvider({ children }) {
 
   const _saveSession = useCallback((data) => {
     const tok = data.token || data.access_token
-    localStorage.setItem('billing_token', tok)
+    tokenStorage.setItem('billing_token', tok)
     
     // Auto-resolve user_id / public_id from token payload if not sent in the
     // data response (the JWT carries both).
@@ -630,9 +628,9 @@ export function AuthProvider({ children }) {
       // Ignore if iframe fails
     }
 
-    localStorage.removeItem('billing_token')
+    tokenStorage.removeItem('billing_token')
     localStorage.removeItem('billing_user')
-    localStorage.removeItem('bizassist_cloud_token')
+    tokenStorage.removeItem('bizassist_cloud_token')
     syncManager.clearScope()
     localStorage.removeItem('bizassist_user_home_mode')  // clear home mode — next user gets their own
     setToken(null)

@@ -13,11 +13,12 @@
 // real Error (with the backend's `detail`) on non-2xx so callers can try/catch.
 import { API_BASE, getApiBase } from '../config'
 import { logger } from '../utils/logger'
+import { tokenStorage } from '../utils/tokenStorage'
 
 const TOKEN_KEY = 'billing_token'
 
 export function getToken() {
-  try { return localStorage.getItem(TOKEN_KEY) } catch { return null }
+  try { return tokenStorage.getItem(TOKEN_KEY) } catch { return null }
 }
 
 /** Raised on any non-2xx response. `status` + `detail` come from the backend. */
