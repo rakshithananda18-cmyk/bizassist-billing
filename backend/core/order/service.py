@@ -308,7 +308,7 @@ def transition_order_status(db: Session, business_id: int, order_id: int, new_st
     """
     Transition order state. Verifies user roles and state machine validity.
     """
-    order = db.query(B2BOrder).filter(B2BOrder.id == order_id).first()
+    order = db.query(B2BOrder).filter(B2BOrder.id == order_id).with_for_update().first()
     if not order:
         raise ValueError("Order not found")
         
@@ -337,7 +337,8 @@ def transition_order_status(db: Session, business_id: int, order_id: int, new_st
     # Complete all financial effects before the order becomes durable as
     # completed. A partial bilateral posting is worse than a retriable failure.
     if new_status == "completed":
-        sync_completed_order(db, order)
+        with db.begin_nested():
+            sync_completed_order(db, order)
 
     db.commit()
     db.refresh(order)
