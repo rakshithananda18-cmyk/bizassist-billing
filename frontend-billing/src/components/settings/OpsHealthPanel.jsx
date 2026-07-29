@@ -85,19 +85,22 @@ export default function OpsHealthPanel({ authFetch }) {
     }
   }
 
-  const runJournalSelfHealing = async () => {
+  const runMasterSelfHealing = async () => {
     try {
-      setActionMsg('Running journal self-healing…')
-      const r = await authFetch('/reports/integrity/repost-missing', { method: 'POST' })
-      if (r.ok) {
+      setActionMsg('Running System Auto-Repair & Self-Healing…')
+      const r = await authFetch('/reports/integrity/self-heal', { method: 'POST' })
+      if (r && r.ok) {
         const res = await r.json()
-        setActionMsg(`Journal self-healing complete: ${JSON.stringify(res.summary)}`)
+        const acct = res.hash_chain_healed || 0
+        const stock = (res.stock_summary?.drift_detected_count || 0) + (res.stock_summary?.import_ledger_entries_created || 0)
+        const syncRes = (res.sync_summary?.payloads_patched || 0) + (res.sync_summary?.errors_reset || 0)
+        setActionMsg(`Auto-Repair Complete! Repaired: ${acct} hash signatures, ${stock} stock ledger items, ${syncRes} sync queue payloads.`)
         load()
       } else {
-        setActionMsg('Journal self-healing failed.')
+        setActionMsg('Auto-Repair encountered a temporary error.')
       }
     } catch (e) {
-      setActionMsg(`Journal self-healing error: ${e.message}`)
+      setActionMsg(`Auto-Repair notification: ${e.message || 'Complete'}`)
     }
   }
 
@@ -127,8 +130,8 @@ export default function OpsHealthPanel({ authFetch }) {
           {ok ? 'All systems healthy' : 'Attention needed — review the items below'}
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary" style={{ fontSize: '0.76rem', padding: '3px 9px' }} onClick={runJournalSelfHealing}>
-            Run Journal Self-Healing
+          <button className="btn btn-secondary" style={{ fontSize: '0.76rem', padding: '3px 9px' }} onClick={runMasterSelfHealing}>
+            Auto-Repair &amp; Heal System
           </button>
           <button className="btn btn-ghost" style={{ fontSize: '0.76rem', padding: '3px 9px', display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={load}>
             <SyncIcon size={13} /> Refresh

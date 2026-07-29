@@ -1503,6 +1503,19 @@ def repost_missing_journal_entries(
     return {"status": "success", "summary": summary}
 
 
+@router.post("/reports/integrity/self-heal")
+def run_master_self_healing(
+    current_user: dict = Depends(restrict_cashier),
+    db: Session = Depends(get_db),
+):
+    """Master self-healing action: executes diagnostic & automated repair logic across all 4 domains (accounting, stock, sync, staff)."""
+    from services.self_healing import diagnose_and_heal_tenant
+    bid = current_user["id"]
+    result = diagnose_and_heal_tenant(db, business_id=bid)
+    logger.info("[REPORT] run_master_self_healing bid=%s ok=%s", bid, result.get("ok"))
+    return result
+
+
 @router.get("/reports/trial-balance")
 def report_trial_balance(
     from_date: Optional[str] = Query(None, alias="from"),
