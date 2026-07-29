@@ -297,23 +297,35 @@ class StaffLoginRequest(BaseModel):
 @router.get("/staff-counters")
 def staff_counters(owner: str, db: Session = Depends(get_db)):
     """(§9.5) Public lookup for the owner-gated staff-login dropdown: resolve an
-    OWNER username → that business's name + its staff counters. Staff names are
-    only reachable by knowing the owner's username (never enumerable directly).
+    OWNER username or public_id (BizID) → that business's name + its staff counters.
     Returns an empty `staff` list if the owner has none; 404 if no such owner."""
+    owner_str = (owner or "").strip()
+    if not owner_str:
+        raise HTTPException(status_code=400, detail="Owner parameter is required")
+
+    # Match owner by public_id (BizID) or username
     owner_row = db.query(User).filter(
-        User.username == owner, User.parent_business_id.is_(None)
+        (User.public_id == owner_str) | (User.username == owner_str),
+        User.parent_business_id.is_(None)
     ).first()
+
     if not owner_row:
-        raise HTTPException(status_code=404, detail="No business found for that owner username")
+        raise HTTPException(status_code=404, detail="No business found for that owner")
+
+    # Query staff rows strictly bound to the verified owner_row.id
     staff = (
         db.query(User)
-        .filter(User.parent_business_id == owner_row.id)
+        .filter(
+            User.parent_business_id == owner_row.id,
+        )
         .order_by(User.staff_login_name.asc())
         .all()
     )
+
     return {
         "business_name": owner_row.business_name,
         "owner_username": owner_row.username,
+        "public_id": owner_row.public_id,
         "staff": [
             {
                 "login_name": s.staff_login_name or s.username,

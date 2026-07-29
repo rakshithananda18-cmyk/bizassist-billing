@@ -63,13 +63,17 @@ def sync_staff_push(
     The caller is the local backend acting as the business owner — JWT `id`
     claim resolves to the owner business_id on cloud (same as /api/sync/push).
     """
-    # Numeric user ids differ between the local and cloud databases. Resolve
-    # the shared BizID in this database before touching staff records.
-    owner_id = resolve_business_id_in_db(current_user, db)
+    public_id = str(current_user.get("public_id") or "").strip()
+    if not public_id:
+        raise HTTPException(status_code=403, detail="Public business ID (public_id) required for staff sync")
 
-    # Sanity: owner must exist on cloud
+    # Resolve owner_id with strict public_id enforcement (fail-closed if missing/mismatched)
+    owner_id = resolve_business_id_in_db(current_user, db, require_public_id=True)
+
+    # Sanity: owner must exist on cloud and match public_id
     owner = db.query(User).filter(
         User.id == owner_id,
+        User.public_id == public_id,
         User.parent_business_id.is_(None),
     ).first()
     if not owner:

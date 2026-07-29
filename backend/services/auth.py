@@ -207,7 +207,7 @@ def require_business_owner(current_user: dict = Depends(get_active_user)) -> dic
     return current_user
 
 
-def resolve_business_id_in_db(current_user: dict, db) -> int:
+def resolve_business_id_in_db(current_user: dict, db, require_public_id: bool = False) -> int:
     """Resolve a token's business to this database's *local* owner id.
 
     ``users.id`` is deliberately database-local: the same business can be id
@@ -215,9 +215,8 @@ def resolve_business_id_in_db(current_user: dict, db) -> int:
     (BizID) is the stable identity shared by both. Never use a token's numeric
     ``id`` across a local/cloud boundary when a BizID is present.
 
-    Tokens issued before BizID was added can use the guarded legacy lookup, but
-    a token that presents an unknown BizID fails closed. Falling back from an
-    unknown BizID to an unrelated numeric id is a cross-tenant data leak.
+    If require_public_id is True, missing or unresolvable public_id MUST fail closed with 403
+    and NEVER fall back to legacy username or integer ID lookups.
     """
     from database.models import User
 
@@ -238,6 +237,16 @@ def resolve_business_id_in_db(current_user: dict, db) -> int:
         raise HTTPException(
             status_code=403,
             detail="BizID is not linked to a business on this server. Re-link this device before continuing.",
+        )
+
+    if require_public_id:
+        logger.warning(
+            "[AUTH] refusing business resolution without public_id user=%s",
+            username or "-",
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Public business ID (public_id) is required for this operation. Re-authenticate before continuing.",
         )
 
     # Legacy-token compatibility is intentionally limited to records verified

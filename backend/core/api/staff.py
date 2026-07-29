@@ -136,13 +136,47 @@ def _validate_role(role: str) -> str:
     return r
 
 
+def _get_verified_owner(current_user: dict, db: Session) -> User:
+    """
+    Verify that the authenticated tenant's public_id matches the owner business in DB.
+    Fails closed with 403 if public_id is missing or owner identity cannot be verified.
+    """
+    public_id = str(current_user.get("public_id") or "").strip()
+    claim_id = current_user.get("id")
+
+    if public_id:
+        owner = db.query(User).filter(
+            User.public_id == public_id,
+            User.parent_business_id.is_(None),
+        ).first()
+        if owner:
+            if claim_id is not None and int(claim_id) != int(owner.id):
+                logger.warning("[STAFF] Tenant mismatch: claim id %s != owner id %s (BizID=%s)", claim_id, owner.id, public_id)
+                raise HTTPException(status_code=403, detail="Tenant identity mismatch")
+            return owner
+        raise HTTPException(status_code=403, detail="Owner business not found for public_id")
+
+    if claim_id is not None:
+        try:
+            owner = db.query(User).filter(
+                User.id == int(claim_id),
+                User.parent_business_id.is_(None),
+            ).first()
+            if owner:
+                return owner
+        except (TypeError, ValueError):
+            pass
+
+    raise HTTPException(status_code=403, detail="Tenant owner identity could not be verified")
+
+
 @router.get("/staff")
 def list_staff(current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     """List the staff sub-accounts of the caller's business."""
-    bid = current_user["id"]
+    owner = _get_verified_owner(current_user, db)
     staff = (
         db.query(User)
-        .filter(User.parent_business_id == bid)
+        .filter(User.parent_business_id == owner.id)
         .order_by(User.username.asc())
         .all()
     )
@@ -154,7 +188,8 @@ def create_staff(req: CreateStaff, current_user: dict = Depends(restrict_cashier
     """Owner creates a staff login that shares this business's data. The name is
     per-BUSINESS (§9.5): two businesses can both have 'counter_1'. The bare name is
     stored as `staff_login_name`; the global-unique `username` is auto-derived."""
-    bid = current_user["id"]
+    owner = _get_verified_owner(current_user, db)
+    bid = owner.id
     role = _validate_role(req.role)
     bare_name = (req.username or "").strip()
     if not bare_name:
@@ -174,7 +209,7 @@ def create_staff(req: CreateStaff, current_user: dict = Depends(restrict_cashier
         username=_internal_staff_username(db, bid, bare_name),
         staff_login_name=bare_name,
         password=hash_password(req.password),
-        business_name=current_user.get("business_name"),
+        business_name=owner.business_name or current_user.get("business_name"),
         role=role,
         parent_business_id=bid,
         counter_prefix=_norm_prefix(req.counter_prefix),
@@ -182,8 +217,8 @@ def create_staff(req: CreateStaff, current_user: dict = Depends(restrict_cashier
     db.add(staff)
     db.commit()
     db.refresh(staff)
-    logger.info("[STAFF] created '%s' (internal=%s, role=%s) under business %s",
-                bare_name, staff.username, role, bid)
+    logger.info("[STAFF] created '%s' (internal=%s, role=%s) under business %s (BizID=%s)",
+                bare_name, staff.username, role, bid, owner.public_id)
     # Immediately sync to cloud so the cashier can log in from any device
     _push_staff_to_cloud(bid, [{
         "staff_login_name": staff.staff_login_name,
@@ -200,7 +235,8 @@ def create_staff(req: CreateStaff, current_user: dict = Depends(restrict_cashier
 def update_staff(staff_id: int, req: UpdateStaff,
                  current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     """Change a staff member's role or reset their password (this business only)."""
-    bid = current_user["id"]
+    owner = _get_verified_owner(current_user, db)
+    bid = owner.id
     staff = db.query(User).filter(User.id == staff_id, User.parent_business_id == bid).first()
     if not staff:
         raise HTTPException(status_code=404, detail="Staff member not found")
@@ -213,7 +249,7 @@ def update_staff(staff_id: int, req: UpdateStaff,
         staff.counter_prefix = _norm_prefix(req.counter_prefix)
     db.commit()
     db.refresh(staff)
-    logger.info("[STAFF] updated %s under business %s", staff_id, bid)
+    logger.info("[STAFF] updated %s under business %s (BizID=%s)", staff_id, bid, owner.public_id)
     # Re-sync to cloud so password/role/counter changes are immediately available
     _push_staff_to_cloud(bid, [{
         "staff_login_name": staff.staff_login_name,
@@ -229,14 +265,15 @@ def update_staff(staff_id: int, req: UpdateStaff,
 @router.delete("/staff/{staff_id}")
 def delete_staff(staff_id: int, current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     """Remove a staff login (this business only)."""
-    bid = current_user["id"]
+    owner = _get_verified_owner(current_user, db)
+    bid = owner.id
     staff = db.query(User).filter(User.id == staff_id, User.parent_business_id == bid).first()
     if not staff:
         raise HTTPException(status_code=404, detail="Staff member not found")
     bare = staff.staff_login_name or staff.username
     db.delete(staff)
     db.commit()
-    logger.info("[STAFF] deleted %s under business %s", staff_id, bid)
+    logger.info("[STAFF] deleted %s under business %s (BizID=%s)", staff_id, bid, owner.public_id)
     # Immediately remove from cloud so deleted cashiers can no longer log in
     _push_staff_to_cloud(bid, [{
         "staff_login_name": bare,
