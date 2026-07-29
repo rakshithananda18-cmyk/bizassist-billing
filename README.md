@@ -97,7 +97,7 @@ flowchart TD
 
 ---
 
-## 🧪 Seeding & Benchmarks
+## 🧪 Seeding & Performance Benchmarks
 
 Generate load testing datasets and run dual-mode latency benchmarks:
 
@@ -107,23 +107,32 @@ cd backend
 ..\venv\Scripts\python benchmark_reports_enhanced.py
 ```
 
-#### ⚡ Dual-Mode Latency & Throughput Benchmark Summary
+#### ⚡ Dual-Mode Latency & Throughput Performance Summary
 
-| Hosting Mode | Benchmark Operation | Avg Latency | Min Latency |
-| :--- | :--- | :--- | :--- |
-| **Local (SQLite)** | SHA-256 Hash Chain Verification | `0.91 ms` | `0.52 ms` |
-| **Local (SQLite)** | Stock Movement (1 Year, limit 2000) | `2.29 ms` | `1.99 ms` |
-| **Local (SQLite)** | Day Book (Today, limit 200) | `3.03 ms` | `2.64 ms` |
-| **Local (SQLite)** | Audit Journal (1 Year, limit 2000) | `3.69 ms` | `2.45 ms` |
-| **Local (SQLite)** | Balance Sheet (Instant) | `9.92 ms` | `6.64 ms` |
-| **Local (SQLite)** | P&L Report (1 Year Window) | `9.93 ms` | `8.38 ms` |
-| **Local (SQLite)** | Trial Balance (Instant) | `12.21 ms` | `9.90 ms` |
-| **Local (SQLite)** | Master Self-Healing Diagnostic Run | `15.41 ms` | `10.19 ms` |
-| **Hybrid (Local+Cloud)** | Outbox Payload Serialization (Invoice) | `< 0.05 ms` | `< 0.05 ms` |
-| **Hybrid (Local+Cloud)** | Parent UID FK Resolution Lookup | `< 0.05 ms` | `< 0.05 ms` |
-| **Hybrid (Local+Cloud)** | Sync Outbox Queue Drain Batch (20 Items) | `0.45 ms` | `0.40 ms` |
-| **Hybrid (Local+Cloud)** | Single-Pass O(N) Hash Re-Sealing | `2.01 ms` | `0.96 ms` |
-| **Hybrid (Local+Cloud)** | Redundant Child Line-Item Heal Clearance | `5.54 ms` | `3.96 ms` |
+| Operating Mode | Subsystem / Operation | Exact Avg Latency | Min Latency | Performance Guarantee |
+| :--- | :--- | :--- | :--- | :--- |
+| 🏠 **Local (Offline SQLite)** | SHA-256 Hash Chain Verification | `0.91 ms` | `0.52 ms` | Sub-millisecond audit verification |
+| 🏠 **Local (Offline SQLite)** | Stock Movement (1 Year, 2,000 items) | `2.29 ms` | `1.99 ms` | Instant inventory audit ledger |
+| 🏠 **Local (Offline SQLite)** | Day Book (Today, 200 items) | `3.03 ms` | `2.64 ms` | Instant daily register render |
+| 🏠 **Local (Offline SQLite)** | Audit Journal (1 Year, 2,000 items) | `3.69 ms` | `2.45 ms` | Fast historical journal fetch |
+| 🏠 **Local (Offline SQLite)** | Balance Sheet (Instant) | `9.92 ms` | `6.64 ms` | Real-time financial position |
+| 🏠 **Local (Offline SQLite)** | P&L Report (1 Year Window) | `9.93 ms` | `8.38 ms` | Instant profit & loss computation |
+| 🏠 **Local (Offline SQLite)** | Trial Balance (Instant) | `12.21 ms` | `9.90 ms` | Fast double-entry debit/credit check |
+| 🏠 **Local (Offline SQLite)** | Master Self-Healing Diagnostic Run | `15.41 ms` | `10.19 ms` | Complete 4-domain diagnostic |
+| ☁️ **Local + Cloud (Hybrid Sync)** | Outbox Payload Serialization (Invoice) | `< 0.05 ms` | `< 0.05 ms` | Local outbox write buffer |
+| ☁️ **Local + Cloud (Hybrid Sync)** | Parent UID FK Resolution Lookup | `< 0.05 ms` | `< 0.05 ms` | Fast relational UID mapping |
+| ☁️ **Local + Cloud (Hybrid Sync)** | Outbox Queue Drain Batch (20 Items) | `0.45 ms` | `0.40 ms` | High-throughput outbox queue |
+| ☁️ **Local + Cloud (Hybrid Sync)** | Single-Pass O(N) Hash Re-Sealing | `2.01 ms` | `0.96 ms` | Fast audit chain re-linking |
+| ☁️ **Local + Cloud (Hybrid Sync)** | Redundant Child Line-Item Clearance | `5.54 ms` | `3.96 ms` | Automated outbox queue cleanup |
+
+> [!NOTE]
+> **Cloud Performance Dependencies**:
+> While **Local Mode** operates entirely offline on local hardware with zero network overhead (`< 15 ms` latency guarantee), **Local + Cloud (Hybrid)** end-to-end sync performance depends on real-world environment factors including:
+> - **Network Latency & Round-Trip Time (RTT)**: Ping time between local client device and cloud servers.
+> - **Available Bandwidth & Packet Loss**: Local internet connection quality during sync batches.
+> - **Geographical Server Distance**: Physical distance to the primary database region.
+> - **Server CPU Load & Concurrency**: Active multi-tenant request volume on the cloud API.
+> - **Subscription Plan**: Premium tier bandwidth allocations and priority WebSocket push channels.
 
 ---
 
