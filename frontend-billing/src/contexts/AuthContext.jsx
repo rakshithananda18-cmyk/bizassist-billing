@@ -172,6 +172,7 @@ export function AuthProvider({ children }) {
         try {
           localStorage.setItem('bizassist_use_lan_db', 'true')
           localStorage.setItem('bizassist_local_backend_url', localUrl)
+          updateApiBase(getNetworkMode())
         } catch { /* ignore */ }
         setNetworkMode('local')
         logger.info(`[AUTH] Same-network local backend detected: ${localUrl} — switching API_BASE`)

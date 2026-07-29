@@ -11,7 +11,7 @@
 //
 // It auto-attaches the Bearer token, prefixes API_BASE, parses JSON, and throws a
 // real Error (with the backend's `detail`) on non-2xx so callers can try/catch.
-import { API_BASE } from '../config'
+import { API_BASE, getApiBase } from '../config'
 import { logger } from '../utils/logger'
 
 const TOKEN_KEY = 'billing_token'
@@ -32,7 +32,8 @@ export class ApiError extends Error {
 }
 
 function buildUrl(path, query) {
-  const base = path.startsWith('http') ? path : `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}`
+  const currentApiBase = getApiBase() || API_BASE
+  const base = path.startsWith('http') ? path : `${currentApiBase}${path.startsWith('/') ? '' : '/'}${path}`
   if (!query || Object.keys(query).length === 0) return base
   const qs = new URLSearchParams()
   for (const [k, v] of Object.entries(query)) {
