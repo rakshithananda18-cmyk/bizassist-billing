@@ -1164,6 +1164,63 @@ def flush_sync_queue(
     return {"status": "triggered", "business_id": business_id}
 
 
+@router.get("/api/sync/outbox/details")
+def get_outbox_details(
+    limit: int = 50,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
+):
+    """Owner-facing endpoint to inspect detailed outbox items and failure reasons."""
+    business_id = _resolve_business_id_by_username(current_user, db)
+    try:
+        rows = (
+            db.query(SyncQueue)
+            .filter(SyncQueue.business_id == business_id, SyncQueue.synced_at.is_(None))
+            .order_by(SyncQueue.created_at.desc())
+            .limit(max(1, min(limit, 200)))
+            .all()
+        )
+        return {
+            "count": len(rows),
+            "items": [
+                {
+                    "id": r.id,
+                    "entity": r.entity,
+                    "entity_id": r.entity_id,
+                    "operation": r.operation,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                    "retry_count": r.retry_count or 0,
+                    "last_error": r.last_error,
+                }
+                for r in rows
+            ],
+        }
+    except Exception as e:
+        logger.warning("sync/outbox/details failed for biz=%s: %s", business_id, e)
+        return {"count": 0, "items": []}
+
+
+@router.post("/api/sync/outbox/{queue_id}/retry")
+def retry_outbox_item(
+    queue_id: int,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
+):
+    """Reset retry count and clear error for a specific outbox item so it can be re-attempted."""
+    business_id = _resolve_business_id_by_username(current_user, db)
+    row = (
+        db.query(SyncQueue)
+        .filter(SyncQueue.id == queue_id, SyncQueue.business_id == business_id)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Outbox item not found")
+    row.retry_count = 0
+    row.last_error = None
+    db.commit()
+    return {"ok": True, "id": queue_id}
+
+
 @router.post("/api/sync/parity")
 def run_parity_check(
     background_tasks: BackgroundTasks,

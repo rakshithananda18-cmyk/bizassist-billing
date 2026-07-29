@@ -1490,6 +1490,19 @@ def report_books_integrity(
     return report
 
 
+@router.post("/reports/integrity/repost-missing")
+def repost_missing_journal_entries(
+    current_user: dict = Depends(restrict_cashier),
+    db: Session = Depends(get_db),
+):
+    """Self-healing action: repost any unposted sales, purchases, or expenses to eliminate journal drift."""
+    from core.accounting.repost import repost_unposted_documents
+    bid = current_user["id"]
+    summary = repost_unposted_documents(db, business_id=bid)
+    logger.info("[REPORT] repost_missing_journal_entries bid=%s summary=%s", bid, summary)
+    return {"status": "success", "summary": summary}
+
+
 @router.get("/reports/trial-balance")
 def report_trial_balance(
     from_date: Optional[str] = Query(None, alias="from"),

@@ -8,6 +8,8 @@
 // ============================================================================
 import React, { useEffect, useState, useCallback } from 'react'
 import { CheckIcon, AlertIcon, SyncIcon } from '../Icons'
+import { getApiBase } from '../../config'
+import { getToken } from '../../api/client'
 
 function Stat({ label, value, tone }) {
   const color = tone === 'bad' ? 'var(--danger, #ef4444)'
@@ -24,8 +26,10 @@ function Stat({ label, value, tone }) {
 export default function OpsHealthPanel({ authFetch }) {
   const [health, setHealth] = useState(null)
   const [conflicts, setConflicts] = useState([])
+  const [outboxItems, setOutboxItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [actionMsg, setActionMsg] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError(false)
@@ -36,6 +40,20 @@ export default function OpsHealthPanel({ authFetch }) {
       ])
       if (hRes.ok) setHealth(await hRes.json())
       if (cRes.ok) setConflicts((await cRes.json()).conflicts || [])
+      
+      try {
+        const token = getToken()
+        const base = getApiBase()
+        const res = await fetch(`${base}/api/sync/outbox/details`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setOutboxItems(data.items || [])
+        }
+      } catch {
+        /* soft fallback for test mocks */
+      }
     } catch {
       setError(true)
     } finally {
@@ -53,6 +71,34 @@ export default function OpsHealthPanel({ authFetch }) {
         load()
       }
     } catch { /* ignore — row stays until next refresh */ }
+  }
+
+  const retryOutboxRow = async (id) => {
+    try {
+      const r = await authFetch(`/api/sync/outbox/${id}/retry`, { method: 'POST' })
+      if (r.ok) {
+        setActionMsg(`Outbox item #${id} re-queued for retry.`)
+        load()
+      }
+    } catch {
+      setActionMsg(`Failed to retry outbox item #${id}.`)
+    }
+  }
+
+  const runJournalSelfHealing = async () => {
+    try {
+      setActionMsg('Running journal self-healing…')
+      const r = await authFetch('/reports/integrity/repost-missing', { method: 'POST' })
+      if (r.ok) {
+        const res = await r.json()
+        setActionMsg(`Journal self-healing complete: ${JSON.stringify(res.summary)}`)
+        load()
+      } else {
+        setActionMsg('Journal self-healing failed.')
+      }
+    } catch (e) {
+      setActionMsg(`Journal self-healing error: ${e.message}`)
+    }
   }
 
   if (loading) {
@@ -80,10 +126,21 @@ export default function OpsHealthPanel({ authFetch }) {
         <span style={{ fontSize: '0.86rem', fontWeight: 600, color: 'var(--text-primary)' }}>
           {ok ? 'All systems healthy' : 'Attention needed — review the items below'}
         </span>
-        <button className="btn btn-ghost" style={{ marginLeft: 'auto', fontSize: '0.76rem', padding: '3px 9px', display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={load}>
-          <SyncIcon size={13} /> Refresh
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary" style={{ fontSize: '0.76rem', padding: '3px 9px' }} onClick={runJournalSelfHealing}>
+            Run Journal Self-Healing
+          </button>
+          <button className="btn btn-ghost" style={{ fontSize: '0.76rem', padding: '3px 9px', display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={load}>
+            <SyncIcon size={13} /> Refresh
+          </button>
+        </div>
       </div>
+
+      {actionMsg && (
+        <div style={{ fontSize: '0.8rem', padding: '6px 10px', background: 'var(--bg-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+          {actionMsg}
+        </div>
+      )}
 
       {/* Stats row */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, padding: '4px 2px' }}>
@@ -99,6 +156,35 @@ export default function OpsHealthPanel({ authFetch }) {
         <Stat label="Conflicts to review" value={conflicts.length}
               tone={conflicts.length > 0 ? 'warn' : 'ok'} />
       </div>
+
+      {/* Outbox Details Queue */}
+      {outboxItems.length > 0 && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+          <div style={{ padding: '8px 12px', background: 'var(--bg-3)', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Sync Outbox Queue &amp; Quarantined Items ({outboxItems.length})
+          </div>
+          {outboxItems.map(item => (
+            <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', borderTop: '1px solid var(--border)' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {item.entity} #{item.entity_id} ({item.operation})
+                </div>
+                {item.last_error && (
+                  <div style={{ fontSize: '0.74rem', color: 'var(--danger, #ef4444)', marginTop: 2 }}>
+                    Error: {item.last_error}
+                  </div>
+                )}
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                  Created: {item.created_at || '—'} · Retries: {item.retry_count}
+                </div>
+              </div>
+              <button className="btn btn-secondary" style={{ fontSize: '0.74rem', padding: '3px 10px' }} onClick={() => retryOutboxRow(item.id)}>
+                Retry Item
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Conflict review list */}
       {conflicts.length > 0 && (
