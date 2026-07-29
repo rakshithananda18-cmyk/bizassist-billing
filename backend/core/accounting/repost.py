@@ -276,3 +276,25 @@ def _source_type_of(entity: str, obj) -> str:
     if entity == "invoice_payments":
         return "payment"
     return "expense"
+
+
+def repost_unposted_documents(db, business_id: int) -> dict:
+    """Self-healing utility to scan all sales, purchases, payments, and expenses
+    for the specified business and post any unposted journal entries."""
+    from database.models import Invoice, PurchaseInvoice, InvoicePayment, Expense
+    counts = {"posted": 0, "existing": 0, "failed": 0}
+
+    targets = [
+        ("invoices", db.query(Invoice).filter(Invoice.business_id == business_id).all()),
+        ("purchase_invoices", db.query(PurchaseInvoice).filter(PurchaseInvoice.business_id == business_id).all()),
+        ("invoice_payments", db.query(InvoicePayment).filter(InvoicePayment.business_id == business_id).all()),
+        ("expenses", db.query(Expense).filter(Expense.business_id == business_id).all()),
+    ]
+
+    for entity, rows in targets:
+        for row in rows:
+            res = repost_synced_row(db, entity, row, log_prefix="repost_unposted")
+            if res.status in counts:
+                counts[res.status] += 1
+
+    return counts
