@@ -134,6 +134,10 @@ def confirm_purchase_invoice(
         background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "purchase"})
         return guard.store(_invoice_out(inv))
     except ValueError as ve:
+        # The command may have flushed an ORM object before a later validation
+        # error.  Roll it back explicitly so a reused request session can never
+        # carry partial purchase state forward.
+        db.rollback()
         raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:
         db.rollback()
@@ -244,4 +248,3 @@ def create_debit_note(
         db.rollback()
         logger.error("create_debit_note route failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Could not create debit note")
-

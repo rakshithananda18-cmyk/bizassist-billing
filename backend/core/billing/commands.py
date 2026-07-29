@@ -338,10 +338,12 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
                         counter_prefix: Optional[str] = None,
                         renumber_on_conflict: bool = False,
                         mark_paid: bool = False,
-                        shift_id: Optional[int] = None) -> Invoice:
+                        shift_id: Optional[int] = None,
+                        commit: bool = True) -> Invoice:
     """
     COMMAND: create one sale invoice atomically (header + lines + stock moves).
-    Commits the transaction.
+    Commits the transaction by default. Composite financial commands can pass
+    ``commit=False`` and commit their complete operation themselves.
 
     Numbering: the caller's ``invoice_no`` is used verbatim if given; otherwise a
     per-COUNTER number is allocated from ``counter_prefix`` (multi-terminal POS,
@@ -549,16 +551,22 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
     from core.accounting import posting
     posting.post_sale(db, inv)
 
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        # Make the invoice and its journal visible to the enclosing command
+        # without persisting any partial part of that command.
+        db.flush()
     logger.info("[BILLING] sale %s biz=%s lines=%d total=%.2f status=%s intra=%s",
                 number, business_id, len(computed), grand, status, intra)
-    db.refresh(inv)
+    if commit:
+        db.refresh(inv)
 
     # Auto-apply any customer ADVANCE (credit_balance) to this fresh bill, so a
     # prior overpayment shows up as "already paid" on the next invoice — the
     # owner's "next billing auto-changes the amount" ask. No-op unless the
     # customer has banked credit, so existing flows are unchanged.
-    if customer_id and inv.status != "Paid":
+    if commit and customer_id and inv.status != "Paid":
         from database.models import Customer
         cust = db.query(Customer).filter(
             Customer.id == customer_id, Customer.business_id == business_id

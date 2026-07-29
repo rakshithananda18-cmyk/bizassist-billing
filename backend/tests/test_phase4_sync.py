@@ -22,8 +22,8 @@ import pytest
 from fastapi.testclient import TestClient
 from main_groq import app
 from database.db import SessionLocal
-from database.models import User, Product, Invoice
-from core.models import B2BOrder
+from database.models import User, Product, Invoice, PurchaseInvoice
+from core.models import B2BOrder, JournalEntry, StockLedger
 from core.stock import ledger as SL
 
 client = TestClient(app)
@@ -123,6 +123,38 @@ def test_order_completion_posts_both_sides():
     # Buyer auto stock-in: the goods landed in the buyer's inventory.
     assert _buyer_stock_by_name(buyer["bid"], "Sync Widget") == 5
 
+    # A completed B2B receipt is also a normal buyer Purchase Bill/payable;
+    # that is what makes it visible in Stock & Purchases without double stock.
+    db = SessionLocal()
+    try:
+        purchase = db.query(PurchaseInvoice).filter(
+            PurchaseInvoice.business_id == buyer["bid"],
+            PurchaseInvoice.invoice_number == f"B2B-{order_number}",
+        ).first()
+        assert purchase is not None
+        assert purchase.status == "Pending"
+        assert purchase.total_amount == inv.total_amount
+        assert len(purchase.line_items) == 1
+        assert purchase.line_items[0].quantity == 5
+        journal = db.query(JournalEntry).filter(
+            JournalEntry.business_id == buyer["bid"],
+            JournalEntry.source_type == "purchase",
+            JournalEntry.source_id == purchase.id,
+        ).first()
+        assert journal is not None
+        assert round(sum(line.debit for line in journal.lines), 2) == round(sum(line.credit for line in journal.lines), 2)
+    finally:
+        db.close()
+
+    # Buyer-facing B2B output deliberately carries only a posted flag, never
+    # the seller's database-local invoice primary key.
+    buyer_orders = client.get("/orders?role=buyer", headers=buyer["headers"])
+    assert buyer_orders.status_code == 200, buyer_orders.text
+    buyer_order = next(o for o in buyer_orders.json() if o["id"] == order_id)
+    assert buyer_order["seller_invoice_posted"] is True
+    assert buyer_order["seller_invoice_id"] is None
+    assert buyer_order["buyer_stock_received"] is True
+
 
 def test_completion_is_exactly_once():
     seller, buyer = _signup("Once Seller"), _signup("Once Buyer")
@@ -134,3 +166,98 @@ def test_completion_is_exactly_once():
 
     assert _seller_stock(seller["bid"], pid) == 16            # 20 − 4, not 20 − 8
     assert _buyer_stock_by_name(buyer["bid"], "Sync Widget") == 4   # not 8
+
+    db = SessionLocal()
+    try:
+        assert db.query(PurchaseInvoice).filter(
+            PurchaseInvoice.business_id == buyer["bid"],
+        ).count() == 1
+    finally:
+        db.close()
+
+
+def test_buyer_can_reconcile_a_missing_legacy_purchase_bill_without_duplicate_stock():
+    seller, buyer = _signup("Repair Seller"), _signup("Repair Buyer")
+    _connect(seller, buyer)
+    _, order_id, order_number = _place_and_complete(seller, buyer, qty=3)
+
+    # Simulate a historical receipt created before B2B purchase bills existed.
+    db = SessionLocal()
+    try:
+        purchase = db.query(PurchaseInvoice).filter(
+            PurchaseInvoice.business_id == buyer["bid"],
+            PurchaseInvoice.invoice_number == f"B2B-{order_number}",
+        ).first()
+        journal = db.query(JournalEntry).filter(
+            JournalEntry.business_id == buyer["bid"],
+            JournalEntry.source_type == "purchase",
+            JournalEntry.source_id == purchase.id,
+        ).first()
+        db.delete(journal)
+        db.delete(purchase)
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_buyer_can_reconcile_legacy_bill_when_no_stock_receipt_link_exists():
+    """The financial repair must remain possible for an older completed order
+    that predates the B2B stock-ledger reference, and must not invent stock."""
+    seller, buyer = _signup("Unlinked Repair Seller"), _signup("Unlinked Repair Buyer")
+    _connect(seller, buyer)
+    _, order_id, order_number = _place_and_complete(seller, buyer, qty=3)
+
+    db = SessionLocal()
+    try:
+        purchase = db.query(PurchaseInvoice).filter(
+            PurchaseInvoice.business_id == buyer["bid"],
+            PurchaseInvoice.invoice_number == f"B2B-{order_number}",
+        ).first()
+        journal = db.query(JournalEntry).filter(
+            JournalEntry.business_id == buyer["bid"],
+            JournalEntry.source_type == "purchase",
+            JournalEntry.source_id == purchase.id,
+        ).first()
+        db.delete(journal)
+        db.delete(purchase)
+        db.query(StockLedger).filter(
+            StockLedger.business_id == buyer["bid"],
+            StockLedger.reference_type == "b2b_order",
+            StockLedger.reference_id == order_id,
+        ).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+    assert _buyer_stock_by_name(buyer["bid"], "Sync Widget") == 0
+    repaired = client.post(
+        f"/orders/{order_id}/purchase-bill/reconcile", headers=buyer["headers"],
+    )
+    assert repaired.status_code == 200, repaired.text
+    assert repaired.json()["buyer_purchase_invoice_id"] is not None
+    assert repaired.json()["buyer_stock_received"] is False
+    # The repair posts only Accounts Payable. It never makes a new receipt.
+    assert _buyer_stock_by_name(buyer["bid"], "Sync Widget") == 0
+
+    # The counterparty may know the shared order, but cannot create a buyer's
+    # payable document or mutate the buyer's financial history.
+    forbidden = client.post(
+        f"/orders/{order_id}/purchase-bill/reconcile", headers=seller["headers"],
+    )
+    assert forbidden.status_code == 403, forbidden.text
+
+    repaired = client.post(
+        f"/orders/{order_id}/purchase-bill/reconcile", headers=buyer["headers"],
+    )
+    assert repaired.status_code == 200, repaired.text
+    assert repaired.json()["buyer_purchase_invoice_id"] is not None
+    assert _buyer_stock_by_name(buyer["bid"], "Sync Widget") == 3
+
+    db = SessionLocal()
+    try:
+        assert db.query(PurchaseInvoice).filter(
+            PurchaseInvoice.business_id == buyer["bid"],
+            PurchaseInvoice.invoice_number == f"B2B-{order_number}",
+        ).count() == 1
+    finally:
+        db.close()

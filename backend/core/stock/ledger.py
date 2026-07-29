@@ -159,7 +159,10 @@ def _refresh_inventory_cache(db, business_id: int, *, product_id, product_name, 
 
     inv = q.first()
     if inv is not None:
-        inv.stock = int(round(new_balance))
+        # The cache must preserve the ledger's fractional quantity (kg, metres,
+        # litres, etc.). Rounding it to an integer corrupts stock valuation even
+        # though the append-only ledger still has the correct amount.
+        inv.stock = float(new_balance)
         if expiry_date:
             inv.expiry_date = expiry_date
     else:
@@ -200,7 +203,7 @@ def rebuild_inventory_cache(db, business_id: int) -> int:
                             product_name=inv.product_name,
                             godown_id=inv.godown_id,
                             batch_no=inv.batch_no)
-        new = int(round(bal))
+        new = float(bal)
         if inv.stock != new:
             inv.stock = new
             updated += 1

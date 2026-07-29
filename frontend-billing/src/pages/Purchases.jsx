@@ -17,6 +17,7 @@ import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar
 import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import ContextMenu from '../components/common/ContextMenu'
 import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
+import { logger } from '../utils/logger'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -104,12 +105,52 @@ export default function Purchases({ embedded = false, headerTabs = null }) {
     })
   }
 
+  const recalculateDraftTotals = (draft, items) => {
+    let subtotal = 0
+    let cgst_total = 0
+    let sgst_total = 0
+    let igst_total = 0
+
+    const normalizedItems = items.map(item => {
+      const quantity = parseFloat(item.quantity) || 0
+      const unitPrice = parseFloat(item.unit_price) || 0
+      const taxable_value = Number((quantity * unitPrice).toFixed(2))
+      const cgst_amount = Number((taxable_value * ((parseFloat(item.cgst_rate) || 0) / 100)).toFixed(2))
+      const sgst_amount = Number((taxable_value * ((parseFloat(item.sgst_rate) || 0) / 100)).toFixed(2))
+      const igst_amount = Number((taxable_value * ((parseFloat(item.igst_rate) || 0) / 100)).toFixed(2))
+      const line_total = Number((taxable_value + cgst_amount + sgst_amount + igst_amount).toFixed(2))
+      subtotal += taxable_value
+      cgst_total += cgst_amount
+      sgst_total += sgst_amount
+      igst_total += igst_amount
+      return { ...item, taxable_value, cgst_amount, sgst_amount, igst_amount, line_total }
+    })
+
+    subtotal = Number(subtotal.toFixed(2))
+    cgst_total = Number(cgst_total.toFixed(2))
+    sgst_total = Number(sgst_total.toFixed(2))
+    igst_total = Number(igst_total.toFixed(2))
+    const cess_total = parseFloat(draft.cess_total) || 0
+    const discount_total = parseFloat(draft.discount_total) || 0
+    const round_off = parseFloat(draft.round_off) || 0
+
+    return {
+      ...draft,
+      items: normalizedItems,
+      subtotal,
+      cgst_total,
+      sgst_total,
+      igst_total,
+      total_amount: Number((subtotal + cgst_total + sgst_total + igst_total + cess_total - discount_total + round_off).toFixed(2)),
+    }
+  }
+
   // Approval-table completeness: a row the owner does NOT approve must be
   // removable before commit — a wrongly-extracted line never reaches the books.
   const handleRemoveItem = (index) => {
     setExtracted(prev => {
       if (!prev) return null
-      return { ...prev, items: prev.items.filter((_, i) => i !== index) }
+      return recalculateDraftTotals(prev, prev.items.filter((_, i) => i !== index))
     })
   }
 
@@ -128,53 +169,8 @@ export default function Purchases({ embedded = false, headerTabs = null }) {
         item[field] = value;
       }
 
-      newItems[index] = item;
-      
-      const qty = parseFloat(item.quantity) || 0
-      const price = parseFloat(item.unit_price) || 0
-      const cgst = parseFloat(item.cgst_rate) || 0
-      const sgst = parseFloat(item.sgst_rate) || 0
-      const igst = parseFloat(item.igst_rate) || 0
-      
-      const taxable = qty * price
-      item.taxable_value = parseFloat(taxable.toFixed(2))
-      
-      const cgstAmt = taxable * (cgst / 100)
-      const sgstAmt = taxable * (sgst / 100)
-      const igstAmt = taxable * (igst / 100)
-      
-      item.cgst_amount = parseFloat(cgstAmt.toFixed(2))
-      item.sgst_amount = parseFloat(sgstAmt.toFixed(2))
-      item.igst_amount = parseFloat(igstAmt.toFixed(2))
-      
-      item.line_total = parseFloat((taxable + cgstAmt + sgstAmt + igstAmt).toFixed(2))
-      
-      let subtotal = 0
-      let cgst_total = 0
-      let sgst_total = 0
-      let igst_total = 0
-      
-      newItems.forEach(it => {
-        const itQty = parseFloat(it.quantity) || 0
-        const itPrice = parseFloat(it.unit_price) || 0
-        const itTaxable = itQty * itPrice
-        subtotal += itTaxable
-        cgst_total += itTaxable * ((parseFloat(it.cgst_rate) || 0) / 100)
-        sgst_total += itTaxable * ((parseFloat(it.sgst_rate) || 0) / 100)
-        igst_total += itTaxable * ((parseFloat(it.igst_rate) || 0) / 100)
-      })
-      
-      const total_amount = subtotal + cgst_total + sgst_total + igst_total
-      
-      return {
-        ...prev,
-        items: newItems,
-        subtotal: parseFloat(subtotal.toFixed(2)),
-        cgst_total: parseFloat(cgst_total.toFixed(2)),
-        sgst_total: parseFloat(sgst_total.toFixed(2)),
-        igst_total: parseFloat(igst_total.toFixed(2)),
-        total_amount: parseFloat(total_amount.toFixed(2))
-      }
+      newItems[index] = item
+      return recalculateDraftTotals(prev, newItems)
     })
   }
 
@@ -327,7 +323,11 @@ export default function Purchases({ embedded = false, headerTabs = null }) {
         resetModal()
         load()
       } else {
-        setAlert({ type: 'danger', msg: 'Failed to confirm bill.' })
+        const error = await res.json().catch(() => null)
+        setAlert({
+          type: 'danger',
+          msg: error?.detail || 'The bill could not be confirmed. Please review it and try again.'
+        })
       }
     } catch {
       setAlert({ type: 'danger', msg: 'Network error.' })
@@ -451,6 +451,8 @@ export default function Purchases({ embedded = false, headerTabs = null }) {
         {headerTabs && (
           <WorkspaceTopBar
             settingsTab="transactions"
+            windowControls={true}
+            showMinimize={false}
             actions={
               <>
                 <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={openReturnModal}>
@@ -462,8 +464,18 @@ export default function Purchases({ embedded = false, headerTabs = null }) {
               </>
             }
           >
+            {/* Page icon & name — matches Stock.jsx left alignment */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 4 }}>
+              <BillsIcon size={18} style={{ color: 'var(--accent)' }} />
+              <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                Stock & Inventory
+              </span>
+            </div>
+            <WsDivider />
+            {/* Outer workspace tabs (Stock & Items | Purchase Bills) */}
             {headerTabs}
             <WsDivider />
+            {/* Inner sub-tabs: Pending Review · Confirmed · Returns */}
             {['Pending Review', 'Confirmed', 'Returns (Debit Notes)'].map(t => (
               <button key={t} className={`ws-tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
                 {t}

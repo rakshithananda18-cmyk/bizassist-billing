@@ -321,6 +321,40 @@ def _check_schema_integrity(conn):
         raise RuntimeError(msg)
 
 
+def _migrate_inventory_stock_precision(conn):
+    """Make the cloud inventory cache capable of fractional quantities.
+
+    SQLite's INTEGER affinity already stores a non-integral value as REAL, so a
+    live desktop database needs no table rebuild. PostgreSQL enforces INTEGER,
+    however, and would otherwise coerce or reject the same weight/volume stock
+    adjustment. Existing whole-number values convert losslessly.
+    """
+    from sqlalchemy import inspect
+    inspector = inspect(conn)
+    if "inventory" not in set(inspector.get_table_names()):
+        return
+    if conn.dialect.name != "postgresql":
+        return
+
+    stock_column = next(
+        (column for column in inspector.get_columns("inventory")
+         if column["name"] == "stock"),
+        None,
+    )
+    if stock_column is None:
+        return
+    type_name = str(stock_column["type"]).lower()
+    if "double" in type_name or "real" in type_name or "float" in type_name:
+        return
+
+    conn.execute(text(
+        "ALTER TABLE inventory ALTER COLUMN stock TYPE DOUBLE PRECISION "
+        "USING stock::double precision"
+    ))
+    conn.commit()
+    logger.info("[Migration] inventory.stock now preserves fractional quantities")
+
+
 def _backfill_null_business_ids(conn):
     for table in ("invoices", "inventory", "payments", "uploaded_files"):
         try:
@@ -1209,6 +1243,7 @@ def run_migrations_and_seed():
     # failure aborted the transaction and silently took out everything after it.
     with engine.connect() as conn:
         _step(conn, _backfill_null_business_ids)
+        _step(conn, _migrate_inventory_stock_precision)
         _step(conn, _backfill_null_uids)
         _step(conn, _ensure_uid_unique_indexes)  # dedup once + create partial unique index (no-op after first boot)
         _step(conn, _backfill_staff_login_name)

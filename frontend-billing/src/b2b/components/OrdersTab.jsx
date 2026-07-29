@@ -77,6 +77,8 @@ export default function OrdersTab({
   onOpenOrder,
   justInvoiced,              // Set<order_number> flagged live by SSE
   onGoToOrderDesk,
+  onReconcilePurchaseBill,
+  reconcilingOrderId,
 }) {
   const [fullScreen, setFullScreen] = useState(false)
   const [showFilterModal, setShowFilterModal] = useState(false)
@@ -158,6 +160,16 @@ export default function OrdersTab({
         const status = STATUS_FLOW[order.status] || { label: order.status, variant: 'secondary' }
         const cp = counterpartyOf(order, direction)
         const acts = actionsFor(order, direction)
+        // `seller_invoice_id` is present only on the seller's own response.
+        // The buyer receives the boolean confirmation instead, which keeps the
+        // seller's database-local primary key out of another tenant's session.
+        const sellerInvoicePosted = Boolean(order.seller_invoice_posted || order.seller_invoice_id)
+        // The immediate completion event is emitted only after the same cloud
+        // transaction records the buyer receipt, so it is a safe short-lived
+        // confirmation while the list refresh is still in flight.
+        const buyerStockReceived = Boolean(
+          order.buyer_stock_received || justInvoiced?.has(order.order_number)
+        )
         return (
           <tr key={order.id} style={{ cursor: 'pointer' }} onClick={() => onOpenOrder(order)}>
             <td className="td-mono td-primary">{order.order_number}</td>
@@ -173,9 +185,20 @@ export default function OrdersTab({
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
                 <span className={`badge badge-${status.variant}`} style={{ textTransform: 'capitalize' }}>{status.label}</span>
                 {direction === 'outgoing' && order.status === 'completed' &&
-                  (order.seller_invoice_id || justInvoiced?.has(order.order_number)) && (
+                  buyerStockReceived && (
                   <span className="badge badge-success" style={{ fontSize: '0.66rem' }} title="These items were automatically added to your inventory as a purchase">
                     <ImportIcon size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} />Stock received
+                  </span>
+                )}
+                {direction === 'outgoing' && order.status === 'completed' &&
+                  sellerInvoicePosted && !buyerStockReceived && (
+                  <span className="badge badge-warning" style={{ fontSize: '0.66rem' }} title="This legacy order has no linked stock receipt. Its Purchase Bill can still be created without changing stock.">
+                    Stock receipt needs review
+                  </span>
+                )}
+                {direction === 'outgoing' && order.buyer_purchase_invoice_id && (
+                  <span className="badge badge-success" style={{ fontSize: '0.66rem' }} title={`Purchase Bill ${order.buyer_purchase_invoice_number || ''} is posted to Accounts Payable`}>
+                    Purchase bill posted
                   </span>
                 )}
               </div>
@@ -190,6 +213,15 @@ export default function OrdersTab({
                     onClick={() => onChangeStatus(order.id, a.key)}
                   >{a.label}</button>
                 ))}
+                {direction === 'outgoing' && order.status === 'completed' &&
+                  sellerInvoicePosted && !order.buyer_purchase_invoice_id && onReconcilePurchaseBill && (
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => onReconcilePurchaseBill(order)}
+                    title="Create the missing Purchase Bill without changing stock"
+                    disabled={reconcilingOrderId === order.id}
+                  >{reconcilingOrderId === order.id ? 'Creating…' : 'Create purchase bill'}</button>
+                )}
                 <button className="btn btn-secondary btn-sm" onClick={() => onOpenOrder(order)}>View</button>
               </div>
             </td>

@@ -68,7 +68,7 @@ export default function OrderDetailModal({ selectedOrder, setSelectedOrder, acti
                         This order has generated a matching sale invoice and deducted items from your inventory.
                       </div>
                     )}
-                    {selectedOrder.seller_invoice_id && (
+                    {(selectedOrder.seller_invoice_posted || selectedOrder.seller_invoice_id) && (
                       <div style={{ marginTop: '4px', fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-primary)' }}>
                         <BillsIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Seller Invoice Number: <span className="td-mono" style={{ background: 'var(--bg-2)', padding: '2px 4px', borderRadius: 4 }}>B2B-{selectedOrder.order_number}</span>
                       </div>

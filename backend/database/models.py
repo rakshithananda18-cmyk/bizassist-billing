@@ -371,7 +371,10 @@ class Inventory(Base, BusinessOwnedMixin):
     __tablename__ = "inventory"
 
     product_name  = Column(String,  index=True, nullable=True)
-    stock         = Column(Integer, nullable=True)
+    # Quantity is fractional for weight/length/volume based products. The stock
+    # ledger already stores a Float; keeping this rebuildable projection as an
+    # Integer silently rounded the value used by inventory valuation reports.
+    stock         = Column(Float,   nullable=True)
     expiry_date   = Column(String,  nullable=True)
     supplier      = Column(String,  nullable=True)
     file_id       = Column(Integer, nullable=True, index=True)

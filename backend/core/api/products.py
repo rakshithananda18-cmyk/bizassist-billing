@@ -28,6 +28,8 @@ from core.catalog import barcode as PB
 from core.stock import ledger as SL
 from database.models import Inventory
 from services.realtime import realtime_manager
+import math
+from core.sync.idempotency import ReplayGuard, replay_guard
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.products")
@@ -99,6 +101,21 @@ class StockAdjustmentRequest(BaseModel):
     selling_price: Optional[float] = None
     cost_price: Optional[float] = None
     mrp: Optional[float] = None
+    client_request_id: Optional[str] = None  # idempotency key from client
+
+    def model_post_init(self, __context: Any) -> None:  # type: ignore[override]
+        """Reject non-finite values that would corrupt the stock ledger."""
+        if not math.isfinite(self.qty_delta):
+            raise ValueError("qty_delta must be a finite number")
+        if self.qty_delta == 0:
+            raise ValueError("qty_delta cannot be zero")
+        for field_name, val in [("selling_price", self.selling_price),
+                                ("cost_price", self.cost_price),
+                                ("mrp", self.mrp)]:
+            if val is not None and not math.isfinite(val):
+                raise ValueError(f"{field_name} must be a finite number")
+            if val is not None and val < 0:
+                raise ValueError(f"{field_name} cannot be negative")
 
 
 class OpeningStockItem(BaseModel):
@@ -449,16 +466,23 @@ def stock_adjustment(
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(restrict_cashier_only),
     db: Session = Depends(get_db),
+    guard: ReplayGuard = Depends(replay_guard),
 ):
-    """Manual stock correction — writes an 'adjustment' movement (append-only)."""
+    """Manual stock correction — writes an 'adjustment' movement (append-only).
+    Idempotent on X-Client-Request-Id header (offline outbox replay guard).
+    qty_delta validated for finite/non-zero at schema level (StockAdjustmentRequest).
+    """
+    # ── Idempotency: replay an already-stored result on duplicate request ──────
+    hit = guard.replay()
+    if hit is not None:
+        return hit
+
     bid = current_user["id"]
     p = db.query(Product).filter(
         Product.id == product_id, Product.business_id == bid
     ).first()
     if p is None:
         raise HTTPException(status_code=404, detail=f"Product {product_id} not found")
-    if req.qty_delta == 0:
-        raise HTTPException(status_code=422, detail="qty_delta cannot be zero")
     # ANTI-TAMPER (owner req 2026-07): every manual adjustment must say WHY.
     # Combined with the audit trail (who + when + before/after in the owner's
     # activity feed), staff can't quietly shrink stock — each movement is
@@ -467,6 +491,12 @@ def stock_adjustment(
         raise HTTPException(status_code=422,
                             detail="A reason is required for stock adjustments "
                                    "(e.g. 'damaged in transit', 'count correction').")
+
+    # Normalise the batch before recording the movement. The ledger, rather
+    # than the inventory cache, owns the batch quantity as well as the overall
+    # quantity; otherwise a batch adjustment cannot be reconciled from the
+    # append-only source of truth.
+    batch_no_clean = (req.batch_no or "").strip()
 
     try:
         movement = SL.record_movement(
@@ -478,16 +508,21 @@ def stock_adjustment(
             product_name=p.name,
             reference_type="manual",
             note=req.note.strip(),
+            batch_no=batch_no_clean or None,
+            expiry_date=req.expiry_date,
         )
 
-        # Upsert Inventory batch record if batch_no or price details provided
-        batch_no_clean = (req.batch_no or "").strip()
-        if batch_no_clean or req.selling_price is not None or req.mrp is not None:
+        # The ledger refresh above has already created/refreshed the inventory
+        # projection with the correct balance. Only enrich it with optional
+        # batch pricing metadata here. Never apply qty_delta a second time:
+        # Inventory.stock is a rebuildable cache, not another stock register.
+        if (req.selling_price is not None or req.cost_price is not None
+                or req.mrp is not None):
             inv_row = db.query(Inventory).filter(
                 Inventory.business_id == bid,
                 Inventory.product_id == product_id,
                 Inventory.batch_no == (batch_no_clean or None)
-            ).first()
+            ).with_for_update().first()
             if not inv_row:
                 inv_row = Inventory(
                     business_id=bid,
@@ -495,7 +530,13 @@ def stock_adjustment(
                     product_name=p.name,
                     batch_no=batch_no_clean or None,
                     unit=p.unit,
-                    stock=int(req.qty_delta),
+                    # Defensive only: record_movement normally creates this
+                    # row. Derive the projection from the ledger if it did not,
+                    # never from this request's delta alone.
+                    stock=float(SL.current_stock(
+                        db, bid, product_id=product_id,
+                        batch_no=batch_no_clean or None,
+                    )),
                     selling_price=req.selling_price if req.selling_price is not None else p.selling_price,
                     cost_price=req.cost_price if req.cost_price is not None else p.cost_price,
                     mrp=req.mrp if req.mrp is not None else p.mrp,
@@ -503,7 +544,6 @@ def stock_adjustment(
                 )
                 db.add(inv_row)
             else:
-                inv_row.stock = (inv_row.stock or 0) + int(req.qty_delta)
                 if req.selling_price is not None:
                     inv_row.selling_price = req.selling_price
                 if req.cost_price is not None:
@@ -517,12 +557,15 @@ def stock_adjustment(
         from services.immediate_sync import trigger_data_sync
         trigger_data_sync(bid, db)
         background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "product"})
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         logger.error("stock_adjustment failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Could not record adjustment")
 
-    return _movement_out(movement)
+    result = _movement_out(movement)
+    return guard.store(result)
 
 
 @router.post("/products/opening-stock", status_code=201)
@@ -586,4 +629,3 @@ def bulk_opening_stock(
         raise HTTPException(status_code=500, detail="Could not record opening stock")
 
     return {"recorded": len(results), "items": results}
-

@@ -136,6 +136,29 @@ def test_rebuild_cache_recomputes_from_ledger():
         db.close()
 
 
+def test_inventory_cache_preserves_fractional_stock():
+    """Weight/volume quantities must not be rounded in the valuation cache."""
+    name = "Loose Tea kg"
+    _seed_inventory(name, stock=0)
+    db = SessionLocal()
+    try:
+        SL.record_movement(db, business_id=BID, movement_type=SL.PURCHASE,
+                           qty_delta=1.25, product_name=name)
+        SL.record_movement(db, business_id=BID, movement_type=SL.SALE,
+                           qty_delta=-0.20, product_name=name)
+        db.commit()
+        inv = db.query(Inventory).filter(Inventory.business_id == BID,
+                                         Inventory.product_name == name).first()
+        assert inv.stock == pytest.approx(1.05)
+
+        inv.stock = 999
+        assert SL.rebuild_inventory_cache(db, BID) >= 1
+        db.commit()
+        assert inv.stock == pytest.approx(1.05)
+    finally:
+        db.close()
+
+
 # ── append-only: a correction is a NEW row ───────────────────────────────────
 
 def test_correction_is_a_new_row_not_an_edit():

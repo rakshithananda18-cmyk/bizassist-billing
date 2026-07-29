@@ -48,6 +48,7 @@ import httpx
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
 
 from database.db import engine, get_db
 from services.auth import restrict_cashier
@@ -170,6 +171,22 @@ def _should_proxy(path: str) -> bool:
     return any(path == p or path.startswith(p + "/") for p in _PROXIED_PREFIXES)
 
 
+def _should_pull_after_b2b_write(method: str, status_code: int) -> bool:
+    """Only a successful cloud B2B mutation needs an immediate local refresh."""
+    return method.upper() not in _READ_METHODS and 200 <= int(status_code) < 300
+
+
+def _pull_after_b2b_write(business_id: int) -> None:
+    """Bring cloud-authored buyer documents into the local database promptly."""
+    try:
+        from services.sync_worker import trigger_sync_run
+        trigger_sync_run(business_id, pull=True)
+    except Exception as exc:
+        # The cloud operation already succeeded.  Preserve that success and let
+        # the normal scheduled pull retry the local projection if this task fails.
+        logger.warning("[B2B_PROXY] post-write local pull failed for business %s: %s", business_id, exc)
+
+
 def _business_id_from(request: Request) -> Optional[int]:
     """Resolve the calling business from the LOCAL bearer token.
 
@@ -273,11 +290,17 @@ async def b2b_cloud_proxy(request: Request, call_next):
         k: v for k, v in upstream.headers.items()
         if k.lower() not in _SKIP_RESPONSE_HEADERS
     }
+    background = (
+        BackgroundTask(_pull_after_b2b_write, business_id)
+        if _should_pull_after_b2b_write(request.method, upstream.status_code)
+        else None
+    )
     return Response(
         content=upstream.content,
         status_code=upstream.status_code,
         headers=passthrough,
         media_type=upstream.headers.get("content-type"),
+        background=background,
     )
 
 

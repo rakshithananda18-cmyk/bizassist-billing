@@ -165,6 +165,60 @@ def test_accept_supplier_invoice():
 
 # ── API Scoping & Role Restrictions Tests ────────────────────────────────────
 
+def test_purchase_bill_rejects_empty_or_invalid_stock_lines():
+    db = SessionLocal()
+    try:
+        empty_bill = {
+            "supplier_name": "Apex Pharma",
+            "invoice_number": "PUR-EMPTY-1",
+            "items": [],
+        }
+        with pytest.raises(ValueError, match="at least one item"):
+            accept_supplier_invoice(db, BID, empty_bill)
+
+        zero_quantity_bill = {
+            "supplier_name": "Apex Pharma",
+            "invoice_number": "PUR-ZERO-1",
+            "items": [{
+                "product_name": "Dolo 650",
+                "quantity": 0,
+                "conversion_factor": 1,
+                "unit_price": 10,
+            }],
+        }
+        with pytest.raises(ValueError, match="quantity must be greater than zero"):
+            accept_supplier_invoice(db, BID, zero_quantity_bill)
+
+        assert db.query(PurchaseInvoice).filter(PurchaseInvoice.business_id == BID).count() == 0
+        assert db.query(StockLedger).filter(StockLedger.business_id == BID).count() == 0
+    finally:
+        db.close()
+
+
+def test_purchase_bill_rejects_money_that_disagrees_with_its_items():
+    db = SessionLocal()
+    try:
+        mismatched_bill = {
+            "supplier_name": "Apex Pharma",
+            "invoice_number": "PUR-MISMATCH-1",
+            "subtotal": 100,
+            "total_amount": 125,
+            "items": [{
+                "product_name": "Dolo 650",
+                "quantity": 10,
+                "conversion_factor": 1,
+                "unit_price": 10,
+            }],
+        }
+        with pytest.raises(ValueError, match="does not match its reviewed items"):
+            accept_supplier_invoice(db, BID, mismatched_bill)
+
+        assert db.query(PurchaseInvoice).filter(PurchaseInvoice.business_id == BID).count() == 0
+        assert db.query(StockLedger).filter(StockLedger.business_id == BID).count() == 0
+    finally:
+        db.close()
+
+
 @pytest.fixture(scope="module")
 def api_auth():
     # Setup owner business

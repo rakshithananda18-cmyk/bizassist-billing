@@ -83,6 +83,10 @@ const BLANK_NEW_ROW = (barcode = '') => ({
   _type: 'new',          // 'new' | 'existing'
   _open: !!barcode,      // auto-expand if barcode came from scan
   _status: null,         // null | 'saving' | 'ok' | error string
+  // Idempotency key — generated once per row so network retries don't double-count
+  _idempotency_key: typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `row-${Date.now()}-${Math.random()}`,
   // product fields (for new)
   name: '', barcode, sku: '', category: '', unit: 'pcs',
   hsn_sac: '', brand: '', description: '',
@@ -109,6 +113,10 @@ const ROW_FROM_PRODUCT = (product) => ({
   _status: null,
   _product: product,
   _price_mode: 'update',    // 'update' = overwrite product price | 'new_batch' = keep old price
+  // Idempotency key — generated once per row so network retries don't double-count
+  _idempotency_key: typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `row-${Date.now()}-${Math.random()}`,
   product_id: product.id,
   name: product.name || '',
   barcode: product.barcode || '',
@@ -257,6 +265,13 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
   const [uploading, setUploading] = useState(false)
   const [uploadErr, setUploadErr] = useState(null)
   const [scanErr, setScanErr] = useState(null)
+  // Track which rows are momentarily highlighted (flash on duplicate add)
+  const [flashKeys, setFlashKeys] = useState(new Set())
+  // Ref to the last prefillProduct._seed we processed — prevents double-fire
+  // and detects same-product re-clicks from the Catalogue '± Stock' button.
+  const lastPrefillSeedRef = useRef(null)
+  // Ref map from row _key → DOM <tr> element for scroll-into-view
+  const rowRefs = useRef({})
 
   // ── Fold-collapsible columns (POS-style paper-fold strips) ─────────────────
   // Right-click a header → Collapse; click the folded strip (or the menu) to
@@ -316,10 +331,16 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
     setTimeout(() => scanRef.current?.focus(), 80)
   }, [])
 
-  // Pre-load a product from the catalogue '± Stock' button
+  // Pre-load a product from the catalogue '± Stock' button.
+  // Uses lastPrefillSeedRef so:
+  //   (a) the effect does not fire twice when React runs it in StrictMode, and
+  //   (b) re-clicking the same product (new _seed each time) DOES fire again.
   useEffect(() => {
     if (!prefillProduct) return
-    addExistingRow(prefillProduct)
+    const seed = prefillProduct._seed
+    if (lastPrefillSeedRef.current === seed) return   // already processed this exact click
+    lastPrefillSeedRef.current = seed
+    addExistingRow(prefillProduct, /* fromPrefill */ true)
     setTimeout(() => scanRef.current?.focus(), 80)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillProduct])
@@ -380,12 +401,23 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
 
   const removeRow = (key) => setRows(prev => prev.filter(r => r._key !== key))
 
-  // Add / merge: if same product_id already in rows → focus that row, else append
-  const addExistingRow = useCallback((product) => {
+  // Add / merge: if same product_id already in rows → scroll + flash that row,
+  // else append a new row.
+  // `fromPrefill` is true when called from the catalogue '± Stock' button so we
+  // always provide feedback (scroll / flash) even for duplicates.
+  const addExistingRow = useCallback((product, fromPrefill = false) => {
     setRows(prev => {
       const existing = prev.find(r => r._type === 'existing' && r.product_id === product.id)
       if (existing) {
-        // just highlight — don't duplicate
+        // Flash and scroll the existing row instead of silently no-oping
+        if (fromPrefill) {
+          const key = existing._key
+          setFlashKeys(fk => new Set([...fk, key]))
+          setTimeout(() => {
+            rowRefs.current[key]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }, 30)
+          setTimeout(() => setFlashKeys(fk => { const next = new Set(fk); next.delete(key); return next }), 1200)
+        }
         return prev
       }
       return [...prev, ROW_FROM_PRODUCT(product)]
@@ -587,15 +619,29 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
     setSaving(true); setSummary(null)
     let ok = 0, failed = 0
     const keys = readyRows.map(r => r._key)
+    // Snapshot rows ONCE before any async state mutations. Reading `rows` inside
+    // the loop would use the stale closure value from the render that created
+    // saveAll, not the up-to-date row data.
+    const snapshot = rows
 
     for (const key of keys) {
       setRow(key, { _status: 'saving' })
-      const row = rows.find(r => r._key === key)
+      const row = snapshot.find(r => r._key === key)
       if (!row) continue
 
       const reason = row.reason?.trim() || globalRef.trim() || 'Stock intake'
       const batchNote = row.batch ? ` [batch: ${row.batch}]` : ''
       const note = reason + batchNote + (row.expiry ? ` [exp: ${row.expiry}]` : '')
+
+      // Belt-and-suspenders: block non-finite quantities before the API call.
+      // The backend schema also rejects these, but catching it here gives a
+      // cleaner per-row error message.
+      const totalQty = num(row.qty) + num(row.free)
+      if (!Number.isFinite(totalQty) || totalQty <= 0) {
+        setRow(key, { _status: 'Qty must be a positive number' })
+        failed++
+        continue
+      }
 
       try {
         let pid = row.product_id
@@ -633,11 +679,16 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
           pid = created.id
         }
 
-        // Stock adjustment (records movement + batch inventory position)
+        // Stock adjustment (records movement + batch inventory position).
+        // Send the per-row idempotency key so the backend can deduplicate a
+        // network retry that reaches the server after a timeout on the client.
+        const adjHeaders = {}
+        if (row._idempotency_key) adjHeaders['X-Client-Request-Id'] = row._idempotency_key
         const adjRes = await authFetch(`/billing/products/${pid}/stock/adjustment`, {
           method: 'POST',
+          headers: adjHeaders,
           body: JSON.stringify({
-            qty_delta: num(row.qty) + num(row.free),
+            qty_delta: totalQty,
             note,
             batch_no: row.batch ? row.batch.trim() : null,
             expiry_date: row.expiry || null,
@@ -646,6 +697,9 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
             mrp: num(row.mrp) > 0 ? num(row.mrp) : null,
           }),
         })
+        // Only a successful response proves that this row was recorded. A
+        // generic 409 can mean a validation or state conflict; clearing the
+        // row in that case could make stock intake appear saved when it is not.
         if (!adjRes.ok) {
           const err = await adjRes.json().catch(() => ({}))
           throw new Error(err.detail || `Stock update failed (${adjRes.status})`)
@@ -973,9 +1027,20 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                 const _netCost = _c > 0 ? _c * (1 + _gst / 100) : null   // landed cost incl. GST
                 const _money2 = n => (n != null && n !== 0 ? n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—')
 
+                const isFlashing = flashKeys.has(r._key)
                 return (
                   <React.Fragment key={r._key}>
-                    <tr style={rowStyle}>
+                    <tr
+                      ref={el => { if (el) rowRefs.current[r._key] = el; else delete rowRefs.current[r._key] }}
+                      style={{
+                        ...rowStyle,
+                        outline: isFlashing ? '2px solid var(--accent)' : 'none',
+                        background: isFlashing
+                          ? 'rgba(var(--accent-rgb, 99,102,241),.12)'
+                          : rowStyle.background,
+                        transition: 'outline .15s, background .15s',
+                      }}
+                    >
                       {/* # serial (delete on hover, POS-style) */}
                       <TCell style={{ textAlign: 'center', verticalAlign: 'middle', padding: '0 2px' }}>
                         <span className="row-sno" style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{_idx + 1}</span>

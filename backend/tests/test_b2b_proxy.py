@@ -77,6 +77,14 @@ def test_reads_may_fall_back_offline_but_writes_may_not():
         assert verb not in b2b_proxy._READ_METHODS
 
 
+def test_successful_b2b_writes_trigger_a_local_projection_pull():
+    assert b2b_proxy._should_pull_after_b2b_write("POST", 200) is True
+    assert b2b_proxy._should_pull_after_b2b_write("PATCH", 204) is True
+    assert b2b_proxy._should_pull_after_b2b_write("GET", 200) is False
+    assert b2b_proxy._should_pull_after_b2b_write("POST", 400) is False
+    assert b2b_proxy._should_pull_after_b2b_write("POST", 503) is False
+
+
 # ── Identity resolution ─────────────────────────────────────────────────────
 
 def _bearer(payload):

@@ -22,6 +22,11 @@ database role and actual packaged desktop runtime.
 | Data import | Owner-only access; mandatory ID remapping; unknown/global/shared-ledger tables rejected; owner identity resolved from the token, not payload usernames; client tenant fields are replaced with the destination owner. | Import files cannot use primary-key collisions or foreign business identifiers to overwrite another tenant. |
 | Offline queue | Durable IndexedDB storage is physically partitioned by BizID and user ID. Queued operations carry the same immutable scope, cursors use scoped keys, and logout detaches the active scope. | Pending invoices from User A cannot be viewed or replayed under User B's login on the same browser/device. |
 | Sales validation | HTTP schemas and billing commands reject zero/negative/non-finite quantities, negative/non-finite prices or money values, invalid tax/discount rates, and foreign product IDs; an excessive line discount is capped at the line gross amount. | A negative sale cannot create free inventory or corrupt invoice totals. |
+| B2B completion (2026-07-29) | Completing an order now creates the seller sale/receivable, buyer stock receipt, buyer Purchase Bill/payable, and both journals inside one transaction. The buyer bill uses a deterministic UID based on the shared order UID. Raw buyer/seller document IDs remain inside their owning tenant; the counterparty receives only posted-state confirmation. A successful local-to-cloud B2B write schedules an immediate cloud-to-local pull. | A completion retry cannot double stock or double-post money, an interrupted completion rolls back rather than leaving one business's books ahead of the other, cross-tenant integer IDs cannot be reused by the UI, and the local Purchase Bills screen does not have to wait for the regular pull cadence. |
+| Legacy B2B receipts (2026-07-29) | A buyer-owner-only reconciliation action creates a missing Purchase Bill from a completed supplier invoice without making any stock movement. The response separately reports whether a linked buyer stock receipt actually exists. | Historical books can be repaired even when older orders predate the receipt link; the operation cannot receive goods twice, and the UI no longer claims “Stock received” without ledger proof. |
+| Manual stock adjustments (2026-07-29) | The append-only ledger is now the sole quantity writer. Batch and expiry metadata travel with the movement; the inventory projection is updated only as a cache and never receives the delta twice. The UI treats any non-2xx response as unsaved. | A batch adjustment is reconstructable from the ledger, cannot double its quantity in the cache, and a generic 409 cannot make staff believe stock was saved when it was not. |
+| Fractional inventory (2026-07-29) | `inventory.stock` now uses fractional precision and the cloud startup/Alembic migration upgrades PostgreSQL from INTEGER to DOUBLE PRECISION. Ledger cache refresh and rebuild retain the exact quantity. | Weight, length, and volume items no longer have their cached stock (and therefore valuation) rounded to whole units. |
+| Purchase Bill confirmation (2026-07-29) | The normal supplier-bill command now validates every item before any database write: non-empty bill, positive finite quantity/conversion factor, finite non-negative price, valid GST rates, and a positive reconciled total. It derives persisted line/header totals from the reviewed quantity/rate and rejects a non-zero claimed header total that conflicts with those lines. Removing an OCR row recalculates the browser draft; server validation errors are shown to the owner. | The stock receipt, Purchase Bill, payable, and journal cannot be posted with an empty/zero/NaN line or a stale total from a deleted OCR item. |
 
 ## Important operational behaviour changes
 
@@ -56,16 +61,18 @@ database role and actual packaged desktop runtime.
 
 5. Run money/stock adversarial tests: negative/zero/NaN/infinite quantities and prices; retrying sale, payment, return, transfer, and import requests; two concurrent sales of the last unit; cross-tenant product/customer/godown IDs.
 
+6. Run the normal Purchase Bill flow against a disposable database: create a bill, edit its quantity/rate, remove a line, retry the request, and verify exactly one purchase invoice, matching line totals, one stock-ledger receipt per line, and one balanced journal entry. Also verify that an empty bill, zero quantity, and conflicting header total return 422 and commit nothing.
+
 ## Remaining hardening recommendations
 
 ### Financial and stock correctness
 
+- Before rebuilding historical inventory caches, audit legacy batch rows. Older builds could hold batch labels only in the cache while their ledger movements were unbatched; a blind global rebuild cannot infer that missing historical batch attribution. The ledger total remains authoritative, but affected batches need an owner-reviewed reconciliation rather than an automatic rewrite.
 - Enforce cumulative return limits against original invoice/purchase lines, with return idempotency and original godown restoration.
 - Replace floating-point money values with integer paise or `Decimal` at the command, persistence, and journal boundaries.
 - Add locking or serializable retry around inventory availability so concurrent sales cannot oversell the same stock.
 - Make every financial/stock mutation use an idempotency key, including returns, manual adjustments, purchases, and transfers.
 - Route legacy uploads through canonical invoices, stock ledger movements, payment ledger entries, and journals; do not write reporting-cache tables as transactional truth.
-- Make B2B completion transactional: seller sale/receivable, buyer purchase/payable, stock, and journals must either all commit or all remain pending for retry.
 
 ### Local + cloud ecosystem
 
@@ -83,11 +90,11 @@ database role and actual packaged desktop runtime.
 
 ## Verification performed in this workspace
 
-- All modified backend Python files passed syntax compilation with the available bundled Python runtime.
-- The changed offline-sync tests passed: **17/17**. Additional frontend suites covering hosting authentication, invoice math, POS helpers, hosting components, and billing profiles passed (**104 tests across the six completed suites**).
-- `git diff --check` passed.
-- Backend integration tests are currently blocked locally because the checked-in virtual environment points to a missing Python 3.9 installation. This is an environment issue, not a passing test result; it must be repaired before release.
-- The complete frontend suite did not produce a clean completion in this sandbox: its worker remained active after the six passing suites above. Treat a clean full-suite run in CI/desktop runtime as a release gate; do not infer an all-suite pass from the partial run.
+- All modified backend Python files, including the B2B completion/reconciliation, stock-adjustment, and fractional-quantity paths, passed syntax compilation with the bundled Python runtime.
+- The targeted B2B frontend test suite passed (**13/13**). After the latest Purchase Bill changes, the complete billing frontend suite passed (**50 files, 349 tests**) and the production frontend build passed.
+- The backend regression tests now cover: generated buyer Purchase Bill, balanced buyer purchase journal, exactly-once retry, legacy-bill reconciliation with and without a linked stock receipt (never duplicate stock), immediate local projection after a successful cloud B2B write, one-time batch adjustments, fractional inventory cache rebuilds, and rejected empty/zero/mismatched Purchase Bill drafts.
+- Backend integration tests cannot be rerun in this Codex environment because the checked-in virtual environment points to a deleted Python 3.9 interpreter. A Python 3.12 fallback cannot load its Python 3.9 compiled dependencies. This is an environment limitation, not a passing backend result; run `run_tests.bat fast` from the repaired working runtime before release.
+- The user previously supplied a clean `run_tests.bat fast` result for the earlier P0 work (`backend: PASS`, `frontend: PASS`). The new B2B backend test changes post-date that result and still require the explicit backend rerun above.
 
 ## Post-review regression fixes (backend rerun required)
 

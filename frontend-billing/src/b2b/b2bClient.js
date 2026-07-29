@@ -222,3 +222,15 @@ export async function updateOrderStatus(authFetch, orderId, status) {
   })
   return unwrap(res, 'Failed to update the order status.')
 }
+
+/**
+ * Repair a pre-upgrade completed order that has its stock receipt but lacks its
+ * buyer Purchase Bill. The backend verifies buyer ownership and never receives
+ * stock again, so retrying this action is safe.
+ */
+export async function reconcilePurchaseBill(authFetch, orderId) {
+  const res = await authFetch(apiPath(`/connections/orders/${orderId}/purchase-bill/reconcile`), {
+    method: 'POST',
+  })
+  return unwrap(res, 'Could not create the missing B2B purchase bill.')
+}

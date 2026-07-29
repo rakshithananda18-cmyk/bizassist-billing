@@ -16,7 +16,8 @@ const ORDERS = [
     buyer_name: 'My Shop', buyer_bizid: 'BA-BUYER',
     seller_name: 'Acme Supply', seller_bizid: 'BA-SELLER',
     subtotal: 500, cgst_total: 0, sgst_total: 0, igst_total: 0, total_amount: 500,
-    seller_invoice_id: 42, notes: '', items: [],
+    seller_invoice_id: 42, seller_invoice_posted: true,
+    buyer_stock_received: true, notes: '', items: [],
   },
   {
     id: 2, order_number: 'ORD-20260620-BBBB', order_date: '2026-06-20',
@@ -71,6 +72,26 @@ describe('OrdersTab — buyer auto-stock-in UI', () => {
     const pending = [{ ...ORDERS[0], seller_invoice_id: null }]
     renderTab('outgoing', { orders: pending, justInvoiced: new Set(['ORD-20260620-AAAA']) })
     expect(screen.getByText(/Stock received/)).toBeInTheDocument()
+  })
+
+  it('shows that the buyer Purchase Bill was posted once the backend links it', () => {
+    const posted = [{
+      ...ORDERS[0],
+      buyer_purchase_invoice_id: 73,
+      buyer_purchase_invoice_number: 'B2B-ORD-20260620-AAAA',
+    }]
+    renderTab('outgoing', { orders: posted })
+    expect(screen.getByText('Purchase bill posted')).toBeInTheDocument()
+    expect(screen.queryByText('Create purchase bill')).toBeNull()
+  })
+
+  it('offers the buyer a safe bill-only repair when a legacy receipt is unlinked', () => {
+    const reconcile = vi.fn()
+    const legacy = { ...ORDERS[0], buyer_stock_received: false }
+    renderTab('outgoing', { orders: [legacy], onReconcilePurchaseBill: reconcile })
+    expect(screen.getByText('Stock receipt needs review')).toBeInTheDocument()
+    screen.getByText('Create purchase bill').click()
+    expect(reconcile).toHaveBeenCalledWith(legacy)
   })
 })
 

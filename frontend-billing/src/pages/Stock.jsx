@@ -124,6 +124,9 @@ export default function Stock({ embedded = false, headerTabs = null }) {
   const [search, setSearch]                 = useState('')
   const [catFilter, setCatFilter]           = useState('')
   const [activeTab, setActiveTab]           = useState('catalogue') // 'catalogue' | 'intake' | 'godowns'
+  // Track the last prefill seed we already consumed so re-clicking the same
+  // product on the catalogue row fires a fresh addExistingRow + scroll.
+  const lastPrefillSeedRef = useRef(null)
   const [isFullScreen, setIsFullScreen] = useState(false)
 
   // Drag-resizable, per-user persisted widths for the in-stock grid.
@@ -304,36 +307,40 @@ export default function Stock({ embedded = false, headerTabs = null }) {
   // NOTE: the legacy inline add-product handler/form was removed (T5.3) —
   // adding/editing products is owned by <ProductFormModal /> below.
 
-  const handleAdjust = async (e) => {
+  const handleAdjust = async (e, opts = {}) => {
     e.preventDefault()
     if (!adjustForm.product_id) {
       setAlert({ type: 'danger', msg: 'Please select a product.' })
       return
     }
     const q = parseFloat(adjustForm.quantity) || 0
-    if (q <= 0) {
+    if (q <= 0 || !Number.isFinite(q)) {
       setAlert({ type: 'danger', msg: 'Enter a quantity greater than 0.' })
       return
     }
     // ANTI-TAMPER: a reason is mandatory — the backend rejects blank notes and
     // every adjustment is attributed in the owner's activity feed.
-    if (!(adjustForm.reason || '').trim()) {
+    const note = opts.note || (adjustForm.reason || '').trim()
+    if (!note) {
       setAlert({ type: 'danger', msg: 'A reason is required (e.g. "damaged goods", "count correction").' })
       return
     }
     setSubmitting(true)
     try {
-      // BUGFIX (2026-07): this used to POST /billing/stock/adjust — an endpoint
-      // that never existed (silent 404, the whole modal was dead). The real
-      // route is per-product with a signed qty_delta.
       const pid = parseInt(adjustForm.product_id, 10)
       const delta = adjustForm.movement_type === 'stock_out' ? -q : q
-      const noteBits = [adjustForm.reason.trim()]
-      if (adjustForm.reference) noteBits.push(`ref: ${adjustForm.reference}`)
+      const headers = {}
+      // Send idempotency key so the backend can deduplicate network retries.
+      const idemKey = opts.idempotencyKey || adjustForm._idempotency_key
+      if (idemKey) headers['X-Client-Request-Id'] = idemKey
       const res = await authFetch(`/billing/products/${pid}/stock/adjustment`, {
         method: 'POST',
-        body: JSON.stringify({ qty_delta: delta, note: noteBits.join(' — ') }),
+        headers,
+        body: JSON.stringify({ qty_delta: delta, note }),
       })
+      // A 409 is not a successful idempotent replay contract for this route.
+      // Keep the form open unless the server explicitly confirms the movement,
+      // so staff cannot lose an unsaved adjustment.
       if (res.ok) {
         setAlert({ type: 'success', msg: 'Stock adjusted successfully!' })
         setShowAdjustModal(false)
@@ -657,7 +664,11 @@ export default function Stock({ embedded = false, headerTabs = null }) {
 
   // ── Tab switch helpers ───────────────────────────────────────────────────────
   const goIntake = (product = null) => {
-    if (product) setPrefillProduct({ ...product, _seed: Date.now() }) // new ref each time
+    if (product) {
+      // Always generate a fresh _seed so the intake sheet's useEffect fires even
+      // when the same product is clicked twice in a row.
+      setPrefillProduct({ ...product, _seed: Date.now() })
+    }
     setActiveView('intake')
   }
 
@@ -798,7 +809,12 @@ export default function Stock({ embedded = false, headerTabs = null }) {
             </span>
           </div>
           <WsDivider />
-          {/* Internal view tabs */}
+          {/* Outer workspace tabs (Stock & Items | Purchase Bills) injected by
+              StockPurchases wrapper. Rendered first so the user sees the
+              workspace-level switch before the internal view tabs. */}
+          {headerTabs}
+          {headerTabs && <WsDivider />}
+          {/* Internal view tabs: Intake · Catalogue · Godowns */}
           {TABS.map(tab => (
             <button
               key={tab.key}
@@ -1324,6 +1340,7 @@ export default function Stock({ embedded = false, headerTabs = null }) {
           onSubmit={handleAdjust}
           submitting={submitting}
           onClose={() => setShowAdjustModal(false)}
+          authFetch={authFetch}
         />
       )}
 

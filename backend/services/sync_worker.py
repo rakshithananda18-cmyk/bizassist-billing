@@ -617,8 +617,14 @@ def run_hybrid_sync():
         db.close()
 
 
-def trigger_sync_run(business_id: int):
-    """Flushes queue immediately for a specific business (called by endpoint)."""
+def trigger_sync_run(business_id: int, *, pull: bool = False):
+    """Run a specific business sync now, optionally including a cloud-to-local pull.
+
+    Most local mutations only need their outbox pushed.  A successful B2B proxy
+    write is authored in the cloud, so the local database needs an immediate
+    pull to display the buyer's generated Purchase Bill without waiting for the
+    regular cloud-pull interval.
+    """
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.id == business_id).first()
@@ -628,7 +634,7 @@ def trigger_sync_run(business_id: int):
         
         _t = current_bizid_var.set(user.public_id or "-")
         try:
-            sync_business(db, user, force=True)
+            sync_business(db, user, force=True, do_pull=pull)
         finally:
             current_bizid_var.reset(_t)
         _LAST_RUN[business_id] = utc_now()

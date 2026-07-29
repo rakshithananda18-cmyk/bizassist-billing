@@ -46,7 +46,8 @@ def cleanup_test_db():
                 pass
 
 from database.db import SessionLocal
-from database.models import User, Product, Customer, Invoice, InvoicePayment, Expense
+from database.models import User, Product, Customer, Invoice, InvoicePayment, Expense, Inventory
+from core.models import StockLedger
 from core.stock import ledger as SL
 
 client = TestClient(app)
@@ -172,6 +173,60 @@ def test_product_stock_adjustment(auth_owner):
     res = stock_resp.json()
     assert res["current_stock"] == 7.0
     assert len(res["movements"]) == 2
+
+
+def test_batch_adjustment_is_ledger_backed_and_not_double_counted(auth_owner):
+    """A batch intake changes quantity exactly once and is recoverable from
+    StockLedger, while Inventory remains only a matching cache projection."""
+    headers = auth_owner["headers"]
+    resp = client.post("/products", headers=headers, json={
+        "name": "Batch Adjustment Item",
+        "selling_price": 80.0,
+        "cost_price": 50.0,
+    })
+    assert resp.status_code == 201, resp.text
+    pid = resp.json()["id"]
+    batch = "LOT-TEST-001"
+
+    first = client.post(f"/products/{pid}/stock/adjustment", headers=headers, json={
+        "qty_delta": 5,
+        "note": "received first lot",
+        "batch_no": batch,
+        "selling_price": 85,
+        "cost_price": 55,
+        "mrp": 100,
+    })
+    second = client.post(f"/products/{pid}/stock/adjustment", headers=headers, json={
+        "qty_delta": 2,
+        "note": "received same lot",
+        "batch_no": batch,
+        "cost_price": 56,
+    })
+    assert first.status_code == 201 and second.status_code == 201, (first.text, second.text)
+    assert second.json()["balance_after"] == 7.0
+
+    db = SessionLocal()
+    try:
+        inv = db.query(Inventory).filter(
+            Inventory.business_id == auth_owner["bid"],
+            Inventory.product_id == pid,
+            Inventory.batch_no == batch,
+        ).one()
+        # Regression wall: the old code applied +5/+2 in the ledger cache and
+        # then again in this projection, yielding 14 instead of 7.
+        assert inv.stock == 7
+        assert inv.selling_price == 85
+        assert inv.cost_price == 56
+        movements = db.query(StockLedger).filter(
+            StockLedger.business_id == auth_owner["bid"],
+            StockLedger.product_id == pid,
+            StockLedger.batch_no == batch,
+        ).all()
+        assert len(movements) == 2
+        assert sum(m.qty_delta for m in movements) == 7
+        assert SL.current_stock(db, auth_owner["bid"], product_id=pid, batch_no=batch) == 7.0
+    finally:
+        db.close()
 
 
 # ─── 3. Customers & Vendors CRUD ───────────────────────────────────────────────

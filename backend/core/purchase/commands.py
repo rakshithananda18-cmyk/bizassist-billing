@@ -1,11 +1,170 @@
 import logging
+import math
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from database.models import PurchaseInvoice, PurchaseInvoiceLineItem, Product, Vendor, Inventory
 from core.stock import ledger as SL
 
 logger = logging.getLogger("bizassist.purchase")
+
+
+_MONEY_TOLERANCE = 0.05
+
+
+def _finite_number(value, field: str, *, minimum: Optional[float] = None) -> float:
+    """Read a numeric request value without allowing NaN/Infinity into the books."""
+    if isinstance(value, bool):
+        raise ValueError(f"{field} must be a number.")
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field} must be a number.") from None
+    if not math.isfinite(result):
+        raise ValueError(f"{field} must be a finite number.")
+    if minimum is not None and result < minimum:
+        raise ValueError(f"{field} cannot be less than {minimum:g}.")
+    return result
+
+
+def _optional_money(value, field: str, *, minimum: float = 0.0) -> float:
+    """Read optional invoice-level money fields, using zero only when omitted."""
+    if value in (None, ""):
+        return 0.0
+    return _finite_number(value, field, minimum=minimum)
+
+
+def _normalise_purchase_draft(invoice_data: dict) -> dict:
+    """Validate and calculate the financial/stock facts of a purchase draft.
+
+    OCR output and browser payloads are untrusted input.  The purchase header,
+    line items, stock ledger and journal must therefore come from the same
+    validated quantities, rates and taxes.  In particular, an empty bill or a
+    zero/negative quantity must never result in a financial document or stock
+    movement.
+    """
+    if not isinstance(invoice_data, dict):
+        raise ValueError("Purchase bill data is invalid.")
+
+    supplier_name = invoice_data.get("supplier_name")
+    invoice_number = invoice_data.get("invoice_number")
+    if not isinstance(supplier_name, str) or not supplier_name.strip():
+        raise ValueError("Supplier name is required.")
+    if not isinstance(invoice_number, str) or not invoice_number.strip():
+        raise ValueError("Invoice number is required.")
+
+    raw_items = invoice_data.get("items")
+    if not isinstance(raw_items, list) or not raw_items:
+        raise ValueError("A purchase bill needs at least one item.")
+
+    items = []
+    subtotal = cgst_total = sgst_total = igst_total = 0.0
+    for line_no, raw_item in enumerate(raw_items, start=1):
+        if not isinstance(raw_item, dict):
+            raise ValueError(f"Item {line_no} is invalid.")
+        product_name = raw_item.get("product_name")
+        if not isinstance(product_name, str) or not product_name.strip():
+            raise ValueError(f"Item {line_no} needs a product name.")
+
+        quantity = _finite_number(raw_item.get("quantity"), f"Item {line_no} quantity", minimum=0.0)
+        conversion_factor = _finite_number(
+            raw_item.get("conversion_factor", 1.0),
+            f"Item {line_no} conversion factor",
+            minimum=0.0,
+        )
+        unit_price = _finite_number(raw_item.get("unit_price"), f"Item {line_no} unit price", minimum=0.0)
+        if quantity <= 0:
+            raise ValueError(f"Item {line_no} quantity must be greater than zero.")
+        if conversion_factor <= 0:
+            raise ValueError(f"Item {line_no} conversion factor must be greater than zero.")
+
+        tax_rates = {}
+        for tax_name in ("cgst", "sgst", "igst"):
+            rate = _optional_money(raw_item.get(f"{tax_name}_rate"), f"Item {line_no} {tax_name.upper()} rate")
+            if rate > 100:
+                raise ValueError(f"Item {line_no} {tax_name.upper()} rate cannot exceed 100%.")
+            tax_rates[tax_name] = rate
+        if sum(tax_rates.values()) > 100:
+            raise ValueError(f"Item {line_no} combined GST rate cannot exceed 100%.")
+
+        # Use the entered qty/rate as the sole source of every persisted
+        # monetary line value.  Never trust stale OCR line totals after an edit.
+        taxable_value = round(quantity * unit_price, 2)
+        cgst_amount = round(taxable_value * tax_rates["cgst"] / 100, 2)
+        sgst_amount = round(taxable_value * tax_rates["sgst"] / 100, 2)
+        igst_amount = round(taxable_value * tax_rates["igst"] / 100, 2)
+        line_total = round(taxable_value + cgst_amount + sgst_amount + igst_amount, 2)
+
+        item = dict(raw_item)
+        item.update({
+            "product_name": product_name.strip(),
+            "quantity": quantity,
+            "conversion_factor": conversion_factor,
+            "unit_price": unit_price,
+            "taxable_value": taxable_value,
+            "cgst_amount": cgst_amount,
+            "sgst_amount": sgst_amount,
+            "igst_amount": igst_amount,
+            "line_total": line_total,
+        })
+        items.append(item)
+        subtotal += taxable_value
+        cgst_total += cgst_amount
+        sgst_total += sgst_amount
+        igst_total += igst_amount
+
+    subtotal = round(subtotal, 2)
+    cgst_total = round(cgst_total, 2)
+    sgst_total = round(sgst_total, 2)
+    igst_total = round(igst_total, 2)
+    cess_total = _optional_money(invoice_data.get("cess_total"), "CESS total")
+    discount_total = _optional_money(invoice_data.get("discount_total"), "Discount total")
+    round_off = _optional_money(invoice_data.get("round_off"), "Round-off", minimum=-1.0)
+    if round_off > 1.0:
+        raise ValueError("Round-off must be between -1 and 1.")
+
+    calculated_total = round(
+        subtotal + cgst_total + sgst_total + igst_total + cess_total - discount_total + round_off,
+        2,
+    )
+    if calculated_total <= 0:
+        raise ValueError("Purchase bill total must be greater than zero.")
+
+    # Non-zero supplied header values are an explicit claim about the source
+    # document.  Reject conflicts rather than posting a payable which disagrees
+    # with its stock lines.  A zero/missing OCR header is treated as absent and
+    # filled from the reviewed lines.
+    claimed_headers = {
+        "subtotal": subtotal,
+        "cgst_total": cgst_total,
+        "sgst_total": sgst_total,
+        "igst_total": igst_total,
+        "total_amount": calculated_total,
+    }
+    for field, calculated in claimed_headers.items():
+        supplied = _optional_money(invoice_data.get(field), field.replace("_", " "))
+        if supplied and abs(supplied - calculated) > _MONEY_TOLERANCE:
+            raise ValueError(
+                f"Purchase bill {field.replace('_', ' ')} does not match its reviewed items. "
+                "Correct the items or the invoice totals before confirming."
+            )
+
+    normalised = dict(invoice_data)
+    normalised.update({
+        "supplier_name": supplier_name.strip(),
+        "invoice_number": invoice_number.strip(),
+        "items": items,
+        "subtotal": subtotal,
+        "cgst_total": cgst_total,
+        "sgst_total": sgst_total,
+        "igst_total": igst_total,
+        "cess_total": cess_total,
+        "discount_total": discount_total,
+        "round_off": round_off,
+        "total_amount": calculated_total,
+    })
+    return normalised
 
 def accept_supplier_invoice(db: Session, business_id: int, invoice_data: dict) -> PurchaseInvoice:
     """
@@ -18,13 +177,9 @@ def accept_supplier_invoice(db: Session, business_id: int, invoice_data: dict) -
     5. Inserts PurchaseInvoice and PurchaseInvoiceLineItems.
     6. Records stock movements (quantity * conversion_factor) in append-only stock_ledger.
     """
-    supplier_name = invoice_data.get("supplier_name", "").strip()
-    invoice_number = invoice_data.get("invoice_number", "").strip()
-    
-    if not supplier_name:
-        raise ValueError("Supplier name is required.")
-    if not invoice_number:
-        raise ValueError("Invoice number is required.")
+    invoice_data = _normalise_purchase_draft(invoice_data)
+    supplier_name = invoice_data["supplier_name"]
+    invoice_number = invoice_data["invoice_number"]
 
     # 1. Resolve or create Vendor
     supplier_id = invoice_data.get("supplier_id")
@@ -61,26 +216,12 @@ def accept_supplier_invoice(db: Session, business_id: int, invoice_data: dict) -
     if duplicate:
         raise ValueError(f"Purchase invoice '{invoice_number}' from supplier '{supplier_name}' has already been processed.")
 
-    subtotal = float(invoice_data.get("subtotal") or 0.0)
-    cgst_total = float(invoice_data.get("cgst_total") or 0.0)
-    sgst_total = float(invoice_data.get("sgst_total") or 0.0)
-    igst_total = float(invoice_data.get("igst_total") or 0.0)
-    cess_total = float(invoice_data.get("cess_total") or 0.0)
-    total_amount = float(invoice_data.get("total_amount") or 0.0)
-
-    items = invoice_data.get("items", [])
-    if subtotal == 0.0 and items:
-        subtotal = sum(float(item.get("taxable_value") or 0.0) for item in items)
-    if cgst_total == 0.0 and items:
-        cgst_total = sum(float(item.get("cgst_amount") or 0.0) for item in items)
-    if sgst_total == 0.0 and items:
-        sgst_total = sum(float(item.get("sgst_amount") or 0.0) for item in items)
-    if igst_total == 0.0 and items:
-        igst_total = sum(float(item.get("igst_amount") or 0.0) for item in items)
-    if cess_total == 0.0 and items:
-        cess_total = sum(float(item.get("cess_amount") or 0.0) for item in items)
-    if total_amount == 0.0 and items:
-        total_amount = sum(float(item.get("line_total") or 0.0) for item in items)
+    subtotal = invoice_data["subtotal"]
+    cgst_total = invoice_data["cgst_total"]
+    sgst_total = invoice_data["sgst_total"]
+    igst_total = invoice_data["igst_total"]
+    cess_total = invoice_data["cess_total"]
+    total_amount = invoice_data["total_amount"]
 
     # 3. Create the PurchaseInvoice
     purchase_invoice = PurchaseInvoice(
@@ -431,4 +572,3 @@ def create_debit_note(
                 dn_number, business_id, orig.invoice_number, len(dn_lines), grand)
     db.refresh(dn)
     return dn
-

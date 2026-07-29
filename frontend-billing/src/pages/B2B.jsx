@@ -246,6 +246,37 @@ export default function B2B() {
     }
   }, [incoming, outgoing, showToast])
 
+  const [reconcilingOrderId, setReconcilingOrderId] = useState(null)
+  const reconcilePurchaseBill = useCallback(async (order) => {
+    const ok = await confirm({
+      mode: 'create',
+      title: 'Create the missing Purchase Bill?',
+      entity: order.order_number,
+      summary: [
+        { key: 'order', label: 'B2B order', value: order.order_number },
+        { key: 'supplier', label: 'Supplier', value: order.seller_name || '—' },
+        { key: 'total', label: 'Total', value: fmt(order.total_amount) },
+        { key: 'stock', label: 'Stock', value: order.buyer_stock_received
+          ? 'Already received; stock will not change.'
+          : 'This creates the bill only; stock will not change.' },
+      ],
+      confirmText: 'Create Purchase Bill',
+    })
+    if (!ok) return
+
+    setReconcilingOrderId(order.id)
+    try {
+      const updated = await b2b.reconcilePurchaseBill(authFetch, order.id)
+      setOpenOrder(prev => (prev && prev.id === order.id ? { ...prev, ...updated } : prev))
+      await outgoing.reload()
+      notifyOk(`Purchase Bill ${updated.buyer_purchase_invoice_number || ''} created. Stock was not received again.`)
+    } catch (err) {
+      notifyError(err.message || 'Could not create the missing B2B Purchase Bill.')
+    } finally {
+      setReconcilingOrderId(null)
+    }
+  }, [authFetch, confirm, notifyError, notifyOk, outgoing])
+
   const copyBizId = useCallback(() => {
     if (!myBizId) return
     navigator.clipboard.writeText(myBizId)
@@ -359,6 +390,8 @@ export default function B2B() {
             onOpenOrder={setOpenOrder}
             justInvoiced={justInvoiced}
             onGoToOrderDesk={() => goTab('order')}
+            onReconcilePurchaseBill={reconcilePurchaseBill}
+            reconcilingOrderId={reconcilingOrderId}
           />
         )}
 

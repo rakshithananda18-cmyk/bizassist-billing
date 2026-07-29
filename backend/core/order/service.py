@@ -3,14 +3,18 @@ core/order/service.py
 =====================
 Domain service logic for B2B Ordering and Catalog visibility.
 """
-from services.dates import utc_now
 import logging
+import uuid
+from services.dates import utc_now
 from datetime import datetime
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from core.models import B2BConnection, B2BOrder, B2BOrderLineItem
 from core.billing import sequence as SEQ
-from database.models import Product, Inventory, User
+from database.models import (
+    Invoice, Product, Inventory, PurchaseInvoice, PurchaseInvoiceLineItem,
+    User, Vendor,
+)
 
 logger = logging.getLogger("bizassist.order")
 
@@ -329,16 +333,193 @@ def transition_order_status(db: Session, business_id: int, order_id: int, new_st
             
     order.status = new_status
     order.updated_at = utc_now()
+
+    # Complete all financial effects before the order becomes durable as
+    # completed. A partial bilateral posting is worse than a retriable failure.
+    if new_status == "completed":
+        sync_completed_order(db, order)
+
     db.commit()
     db.refresh(order)
 
-    # Phase 4 sync: completing an order posts it to BOTH sides (seller sale
-    # invoice + buyer auto stock-in), exactly-once.
-    if new_status == "completed":
-        sync_completed_order(db, order)
-        db.refresh(order)
-
     return order
+
+
+def b2b_purchase_invoice_uid(order: B2BOrder) -> str:
+    """Return the stable cross-database identity of a B2B purchase bill.
+
+    Local and cloud integer IDs differ.  A deterministic UID is the only safe
+    key for retrying or reconciling this buyer document across databases.
+    """
+    identity = str(order.uid or f"order-number:{order.order_number}")
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"bizassist:b2b-purchase:{identity}"))
+
+
+def _buyer_product_for_line(db: Session, *, order: B2BOrder, line) -> Product:
+    """Resolve one buyer product for both its stock receipt and purchase bill."""
+    product = db.query(Product).filter(
+        Product.business_id == order.buyer_business_id,
+        Product.name == line.product_name,
+    ).first()
+    if product is None:
+        product = Product(
+            business_id=order.buyer_business_id,
+            name=line.product_name,
+            hsn_sac=line.hsn_sac,
+            unit=line.unit or "Nos",
+            cost_price=float(line.unit_price or 0.0),
+            selling_price=float(line.unit_price or 0.0),
+            cgst_rate=float(line.cgst_rate or 0.0),
+            sgst_rate=float(line.sgst_rate or 0.0),
+            igst_rate=float(line.igst_rate or 0.0),
+            track_inventory=True,
+            is_active=True,
+        )
+        db.add(product)
+        db.flush()
+    else:
+        # The completed supplier bill is the buyer's actual cost. Selling price
+        # remains buyer-controlled.
+        product.cost_price = float(line.unit_price or 0.0)
+    return product
+
+
+def _buyer_vendor_for_order(db: Session, *, order: B2BOrder, seller: User) -> Vendor:
+    """Find/create the buyer-owned vendor row for this connected seller."""
+    vendor = None
+    if seller.gstin:
+        vendor = db.query(Vendor).filter(
+            Vendor.business_id == order.buyer_business_id,
+            Vendor.gstin == seller.gstin,
+        ).first()
+    if vendor is None and not seller.gstin:
+        vendor = db.query(Vendor).filter(
+            Vendor.business_id == order.buyer_business_id,
+            Vendor.name == seller.business_name,
+        ).first()
+    if vendor is None:
+        vendor = Vendor(
+            business_id=order.buyer_business_id,
+            name=seller.business_name,
+            gstin=seller.gstin,
+            phone=seller.phone,
+            email=seller.email,
+            address=seller.address,
+            state_code=seller.state_code,
+            pan=seller.pan,
+            is_active=True,
+        )
+        db.add(vendor)
+        db.flush()
+    return vendor
+
+
+def _ensure_buyer_purchase_invoice(db: Session, *, order: B2BOrder, buyer: User,
+                                   seller: User, sale_invoice: Invoice) -> PurchaseInvoice:
+    """Create the buyer's bill/payable, deliberately without a second stock move."""
+    purchase_uid = b2b_purchase_invoice_uid(order)
+    purchase = db.query(PurchaseInvoice).filter(
+        PurchaseInvoice.business_id == order.buyer_business_id,
+        PurchaseInvoice.uid == purchase_uid,
+    ).first()
+    if purchase is not None:
+        # Never silently change an existing financial document if its identity
+        # was somehow attached to a different amount.
+        if (purchase.invoice_number != f"B2B-{order.order_number}" or
+                abs(float(purchase.total_amount or 0.0) - float(sale_invoice.total_amount or 0.0)) > 0.01 or
+                len(purchase.line_items) != len(sale_invoice.line_items)):
+            raise ValueError("Existing B2B purchase bill does not match the completed order")
+        from core.accounting import posting
+        posting.post_purchase(db, purchase)
+        return purchase
+
+    vendor = _buyer_vendor_for_order(db, order=order, seller=seller)
+    purchase = PurchaseInvoice(
+        business_id=order.buyer_business_id,
+        uid=purchase_uid,
+        supplier_id=vendor.id,
+        supplier_name=vendor.name,
+        invoice_number=f"B2B-{order.order_number}",
+        invoice_date=sale_invoice.invoice_date,
+        due_date=sale_invoice.due_date,
+        status="Pending",
+        notes=f"Automatically generated from completed B2B order {order.order_number}",
+        gstin_buyer=buyer.gstin,
+        place_of_supply=sale_invoice.place_of_supply,
+        invoice_type="B2B",
+        subtotal=float(sale_invoice.subtotal or 0.0),
+        cgst_total=float(sale_invoice.cgst_total or 0.0),
+        sgst_total=float(sale_invoice.sgst_total or 0.0),
+        igst_total=float(sale_invoice.igst_total or 0.0),
+        cess_total=float(sale_invoice.cess_total or 0.0),
+        total_amount=float(sale_invoice.total_amount or 0.0),
+        reverse_charge=bool(sale_invoice.reverse_charge),
+        is_tax_inclusive=bool(sale_invoice.is_tax_inclusive),
+        discount_total=float(sale_invoice.discount_total or 0.0),
+        round_off=float(sale_invoice.round_off or 0.0),
+    )
+    db.add(purchase)
+    db.flush()
+
+    # Copy the final sale invoice values: that is the source of truth after
+    # GST destination rules, rounding and discount allocation are applied.
+    for index, line in enumerate(sale_invoice.line_items):
+        buyer_product = _buyer_product_for_line(db, order=order, line=line)
+        db.add(PurchaseInvoiceLineItem(
+            uid=str(uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"bizassist:b2b-purchase-line:{purchase_uid}:{index}",
+            )),
+            purchase_invoice_id=purchase.id,
+            product_id=buyer_product.id,
+            product_name=buyer_product.name,
+            hsn_sac=line.hsn_sac,
+            unit=line.unit or buyer_product.unit or "Nos",
+            quantity=float(line.quantity or 0.0),
+            conversion_factor=1.0,
+            unit_price=float(line.unit_price or 0.0),
+            cgst_rate=float(line.cgst_rate or 0.0),
+            sgst_rate=float(line.sgst_rate or 0.0),
+            igst_rate=float(line.igst_rate or 0.0),
+            taxable_value=float(line.taxable_value or 0.0),
+            cgst_amount=float(line.cgst_amount or 0.0),
+            sgst_amount=float(line.sgst_amount or 0.0),
+            igst_amount=float(line.igst_amount or 0.0),
+            line_total=float(line.line_total or 0.0),
+            confidence_score=1.0,
+            is_matched=True,
+        ))
+
+    from core.accounting import posting
+    posting.post_purchase(db, purchase)
+    return purchase
+
+
+def reconcile_buyer_purchase_bill(db: Session, order: B2BOrder) -> PurchaseInvoice:
+    """Create a missing buyer Purchase Bill for a legacy completed B2B order.
+
+    This command is deliberately *financial-document only*: it never makes a
+    stock movement. Older completed orders can predate the buyer stock-ledger
+    link, so requiring that link made it impossible to repair the payable even
+    though the supplier's sale invoice was valid. The caller can therefore
+    safely repair historical books without the risk of receiving goods twice.
+    """
+    if order.status != "completed":
+        raise ValueError("Only completed B2B orders can have a purchase bill")
+    if not order.seller_invoice_id:
+        raise ValueError("The supplier sale invoice is missing; this order needs financial reconciliation")
+
+    buyer = db.query(User).filter(User.id == order.buyer_business_id).first()
+    seller = db.query(User).filter(User.id == order.seller_business_id).first()
+    sale_invoice = db.query(Invoice).filter(
+        Invoice.id == order.seller_invoice_id,
+        Invoice.business_id == order.seller_business_id,
+    ).first()
+    if not buyer or not seller or not sale_invoice:
+        raise ValueError("The completed order has an invalid business or supplier invoice link")
+    return _ensure_buyer_purchase_invoice(
+        db, order=order, buyer=buyer, seller=seller, sale_invoice=sale_invoice,
+    )
 
 
 def sync_completed_order(db: Session, order: B2BOrder):
@@ -353,9 +534,6 @@ def sync_completed_order(db: Session, order: B2BOrder):
     an existing `b2b_order` ledger reference, and `order.seller_invoice_id` short-
     circuits the whole thing once done. Returns the seller Invoice (or None).
     """
-    if order.seller_invoice_id:
-        return None  # already synced
-
     # Lazy imports avoid any import-time cycle with the billing/stock commands.
     from core.billing import commands as billing
     from core.stock import ledger as SL
@@ -363,10 +541,12 @@ def sync_completed_order(db: Session, order: B2BOrder):
 
     line_items = list(order.line_items or [])
     if not line_items:
-        return None
+        raise ValueError("Cannot complete a B2B order without line items")
 
     buyer = db.query(User).filter(User.id == order.buyer_business_id).first()
     seller = db.query(User).filter(User.id == order.seller_business_id).first()
+    if not buyer or not seller:
+        raise ValueError("B2B order references a missing buyer or seller")
 
     # 1) Seller sale invoice — deterministic number ⇒ idempotent; deducts seller stock.
     lines = [{
@@ -381,15 +561,24 @@ def sync_completed_order(db: Session, order: B2BOrder):
         "unit":         li.unit,
     } for li in line_items]
 
-    inv = billing.create_sale_invoice(
-        db,
-        business_id=order.seller_business_id,
-        customer=(buyer.business_name if buyer else None),
-        invoice_no=f"B2B-{order.order_number}",
-        invoice_type="B2B",
-        place_of_supply=(buyer.state_code if buyer and buyer.state_code else None),
-        lines=lines,
-    )
+    if order.seller_invoice_id:
+        inv = db.query(Invoice).filter(
+            Invoice.id == order.seller_invoice_id,
+            Invoice.business_id == order.seller_business_id,
+        ).first()
+        if inv is None:
+            raise ValueError("B2B order points to a supplier invoice outside the seller business")
+    else:
+        inv = billing.create_sale_invoice(
+            db,
+            business_id=order.seller_business_id,
+            customer=buyer.business_name,
+            invoice_no=f"B2B-{order.order_number}",
+            invoice_type="B2B",
+            place_of_supply=buyer.state_code or None,
+            lines=lines,
+            commit=False,
+        )
 
     # 2) Buyer auto stock-in — idempotent on (buyer, b2b_order, order.id).
     already = db.query(StockLedger).filter(
@@ -399,26 +588,7 @@ def sync_completed_order(db: Session, order: B2BOrder):
     ).first()
     if not already:
         for li in line_items:
-            bp = db.query(Product).filter(
-                Product.business_id == order.buyer_business_id,
-                Product.name == li.product_name,
-            ).first()
-            if not bp:
-                bp = Product(
-                    business_id=order.buyer_business_id,
-                    name=li.product_name,
-                    hsn_sac=li.hsn_sac,
-                    unit=li.unit or "Nos",
-                    cost_price=li.unit_price,
-                    selling_price=li.unit_price,
-                    cgst_rate=li.cgst_rate,
-                    sgst_rate=li.sgst_rate,
-                    igst_rate=li.igst_rate,
-                    track_inventory=True,
-                    is_active=True,
-                )
-                db.add(bp)
-                db.flush()
+            bp = _buyer_product_for_line(db, order=order, line=li)
             SL.record_movement(
                 db,
                 business_id=order.buyer_business_id,
@@ -433,9 +603,10 @@ def sync_completed_order(db: Session, order: B2BOrder):
             )
 
     # 3) Link the order to the seller invoice (exactly-once guard) + commit.
+    _ensure_buyer_purchase_invoice(
+        db, order=order, buyer=buyer, seller=seller, sale_invoice=inv,
+    )
     order.seller_invoice_id = inv.id
-    db.commit()
-    db.refresh(order)
     logger.info("[ORDER] synced order %s → seller invoice %s + buyer stock-in (buyer=%s, seller=%s)",
                 order.order_number, inv.id, order.buyer_business_id, order.seller_business_id)
     return inv
