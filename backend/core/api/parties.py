@@ -31,6 +31,7 @@ from database.models import Customer, Vendor, Invoice
 from services.auth import get_active_user, restrict_cashier
 from services.realtime import realtime_manager, delta_event
 from core.billing import commands as billing
+from core.sync.idempotency import ReplayGuard, replay_guard
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.parties")
@@ -364,12 +365,17 @@ def settle_customer_dues(
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(restrict_cashier),   # staff-restricted (owner/manager)
     db: Session = Depends(get_db),
+    guard: ReplayGuard = Depends(replay_guard),
 ):
     """Staff-restricted (cashiers/supply-adders blocked): apply a lump-sum receipt
     across a customer's outstanding invoices oldest-first (FIFO). Clears earlier
     bills fully, leaves at most one partial, and carries any leftover as an
     advance that nets against the next bill. Returns the per-invoice allocation
     breakdown + advance."""
+    hit = guard.replay()
+    if hit is not None:
+        return hit
+
     bid = current_user["id"]
     c = db.query(Customer).filter(Customer.id == customer_id, Customer.business_id == bid).first()
     if c is None:
@@ -401,7 +407,7 @@ def settle_customer_dues(
     background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "payment"})
     result["customer_id"] = customer_id
     result["customer_name"] = c.name
-    return result
+    return guard.store(result, status_code=200)
 
 
 # ── Vendor Routes ──────────────────────────────────────────────────────────────

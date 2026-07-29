@@ -223,9 +223,14 @@ def create_debit_note(
     req: CreateDebitNoteRequest,
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(restrict_cashier_only),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    guard: ReplayGuard = Depends(replay_guard),
 ):
     """Record a purchase return / debit note against a purchase invoice."""
+    hit = guard.replay()
+    if hit is not None:
+        return hit
+
     if current_user.get("role") == "cashier":
         raise HTTPException(status_code=403, detail="Permission denied: cashiers cannot record returns.")
 
@@ -241,7 +246,7 @@ def create_debit_note(
             debit_note_no=req.debit_note_number
         )
         background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "purchase"})
-        return _invoice_out(dn)
+        return guard.store(_invoice_out(dn), status_code=201)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:

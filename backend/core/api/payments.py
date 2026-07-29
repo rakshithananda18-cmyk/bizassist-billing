@@ -375,8 +375,13 @@ def create_credit_note(
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(restrict_cashier),
     db: Session = Depends(get_db),
+    guard: ReplayGuard = Depends(replay_guard),
 ):
     """Create a credit note invoice (atomic reversal, returns stock)."""
+    hit = guard.replay()
+    if hit is not None:
+        return hit
+
     bid = current_user["id"]
     try:
         lines = [l.model_dump() for l in req.lines]
@@ -388,7 +393,7 @@ def create_credit_note(
             note=req.note,
         )
         background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "payment"})
-        return _invoice_out(cn)
+        return guard.store(_invoice_out(cn), status_code=201)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
@@ -439,9 +444,14 @@ def create_expense(
     req: CreateExpenseRequest,
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    guard: ReplayGuard = Depends(replay_guard),
 ):
     """Record a new business expense."""
+    hit = guard.replay()
+    if hit is not None:
+        return hit
+
     bid = current_user["id"]
     if req.amount <= 0:
         raise HTTPException(status_code=422, detail="Amount must be greater than zero")
@@ -467,7 +477,7 @@ def create_expense(
         db.commit()
         background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "payment"})
         db.refresh(exp)
-        return {
+        res = {
             "id": exp.id,
             "expense_date": exp.expense_date,
             "category": exp.category,
@@ -477,6 +487,7 @@ def create_expense(
             "note": exp.note,
             "created_at": exp.created_at.isoformat() if exp.created_at else None
         }
+        return guard.store(res, status_code=201)
     except ValueError as ve:
         # Business-rule rejections (e.g. posting into a locked period) surface as
         # a clean 422 with the message, consistent with the other money routes.

@@ -187,3 +187,52 @@ def test_payment_replay_is_exactly_once():
     finally:
         db.close()
     assert n == 1   # one payment row, not two
+
+
+def test_credit_note_replay_is_exactly_once():
+    a = _signup()
+    sale = client.post("/sales", headers=a["headers"], json=_sale_body(a["pid"], qty=2))
+    inv_id = sale.json()["id"]
+
+    key = uuid.uuid4().hex
+    h = {**a["headers"], HDR: key}
+    cn_body = {"invoice_id": inv_id, "lines": [{"product_id": a["pid"], "product_name": "Idem Rice", "unit_price": 100.0, "quantity": 1}], "note": "Return damaged"}
+
+    cn1 = client.post("/credit-notes", headers=h, json=cn_body)
+    cn2 = client.post("/credit-notes", headers=h, json=cn_body)
+
+    assert cn1.status_code == 201 and cn2.status_code == 201, (cn1.text, cn2.text)
+    assert cn1.json()["id"] == cn2.json()["id"]   # replayed identical credit note ID
+
+
+def test_expense_replay_is_exactly_once():
+    a = _signup()
+    key = uuid.uuid4().hex
+    h = {**a["headers"], HDR: key}
+    exp_body = {
+        "expense_date": "2026-06-17", "category": "Utilities", "expense_type": "Indirect",
+        "amount": 250.0, "payment_mode": "Cash", "note": "Electricity bill"
+    }
+
+    e1 = client.post("/expenses", headers=h, json=exp_body)
+    e2 = client.post("/expenses", headers=h, json=exp_body)
+
+    assert e1.status_code == 201 and e2.status_code == 201, (e1.text, e2.text)
+    assert e1.json()["id"] == e2.json()["id"]   # replayed identical expense ID
+
+
+def test_customer_settle_replay_is_exactly_once():
+    a = _signup()
+    # Create customer and unpaid sale
+    cust = client.post("/customers", headers=a["headers"], json={"name": "Idem Customer"}).json()
+    client.post("/sales", headers=a["headers"], json={**_sale_body(a["pid"], qty=2), "customer_id": cust["id"]})
+
+    key = uuid.uuid4().hex
+    h = {**a["headers"], HDR: key}
+    settle_body = {"amount": 100.0, "payment_mode": "Cash", "payment_date": "2026-06-17", "note": "Partial settle"}
+
+    s1 = client.post(f"/customers/{cust['id']}/settle", headers=h, json=settle_body)
+    s2 = client.post(f"/customers/{cust['id']}/settle", headers=h, json=settle_body)
+
+    assert s1.status_code == 200 and s2.status_code == 200, (s1.text, s2.text)
+    assert s1.json() == s2.json()   # replayed identical settlement result
