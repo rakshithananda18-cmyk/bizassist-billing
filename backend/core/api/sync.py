@@ -151,7 +151,8 @@ def sync_pull(
 ):
     """Return tenant-scoped changes since the per-entity id cursor. Append-only
     money entities only (Slice 2); exactly-once, gap-free delivery via id > cursor."""
-    bid = current_user["id"]
+    from services.auth import resolve_business_id_in_db
+    bid = resolve_business_id_in_db(current_user, db, require_public_id=True)
     cur = _parse_since(since)
 
     changes: dict = {}

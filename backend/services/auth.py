@@ -215,10 +215,10 @@ def resolve_business_id_in_db(current_user: dict, db, require_public_id: bool = 
     (BizID) is the stable identity shared by both. Never use a token's numeric
     ``id`` across a local/cloud boundary when a BizID is present.
 
-    If require_public_id is True, missing or unresolvable public_id MUST fail closed with 403
-    and NEVER fall back to legacy username or integer ID lookups.
     """
-    from database.models import User
+    is_cloud = getattr(getattr(db, "bind", None), "dialect", None) and db.bind.dialect.name == "postgresql"
+    if is_cloud:
+        require_public_id = True
 
     public_id = str(current_user.get("public_id") or "").strip()
     username = str(current_user.get("username") or current_user.get("sub") or "").strip()

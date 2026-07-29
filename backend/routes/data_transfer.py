@@ -163,7 +163,7 @@ def _resolve_owner_id_legacy(user: dict, db: Session) -> int:
 # reference; its username/numeric fallback is not safe for a BizID-bearing
 # local/cloud token.
 def _resolve_owner_id(user: dict, db: Session) -> int:
-    return resolve_business_id_in_db(user, db)
+    return resolve_business_id_in_db(user, db, require_public_id=True)
 
 
 # Backward-compatible alias (old name used elsewhere).

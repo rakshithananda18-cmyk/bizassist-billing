@@ -947,7 +947,7 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
     try:
         resp = httpx.get(
             f"{CLOUD_URL}/api/sync/pull",
-            params={"business_id": business_id, "since": "2020-01-01T00:00:00"},
+            params={"since": "2020-01-01T00:00:00"},
             headers={"Authorization": f"Bearer {token}"},
             timeout=httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=10.0),
         )
@@ -1274,15 +1274,17 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         .all()
     )
 
+    # Must have a valid public_id (BizID) to sync to cloud — local integer ID
+    # alone across network boundary is a multi-tenant security hazard.
+    if not (user.public_id or "").strip():
+        logger.warning("[SYNC_WORKER] Business %s has no public_id (BizID) — pausing cloud sync until device is linked", business_id)
+        return
+
     # Prefer the CLOUD-issued token provisioned at login (standard device flow).
     # Self-signed fallback works only when local & cloud share JWT_SECRET.
     _cloud_token = _get_cloud_token(business_id)
     used_self_signed = _cloud_token is None
     if used_self_signed and _SELF_SIGNED_REJECTED.get(business_id):
-        # The cloud already rejected our self-signed tokens (secrets differ —
-        # the default on packaged installs). Retrying every cycle only floods
-        # the cloud auth log with "Token rejected — invalid token". Wait until
-        # the next owner login provisions a cloud-issued token.
         return
     token = _cloud_token or create_access_token({
         "id": business_id,

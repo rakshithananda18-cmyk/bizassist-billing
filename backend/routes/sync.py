@@ -295,8 +295,8 @@ def _resolve_business_id_by_username_legacy(user: dict, db: Session) -> int:
 # The active resolver is shared with the import/profile/staff paths.  The
 # token's numeric id is local to the issuing database; BizID is the identity
 # contract across desktop and cloud.
-def _resolve_business_id_by_username(user: dict, db: Session) -> int:
-    return resolve_business_id_in_db(user, db)
+def _resolve_business_id_by_username(user: dict, db: Session, require_public_id: bool = False) -> int:
+    return resolve_business_id_in_db(user, db, require_public_id=require_public_id)
 
 
 # ---------------------------------------------------------------------------
@@ -431,7 +431,7 @@ def push_changes(
     Cloud Endpoint. Receives local changes and applies them to PostgreSQL.
     Enforces multi-tenant scoping and applies Last-Write-Wins (LWW) resolution.
     """
-    business_id = _resolve_business_id_by_username(current_user, db)
+    business_id = _resolve_business_id_by_username(current_user, db, require_public_id=True)
     logger.info("sync/push: business_id=%s received %s changes", business_id, len(payload.changes))
 
     blocked_delete_entities = sorted({
@@ -902,7 +902,7 @@ def pull_changes(
     Cloud Endpoint. Returns updates scoped to user's business_id that
     occurred after `last_sync_at`.
     """
-    business_id = _resolve_business_id_by_username(current_user, db)
+    business_id = _resolve_business_id_by_username(current_user, db, require_public_id=True)
     last_sync_dt = _parse_dt(last_sync_at) or datetime(1970, 1, 1)
 
     changes: Dict[str, List[dict]] = {}
