@@ -21,7 +21,7 @@ import os
 
 from database.db import get_db
 from database.models import User
-from services.auth import restrict_cashier, hash_password
+from services.auth import restrict_cashier, hash_password, bump_token_version
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.staff")
@@ -240,6 +240,8 @@ def update_staff(staff_id: int, req: UpdateStaff,
     staff = db.query(User).filter(User.id == staff_id, User.parent_business_id == bid).first()
     if not staff:
         raise HTTPException(status_code=404, detail="Staff member not found")
+    if req.role is not None or req.password is not None:
+        bump_token_version(db, staff)
     if req.role is not None:
         staff.role = _validate_role(req.role)
     if req.password is not None:

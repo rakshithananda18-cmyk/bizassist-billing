@@ -90,6 +90,13 @@ def clear_token_version_cache(user_id: int = None) -> None:
         _tv_cache.pop(user_id, None)
 
 
+def bump_token_version(db, user) -> int:
+    """Increment user's token_version and clear in-process cache to invalidate outstanding JWTs."""
+    user.token_version = (user.token_version or 0) + 1
+    clear_token_version_cache(user.id)
+    return user.token_version
+
+
 def _current_token_version(user_id: int):
     """DB-backed token_version with a short in-process cache. Returns None when
     it cannot be determined (row missing / DB error) — caller skips the check
