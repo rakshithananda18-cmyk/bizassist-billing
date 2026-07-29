@@ -28,6 +28,7 @@ def save_invoices(df, db, business_id, file_id=None):
     Runs inside a transaction block to guarantee atomicity.
     """
     try:
+        created_invoices = []
         for _, row in df.iterrows():
             invoice_id = _get_val(row, "invoice_id")
             
@@ -77,7 +78,16 @@ def save_invoices(df, db, business_id, file_id=None):
                     file_id=file_id
                 )
                 db.add(invoice)
+                created_invoices.append(invoice)
         
+        db.flush()
+        from core.accounting import posting
+        for inv in created_invoices:
+            try:
+                posting.post_sale(db, inv)
+            except Exception as pe:
+                logger.warning("[PARSER] Could not post double-entry journal for imported invoice %s: %s", inv.invoice_id, pe)
+
         db.commit()
     except Exception as e:
         db.rollback()

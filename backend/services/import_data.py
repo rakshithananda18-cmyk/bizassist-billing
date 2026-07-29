@@ -178,6 +178,12 @@ def import_customers_bulk(db: Session, business_id: int, items: List[Dict[str, A
                 notes="Imported opening outstanding dues",
             )
             db.add(inv)
+            db.flush()
+            from core.accounting import posting
+            try:
+                posting.post_sale(db, inv)
+            except Exception as pe:
+                logger.warning("[IMPORT] Could not post double-entry journal for opening due %s: %s", inv.invoice_id, pe)
             
         created_count += 1
         

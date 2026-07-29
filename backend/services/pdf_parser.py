@@ -206,6 +206,7 @@ def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str, file_has
         db.add(upload_log)
         db.flush()
         file_id = upload_log.id
+        created_invoices = []
 
         # 2. Add Invoice and Inventory records for each line item
         for item in items:
@@ -256,6 +257,7 @@ def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str, file_has
                     due_date=to_iso(data.get("due_date"))
                 )
                 db.add(invoice_record)
+                created_invoices.append(invoice_record)
 
             # Smart upsert for Inventory
             existing_inventory = db.query(Inventory).filter(
@@ -312,6 +314,14 @@ def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str, file_has
                 paid=payment_status
             )
             db.add(new_payment)
+
+        db.flush()
+        from core.accounting import posting
+        for inv in created_invoices:
+            try:
+                posting.post_sale(db, inv)
+            except Exception as pe:
+                logger.warning("[PDF_PARSER] Could not post double-entry journal for PDF invoice %s: %s", inv.invoice_id, pe)
 
         db.commit()
 
