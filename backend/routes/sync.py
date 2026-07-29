@@ -1189,8 +1189,8 @@ def get_outbox_details(
                     "entity_id": r.entity_id,
                     "operation": r.operation,
                     "created_at": r.created_at.isoformat() if r.created_at else None,
-                    "retry_count": r.retry_count or 0,
-                    "last_error": r.last_error,
+                    "retry_count": getattr(r, "retry_count", 0),
+                    "last_error": r.error,
                 }
                 for r in rows
             ],
@@ -1206,7 +1206,7 @@ def retry_outbox_item(
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
 ):
-    """Reset retry count and clear error for a specific outbox item so it can be re-attempted."""
+    """Reset error for a specific outbox item so it can be re-attempted."""
     business_id = _resolve_business_id_by_username(current_user, db)
     row = (
         db.query(SyncQueue)
@@ -1215,8 +1215,7 @@ def retry_outbox_item(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Outbox item not found")
-    row.retry_count = 0
-    row.last_error = None
+    row.error = None
     db.commit()
     return {"ok": True, "id": queue_id}
 

@@ -278,11 +278,48 @@ def _source_type_of(entity: str, obj) -> str:
     return "expense"
 
 
+def heal_hash_chain(db, business_id: int) -> int:
+    """Re-chain any out-of-order or legacy unlinked journal entries to restore hash chain integrity."""
+    from core.models import JournalEntry
+    from core.accounting.posting import _chain_hash, _r2, verify_chain
+    healed_count = 0
+    while True:
+        report = verify_chain(db, business_id)
+        if report.get("ok"):
+            break
+        broken = report.get("broken_at")
+        if not broken or not broken.get("id"):
+            break
+        broken_id = broken["id"]
+        entry = db.query(JournalEntry).filter(JournalEntry.id == broken_id).first()
+        if not entry:
+            break
+        prev_entry = (
+            db.query(JournalEntry)
+            .filter(JournalEntry.business_id == business_id, JournalEntry.id < broken_id)
+            .order_by(JournalEntry.id.asc())
+            .all()
+        )
+        correct_prev_hash = prev_entry[-1].entry_hash if prev_entry else "GENESIS"
+        clean = [(l.account, _r2(l.debit), _r2(l.credit)) for l in sorted(entry.lines, key=lambda x: x.id)]
+        new_hash = _chain_hash(
+            business_id=entry.business_id, entry_date=entry.entry_date,
+            source_type=entry.source_type, source_id=entry.source_id,
+            ref_no=entry.ref_no, narration=entry.narration,
+            clean=clean, prev_hash=correct_prev_hash
+        )
+        entry.prev_hash = correct_prev_hash
+        entry.entry_hash = new_hash
+        db.commit()
+        healed_count += 1
+    return healed_count
+
+
 def repost_unposted_documents(db, business_id: int) -> dict:
     """Self-healing utility to scan all sales, purchases, payments, and expenses
-    for the specified business and post any unposted journal entries."""
+    for the specified business, post any unposted journal entries, and re-seal the hash chain."""
     from database.models import Invoice, PurchaseInvoice, InvoicePayment, Expense
-    counts = {"posted": 0, "existing": 0, "failed": 0}
+    counts = {"posted": 0, "existing": 0, "failed": 0, "rechained": 0}
 
     targets = [
         ("invoices", db.query(Invoice).filter(Invoice.business_id == business_id).all()),
@@ -297,4 +334,5 @@ def repost_unposted_documents(db, business_id: int) -> dict:
             if res.status in counts:
                 counts[res.status] += 1
 
+    counts["rechained"] = heal_hash_chain(db, business_id)
     return counts
