@@ -271,8 +271,9 @@ class Invoice(Base, BusinessOwnedMixin, GSTFieldsMixin):
     file_id      = Column(Integer, nullable=True, index=True)
 
     # New FK
-    customer_id  = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
-    godown_id    = Column(Integer, nullable=True, index=True)
+    customer_id       = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    godown_id         = Column(Integer, nullable=True, index=True)
+    parent_invoice_id = Column(Integer, ForeignKey("invoices.id"),  nullable=True, index=True)  # link credit note → sale
 
     # Payment tracking
     paid_amount  = Column(Float,  nullable=True, default=0.0)
@@ -334,6 +335,7 @@ class InvoiceLineItem(Base, TimestampMixin):
     hsn_sac       = Column(String, nullable=True)
     unit          = Column(String, nullable=True, default="Nos")
     quantity      = Column(Float,  nullable=False, default=1.0)
+    returned_qty  = Column(Float,  nullable=True,  default=0.0, server_default="0.0")    # cumulative returned quantity (§3 return limit enforcement)
     unit_price    = Column(Float,  nullable=False, default=0.0)
     discount      = Column(Float,  nullable=True,  default=0.0)
     discount_pct  = Column(Float,  nullable=True,  default=0.0)
@@ -572,6 +574,7 @@ class PurchaseInvoice(Base, BusinessOwnedMixin, GSTFieldsMixin):
     notes          = Column(Text,   nullable=True)
     file_id        = Column(Integer, nullable=True, index=True)
     godown_id      = Column(Integer, nullable=True, index=True)
+    parent_invoice_id = Column(Integer, ForeignKey("purchase_invoices.id"), nullable=True, index=True)  # link debit note → purchase
 
     supplier_ref   = relationship("Vendor", back_populates="purchase_invoices", foreign_keys=[supplier_id])
     line_items     = relationship(
@@ -598,6 +601,7 @@ class PurchaseInvoiceLineItem(Base, TimestampMixin):
     hsn_sac           = Column(String, nullable=True)
     unit              = Column(String, nullable=True, default="Nos")
     quantity          = Column(Float,  nullable=False, default=1.0)
+    returned_qty      = Column(Float,  nullable=True,  default=0.0, server_default="0.0")    # cumulative returned quantity (§3 return limit enforcement)
     purchase_unit     = Column(String, nullable=True)
     conversion_factor = Column(Float,  nullable=False, default=1.0)
     unit_price        = Column(Float,  nullable=False, default=0.0)

@@ -44,7 +44,7 @@ def signals(user_id: int) -> dict:
         items = db.query(Inventory).filter(Inventory.business_id == user_id).all()
         low_stock = sum(
             1 for i in items
-            if i.stock is not None and str(i.stock).isdigit() and int(i.stock) <= 10
+            if i.stock is not None and float(i.stock or 0.0) <= 10
         )
         # Collection rate for cashflow emergency detection
         total_rev = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id).scalar() or 0
@@ -204,7 +204,7 @@ def get_business_snapshot(user_id: int) -> str:
         pending_ct  = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Pending").count()
         collection  = round((paid_rev / total_rev) * 100) if total_rev else 100
         items       = db.query(Inventory).filter(Inventory.business_id == user_id).all()
-        low_stock   = sum(1 for i in items if i.stock is not None and str(i.stock).isdigit() and int(i.stock) <= 10)
+        low_stock   = sum(1 for i in items if i.stock is not None and float(i.stock or 0.0) <= 10)
         expiring_7d = 0
         for item in items:
             exp = parse_date(item.expiry_date)

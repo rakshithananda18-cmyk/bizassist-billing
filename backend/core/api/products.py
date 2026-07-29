@@ -518,6 +518,7 @@ def stock_adjustment(
         # Inventory.stock is a rebuildable cache, not another stock register.
         if (req.selling_price is not None or req.cost_price is not None
                 or req.mrp is not None):
+            db.flush()
             inv_row = db.query(Inventory).filter(
                 Inventory.business_id == bid,
                 Inventory.product_id == product_id,

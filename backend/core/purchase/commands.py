@@ -454,6 +454,24 @@ def create_debit_note(
         if not orig_line:
             raise ValueError(f"Product ID {pid} was not found on the original purchase invoice.")
 
+        already_returned = float(db.query(func.coalesce(func.sum(PurchaseInvoiceLineItem.quantity), 0.0)).join(
+            PurchaseInvoice, PurchaseInvoice.id == PurchaseInvoiceLineItem.purchase_invoice_id
+        ).filter(
+            PurchaseInvoice.business_id == business_id,
+            PurchaseInvoice.parent_invoice_id == original_purchase_id,
+            PurchaseInvoice.invoice_type == "debit_note",
+            PurchaseInvoiceLineItem.product_id == pid,
+        ).scalar() or 0.0)
+        max_returnable = round(float(orig_line.quantity) - already_returned, 4)
+        if qty > max_returnable:
+            raise ValueError(
+                f"Cannot return {qty} units of item '{orig_line.product_name}'. "
+                f"Original quantity: {orig_line.quantity}, Already returned: {already_returned}, "
+                f"Max returnable: {max_returnable}."
+            )
+
+        orig_line.returned_qty = round(already_returned + qty, 4)
+
         unit_price = orig_line.unit_price or 0.0
         taxable = round(qty * unit_price, 2)
         cgst_r = orig_line.cgst_rate or 0.0
@@ -499,6 +517,7 @@ def create_debit_note(
     # 4. Create the Debit Note header
     dn = PurchaseInvoice(
         business_id=business_id,
+        parent_invoice_id=orig.id,
         supplier_id=orig.supplier_id,
         supplier_name=orig.supplier_name,
         invoice_number=dn_number,

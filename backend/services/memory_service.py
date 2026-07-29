@@ -105,7 +105,7 @@ def _build_context(business_id: int, db) -> str:
 
     # Inventory risk
     items = db.query(Inventory).filter(Inventory.business_id == business_id).all()
-    low_stock = [i.product_name for i in items if i.stock is not None and str(i.stock).isdigit() and int(i.stock) <= 5]
+    low_stock = [i.product_name for i in items if i.stock is not None and float(i.stock or 0.0) <= 5]
     if low_stock:
         lines.append(f"Critical low stock: {', '.join(low_stock[:5])}")
         lines.append("")

@@ -472,7 +472,10 @@ def _escalate_execute(user_id: int, params: dict) -> dict:
 def _reorder_low_items(db, user_id: int) -> list:
     out = []
     for it in db.query(Inventory).filter(Inventory.business_id == user_id).all():
-        s = it.stock if isinstance(it.stock, int) else (int(it.stock) if str(it.stock or "").strip().isdigit() else None)
+        try:
+            s = float(it.stock) if it.stock is not None else None
+        except (ValueError, TypeError):
+            s = None
         rp = it.reorder_point or 10
         if s is not None and s <= rp:
             out.append({"product": it.product_name or "—", "stock": s, "reorder_point": rp,

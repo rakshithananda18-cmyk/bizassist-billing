@@ -21,7 +21,7 @@ def get_inventory_status(user_id: int, filter_stock_under: int = None, filter_ex
             match = True
 
             if filter_stock_under is not None:
-                stock_val = int(item.stock) if (item.stock is not None and str(item.stock).isdigit()) else 9999
+                stock_val = float(item.stock) if item.stock is not None else 9999
                 if stock_val > filter_stock_under:
                     match = False
 

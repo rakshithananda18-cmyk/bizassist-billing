@@ -219,6 +219,11 @@ _COLUMN_MIGRATIONS = [
     # expense). shift_cash_movements table itself comes via create_all.
     {"table": "register_shifts", "column": "opening_expected", "ddl": "ALTER TABLE register_shifts ADD COLUMN opening_expected REAL"},
     {"table": "register_shifts", "column": "closing_float",    "ddl": "ALTER TABLE register_shifts ADD COLUMN closing_float REAL"},
+    # Cumulative return limits enforcement (§3 return limits)
+    {"table": "invoice_line_items",          "column": "returned_qty",      "ddl": "ALTER TABLE invoice_line_items ADD COLUMN returned_qty REAL DEFAULT 0.0"},
+    {"table": "purchase_invoice_line_items", "column": "returned_qty",      "ddl": "ALTER TABLE purchase_invoice_line_items ADD COLUMN returned_qty REAL DEFAULT 0.0"},
+    {"table": "invoices",                    "column": "parent_invoice_id", "ddl": "ALTER TABLE invoices ADD COLUMN parent_invoice_id INTEGER"},
+    {"table": "purchase_invoices",           "column": "parent_invoice_id", "ddl": "ALTER TABLE purchase_invoices ADD COLUMN parent_invoice_id INTEGER"},
 ]
 
 

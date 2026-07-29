@@ -117,7 +117,10 @@ def build_snapshot(user_id: int) -> dict:
         sold = set(prod.keys())
         dead, low, expiring = [], 0, []
         for it in items:
-            stock = int(it.stock) if str(it.stock or "").strip().isdigit() else None
+            try:
+                stock = float(it.stock) if it.stock is not None else None
+            except (ValueError, TypeError):
+                stock = None
             if stock is not None and stock <= 10:
                 low += 1
             exp = parse_date(it.expiry_date)

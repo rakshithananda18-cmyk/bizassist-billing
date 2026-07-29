@@ -157,7 +157,8 @@ def _refresh_inventory_cache(db, business_id: int, *, product_id, product_name, 
     q = q.filter(Inventory.godown_id == godown_id)
     q = q.filter(Inventory.batch_no == batch_no)
 
-    inv = q.first()
+    db.flush()
+    inv = q.with_for_update().first()
     if inv is not None:
         # The cache must preserve the ledger's fractional quantity (kg, metres,
         # litres, etc.). Rounding it to an integer corrupts stock valuation even
@@ -168,7 +169,7 @@ def _refresh_inventory_cache(db, business_id: int, *, product_id, product_name, 
     else:
         # Create it on the fly if product_id is not None
         if product_id is not None:
-            prod = db.query(Product).filter(Product.id == product_id, Product.business_id == business_id).first()
+            prod = db.query(Product).filter(Product.id == product_id, Product.business_id == business_id).with_for_update().first()
             if prod:
                 inv = Inventory(
                     business_id=business_id,

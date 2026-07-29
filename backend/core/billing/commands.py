@@ -19,6 +19,7 @@ import json
 import logging
 import math
 import re
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 from services.dates import biz_today_str
 from typing import List, Optional
@@ -32,9 +33,17 @@ from core.stock import ledger as SL
 
 logger = logging.getLogger("bizassist.billing")
 
+_TWOPLACES = Decimal("0.01")
+
 
 def _round2(x: float) -> float:
-    return round(float(x or 0.0) + 1e-9, 2)
+    if x is None:
+        return 0.0
+    try:
+        d = Decimal(str(x)).quantize(_TWOPLACES, rounding=ROUND_HALF_UP)
+        return float(d)
+    except Exception:
+        return round(float(x or 0.0) + 1e-9, 2)
 
 
 def _state_code(value: Optional[str]) -> Optional[str]:
@@ -411,12 +420,12 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
         product = None
         if ln.get("product_id") is not None:
             product = db.query(Product).filter(
-                Product.id == ln["product_id"], Product.business_id == business_id).first()
+                Product.id == ln["product_id"], Product.business_id == business_id).with_for_update().first()
             if product is None:
                 raise ValueError("Sale product does not belong to this business")
         elif ln.get("product_name"):
             product = db.query(Product).filter(
-                Product.business_id == business_id, Product.name == ln["product_name"]).first()
+                Product.business_id == business_id, Product.name == ln["product_name"]).with_for_update().first()
         computed.append((_compute_line(ln, product, intra=intra, tax_inclusive=tax_inclusive),
                          product, ln))
 
@@ -449,7 +458,7 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
     igst_t   = _round2(sum(c[0]["igst_amount"]  for c in computed))
     cess_t   = _round2(sum(c[0]["cess_amount"]  for c in computed))
     disc_t   = _round2(sum(c[0]["discount"]     for c in computed))
-    raw_total = subtotal + cgst_t + sgst_t + igst_t + cess_t
+    raw_total = _round2(subtotal + cgst_t + sgst_t + igst_t + cess_t)
     
     # Check for round_off_enabled in settings
     try:
@@ -958,13 +967,34 @@ def create_credit_note(db, *, business_id: int,
                 Product.id == pid, Product.business_id == business_id
             ).first()
 
-        # Find the original line to get pricing
+        # Find the original line to get pricing and enforce return quantity limits
         orig_line = None
         if pid and orig.line_items:
             for li in orig.line_items:
                 if li.product_id == pid:
                     orig_line = li
                     break
+
+        if not orig_line:
+            raise ValueError(f"Product ID {pid} is not part of original invoice {original_invoice_id}")
+
+        already_returned = float(db.query(func.coalesce(func.sum(InvoiceLineItem.quantity), 0.0)).join(
+            Invoice, Invoice.id == InvoiceLineItem.invoice_id
+        ).filter(
+            Invoice.business_id == business_id,
+            Invoice.parent_invoice_id == original_invoice_id,
+            Invoice.invoice_type == "credit_note",
+            InvoiceLineItem.product_id == pid,
+        ).scalar() or 0.0)
+        max_returnable = round(float(orig_line.quantity) - already_returned, 4)
+        if qty > max_returnable:
+            raise ValueError(
+                f"Cannot return {qty} units of product ID {pid}. "
+                f"Original quantity: {orig_line.quantity}, Already returned: {already_returned}, "
+                f"Max returnable: {max_returnable}."
+            )
+
+        orig_line.returned_qty = round(already_returned + qty, 4)
 
         unit_price = (orig_line.unit_price if orig_line else 0.0) or 0.0
         taxable = _round2(qty * unit_price)
@@ -1004,6 +1034,7 @@ def create_credit_note(db, *, business_id: int,
     cn = Invoice(
         business_id=business_id,
         invoice_id=cn_number,
+        parent_invoice_id=orig.id,
         customer=orig.customer,
         customer_id=orig.customer_id,
         invoice_type="credit_note",

@@ -495,15 +495,34 @@ def _ensure_buyer_purchase_invoice(db: Session, *, order: B2BOrder, buyer: User,
     return purchase
 
 
-def reconcile_buyer_purchase_bill(db: Session, order: B2BOrder) -> PurchaseInvoice:
-    """Create a missing buyer Purchase Bill for a legacy completed B2B order.
+def _ensure_buyer_stock_in(db: Session, order: B2BOrder, seller: User):
+    from core.stock import ledger as SL
+    from core.models import StockLedger
 
-    This command is deliberately *financial-document only*: it never makes a
-    stock movement. Older completed orders can predate the buyer stock-ledger
-    link, so requiring that link made it impossible to repair the payable even
-    though the supplier's sale invoice was valid. The caller can therefore
-    safely repair historical books without the risk of receiving goods twice.
-    """
+    line_items = list(order.line_items or [])
+    already = db.query(StockLedger).filter(
+        StockLedger.business_id == order.buyer_business_id,
+        StockLedger.reference_type == "b2b_order",
+        StockLedger.reference_id == order.id,
+    ).first()
+    if not already:
+        for li in line_items:
+            bp = _buyer_product_for_line(db, order=order, line=li)
+            SL.record_movement(
+                db,
+                business_id=order.buyer_business_id,
+                movement_type=SL.PURCHASE,
+                qty_delta=float(li.quantity or 0),
+                product_id=bp.id,
+                product_name=bp.name,
+                reference_type="b2b_order",
+                reference_id=order.id,
+                note=f"B2B purchase from {seller.business_name or seller.username}",
+            )
+
+
+def reconcile_buyer_purchase_bill(db: Session, order: B2BOrder, receive_stock: bool = False) -> PurchaseInvoice:
+    """Create a missing buyer Purchase Bill for a legacy completed B2B order."""
     if order.status != "completed":
         raise ValueError("Only completed B2B orders can have a purchase bill")
     if not order.seller_invoice_id:
@@ -517,9 +536,18 @@ def reconcile_buyer_purchase_bill(db: Session, order: B2BOrder) -> PurchaseInvoi
     ).first()
     if not buyer or not seller or not sale_invoice:
         raise ValueError("The completed order has an invalid business or supplier invoice link")
-    return _ensure_buyer_purchase_invoice(
+    purchase_uid = b2b_purchase_invoice_uid(order)
+    existing_purchase = db.query(PurchaseInvoice).filter(
+        PurchaseInvoice.business_id == order.buyer_business_id,
+        PurchaseInvoice.uid == purchase_uid,
+    ).first()
+
+    purchase = _ensure_buyer_purchase_invoice(
         db, order=order, buyer=buyer, seller=seller, sale_invoice=sale_invoice,
     )
+    if receive_stock or (existing_purchase is not None):
+        _ensure_buyer_stock_in(db, order=order, seller=seller)
+    return purchase
 
 
 def sync_completed_order(db: Session, order: B2BOrder):
