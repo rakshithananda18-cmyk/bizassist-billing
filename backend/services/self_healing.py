@@ -62,21 +62,11 @@ def heal_hash_chain(db: Session, business_id: int) -> int:
                 if not entry.entry_hash and entry.prev_hash is None:
                     continue
 
-                clean_lines = [
-                    (l.account, posting._r2(l.debit), posting._r2(l.credit))
-                    for l in sorted(entry.lines, key=lambda x: (x.account, posting._r2(x.debit), posting._r2(x.credit), x.id))
-                ]
-
-                expected_hash = posting._chain_hash(
-                    business_id=entry.business_id,
-                    entry_date=entry.entry_date,
-                    source_type=entry.source_type,
-                    source_id=entry.source_id,
-                    ref_no=entry.ref_no or "",
-                    narration=entry.narration or "",
-                    clean=clean_lines,
-                    prev_hash=prev_hash,
-                )
+                # Must be byte-identical to what verify_chain recomputes, so both
+                # go through the shared definition. Rolling a second, subtly
+                # different computation here is exactly what made every heal a
+                # no-op that still reported success.
+                expected_hash = posting.compute_entry_hash(entry, prev_hash)
 
                 if entry.prev_hash != prev_hash or entry.entry_hash != expected_hash:
                     entry.prev_hash = prev_hash
@@ -269,8 +259,14 @@ def heal_sync_outbox_stalls(db: Session, business_id: int) -> Dict[str, Any]:
 
                     if parent_sq:
                         # Parent invoice synced aggregate payload — mark child row synced
+                        # This is a SUCCESS path — the child row was already
+                        # delivered inside the parent's aggregate payload.
+                        # Writing the explanation into `error` made a resolved
+                        # row look failed to every diagnostic that keys off
+                        # `error` being non-null (ops-health counts exactly that
+                        # as sync["failed"]). Clear it instead.
                         item.synced_at = utc_now()
-                        item.error = "Already synced via parent aggregate document payload"
+                        item.error = None
                         report["redundant_children_cleared"] = report.get("redundant_children_cleared", 0) + 1
                         continue
 

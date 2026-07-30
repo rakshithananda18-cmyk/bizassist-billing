@@ -142,6 +142,41 @@ def post_entry(db, *, business_id, entry_date, source_type, source_id,
     return entry
 
 
+def canonical_clean_lines(entry):
+    """An entry's lines in the ONE order the chain hash is defined over.
+
+    Primary-key order, because that is the order `_post` writes them in: it
+    iterates `clean` and inserts a JournalLine per tuple, so line ids ascend in
+    the same sequence the original hash was computed from. Any other ordering
+    produces a different — and therefore invalid — hash.
+    """
+    return [(l.account, _r2(l.debit), _r2(l.credit))
+            for l in sorted(entry.lines, key=lambda x: x.id)]
+
+
+def compute_entry_hash(entry, prev_hash: str) -> str:
+    """The single definition of an entry's chain hash.
+
+    Both the verifier and the self-healing re-sealer MUST go through this. They
+    previously each rolled their own: the healer sorted lines by
+    (account, debit, credit, id) and coerced ref_no/narration to "" while the
+    verifier sorted by id and passed them through as-is. So the healer sealed
+    every entry with a hash the verifier would never accept — "56 entries
+    healed" followed immediately by "hash chain BROKEN at entry id=14", on every
+    single run, with the stored hashes being overwritten each time.
+    """
+    return _chain_hash(
+        business_id=entry.business_id,
+        entry_date=entry.entry_date,
+        source_type=entry.source_type,
+        source_id=entry.source_id,
+        ref_no=entry.ref_no,
+        narration=entry.narration,
+        clean=canonical_clean_lines(entry),
+        prev_hash=prev_hash,
+    )
+
+
 def verify_chain(db, business_id) -> dict:
     """Walk a business's posted journal in order and recompute the hash chain.
 
@@ -164,14 +199,7 @@ def verify_chain(db, business_id) -> dict:
     for e in entries:
         if not e.entry_hash:
             continue  # legacy, un-chained entry
-        clean = [(l.account, _r2(l.debit), _r2(l.credit))
-                 for l in sorted(e.lines, key=lambda x: x.id)]
-        expected = _chain_hash(
-            business_id=e.business_id, entry_date=e.entry_date,
-            source_type=e.source_type, source_id=e.source_id,
-            ref_no=e.ref_no, narration=e.narration,
-            clean=clean, prev_hash=prev_hash,
-        )
+        expected = compute_entry_hash(e, prev_hash)
         if e.prev_hash != prev_hash or e.entry_hash != expected:
             logger.warning("[ACCT] hash chain BROKEN biz=%s at entry id=%s ref=%s",
                            business_id, e.id, e.ref_no)

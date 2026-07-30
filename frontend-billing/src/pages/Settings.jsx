@@ -2145,8 +2145,8 @@ export default function Settings() {
                 <SettingRow
                   label="Instant Pull (Pro)"
                   description={subscription?.plan === 'pro'
-                    ? 'Cloud edits appear on this device in under 1 second via server push — no polling needed.'
-                    : 'Upgrade to Pro to receive cloud edits instantly via server push instead of periodic polling.'}
+                    ? 'Holds a live connection to the cloud so edits made elsewhere pull down within seconds instead of waiting for the interval above. The timer above stays on as the fallback whenever the connection drops — the Sync Live panel shows which one is currently in effect.'
+                    : 'Upgrade to Pro to receive cloud edits within seconds instead of waiting for the polling interval above.'}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     {subscription?.plan !== 'pro' ? (

@@ -225,6 +225,14 @@ def stop_scheduler():
             # wait=False: never block shutdown on an in-flight job. A sync tick
             # is fully restartable — its work is queue-driven and idempotent.
             sched.shutdown(wait=False)
+            # Instant Pull listener threads are daemons, so they would die with
+            # the process anyway — but signalling them lets an in-flight SSE read
+            # unwind instead of being killed mid-stream.
+            try:
+                from services import cloud_listener
+                cloud_listener.stop_all()
+            except Exception:
+                pass
             logger.info("[SCHED] Stopped.")
     except Exception:
         # Logging can itself fail once the interpreter is far enough gone, so

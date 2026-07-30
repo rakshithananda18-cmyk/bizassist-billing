@@ -114,7 +114,8 @@ export default function HostingModeSection({ currentMode, onModeChange, token, a
 
   // Compute card state for each mode
   function cardState(mode) {
-    if (mode === currentMode) return 'active'
+    const activeMode = currentMode === 'cloud' ? 'hybrid' : currentMode
+    if (mode === activeMode) return 'active'
     const needs = {
       local:  { p1: localProbe },
       // 'Local + Cloud' needs the local backend AND a reachable cloud to sync to.

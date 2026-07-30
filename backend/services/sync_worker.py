@@ -536,7 +536,35 @@ def run_hybrid_sync():
                     ensure_fresh_cloud_token(business_id)
                 except Exception as e:
                     logger.debug("[SYNC_WORKER] token refresh check failed for %s: %s", business_id, e)
-                
+
+                # ── Instant Pull listener lifecycle ──────────────────────────
+                # Opt-in, Pro-only. Holds an SSE connection to the cloud so a
+                # cloud-side edit triggers a local pull immediately instead of
+                # waiting out cloud_pull_interval. The periodic pull below is
+                # NOT disabled by this — it stays as the fallback, which is why
+                # the UI shows the countdown whenever this is not connected.
+                try:
+                    from services import cloud_listener
+                    from services.admin_service import effective_plan
+                    # Derived, like hosting_mode: Pro + hybrid gets Instant Pull
+                    # by default. `is not False` makes it an explicit OPT-OUT for
+                    # anyone who does not want a held-open connection, rather than
+                    # a toggle the owner has to discover before the feature does
+                    # anything. It was briefly strict opt-in while no backend for
+                    # it existed and the badge would otherwise have claimed an
+                    # active push channel that was not there.
+                    instant_wanted = (
+                        general.get("cloud_push_ping_enabled") is not False
+                        and effective_plan(user) == "pro"
+                    )
+                    if instant_wanted:
+                        cloud_listener.start(business_id)
+                    else:
+                        cloud_listener.stop(business_id)
+                except Exception as e:
+                    logger.debug("[SYNC_WORKER] instant-pull lifecycle skipped for %s: %s", business_id, e)
+
+
                 last_run = _LAST_RUN.get(business_id)
                 now = utc_now()
                 if last_run and (now - last_run).total_seconds() < sync_interval:
@@ -973,6 +1001,28 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
     # which caused every local UID to be flagged as MISSING (false positive).
     cloud_data: dict = body.get("changes", {}) if isinstance(body, dict) else {}
 
+    # ── 3b. Refuse to judge absence from an INCOMPLETE snapshot ───────────────
+    # The pull endpoint reports `failed_tables` precisely because "a table that
+    # was not read is not a table with no rows" (rule 33). Parity's whole job is
+    # deciding whether a local row is absent on the cloud — a judgement it cannot
+    # make from a partial answer without inventing MISSING rows and queueing
+    # repairs for data that is already there.
+    #
+    # Seen in production: the cloud returned 2 of 29 tables unread
+    # (shift_cash_movements, b2b_orders, both InFailedSqlTransaction) while parity
+    # went ahead and queued 80 invoice_line_items repairs, every one of which the
+    # cloud then skipped as "cloud copy is newer (LWW)".
+    failed_tables = body.get("failed_tables") or [] if isinstance(body, dict) else []
+    if failed_tables:
+        names = [f.get("table") if isinstance(f, dict) else str(f) for f in failed_tables]
+        summary["errors"].append(f"partial cloud snapshot, tables unread: {names}")
+        logger.warning(
+            "[PARITY] biz=%s: SKIPPING — the cloud could not read %s table(s) %s, so "
+            "this snapshot cannot distinguish 'absent on cloud' from 'not read'. "
+            "Judging MISSING from it would queue repairs for rows that already exist.",
+            business_id, len(names), names,
+        )
+        return summary
 
     # ── 4. Build cloud uid lookup maps ────────────────────────────────────────
     # cloud_inv_uid_to_id: cloud uid -> cloud integer id
@@ -992,10 +1042,34 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
     for table, fk_col, parent_tbl, uid_key in CHILD_SPECS:
         cloud_rows = cloud_data.get(table, [])
         cloud_uid_to_inv_uid: dict = {}
+        # Every uid the cloud reported for this table, INDEPENDENT of whether we
+        # could resolve its parent. "Missing" means absent from THIS set.
+        #
+        # The bug this fixes: the code below asked
+        #   cloud_parent_uid = cloud_uid_to_inv_uid.get(local_uid)
+        #   if cloud_parent_uid is None: -> MISSING
+        # which cannot tell an ABSENT key from a key whose stored VALUE is None.
+        # `parent_uid` is None whenever the child's parent invoice was not found
+        # in `cloud_invs`, so a row that exists perfectly well on the cloud was
+        # reported MISSING and queued for INSERT. The cloud then answered
+        # "LWW conflict resolved (cloud won)" because its copy was newer, acked
+        # the row, changed nothing — and the next parity run queued the very same
+        # rows again. A livelock: 80 repairs queued every couple of minutes,
+        # pushed, deliberately skipped, re-detected, forever.
+        cloud_uids_present = set()
+        # Rows the cloud has but whose parent we could not pin down. NOT missing,
+        # and NOT judgeable — recorded so the count is honest.
+        indeterminate = 0
+
         for crow in cloud_rows:
             cuid = crow.get("uid")
             if not cuid:
+                # A cloud row with no uid cannot be matched by uid at all. It is
+                # emphatically NOT evidence that the local row is absent, so it
+                # must not silently drop out of the comparison.
+                indeterminate += 1
                 continue
+            cloud_uids_present.add(cuid)
             # The cloud row carries the cloud integer invoice_id; resolve back
             # to its uid via the cloud invoice list.
             cloud_inv_id = crow.get(fk_col) or crow.get("invoice_id")
@@ -1007,12 +1081,33 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
                     break
             cloud_uid_to_inv_uid[cuid] = parent_uid
 
+        if indeterminate:
+            logger.warning(
+                "[PARITY] biz=%s: %s cloud row(s) in %s carry no uid — cannot be "
+                "matched, so they are counted as indeterminate rather than as "
+                "evidence the local row is missing.",
+                business_id, indeterminate, table,
+            )
+
         local_map = local_child.get(table, {})
 
         for local_uid, correct_parent_uid in local_map.items():
+            present_on_cloud = local_uid in cloud_uids_present
             cloud_parent_uid = cloud_uid_to_inv_uid.get(local_uid)
 
-            if cloud_parent_uid is None:
+            if present_on_cloud and cloud_parent_uid is None:
+                # On the cloud, but its parent did not resolve in this snapshot.
+                # Re-queueing would be the livelock described above.
+                summary.setdefault("indeterminate", 0)
+                summary["indeterminate"] += 1
+                logger.debug(
+                    "[PARITY] biz=%s: %s uid=%r present on cloud but parent "
+                    "unresolved in this snapshot — no repair queued.",
+                    business_id, table, local_uid,
+                )
+                continue
+
+            if not present_on_cloud:
                 # ── MISSING: row is in local but not on cloud ─────────────────
                 correct_local_inv_id = local_inv_uid_to_id.get(correct_parent_uid)
                 if not correct_local_inv_id:

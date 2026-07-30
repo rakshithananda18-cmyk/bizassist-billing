@@ -1070,6 +1070,16 @@ def get_queue_depth(
     except Exception:
         last_log = None
 
+    # Instant Pull state, reported from the listener thread rather than from the
+    # client's own preference flag. The UI must only claim "Instant Pull active"
+    # when a cloud event stream is genuinely attached — otherwise it hides the
+    # countdown timer for a mechanism that is not actually running.
+    try:
+        from services import cloud_listener
+        instant_pull = cloud_listener.get_state(business_id)
+    except Exception:
+        instant_pull = {"running": False, "connected": False}
+
     return {
         "pending_count":  pending_count,
         "entity_counts":  entity_counts,   # {"invoices": 3, "customers": 1, ...}
@@ -1077,6 +1087,7 @@ def get_queue_depth(
         "last_sync_time": last_log.synced_at.isoformat() if last_log else None,
         "last_status":    last_log.status if last_log else "idle",
         "last_error":     last_log.error  if last_log else None,
+        "instant_pull":   instant_pull,
     }
 
 
@@ -1152,16 +1163,25 @@ def resolve_sync_conflict(
 @router.post("/api/sync/flush")
 def flush_sync_queue(
     background_tasks: BackgroundTasks,
+    pull: bool = False,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
 ):
     """
     Local Endpoint. Manually schedules immediate execution of the background sync worker.
+
+    `pull=false` (default) pushes the local outbox only — this is what the
+    "Push to Cloud" control needs.
+
+    `pull=true` ALSO runs a cloud → local pull in the same run. The "Pull from
+    Cloud Now" control must send this: without it the button pushed the outbox
+    and never fetched cloud-authored rows, so edits made on another device or on
+    the web dashboard stayed invisible until the periodic pull interval elapsed.
     """
     from services.sync_worker import trigger_sync_run
     business_id = _resolve_business_id_by_username(current_user, db)
-    background_tasks.add_task(trigger_sync_run, business_id)
-    return {"status": "triggered", "business_id": business_id}
+    background_tasks.add_task(trigger_sync_run, business_id, pull=pull)
+    return {"status": "triggered", "business_id": business_id, "pull": pull}
 
 
 @router.get("/api/sync/outbox/details")
@@ -1189,7 +1209,11 @@ def get_outbox_details(
                     "entity_id": r.entity_id,
                     "operation": r.operation,
                     "created_at": r.created_at.isoformat() if r.created_at else None,
-                    "retry_count": getattr(r, "retry_count", 0),
+                    # NOTE: SyncQueue has no retry_count column. This previously
+                    # read getattr(r, "retry_count", 0), which always fell back
+                    # to 0 and rendered a permanently-zero "Retries" column in
+                    # the Ops table. Report the real, derivable state instead.
+                    "status": "failed" if r.error else "queued",
                     "last_error": r.error,
                 }
                 for r in rows
@@ -1203,10 +1227,18 @@ def get_outbox_details(
 @router.post("/api/sync/outbox/{queue_id}/retry")
 def retry_outbox_item(
     queue_id: int,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
 ):
-    """Reset error for a specific outbox item so it can be re-attempted."""
+    """Clear the error on one outbox item and immediately re-attempt delivery.
+
+    Clearing `error` alone is not a retry: the worker selects purely on
+    `synced_at IS NULL`, so the row was already going to be picked up — the
+    button just blanked the message and left the user waiting a full
+    `sync_interval` with no visible effect. Scheduling the sync run is what
+    makes "Retry Item" mean what it says.
+    """
     business_id = _resolve_business_id_by_username(current_user, db)
     row = (
         db.query(SyncQueue)
@@ -1215,9 +1247,14 @@ def retry_outbox_item(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Outbox item not found")
+    if row.synced_at is not None:
+        return {"ok": True, "id": queue_id, "already_synced": True, "requeued": False}
     row.error = None
     db.commit()
-    return {"ok": True, "id": queue_id}
+
+    from services.sync_worker import trigger_sync_run
+    background_tasks.add_task(trigger_sync_run, business_id)
+    return {"ok": True, "id": queue_id, "requeued": True}
 
 
 @router.post("/api/sync/parity")

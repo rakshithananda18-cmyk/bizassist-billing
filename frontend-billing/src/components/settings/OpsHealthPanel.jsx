@@ -8,8 +8,6 @@
 // ============================================================================
 import React, { useEffect, useState, useCallback } from 'react'
 import { CheckIcon, AlertIcon, SyncIcon } from '../Icons'
-import { getApiBase } from '../../config'
-import { getToken } from '../../api/client'
 
 function Stat({ label, value, tone }) {
   const color = tone === 'bad' ? 'var(--danger, #ef4444)'
@@ -27,6 +25,7 @@ export default function OpsHealthPanel({ authFetch }) {
   const [health, setHealth] = useState(null)
   const [conflicts, setConflicts] = useState([])
   const [outboxItems, setOutboxItems] = useState([])
+  const [outboxError, setOutboxError] = useState(false)
   const [outboxPage, setOutboxPage] = useState(1)
   const [conflictsPage, setConflictsPage] = useState(1)
   const [loading, setLoading] = useState(true)
@@ -44,19 +43,23 @@ export default function OpsHealthPanel({ authFetch }) {
       ])
       if (hRes.ok) setHealth(await hRes.json())
       if (cRes.ok) setConflicts((await cRes.json()).conflicts || [])
-      
+
+      // Outbox details go through authFetch like every other call here.
+      // This previously used a raw fetch() with getApiBase()/getToken(), which
+      // bypassed authFetch's base-URL mapping and 401 handling — on a LAN/hybrid
+      // setup it could hit the wrong origin, fail silently, and leave the whole
+      // Sync Outbox card unrendered with no explanation.
       try {
-        const token = getToken()
-        const base = getApiBase()
-        const res = await fetch(`${base}/api/sync/outbox/details`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        })
-        if (res.ok) {
-          const data = await res.json()
+        const oRes = await authFetch('/api/sync/outbox/details')
+        if (oRes.ok) {
+          const data = await oRes.json()
           setOutboxItems(data.items || [])
+          setOutboxError(false)
+        } else {
+          setOutboxError(true)
         }
       } catch {
-        /* soft fallback for test mocks */
+        setOutboxError(true)
       }
     } catch {
       setError(true)
@@ -81,8 +84,14 @@ export default function OpsHealthPanel({ authFetch }) {
     try {
       const r = await authFetch(`/api/sync/outbox/${id}/retry`, { method: 'POST' })
       if (r.ok) {
-        setActionMsg(`Outbox item #${id} re-queued for retry.`)
+        setActionMsg(`Outbox item #${id} re-queued — sync run started.`)
+        // The retry schedules a background sync run, so the row's state changes
+        // a moment after the response. Refresh twice: once now for the cleared
+        // error, once after the run has had time to land.
         load()
+        setTimeout(load, 2500)
+      } else {
+        setActionMsg(`Failed to retry outbox item #${id}.`)
       }
     } catch {
       setActionMsg(`Failed to retry outbox item #${id}.`)
@@ -97,9 +106,23 @@ export default function OpsHealthPanel({ authFetch }) {
       if (r && r.ok) {
         const res = await r.json()
         const acct = res.hash_chain_healed || 0
-        const stock = (res.stock_summary?.drift_detected_count || 0) + (res.stock_summary?.import_ledger_entries_created || 0)
-        const syncRes = (res.sync_summary?.payloads_patched || 0) + (res.sync_summary?.errors_reset || 0)
-        setActionMsg(`Auto-Repair Complete! Repaired: ${acct} hash signatures, ${stock} stock ledger items, ${syncRes} sync queue payloads.`)
+        // Count what was actually REPAIRED, not what was detected.
+        // drift_detected_count is a diagnostic counter; inventory_rows_fixed is
+        // the repair counter, and missing_inventory_rows_created was being
+        // omitted entirely, so real repairs went unreported.
+        const st = res.stock_summary || {}
+        const stock = (st.inventory_rows_fixed || 0)
+          + (st.missing_inventory_rows_created || 0)
+          + (st.import_ledger_entries_created || 0)
+        const sy = res.sync_summary || {}
+        const syncRes = (sy.payloads_patched || 0)
+          + (sy.errors_reset || 0)
+          + (sy.corrupt_repaired || 0)
+          + (sy.redundant_children_cleared || 0)
+        const total = acct + stock + syncRes
+        setActionMsg(total === 0
+          ? 'Auto-Repair complete — no problems found, nothing needed repairing.'
+          : `Auto-Repair complete. Repaired ${acct} hash signature(s), ${stock} stock ledger item(s), ${syncRes} sync queue item(s).`)
         load()
       } else {
         setActionMsg('Auto-Repair encountered a temporary error.')
@@ -168,11 +191,38 @@ export default function OpsHealthPanel({ authFetch }) {
               tone={conflicts.length > 0 ? 'warn' : 'ok'} />
       </div>
 
-      {/* Outbox Details Queue (Paginated at 10 items) */}
+      {/* Outbox Details Queue (Paginated at 10 items) — ALWAYS rendered.
+          Previously this whole card was behind `outboxItems.length > 0`, so an
+          empty queue and a failed request both looked identical: the Sync Outbox
+          section simply vanished from the page with no explanation. */}
+      <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+        <div style={{ padding: '8px 12px', background: 'var(--bg-3)', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Sync Outbox Queue &amp; Quarantined Items ({outboxItems.length})</span>
+          {outboxItems.length > PAGE_SIZE && (
+            <span style={{ fontSize: '0.72rem', fontWeight: 500, color: 'var(--text-muted)' }}>
+              Page {outboxPage} of {Math.ceil(outboxItems.length / PAGE_SIZE)}
+            </span>
+          )}
+        </div>
+
+        {outboxError && (
+          <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border)', fontSize: '0.8rem', color: 'var(--warning, #f59e0b)' }}>
+            Couldn’t load the outbox queue. It may be unavailable in this hosting mode, or the backend is unreachable.{' '}
+            <button className="btn btn-ghost" style={{ fontSize: '0.76rem', padding: '2px 8px' }} onClick={load}>Retry</button>
+          </div>
+        )}
+
+        {!outboxError && outboxItems.length === 0 && (
+          <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Outbox is empty — every local change has been delivered to the cloud.
+          </div>
+        )}
+      </div>
+
       {outboxItems.length > 0 && (
         <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
           <div style={{ padding: '8px 12px', background: 'var(--bg-3)', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>Sync Outbox Queue &amp; Quarantined Items ({outboxItems.length})</span>
+            <span>Queued items detail</span>
             <span style={{ fontSize: '0.72rem', fontWeight: 500, color: 'var(--text-muted)' }}>
               Page {outboxPage} of {Math.ceil(outboxItems.length / PAGE_SIZE)}
             </span>
@@ -189,7 +239,10 @@ export default function OpsHealthPanel({ authFetch }) {
                   </div>
                 )}
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                  Created: {item.created_at || '—'} · Retries: {item.retry_count}
+                  Created: {item.created_at || '—'} · Status:{' '}
+                  <span style={{ color: item.status === 'failed' ? 'var(--danger, #ef4444)' : 'var(--text-muted)', fontWeight: item.status === 'failed' ? 600 : 400 }}>
+                    {item.status === 'failed' ? 'Failed — awaiting retry' : 'Queued'}
+                  </span>
                 </div>
               </div>
               <button className="btn btn-secondary" style={{ fontSize: '0.74rem', padding: '3px 10px' }} onClick={() => retryOutboxRow(item.id)}>

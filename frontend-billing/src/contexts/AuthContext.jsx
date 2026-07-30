@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { API_BASE, updateApiBase, IS_LOCAL_APP, CLOUD_URL, LOCAL_URL } from '../config'
+import { resolveHostingMode, shouldPersistMode } from '../utils/resolveHostingMode'
 import { logger, setBizId } from '../utils/logger'
 import { reconcileBizIdOnLogin } from '../utils/loginSync'
 import { discoverLocalBackend, getNetworkMode, clearDiscoveryCache } from '../utils/networkDiscovery'
@@ -788,20 +789,47 @@ export function AuthProvider({ children }) {
         // invoices with `LCL-` (getCounterPrefix reads this) and previously also
         // disabled realtime. The real mode: web is ALWAYS cloud; a desktop app
         // uses its own per-device choice (`bizassist_hosting_mode`).
-        const realMode = !IS_LOCAL_APP
-          ? 'cloud'
-          : ((typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_hosting_mode'))
-              || data?.general?.hosting_mode || 'local')
-        if (data?.general && data.general.hosting_mode !== realMode) {
-          logger.info(`[AUTH] Reconciling saved hosting_mode '${data.general.hosting_mode}' → real '${realMode}'`)
+        const savedMode = data?.general?.hosting_mode
+        const deviceMode = (typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_hosting_mode')) || null
+
+        // The mode is DERIVED from URL + plan + device routing (see
+        // utils/resolveHostingMode.js), not read back from whatever was stored
+        // last. The previous reconcile did the opposite: it let a stale device
+        // key outrank the account and then PUT that stale value over the user's
+        // actual choice, so a Pro owner's "Local + Cloud" was silently rewritten
+        // to 'cloud' on every settings load. The backend's sync-queue gate reads
+        // this stored field directly, so that one wrong value stopped every row
+        // from being queued and emptied the outbox.
+        const userPlan = data?.subscription?.plan || profile?.plan || (profile?.is_premium ? 'pro' : (data?.subscription ? 'free' : 'pro'))
+        const realMode = resolveHostingMode({
+          isLocalApp: IS_LOCAL_APP,
+          plan: userPlan,
+          savedMode,
+          deviceMode,
+        })
+
+        if (data?.general && shouldPersistMode(realMode, savedMode)) {
+          logger.info(
+            `[AUTH] hosting_mode resolves to '${realMode}' ` +
+            `(stored '${savedMode || 'unset'}', plan '${data?.subscription?.plan || 'free'}', ` +
+            `${IS_LOCAL_APP ? 'local app' : 'web'}) — persisting so the sync gate agrees.`
+          )
           data.general.hosting_mode = realMode
           setSettings(data)
-          // Persist the correction (best-effort; general is owner+cashier-writable).
+          // Persisting is what makes it stick server-side; the derivation is
+          // deterministic from session facts, so this settles on the first load
+          // rather than oscillating the way the old reconcile did.
           fetch(`${API_BASE}/settings`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({ general: { hosting_mode: realMode } }),
-          }).catch(err => logger.warn('[AUTH] hosting_mode reconcile PUT failed (non-blocking):', err))
+          }).then(res => {
+            if (res.status === 402) {
+              // Plan lapsed between resolve and write — resolveHostingMode will
+              // degrade to 'local' on the next pass once the plan is refreshed.
+              logger.warn('[AUTH] hosting_mode PUT refused (plan required); will re-resolve on next load.')
+            }
+          }).catch(err => logger.warn('[AUTH] hosting_mode PUT failed (non-blocking):', err))
         } else {
           setSettings(data)
         }

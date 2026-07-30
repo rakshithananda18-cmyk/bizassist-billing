@@ -7,6 +7,7 @@ import { useLock } from '../contexts/LockContext'
 import { API_BASE, IS_LOCAL_APP } from '../config'
 import { logger } from '../utils/logger'
 import { formatIST } from '../utils/format'
+import { resolveHostingMode } from '../utils/resolveHostingMode'
 import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
 import { IS_DESKTOP_APP, openDownloadPage } from '../config/downloadApp'
 import { BuildingMark } from '../components/Logo'
@@ -131,10 +132,16 @@ export default function AppLayout({ children, title }) {
     ],
   }
 
-  const hostingMode = settings?.general?.hosting_mode || 'local'
-  const effectiveMode = !IS_LOCAL_APP
-    ? 'cloud'
-    : (localStorage.getItem('bizassist_hosting_mode') || hostingMode)
+  const hostingMode = settings?.general?.hosting_mode || null
+  const deviceMode = (typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_hosting_mode')) || null
+  // Derived from URL + plan + device routing — never from a remembered value
+  // that can go stale. See utils/resolveHostingMode.js for why.
+  const effectiveMode = resolveHostingMode({
+    isLocalApp: IS_LOCAL_APP,
+    plan: settings?.subscription?.plan,
+    savedMode: hostingMode,
+    deviceMode,
+  })
   const isSyncOn = effectiveMode === 'cloud' || effectiveMode === 'hybrid'
 
   // Subscription gate (Admin Console plan, Phase B.5): the backend's /settings
@@ -248,7 +255,10 @@ export default function AppLayout({ children, title }) {
     if (!token || pulling) return
     setPulling(true)
     try {
-      await fetch(`${API_BASE}/api/sync/flush`, {
+      // ?pull=true is REQUIRED — without it the backend only flushes the outbox
+      // (push) and never fetches cloud-authored rows, so this button silently
+      // did nothing for cloud → local convergence.
+      await fetch(`${API_BASE}/api/sync/flush?pull=true`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
       })
@@ -293,9 +303,30 @@ export default function AppLayout({ children, title }) {
     const interval = setInterval(fetchQueueDepth, 30000)
     const handleSyncFlushed = () => { fetchQueueDepth() }
     window.addEventListener('sync-flushed', handleSyncFlushed)
+
+    // A sale (or any local write) queues outbox rows immediately, but the panel
+    // only re-read the depth on its 30s tick — so right after completing a sale
+    // the status still showed the PREVIOUS state: stale "0 pending" and a stale
+    // last-sync time, exactly when the owner looks at it to confirm the sale is
+    // safe. Refresh on the same SSE events that signal local data changed.
+    //
+    // Debounced: a single sale emits several triggers (invoice, payment, stock)
+    // and sync.progress fires per chunk; without this the panel would issue a
+    // burst of queue-depth requests per sale.
+    let debounce = null
+    const handleDataChanged = (e) => {
+      const t = e?.detail?.type
+      if (t !== 'sync.trigger' && t !== 'sync.progress' && t !== 'sync.pull_ping') return
+      if (debounce) clearTimeout(debounce)
+      debounce = setTimeout(fetchQueueDepth, 600)
+    }
+    window.addEventListener('sync-event', handleDataChanged)
+
     return () => {
       clearInterval(interval)
+      if (debounce) clearTimeout(debounce)
       window.removeEventListener('sync-flushed', handleSyncFlushed)
+      window.removeEventListener('sync-event', handleDataChanged)
     }
   }, [effectiveMode, token])
 
@@ -1411,7 +1442,16 @@ export default function AppLayout({ children, title }) {
                     if (!isPro) return null   // Free: this row is not relevant
 
                     const hasSyncError = syncHealth.status === 'error' || !!syncHealth.last_error
-                    const instantPullOn = settings?.general?.cloud_push_ping_enabled !== false
+                    // "Active" means the backend's cloud event stream is really
+                    // attached — reported by services/cloud_listener via
+                    // queue-depth — NOT merely that the user ticked the setting.
+                    // The old test was `cloud_push_ping_enabled !== false`, which
+                    // read an unset flag as TRUE and so showed a green "active"
+                    // badge (and hid the countdown) for a mechanism that did not
+                    // exist. Whenever the stream is down we fall through to the
+                    // timer, because the periodic pull is what is converging the
+                    // device at that moment.
+                    const instantPullOn = queueDepth?.instant_pull?.connected === true
 
                     // Helper: format seconds as "1m 30s" or "45s"
                     const fmt = sec => {
@@ -1438,21 +1478,29 @@ export default function AppLayout({ children, title }) {
                       )
                     }
 
-                    // Pro + error OR instant pull disabled → show fallback timer
+                    // Not connected → the timer is what is actually converging
+                    // this device, so show it and say why it is in charge.
+                    const ip = queueDepth?.instant_pull || {}
                     const timerColor = nextPullIn === 0 ? 'var(--success, #22c55e)'
                       : nextPullIn !== null && nextPullIn <= 15 ? 'var(--warning, #f59e0b)'
                       : 'var(--text-muted)'
                     const timerLabel = nextPullIn === null ? '—'
                       : nextPullIn === 0 ? 'pulling…'
                       : fmt(nextPullIn)
+                    const fallbackReason = hasSyncError ? '⚠ Fallback pull'
+                      : ip.running ? 'Instant Pull connecting…'
+                      : 'Next cloud pull'
 
                     return (
                       <div style={{
                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                         borderTop: '1px solid var(--border)', paddingTop: '6px'
                       }}>
-                        <span style={{ color: hasSyncError ? 'var(--warning, #f59e0b)' : 'var(--text-secondary)' }}>
-                          {hasSyncError ? '⚠ Fallback pull' : 'Next cloud pull'}
+                        <span
+                          style={{ color: hasSyncError ? 'var(--warning, #f59e0b)' : 'var(--text-secondary)' }}
+                          title={ip.last_error ? `Instant Pull: ${ip.last_error}` : undefined}
+                        >
+                          {fallbackReason}
                         </span>
                         <span style={{
                           fontWeight: '600', fontSize: '0.72rem',
@@ -1518,6 +1566,72 @@ export default function AppLayout({ children, title }) {
 
                 {effectiveMode === 'hybrid' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {/* ── Live activity strip ──────────────────────────────
+                        One place that answers "is something happening right
+                        now, and which way is it going". Push already emitted
+                        sync.progress; pull had no feedback at all, so the
+                        button just sat there for the ~2s round trip. */}
+                    {(flushing || pulling || syncProgress) && (
+                      <div style={{
+                        padding: '6px 9px',
+                        borderRadius: 'var(--radius-sm, 4px)',
+                        background: pulling ? 'rgba(99,179,237,0.10)' : 'rgba(34,197,94,0.10)',
+                        border: `1px solid ${pulling ? 'rgba(99,179,237,0.30)' : 'rgba(34,197,94,0.30)'}`,
+                        fontSize: '0.72rem',
+                        color: 'var(--text-secondary)'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span className="sync-spinner-small" />
+                          <strong style={{ color: pulling ? 'var(--info, #63b3ed)' : 'var(--success, #22c55e)' }}>
+                            {pulling ? 'Pulling from cloud…' : 'Pushing to cloud…'}
+                          </strong>
+                          {syncProgress?.total > 0 && (
+                            <span style={{ marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }}>
+                              {syncProgress.done}/{syncProgress.total}
+                            </span>
+                          )}
+                        </div>
+                        {syncProgress?.total > 0 && (
+                          <div style={{
+                            marginTop: 5, height: 3, borderRadius: 2,
+                            background: 'var(--bg-3)', overflow: 'hidden'
+                          }}>
+                            <div style={{
+                              width: `${Math.min(100, Math.round((syncProgress.done / syncProgress.total) * 100))}%`,
+                              height: '100%',
+                              background: pulling ? 'var(--info, #63b3ed)' : 'var(--success, #22c55e)',
+                              transition: 'width 0.3s ease'
+                            }} />
+                          </div>
+                        )}
+                        {syncProgress?.entities?.length > 0 && (
+                          <div style={{ marginTop: 3, color: 'var(--text-muted)' }}>
+                            {syncProgress.entities.slice(0, 3).join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ── Pending outbox summary ── */}
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '5px 9px', borderRadius: 'var(--radius-sm, 4px)',
+                      background: 'var(--bg-2)', border: '1px solid var(--border)',
+                      fontSize: '0.72rem'
+                    }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Waiting in outbox</span>
+                      <span style={{
+                        fontWeight: 700,
+                        fontVariantNumeric: 'tabular-nums',
+                        color: (queueDepth.pending_count || 0) > 0
+                          ? 'var(--warning, #f59e0b)'
+                          : 'var(--success, #22c55e)'
+                      }}>
+                        {queueDepth.pending_count || 0}
+                        {(queueDepth.pending_count || 0) === 0 && ' — all synced'}
+                      </span>
+                    </div>
+
                     {/* ── Push outbox now ── */}
                     <button
                       onClick={(e) => {
@@ -1532,7 +1646,10 @@ export default function AppLayout({ children, title }) {
                       style={{
                         width: '100%',
                         padding: '6px 12px',
-                        backgroundColor: (flushing || checkingPlan) ? 'rgba(255,255,255,0.08)' : 'var(--accent, #3b82f6)',
+                        // Push = GREEN (outgoing, matches the healthy sync-outbox
+                        // colour), Pull = BLUE (incoming). Both used to be blue,
+                        // which made the two actions visually indistinguishable.
+                        backgroundColor: (flushing || checkingPlan) ? 'rgba(255,255,255,0.08)' : 'var(--success, #22c55e)',
                         color: (flushing || checkingPlan) ? 'var(--text-muted)' : '#fff',
                         border: 'none',
                         borderRadius: 'var(--radius-sm, 4px)',
@@ -1597,6 +1714,60 @@ export default function AppLayout({ children, title }) {
                         <SyncIcon size={12} className={pulling ? 'sync-spinner-small' : ''} />
                         {pulling ? 'Pulling from Cloud…' : '↓ Pull from Cloud Now'}
                       </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Why are the Push/Pull buttons missing? Explain it, don't just
+                    render nothing. Both controls are gated on hybrid mode, so in
+                    Local or Cloud-only mode the popover silently lost them and
+                    looked like the buttons had been deleted. */}
+                {effectiveMode !== 'hybrid' && (
+                  <div style={{
+                    padding: '8px 10px',
+                    borderRadius: 'var(--radius-sm, 4px)',
+                    background: 'var(--bg-2)',
+                    border: '1px solid var(--border)',
+                    fontSize: '0.72rem',
+                    lineHeight: 1.45,
+                    color: 'var(--text-muted)'
+                  }}>
+                    <strong style={{ color: 'var(--text-secondary)' }}>
+                      Mode: {effectiveMode === 'cloud' ? 'Cloud only' : 'Local only'}
+                    </strong>
+                    <br />
+                    Push / Pull controls and the outbox queue exist only in{' '}
+                    <strong>Local + Cloud (Hybrid)</strong> mode. In{' '}
+                    {effectiveMode === 'cloud' ? 'Cloud-only' : 'Local-only'} mode there is no
+                    local outbox, so nothing is queued for sync. Switch modes in
+                    Settings → Hosting to enable them.
+
+                    {/* Device override vs account setting. `effectiveMode` follows
+                        the device key because getApiBase() routes on it — so when
+                        the account says hybrid but this browser is pinned to
+                        'cloud', the honest fix is to drop the override, not to
+                        pretend the mode is something the routing disagrees with. */}
+                    {IS_LOCAL_APP
+                      && hostingMode === 'hybrid'
+                      && effectiveMode !== 'hybrid'
+                      && (
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+                        <div style={{ color: 'var(--warning, #f59e0b)', marginBottom: 6 }}>
+                          This account is set to <strong>Local + Cloud</strong>, but this
+                          device is pinned to <strong>{effectiveMode}</strong>.
+                        </div>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.72rem', padding: '3px 9px' }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            try { localStorage.removeItem('bizassist_hosting_mode') } catch { /* storage unavailable */ }
+                            window.location.reload()
+                          }}
+                        >
+                          Use Local + Cloud on this device
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}

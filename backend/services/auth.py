@@ -46,6 +46,13 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     to_encode = data.copy()
+    uid = to_encode.get("user_id") or to_encode.get("id")
+    if uid is not None and "tv" not in to_encode:
+        try:
+            cur_tv = _current_token_version(int(uid))
+            to_encode["tv"] = cur_tv if cur_tv is not None else 0
+        except (TypeError, ValueError):
+            to_encode["tv"] = 0
     if expires_delta:
         expire = utc_now() + expires_delta
     else:

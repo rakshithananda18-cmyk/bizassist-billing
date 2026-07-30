@@ -905,6 +905,26 @@ from sqlalchemy import event, text
 from sqlalchemy.orm import Mapper
 import json
 
+# Which parent tables actually HAVE a `uid` column, read from live metadata.
+# Cached because _serialize_orm_obj runs per row per foreign key on every push
+# and pull.
+_PARENT_HAS_UID_CACHE: dict = {}
+
+
+def _parent_has_uid(parent_table_name: str) -> bool:
+    """True when `parent_table_name` has a `uid` column to resolve against.
+
+    Not every FK target is a synced, uid-bearing table. `users` in particular has
+    `id` and `public_id` but NO `uid`, and both `register_shifts.user_id` and
+    `shift_cash_movements.user_id` point at it — so the enrichment below used to
+    issue `SELECT uid FROM "users" ...` for those rows on every single sync.
+    """
+    if parent_table_name not in _PARENT_HAS_UID_CACHE:
+        tbl = Base.metadata.tables.get(parent_table_name)
+        _PARENT_HAS_UID_CACHE[parent_table_name] = bool(tbl is not None and "uid" in tbl.c)
+    return _PARENT_HAS_UID_CACHE[parent_table_name]
+
+
 def _serialize_orm_obj(obj, connection=None) -> dict:
     d = {}
     for column in obj.__table__.columns:
@@ -919,19 +939,49 @@ def _serialize_orm_obj(obj, connection=None) -> dict:
             parent_val = getattr(obj, parent_col_name)
             if parent_val is not None:
                 parent_table_name = fk.column.table.name
+
+                # Skip parents with no `uid` column instead of asking for one.
+                #
+                # THIS IS THE FIX FOR THE INVISIBLE POSTGRES ABORT.
+                # `SELECT uid FROM "users"` raises UndefinedColumn on Postgres,
+                # which ABORTS THE ENTIRE TRANSACTION — and the handler below was
+                # a bare `except Exception: pass`, so nothing was logged and
+                # nothing rolled back. Every subsequent statement on that session
+                # then failed with InFailedSqlTransaction, which is why
+                # sync/pull reported `shift_cash_movements` and `b2b_orders` as
+                # "failed querying" when neither was the actual problem: the real
+                # error was this swallowed lookup, one table earlier.
+                #
+                # SQLite tolerated it because it has no aborted-transaction state,
+                # so this only ever broke against the cloud.
+                if not _parent_has_uid(parent_table_name):
+                    continue
+
                 try:
-                    row = connection.execute(
-                        text(f'SELECT uid FROM "{parent_table_name}" WHERE "{fk.column.name}" = :id'),
-                        {"id": parent_val}
-                    ).fetchone()
+                    # SAVEPOINT: if the lookup fails for any OTHER reason, only
+                    # this statement is rolled back. An outer transaction carrying
+                    # 20+ other tables must not die for one FK enrichment, which
+                    # is best-effort by design.
+                    with connection.begin_nested():
+                        row = connection.execute(
+                            text(f'SELECT uid FROM "{parent_table_name}" WHERE "{fk.column.name}" = :id'),
+                            {"id": parent_val}
+                        ).fetchone()
                     if row and row[0]:
                         uid_str = str(row[0])
                         d[f"{parent_col_name}_uid"] = uid_str
                         if parent_col_name.endswith("_id"):
                             base_name = parent_col_name[:-3]
                             d[f"{base_name}_uid"] = uid_str
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Reported, not swallowed. Enrichment is optional; silence is
+                    # what turned a one-column problem into twenty phantom table
+                    # failures.
+                    logging.getLogger("bizassist.sync_queue").warning(
+                        "_serialize_orm_obj: uid lookup failed for %s.%s -> %s (%s) — "
+                        "row is still serialized without the parent uid",
+                        obj.__table__.name, parent_col_name, parent_table_name, e,
+                    )
     return d
 
 # M-21 — child tables that carry NO business_id column of their own.
