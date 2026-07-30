@@ -68,7 +68,7 @@ export default function PublicInvoiceViewer() {
       <div style={{ 
         width: '100%',
         maxWidth: 820, 
-        minWidth: entry.key.includes('thermal') ? 'auto' : '800px',
+        minWidth: entry.key.includes('thermal') ? 'auto' : 'min(800px, 100%)',
         margin: '0 auto', 
         background: '#fff', 
         boxShadow: '0 4px 16px rgba(26,23,20,0.10)' 

@@ -16,6 +16,7 @@ export default function TenderChips({ grandTotal, onSelect }) {
         <button
           key={val}
           type="button"
+          className="tender-chip"
           style={{
             background: 'var(--bg-3)',
             border: '1px solid var(--border)',
