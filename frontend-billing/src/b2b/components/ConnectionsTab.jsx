@@ -465,8 +465,11 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
                       {suppliers.map(c => (
                         <tr key={c.id}>
                           <td>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.counterparty_name || c.seller_name}</div>
-                            <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>Connected {since(c.responded_at || c.created_at)}</div>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: 'var(--success, #166534)', flexShrink: 0 }} title="Active Connection" />
+                              {c.counterparty_name || c.seller_name}
+                            </div>
+                            <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', paddingLeft: 13 }}>Connected {since(c.responded_at || c.created_at)}</div>
                           </td>
                           <td className="td-mono">{c.counterparty_bizid || c.seller_bizid}</td>
                           <td><span className="badge badge-info" style={{ textTransform: 'capitalize' }}>{c.price_tier}</span></td>

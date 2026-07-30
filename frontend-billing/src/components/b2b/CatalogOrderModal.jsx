@@ -40,8 +40,11 @@ export default function CatalogOrderModal({ setShowCatalogModal, suppliers, sele
                             transition: 'all var(--dur) var(--ease)'
                           }}
                         >
-                          <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{sup.seller_name}</div>
-                          <div className="td-mono" style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{sup.seller_bizid}</div>
+                          <div style={{ fontWeight: 600, fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: 'var(--success, #166534)', flexShrink: 0 }} title="Active Connection" />
+                            {sup.seller_name}
+                          </div>
+                          <div className="td-mono" style={{ fontSize: '0.7rem', color: 'var(--text-muted)', paddingLeft: 13 }}>{sup.seller_bizid}</div>
                         </div>
                       ))}
                     </div>

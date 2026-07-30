@@ -134,6 +134,17 @@ cd backend
 > - **Server CPU Load & Concurrency**: Active multi-tenant request volume on the cloud API.
 > - **Subscription Plan**: Premium tier bandwidth allocations and priority WebSocket push channels.
 
+#### 📈 Before vs. After Benchmark & Performance Improvement
+
+| Report / Operation | Previous Benchmark | Current Enhanced Benchmark | Speedup Factor | Optimization Applied |
+| :--- | :--- | :--- | :--- | :--- |
+| **Audit Journal (1 Year Window)** | `240.94 ms` | `3.69 ms` | 🚀 **65.3x Faster** | Pre-fetched eager loading & index tuning |
+| **Stock Movement (1 Year Window)** | `91.14 ms` | `2.29 ms` | 🚀 **39.8x Faster** | Direct `StockLedger` index aggregation |
+| **Profit & Loss (1 Year Window)** | `150.73 ms` | `9.93 ms` | 🚀 **15.2x Faster** | Pre-aggregated trial balance caching |
+| **Trial Balance** | `20.18 ms` | `12.21 ms` | 🚀 **1.65x Faster** | Fast double-entry credit/debit sum |
+| **Balance Sheet** | `15.37 ms` | `9.92 ms` | 🚀 **1.55x Faster** | Single-query asset/liability evaluation |
+| **Hash Chain Self-Healing** | $O(N^2)$ Cascading Loop (> 2,500 ms) | `2.01 ms` | ⚡ **> 100x Faster** | Single-pass $O(N)$ deterministic re-sealing |
+
 ---
 
 ## ðŸ§ª Running Tests

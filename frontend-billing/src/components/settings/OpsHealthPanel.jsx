@@ -32,6 +32,7 @@ export default function OpsHealthPanel({ authFetch }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [actionMsg, setActionMsg] = useState(null)
+  const [healing, setHealing] = useState(false)
   const PAGE_SIZE = 10
 
   const load = useCallback(async () => {
@@ -89,6 +90,7 @@ export default function OpsHealthPanel({ authFetch }) {
   }
 
   const runMasterSelfHealing = async () => {
+    setHealing(true)
     try {
       setActionMsg('Running System Auto-Repair & Self-Healing…')
       const r = await authFetch('/reports/integrity/self-heal', { method: 'POST' })
@@ -104,6 +106,8 @@ export default function OpsHealthPanel({ authFetch }) {
       }
     } catch (e) {
       setActionMsg(`Auto-Repair notification: ${e.message || 'Complete'}`)
+    } finally {
+      setHealing(false)
     }
   }
 
@@ -133,8 +137,9 @@ export default function OpsHealthPanel({ authFetch }) {
           {ok ? 'All systems healthy' : 'Attention needed — review the items below'}
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary" style={{ fontSize: '0.76rem', padding: '3px 9px' }} onClick={runMasterSelfHealing}>
-            Auto-Repair &amp; Heal System
+          <button className="btn btn-secondary" style={{ fontSize: '0.76rem', padding: '3px 9px', display: 'inline-flex', alignItems: 'center', gap: 6 }} disabled={healing} onClick={runMasterSelfHealing}>
+            {healing && <span className="sync-spinner-small" />}
+            {healing ? 'Healing System…' : 'Auto-Repair & Heal System'}
           </button>
           <button className="btn btn-ghost" style={{ fontSize: '0.76rem', padding: '3px 9px', display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={load}>
             <SyncIcon size={13} /> Refresh
@@ -194,11 +199,11 @@ export default function OpsHealthPanel({ authFetch }) {
           ))}
           {outboxItems.length > PAGE_SIZE && (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 12px', background: 'var(--bg-2)', borderTop: '1px solid var(--border)' }}>
-              <button className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '2px 8px' }} disabled={outboxPage <= 1} onClick={() => setOutboxPage(p => Math.max(1, p - 1))}>
+              <button className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '2px 8px', opacity: outboxPage <= 1 ? 0.4 : 1, cursor: outboxPage <= 1 ? 'not-allowed' : 'pointer' }} disabled={outboxPage <= 1} onClick={() => setOutboxPage(p => Math.max(1, p - 1))}>
                 ← Previous 10
               </button>
               <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Showing {(outboxPage - 1) * PAGE_SIZE + 1}–{Math.min(outboxPage * PAGE_SIZE, outboxItems.length)} of {outboxItems.length}</span>
-              <button className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '2px 8px' }} disabled={outboxPage >= Math.ceil(outboxItems.length / PAGE_SIZE)} onClick={() => setOutboxPage(p => p + 1)}>
+              <button className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '2px 8px', opacity: outboxPage >= Math.ceil(outboxItems.length / PAGE_SIZE) ? 0.4 : 1, cursor: outboxPage >= Math.ceil(outboxItems.length / PAGE_SIZE) ? 'not-allowed' : 'pointer' }} disabled={outboxPage >= Math.ceil(outboxItems.length / PAGE_SIZE)} onClick={() => setOutboxPage(p => p + 1)}>
                 Next 10 →
               </button>
             </div>

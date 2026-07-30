@@ -569,17 +569,19 @@ export default function Settings() {
                 key={tab.id}
                 onClick={() => handleTabChange(tab.id)}
                 style={{
-                  background: 'none',
+                  background: activeTab === tab.id ? 'var(--accent-dim)' : 'none',
                   border: 'none',
-                  padding: '12px 18px',
+                  padding: '10px 18px',
+                  borderRadius: 'var(--radius-md) var(--radius-md) 0 0',
                   cursor: 'pointer',
                   fontSize: '0.83rem',
                   fontWeight: activeTab === tab.id ? 700 : 500,
                   color: activeTab === tab.id ? 'var(--accent)' : 'var(--text-muted)',
                   borderBottom: activeTab === tab.id ? '2.5px solid var(--accent)' : '2.5px solid transparent',
+                  boxShadow: activeTab === tab.id ? '0 2px 8px rgba(193,95,60,0.15)' : 'none',
                   marginBottom: -1,
                   whiteSpace: 'nowrap',
-                  transition: 'all 0.15s',
+                  transition: 'all 0.15s ease',
                 }}
               >
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>

@@ -383,6 +383,7 @@ export default function Reports() {
             <div className="divider filterbar-divider" style={{ width: 1, height: 32, margin: 0 }} />
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {[
+                { label: 'Today', fn: () => { const t = new Date().toISOString().slice(0, 10); return { from: t, to: t } } },
                 { label: 'This Month', fn: getThisMonth },
                 { label: 'Last Month', fn: getLastMonth },
                 { label: 'This Quarter', fn: getThisQuarter },
