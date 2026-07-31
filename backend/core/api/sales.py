@@ -19,7 +19,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from sqlalchemy.orm import Session
 
 from database.db import get_db
@@ -366,6 +366,13 @@ class FrontendInvoiceItem(BaseModel):
 
 class FrontendInvoiceRequest(BaseModel):
     customer_id: Optional[int] = None
+    # Free-text customer name, for when the counter has a name but no saved
+    # customer record. This field did NOT exist, so a name had nowhere to go:
+    # the POS packs `form.customer_id` (which sometimes holds a NAME) through
+    # `parseInt`, NaN serialised to null, and the sale landed with no customer at
+    # all — then showed as "Casual / Walk-in". See splitCustomerRef in
+    # frontend-billing/src/utils/invoiceMath.js.
+    customer: Optional[str] = None
     due_date: Optional[str] = None
     items: List[FrontendInvoiceItem] = Field(min_length=1)
     gst_enabled: bool = False
@@ -519,13 +526,58 @@ def create_sale_invoice_frontend(
             status_code=409,
             detail="shift_required: open a register shift before billing.")
 
-    # Resolve customer name
+    # ── Resolve the customer, and never lose one silently ────────────────────
+    # This used to be `if cust: customer_name = cust.name` with no else and no
+    # handling for a name-without-id. Two ways a sale lost its customer:
+    #
+    #   1. The POS sent a NAME in `customer_id`; `parseInt` made it NaN, which
+    #      JSON-encodes as null. Nothing here noticed, and the bill was written
+    #      with no customer — `invoice_type` then derives "B2C" from the missing
+    #      id and the Parties screen calls it "Casual / Walk-in".
+    #      (LCL-OW-0035, business 7, 2026-07-30 — ₹424 with a real customer.)
+    #   2. `customer_id` pointed at a row that does not belong to this business,
+    #      or no longer exists. `customer_name` stayed None while `customer_id`
+    #      was still written through — a half-linked invoice.
     customer_name = None
-    if req.customer_id:
-        cust = db.query(Customer).filter(Customer.id == req.customer_id, Customer.business_id == bid).first()
+    customer_id = req.customer_id
+    if customer_id:
+        cust = (db.query(Customer)
+                  .filter(Customer.id == customer_id, Customer.business_id == bid)
+                  .first())
         if cust:
             customer_name = cust.name
-            
+        else:
+            # Refuse the link rather than write one that points nowhere; keep any
+            # name we were given so the sale is still attributable.
+            logger.warning(
+                "[SALES] biz=%s: customer_id=%s does not belong to this business "
+                "(or no longer exists) — writing the invoice WITHOUT the link "
+                "rather than a dangling one. name kept: %r",
+                bid, customer_id, req.customer,
+            )
+            customer_id = None
+
+    # A name with no id: match it to an existing customer, else record it as
+    # free text. Either beats dropping it.
+    if not customer_id and (req.customer or "").strip():
+        typed = req.customer.strip()
+        match = (db.query(Customer)
+                   .filter(Customer.business_id == bid,
+                           func.lower(Customer.name) == typed.lower())
+                   .first())
+        if match:
+            customer_id, customer_name = match.id, match.name
+            logger.info("[SALES] biz=%s: resolved customer name %r to id=%s",
+                        bid, typed, match.id)
+        else:
+            customer_name = typed
+            logger.info(
+                "[SALES] biz=%s: no customer record matches %r — recording the "
+                "name on the invoice so the sale is not filed as a walk-in.",
+                bid, typed,
+            )
+
+
     # Map lines
     lines = []
     for it in req.items:
@@ -549,7 +601,7 @@ def create_sale_invoice_frontend(
             business_id=bid,
             lines=lines,
             customer=customer_name,
-            customer_id=req.customer_id,
+            customer_id=customer_id,   # resolved above — never the raw request value
             due_date=req.due_date,
             tax_inclusive=False,
             invoice_no=req.invoice_no,

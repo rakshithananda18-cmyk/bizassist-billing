@@ -800,22 +800,50 @@ export function AuthProvider({ children }) {
         // to 'cloud' on every settings load. The backend's sync-queue gate reads
         // this stored field directly, so that one wrong value stopped every row
         // from being queued and emptied the outbox.
-        const userPlan = data?.subscription?.plan || profile?.plan || (profile?.is_premium ? 'pro' : (data?.subscription ? 'free' : 'pro'))
+        // The plan must be READ, not assumed. The old expression ended in
+        // `: 'pro'`, so a settings response that carried no `subscription` block
+        // silently promoted the session to Pro; the mirror-image guess ('free')
+        // is worse still, because it resolves a hybrid account down to 'local'
+        // and that is the value that switches the sync worker off. So: track
+        // whether we actually know, and let shouldPersistMode refuse to write on
+        // a guess. `userPlan` may stay undefined — resolveHostingMode treats
+        // anything that is not 'pro' as not-Pro, which is the safe read for
+        // display; it is only PERSISTING an unknown that is forbidden.
+        const readPlan = data?.subscription?.plan || profile?.plan ||
+          (typeof profile?.is_premium === 'boolean' ? (profile.is_premium ? 'pro' : 'free') : undefined)
+        const planKnown = typeof readPlan === 'string'
+        const userPlan = readPlan
         const realMode = resolveHostingMode({
           isLocalApp: IS_LOCAL_APP,
           plan: userPlan,
           savedMode,
           deviceMode,
+          planKnown,
         })
 
-        if (data?.general && shouldPersistMode(realMode, savedMode)) {
+        // Two DIFFERENT questions, and conflating them is what caused the outage
+        // described in resolveHostingMode.js:
+        //
+        //   (a) How does THIS SESSION behave?  — always `realMode`. A web tab has
+        //       no local backend, so it must prefix invoices `CLD-`, not `LCL-`
+        //       (getCounterPrefix reads this field), and must not offer
+        //       hybrid-only controls. This is in-memory and costs nothing.
+        //
+        //   (b) What does the ACCOUNT record?  — only written when this session is
+        //       entitled to author it. `users` is a synced table, so whatever is
+        //       written here lands on every other device, including the desktop
+        //       whose sync worker is gated on this exact value.
+        //
+        // (a) applies unconditionally; (b) is gated.
+        if (data?.general) data.general.hosting_mode = realMode
+        setSettings(data)
+
+        if (data?.general && shouldPersistMode(realMode, savedMode, { isLocalApp: IS_LOCAL_APP, planKnown })) {
           logger.info(
             `[AUTH] hosting_mode resolves to '${realMode}' ` +
-            `(stored '${savedMode || 'unset'}', plan '${data?.subscription?.plan || 'free'}', ` +
+            `(stored '${savedMode || 'unset'}', plan '${readPlan || 'unknown'}', ` +
             `${IS_LOCAL_APP ? 'local app' : 'web'}) — persisting so the sync gate agrees.`
           )
-          data.general.hosting_mode = realMode
-          setSettings(data)
           // Persisting is what makes it stick server-side; the derivation is
           // deterministic from session facts, so this settles on the first load
           // rather than oscillating the way the old reconcile did.
@@ -830,8 +858,13 @@ export function AuthProvider({ children }) {
               logger.warn('[AUTH] hosting_mode PUT refused (plan required); will re-resolve on next load.')
             }
           }).catch(err => logger.warn('[AUTH] hosting_mode PUT failed (non-blocking):', err))
-        } else {
-          setSettings(data)
+        } else if (realMode !== savedMode) {
+          logger.info(
+            `[AUTH] hosting_mode is '${realMode}' for this session but the account ` +
+            `stores '${savedMode || 'unset'}' — NOT persisting ` +
+            `(${!IS_LOCAL_APP ? 'web session may not author the account field' : 'plan unknown'}). ` +
+            `The account value is authored by the local install only.`
+          )
         }
         logger.info('Loaded app settings successfully in context')
         // NOTE: We do NOT call updateApiBase here.

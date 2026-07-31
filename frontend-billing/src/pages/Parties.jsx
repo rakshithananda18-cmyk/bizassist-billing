@@ -639,7 +639,28 @@ export default function Parties({ embedded = false, headerTabs = null }) {
                           )}
                         </td>
                         <td>{p.date ? new Date(p.date).toLocaleDateString('en-IN') : '—'}</td>
-                        <td style={{ color: 'var(--text-muted)' }}>Casual / Walk-in</td>
+                        {/* This cell was the literal string "Casual / Walk-in"
+                            for every row. The tab filters on `!customer_id`, so
+                            the label was right for most rows and WRONG for any
+                            invoice that recorded a customer NAME without ever
+                            getting an FK — those exist (LCL-OW-0015 carries
+                            customer='Varshini' with customer_id = NULL) and the
+                            owner was being told a named sale was a walk-in.
+
+                            Show what the row actually holds; fall back to the
+                            walk-in wording only when there is genuinely no
+                            customer on it. */}
+                        <td style={{ color: p.customer ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                          {p.customer || p.customer_name || 'Casual / Walk-in'}
+                          {p.customer && (
+                            <span
+                              title="This invoice records a customer name but is not linked to a customer record, so it does not appear in that customer's ledger."
+                              style={{ marginLeft: 6, fontSize: '0.62rem', color: 'var(--warning, #b45309)', fontWeight: 600 }}
+                            >
+                              UNLINKED
+                            </span>
+                          )}
+                        </td>
                         <td style={{ color: 'var(--text-muted)' }}>{p.item_count ?? (p.items?.length ?? '—')}</td>
                         <td style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{fmt(p.total_amount)}</td>
                         <td><span className={`badge ${p.status === 'paid' ? 'badge-success' : 'badge-warning'}`}>{p.status || 'unpaid'}</span></td>

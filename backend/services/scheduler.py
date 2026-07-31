@@ -144,6 +144,33 @@ def start_scheduler():
         misfire_grace_time=30,  # tolerate a late run rather than warning
     )
 
+    # Cloud parity audit — DELIBERATELY NOT part of the 15 s tick above.
+    #
+    # It performs a full `since=2020-01-01` cloud pull (180 s read timeout). Run
+    # inline on the push tick, one slow parity starved every following tick under
+    # `max_instances=1`, producing minutes of
+    #   Execution of job "Hybrid Sync Engine" skipped: maximum number of running
+    #   instances reached (1)
+    # after every restart, with zero pushes or pulls happening for that whole
+    # window. Its own job with its own `max_instances=1` means a slow parity now
+    # delays only the next parity.
+    #
+    # 30 min cadence against a 6 h per-business internal rate limit: frequent
+    # enough that a restart re-arms quickly, cheap enough that the extra sweeps
+    # are pure no-ops.
+    from services.sync_worker import run_cloud_parity_sweep
+    _scheduler.add_job(
+        run_cloud_parity_sweep,
+        "interval",
+        minutes=30,
+        id="cloud_parity_sweep",
+        name="Cloud Parity Audit",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=600,
+    )
+
     from services.log_uploader import run_daily_log_upload
     _scheduler.add_job(
         run_daily_log_upload,
@@ -203,7 +230,8 @@ def start_scheduler():
         "overdue/low-stock/expiry @ 9:00–9:10 IST, "
         "memory distillation @ Sunday 23:00 IST, "
         "telemetry relay every 3h + retention trim @ 2:30 IST, "
-        "telemetry DB maintenance @ Sunday 3:00 IST."
+        "telemetry DB maintenance @ Sunday 3:00 IST, "
+        "hybrid sync every 15s, cloud parity audit every 30m."
     )
 
 

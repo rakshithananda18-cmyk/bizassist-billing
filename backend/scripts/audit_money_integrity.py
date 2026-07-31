@@ -101,8 +101,6 @@ def _table_exists(c, name):
     return c.table_exists(name)
 
 
-def _where_biz(biz, col="business_id"):
-    return (f" AND {col} = {int(biz)}", "") if biz else ("", "")
 
 
 class Report:

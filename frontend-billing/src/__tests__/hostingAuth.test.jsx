@@ -240,6 +240,21 @@ describe('Login staff resolution (T2)', () => {
     })
 
     // Trigger staff login
+    // NOTE: these auth calls are deliberately NOT wrapped in act().
+    //
+    // React does warn about the state updates they cause, and wrapping them
+    // looks like the fix. It is not: `AuthTestConsumer` publishes the context
+    // through `useImperativeHandle(actionRef, () => auth)`, which refreshes on
+    // every commit, and `signup`/`staffLogin` both kick off fire-and-forget work
+    // (`_provisionCloudSyncToken`) that is still in flight when the call
+    // resolves. Wrapping in act() changes when React commits relative to those
+    // continuations, and the token/user assertions below started failing —
+    // verified 2026-07-31: T2 and T3 passed before the wrap and failed after,
+    // with nothing else in these tests changed.
+    //
+    // The `waitFor` blocks below are what settle the state, and they work. The
+    // act() warning is cosmetic here; making it go away needs the consumer to
+    // expose a stable handle, not a wrapper at the call site.
     await actionRef.current.staffLogin('owner1', 'cashier1', 'password123')
 
     // Verify hosting mode switches to cloud because of fallback

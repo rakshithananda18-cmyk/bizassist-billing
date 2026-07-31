@@ -207,95 +207,28 @@ def _parse_dt(dt_str: Any) -> Optional[datetime]:
     return _apply_hooks.parse_dt(dt_str)
 
 
-def _resolve_business_id_by_username_legacy(user: dict, db: Session) -> int:
-    """
-    Resolve the ACTUAL business_id (owner's id) in THIS DB for the token's user.
+# NOTE: `_resolve_business_id_by_username_legacy` lived here and was deleted
+# 2026-07-31 for the same reason as its twin in routes/data_transfer.py — a
+# username/JWT-id fallback chain that no longer had a caller. The active path is
+# `_resolve_business_id_by_username` below. See docs/CLEANUP_PLAN_2026-07-31.md §2.
 
-    Cross-DB tokens carry ids that differ between local and cloud, so we match on
-    the most stable key first (D9):
-      1. BizID (public_id) **confirmed by username** — the identity spine. We
-         require username to agree because BizID is minted per-DB and not yet
-         globally unique; a chance collision with a different business must not
-         mis-route. The username confirmation removes that risk.
-      2. username — fallback for older tokens / first sync.
-      3. JWT id — same-DB fallback.
-    A staff member resolves to their parent (owner) business id.
-    """
-    username = user.get("username") or user.get("sub") or ""
-    public_id = user.get("public_id")
-    if public_id and username:
-        try:
-            row = db.execute(
-                text('SELECT id, parent_business_id FROM "users" WHERE public_id = :p AND username = :u'),
-                {"p": public_id, "u": username},
-            ).first()
-            if row:
-                return int(row[1]) if row[1] is not None else int(row[0])
-
-            # STAFF FIX (2026-07): staff tokens carry the OWNER's BizID with the
-            # STAFF member's username — when the staff row was never mirrored to
-            # this DB (or was mirrored under a different derived username), the
-            # pair-lookup above misses even though the business itself is
-            # unambiguous. The BizID is the identity spine: if an OWNER row with
-            # this public_id exists, route to that business directly. This ends
-            # the "BizID mismatch for username 'counter_1'" refusal loop where a
-            # DIFFERENT business's staff happened to share the generic username.
-            owner_row = db.execute(
-                text('SELECT id FROM "users" WHERE public_id = :p AND parent_business_id IS NULL'),
-                {"p": public_id},
-            ).first()
-            if owner_row:
-                logger.info(
-                    "sync: resolved business by owner BizID %s for staff '%s' "
-                    "(staff row not mirrored on this DB — consider re-running staff sync)",
-                    public_id, username,
-                )
-                return int(owner_row[0])
-
-            # IDENTITY GUARD: the token carries a BizID but this DB has no user
-            # with that BizID at all. Falling through to the username-only
-            # match could write one business's data into a DIFFERENT business
-            # that happens to share the username (e.g. independently-created
-            # local & cloud accounts). Refuse instead — the user must link
-            # accounts (fresh-device login mirrors the cloud BizID) first.
-            same_name = db.execute(
-                text('SELECT public_id FROM "users" WHERE username = :u'),
-                {"u": username},
-            ).first()
-            if same_name and same_name[0] and str(same_name[0]) != str(public_id):
-                logger.warning(
-                    "sync: BizID mismatch for username '%s' (token=%s, db=%s) — refusing cross-business sync",
-                    username, public_id, same_name[0],
-                )
-                raise HTTPException(
-                    status_code=403,
-                    detail="BizID mismatch: this account is a different business on this server. "
-                           "Re-link the device (log out and back in while online) before syncing.",
-                )
-        except HTTPException:
-            raise
-        except Exception as exc:
-            logger.debug("_resolve_business_id: public_id lookup failed — %s", exc)
-
-    if username:
-        try:
-            row = db.execute(
-                text('SELECT id, parent_business_id FROM "users" WHERE username = :u'),
-                {"u": username},
-            ).first()
-            if row:
-                return int(row[1]) if row[1] is not None else int(row[0])
-        except Exception as exc:
-            logger.debug("_resolve_business_id: username lookup failed — %s", exc)
-
-    # Fallback: use JWT ID
-    return int(user.get("parent_business_id") or user.get("id"))
 
 
 # The active resolver is shared with the import/profile/staff paths.  The
 # token's numeric id is local to the issuing database; BizID is the identity
 # contract across desktop and cloud.
 def _resolve_business_id_by_username(user: dict, db: Session, require_public_id: bool = False) -> int:
+    """Token → THIS database's integer business id.
+
+    THE BOUNDARY. The caller's token was minted by a different database, so the
+    integer ids in it mean nothing here — only the `public_id` (BizID) claim
+    does. This is the one place that translation happens, and everything
+    downstream may then use the returned integer freely because it is local.
+
+    `require_public_id=True` refuses to fall back to matching on username, which
+    is what keeps a token from resolving to the wrong tenant. Pass it on every
+    route that reads or writes business data. See core/identity.py.
+    """
     return resolve_business_id_in_db(user, db, require_public_id=require_public_id)
 
 
@@ -894,6 +827,7 @@ def push_changes(
 @router.get("/api/sync/pull")
 def pull_changes(
     last_sync_at: Optional[str] = None,
+    limit: Optional[int] = None,
     current_user: dict = Depends(get_active_user),
     _plan: dict = Depends(require_plan("pro")),   # 402 for free plan when SUBSCRIPTION_ENFORCED=1
     db: Session = Depends(get_db),
@@ -901,14 +835,36 @@ def pull_changes(
     """
     Cloud Endpoint. Returns updates scoped to user's business_id that
     occurred after `last_sync_at`.
+
+    `limit` caps rows PER TABLE and is opt-in. When it truncates anything the
+    response carries `has_more: true` and names the truncated tables, so the
+    caller knows to pull again rather than assume it has the whole window.
+
+    Callers must choose deliberately:
+
+    * The **sync worker** sends a limit. Without one, a first pull (no
+      `last_sync_at` → 1970) asks for every row of every table inside a 10 s
+      timeout, times out, correctly declines to advance the cursor, and repeats
+      that forever. A livelock, not data loss — but the device never converges.
+    * The **parity audit** must NOT send one. It judges whether a local row is
+      absent from the cloud, and a truncated snapshot would have it invent
+      MISSING rows and queue repairs for data that is already there — the same
+      absent-vs-unread confusion `failed_tables` exists to prevent.
     """
     business_id = _resolve_business_id_by_username(current_user, db, require_public_id=True)
     last_sync_dt = _parse_dt(last_sync_at) or datetime(1970, 1, 1)
+    if limit is not None:
+        limit = max(1, min(int(limit), 5000))
 
     changes: Dict[str, List[dict]] = {}
     # Tables this pull could NOT read. Returned to the client so a missing table
     # is distinguishable from an empty one (rule 33) — see the except block.
     failed_tables: List[dict] = []
+    # Set when any table hit the page cap. A truncated table is a THIRD state
+    # alongside "read fully" and "not read", and conflating it with the first is
+    # how a paginated feed silently loses its tail.
+    has_more = False
+    truncated_tables: List[str] = []
 
     for table_name, model_cls in _MODEL_MAP.items():
         try:
@@ -946,7 +902,34 @@ def pull_changes(
             if "updated_at" in cols:
                 query = query.filter(model_cls.updated_at > last_sync_dt)
 
-            rows = query.all()
+            # ── PAGE CAP ──────────────────────────────────────────────────────
+            # Opt-in. `limit=None` keeps the historical unbounded behaviour,
+            # which the parity audit REQUIRES: it decides whether a local row is
+            # absent on the cloud, and a truncated snapshot would make it invent
+            # MISSING rows (the same class of error `failed_tables` exists to
+            # prevent — see rule 33).
+            #
+            # The sync worker sends a limit because it must not: a first-ever
+            # pull has `last_sync_at` unset, which resolves to 1970 and selects
+            # EVERY row of all %d tables in one unbounded response — against a
+            # 10 s client timeout. (The parity call to this same endpoint uses
+            # 180 s, which is the clearest sign the 10 s path was never sized for
+            # a wide window.) The result was not data loss but a livelock: the
+            # request times out, the cursor correctly does not advance, and the
+            # next cycle attempts exactly the same impossible pull.
+            #
+            # Ordering by updated_at makes the pages deterministic, so the
+            # client's cursor advances through the backlog instead of re-reading
+            # the same head slice forever.
+            if limit and "updated_at" in cols:
+                query = query.order_by(model_cls.updated_at.asc())
+                rows = query.limit(limit + 1).all()
+                if len(rows) > limit:
+                    rows = rows[:limit]
+                    has_more = True
+                    truncated_tables.append(table_name)
+            else:
+                rows = query.all()
             if rows:
                 # (M-10) Enrich with PARENT UIDs, exactly as the push path does
                 # (`database/models.py::_serialize_orm_obj`).
@@ -1018,11 +1001,22 @@ def pull_changes(
             [f["table"] for f in failed_tables],
         )
 
+    if has_more:
+        logger.info(
+            "sync/pull: biz=%s truncated at limit=%s in %s table(s) %s — "
+            "has_more=true, the client must pull again to drain the backlog.",
+            business_id, limit, len(truncated_tables), truncated_tables,
+        )
+
     return {
         "pulled_at": datetime.now(timezone.utc).isoformat(),
         "changes": changes,
         # Rule 33: the receiver must be able to tell "no rows" from "not read".
         "failed_tables": failed_tables,
+        # …and neither of those from "read, but there is more". A caller that
+        # advances its cursor on a truncated page skips everything past the cap.
+        "has_more": has_more,
+        "truncated_tables": truncated_tables,
     }
 
 
@@ -1080,9 +1074,20 @@ def get_queue_depth(
     except Exception:
         instant_pull = {"running": False, "connected": False}
 
+    # Inbox depth — the PULL-side mirror of the outbox numbers above. Without it
+    # the console reported only half the picture: a device could show a clean,
+    # empty outbox while rows the cloud sent sat un-applied and invisible.
+    try:
+        from core.sync import inbox as _inbox_mod
+        inbox_stats = _inbox_mod.stats(db, business_id)
+    except Exception:
+        inbox_stats = {"pending_count": 0, "entity_counts": {},
+                       "stuck_count": 0, "deferred_count": 0, "rejected_count": 0}
+
     return {
         "pending_count":  pending_count,
         "entity_counts":  entity_counts,   # {"invoices": 3, "customers": 1, ...}
+        "inbox":          inbox_stats,
         "next_entity":    next_entity,      # entity currently at front of queue
         "last_sync_time": last_log.synced_at.isoformat() if last_log else None,
         "last_status":    last_log.status if last_log else "idle",
@@ -1222,6 +1227,87 @@ def get_outbox_details(
     except Exception as e:
         logger.warning("sync/outbox/details failed for biz=%s: %s", business_id, e)
         return {"count": 0, "items": []}
+
+
+@router.get("/api/sync/inbox/details")
+def get_inbox_details(
+    limit: int = 50,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
+):
+    """Rows the cloud sent that this database has not been able to apply.
+
+    The pull-side counterpart of `/api/sync/outbox/details`. Its absence is why
+    the two failure modes it reports went unnoticed for so long: a DEFERRED row
+    was dropped without a trace, and a REJECTED one produced a CRITICAL log line
+    saying it "needs a human" — in a log no human was reading.
+
+    `reason` distinguishes them, because they need different responses:
+      deferred — waiting on a parent. Usually resolves itself once the parent
+                 syncs; only worth acting on if it is old.
+      rejected — the apply raised. Read `last_error`; this one needs a decision.
+    """
+    from database.models import SyncInbox
+    from core.sync import inbox as _inbox_mod
+
+    business_id = _resolve_business_id_by_username(current_user, db)
+    try:
+        rows = (
+            db.query(SyncInbox)
+            .filter(SyncInbox.business_id == business_id,
+                    SyncInbox.applied_at.is_(None))
+            .order_by(SyncInbox.created_at.asc())
+            .limit(max(1, min(limit, 500)))
+            .all()
+        )
+        return {
+            "count": len(rows),
+            "stats": _inbox_mod.stats(db, business_id),
+            "items": [
+                {
+                    "id": r.id,
+                    "entity": r.entity,
+                    "uid": r.uid,
+                    "remote_id": r.remote_id,
+                    "reason": r.reason,
+                    "attempts": r.attempts,
+                    # Past this it is no longer retried automatically. It is NOT
+                    # deleted — it is waiting for the Retry button below.
+                    "stuck": r.attempts >= _inbox_mod.MAX_AUTO_ATTEMPTS,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                    "next_attempt_at": r.next_attempt_at.isoformat() if r.next_attempt_at else None,
+                    "last_error": r.error,
+                }
+                for r in rows
+            ],
+        }
+    except Exception as e:
+        logger.warning("sync/inbox/details failed for biz=%s: %s", business_id, e)
+        return {"count": 0, "items": [], "stats": {}}
+
+
+@router.post("/api/sync/inbox/{inbox_id}/retry")
+def retry_inbox_item(
+    inbox_id: int,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
+):
+    """Clear one held row's backoff and re-attempt it now.
+
+    Scheduling the run is the part that matters — the outbox equivalent shipped
+    once WITHOUT it and was a button that blanked an error message and did
+    nothing else. Same mistake is available here, so: reset, then trigger.
+    """
+    from core.sync import inbox as _inbox_mod
+    business_id = _resolve_business_id_by_username(current_user, db)
+    if not _inbox_mod.requeue(db, business_id, inbox_id):
+        raise HTTPException(status_code=404,
+                            detail="Inbox item not found or already applied")
+
+    from services.sync_worker import trigger_sync_run
+    background_tasks.add_task(trigger_sync_run, business_id, pull=True)
+    return {"ok": True, "id": inbox_id, "requeued": True}
 
 
 @router.post("/api/sync/outbox/{queue_id}/retry")

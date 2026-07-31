@@ -74,6 +74,20 @@ class User(Base, TimestampMixin):
     # Staff sub-accounts: NULL for an owner (this row IS the business); for a
     # staff login it points to the owner's user id — the business they belong to.
     parent_business_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    # ── BizID — THE ONLY BUSINESS IDENTIFIER THAT MAY CROSS A DATABASE ──────
+    #
+    # `id` above is a per-database integer. The same business is `7` locally and
+    # `42` on the cloud, by design — rows are created independently on each side,
+    # so their autoincrement ids cannot agree. `public_id` is the same string
+    # everywhere and is what payloads, URLs, registry keys, uploaded filenames
+    # and replicated columns must carry.
+    #
+    # Full rule, the three defects that came from breaking it, and the pattern
+    # that is correct: see core/identity.py.
+    #
+    # Owners only. A staff row must NOT have one — `_backfill_biz_ids` used to
+    # give every cashier a BizID, which made 32 staff read as separate
+    # businesses to every per-business sweep.
     public_id     = Column(String, unique=True, index=True, nullable=True)  # BizID (BA-XXXXXX)
     # Business GST identity (Phase 3)
     gstin         = Column(String, nullable=True)
@@ -105,6 +119,12 @@ class User(Base, TimestampMixin):
     # this counter. Bumping it invalidates every outstanding token for the account
     # within the auth-cache TTL (~30s). Admin "force logout" bumps owner + staff.
     token_version = Column(Integer, default=0, nullable=False, server_default="0")
+    # Stamped on every successful authentication. NULL means this account has
+    # NEVER been used to log in — which is the only reliable way to tell a real
+    # counter from one created during testing and forgotten. Without it, the
+    # Staff Management screen showed a name, a role and nothing else, so 22
+    # abandoned accounts sat indistinguishable from the 2 real ones.
+    last_login    = Column(DateTime, nullable=True)
 
 
 class DeletedBusiness(Base):
@@ -829,6 +849,110 @@ class SyncQueue(Base):
     error       = Column(Text, nullable=True)
 
 
+class SyncInbox(Base):
+    """The PULL-side counterpart of ``sync_queue`` — rows the cloud sent that
+    this database could not apply yet.
+
+    WHY THIS TABLE EXISTS
+    ---------------------
+    Push has an outbox: a row that cannot be delivered STAYS queued, is visible
+    in Ops, and is retried independently of every other row. Pull had no such
+    thing, and paid for it twice:
+
+    1. **Deferred rows were dropped.** ``resolve_parent_fk_uids`` returns True
+       when a child's parent is not local yet, and its documented contract is
+       that the row "re-applies on a later sync once the parent lands". The
+       pull-apply loop honoured the deferral with a bare ``continue`` — no record
+       anywhere. Because nothing was recorded, the cursor advanced, and the cloud
+       never re-offered the row (its ``updated_at`` had not changed). The row was
+       gone.
+
+       This is M-20 exactly, on the read side. The push side's own comment
+       describes the identical failure it had already fixed: *"the row is
+       DEFERRED, the client MUST be told … The outbox row was gone, so the
+       'later sync' could never happen."*
+
+    2. **A rejected row froze everything behind it.** The only recovery
+       mechanism was to HOLD the global pull cursor, which blocks all 29 tables,
+       bounded by ``_PULL_MAX_FAILED_STREAK`` — after which the row was abandoned
+       with a CRITICAL log saying it "needs a human". That is a forced choice
+       between stalling every later row and losing this one. Push never faces
+       that choice, because a stuck outbox row waits its turn while the rest
+       drains.
+
+    With an inbox, the cursor can ALWAYS advance: a row that cannot apply is
+    durable here, retried on its own schedule, and visible in Ops with the same
+    retry control the outbox has.
+
+    ``attempts`` / ``next_attempt_at`` implement per-row backoff, so a row whose
+    parent is genuinely never coming does not re-run on every cycle forever.
+    Nothing is ever deleted by the drain — a row is marked ``applied_at`` or it
+    stays for a human. Losing a row silently is the bug this table exists to end.
+    """
+    __tablename__ = "sync_inbox"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    business_id     = Column(Integer, index=True, nullable=False)
+    entity          = Column(String, index=True, nullable=False)   # table name
+    # The CLOUD's row identity. `uid` is the durable one and is what the drain
+    # matches on; `remote_id` is kept for operator legibility only and must never
+    # be written to a local FK (that is M-9, money on the wrong invoice).
+    uid             = Column(String, index=True, nullable=True)
+    remote_id       = Column(Integer, nullable=True)
+    payload         = Column(Text, nullable=False)                 # JSON of the cloud row
+    reason          = Column(String, nullable=False)               # 'deferred' | 'rejected'
+    error           = Column(Text, nullable=True)
+    attempts        = Column(Integer, default=0, nullable=False)
+    created_at      = Column(DateTime, default=utc_now, nullable=False)
+    last_attempt_at = Column(DateTime, nullable=True)
+    next_attempt_at = Column(DateTime, index=True, nullable=True)
+    applied_at      = Column(DateTime, index=True, nullable=True)
+
+    __table_args__ = (
+        # One live entry per (business, entity, uid). A row re-offered by a later
+        # pull must UPDATE its inbox entry, not stack a second copy — otherwise a
+        # child whose parent is slow to arrive accumulates one row per pull cycle.
+        Index("ix_sync_inbox_dedup", "business_id", "entity", "uid"),
+        Index("ix_sync_inbox_pending", "business_id", "applied_at", "next_attempt_at"),
+    )
+
+
+class SyncCursor(Base):
+    """Durable per-entity pull watermark.
+
+    REPLACES ``sync_worker._PULL_CURSOR``, a module-level dict.
+
+    Two defects came from that dict being in memory:
+
+    * **It did not survive a restart.** The fallback re-derived the cursor from
+      ``SyncLog.synced_at`` with an ``.offset(1 if queue_items else 0)``
+      heuristic — a proxy for what was applied, not a record of it. When the
+      proxy lands LATER than what actually applied, the rows in between are
+      skipped permanently. That is M-12 on the read side, reintroduced by any
+      process restart.
+    * **``_PULL_FAILED_STREAK`` reset too**, so the bounded give-up counter
+      restarted on every boot.
+
+    Per-ENTITY rather than one global timestamp so a poison row in
+    ``stock_ledger`` cannot hold back ``invoices``. The old design gave 29 tables
+    a single shared fate.
+    """
+    __tablename__ = "sync_cursors"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    business_id     = Column(Integer, index=True, nullable=False)
+    # "*" is the whole-pull watermark used by the timestamp-based endpoint; a
+    # table name is used once an entity has its own high-water mark.
+    entity          = Column(String, nullable=False)
+    cursor_value    = Column(String, nullable=True)                # ISO ts or id
+    failed_streak   = Column(Integer, default=0, nullable=False)
+    updated_at      = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("business_id", "entity", name="uq_sync_cursor_biz_entity"),
+    )
+
+
 class SyncLog(Base):
     __tablename__ = "sync_logs"
 
@@ -858,8 +982,37 @@ class ConflictLog(Base):
 
 
 _SYNC_TABLES = {
-    "businesses",
-    "users",
+    # NOTE: "businesses" used to be listed here. There is no `businesses` table
+    # and no model that maps to one — a business IS a `users` row with
+    # `parent_business_id IS NULL`. It was a name that could never match a
+    # `__tablename__`, so it gated nothing and queued nothing. Removed rather
+    # than left as a decoy for the next person reading this set.
+    #
+    # ── `users` is DELIBERATELY ABSENT. Do not add it back. ──────────────────
+    #
+    # It was here, and the cloud never accepted a single row: `users` is not in
+    # `MODEL_MAP`, so `push_changes` hit `_MODEL_MAP.get("users") -> None` and
+    # skipped every one with "unknown entity on this server". The outbox acked
+    # them anyway (the worker counts what it SENT), so nothing errored and
+    # nothing accumulated — it was simply a guaranteed-wasted round trip.
+    #
+    # Measured on the live database 2026-07-31: 31 `users` rows queued, 31
+    # acked, 0 applied. Ever.
+    #
+    # Worse than wasted: a `users` payload is `_serialize_orm_obj` over the whole
+    # row — the bcrypt password hash and the full settings JSON — serialised into
+    # `sync_queue.payload` and put on the wire to a server that discards it.
+    # `routes/sync_staff.py` says why that must not happen:
+    #
+    #     Staff users carry hashed passwords — the generic sync entity pipeline
+    #     intentionally excludes `users` to avoid leaking identity data through
+    #     the normal LWW change log.
+    #
+    # That was the design; this table was contradicting it. Staff replication has
+    # its own path (`POST /api/sync/staff-push`) which sends only the fields it
+    # needs, and the subscription block comes back via
+    # `_sync_subscription_from_cloud`. Nothing else about a `users` row is meant
+    # to travel.
     "customers",
     "vendors",
     "products",
@@ -882,7 +1035,13 @@ _SYNC_TABLES = {
     "stock_transfers",
     "stock_transfer_line_items",
     "b2b_ledgers",
-    "table_alterations",
+    # NOTE: "table_alterations" used to be listed here too. It is the local audit
+    # log and is no longer replicated at all — see the block comment where it was
+    # removed from MODEL_MAP in database/sync_map.py. In practice it never
+    # queued anyway: audit rows are written with raw SQL on the connection
+    # (see `audit_after_flush`), which bypasses the ORM events `_queue_change`
+    # listens on. Listing it here only made the set look like it did something.
+    #
     # register_shifts is the PARENT of invoices/invoice_payments (shift_id FK).
     # It was present in the apply-side MODEL_MAP but missing here, so shift rows
     # were never enqueued/pushed — leaving their child invoices perpetually
@@ -1431,13 +1590,36 @@ class OfferRedemption(Base):
 # ── TABLE ALTERATION AUDITING ───────────────────────────────────────────────
 
 class TableAlteration(Base):
-    """Audit log of database table insertions, updates, and deletions by users."""
+    """Audit log of database table insertions, updates, and deletions by users.
+
+    IDENTITY: `public_id` (BizID) is the only field here that means the same
+    thing in two databases. `user_id` and `business_id` are per-database integers
+    — local and cloud number the same business differently by design, and the
+    BizID is the shared spine.
+
+    That was not a theoretical concern. This table used to be REPLICATED between
+    local and cloud (it was in MODEL_MAP), so cloud-authored rows landed locally
+    carrying cloud integers. Measured 2026-07-31 on the live database:
+
+        business_id=42   25 rows   — 42 is Varshini's CLOUD id; locally it is 7
+        user_id 9, 42, 46, 86      — resolve against no local user at all
+
+    Those rows are unattributable: `business_id=42` reads as "no such business"
+    here, and worse, would read as *the wrong business* the day a local row is
+    assigned id 42. Replication is now removed (see the block comment where this
+    table was taken out of MODEL_MAP), which stops it getting worse, and
+    `public_id` makes what is written from here on attributable regardless of
+    which database it was written in.
+    """
     __tablename__ = "table_alterations"
 
     id          = Column(Integer, primary_key=True, index=True)
     user_id     = Column(Integer, nullable=True)
     username    = Column(String, nullable=True)
+    # Per-database integer. Meaningful ONLY in the database that wrote this row.
     business_id = Column(Integer, nullable=True)
+    # BizID — stable across every database. Prefer this for attribution.
+    public_id   = Column(String, index=True, nullable=True)
     table_name  = Column(String, index=True)
     action      = Column(String)  # INSERT, UPDATE, DELETE
     record_id   = Column(String, nullable=True)
@@ -1478,6 +1660,18 @@ def audit_before_flush(session, flush_context, instances):
     user_id = current_user_id_var.get()
     username = current_username_var.get()
     business_id = current_business_id_var.get()
+    # BizID — the ONE identifier that means the same thing in the local and the
+    # cloud database. `business_id` above is a per-database integer, so an audit
+    # row carrying only that is unattributable the moment it is read anywhere
+    # other than where it was written. The middleware already sets this from the
+    # token's `public_id` claim; it just was not being recorded.
+    try:
+        from logging_config import current_bizid_var
+        public_id = current_bizid_var.get()
+        if public_id in ("-", ""):
+            public_id = None
+    except Exception:
+        public_id = None
 
     pending = getattr(session, "_pending_audits", None)
     if pending is None:
@@ -1501,7 +1695,9 @@ def audit_before_flush(session, flush_context, instances):
             "new_values": json.dumps(new_vals),
             "user_id": user_id,
             "username": username,
-            "business_id": business_id or getattr(obj, "business_id", None)
+            "business_id": business_id or getattr(obj, "business_id", None),
+            # BizID: stable across databases, unlike the integer above.
+            "public_id": public_id
         })
 
     # Track updates
@@ -1532,7 +1728,9 @@ def audit_before_flush(session, flush_context, instances):
                 "new_values": json.dumps(new_vals),
                 "user_id": user_id,
                 "username": username,
-                "business_id": business_id or getattr(obj, "business_id", None)
+                "business_id": business_id or getattr(obj, "business_id", None),
+            # BizID: stable across databases, unlike the integer above.
+            "public_id": public_id
             })
 
     # Track deletes
@@ -1552,8 +1750,52 @@ def audit_before_flush(session, flush_context, instances):
             "new_values": None,
             "user_id": user_id,
             "username": username,
-            "business_id": business_id or getattr(obj, "business_id", None)
+            "business_id": business_id or getattr(obj, "business_id", None),
+            # BizID: stable across databases, unlike the integer above.
+            "public_id": public_id
         })
+
+def _audit_record_id(obj):
+    """Which row this audit entry is about.
+
+    THE DEFECT THIS FIXES
+    ---------------------
+    This was `str(inspect(obj).identity[0]) if identity else None`. For an
+    INSERT, `identity` is populated in `after_flush_postexec` — AFTER this
+    listener runs — so it is `None` here and every INSERT in the audit log was
+    written with `record_id = NULL`.
+
+    Measured on the live database 2026-07-31: **every one of the 72 `users`
+    INSERT rows ever audited had `record_id = NULL`**, i.e. the audit log could
+    say that a user was created and never which one.
+
+    That is not a cosmetic gap. Tracing 22 unexplained staff accounts had to be
+    done by matching audit `created_at` against `users.created_at` to the
+    millisecond, because the log that exists precisely to answer "what happened
+    to this row" could not name the row. UPDATE and DELETE were unaffected —
+    those objects are already persistent, so `identity` is set — which is why
+    the hole survived: the log looked populated and mostly worked.
+
+    The PK attribute IS set on the instance by this point (the INSERT has
+    executed); only the identity map has not caught up. `primary_key_from_instance`
+    reads the attribute, so it works for all three actions.
+    """
+    try:
+        pk = inspect(obj).mapper.primary_key_from_instance(obj)
+        if pk and pk[0] is not None:
+            return str(pk[0])
+    except Exception:
+        pass
+    # Fall back to the identity map for anything exotic (composite PKs on a
+    # non-standard mapper, objects mid-detach).
+    try:
+        ident = inspect(obj).identity
+        if ident:
+            return str(ident[0])
+    except Exception:
+        pass
+    return None
+
 
 @event.listens_for(Session, "after_flush")
 def audit_after_flush(session, flush_context):
@@ -1565,20 +1807,20 @@ def audit_after_flush(session, flush_context):
     
     for item in pending:
         obj = item.pop("obj")
-        pk = inspect(obj).identity
-        record_id = str(pk[0]) if pk else None
-        
+        record_id = _audit_record_id(obj)
+
         # Insert raw SQL directly on the connection to prevent session flushes recursive loops
         connection = session.connection()
         connection.execute(
             text(
-                "INSERT INTO table_alterations (user_id, username, business_id, table_name, action, record_id, old_values, new_values, created_at, uid) "
-                "VALUES (:user_id, :username, :business_id, :table_name, :action, :record_id, :old_values, :new_values, :created_at, :uid)"
+                "INSERT INTO table_alterations (user_id, username, business_id, public_id, table_name, action, record_id, old_values, new_values, created_at, uid) "
+                "VALUES (:user_id, :username, :business_id, :public_id, :table_name, :action, :record_id, :old_values, :new_values, :created_at, :uid)"
             ),
             {
                 "user_id": item["user_id"],
                 "username": item["username"],
                 "business_id": item["business_id"],
+                "public_id": item.get("public_id"),
                 "table_name": item["table_name"],
                 "action": item["action"],
                 "record_id": record_id,

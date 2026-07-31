@@ -2003,6 +2003,13 @@ export default function Settings() {
                         <tr>
                           <th>Username</th>
                           <th>Role</th>
+                          {/* Created / Last used exist so an abandoned account is
+                              VISIBLE. Without them the table showed a name, a
+                              role and a prefix, which made 22 logins created
+                              during testing look exactly like the 2 real tills —
+                              and the owner had no way to tell which was which. */}
+                          <th>Created</th>
+                          <th>Last used</th>
                           <th>Counter Prefix</th>
                           <th style={{ textAlign: 'right' }}>Actions</th>
                         </tr>
@@ -2013,6 +2020,29 @@ export default function Settings() {
                             <td className="td-primary" style={{ fontWeight: 600 }}>{s.username}</td>
                             <td>
                               <span className="badge badge-muted" style={{ textTransform: 'capitalize' }}>{s.role}</span>
+                            </td>
+                            <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                              {s.created_at ? new Date(s.created_at).toLocaleDateString() : '—'}
+                            </td>
+                            <td style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                              {s.last_login ? (
+                                <span style={{ color: 'var(--text-muted)' }}>
+                                  {new Date(s.last_login).toLocaleDateString()}
+                                </span>
+                              ) : (
+                                // NULL means it has never authenticated — the one
+                                // signal that reliably separates a real till from
+                                // a forgotten test account. Called out rather than
+                                // shown as a dash, because a dash reads as
+                                // "unknown" and this is a fact.
+                                <span
+                                  className="badge"
+                                  title="This login has never been used. Safe to remove if you did not create it deliberately."
+                                  style={{ background: 'var(--warning-dim, rgba(245,158,11,0.14))', color: 'var(--warning, #b45309)', fontWeight: 600 }}
+                                >
+                                  Never used
+                                </span>
+                              )}
                             </td>
                             <td>
                               <CustomSelect

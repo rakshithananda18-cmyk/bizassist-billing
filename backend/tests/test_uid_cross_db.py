@@ -29,7 +29,9 @@ from fastapi.testclient import TestClient
 # Importing the app builds the schema (Base.metadata.create_all) on the test DB.
 from main_groq import app
 from database.db import SessionLocal
-from routes.migrate import _import_with_remap
+# See test_sync_migration_fixes.py: routes/migrate.py is an unmounted, deprecated
+# duplicate; data_transfer.py is what is actually mounted and served.
+from routes.data_transfer import _import_with_remap
 
 client = TestClient(app)
 

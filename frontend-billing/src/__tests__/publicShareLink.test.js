@@ -1,3 +1,8 @@
+// @vitest-environment jsdom
+// ^ This file uses browser globals (window). vite.config.js sends
+//   *.test.js to the `node` environment by default — building a jsdom per
+//   file cost ~5x the tests themselves — so files that genuinely need a DOM
+//   opt back in here, next to the code that needs it.
 /**
  * Regression: on the desktop app, invoice share links were built from
  * window.location.origin (localhost/LAN) — unreachable for the customer.

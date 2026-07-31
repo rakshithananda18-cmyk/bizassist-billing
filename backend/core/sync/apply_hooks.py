@@ -320,7 +320,8 @@ def reconcile_parent_invoice_of_payment(db, pay) -> bool:
 def log_financial_conflict(db, *, business_id: int, entity: str, entity_id,
                            incoming: dict, existing_row,
                            incoming_updated_at, existing_updated_at,
-                           log_prefix: str = "sync") -> bool:
+                           log_prefix: str = "sync",
+                           incoming_is_local: bool = True) -> bool:
     """Record a reviewable ConflictLog when a financial row is about to be
     overwritten by a newer concurrent version. Returns True if one was written.
 
@@ -333,6 +334,32 @@ def log_financial_conflict(db, *, business_id: int, entity: str, entity_id,
     lived in ``routes/sync.py``, which meant a financial row clobbered by an
     incoming pull was silently lost — the exact failure the push path had
     already been hardened against.
+
+    ── WHICH SIDE IS "local"? ────────────────────────────────────────────────
+    `incoming` means OPPOSITE things on the two call paths:
+
+      PUSH (routes/sync.py, running on the CLOUD)
+          incoming = the row the device pushed  -> that IS the local/device row
+          existing = the cloud's own row
+
+      PULL (services/sync_worker.py, running on the DEVICE)
+          incoming = the row the cloud sent     -> that is the CLOUD row
+          existing = the device's own row
+
+    Writing `local_payload=incoming` unconditionally therefore labelled every
+    PULL-sourced conflict backwards, and the Ops console renders those columns
+    as "This device / Cloud". Verified on the live database 2026-07-31:
+    conflict id=61 on invoice 869 stored `local_payload` with
+    `business_id=42, id=835` — the CLOUD's ids — while that database is
+    business 7 and the invoice is id 869. An owner reviewing a money conflict
+    was shown the cloud's paid_amount as their own.
+
+    `incoming_is_local` makes the caller state it. Default True keeps the push
+    path correct without a change at that call site.
+
+    NOTE rows written before this fix are still inverted; they cannot be
+    relabelled reliably after the fact, so they are left alone rather than
+    guessed at.
     """
     if not is_financial_overwrite(entity, incoming, existing_row,
                                   incoming_updated_at, existing_updated_at):
@@ -344,14 +371,23 @@ def log_financial_conflict(db, *, business_id: int, entity: str, entity_id,
     # A silent failure inside the function whose job is removing silent failures.
     # A module-level import fails loudly at startup instead.
     try:
+        _inc_payload = json.dumps(incoming, default=str)
+        _exi_payload = json.dumps(row_to_dict(existing_row), default=str)
+        # Assign by SIDE, not by arrival order. See the docstring.
+        if incoming_is_local:
+            _local_p, _cloud_p = _inc_payload, _exi_payload
+            _local_t, _cloud_t = incoming_updated_at, existing_updated_at
+        else:
+            _local_p, _cloud_p = _exi_payload, _inc_payload
+            _local_t, _cloud_t = existing_updated_at, incoming_updated_at
         db.add(ConflictLog(
             business_id=business_id,
             entity=entity,
             entity_id=entity_id,
-            local_updated_at=incoming_updated_at,
-            cloud_updated_at=existing_updated_at,
-            local_payload=json.dumps(incoming, default=str),
-            cloud_payload=json.dumps(row_to_dict(existing_row), default=str),
+            local_updated_at=_local_t,
+            cloud_updated_at=_cloud_t,
+            local_payload=_local_p,
+            cloud_payload=_cloud_p,
             resolved_at=None,                    # unreviewed
             resolution="review_needed",
         ))
@@ -376,6 +412,7 @@ def log_master_data_conflict(
     incoming_updated_at, existing_updated_at,
     resolution: str = "cloud_won",
     log_prefix: str = "sync",
+    incoming_is_local: bool = True,
 ) -> bool:
     """Record a ConflictLog when a non-financial master-data row (products,
     customers, inventory, etc.) is silently overwritten by LWW.
@@ -397,14 +434,20 @@ def log_master_data_conflict(
     if not payloads_differ(incoming, row_to_dict(existing_row)):
         return False   # identical content — no point logging
     try:
+        # Assign by SIDE, not arrival order — see log_financial_conflict.
+        _inc = json.dumps(incoming, default=str)
+        _exi = json.dumps(row_to_dict(existing_row), default=str)
+        _lp, _cp = (_inc, _exi) if incoming_is_local else (_exi, _inc)
+        _lt, _ct = ((incoming_updated_at, existing_updated_at) if incoming_is_local
+                    else (existing_updated_at, incoming_updated_at))
         db.add(ConflictLog(
             business_id=business_id,
             entity=entity,
             entity_id=entity_id,
-            local_updated_at=incoming_updated_at,
-            cloud_updated_at=existing_updated_at,
-            local_payload=json.dumps(incoming, default=str),
-            cloud_payload=json.dumps(row_to_dict(existing_row), default=str),
+            local_updated_at=_lt,
+            cloud_updated_at=_ct,
+            local_payload=_lp,
+            cloud_payload=_cp,
             resolved_at=None,
             resolution=resolution,
         ))

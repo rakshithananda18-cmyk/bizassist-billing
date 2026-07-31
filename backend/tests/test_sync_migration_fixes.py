@@ -22,12 +22,21 @@ backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, backend_path)
 
 from sqlalchemy import text, inspect
+import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 # Importing the app builds the schema (Base.metadata.create_all) on the test DB.
 from main_groq import app
 from database.db import SessionLocal
-from routes.migrate import _upsert_rows, _resolve_owner_id, _import_with_remap
+# routes/migrate.py is an UNMOUNTED, DEPRECATED duplicate of these endpoints —
+# retained for a later cleanup pass, but it serves nothing (it declares
+# /api/migrate/*; the mounted module declares /api/data-transfer/*).
+# `routes/data_transfer.py` is what main_groq.py mounts, so these tests now
+# exercise the code that really runs. Testing the dead copy was worse than
+# useless: it reported green for code that cannot execute, while its
+# `_upsert_users` kept a defect the live one had already fixed.
+from routes.data_transfer import _upsert_rows, _resolve_owner_id, _import_with_remap
 from services.realtime import RealtimeManager
 
 client = TestClient(app)
@@ -155,8 +164,13 @@ def test_broadcast_threadsafe_delivers_to_subscriber():
 
 
 # ---------------------------------------------------------------------------
-# Owner resolution (D9): BizID **confirmed by username** → username → JWT id.
-# The username confirmation guards against a chance BizID collision mis-routing.
+# Owner resolution (D9): BizID, or REFUSE.
+#
+# This section used to read "BizID confirmed by username → username → JWT id",
+# which described `routes/migrate.py`'s resolver. The mounted module requires the
+# BizID and raises 403 without it. The fallbacks were the leak they look like a
+# kindness against: a token's numeric `id` means nothing in another database, so
+# resolving to it targets whichever local business holds that number.
 # ---------------------------------------------------------------------------
 def test_resolve_owner_bizid_confirmed_by_username():
     owner = _signup("BizID Resolve Co")
@@ -169,15 +183,45 @@ def test_resolve_owner_bizid_confirmed_by_username():
         oid, pub, uname = int(row[0]), row[1], row[2]
         nonexistent_user = f"nope_{uuid.uuid4().hex[:6]}"
 
+        # ── THE RESOLVER IS NOW FAIL-CLOSED ──────────────────────────────────
+        # These assertions used to describe `routes/migrate.py`'s resolver, which
+        # fell back to username and then to the raw JWT id. That module is
+        # deprecated and unmounted; the MOUNTED one calls
+        # `resolve_business_id_in_db(..., require_public_id=True)`, which is the
+        # hardening from `e770402` ("enforce strict BizID public_id tenant
+        # resolution … to eliminate integer ID leaks").
+        #
+        # The fallbacks were the leak. A token's numeric `id` means nothing in
+        # another database — the same business is 7 locally and 42 on the cloud —
+        # so resolving to it silently targets whichever local business happens to
+        # hold that number. Refusing is the only safe answer.
+        #
+        # Repointing this test off the dead module is what exposed the gap: it
+        # had been green against a resolver that does not run.
+
         # 1. BizID + matching username → resolves.
         assert _resolve_owner_id({"public_id": pub, "username": uname, "id": 999_999}, db) == oid
-        # 2. Wrong/unknown BizID but correct username → username fallback resolves.
-        assert _resolve_owner_id({"public_id": "missing-bizid", "username": uname, "id": 999_999}, db) == oid
-        # 3. GUARD: correct BizID but WRONG username → must NOT mis-route to this
-        #    owner (collision protection). Falls back to the JWT id.
-        assert _resolve_owner_id({"public_id": pub, "username": nonexistent_user, "id": 999_999}, db) == 999_999
-        # 4. Neither → JWT id fallback.
-        assert _resolve_owner_id({"id": oid}, db) == oid
+
+        # 2. Unknown BizID → REFUSED. Not a username fallback.
+        with pytest.raises(HTTPException) as ei:
+            _resolve_owner_id({"public_id": "missing-bizid", "username": uname, "id": 999_999}, db)
+        assert ei.value.status_code == 403
+
+        # 3. Correct BizID resolves on the BizID alone. The old resolver also
+        #    required the username to agree, because BizIDs were minted per-DB
+        #    and could collide; `public_id` is now UNIQUE-indexed, so the BizID
+        #    is sufficient and a wrong username no longer changes the answer.
+        assert _resolve_owner_id({"public_id": pub, "username": nonexistent_user, "id": 999_999}, db) == oid
+
+        # 4. No BizID at all → ALSO refused. `_resolve_owner_id` passes
+        #    require_public_id=True, so the username/JWT-id fallbacks further
+        #    down `resolve_business_id_in_db` are unreachable from this path.
+        #    A data-transfer import writes another database's rows into this one;
+        #    doing that on an identity that could not be proven is the whole
+        #    class of bug the BizID work exists to close.
+        with pytest.raises(HTTPException) as ei2:
+            _resolve_owner_id({"username": uname, "id": 999_999}, db)
+        assert ei2.value.status_code == 403
     finally:
         db.close()
 

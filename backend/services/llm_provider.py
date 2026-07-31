@@ -311,8 +311,6 @@ def _build_fallback_providers():
     return out
 
 
-def fallback_enabled() -> bool:
-    return os.getenv("LLM_FALLBACK_ENABLED", "0") == "1"
 
 
 def wrap_with_fallback(primary_client):

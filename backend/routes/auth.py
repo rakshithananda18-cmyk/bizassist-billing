@@ -261,6 +261,19 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             "tv": user.token_version or 0,  # session revocation (GAP-1)
         })
 
+        # Stamp the account as used. This is what lets the owner tell a real
+        # counter from one created during testing and forgotten — a NULL
+        # `last_login` means the account has NEVER been logged into, which no
+        # other field can express. Best-effort: a failure here must never cost
+        # someone their login.
+        try:
+            from services.dates import utc_now as _utc_now
+            user.last_login = _utc_now()
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.warning("[AUTH] could not stamp last_login for '%s': %s", req.username, e)
+
         logger.info(f"[AUTH] User '{req.username}' authenticated (role={user.role}, business={business_id}).")
         # Pro/free segregation signal — logged once per login (not per request).
         try:
@@ -1069,6 +1082,50 @@ def update_settings(
         if _subscription_view(user, db).get("plan") != "pro":
             logger.info(f"[SETTINGS] plan gate: '{user.username}' blocked from enabling hybrid sync (free plan)")
             raise HTTPException(status_code=402, detail="Hybrid sync requires the Pro plan. Contact your provider to upgrade.")
+
+    # ── The cloud is a REPLICA of hosting_mode, never its author ──────────────
+    #
+    # `general.hosting_mode` describes how the OWNER'S LOCAL INSTALL is hosted.
+    # A cloud (Postgres) instance cannot observe that — it only ever sees a
+    # browser tab, which by definition has no local backend and therefore always
+    # derives 'cloud' for itself.
+    #
+    # `users` is in `_SYNC_TABLES`, so this field is LWW-synced to every device.
+    # That made the following a real, silent outage:
+    #
+    #   owner opens the web dashboard
+    #     -> web session derives 'cloud' (true of that tab)
+    #     -> PUT /settings writes 'cloud' onto the cloud users row (now newest)
+    #     -> desktop pulls, its 'hybrid' is overwritten
+    #     -> sync_worker.run_hybrid_sync: `if hosting_mode != "hybrid": continue`
+    #     -> the desktop stops syncing and stops queueing rows to the outbox,
+    #        with no error raised anywhere
+    #     -> the desktop's next Settings load re-derives 'hybrid' and writes it
+    #        back, so the two devices flip the field on every page load
+    #
+    # The client-side guard in `shouldPersistMode` stops a compliant frontend
+    # from sending this. THIS is the guard that holds when the client is an old
+    # build, a different frontend, or a direct API call — which is exactly the
+    # population that will still be running the version that caused it.
+    #
+    # UPGRADES to 'hybrid' are still accepted: `_provisionCloudSyncToken` PUTs
+    # 'hybrid' to the cloud on purpose, from a local install that knows it is
+    # hybrid, so the Admin Console reports the truth. Only the DOWNGRADE
+    # direction — the one that switches a sync worker off — is refused.
+    if req.general is not None and "hosting_mode" in req.general:
+        _is_cloud_instance = (_DB_MODE == "cloud")
+        _stored_mode = (current.get("general") or {}).get("hosting_mode")
+        _incoming_mode = req.general.get("hosting_mode")
+        if (_is_cloud_instance
+                and _stored_mode == "hybrid"
+                and _incoming_mode != "hybrid"):
+            logger.warning(
+                "[SETTINGS] REFUSED hosting_mode downgrade 'hybrid' -> %r for '%s' on the "
+                "cloud instance. hosting_mode is authored by the local install; accepting "
+                "this would sync down and stop that install's sync worker. Keeping 'hybrid'.",
+                _incoming_mode, user.username,
+            )
+            req.general = {k: v for k, v in req.general.items() if k != "hosting_mode"}
 
     # Merge each provided section
     for section in ("general", "transactions", "inventory", "print", "labels"):

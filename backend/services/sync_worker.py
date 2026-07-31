@@ -48,11 +48,25 @@ _LAST_RUN: Dict[int, datetime] = {}
 # minutes-scale concern, not a seconds-scale one.
 _LAST_PULL: Dict[int, datetime] = {}
 
-# (R-2) Per-business pull cursor, expressed in the CLOUD's clock. We seed it from
-# the cloud's own `pulled_at` response so the next `last_sync_at` we send is never
+# (R-2) Per-business pull cursor, expressed in the CLOUD's clock. Seeded from the
+# cloud's own `pulled_at` response so the next `last_sync_at` we send is never
 # compared across two machines' clocks — eliminating the skew that silently
-# dropped freshly-updated cloud rows. In-memory: after a restart the first cycle
-# falls back to the SyncLog-derived timestamp, then re-pins to the cloud clock.
+# dropped freshly-updated cloud rows.
+#
+# NOW WRITE-THROUGH TO `sync_cursors`. It was previously in-memory only, and the
+# restart path was the hole: with the dict empty, the cursor was re-derived from
+#
+#     SyncLog … .filter(status == "success")
+#               .order_by(synced_at.desc())
+#               .offset(1 if queue_items else 0)
+#
+# which is a PROXY for what was applied, not a record of it — and `sync_logs`
+# carries push rows too. Whenever that proxy resolves LATER than the last row
+# actually applied, every row in between is skipped and never offered again.
+# That is M-12, reintroduced by any process restart, on a code path that only
+# runs when something has already gone wrong.
+#
+# The dict is kept as a read-through cache so the hot path stays a dict lookup.
 _PULL_CURSOR: Dict[int, str] = {}
 
 # M-12: how many consecutive pull cycles have ended with at least one row the
@@ -63,6 +77,90 @@ _PULL_CURSOR: Dict[int, str] = {}
 # SAVEPOINT makes at the row level, applied at the batch level.
 _PULL_FAILED_STREAK: Dict[int, int] = {}
 _PULL_MAX_FAILED_STREAK = 3
+
+# Rows per table per pull. Bounds the response so a wide window cannot exceed
+# the client timeout. Unbounded was a livelock: a first pull (no cursor → 1970)
+# asked for every row of every table inside 10 s, timed out, correctly refused to
+# advance the cursor, and re-attempted the identical impossible request forever.
+_PULL_PAGE_LIMIT = 1000
+
+# Was 10.0 while the same endpoint was called by the parity audit with 180.0 —
+# the discrepancy was the tell that 10 s never fitted a wide window. Now that
+# pages are bounded this is generous rather than load-bearing.
+_PULL_TIMEOUT = 60.0
+
+# Businesses whose last pull came back truncated (`has_more`). run_hybrid_sync
+# pulls these again on the NEXT tick instead of waiting out cloud_pull_interval,
+# so a backlog drains in seconds rather than one page every two minutes.
+_PULL_MORE_PENDING: set = set()
+
+# Sentinel for "this business has been looked up and has no stored cursor", so a
+# genuine absence is not re-queried on every cycle. `None` cannot express it —
+# it is indistinguishable from "not looked up yet", which is the same
+# absent-vs-unread confusion rule 33 is about, in miniature.
+_NO_CURSOR = "\x00none"
+
+
+def _get_pull_cursor(db: Session, business_id: int) -> Optional[str]:
+    """Read the durable pull cursor, falling back to the in-memory cache."""
+    cached = _PULL_CURSOR.get(business_id)
+    if cached is _NO_CURSOR:
+        return None
+    if cached:
+        return cached
+    try:
+        from database.models import SyncCursor
+        row = (
+            db.query(SyncCursor)
+            .filter(SyncCursor.business_id == business_id, SyncCursor.entity == "*")
+            .first()
+        )
+    except Exception as e:
+        # A cursor we cannot READ must not become a cursor we INVENT. Returning
+        # None here means "start from the SyncLog fallback", which re-reads a
+        # window — cheap and safe. Guessing a later value would skip rows.
+        logger.warning("[SYNC_WORKER] biz=%s: could not read stored pull cursor: %s",
+                       business_id, e)
+        return None
+    if row and row.cursor_value:
+        _PULL_CURSOR[business_id] = row.cursor_value
+        return row.cursor_value
+    _PULL_CURSOR[business_id] = _NO_CURSOR
+    return None
+
+
+def _set_pull_cursor(db: Session, business_id: int, value: str) -> None:
+    """Advance the pull cursor, in memory AND on disk.
+
+    Committed immediately and separately from the pull batch: the batch is
+    already committed by the time this is called, so a cursor that failed to
+    persist would mean the same window is re-pulled after a restart. Re-pulling
+    is idempotent (uid-keyed upserts); skipping is not recoverable.
+    """
+    _PULL_CURSOR[business_id] = value
+    try:
+        from database.models import SyncCursor
+        row = (
+            db.query(SyncCursor)
+            .filter(SyncCursor.business_id == business_id, SyncCursor.entity == "*")
+            .first()
+        )
+        if row is None:
+            row = SyncCursor(business_id=business_id, entity="*")
+            db.add(row)
+        row.cursor_value = value
+        row.failed_streak = 0
+        row.updated_at = utc_now()
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        # Non-fatal by design: the in-memory value still advances, so this
+        # process keeps making progress. Only a restart re-reads the window.
+        logger.warning(
+            "[SYNC_WORKER] biz=%s: pull cursor advanced in memory but NOT "
+            "persisted (%s). A restart will re-pull this window — idempotent, "
+            "but slower.", business_id, e,
+        )
 
 # M-20. How many consecutive pushes may defer the same rows before this stops
 # being "ordering will sort itself out" and becomes "the parent is never coming".
@@ -478,6 +576,7 @@ from database.sync_map import (
 # directions can never drift again. Includes the invoice paid-state projection
 # and the journal re-derivation. See core/sync/apply_hooks.py.
 from core.sync import apply_hooks as _apply_hooks
+from core.sync import inbox as _inbox
 
 
 def _row_to_dict(row) -> dict:
@@ -608,7 +707,16 @@ def run_hybrid_sync():
 
                 due_for_pull = (
                     pull_enabled
-                    and (now - last_pull).total_seconds() >= pull_interval
+                    and (
+                        (now - last_pull).total_seconds() >= pull_interval
+                        # A truncated page means the cloud has more waiting RIGHT
+                        # NOW. Waiting out the full interval between pages would
+                        # drain a backlog one page per cloud_pull_interval — 1000
+                        # rows every two minutes by default. Follow up on the next
+                        # tick instead; this clears itself the moment a pull comes
+                        # back complete.
+                        or business_id in _PULL_MORE_PENDING
+                    )
                 )
 
                 if pending is None and not due_for_pull:
@@ -619,16 +727,23 @@ def run_hybrid_sync():
                 _t = current_bizid_var.set(user.public_id or "-")
                 try:
                     sync_business(db, user, sync_interval, do_pull=due_for_pull)
-                    # ── Parity check (runs at most once every 6 h per business) ─
-                    # Independent of the normal push so a parity failure never
-                    # stalls outbox delivery. Rate limit is inside the function.
-                    try:
-                        _cloud_parity_check(db, business_id)
-                    except Exception as _parity_err:
-                        logger.warning(
-                            "[PARITY] biz=%s: parity check raised unexpectedly (non-fatal): %s",
-                            business_id, _parity_err,
-                        )
+                    # NOTE: the parity check used to run HERE, inline. It does a
+                    # full `since=2020-01-01` cloud pull with a 180 s read
+                    # timeout, inside a job registered at `seconds=15` with
+                    # `max_instances=1`. One slow parity therefore starved every
+                    # subsequent tick — the observed symptom being an unbroken
+                    # run of
+                    #   Execution of job "Hybrid Sync Engine" skipped:
+                    #   maximum number of running instances reached (1)
+                    # every 15 s for minutes after each restart, during which NO
+                    # business pushed or pulled anything at all. The comment that
+                    # sat here claimed parity was "independent of the normal push
+                    # so a parity failure never stalls outbox delivery"; being a
+                    # blocking call on the same thread, it was the opposite.
+                    #
+                    # It now runs as its own scheduler job — see
+                    # `run_cloud_parity_sweep` below. Do not call it from this
+                    # loop again.
                 finally:
                     current_bizid_var.reset(_t)
                 if due_for_pull:
@@ -641,6 +756,57 @@ def run_hybrid_sync():
         # A scheduler tick must never raise into APScheduler (it would log a
         # scary traceback and, on some executors, disable the job). Contain it.
         logger.error("[SYNC_WORKER] Sync tick aborted: %s", e)
+    finally:
+        db.close()
+
+
+def run_cloud_parity_sweep():
+    """APScheduler job. Runs the cloud parity check for every hybrid business.
+
+    WHY THIS IS A SEPARATE JOB
+    --------------------------
+    `_cloud_parity_check` issues a full `since=2020-01-01` pull of every synced
+    table with a 180 s read timeout. That is a legitimate cost for a drift audit
+    that runs twice a day — and a fatal one on the 15 s push tick, where
+    `max_instances=1` turns each slow parity into minutes of totally stalled
+    sync. It used to be called inline from `run_hybrid_sync`; it is not any more.
+
+    This job carries its OWN session and its OWN `max_instances=1`, so a parity
+    run that overruns delays only the next parity run.
+
+    The per-business 6 h rate limit inside `_cloud_parity_check` still applies —
+    this sweep may fire more often than that and will simply no-op, which is what
+    makes a restart cheap.
+    """
+    if engine.dialect.name != "sqlite":
+        return   # cloud does not run parity against itself
+
+    db = SessionLocal()
+    try:
+        for user in db.query(User).all():
+            if not user.settings:
+                continue
+            try:
+                general = (json.loads(user.settings) or {}).get("general", {})
+            except Exception:
+                continue
+            if general.get("hosting_mode") != "hybrid":
+                continue
+
+            _t = current_bizid_var.set(user.public_id or "-")
+            try:
+                _cloud_parity_check(db, user.id)
+            except Exception as e:
+                # Best-effort by contract. A parity failure must never propagate:
+                # it is an audit, and the outbox is not waiting on it.
+                logger.warning(
+                    "[PARITY] biz=%s: parity check raised unexpectedly (non-fatal): %s",
+                    user.id, e,
+                )
+            finally:
+                current_bizid_var.reset(_t)
+    except Exception as e:
+        logger.error("[PARITY] sweep aborted: %s", e)
     finally:
         db.close()
 
@@ -919,7 +1085,9 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
     summary = {
         "business_id":  business_id,
         "wrong_invoice": 0,
-        "missing":       0,
+        "missing":       0,     # here, not on the cloud
+        "cloud_only":    0,     # on the cloud, not here (added 2026-08-01)
+        "over_paid":     0,     # cloud payments sum to MORE than the invoice total
         "paid_state":    0,
         "errors":        [],
     }
@@ -1012,6 +1180,21 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
     # (shift_cash_movements, b2b_orders, both InFailedSqlTransaction) while parity
     # went ahead and queued 80 invoice_line_items repairs, every one of which the
     # cloud then skipped as "cloud copy is newer (LWW)".
+    # A TRUNCATED snapshot is as unusable here as an unread table, for exactly
+    # the same reason: parity's job is deciding whether a local row is absent on
+    # the cloud, and "absent" cannot be read off a page that stopped early. The
+    # request above deliberately sends no `limit`, so this should never fire —
+    # it is the guard for the day someone adds a server-side default.
+    if isinstance(body, dict) and body.get("has_more"):
+        summary["errors"].append("truncated cloud snapshot (has_more)")
+        logger.warning(
+            "[PARITY] biz=%s: SKIPPING — the cloud truncated this snapshot "
+            "(tables: %s). Judging MISSING from a partial page would queue "
+            "repairs for rows that are simply on the next page.",
+            business_id, body.get("truncated_tables"),
+        )
+        return summary
+
     failed_tables = body.get("failed_tables") or [] if isinstance(body, dict) else []
     if failed_tables:
         names = [f.get("table") if isinstance(f, dict) else str(f) for f in failed_tables]
@@ -1182,8 +1365,71 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
                     logger.warning("[PARITY] biz=%s: could not queue wrong-invoice %s %r: %s",
                                    business_id, table, local_uid, e)
 
+        # ── 5b. CLOUD-ONLY: on the cloud, never landed here ───────────────────
+        #
+        # Everything above iterates `local_map` — LOCAL rows — and asks what the
+        # cloud is missing. So parity could only ever see one of the two ways
+        # these databases diverge. The other way is what LCL-OW-0037 cost:
+        #
+        #   30 Jul 11:43 UTC  a ₹124 settlement is recorded ON THE CLOUD.
+        #   30 Jul 11:43:26   the pull starts timing out (10s HTTP timeout at the
+        #                     time) and keeps failing for the next hour.
+        #   ...               the row never reaches this database.
+        #   31 Jul 18:58      the invoice still reads Pending / ₹0 paid here, so
+        #                     the owner settles it AGAIN, by cheque. That pushes.
+        #   →                 the cloud now holds ₹248 against a ₹124 invoice.
+        #
+        # Parity ran throughout and reported nothing, because a cloud row absent
+        # locally was outside the only question it asked. A one-directional
+        # consistency check is not a consistency check; it is half of one, and
+        # the missing half is the half that lets money be paid twice.
+        #
+        # The recovery is the INBOX, not a write from here. `inbox.drain` calls
+        # `_apply_pulled_row` — the same single apply path the pull uses — so the
+        # row still gets the uid dedup, the FK-by-uid resolution, the LWW rules
+        # and the post-apply hooks. A direct INSERT from parity would be a
+        # second, untested apply path for financial rows, which is how M-9
+        # happened. Parity's job here is only to NOTICE and hand over.
+        #
+        # This is also the only way these rows can ever arrive: the pull cursor
+        # is long past their `updated_at`, so no ordinary cycle will re-offer
+        # them. Without this they are permanently invisible to both directions.
+        local_uids_present = set(local_map.keys())
+        _cloud_only = [u for u in cloud_uids_present if u not in local_uids_present]
+        if _cloud_only:
+            _by_uid = {r.get("uid"): r for r in cloud_rows if r.get("uid")}
+            _handed_over = 0
+            for _cuid in sorted(_cloud_only):
+                _crow = _by_uid.get(_cuid)
+                if _crow is None:
+                    continue
+                if _inbox.remember(
+                    db,
+                    business_id=business_id,
+                    entity=table,
+                    record=_crow,
+                    reason="cloud-only",
+                    error="present on the cloud, absent here — the pull never "
+                          "delivered it and the cursor has moved past it",
+                ) is not None:
+                    _handed_over += 1
+            summary.setdefault("cloud_only", 0)
+            summary["cloud_only"] += _handed_over
+            logger.error(
+                "[PARITY] biz=%s: %s %s row(s) exist on the CLOUD but not in "
+                "this database — the pull never delivered them. Handed %s to the "
+                "inbox for retry. uids=%s%s",
+                business_id, len(_cloud_only), table, _handed_over,
+                sorted(_cloud_only)[:10],
+                " (truncated)" if len(_cloud_only) > 10 else "",
+            )
+
     # ── 6. Commit queued repairs ───────────────────────────────────────────────
-    if summary["missing"] or summary["wrong_invoice"]:
+    # `cloud_only` is in this condition because `inbox.remember` only db.add()s —
+    # it deliberately does not commit, so it can be called from inside the
+    # pull-apply loop's transaction. Without it here, the handed-over rows would
+    # be rolled back and parity would re-discover them every run for ever.
+    if summary["missing"] or summary["wrong_invoice"] or summary["cloud_only"]:
         try:
             db.commit()
         except Exception as e:
@@ -1207,6 +1453,28 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
         stored_paid   = float(inv.get("paid_amount") or 0)
         actual_paid   = round(cloud_pay_sum.get(cloud_inv_id, 0.0), 2)
         total_amount  = float(inv.get("total_amount") or 0)
+
+        # ── OVER-PAYMENT on the cloud ─────────────────────────────────────────
+        # This block used to read `total_amount` and never reference it again,
+        # and the whole check below is stored-vs-actual — two numbers that agree
+        # perfectly when the SAME invoice has been settled twice. LCL-OW-0037:
+        # cloud stored_paid 248.00, cloud actual_paid 248.00, invoice total
+        # 124.00. Consistent, reconciled, and twice the money that was owed.
+        #
+        # Reported, never auto-repaired: which of the two payments is the real
+        # one is a question about what happened at the counter, and deleting a
+        # payment row is not a decision a background sweep gets to make. It is
+        # surfaced so a human can void the duplicate.
+        if total_amount > 0 and actual_paid > total_amount + 0.05:
+            summary["over_paid"] += 1
+            logger.error(
+                "[PARITY] biz=%s: cloud invoice uid=%r (%s) has payments summing "
+                "to %.2f against a total of %.2f — OVER-PAID by %.2f. This is "
+                "usually the same invoice settled on both sides while the pull "
+                "was down. Needs a human to void the duplicate; not auto-repaired.",
+                business_id, inv_uid, inv.get("invoice_id"),
+                actual_paid, total_amount, actual_paid - total_amount,
+            )
 
         if abs(stored_paid - actual_paid) < 0.05:
             continue                    # within rounding tolerance — fine
@@ -1253,12 +1521,19 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
         except Exception as e:
             summary["errors"].append(f"paid-state commit failed: {e}")
 
-    total = summary["missing"] + summary["wrong_invoice"] + summary["paid_state"]
+    # `cloud_only` and `over_paid` are counted here so "parity OK" cannot be
+    # logged over a database that is missing cloud rows or holding a double
+    # payment. The old total covered only the three local→cloud repairs, so the
+    # sweep printed "no drift detected" throughout the LCL-OW-0037 divergence.
+    total = (summary["missing"] + summary["wrong_invoice"] + summary["paid_state"]
+             + summary["cloud_only"] + summary["over_paid"])
     if total:
         logger.info(
-            "[PARITY] biz=%s: queued %s repair(s) — wrong_invoice=%s missing=%s paid_state=%s",
+            "[PARITY] biz=%s: %s finding(s) — wrong_invoice=%s missing=%s "
+            "paid_state=%s cloud_only=%s over_paid=%s",
             business_id, total,
             summary["wrong_invoice"], summary["missing"], summary["paid_state"],
+            summary["cloud_only"], summary["over_paid"],
         )
     else:
         logger.info("[PARITY] biz=%s: cloud parity OK — no drift detected", business_id)
@@ -1281,6 +1556,425 @@ def sync_business(db: Session, user: User, interval: int = 30, force: bool = Fal
         _release_push(business_id)
 
 
+
+
+class _Applied:
+    """Outcome of applying ONE pulled row.
+
+    A bare bool is what let a DEFERRED row look identical to an applied one, and
+    that ambiguity is the data loss this refactor exists to close.
+
+    status:
+      "applied"  — the row is in this database.
+      "skipped"  — not applied. See `reason`: SOME skips are decisions and some
+                   are failures, and the caller has to be able to tell them
+                   apart (see RECOVERABLE_SKIPS below).
+      "deferred" — the row is CORRECT but its parent is not local yet. The caller
+                   MUST persist it (core/sync/inbox). The cloud will not offer it
+                   again once the cursor moves past it.
+
+    WHY `reason` EXISTS (found 2026-08-01, LCL-OW-0037)
+    ---------------------------------------------------
+    This class shipped asserting that every skip was deliberate and that
+    "nothing is lost, so this is NOT inbox material". That was true of three of
+    the five skip paths and false of two, and the two are the ones that matter:
+
+      * `no-uid`      — the row cannot be matched, so we decline to write it.
+                        The row is REAL and still on the cloud. Declining is
+                        right; forgetting is not.
+      * `clock-skew`  — the cloud timestamp is >5 min in the future. That is a
+                        clock problem, not a data problem, and the very same row
+                        applies cleanly once the clocks agree — but only if
+                        someone still has it.
+
+    In both, the cursor advances past a row this database never received and the
+    cloud never offers it again. That is M-12 exactly, in the branch that said
+    it was exempt. The caller now inboxes those two, and only those two.
+
+    The other three ARE decisions and must NOT be retried: `no-identity` (the
+    row has neither id nor uid — retrying cannot make it identifiable),
+    `lww-local-newer` and `no-updated-at` (we looked at both copies and kept
+    ours; re-offering it would just re-lose the same comparison in a loop).
+    """
+    __slots__ = ("status", "conflicts", "hook_failure", "reason")
+
+    # Skip reasons where the row is real, absent here, and would come back if
+    # tried again. `core.sync.inbox` retries with backoff, so a permanent
+    # failure costs a bounded number of attempts and then shows up in Ops.
+    RECOVERABLE_SKIPS = frozenset({"no-uid", "clock-skew"})
+
+    def __init__(self, status, conflicts=0, hook_failure=None, reason=None):
+        self.status = status
+        self.conflicts = conflicts
+        self.hook_failure = hook_failure
+        self.reason = reason
+
+    @property
+    def is_lost(self) -> bool:
+        """True when this outcome means the row is on the cloud and NOT here."""
+        return self.status == "skipped" and self.reason in self.RECOVERABLE_SKIPS
+
+    def __repr__(self):
+        return "_Applied(%r, reason=%r, conflicts=%s)" % (
+            self.status, self.reason, self.conflicts)
+
+
+def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: dict) -> "_Applied":
+    """Apply ONE row pulled from the cloud. THE single apply path.
+
+    Two callers, and that is the whole point:
+      * the pull-apply loop, for rows arriving in this cycle;
+      * `core.sync.inbox.drain`, for rows held from an earlier cycle.
+
+    One function for both is the same rule `resolve_parent_fk_uids` states for
+    itself — "single source of truth for both apply paths ... so the
+    resolution/deferral logic can never drift". A separate implementation for
+    the drain would mean a second copy of the dedup fallbacks, the LWW rules and
+    the conflict hooks, and they would not stay in step.
+
+    RAISES on failure. Recording a rejected row is the caller's job; this
+    function does not get to decide the failure was acceptable.
+    """
+    _conflicts = 0
+    _hook_failure = None
+    rec_uid = record.get("uid")
+    rec_id = record.get("id")
+    if not rec_id and not rec_uid:
+        return _Applied("skipped", reason="no-identity")
+
+    existing = None
+    if hasattr(model_cls, "uid"):
+        if not rec_uid:
+            logger.warning(
+                "[SYNC_WORKER] %s id=%s has NO uid — declining to write it "
+                "(Phase C strict enforcement) and holding it in the inbox. The "
+                "row exists on the cloud; without a uid we cannot tell an INSERT "
+                "from an UPDATE of a row we already have, and guessing wrong "
+                "duplicates money.",
+                table_name, rec_id
+            )
+            return _Applied("skipped", reason="no-uid")
+        existing = db.query(model_cls).filter(model_cls.uid == rec_uid).first()
+
+        # (DEDUP) If uid lookup found nothing, try a natural-key fallback
+        # before inserting a new row. This prevents duplicates when:
+        #   • A local row was created before uid backfill (uid=NULL).
+        #   • A cloud→local pull fires after data was already created locally
+        #     and pushed up, but the local row's uid was not yet recorded.
+        # On a match we UPDATE the existing row AND write the cloud uid to it
+        # so future pulls use the fast uid path.
+        if existing is None:
+            cols = {c.name for c in model_cls.__table__.columns}
+            biz_id_val = record.get("business_id") or business_id
+
+            if table_name == "invoices" and "invoice_id" in cols:
+                # Invoices: match by human-readable invoice number
+                inv_id_str = record.get("invoice_id")
+                if inv_id_str:
+                    existing = (
+                        db.query(model_cls)
+                        .filter(
+                            model_cls.business_id == biz_id_val,
+                            model_cls.invoice_id  == inv_id_str,
+                        )
+                        .first()
+                    )
+                    if existing:
+                        logger.info(
+                            "[SYNC_WORKER] Dedup pull: matched invoices.invoice_id=%s — updating uid %s→%s",
+                            inv_id_str,
+                            getattr(existing, "uid", None),
+                            rec_uid,
+                        )
+
+            elif table_name == "invoice_payments" and "idempotency_key" in cols:
+                # Payments: match by idempotency key (exact-once guarantee)
+                idem = record.get("idempotency_key")
+                if idem:
+                    existing = (
+                        db.query(model_cls)
+                        .filter(
+                            model_cls.business_id     == biz_id_val,
+                            model_cls.idempotency_key == idem,
+                        )
+                        .first()
+                    )
+                    if existing:
+                        logger.info(
+                            "[SYNC_WORKER] Dedup pull: matched invoice_payments.idempotency_key=%s — updating uid",
+                            idem,
+                        )
+
+            elif table_name == "customers" and "phone" in cols:
+                # Customers: match by (business_id, phone) — phone is
+                # the most stable unique identifier for a customer.
+                phone = record.get("phone")
+                name  = record.get("name")
+                if phone:
+                    existing = (
+                        db.query(model_cls)
+                        .filter(
+                            model_cls.business_id == biz_id_val,
+                            model_cls.phone       == phone,
+                        )
+                        .first()
+                    )
+                elif name:
+                    # Fallback: name match (less reliable but better than dup)
+                    existing = (
+                        db.query(model_cls)
+                        .filter(
+                            model_cls.business_id == biz_id_val,
+                            model_cls.name        == name,
+                        )
+                        .first()
+                    )
+                if existing:
+                    logger.info(
+                        "[SYNC_WORKER] Dedup pull: matched customers id=%s by phone/name — updating uid",
+                        existing.id,
+                    )
+
+            elif table_name == "vendors" and "phone" in cols:
+                # Vendors: match by (business_id, phone) same logic as customers
+                phone = record.get("phone")
+                name  = record.get("name")
+                if phone:
+                    existing = (
+                        db.query(model_cls)
+                        .filter(
+                            model_cls.business_id == biz_id_val,
+                            model_cls.phone       == phone,
+                        )
+                        .first()
+                    )
+                elif name:
+                    existing = (
+                        db.query(model_cls)
+                        .filter(
+                            model_cls.business_id == biz_id_val,
+                            model_cls.name        == name,
+                        )
+                        .first()
+                    )
+                if existing:
+                    logger.info(
+                        "[SYNC_WORKER] Dedup pull: matched vendors id=%s by phone/name — updating uid",
+                        existing.id,
+                    )
+
+            elif table_name == "products" and "name" in cols:
+                # Products: match by (business_id, name) — product names
+                # within a business are typically unique.
+                pname = record.get("name")
+                if pname:
+                    existing = (
+                        db.query(model_cls)
+                        .filter(
+                            model_cls.business_id == biz_id_val,
+                            model_cls.name        == pname,
+                        )
+                        .first()
+                    )
+                if existing:
+                    logger.info(
+                        "[SYNC_WORKER] Dedup pull: matched products id=%s by name='%s' — updating uid",
+                        existing.id, pname,
+                    )
+
+            elif table_name == "purchase_invoices" and "invoice_number" in cols:
+                # Purchase bills: match by invoice number from supplier
+                inv_num = record.get("invoice_number")
+                if inv_num:
+                    existing = (
+                        db.query(model_cls)
+                        .filter(
+                            model_cls.business_id    == biz_id_val,
+                            model_cls.invoice_number == inv_num,
+                        )
+                        .first()
+                    )
+                if existing:
+                    logger.info(
+                        "[SYNC_WORKER] Dedup pull: matched purchase_invoices.invoice_number=%s — updating uid",
+                        inv_num,
+                    )
+
+            elif table_name == "expenses" and "idempotency_key" in cols:
+                # Expenses: match by idempotency key if present
+                idem = record.get("idempotency_key")
+                if idem:
+                    existing = (
+                        db.query(model_cls)
+                        .filter(
+                            model_cls.business_id     == biz_id_val,
+                            model_cls.idempotency_key == idem,
+                        )
+                        .first()
+                    )
+                if existing:
+                    logger.info(
+                        "[SYNC_WORKER] Dedup pull: matched expenses by idempotency_key — updating uid",
+                    )
+    else:
+        if rec_id:
+            existing = db.query(model_cls).filter(model_cls.id == rec_id).first()
+
+    # Apply Last-Write-Wins (LWW) locally
+    cloud_updated_at = _parse_dt(record.get("updated_at"))
+
+    # (R-8) Clock-skew guard on pull path: reject cloud rows
+    # whose updated_at is >5 min ahead of local time.
+    if cloud_updated_at:
+        _now = datetime.now(tz=timezone.utc)
+        _c_aware = cloud_updated_at.replace(tzinfo=timezone.utc) \
+            if cloud_updated_at.tzinfo is None else cloud_updated_at
+        if _c_aware > _now + timedelta(minutes=5):
+            logger.warning(
+                "[SYNC_WORKER] %s id=%s pull-skipped — cloud updated_at %s "
+                "is >5 min in the future (local_now=%s). Clock skew suspected.",
+                table_name, rec_id, cloud_updated_at, _now,
+            )
+            return _Applied("skipped", reason="clock-skew")
+
+    if existing and hasattr(existing, "updated_at") and existing.updated_at:
+        # (R-5) If the cloud row carries no timestamp we cannot
+        # prove it is newer — do NOT clobber an existing local
+        # row with a timestamp-less version.
+        if not cloud_updated_at:
+            logger.debug(
+                "[SYNC_WORKER] Skipping %s id=%s — cloud row has no updated_at, keeping local",
+                table_name, rec_id,
+            )
+            return _Applied("skipped", reason="no-updated-at")
+        local_updated_at = _parse_dt(existing.updated_at)
+        if local_updated_at and local_updated_at > cloud_updated_at:
+            # Local version is newer, skip cloud version
+            return _Applied("skipped", reason="lww-local-newer")
+
+        # (M-8) The cloud version is newer and is about to
+        # overwrite a LOCAL financial row. LWW is correct and
+        # unchanged — but a money record edited in two places
+        # must not have one version vanish without trace.
+        # Snapshot the losing side BEFORE we clobber it.
+        #
+        # This check existed on the push path only, so an
+        # overwrite arriving by PULL was silently lost — the
+        # same one-directional blind spot as M-7.
+        if _apply_hooks.log_financial_conflict(
+            db,
+            business_id=business_id,
+            entity=table_name,
+            entity_id=getattr(existing, "id", rec_id),
+            incoming=dict(record),
+            existing_row=existing,
+            incoming_updated_at=cloud_updated_at,
+            existing_updated_at=local_updated_at,
+            # On the PULL path `incoming` is the CLOUD row and `existing`
+            # is this device's. Without this the ConflictLog columns —
+            # and the "This device / Cloud" labels in Ops — come out
+            # backwards.
+            incoming_is_local=False,
+            log_prefix="[SYNC_WORKER]",
+        ):
+            _conflicts += 1
+
+        # (R-9) Non-financial master-data: log the losing
+        # local version before the cloud version lands.
+        if _apply_hooks.log_master_data_conflict(
+            db,
+            business_id=business_id,
+            entity=table_name,
+            entity_id=getattr(existing, "id", rec_id),
+            incoming=dict(record),
+            existing_row=existing,
+            incoming_updated_at=cloud_updated_at,
+            existing_updated_at=local_updated_at,
+            resolution="cloud_won",
+            # Same as the financial hook above: on PULL, `incoming` is the
+            # CLOUD row and `existing` is this device's.
+            incoming_is_local=False,
+            log_prefix="[SYNC_WORKER]",
+        ):
+            _conflicts += 1
+
+
+    # Apply field updates inside a per-row SAVEPOINT so a
+    # single bad row (e.g. a UNIQUE/constraint clash) is
+    # skipped instead of rolling back the entire pull batch.
+    with db.begin_nested():
+        data = dict(record)
+
+        # (R-12) Business ID Pinning: Ensure the pulled row's
+        # business_id is locked to the target business_id so it can
+        # never be cross-assigned or detached to a different business.
+        #
+        # THE BOUNDARY, on the apply side. The incoming `business_id` is the
+        # SENDING database's integer and means nothing here — the same business
+        # is 7 locally and 42 on the cloud. Re-pinning it to the id this database
+        # resolved from the BizID is what makes a synced row land on the right
+        # tenant. Writing the foreign integer through would attach the row to
+        # whichever local business happens to hold that number.
+        # See core/identity.py.
+        if "business_id" in data and hasattr(model_cls, "business_id"):
+            data["business_id"] = business_id
+
+        # Same user_id→owner re-point as the push path:
+        # register_shifts / shift_cash_movements carry a
+        # user_id FK to the non-synced `users` table, so
+        # the source DB's integer id won't exist here.
+        if table_name in _USER_FK_REPOINT_ENTITIES and "user_id" in data:
+            data["user_id"] = business_id
+
+        # Resolve foreign keys via the parent's durable uid
+        # (shared helper — same logic as push_changes). If a
+        # parent_uid is present but its row isn't local yet
+        # (child pulled before parent), DEFER this record
+        # instead of writing a stale source-DB integer id
+        # (wrong-row / orphan); it re-applies on a later pull.
+        if resolve_parent_fk_uids(db, model_cls, data, log_prefix="[SYNC_WORKER]"):
+            return _Applied("deferred")
+
+        target_obj = existing if existing else model_cls()
+
+        # If UID is present, we never overwrite or force the integer PK ID
+        if rec_uid and hasattr(model_cls, "uid") and "id" in data:
+            del data["id"]
+
+        for key, val in data.items():
+            if key in model_cls.__table__.columns:
+                col_type = model_cls.__table__.columns[key].type
+                if hasattr(col_type, "python_type") and col_type.python_type == datetime:
+                    if val:
+                        val = _parse_dt(val)
+                setattr(target_obj, key, val)
+        if not existing:
+            db.add(target_obj)
+        db.flush()   # need the LOCAL id for the hooks
+
+    # (M-7) The SAME post-apply invariants the cloud runs
+    # on push. These used to live as private functions in
+    # routes/sync.py, unreachable from here, so the pull
+    # direction silently ran NONE of them — which is why
+    # an invoice pulled cloud→local showed "Pending"
+    # while its payment history showed the money.
+    #
+    # Note the ordering interaction: invoice_payments is
+    # in _child_last, so an invoice is applied BEFORE its
+    # payments. Reconciling at invoice time correctly
+    # finds an empty ledger and does nothing; the fix
+    # lands when the payment arrives and reconciles its
+    # parent. Both hooks are required — neither alone
+    # closes the bug.
+    #
+    # Outside the savepoint above deliberately: the hooks
+    # open their own, so a row whose invariants fail
+    # still lands and only the derived state is missing.
+    _hook = _apply_hooks.run_post_apply(
+        db, table_name, target_obj, log_prefix="[SYNC_WORKER]")
+    if not _hook.ok:
+        _hook_failure = _hook
+    return _Applied("applied", _conflicts, _hook_failure)
 
 
 def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool = False, do_pull: bool = False):
@@ -1485,6 +2179,20 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 )
                 if resp.status_code != 200 or resp.json().get("status") != "success":
                     raise Exception(f"HTTP {resp.status_code}: {resp.text}")
+
+                # Stamp the echo window BEFORE reading the body. The cloud
+                # broadcasts `sync.trigger` + `sync.pull_ping` for this very push
+                # to every SSE subscriber of this business — and one of those
+                # subscribers is THIS device's own Instant Pull listener, which
+                # has no way to tell our push from a remote one. Without this
+                # stamp it answers our own echo with another sync run, which
+                # pushes, which broadcasts, forever. See
+                # `cloud_listener._ECHO_WINDOW_SEC`.
+                try:
+                    from services import cloud_listener
+                    cloud_listener.note_local_push(business_id)
+                except Exception:
+                    pass   # accelerator bookkeeping; never fail a push for it
 
                 # M-13 — the cloud ACKS rows it rejected, so a 200 does NOT mean
                 # every row stored. It acks deliberately (refusing would stall the
@@ -1826,7 +2534,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         # `updated_at` removes the local-vs-cloud clock skew that previously
         # caused freshly-updated cloud rows to be silently skipped. On first run
         # after a restart we fall back to the last successful SyncLog timestamp.
-        last_sync_str = _PULL_CURSOR.get(business_id)
+        last_sync_str = _get_pull_cursor(db, business_id)
         if not last_sync_str:
             last_success = (
                 db.query(SyncLog)
@@ -1837,11 +2545,11 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
             )
             last_sync_str = last_success.synced_at.isoformat() if last_success else None
 
-        params = {}
+        params = {"limit": _PULL_PAGE_LIMIT}
         if last_sync_str:
             params["last_sync_at"] = last_sync_str
 
-        resp = httpx.get(f"{CLOUD_URL}/api/sync/pull", params=params, headers=headers, timeout=10.0)
+        resp = httpx.get(f"{CLOUD_URL}/api/sync/pull", params=params, headers=headers, timeout=_PULL_TIMEOUT)
         if resp.status_code == 401:
             _invalidate_cloud_token(business_id)
             raise Exception("HTTP 401: token rejected by cloud — will refresh next cycle")
@@ -1855,6 +2563,51 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         # (see end of this try). Advancing here risked skipping rows if the apply
         # step failed after the cursor had already moved past them.
         _cloud_cursor = _resp_json.get("pulled_at")
+
+        # ── TRUNCATED PAGE: the cursor must not jump past the tail ────────────
+        # `pulled_at` is the server's clock at response time. Using it after a
+        # truncated page would move the cursor past every row the page cap cut
+        # off, and those rows would never be offered again — the page cap would
+        # have turned a slow pull into silent data loss, which is strictly worse
+        # than the livelock it fixes.
+        #
+        # The safe watermark is the MINIMUM, across truncated tables, of the
+        # newest `updated_at` actually received. Rows are ordered ascending by
+        # `updated_at`, so every table has been read in full up to that instant;
+        # taking the minimum means no table is advanced past what it delivered.
+        _pull_has_more = bool(_resp_json.get("has_more"))
+        if _pull_has_more:
+            _watermarks = []
+            for _t in (_resp_json.get("truncated_tables") or []):
+                _ts = [
+                    _parse_dt(r.get("updated_at"))
+                    for r in (_resp_json.get("changes", {}).get(_t) or [])
+                    if r.get("updated_at")
+                ]
+                _ts = [t for t in _ts if t]
+                if _ts:
+                    _watermarks.append(max(_ts))
+            if _watermarks:
+                _cloud_cursor = min(_watermarks).isoformat()
+                _PULL_MORE_PENDING.add(business_id)
+                logger.info(
+                    "[SYNC_WORKER] biz=%s: pull truncated at %s row(s)/table; "
+                    "advancing the cursor only to %s (the tail of what actually "
+                    "arrived) and pulling again next tick.",
+                    business_id, _PULL_PAGE_LIMIT, _cloud_cursor,
+                )
+            else:
+                # Truncated, but no usable timestamp to advance to. Holding is
+                # the only safe option — advancing would skip the remainder.
+                _cloud_cursor = None
+                _PULL_MORE_PENDING.add(business_id)
+                logger.warning(
+                    "[SYNC_WORKER] biz=%s: pull truncated but no updated_at was "
+                    "usable to compute a safe watermark — HOLDING the cursor.",
+                    business_id,
+                )
+        else:
+            _PULL_MORE_PENDING.discard(business_id)
         # Tables the cloud could not read this cycle. An absent table is NOT an
         # empty one, so the cursor must not advance past them (see below).
         _pull_failed_tables = _resp_json.get("failed_tables") or []
@@ -1904,6 +2657,11 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 _pull_row_failures.clear()   # M-12: rejected rows, this cycle
                 # (M-8) Financial overwrites flagged for the owner to review.
                 _conflicts_logged = 0
+                # Rows whose parent was not local yet. Previously a bare
+                # `continue` — counted as applied, recorded nowhere, and gone
+                # once the cursor moved. Now held in the inbox and counted here
+                # so the progress figures stop lying about them.
+                _pull_deferred = 0
 
                 for table_name, records in _ordered:
                     model_cls = _MODEL_MAP.get(table_name)
@@ -1922,341 +2680,85 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                         })
                     
                     for record in records:
-                        rec_uid = record.get("uid")
-                        rec_id = record.get("id")
-                        if not rec_id and not rec_uid:
-                            continue
-                        
-                        existing = None
-                        if hasattr(model_cls, "uid"):
-                            if not rec_uid:
-                                logger.warning(
-                                    "[SYNC_WORKER] Skipping %s id=%s — no uid present (Phase C strict enforcement)",
-                                    table_name, rec_id
-                                )
-                                continue
-                            existing = db.query(model_cls).filter(model_cls.uid == rec_uid).first()
-
-                            # (DEDUP) If uid lookup found nothing, try a natural-key fallback
-                            # before inserting a new row. This prevents duplicates when:
-                            #   • A local row was created before uid backfill (uid=NULL).
-                            #   • A cloud→local pull fires after data was already created locally
-                            #     and pushed up, but the local row's uid was not yet recorded.
-                            # On a match we UPDATE the existing row AND write the cloud uid to it
-                            # so future pulls use the fast uid path.
-                            if existing is None:
-                                cols = {c.name for c in model_cls.__table__.columns}
-                                biz_id_val = record.get("business_id") or business_id
-
-                                if table_name == "invoices" and "invoice_id" in cols:
-                                    # Invoices: match by human-readable invoice number
-                                    inv_id_str = record.get("invoice_id")
-                                    if inv_id_str:
-                                        existing = (
-                                            db.query(model_cls)
-                                            .filter(
-                                                model_cls.business_id == biz_id_val,
-                                                model_cls.invoice_id  == inv_id_str,
-                                            )
-                                            .first()
-                                        )
-                                        if existing:
-                                            logger.info(
-                                                "[SYNC_WORKER] Dedup pull: matched invoices.invoice_id=%s — updating uid %s→%s",
-                                                inv_id_str,
-                                                getattr(existing, "uid", None),
-                                                rec_uid,
-                                            )
-
-                                elif table_name == "invoice_payments" and "idempotency_key" in cols:
-                                    # Payments: match by idempotency key (exact-once guarantee)
-                                    idem = record.get("idempotency_key")
-                                    if idem:
-                                        existing = (
-                                            db.query(model_cls)
-                                            .filter(
-                                                model_cls.business_id     == biz_id_val,
-                                                model_cls.idempotency_key == idem,
-                                            )
-                                            .first()
-                                        )
-                                        if existing:
-                                            logger.info(
-                                                "[SYNC_WORKER] Dedup pull: matched invoice_payments.idempotency_key=%s — updating uid",
-                                                idem,
-                                            )
-
-                                elif table_name == "customers" and "phone" in cols:
-                                    # Customers: match by (business_id, phone) — phone is
-                                    # the most stable unique identifier for a customer.
-                                    phone = record.get("phone")
-                                    name  = record.get("name")
-                                    if phone:
-                                        existing = (
-                                            db.query(model_cls)
-                                            .filter(
-                                                model_cls.business_id == biz_id_val,
-                                                model_cls.phone       == phone,
-                                            )
-                                            .first()
-                                        )
-                                    elif name:
-                                        # Fallback: name match (less reliable but better than dup)
-                                        existing = (
-                                            db.query(model_cls)
-                                            .filter(
-                                                model_cls.business_id == biz_id_val,
-                                                model_cls.name        == name,
-                                            )
-                                            .first()
-                                        )
-                                    if existing:
-                                        logger.info(
-                                            "[SYNC_WORKER] Dedup pull: matched customers id=%s by phone/name — updating uid",
-                                            existing.id,
-                                        )
-
-                                elif table_name == "vendors" and "phone" in cols:
-                                    # Vendors: match by (business_id, phone) same logic as customers
-                                    phone = record.get("phone")
-                                    name  = record.get("name")
-                                    if phone:
-                                        existing = (
-                                            db.query(model_cls)
-                                            .filter(
-                                                model_cls.business_id == biz_id_val,
-                                                model_cls.phone       == phone,
-                                            )
-                                            .first()
-                                        )
-                                    elif name:
-                                        existing = (
-                                            db.query(model_cls)
-                                            .filter(
-                                                model_cls.business_id == biz_id_val,
-                                                model_cls.name        == name,
-                                            )
-                                            .first()
-                                        )
-                                    if existing:
-                                        logger.info(
-                                            "[SYNC_WORKER] Dedup pull: matched vendors id=%s by phone/name — updating uid",
-                                            existing.id,
-                                        )
-
-                                elif table_name == "products" and "name" in cols:
-                                    # Products: match by (business_id, name) — product names
-                                    # within a business are typically unique.
-                                    pname = record.get("name")
-                                    if pname:
-                                        existing = (
-                                            db.query(model_cls)
-                                            .filter(
-                                                model_cls.business_id == biz_id_val,
-                                                model_cls.name        == pname,
-                                            )
-                                            .first()
-                                        )
-                                    if existing:
-                                        logger.info(
-                                            "[SYNC_WORKER] Dedup pull: matched products id=%s by name='%s' — updating uid",
-                                            existing.id, pname,
-                                        )
-
-                                elif table_name == "purchase_invoices" and "invoice_number" in cols:
-                                    # Purchase bills: match by invoice number from supplier
-                                    inv_num = record.get("invoice_number")
-                                    if inv_num:
-                                        existing = (
-                                            db.query(model_cls)
-                                            .filter(
-                                                model_cls.business_id    == biz_id_val,
-                                                model_cls.invoice_number == inv_num,
-                                            )
-                                            .first()
-                                        )
-                                    if existing:
-                                        logger.info(
-                                            "[SYNC_WORKER] Dedup pull: matched purchase_invoices.invoice_number=%s — updating uid",
-                                            inv_num,
-                                        )
-
-                                elif table_name == "expenses" and "idempotency_key" in cols:
-                                    # Expenses: match by idempotency key if present
-                                    idem = record.get("idempotency_key")
-                                    if idem:
-                                        existing = (
-                                            db.query(model_cls)
-                                            .filter(
-                                                model_cls.business_id     == biz_id_val,
-                                                model_cls.idempotency_key == idem,
-                                            )
-                                            .first()
-                                        )
-                                    if existing:
-                                        logger.info(
-                                            "[SYNC_WORKER] Dedup pull: matched expenses by idempotency_key — updating uid",
-                                        )
-                        else:
-                            if rec_id:
-                                existing = db.query(model_cls).filter(model_cls.id == rec_id).first()
-                        
-                        # Apply Last-Write-Wins (LWW) locally
-                        cloud_updated_at = _parse_dt(record.get("updated_at"))
-
-                        # (R-8) Clock-skew guard on pull path: reject cloud rows
-                        # whose updated_at is >5 min ahead of local time.
-                        if cloud_updated_at:
-                            _now = datetime.now(tz=timezone.utc)
-                            _c_aware = cloud_updated_at.replace(tzinfo=timezone.utc) \
-                                if cloud_updated_at.tzinfo is None else cloud_updated_at
-                            if _c_aware > _now + timedelta(minutes=5):
-                                logger.warning(
-                                    "[SYNC_WORKER] %s id=%s pull-skipped — cloud updated_at %s "
-                                    "is >5 min in the future (local_now=%s). Clock skew suspected.",
-                                    table_name, rec_id, cloud_updated_at, _now,
-                                )
-                                continue
-
-                        if existing and hasattr(existing, "updated_at") and existing.updated_at:
-                            # (R-5) If the cloud row carries no timestamp we cannot
-                            # prove it is newer — do NOT clobber an existing local
-                            # row with a timestamp-less version.
-                            if not cloud_updated_at:
-                                logger.debug(
-                                    "[SYNC_WORKER] Skipping %s id=%s — cloud row has no updated_at, keeping local",
-                                    table_name, rec_id,
-                                )
-                                continue
-                            local_updated_at = _parse_dt(existing.updated_at)
-                            if local_updated_at and local_updated_at > cloud_updated_at:
-                                # Local version is newer, skip cloud version
-                                continue
-
-                            # (M-8) The cloud version is newer and is about to
-                            # overwrite a LOCAL financial row. LWW is correct and
-                            # unchanged — but a money record edited in two places
-                            # must not have one version vanish without trace.
-                            # Snapshot the losing side BEFORE we clobber it.
-                            #
-                            # This check existed on the push path only, so an
-                            # overwrite arriving by PULL was silently lost — the
-                            # same one-directional blind spot as M-7.
-                            if _apply_hooks.log_financial_conflict(
-                                db,
-                                business_id=business_id,
-                                entity=table_name,
-                                entity_id=getattr(existing, "id", rec_id),
-                                incoming=dict(record),
-                                existing_row=existing,
-                                incoming_updated_at=cloud_updated_at,
-                                existing_updated_at=local_updated_at,
-                                log_prefix="[SYNC_WORKER]",
-                            ):
-                                _conflicts_logged += 1
-
-                            # (R-9) Non-financial master-data: log the losing
-                            # local version before the cloud version lands.
-                            if _apply_hooks.log_master_data_conflict(
-                                db,
-                                business_id=business_id,
-                                entity=table_name,
-                                entity_id=getattr(existing, "id", rec_id),
-                                incoming=dict(record),
-                                existing_row=existing,
-                                incoming_updated_at=cloud_updated_at,
-                                existing_updated_at=local_updated_at,
-                                resolution="cloud_won",
-                                log_prefix="[SYNC_WORKER]",
-                            ):
-                                _conflicts_logged += 1
-
-
-                        # Apply field updates inside a per-row SAVEPOINT so a
-                        # single bad row (e.g. a UNIQUE/constraint clash) is
-                        # skipped instead of rolling back the entire pull batch.
+                        # ONE apply path, shared with the inbox drain — see
+                        # _apply_pulled_row. The outcome is explicit because the
+                        # three cases need three different answers, and
+                        # collapsing them is exactly what lost rows:
+                        #
+                        #   applied  — done.
+                        #   skipped  — SEE `_Applied.reason`. Three of the five
+                        #              skip reasons are decisions (we compared
+                        #              both copies and kept ours); two are
+                        #              failures that leave the row on the cloud
+                        #              and NOT here. `is_lost` is the difference,
+                        #              and it is inbox material — see the class
+                        #              docstring for what LCL-OW-0037 cost.
+                        #   deferred — the row is RIGHT but its parent is not
+                        #              here yet. This used to be a bare
+                        #              `continue`, recorded nowhere, so the
+                        #              cursor advanced and the cloud never
+                        #              offered the row again. M-20 on the read
+                        #              side. It now lands in the inbox and is
+                        #              retried on its own schedule.
                         try:
-                            with db.begin_nested():
-                                data = dict(record)
-
-                                # (R-12) Business ID Pinning: Ensure the pulled row's
-                                # business_id is locked to the target business_id so it can
-                                # never be cross-assigned or detached to a different business.
-                                if "business_id" in data and hasattr(model_cls, "business_id"):
-                                    data["business_id"] = business_id
-
-                                # Same user_id→owner re-point as the push path:
-                                # register_shifts / shift_cash_movements carry a
-                                # user_id FK to the non-synced `users` table, so
-                                # the source DB's integer id won't exist here.
-                                if table_name in _USER_FK_REPOINT_ENTITIES and "user_id" in data:
-                                    data["user_id"] = business_id
-
-                                # Resolve foreign keys via the parent's durable uid
-                                # (shared helper — same logic as push_changes). If a
-                                # parent_uid is present but its row isn't local yet
-                                # (child pulled before parent), DEFER this record
-                                # instead of writing a stale source-DB integer id
-                                # (wrong-row / orphan); it re-applies on a later pull.
-                                if resolve_parent_fk_uids(db, model_cls, data, log_prefix="[SYNC_WORKER]"):
-                                    continue
-
-                                target_obj = existing if existing else model_cls()
-                                
-                                # If UID is present, we never overwrite or force the integer PK ID
-                                if rec_uid and hasattr(model_cls, "uid") and "id" in data:
-                                    del data["id"]
-                                    
-                                for key, val in data.items():
-                                    if key in model_cls.__table__.columns:
-                                        col_type = model_cls.__table__.columns[key].type
-                                        if hasattr(col_type, "python_type") and col_type.python_type == datetime:
-                                            if val:
-                                                val = _parse_dt(val)
-                                        setattr(target_obj, key, val)
-                                if not existing:
-                                    db.add(target_obj)
-                                db.flush()   # need the LOCAL id for the hooks
-
-                            # (M-7) The SAME post-apply invariants the cloud runs
-                            # on push. These used to live as private functions in
-                            # routes/sync.py, unreachable from here, so the pull
-                            # direction silently ran NONE of them — which is why
-                            # an invoice pulled cloud→local showed "Pending"
-                            # while its payment history showed the money.
-                            #
-                            # Note the ordering interaction: invoice_payments is
-                            # in _child_last, so an invoice is applied BEFORE its
-                            # payments. Reconciling at invoice time correctly
-                            # finds an empty ledger and does nothing; the fix
-                            # lands when the payment arrives and reconciles its
-                            # parent. Both hooks are required — neither alone
-                            # closes the bug.
-                            #
-                            # Outside the savepoint above deliberately: the hooks
-                            # open their own, so a row whose invariants fail
-                            # still lands and only the derived state is missing.
-                            _hook = _apply_hooks.run_post_apply(
-                                db, table_name, target_obj, log_prefix="[SYNC_WORKER]")
-                            if not _hook.ok:
-                                _apply_failures.append(_hook)
+                            _res = _apply_pulled_row(
+                                db, business_id, table_name, model_cls, record)
+                            _conflicts_logged += _res.conflicts
+                            if _res.hook_failure is not None:
+                                _apply_failures.append(_res.hook_failure)
+                            if _res.status == "deferred":
+                                _inbox.remember(
+                                    db,
+                                    business_id=business_id,
+                                    entity=table_name,
+                                    record=record,
+                                    reason="deferred",
+                                    error="parent row not present in this database yet",
+                                )
+                                _pull_deferred += 1
+                            elif _res.is_lost:
+                                # The row was offered, declined, and is still on
+                                # the cloud. The cursor is about to move past it,
+                                # so this is the LAST time we will be shown it.
+                                _inbox.remember(
+                                    db,
+                                    business_id=business_id,
+                                    entity=table_name,
+                                    record=record,
+                                    reason=_res.reason,
+                                    error=(
+                                        "row has no uid — cannot be matched safely"
+                                        if _res.reason == "no-uid" else
+                                        "cloud updated_at is >5 min ahead of this "
+                                        "machine's clock"
+                                    ),
+                                )
+                                _pull_deferred += 1
                         except Exception as row_err:
                             # M-12: a rejected row is a MISSING row, not a log
-                            # line. Recorded for review, counted, and the cursor
-                            # is held below so it is re-pulled — it used to be a
-                            # WARNING that was then counted as applied and
-                            # skipped forever.
+                            # line. It is now DURABLE in the inbox and retried
+                            # per row, so the cursor no longer has to choose
+                            # between stalling all 29 tables and losing this one.
                             _pull_row_failures.append({
                                 "entity": table_name,
-                                "row_id": rec_id,
+                                "row_id": record.get("id"),
                                 "error": str(getattr(row_err, "orig", row_err)
                                              ).strip().splitlines()[0],
                             })
+                            _inbox.remember(
+                                db,
+                                business_id=business_id,
+                                entity=table_name,
+                                record=record,
+                                reason="rejected",
+                                error=str(getattr(row_err, "orig", row_err)
+                                          ).strip().splitlines()[0][:500],
+                            )
                             _apply_hooks.log_apply_failure(
                                 db,
                                 business_id=business_id,
                                 entity=table_name,
-                                entity_id=rec_id,
+                                entity_id=record.get("id"),
                                 payload=dict(record),
                                 error=row_err,
                                 log_prefix="[SYNC_WORKER]",
@@ -2265,7 +2767,8 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                     if records:
                             # Successes only. Adding len(records) here regardless
                             # is what let the progress bar reach 100% on a batch
-                            # that had dropped rows (M-12).
+                            # that had dropped rows (M-12). Deferred rows are
+                            # excluded for the same reason — they have NOT landed.
                             _pull_done += max(
                                 0, len(records)
                                 - sum(1 for f in _pull_row_failures
@@ -2273,13 +2776,22 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
 
                 if _pull_row_failures:
                     logger.error(
-                        "[SYNC_WORKER] %s row(s) were REJECTED and are MISSING "
-                        "from this database for biz=%s — recorded in the "
-                        "conflicts review list; the pull cursor is held so they "
-                        "are retried next cycle: %s",
-                        len(_pull_row_failures), business_id,
+                        "[SYNC_WORKER] %s row(s) were REJECTED for biz=%s. They "
+                        "are HELD IN THE INBOX with their full payload and are "
+                        "retried per row — the cursor no longer has to stall all "
+                        "%s tables to protect them: %s",
+                        len(_pull_row_failures), business_id, len(_MODEL_MAP),
                         [f"{f['entity']}#{f['row_id']}: {f['error']}"
                          for f in _pull_row_failures],
+                    )
+
+                if _pull_deferred:
+                    logger.info(
+                        "[SYNC_WORKER] %s pulled row(s) for biz=%s are waiting on "
+                        "a parent that is not local yet — held in the inbox and "
+                        "retried with backoff. Before the inbox existed these "
+                        "were dropped silently and counted as applied.",
+                        _pull_deferred, business_id,
                     )
 
                 if _apply_failures:
@@ -2340,30 +2852,34 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         # to pull). ONLY NOW is it safe to advance the cursor. If the fetch timed
         # out or the apply raised, we never reach here — so the same window is
         # re-pulled next cycle instead of being silently skipped.
-        # M-12 — the cursor is the difference between "retried" and "lost".
-        # It used to advance unconditionally, so any row the apply path rejected
-        # was never seen again. Now it is HELD while rows are failing, bounded by
-        # _PULL_MAX_FAILED_STREAK so one permanently-unappliable row cannot stall
-        # every later row behind it forever.
+        #
+        # ── WHY A REJECTED ROW NO LONGER HOLDS THE CURSOR ─────────────────────
+        # M-12 made the cursor the difference between "retried" and "lost", and
+        # holding it was the only tool available: the rejected row existed
+        # nowhere but in the cloud, so re-pulling the window was the sole way to
+        # see it again. That forced a choice between stalling all %s tables and
+        # abandoning the row — which is what the old `_PULL_MAX_FAILED_STREAK`
+        # branch did, with a CRITICAL log saying the rows "need a human".
+        #
+        # The row is now DURABLE in `sync_inbox` with its full payload, retried
+        # per row with backoff, and visible in Ops. Nothing is lost by moving on,
+        # so the cursor advances and later rows are not held hostage. This is
+        # exactly how push has always behaved: a stuck outbox row waits its turn
+        # while the rest of the queue drains.
+        #
+        # A PARTIAL pull is different and still holds — see below. Those rows
+        # were never received at all, so there is nothing in the inbox to retry.
         if _cloud_cursor:
             _failed_now = len(_pull_row_failures)
             if _failed_now:
-                streak = _PULL_FAILED_STREAK.get(business_id, 0) + 1
-                _PULL_FAILED_STREAK[business_id] = streak
-                if streak < _PULL_MAX_FAILED_STREAK:
-                    logger.error(
-                        "[SYNC_WORKER] HOLDING the pull cursor for biz=%s "
-                        "(attempt %s/%s) so the %s rejected row(s) are re-pulled.",
-                        business_id, streak, _PULL_MAX_FAILED_STREAK, _failed_now)
-                else:
-                    logger.critical(
-                        "[SYNC_WORKER] biz=%s: %s row(s) still REJECTED after %s "
-                        "attempts. Advancing the cursor so later rows are not "
-                        "blocked — THESE ROWS REMAIN MISSING and are in the "
-                        "conflicts review list. They need a human.",
-                        business_id, _failed_now, streak)
-                    _PULL_FAILED_STREAK[business_id] = 0
-                    _PULL_CURSOR[business_id] = _cloud_cursor
+                logger.warning(
+                    "[SYNC_WORKER] biz=%s: %s row(s) could not be applied this "
+                    "cycle. Advancing the cursor anyway — they are held in the "
+                    "inbox with their payloads and retry independently, so later "
+                    "rows are not blocked behind them.",
+                    business_id, _failed_now)
+                _PULL_FAILED_STREAK[business_id] = 0
+                _set_pull_cursor(db, business_id, _cloud_cursor)
             elif _pull_failed_tables:
                 # ── PARTIAL PULL: hold the cursor (rule 58 / M-12 shape) ──────
                 #
@@ -2391,7 +2907,36 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 )
             else:
                 _PULL_FAILED_STREAK[business_id] = 0
-                _PULL_CURSOR[business_id] = _cloud_cursor
+                _set_pull_cursor(db, business_id, _cloud_cursor)
+
+        # ── Drain rows held from earlier cycles ───────────────────────────────
+        # AFTER this cycle's rows have landed, because the parent a held child is
+        # waiting for is very often in the batch we just applied. Draining first
+        # would defer every one of them again and double the wait.
+        def _drain_apply(_db, _entity, _record):
+            _model = _MODEL_MAP.get(_entity)
+            if _model is None:
+                # The table left the sync map since this row was held. Say which
+                # one — a held row that can never apply needs a name, not an
+                # AttributeError deep inside the apply path.
+                raise RuntimeError(
+                    f"entity {_entity!r} is no longer in the sync model map")
+            _out = _apply_pulled_row(_db, business_id, _entity, _model, _record)
+            # A skip that means "still not here" must report its REASON, not the
+            # bare status: `drain` reads this against `_HELD_OUTCOMES` to decide
+            # whether the row was delivered or declined, and "skipped" alone
+            # would be counted as delivered.
+            return _out.reason if _out.is_lost else _out.status
+
+        try:
+            _inbox.drain(db, business_id, _drain_apply)
+        except Exception as _inbox_err:
+            # The inbox is a recovery mechanism. It failing must not take down
+            # the pull that is otherwise working.
+            logger.warning(
+                "[SYNC_WORKER] biz=%s: inbox drain failed (non-fatal, retried "
+                "next cycle): %s", business_id, _inbox_err,
+            )
 
     except Exception as e:
         logger.error("[SYNC_WORKER] Pull failed for business_id=%s: %s", business_id, e)

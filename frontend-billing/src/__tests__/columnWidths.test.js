@@ -1,3 +1,8 @@
+// @vitest-environment jsdom
+// ^ This file uses browser globals (localStorage). vite.config.js sends
+//   *.test.js to the `node` environment by default — building a jsdom per
+//   file cost ~5x the tests themselves — so files that genuinely need a DOM
+//   opt back in here, next to the code that needs it.
 // Unit tests for lib/columnWidths — the pure half of the resizable-column
 // feature (storage keying, clamping, sanitising, drag maths, auto-fit).
 import { describe, it, expect, beforeEach } from 'vitest'

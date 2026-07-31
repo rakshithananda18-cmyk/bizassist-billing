@@ -12,6 +12,11 @@ from services.dates import utc_now
 
 logger = logging.getLogger("bizassist.log_uploader")
 
+# See core/identity.py: an integer business id is meaningful only inside the
+# database that issued it. This archive is uploaded to the shared cloud, so its
+# name has to carry the BizID.
+from core.identity import bizid_for as _bizid_for
+
 def archive_logs(business_id: int) -> Optional[str]:
     """Compress bizassist.log to a tar.gz archive."""
     log_dir = "logs"
@@ -25,7 +30,18 @@ def archive_logs(business_id: int) -> Optional[str]:
     os.makedirs(backup_dir, exist_ok=True)
 
     timestamp = utc_now().strftime("%Y%m%d_%H%M%S")
-    archive_name = f"logs_biz_{business_id}_{timestamp}.tar.gz"
+    # Name the archive by BizID, not by the local integer id.
+    #
+    # This filename CROSSES A DATABASE BOUNDARY — the archive is uploaded to the
+    # cloud, where it sits next to every other customer's. `logs_biz_7_*.tar.gz`
+    # names a different business depending on which installation wrote it, so on
+    # the cloud it identifies nothing. The BizID is the same string everywhere.
+    #
+    # Falls back to the integer only when no BizID exists (a business that has
+    # never been assigned one), and says so in the name so it is not mistaken
+    # for a portable identifier.
+    _label = _bizid_for(business_id) or f"localid{business_id}"
+    archive_name = f"logs_biz_{_label}_{timestamp}.tar.gz"
     archive_path = os.path.join(backup_dir, archive_name)
 
     try:
@@ -111,10 +127,22 @@ def run_daily_log_upload():
                 continue
 
             # First, check if there are any old unsent files in backups directory, try uploading them first!
+            #
+            # Match BOTH naming schemes. Archives are now named by BizID
+            # (`logs_biz_BA-XXXXXX_*`), but a machine that has been running since
+            # before that change still holds `logs_biz_<integer>_*` files. A
+            # retry loop that only knew the new name would never pick those up
+            # and never delete them — they upload on success, so a non-matching
+            # prefix means they sit on disk for ever.
+            _bizid = _bizid_for(business_id)
+            _prefixes = tuple(
+                f"logs_biz_{p}_" for p in
+                ([_bizid] if _bizid else []) + [business_id, f"localid{business_id}"]
+            )
             if os.path.exists(backup_dir):
                 for f in os.listdir(backup_dir):
                     fp = os.path.join(backup_dir, f)
-                    if os.path.isfile(fp) and f.startswith(f"logs_biz_{business_id}_") and f.endswith(".tar.gz"):
+                    if os.path.isfile(fp) and f.startswith(_prefixes) and f.endswith(".tar.gz"):
                         logger.info("[LOG_UPLOADER] Retrying upload of old archive %s", f)
                         if upload_logs_to_cloud(business_id, fp, "Retry upload of old unsent diagnostic log"):
                             # Delete on success (handled inside upload_logs_to_cloud)

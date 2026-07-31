@@ -42,9 +42,11 @@ export const HOSTING_CLOUD = 'cloud'
  * @param {string}  [args.plan]     - subscription plan, e.g. 'pro' | 'free'
  * @param {string}  [args.savedMode]- account's general.hosting_mode, if any
  * @param {string}  [args.deviceMode]- localStorage 'bizassist_hosting_mode', if any
+ * @param {boolean} [args.planKnown=true] - the plan was actually READ from the
+ *   session, not inferred. See the note on optimism below.
  * @returns {'local'|'hybrid'|'cloud'}
  */
-export function resolveHostingMode({ isLocalApp, plan, savedMode, deviceMode } = {}) {
+export function resolveHostingMode({ isLocalApp, plan, savedMode, deviceMode, planKnown = true } = {}) {
   // 1. URL lock — a browser on a non-local origin has no local backend at all.
   if (!isLocalApp) return HOSTING_CLOUD
 
@@ -53,7 +55,25 @@ export function resolveHostingMode({ isLocalApp, plan, savedMode, deviceMode } =
   //    talking to.
   if (deviceMode === HOSTING_CLOUD) return HOSTING_CLOUD
 
-  const isPro = plan === 'pro'
+  // An UNREADABLE plan resolves optimistically, and only for display.
+  //
+  // This is asymmetric on purpose, because the two mistakes are not equal:
+  //
+  //   Guess "not Pro"  -> a Pro owner's account resolves to 'local', the hybrid
+  //                       controls disappear, App.jsx reads the downgraded value
+  //                       out of settings.general.hosting_mode, and the device
+  //                       looks offline-only. That is the SAME visible outage
+  //                       this module was written to end, entered from the other
+  //                       side.
+  //   Guess "Pro"      -> hybrid UI shows for a free account. It grants nothing:
+  //                       `sync_business` 402s a non-Pro business cloud-side, and
+  //                       `shouldPersistMode` refuses to WRITE the value while
+  //                       `planKnown` is false, so nothing is recorded either.
+  //
+  // So: optimistic to render, never optimistic to persist. The settings response
+  // normally carries `subscription`, so this is the degraded path — and a
+  // degraded path must not silently switch a working device off.
+  const isPro = plan === 'pro' || !planKnown
 
   // 3. Explicit, still-valid opt-out by the owner.
   if (savedMode === HOSTING_LOCAL) return HOSTING_LOCAL
@@ -64,10 +84,59 @@ export function resolveHostingMode({ isLocalApp, plan, savedMode, deviceMode } =
 }
 
 /**
- * True when the account's stored value disagrees with what actually applies, so
- * callers can quietly re-persist it instead of leaving a misleading row in the DB
- * (the backend's sync-queue gate reads that stored value directly).
+ * True when the account's stored value disagrees with what actually applies AND
+ * this session is entitled to author that value.
+ *
+ * WHY THE ENTITLEMENT CHECK EXISTS — READ BEFORE RELAXING IT
+ * ---------------------------------------------------------
+ * `resolveHostingMode` answers a question about THIS DEVICE. But
+ * `general.hosting_mode` lives on `users.settings`, and `users` is in
+ * `_SYNC_TABLES` — it is an ACCOUNT-scoped, LWW-synced field. Persisting a
+ * device-scoped answer into an account-scoped field is how one device's truth
+ * becomes another device's corruption.
+ *
+ * The concrete failure that produced this guard:
+ *   1. Owner opens the web dashboard. `isLocalApp` is false, so rule 1 returns
+ *      'cloud' — correct for that tab, which genuinely has no local backend.
+ *   2. The old `shouldPersistMode` saw 'cloud' !== 'hybrid' and PUT 'cloud' onto
+ *      the cloud `users` row, making it the newer copy.
+ *   3. `users` syncs. The desktop pulled 'cloud' over its own 'hybrid'.
+ *   4. `sync_worker.run_hybrid_sync` reads that field and does
+ *      `if hosting_mode != "hybrid": continue`. The desktop stopped syncing —
+ *      silently, with no error anywhere — and `models.py` stopped queueing new
+ *      rows to the outbox at all.
+ *   5. Loading Settings on the desktop re-derived 'hybrid' and PUT it back, so
+ *      the two devices then flipped the field on every single page load.
+ *
+ * This is the same "hosting_mode='cloud' … NOT being queued for sync" outage the
+ * derivation rewrite was written to end, re-entered through the web door.
+ *
+ * Two rules, both fail-CLOSED — when in doubt, do not write:
+ *
+ *   • Only a local install may author the field. A web tab cannot observe
+ *     whether the owner runs a local backend, so it has nothing to say about it.
+ *   • A downgrade away from 'hybrid' requires a KNOWN plan. If the plan is
+ *     unreadable, `resolveHostingMode` falls back to a guess, and a wrong guess
+ *     here writes 'local' and stops the sync worker just as dead as 'cloud' did.
+ *     An unknown plan therefore persists nothing.
+ *
+ * @param {string}  resolved   - output of resolveHostingMode()
+ * @param {string}  savedMode  - the account's stored general.hosting_mode
+ * @param {object}  [ctx]
+ * @param {boolean} [ctx.isLocalApp=true] - config.IS_LOCAL_APP for this session
+ * @param {boolean} [ctx.planKnown=true]  - the plan was actually read, not guessed
  */
-export function shouldPersistMode(resolved, savedMode) {
-  return !!resolved && resolved !== savedMode
+export function shouldPersistMode(resolved, savedMode, ctx = {}) {
+  const { isLocalApp = true, planKnown = true } = ctx
+
+  if (!resolved || resolved === savedMode) return false
+
+  // A web session is a viewer of this account, never the author of how it is hosted.
+  if (!isLocalApp) return false
+
+  // Losing 'hybrid' is the destructive direction: it is what switches the sync
+  // worker off. Never do it on a guess.
+  if (savedMode === HOSTING_HYBRID && resolved !== HOSTING_HYBRID && !planKnown) return false
+
+  return true
 }

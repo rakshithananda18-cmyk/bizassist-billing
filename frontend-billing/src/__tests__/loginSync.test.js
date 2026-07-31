@@ -1,3 +1,8 @@
+// @vitest-environment jsdom
+// ^ This file uses browser globals (fetch, localStorage, window). vite.config.js sends
+//   *.test.js to the `node` environment by default — building a jsdom per
+//   file cost ~5x the tests themselves — so files that genuinely need a DOM
+//   opt back in here, next to the code that needs it.
 // audit T6 — reconcileBizIdOnLogin: the cross-device sync nudge is premium-gated
 // and bidirectional (cloud-ahead → pull, device-ahead → push).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'

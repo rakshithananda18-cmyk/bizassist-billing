@@ -75,8 +75,20 @@ def test_sync_lifecycle():
     r_depth = client.get("/api/sync/queue-depth", headers=local_user["headers"])
     assert r_depth.status_code == 200, r_depth.text
     depth_data = r_depth.json()
-    # 2 items: 1 for settings update (users table), 1 for customer
-    assert depth_data["pending_count"] == 2
+    # 1 item: the customer.
+    #
+    # This asserted 2 — "1 for settings update (users table), 1 for customer" —
+    # until `users` was removed from `_SYNC_TABLES` on 2026-07-31. That row was
+    # queued and pushed and NEVER APPLIED: the cloud's MODEL_MAP has no `users`
+    # entry, so `push_changes` skipped every one as "unknown entity on this
+    # server" while the worker acked it anyway (it counts what it SENT).
+    # Measured on the live database: 31 `users` rows queued, 31 acked, 0 applied.
+    #
+    # It was also carrying the bcrypt hash and the full settings JSON to a server
+    # that discards them, which `routes/sync_staff.py` explicitly says must not
+    # happen. Staff replication has its own route; the subscription block comes
+    # back via `_sync_subscription_from_cloud`.
+    assert depth_data["pending_count"] == 1
 
     # 7. Extract the local customer change and push to cloud push endpoint
     db = SessionLocal()

@@ -113,6 +113,19 @@ _COLUMN_MIGRATIONS = [
     {"table": "users", "column": "upi_vpa",           "ddl": "ALTER TABLE users ADD COLUMN upi_vpa TEXT"},
     # users — session revocation counter (REVIEW_1 GAP-1: force logout / token revoke)
     {"table": "users", "column": "token_version",     "ddl": "ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0 NOT NULL"},
+    # NULL = never logged in. Deliberately NOT backfilled to created_at: an
+    # account that has never been used must be distinguishable from one whose
+    # history predates this column, and inventing a login that never happened is
+    # exactly the kind of guess that makes an audit trail worthless.
+    {"table": "users", "column": "last_login",         "ddl": "ALTER TABLE users ADD COLUMN last_login DATETIME"},
+    # BizID on the audit log. `business_id` there is a per-database integer, and
+    # local/cloud number the same business differently by design — so an audit
+    # row carrying only the integer is unattributable once read anywhere other
+    # than where it was written. Left NULL for historical rows on purpose: the
+    # BizID for those cannot be derived (the integer may point at a row that has
+    # since been renumbered, or at nothing), and inventing one would be worse
+    # than an honest gap.
+    {"table": "table_alterations", "column": "public_id", "ddl": "ALTER TABLE table_alterations ADD COLUMN public_id VARCHAR"},
     # invoices additions
     {"table": "invoices", "column": "godown_id",        "ddl": "ALTER TABLE invoices ADD COLUMN godown_id INTEGER"},
     {"table": "invoices", "column": "reverse_charge",   "ddl": "ALTER TABLE invoices ADD COLUMN reverse_charge BOOLEAN DEFAULT FALSE"},
@@ -554,6 +567,106 @@ def _ensure_single_open_shift_index(conn):
         logger.info("[Migration] M-11: one-open-shift-per-operator now enforced by the DB")
     except Exception as e:
         logger.error("[Migration] M-11: failed to create %s: %s", idx_name, e)
+
+
+def _ensure_staff_login_name_unique_index(conn):
+    """One staff login name per business — enforced by the DATABASE.
+
+    WHY THE APPLICATION CHECK WAS NOT ENOUGH
+    ----------------------------------------
+    `core/api/staff.py::create_staff` already refuses a duplicate:
+
+        dup = db.query(User.id).filter(
+            User.parent_business_id == bid,
+            func.lower(User.staff_login_name) == bare_name.lower()).first()
+
+    and it is correct. But it only guards the path that goes through it, and the
+    path that actually created the duplicates did not: `data_transfer`'s
+    `_upsert_users` matched staff on the INTERNAL `username`, which each database
+    derives differently on purpose (`counter_1__7` locally, `counter_1_c7` on the
+    cloud). It therefore never matched across a transfer and INSERTed a second
+    row every run. Measured on the live database 2026-07-31: business 7 held 24
+    cashier logins against 2 real tills, including two rows both named
+    `counter_1` with identical bcrypt hashes.
+
+    Architecture rule 11 — application-level uniqueness is not uniqueness.
+
+    WHAT THE DUPLICATE ACTUALLY BROKE
+    ---------------------------------
+    1. **Login became non-deterministic.** `routes/auth.py` resolves a staff
+       login with `.filter(parent_business_id, lower(staff_login_name)).first()`
+       and NO ORDER BY, so which of two rows authenticates is arbitrary. Their
+       `user_id` differs, so shifts and audit rows attribute to different
+       accounts.
+    2. **The cloud tombstone became ambiguous.** `routes/sync_staff.py` deletes
+       by `(parent_business_id, lower(staff_login_name))`. With one row per name
+       that is exact; with two it is a coin toss, and removing a local duplicate
+       could delete the cashier's real cloud account.
+
+    This index is what makes `staff_login_name` a genuinely stable key — unique
+    within a business, identical in both databases — so (2) is safe by
+    construction rather than by care.
+
+    REFUSES TO CREATE OVER EXISTING DUPLICATES, like the M-3 and M-11 indexes.
+    Two rows sharing a login name are two credentials, and choosing which to drop
+    is a decision about who can log in — not something a boot-time migration may
+    make. It reports them and installs once they are resolved:
+        python scripts/prune_unused_staff.py --business <id> --dedupe-keep id:<n>
+    """
+    from sqlalchemy import inspect as sa_inspect
+    inspector = sa_inspect(conn)
+    if "users" not in set(inspector.get_table_names()):
+        return
+    cols = {c["name"] for c in inspector.get_columns("users")}
+    if "staff_login_name" not in cols or "parent_business_id" not in cols:
+        return
+
+    idx_name = "uix_users_staff_login_per_business"
+    is_pg = conn.dialect.name == "postgresql"
+    try:
+        if is_pg:
+            already = conn.execute(text(
+                "SELECT 1 FROM pg_indexes WHERE indexname = :n"), {"n": idx_name}).fetchone()
+        else:
+            already = conn.execute(text(
+                "SELECT 1 FROM sqlite_master WHERE type='index' AND name = :n"),
+                {"n": idx_name}).fetchone()
+        if already:
+            return
+
+        dupes = conn.execute(text(
+            "SELECT parent_business_id, lower(staff_login_name) AS ln, COUNT(*) AS n "
+            "FROM users "
+            "WHERE parent_business_id IS NOT NULL AND staff_login_name IS NOT NULL "
+            "GROUP BY parent_business_id, lower(staff_login_name) HAVING COUNT(*) > 1"
+        )).fetchall()
+        if dupes:
+            logger.error(
+                "[Migration] cannot enforce one-login-name-per-business — %s "
+                "duplicate name(s) exist: %s. Two rows sharing a login name are "
+                "two credentials: staff login resolves with .first() and no "
+                "ORDER BY, so which one authenticates is arbitrary, and a cloud "
+                "tombstone keyed on the name cannot tell them apart. They are "
+                "NOT merged automatically because choosing which to drop decides "
+                "who can log in. Resolve with: python scripts/prune_unused_staff.py "
+                "--business <id> --dedupe-keep id:<n>. The guard installs on the "
+                "next boot.",
+                len(dupes),
+                "; ".join(f"biz {d[0]} name {d[1]!r} x{d[2]}" for d in dupes[:25]),
+            )
+            return
+
+        # Partial: owners have parent_business_id NULL and no login name, and
+        # NULLs must not collide with each other.
+        conn.execute(text(
+            f"CREATE UNIQUE INDEX IF NOT EXISTS {idx_name} "
+            f"ON users (parent_business_id, lower(staff_login_name)) "
+            f"WHERE parent_business_id IS NOT NULL AND staff_login_name IS NOT NULL"
+        ))
+        conn.commit()
+        logger.info("[Migration] one-login-name-per-business now enforced by the DB")
+    except Exception as e:
+        logger.error("[Migration] failed to create %s: %s", idx_name, e)
 
 
 def _ensure_line_item_overfill_guard(conn):
@@ -1124,15 +1237,62 @@ def _migrate_session_nulls(conn):
 
 
 def _backfill_biz_ids(db):
+    """Give every BUSINESS OWNER a BizID. Staff sub-accounts must not get one.
+
+    A BizID (`public_id`) is the TENANT identifier. It is what
+    `_resolve_business_id_by_username` resolves against, what the discovery
+    registry keys on, and what the admin console counts. A staff row is not a
+    tenant — it belongs to one.
+
+    This used to select on `public_id IS NULL` alone, so every cashier was handed
+    its own BizID and became a phantom business. Measured on the live database
+    2026-07-31: ALL 32 staff rows carried one, which is why the nightly job
+    logged "Running books integrity audit for 40 business(es)" against 9 real
+    owners — 9 owners + 32 staff. Every per-business sweep was doing roughly five
+    times the work it should, over accounts with no books to audit.
+
+    Staff are identified by `parent_business_id IS NOT NULL`, the same predicate
+    `list_staff` and the tenant resolver already use.
+    """
     from database.models import User
     from core.connection.utils import generate_bizid
-    users_missing = db.query(User).filter(User.public_id == None).all()
+    users_missing = (
+        db.query(User)
+        .filter(User.public_id == None,                 # noqa: E711 — SQL NULL
+                User.parent_business_id == None)        # noqa: E711 — owners only
+        .all()
+    )
     if users_missing:
         for u in users_missing:
             u.public_id = generate_bizid(db)
             db.add(u)
         db.commit()
-        logger.info(f"[Migration] Backfilled BizID for {len(users_missing)} legacy users.")
+        logger.info(f"[Migration] Backfilled BizID for {len(users_missing)} legacy owner(s).")
+
+    # Existing damage is REPORTED, not auto-corrected. Clearing a public_id that
+    # something else has already keyed on (a device registration, a cached
+    # session, an operator's notes) is a destructive guess, and the wrong kind of
+    # thing to do silently at boot. The count is what the owner needs to see.
+    try:
+        stray = (
+            db.query(User)
+            .filter(User.public_id != None,              # noqa: E711
+                    User.parent_business_id != None)     # noqa: E711
+            .count()
+        )
+        if stray:
+            logger.warning(
+                "[Migration] %s staff sub-account(s) hold a BizID of their own. "
+                "They were handed one by an earlier run of this backfill and now "
+                "read as separate businesses to every per-business sweep (the "
+                "nightly integrity audit counts them). No longer created; the "
+                "existing ones are NOT cleared automatically because other "
+                "records may already reference them. Clear with: "
+                "python scripts/clear_staff_bizids.py --apply",
+                stray,
+            )
+    except Exception as e:
+        logger.debug("[Migration] stray-BizID check skipped: %s", e)
 
 
 def _seed_users(db):
@@ -1261,6 +1421,11 @@ def run_migrations_and_seed():
         # M-11: one OPEN shift per operator. Keyed on user_id, which sync can
         # populate wrongly — so it needs a DB guard, not just the service check.
         _step(conn, _ensure_single_open_shift_index)
+        # One staff login name per business. The API already refuses duplicates;
+        # the path that actually created them (data_transfer's _upsert_users,
+        # matching on the per-database `username`) bypassed it entirely. Also
+        # what makes the cloud's name-keyed staff tombstone unambiguous.
+        _step(conn, _ensure_staff_login_name_unique_index)
         # N4: the remaining money invariants, pushed down to the DB so paths that
         # bypass the command layer (imports, sync applies, repair scripts) cannot
         # write a row the books cannot represent. Runs AFTER the backfills above,

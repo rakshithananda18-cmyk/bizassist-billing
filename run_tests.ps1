@@ -125,7 +125,23 @@ try {
                 Write-Host "Installing $fe dependencies (first run only)..." -ForegroundColor Yellow
                 npm install
             }
-            npm test
+
+            # -Fast used to apply to the BACKEND ONLY — the frontend ran plain
+            # `npm test` and ignored the flag entirely, which is why "fast mode"
+            # barely moved the total. Vitest does run files in parallel by
+            # default, but it caps worker threads conservatively; on a run
+            # measured 2026-07-31 the environment setup alone was 172s against
+            # 31s of actual tests.
+            #
+            # The larger win is in vite.config.js (only *.test.jsx pays for
+            # jsdom now). This just lets the pool use the machine.
+            if ($Fast) {
+                $cores = [Environment]::ProcessorCount
+                Write-Host "Fast mode: vitest across $cores thread(s)." -ForegroundColor Green
+                npx vitest run --pool=threads --poolOptions.threads.maxThreads=$cores --reporter=dot
+            } else {
+                npm test
+            }
             if ($LASTEXITCODE -ne 0) { $frontendExit = $LASTEXITCODE }
             Pop-Location
         }

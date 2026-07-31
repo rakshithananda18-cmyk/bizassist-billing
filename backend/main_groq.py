@@ -162,17 +162,50 @@ async def lifespan(_app):
                     s.connect(("8.8.8.8", 80))
                     local_ip = s.getsockname()[0]
 
-                # Find the owner business's public_id (BizId) and integer ID from local DB
+                # ── REGISTER BY BizID ONLY ───────────────────────────────────
+                #
+                # `users.id` is a PER-DATABASE integer. The discovery registry
+                # lives on the SHARED CLOUD and is a single dict keyed by this
+                # string, so registering the integer puts every installation's
+                # "1", "2", "3" … into the SAME bucket:
+                #
+                #     customer A's laptop  ->  _REGISTRY["1"] = [192.168.1.4:8001]
+                #     customer B's laptop  ->  _REGISTRY["1"] += [10.0.0.5:8001]
+                #
+                # `GET /discover/1` then hands one customer the other's LAN
+                # address. That is the credential-harvesting path this endpoint's
+                # own threat model (S-2) describes, reached by accident between
+                # tenants rather than by an attacker.
+                #
+                # And it bought nothing: the only consumer is
+                # `networkDiscovery.discoverLocalBackend(bizId)`, whose parameter
+                # is documented as "the business's public_id". NOTHING has ever
+                # queried by the integer. It doubled the registration traffic
+                # (18 POSTs per cycle for 9 businesses, visible in the logs) to
+                # populate keys nobody reads.
+                #
+                # THE RULE: BizID is the only business identifier that may cross
+                # a database boundary. An integer id is meaningful solely inside
+                # the database that issued it.
                 db = SessionLocal()
                 try:
-                    rows = db.execute(text("SELECT id, public_id FROM users WHERE parent_business_id IS NULL")).fetchall()
-                    biz_ids = []
-                    for row in rows:
-                        uid = row[0]
-                        pub_id = row[1]
-                        if pub_id:
-                            biz_ids.append(str(pub_id).strip())
-                        biz_ids.append(str(uid))
+                    rows = db.execute(text(
+                        "SELECT id, public_id FROM users "
+                        "WHERE parent_business_id IS NULL AND public_id IS NOT NULL"
+                    )).fetchall()
+                    biz_ids = [str(r[1]).strip() for r in rows if r[1]]
+                    missing = db.execute(text(
+                        "SELECT COUNT(*) FROM users "
+                        "WHERE parent_business_id IS NULL AND public_id IS NULL"
+                    )).scalar()
+                    if missing:
+                        # Not registerable, and not silently skippable either —
+                        # a business with no BizID cannot be found on the LAN.
+                        logger.warning(
+                            "[DISCOVER] %s business(es) have no BizID and cannot be "
+                            "registered for LAN discovery. They will not be "
+                            "reachable from a cashier device.", missing,
+                        )
                 finally:
                     db.close()
 

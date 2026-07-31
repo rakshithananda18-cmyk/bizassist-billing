@@ -479,13 +479,9 @@ def cancel_request(db: Session, business_id: int, connection_id: int) -> None:
 
 
 # ── Back-compat shim ─────────────────────────────────────────────────────────
-def create_direct_connection(db: Session, initiator_id: int, target_bizid: str,
-                             connect_as: str) -> B2BConnection:
-    """DEPRECATED — kept so older callers/tests keep importing cleanly.
-
-    Historically this created an immediately-``accepted`` link, which is exactly
-    the consent hole described at the top of this module. It now delegates to
-    :func:`request_connection`, so the returned connection is ``pending``.
-    """
-    return request_connection(db, initiator_id=initiator_id,
-                              target_bizid=target_bizid, connect_as=connect_as)
+# NOTE: `create_direct_connection` was defined here and deleted 2026-07-31.
+# It was already a deprecated shim delegating to `request_connection`, kept
+# "so older callers/tests keep importing cleanly" — and by 2026-07-31 nothing
+# imported it, in the backend or the tests. Its historical behaviour created an
+# immediately-`accepted` link, which is the consent hole described at the top
+# of this module. Call `request_connection` directly.

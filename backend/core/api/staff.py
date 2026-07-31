@@ -100,6 +100,12 @@ def _staff_out(u: User) -> dict:
         "business_id": u.parent_business_id,
         "counter_prefix": getattr(u, "counter_prefix", None),
         "created_at": u.created_at.isoformat() if u.created_at else None,
+        # NULL = never logged in. The owner's only reliable signal for "this
+        # account was made during testing and forgotten": the Staff screen used
+        # to show a name, a role and a prefix, so 22 abandoned accounts looked
+        # exactly like the 2 real counters.
+        "last_login": (u.last_login.isoformat()
+                       if getattr(u, "last_login", None) else None),
     }
 
 

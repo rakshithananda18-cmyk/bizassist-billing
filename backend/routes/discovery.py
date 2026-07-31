@@ -68,6 +68,20 @@ def _is_private_address(value: str) -> bool:
 
 # ── In-memory store ────────────────────────────────────────────────────────────
 # { biz_id: [ {ip, port, registered_at, last_seen} ] }
+# ── KEYED BY BizID, AND ONLY BY BizID ────────────────────────────────────────
+#
+# This registry lives on the SHARED CLOUD: one dict, every customer's
+# installation writing into it. So the key must be an identifier that means the
+# same thing in every database — i.e. the BizID.
+#
+# It used to also receive local integer ids, because `main_groq.py` registered
+# each business twice. Every installation has a business numbered 1, so
+# `_REGISTRY["1"]` was a single bucket shared by unrelated customers, and
+# `GET /discover/1` would hand one of them another's LAN address — the
+# credential-harvesting path in the S-2 threat model below, reached by accident
+# between tenants rather than by an attacker. Nothing ever read those keys.
+#
+# See core/identity.py for the general rule.
 _REGISTRY: Dict[str, List[dict]] = {}
 _TTL_SECONDS = 2 * 60 * 60   # 2 hours
 TTL_SECONDS = _TTL_SECONDS   # Public alias for tests

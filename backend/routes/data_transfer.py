@@ -1,12 +1,21 @@
 """
-routes/migrate.py
-=================
-Phase 1 – Hosting-mode data migration endpoints.
+routes/data_transfer.py
+=======================
+Phase 1 – Hosting-mode data migration endpoints. THIS is the mounted module
+(`main_groq.py` → `data_transfer_router`).
 
 Provides three authenticated endpoints:
-  GET  /api/migrate/export   – dump all tenant tables to JSON
-  POST /api/migrate/import   – restore from that JSON (upsert)
-  GET  /api/migrate/count    – per-table record counts for the tenant
+  GET  /api/data-transfer/export   – dump all tenant tables to JSON
+  POST /api/data-transfer/import   – restore from that JSON (upsert)
+  GET  /api/data-transfer/count    – per-table record counts for the tenant
+
+NOTE ON `routes/migrate.py`: it is a deprecated, UNMOUNTED predecessor that
+declares the same three endpoints under `/api/migrate/*`. Those paths are NOT
+served. Any documentation still referring to them is describing the old module —
+the callers (`loginSync.js`, `MigrationModal`, `BackupModal`, `FileBackupCard`,
+`ConsequenceModal`) all use `/api/data-transfer/*`. This header used to be a
+verbatim copy of that file's, down to the filename, which is exactly how the two
+drifted apart without anyone noticing.
 
 Business-ID scoping
 -------------------
@@ -116,52 +125,19 @@ def _business_id_for(user: dict) -> int:
     return int(user.get("parent_business_id") or user.get("id"))
 
 
-def _resolve_owner_id_legacy(user: dict, db: Session) -> int:
-    """
-    Resolve the ACTUAL owner id in THIS DB for the authenticated user.
-
-    Cross-DB migrations assign different integer ids to the same account
-    (e.g. local id=122, cloud id=7). We match on the most stable key first:
-
-      1. BizID (public_id) **confirmed by username** — the identity spine (D9).
-         We require username to agree too: BizID is not yet globally unique
-         (minted per-DB), so a chance collision with a *different* business must
-         not mis-route. Requiring the username match removes that risk.
-      2. username — bridge for the FIRST migration / older tokens.
-      3. JWT id — same-DB fallback.
-    """
-    username = user.get("username") or user.get("sub") or ""
-    public_id = user.get("public_id")
-    if public_id and username:
-        try:
-            row = db.execute(
-                text('SELECT id FROM "users" WHERE public_id = :p AND username = :u AND parent_business_id IS NULL'),
-                {"p": public_id, "u": username},
-            ).first()
-            if row:
-                return int(row[0])
-        except Exception as exc:
-            logger.debug("_resolve_owner_id: public_id lookup failed — %s", exc)
-
-    if username:
-        try:
-            row = db.execute(
-                text('SELECT id FROM "users" WHERE username = :u AND parent_business_id IS NULL'),
-                {"u": username},
-            ).first()
-            if row:
-                return int(row[0])
-        except Exception as exc:
-            logger.debug("_resolve_owner_id: username lookup failed — %s", exc)
-
-    # Fallback: use JWT id (same-DB case)
-    return int(user.get("parent_business_id") or user.get("id"))
+# NOTE: `_resolve_owner_id_legacy` lived here and was deleted 2026-07-31.
+# It resolved a token to a local owner by BizID, then username, then the raw JWT
+# `id`. Those fallbacks are the cross-database integer leak the BizID work exists
+# to close: a token's numeric id means nothing in another database, so resolving
+# to it targets whichever local business holds that number. Nothing called it —
+# it was kept "for migration-history reference". The active resolver is
+# `_resolve_owner_id` below, which delegates to
+# `resolve_business_id_in_db(require_public_id=True)` and refuses instead.
+# See core/identity.py and docs/CLEANUP_PLAN_2026-07-31.md §2.
 
 
-# The active resolver is deliberately shared with sync/profile/staff controls.
-# Retain the old private implementation above only for migration-history
-# reference; its username/numeric fallback is not safe for a BizID-bearing
-# local/cloud token.
+# The active resolver, deliberately shared with the sync / profile / staff
+# controls so all four agree on what a token is allowed to resolve to.
 def _resolve_owner_id(user: dict, db: Session) -> int:
     return resolve_business_id_in_db(user, db, require_public_id=True)
 
@@ -366,31 +342,70 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
                 logger.warning("migrate/import: refused invalid staff record for destination owner %s", dest_owner_id)
                 continue
 
-            existing = db.execute(
-                text('SELECT parent_business_id FROM "users" WHERE username = :username'),
-                {"username": r["username"]},
-            ).first()
+            # ── MATCH ON THE PER-BUSINESS LOGIN NAME, NOT THE INTERNAL ONE ───
+            #
+            # THIS IS THE BUG THAT DUPLICATED EVERY STAFF ACCOUNT ON EVERY RUN.
+            #
+            # `username` is the INTERNAL, globally-unique name, and the two
+            # databases derive it differently ON PURPOSE:
+            #
+            #   local  `_internal_staff_username`  ->  counter_1__7   (<bare>__<owner_id>)
+            #   cloud  `_resolve_username`         ->  counter_1_c7   (<preferred>_c<n>)
+            #
+            # Both describe the same cashier. Matching on it therefore NEVER
+            # matched across a transfer, so every cloud→local run INSERTed a
+            # second row for every staff member. Measured on the live database
+            # 2026-07-31: business 7 held 24 cashier logins where 2 were real,
+            # including `counter_1__7` AND `counter_1_c7` — same person, same
+            # bcrypt hash, two rows. Staff login then resolves with `.first()`
+            # and no ORDER BY, so which one authenticates is arbitrary.
+            #
+            # `staff_login_name` is the identity that means the same thing in
+            # both databases — it is the per-business name the cashier actually
+            # types, and `create_staff` already enforces it as unique within a
+            # business. Same rule as the BizID: match on what survives crossing
+            # a database, never on a per-database artefact. See core/identity.py.
+            #
+            # Falls back to `username` only for legacy rows that predate
+            # `staff_login_name`.
+            _login_name = (r.get("staff_login_name") or "").strip()
+            if _login_name:
+                existing = db.execute(
+                    text('SELECT id, parent_business_id FROM "users" '
+                         'WHERE parent_business_id = :bid '
+                         'AND lower(staff_login_name) = lower(:ln)'),
+                    {"bid": dest_owner_id, "ln": _login_name},
+                ).first()
+            else:
+                existing = db.execute(
+                    text('SELECT id, parent_business_id FROM "users" WHERE username = :username'),
+                    {"username": r["username"]},
+                ).first()
             try:
                 with db.begin_nested():   # (M-1) per-row savepoint
                     if existing:
-                        if existing[0] != dest_owner_id:
+                        if existing[1] != dest_owner_id:
                             logger.warning(
                                 "migrate/import: refused staff username collision for '%s' outside business %s",
                                 r["username"], dest_owner_id,
                             )
                             continue
+                        # NOTE `username` is deliberately NOT updated. The
+                        # destination's internal name is correct FOR THE
+                        # DESTINATION; overwriting it with the source's would
+                        # rename the row to a foreign scheme and re-open the
+                        # mismatch on the next transfer.
                         update_fields = [
                             field for field in ("staff_login_name", "password", "business_name", "role", "counter_prefix")
                             if field in r
                         ]
                         if update_fields:
                             set_parts = ", ".join(f'"{field}" = :{field}' for field in update_fields)
+                            _params = dict(r)
+                            _params["_row_id"] = existing[0]
                             db.execute(
-                                text(
-                                    f'UPDATE "users" SET {set_parts} '
-                                    'WHERE username = :username AND parent_business_id = :parent_business_id'
-                                ),
-                                r,
+                                text(f'UPDATE "users" SET {set_parts} WHERE id = :_row_id'),
+                                _params,
                             )
                     else:
                         columns = list(r.keys())
@@ -407,6 +422,87 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
 # ---------------------------------------------------------------------------
 # UPSERT HELPER
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# INVOICE NUMBER CLASH ON IMPORT (M-3 x §9.3b)
+# ---------------------------------------------------------------------------
+# PORTED FROM routes/migrate.py 2026-07-31. It existed ONLY there — the
+# deprecated, unmounted copy — so the module that actually serves
+# /api/data-transfer/import had no such protection and silently DROPPED any
+# bill whose number was already held by a different document:
+#
+#   migrate/import[remap]: row skip in invoices (old_id=901999):
+#   UNIQUE constraint failed: invoices.business_id, invoices.invoice_id
+#
+# That is a lost sale on migration. It was invisible because the only test
+# covering it imported from routes.migrate, so it exercised the dead copy and
+# reported green while the live path had the hole.
+#
+# migrate.py's own comment on the second call site named this exact risk one
+# level down — "an invariant that lives in only one of two paths is the exact
+# defect M-7 was". It lived in only one of two MODULES.
+def _free_invoice_number_on_import(db: Session, business_id, number: str, uid):
+    """Return ``number``, or a fresh number in the same series if it is already
+    held by a DIFFERENT bill in this business.
+
+    See the call site for why this exists (M-3 × §9.3b). Uses the same allocator
+    as the counter, so the replacement cannot collide with anything now or later.
+
+    Returns ``number`` unchanged when it is free, or when it is held by the SAME
+    document (matching uid) — that is a re-import, which must update in place
+    rather than fork a second copy.
+    """
+    if not business_id or not number:
+        return number
+    try:
+        row = db.execute(
+            text('SELECT uid FROM invoices WHERE business_id = :b AND invoice_id = :n'),
+            {"b": business_id, "n": number},
+        ).fetchone()
+        if row is None:
+            return number                    # free
+        if uid and row[0] and str(row[0]) == str(uid):
+            return number                    # same document — re-import, not a clash
+
+        from core.billing import sequence as SEQ
+        from core.billing import commands as billing
+        head, _, tail = str(number).rpartition("-")
+        series = head if (head and tail.isdigit()) else str(number)
+        fresh = SEQ.next_number(
+            db, business_id, series,
+            scan_max=lambda: billing._series_max(db, business_id, series),
+            is_taken=lambda n: billing._invoice_number_taken(db, business_id, n),
+        )
+        logger.warning(
+            "[DATA-TRANSFER] invoice number %s already used by a different bill in "
+            "business %s — importing this one as %s so neither sale is lost (M-3)",
+            number, business_id, fresh,
+        )
+        return fresh
+    except Exception as e:
+        # The allocator failed. Returning `number` here would be the WORST
+        # option, even though it looks like the conservative one: the row then
+        # violates the unique index, the caller's `except` at the bottom of
+        # _import_with_remap catches the IntegrityError and SKIPS the row — so
+        # the bill is silently dropped. (I wrote that fallback believing the
+        # index would "reject it loudly"; it does not, because the caller
+        # swallows it. Found by accident when a broken test harness made the
+        # allocator raise.)
+        #
+        # Fall back to a suffix derived from the row's own uid, which is unique
+        # by construction. The bill LANDS, the original number stays visible in
+        # the new one, and a human can renumber it deliberately afterwards.
+        suffix = (str(uid).replace("-", "")[:8] if uid else "DUP")
+        salvaged = f"{number}-DUP{suffix.upper()}"
+        logger.error(
+            "[DATA-TRANSFER] could not allocate a clean number for clashing invoice %s "
+            "in business %s (%s) — importing it as %s so the sale is not lost. "
+            "Renumber it deliberately with "
+            "scripts/resolve_duplicate_invoice_numbers.py.",
+            number, business_id, e, salvaged,
+        )
+        return salvaged
+
 
 def _upsert_rows(
     db: Session,
@@ -462,6 +558,16 @@ def _upsert_rows(
                     v != 0 if isinstance(v, (int, float))
                     else str(v).strip().lower() in ("1", "true", "t", "yes", "y")
                 )
+
+        # (M-3 x §9.3b) A bill whose number is already held by a DIFFERENT
+        # document here is renumbered, not dropped. Inserting it verbatim
+        # violates the unique index, and the `except` below then SKIPS the row —
+        # a silently lost sale. Only fires on a uid mismatch, so re-importing
+        # the same bill still updates in place.
+        if table_name == "invoices" and filtered.get("invoice_id"):
+            filtered["invoice_id"] = _free_invoice_number_on_import(
+                db, filtered.get("business_id"), filtered["invoice_id"],
+                filtered.get("uid"))
 
         col_list = list(filtered.keys())
         placeholders = ", ".join(f":{c}" for c in col_list)
@@ -819,6 +925,14 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
             if old_id is not None:
                 table_map[old_id] = existing_id
             continue
+
+        # Same guard as in _upsert_rows. Applied in BOTH because these are two
+        # separate insert paths, and an invariant that lives in only one of two
+        # paths is the exact defect M-7 was.
+        if table_name == "invoices" and filtered.get("invoice_id"):
+            filtered["invoice_id"] = _free_invoice_number_on_import(
+                db, filtered.get("business_id") or dest_owner_id,
+                filtered["invoice_id"], filtered.get("uid"))
 
         cols = list(filtered.keys())
         col_str = ", ".join(f'"{c}"' for c in cols)

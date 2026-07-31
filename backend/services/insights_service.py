@@ -232,19 +232,6 @@ def top_customers(user_id: int, db: Session, limit: int = 5) -> list:
     return [{"customer": c, "total": t} for c, t in sorted(totals.items(), key=lambda x: x[1], reverse=True)[:limit]]
 
 
-def payments_view(user_id: int, db: Session) -> dict:
-    payments = db.query(LegacyPayment).filter(LegacyPayment.business_id == user_id).all()
-    invoices = db.query(Invoice).filter(
-        Invoice.business_id == user_id, Invoice.status.in_(["Overdue", "Pending"])
-    ).all()
-    return {
-        "payments":      [{"id": p.id, "customer": p.customer, "amount": p.amount, "due_date": p.due_date, "paid": p.paid} for p in payments],
-        "invoice_dues":  [{"id": i.id, "invoice_id": i.invoice_id, "customer": i.customer, "amount": i.amount, "status": i.status, "due_date": i.due_date} for i in invoices],
-        "total_overdue": sum(i.amount or 0 for i in invoices if i.status == "Overdue"),
-        "total_pending": sum(i.amount or 0 for i in invoices if i.status == "Pending"),
-        "overdue_count": sum(1 for i in invoices if i.status == "Overdue"),
-        "pending_count": sum(1 for i in invoices if i.status == "Pending"),
-    }
 
 
 def clients_view(user_id: int, db: Session) -> dict:

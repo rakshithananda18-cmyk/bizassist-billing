@@ -1,3 +1,8 @@
+// @vitest-environment jsdom
+// ^ This file uses browser globals (EventSource). vite.config.js sends
+//   *.test.js to the `node` environment by default — building a jsdom per
+//   file cost ~5x the tests themselves — so files that genuinely need a DOM
+//   opt back in here, next to the code that needs it.
 // ============================================================================
 // __tests__/CrossBackendTokenGuard.test.js
 // ----------------------------------------------------------------------------

@@ -60,7 +60,31 @@ MODEL_MAP: Dict[str, Any] = {
     "purchase_order_line_items": PurchaseOrderLineItem,
     "alert_configs": AlertConfig,
     "rate_limit_configs": RateLimitConfig,
-    "table_alterations": TableAlteration,
+    # ── `table_alterations` is DELIBERATELY ABSENT. Do not add it back. ───────
+    #
+    # It is the per-database audit log of who changed what ON THIS MACHINE. Two
+    # databases' audit logs describe two different sets of writes, so merging
+    # them is meaningless — it does not reconcile anything, it just interleaves
+    # two histories into both.
+    #
+    # It was also the single most expensive row in the pull, for a reason that
+    # is worth stating plainly because the same trap is open to any new table:
+    #
+    #   The pull filters with  `if "updated_at" in cols: query.filter(...)`.
+    #   `TableAlteration` has only `created_at`. NO COLUMN MEANS NO FILTER, so
+    #   `since` was ignored and the ENTIRE table came down on EVERY pull, for
+    #   ever — and this is the highest-churn table in the system, one row per
+    #   audited write, growing without bound.
+    #
+    # Measured on the live database 2026-07-31: 2,487 local rows, and the owner's
+    # sync panel sat at "Cloud→Local 0/768 Table Alterations" re-fetching the
+    # same 768 rows every cycle. It was the only synced table missing
+    # `updated_at`, and `_assert_pull_is_filterable()` below now makes that
+    # condition impossible to reintroduce silently.
+    #
+    # If a cross-device audit trail is ever wanted, it needs its own append-only
+    # feed keyed on a monotonic id (see core/api/sync.py), not LWW replication of
+    # a log that is by definition local.
     # Period locks ARE ordinary owner-scoped data and must travel (M-2): a
     # period the owner closed on one device was not closed on the other, so a
     # backdated write still landed there. Event-sourced and append-only, so
@@ -79,6 +103,44 @@ MODEL_MAP: Dict[str, Any] = {
     "b2b_orders": B2BOrder,
     "b2b_order_line_items": B2BOrderLineItem,
 }
+
+
+def _assert_pull_is_filterable() -> None:
+    """Every synced table must be able to answer "what changed since X?".
+
+    The pull applies its incremental filter conditionally:
+
+        if "updated_at" in cols:
+            query = query.filter(model_cls.updated_at > last_sync_dt)
+
+    A table with no `updated_at` therefore silently opts OUT of the filter and
+    is returned IN FULL on every pull, for ever. Nothing errors, nothing is
+    logged, and the cost scales with the table — so the failure is invisible
+    until someone notices the sync panel re-fetching thousands of rows a cycle.
+
+    `table_alterations` was that table. It is the audit log, one row per audited
+    write, unbounded — 2,487 rows locally and 768 re-downloaded every cycle on
+    the owner's machine (measured 2026-07-31).
+
+    Import-time, not test-time: adding a model to MODEL_MAP is a one-line change,
+    and this must fail in front of whoever makes it rather than in CI later.
+    """
+    offenders = [
+        name for name, model in MODEL_MAP.items()
+        if "updated_at" not in {c.name for c in model.__table__.columns}
+    ]
+    if offenders:
+        raise RuntimeError(
+            "MODEL_MAP contains table(s) with no `updated_at` column: "
+            f"{offenders}. The pull's incremental filter is conditional on that "
+            "column, so these would be returned IN FULL on every pull, for ever "
+            "— silently, and at a cost that grows with the table. Add an "
+            "`updated_at` column (and a migration for it), or keep the table out "
+            "of MODEL_MAP."
+        )
+
+
+_assert_pull_is_filterable()
 
 
 # ── Directionality ──────────────────────────────────────────────────────────

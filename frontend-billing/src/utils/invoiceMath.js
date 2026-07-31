@@ -230,10 +230,46 @@ export function suggestedTenders(grandTotal, count = 4) {
  * the quantity (effectivePrice), matching what the counter showed.
  * @param {{invoiceNo:string, form:object, gstEnabled:boolean}} args
  */
+/** Split `form.customer_id` into a real id and/or a free-text name.
+ *
+ * THE SILENT DROP THIS FIXES
+ * --------------------------
+ * The field was serialised as `form.customer_id ? parseInt(form.customer_id) : null`.
+ * `form.customer_id` does NOT always hold an id — `pages/Sales.jsx` assigns a
+ * NAME into it on the duplicate / credit-note path, with the comment "Will map
+ * as free-text unless matching customer is found". Nothing downstream ever did
+ * that mapping, and:
+ *
+ *     parseInt('Varshini')          -> NaN
+ *     JSON.stringify({ id: NaN })   -> {"id":null}
+ *
+ * So a named customer became `null` on the wire, with no error at any layer.
+ * The bill then landed with customer = NULL, `create_sale_invoice` derived
+ * `invoice_type = "B2C"` from the missing id, and the Parties screen labelled it
+ * "Casual / Walk-in". Five layers, each quietly discarding the same fact.
+ *
+ * Now: a numeric value stays an id, anything else travels as a NAME so the
+ * server can match it or at least record it. Nothing is thrown away in silence.
+ */
+export function splitCustomerRef(raw) {
+  if (raw === null || raw === undefined || raw === '') return { id: null, name: null }
+  if (typeof raw === 'number') return Number.isFinite(raw) ? { id: raw, name: null } : { id: null, name: null }
+  const s = String(raw).trim()
+  if (s === '') return { id: null, name: null }
+  // Digits only — a real id. `parseInt` alone would accept "33abc" as 33.
+  if (/^\d+$/.test(s)) return { id: parseInt(s, 10), name: null }
+  return { id: null, name: s }
+}
+
 export function buildInvoicePayload({ invoiceNo, form, gstEnabled, billDiscount = 0, cashDiscount = 0, paidAmount = 0, markPaid = false }) {
+  const cust = splitCustomerRef(form.customer_id)
   return {
     invoice_no: invoiceNo,
-    customer_id: form.customer_id ? parseInt(form.customer_id) : null,
+    customer_id: cust.id,
+    // Only present when the form held a name rather than an id. The server
+    // resolves it against this business's customers, and records it verbatim if
+    // it cannot — so the sale is never attributed to nobody.
+    ...(cust.name ? { customer: cust.name } : {}),
     godown_id: form.godown_id ? parseInt(form.godown_id) : null,
     due_date: form.due_date || null,
     gst_enabled: gstEnabled,

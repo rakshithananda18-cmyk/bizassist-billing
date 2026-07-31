@@ -54,6 +54,21 @@ def _worker_source():
     return open(p, encoding="utf-8").read()
 
 
+# How the pull cursor is advanced, then and now.
+#
+# It used to be a bare dict assignment. It is now `_set_pull_cursor(...)`, which
+# also writes through to the `sync_cursors` table — the dict did not survive a
+# process restart, and the SyncLog-derived fallback that filled in afterwards
+# could land LATER than the last row actually applied, skipping everything
+# between (M-12, reintroduced by any restart).
+#
+# The assertions below check BOTH spellings. Keeping the old one catches a
+# revert; adding the new one stops the test from passing merely because its
+# search string no longer appears anywhere.
+_ADVANCE_OLD = "_PULL_CURSOR[business_id] = _cloud_cursor"
+_ADVANCE_NEW = "_set_pull_cursor(db, business_id, _cloud_cursor)"
+
+
 # ── The cloud half ───────────────────────────────────────────────────────────
 
 def test_the_pull_rolls_back_after_a_failed_table():
@@ -88,9 +103,18 @@ def test_the_client_holds_its_cursor_on_a_partial_pull():
     assert '_resp_json.get("failed_tables")' in src
     tail = src[src.index("elif _pull_failed_tables:"):]
     tail = tail[:tail.index("else:")]
-    assert "_PULL_CURSOR[business_id] = _cloud_cursor" not in tail, (
+    # The cursor advance moved from a bare dict assignment
+    # (`_PULL_CURSOR[business_id] = _cloud_cursor`) to `_set_pull_cursor(...)`,
+    # which writes through to the `sync_cursors` table so the cursor survives a
+    # restart. BOTH spellings are checked: the old one so a revert is caught, the
+    # new one so this test cannot go quietly vacuous — a string assertion that no
+    # longer matches anything passes for the wrong reason.
+    assert _ADVANCE_OLD not in tail, (
         "the cursor is being advanced on a partial pull; rows in the unread "
         "tables will never be offered to this device again")
+    assert _ADVANCE_NEW not in tail, (
+        "the cursor is being advanced on a partial pull via _set_pull_cursor; "
+        "rows in the unread tables will never be offered to this device again")
     assert "PARTIAL PULL" in tail and "HOLDING the pull cursor" in tail
 
 
@@ -99,7 +123,7 @@ def test_the_partial_branch_precedes_the_advance_branch():
     reached."""
     src = _worker_source()
     partial = src.index("elif _pull_failed_tables:")
-    advance = src.index("_PULL_CURSOR[business_id] = _cloud_cursor", partial)
+    advance = src.index(_ADVANCE_NEW, partial)
     between = src[partial:advance]
     assert "else:" in between, "the partial-pull branch must come before the advance"
 

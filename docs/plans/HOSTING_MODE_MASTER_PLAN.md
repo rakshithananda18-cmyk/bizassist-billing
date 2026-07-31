@@ -990,7 +990,7 @@ Step 3: Export SQLite → JSON chunks
   └── Chunk into 500-record batches
 
 Step 4: Import to PostgreSQL via API
-  ├── POST /api/migrate/import  (batch endpoint)
+  ├── POST /api/data-transfer/import  (batch endpoint)
   ├── Show progress bar (records uploaded / total)
   ├── On error: retry 3x, then halt and report
   └── Verify checksums (record counts match)
@@ -1012,7 +1012,7 @@ Step 6: Validation
 
 ```
 Step 1: Download all data from cloud
-  ├── GET /api/migrate/export  (full dump as JSON)
+  ├── GET /api/data-transfer/export  (full dump as JSON)
   └── Stream to local file
 
 Step 2: Initialize local SQLite
@@ -1107,11 +1107,26 @@ Extend to show Hybrid sync queue depth:
 
 ### 7.1 New API Endpoints Needed
 
+> **Endpoint paths corrected 2026-07-31.** This document was written against
+> `routes/migrate.py`, which declared `/api/migrate/*`. That module is deprecated
+> and **unmounted**; `main_groq.py` mounts `routes/data_transfer.py`, which
+> declares `/api/data-transfer/*`. The old paths are not served — a caller left on
+> them receives a 404, and because they drive optional features (the cloud-data
+> sync nudge in `loginSync.js`), the failure is silent.
+>
+> Verified against the mounted app on 2026-07-31: `/api/data-transfer/export`,
+> `/api/data-transfer/import` and `/api/data-transfer/count` are served;
+> `/api/sync/push`, `/api/sync/pull` and `/api/sync/queue-depth` are served; no
+> path matching `/api/migrate/*` is served, and no migration `status` endpoint
+> exists under any name.
+
+
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/api/migrate/export` | GET | Dump full DB as JSON for download |
-| `/api/migrate/import` | POST | Receive JSON batch and insert to DB |
-| `/api/migrate/status` | GET | Progress of ongoing migration |
+| `/api/data-transfer/export` | GET | Dump full DB as JSON for download |
+| `/api/data-transfer/import` | POST | Receive JSON batch and insert to DB |
+| `/api/data-transfer/count` | GET | Per-table record counts, for pre/post verification |
+| ~~`/api/migrate/status`~~ | — | **Never built** — no server progress endpoint exists under any name. `MigrationModal.jsx` animates its bar client-side. |
 | `/api/sync/push` | POST | Hybrid: receive local changes |
 | `/api/sync/pull` | GET | Hybrid: get cloud changes since timestamp |
 | `/api/sync/queue-depth` | GET | How many items pending in sync queue |
@@ -1176,9 +1191,10 @@ BizAssist.exe
 | ✅ SSE health indicator | Already in sidebar |
 | ✅ Dynamic API Base URL | Read `apiUrl` from settings instead of hardcoded env var |
 | ✅ Mode-switch alert modals | Blocking modal per transition (6 variants) with full consequences |
-| ✅ `GET /api/migrate/export` | Dump entire DB (all tables) as ordered JSON |
-| ✅ `POST /api/migrate/import` | Accept JSON batches, insert to target DB |
-| ✅ `GET /api/migrate/status` | SSE stream of migration progress (%) |
+| ✅ `GET /api/data-transfer/export` | Dump entire DB (all tables) as ordered JSON |
+| ✅ `POST /api/data-transfer/import` | Accept JSON batches, insert to target DB |
+| ✅ `GET /api/data-transfer/count` | Per-table counts — what post-migration validation compares |
+| ❌ ~~`GET /api/migrate/status`~~ | **NOT BUILT.** No server progress endpoint exists. `MigrationModal.jsx` animates the bar client-side while awaiting the import response (`// Simulate per-table progress while uploading`). |
 | ✅ Migration progress UI | Full-screen overlay, non-dismissible, with cancel + rollback |
 | ✅ Post-migration validation | Compare record counts source vs destination |
 | ✅ Auto local backup | Before any migration, snapshot `bizassist.db` with timestamp |
