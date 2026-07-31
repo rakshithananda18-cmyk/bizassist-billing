@@ -9,12 +9,75 @@ Never modify existing entries, never scatter ALTER TABLE code across the file.
 
 import logging
 import os
+import re
 from sqlalchemy import text
 from database.db import engine, SessionLocal
 from database.models import Base, User
 from services.auth import hash_password
 
 logger = logging.getLogger("bizassist.migration")
+
+
+# ---------------------------------------------------------------------------
+# THESE DDL STRINGS RUN ON TWO DIFFERENT DATABASES
+# ---------------------------------------------------------------------------
+# Every entry below is hand-written SQL, and it is executed against BOTH the
+# local SQLite file and the cloud Postgres. SQLite has no real type system —
+# `ADD COLUMN x DATETIME` is accepted because SQLite accepts any type name at
+# all — so a SQLite-only spelling looks correct for as long as it is only ever
+# run there.
+#
+# WHAT THIS COST — 2026-08-01, cloud outage
+# -----------------------------------------
+#     ALTER TABLE users ADD COLUMN last_login DATETIME
+#     → psycopg2.errors.UndefinedObject: type "datetime" does not exist
+#     → _check_schema_integrity then found users.last_login still missing
+#     → RuntimeError at import time → uvicorn could not load the app
+#     → the Space crash-looped and every device got HTTP 503
+#
+# Note the shape of it. ~100 earlier entries also say DATETIME and none of them
+# has ever failed — because `create_all` had already made those columns on the
+# fresh Postgres database, so the ALTER was skipped. `create_all` creates
+# missing TABLES, never missing COLUMNS on a table that exists. So the landmine
+# only arms for a column added to an EXISTING table after the cloud went to
+# Postgres. `last_login` was the first, and every future one would be the same.
+#
+# `_portable_ddl` below translates the type token per dialect at execution time,
+# and `tests/test_migration_ddl_is_portable.py` fails on any entry that would
+# not survive Postgres — so the next one is caught before it reaches a deploy
+# rather than by the deploy.
+
+# Type tokens whose SQLite spelling is not valid on another dialect.
+# Keyed by SQLAlchemy's `dialect.name`.
+_TYPE_TRANSLATIONS = {
+    "postgresql": {
+        # SQLite's DATETIME does not exist in Postgres; TIMESTAMP is the
+        # equivalent SQLAlchemy itself emits for a `DateTime()` column there.
+        "DATETIME": "TIMESTAMP",
+    },
+}
+
+# Matches the type token in `... ADD COLUMN <name> <TYPE> ...`, leaving any
+# trailing DEFAULT / NOT NULL clause untouched.
+_ADD_COLUMN_TYPE_RE = re.compile(
+    r'(ADD\s+COLUMN\s+"?\w+"?\s+)([A-Za-z]\w*)', re.IGNORECASE)
+
+
+def _portable_ddl(ddl: str, dialect_name: str) -> str:
+    """Render one hand-written ALTER for the dialect it is about to run on.
+
+    Only the TYPE token is rewritten — not the column name, not the DEFAULT —
+    so a column that happens to be called `datetime` is unaffected.
+    """
+    table = _TYPE_TRANSLATIONS.get(dialect_name)
+    if not table:
+        return ddl
+
+    def _sub(m):
+        head, type_token = m.group(1), m.group(2)
+        return head + table.get(type_token.upper(), type_token)
+
+    return _ADD_COLUMN_TYPE_RE.sub(_sub, ddl, count=1)
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +361,12 @@ def _run_column_migrations(conn):
         try:
             columns = [c["name"] for c in inspector.get_columns(table)]
             if column not in columns:
+                # Translate SQLite-only type spellings for the live dialect.
+                # Without this, `DATETIME` reaches Postgres verbatim and the
+                # ALTER dies with `type "datetime" does not exist` — which then
+                # trips `_check_schema_integrity` and takes the whole app down
+                # at import time. See the header for the 2026-08-01 outage.
+                ddl = _portable_ddl(ddl, conn.dialect.name)
                 conn.execute(text(ddl))
                 # Commit EACH added column. Postgres has transactional DDL, so
                 # batching every ALTER into one commit meant a single failure at

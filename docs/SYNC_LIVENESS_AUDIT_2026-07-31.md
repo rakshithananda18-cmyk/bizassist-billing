@@ -35,6 +35,8 @@ produces a wrong value, an exception, or a failed status. They produce silence.
 | 13 | **HIGH** | Two of five pull "skip" paths dropped a real cloud row with no record, while the cursor advanced past it | `_apply_pulled_row` → bare `_Applied("skipped")` for `no-uid` and `clock-skew` | **FIXED** |
 | 14 | **HIGH** | The parity sweep only ever asked "what is the cloud missing?" — a cloud row absent locally was invisible to it | `_cloud_parity_check` iterates `local_child[table]` only | **FIXED** |
 | 15 | MEDIUM | Parity's paid-state check cannot see a double payment; `total_amount` was read and never used | Cloud stored 248.00 == cloud actual 248.00 on a 124.00 invoice → "parity OK" | **FIXED** |
+| 16 | **HIGH** | The parity sweep sends a query parameter the endpoint does not declare, so its window has never been applied | `params={"since": ...}` vs `pull_changes(last_sync_at, limit, ...)`; request timed out at 180 s against the live Space | **FIXED** |
+| 17 | **CRITICAL** | `ALTER TABLE users ADD COLUMN last_login DATETIME` — a SQLite type Postgres does not have — crash-looped the cloud Space | Space boot log: `type "datetime" does not exist` → `RuntimeError` at import → `Exit code: 1`, HTTP 503 | **FIXED — redeploy required** |
 
 Findings 4–7 came out of a second pass asking a different question: *push has an
 outbox, retries, and Ops visibility — what does pull have?* The answer was
@@ -584,11 +586,13 @@ Added 2026-08-01 for findings 12–15 (§7b):
 
 | File | Change |
 |---|---|
-| `backend/services/sync_worker.py` | `_Applied` gains `reason` + `is_lost`; all five skip sites tagged; pull inboxes the two recoverable ones; parity gains the cloud-only scan and the over-payment check; summary counts both |
+| `backend/services/sync_worker.py` | `_Applied` gains `reason` + `is_lost`; all five skip sites tagged; pull inboxes the two recoverable ones; parity gains the cloud-only scan and the over-payment check; summary counts both; parity's request uses `last_sync_at` (was the undeclared `since`) and warms `/health` first |
 | `backend/core/sync/inbox.py` | `_HELD_OUTCOMES` replaces the literal `"deferred"` comparison in `drain`; `stats()` gains open-ended `reason_counts` |
 | `backend/scripts/inspect_cloud_invoice.py` | New — read-only, prints both sides' rows for one invoice with `uid` and `updated_at` |
 | `backend/tests/test_pull_skip_is_not_loss.py` | New — 11 tests |
-| `backend/tests/test_parity_is_bidirectional.py` | New — 8 tests |
+| `backend/tests/test_parity_is_bidirectional.py` | New — 9 tests, including a gate comparing parity's query params against `inspect.signature(pull_changes)` |
+| `backend/database/migration.py` | `_portable_ddl()` — dialect-aware type token for every `ADD COLUMN` |
+| `backend/tests/test_migration_ddl_is_portable.py` | New — 12 tests; every migration must name a type Postgres has |
 
 ---
 
@@ -680,6 +684,101 @@ deliberately **not** auto-repaired — which of two payments is the real one is 
 question about what happened at the counter, and voiding a payment row is not a
 decision a background sweep gets to make.
 
+### 10.3b Finding 16 — the sweep's window was never a window
+
+Found by running the diagnostic script, which had copied parity's request
+verbatim and timed out at 180 s against the live Space.
+
+`_cloud_parity_check` sent:
+
+```python
+params={"since": "2020-01-01T00:00:00"}
+```
+
+`/api/sync/pull` has no `since` parameter. Its signature is
+`pull_changes(last_sync_at, limit, ...)`, and **FastAPI drops unknown query
+parameters without complaint** — so `last_sync_at` arrived as `None`, the
+endpoint fell through to `datetime(1970, 1, 1)`, and the `"2020"` in that string
+has never had any effect in the lifetime of the function.
+
+The behaviour was accidentally what parity wants — it *does* need a full
+snapshot, because it judges whether a local row is **absent** from the cloud and
+absence cannot be read off a truncated page. That is why nothing caught it. It
+matters anyway for two reasons:
+
+* the next person to narrow that window would have watched their edit do
+  nothing; and
+* it means the sweep has only ever made the single largest request the API can
+  serve — the same unbounded shape that was timing out on 30 Jul when the
+  payment was lost. It timed out again on 2026-08-01.
+
+Fixed by sending the parameter the endpoint declares, still with no `limit`
+(deliberate — the endpoint's own docstring says parity must not send one), and by
+pinging `/health` first so a sleeping Space wakes on a cheap call instead of
+spending the read budget on a cold start. *"The Space was asleep"* and *"the
+endpoint cannot answer"* are different problems and were indistinguishable.
+
+The regression gate compares what parity sends against
+`inspect.signature(pull_changes)` rather than against a hard-coded string, so it
+keeps working when the endpoint gains a parameter. It was verified to fail when
+the old line is put back.
+
+### 10.3c Finding 17 — I took the cloud down (CRITICAL)
+
+This one is mine, introduced in this audit's own work and found only because the
+diagnostic script above got an HTTP 503 instead of an answer.
+
+`users.last_login` was added to the `User` model and registered as:
+
+```sql
+ALTER TABLE users ADD COLUMN last_login DATETIME
+```
+
+`DATETIME` is a SQLite spelling. **Postgres has no such type.** The Space boot
+log:
+
+```
+[Migration] Failed to add users.last_login:
+    (psycopg2.errors.UndefinedObject) type "datetime" does not exist
+CRITICAL: Database schema mismatch! … missing from the database: users.last_login
+RuntimeError: CRITICAL: Database schema mismatch!
+Exit code: 1
+```
+
+`_check_schema_integrity` then raised at **import time**, so uvicorn could not
+load the app at all and the Space crash-looped. Every device got 503 — which
+also means the sync that this whole audit is about had stopped completely.
+
+**Why the reviews did not catch it.** SQLite has no real type system: it accepts
+*any* type name in `ADD COLUMN`, including ones that do not exist. So the
+statement is correct-looking and works perfectly for as long as it only runs
+locally. And there are about a hundred earlier `DATETIME` entries in
+`_COLUMN_MIGRATIONS` that have never failed — because `create_all` had already
+made those columns on the fresh Postgres database, so the ALTER was skipped.
+
+> `create_all` creates missing **tables**. It never adds a missing **column** to
+> a table that already exists.
+
+So the landmine arms only for a column added to an existing table after the
+cloud moved to Postgres. `users.last_login` was the first one in that position.
+Every future one would have done the same thing.
+
+**Fix.** `_portable_ddl()` translates the type token per dialect at execution
+time (`DATETIME` → `TIMESTAMP` on Postgres), rewriting only the type — not the
+column name, not a trailing `DEFAULT`. The existing ~150 entries are untouched:
+rewriting them would be a large diff for no behaviour change, and the property
+worth holding is not "no entry says DATETIME" but "every entry, as executed,
+names a type Postgres has".
+
+`tests/test_migration_ddl_is_portable.py` asserts exactly that across the whole
+list, and was verified to fail (5 tests red) when the translation is removed.
+
+**A note on the blast radius.** One bad DDL string became a total outage because
+`_check_schema_integrity` raises rather than warns. That is the right call —
+serving traffic against a schema that does not match the models is how silent
+corruption starts — but it does mean the safety margin has to sit *before*
+deploy. That is what the new gate is for.
+
 ### 10.4 What is still owed, and to whom
 
 The code is fixed and gated. **The data is not.** The cloud is holding ₹124 that
@@ -692,11 +791,13 @@ run on the machine with the backend:
 
 ```
 cd backend
-python scripts/inspect_cloud_invoice.py LCL-OW-0037
+python scripts/inspect_cloud_invoice.py LCL-OW-0037 --business-id 7
 ```
 
 Read-only, prints both sides' raw rows with `uid` and `updated_at`, and states a
-verdict. Then the repair is one of:
+verdict. It anchors its cloud window on the invoice's own creation date rather
+than asking for a full snapshot — see finding 16 for why that distinction is the
+difference between an answer and a timeout. Then the repair is one of:
 
 * **duplicate settlement** (most likely) — void one ₹124 payment on the cloud;
   the remaining one matches the invoice on both sides.

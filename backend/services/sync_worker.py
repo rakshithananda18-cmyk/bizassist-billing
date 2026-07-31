@@ -1140,10 +1140,37 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
         logger.warning("[PARITY] biz=%s: no cloud token — skipping", business_id)
         return summary
 
+    # ── The parameter name matters, and it was wrong ──────────────────────────
+    # This read `params={"since": "2020-01-01T00:00:00"}` until 2026-08-01.
+    # `/api/sync/pull` has no `since` parameter — its signature is
+    # `pull_changes(last_sync_at, limit, ...)` — and FastAPI silently drops
+    # unknown query params. So `last_sync_at` arrived as None, the endpoint fell
+    # through to `datetime(1970, 1, 1)`, and the "2020" in that string had never
+    # had any effect in the lifetime of this function.
+    #
+    # The behaviour was accidentally correct (parity DOES want everything, see
+    # below) which is why nothing caught it. It is fixed because the next person
+    # to narrow that window would have watched their change do nothing.
+    #
+    # NO `limit` — deliberate, and the endpoint's own docstring says so. Parity
+    # decides whether a local row is ABSENT from the cloud, and absence cannot
+    # be read off a page that stopped early; the `has_more` guard below refuses
+    # to judge a truncated snapshot for exactly that reason.
+    #
+    # The cost is a large request. It timed out at 180 s against the live Space
+    # on 2026-08-01, which is the same request shape that was failing when the
+    # LCL-OW-0037 payment was lost. `/health` is pinged first so a sleeping HF
+    # Space wakes on a cheap call instead of burning the read budget on a cold
+    # start — the difference between "the Space was asleep" and "the endpoint
+    # cannot answer", which are not the same problem.
+    try:
+        httpx.get(f"{CLOUD_URL}/health", timeout=10.0)
+    except Exception:
+        pass        # best-effort warm-up; the real request reports the failure
     try:
         resp = httpx.get(
             f"{CLOUD_URL}/api/sync/pull",
-            params={"since": "2020-01-01T00:00:00"},
+            params={"last_sync_at": "1970-01-01T00:00:00"},
             headers={"Authorization": f"Bearer {token}"},
             timeout=httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=10.0),
         )

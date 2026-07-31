@@ -41,6 +41,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import timedelta
 
 # Run from backend/ or from backend/scripts/ — both work.
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -61,11 +62,33 @@ from services.sync_worker import (  # noqa: E402
     ensure_fresh_cloud_token,
 )
 
-# The parity sweep uses the same wide window and the same generous read timeout.
-# 10s was the pull's timeout when this divergence was created, and it is the
-# reason the pull never completed — do not copy that number here.
-_SINCE = "2020-01-01T00:00:00"
-_TIMEOUT = httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=10.0)
+# ── The window, and why it is NOT the parity sweep's window ──────────────────
+#
+# First version of this script copied `_cloud_parity_check`:
+#
+#     params={"since": "2020-01-01T00:00:00"}
+#
+# and timed out at 180 s against the live Space. Two things are wrong with that
+# line, and the second is the one that matters:
+#
+#  1. `/api/sync/pull` has no `since` parameter. Its signature is
+#     `pull_changes(last_sync_at, limit, ...)`. FastAPI drops unknown query
+#     params, so `since` was never read — `last_sync_at` resolved to None and
+#     the endpoint fell through to `datetime(1970, 1, 1)`. The "2020" in that
+#     string has never had any effect. Anyone narrowing it would have seen no
+#     change and concluded the cloud was slow.
+#
+#  2. So every such call asks for EVERY ROW OF EVERY TABLE with no `limit`.
+#     That is the same request shape that was timing out on 30 Jul when the
+#     LCL-OW-0037 payment was lost.
+#
+# This script does not need a full snapshot — it is asking about ONE invoice. It
+# sends the correct parameter, a window anchored just before that invoice was
+# created, and a row cap. If the cap bites, it says so rather than reporting a
+# truncated page as absence (rule 33).
+_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
+_WINDOW_MARGIN_DAYS = 2
+_DEFAULT_LIMIT = 5000
 
 
 def _resolve_business(db, business_id):
@@ -91,22 +114,44 @@ def _resolve_business(db, business_id):
     )
 
 
-def _fetch_cloud_snapshot(business_id: int) -> dict:
+def _wake(url: str) -> None:
+    """Ping /health first.
+
+    The cloud runs on a Hugging Face Space, which sleeps when idle and takes
+    tens of seconds to come back. Without this, that cold start is spent inside
+    the big request and looks identical to the endpoint being too slow to
+    answer — which is precisely the wrong conclusion to draw here.
+    """
+    try:
+        httpx.get(f"{url}/health", timeout=httpx.Timeout(connect=10.0, read=90.0,
+                                                         write=10.0, pool=10.0))
+    except Exception as e:
+        print(f"   (health ping did not answer: {e} — continuing)", file=sys.stderr)
+
+
+def _fetch_cloud_snapshot(business_id: int, since: str, limit: int) -> dict:
     token = _get_cloud_token(business_id) or ensure_fresh_cloud_token(business_id)
     if not token:
         sys.exit(
             "error: no cloud token for this business. It is written at owner "
             "login — sign in to the app once, then re-run."
         )
+    print(f"   asking {CLOUD_URL} for changes since {since} (limit {limit}/table)…",
+          file=sys.stderr)
+    _wake(CLOUD_URL)
     try:
         resp = httpx.get(
             f"{CLOUD_URL}/api/sync/pull",
-            params={"since": _SINCE},
+            params={"last_sync_at": since, "limit": limit},
             headers={"Authorization": f"Bearer {token}"},
             timeout=_TIMEOUT,
         )
     except Exception as e:
-        sys.exit(f"error: could not reach {CLOUD_URL}: {e}")
+        sys.exit(
+            f"error: could not reach {CLOUD_URL}: {e}\n"
+            f"       The Space may be cold. Re-run once; if it fails again, "
+            f"widen with --since or lower --limit."
+        )
 
     if resp.status_code != 200:
         sys.exit(f"error: cloud returned HTTP {resp.status_code}: {resp.text[:300]}")
@@ -147,6 +192,14 @@ def main() -> int:
     ap.add_argument("invoice_number", help="e.g. LCL-OW-0037")
     ap.add_argument("--business-id", type=int, default=None)
     ap.add_argument("--json", action="store_true", help="machine-readable output")
+    ap.add_argument(
+        "--since", default=None,
+        help="ISO timestamp for the cloud window. Default: a couple of days "
+             "before the local invoice was created. Widen it if the invoice "
+             "does not appear in the snapshot.",
+    )
+    ap.add_argument("--limit", type=int, default=_DEFAULT_LIMIT,
+                    help="rows per table (the endpoint caps at 5000)")
     args = ap.parse_args()
 
     db = SessionLocal()
@@ -169,7 +222,17 @@ def main() -> int:
                 .all()
             )
 
-        changes = _fetch_cloud_snapshot(bid)
+        # Anchor the window on the invoice we are asking about. A full snapshot
+        # is not needed to answer a question about one invoice, and asking for
+        # one is what makes this request fail against the Space.
+        if args.since:
+            since = args.since
+        elif local_inv is not None and local_inv.created_at:
+            since = (local_inv.created_at - timedelta(days=_WINDOW_MARGIN_DAYS)).isoformat()
+        else:
+            since = (utc_now() - timedelta(days=30)).isoformat()
+
+        changes = _fetch_cloud_snapshot(bid, since, args.limit)
         cloud_inv = next(
             (i for i in changes.get("invoices", [])
              if i.get("invoice_id") == args.invoice_number), None
@@ -237,7 +300,13 @@ def main() -> int:
 
         print()
         if cloud_inv is None:
-            print("  CLOUD   — invoice absent from the cloud snapshot —")
+            # NOT the same as "absent from the cloud". The pull filters on
+            # `updated_at > last_sync_at`, so a window that starts after the
+            # invoice's last write hides it. Say which one this is.
+            print(f"  CLOUD   — not in the snapshot for the window starting "
+                  f"{since} —\n"
+                  f"          This is not proof of absence. Re-run with "
+                  f"--since 2020-01-01T00:00:00 to widen it.")
         else:
             print(f"  CLOUD   invoices.id={cloud_inv.get('id')}  "
                   f"paid_amount={float(cloud_inv.get('paid_amount') or 0):.2f}")

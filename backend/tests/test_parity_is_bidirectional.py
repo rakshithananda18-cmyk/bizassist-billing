@@ -260,6 +260,51 @@ class TestTheSummaryCountsTheNewFindings:
                 + summary["paid_state"] + summary["cloud_only"]
                 + summary["over_paid"]) == 0
 
+    def test_parity_sends_query_params_the_endpoint_actually_reads(self, db, monkeypatch):
+        """A query parameter the endpoint does not declare is silently dropped.
+
+        For the lifetime of this function parity sent:
+
+            params={"since": "2020-01-01T00:00:00"}
+
+        `/api/sync/pull` takes `last_sync_at`, not `since`. FastAPI drops unknown
+        query params without complaint, so `last_sync_at` arrived as None, the
+        endpoint fell through to `datetime(1970, 1, 1)`, and that "2020" never
+        did anything. The behaviour happened to be what parity wanted — a full
+        snapshot — which is exactly why nobody noticed for months, and why the
+        next person to narrow the window would have watched their edit have no
+        effect.
+
+        Comparing against the real signature is the only version of this test
+        that keeps working when the endpoint gains a parameter.
+        """
+        import inspect
+
+        from routes.sync import pull_changes
+
+        accepted = set(inspect.signature(pull_changes).parameters)
+
+        seen = {}
+
+        def _capture(*a, **k):
+            # The warm-up ping carries no params; only record the real pull.
+            if k.get("params"):
+                seen.update(k["params"])
+            return _FakeResponse({"changes": _cloud_snapshot([], paid_amount=0.0)})
+
+        monkeypatch.setattr(SW, "_get_cloud_token", lambda _bid: "fake-token")
+        monkeypatch.setattr(SW.httpx, "get", _capture)
+        SW._LAST_PARITY.pop(BID, None)
+        SW._cloud_parity_check(db, BID)
+
+        assert seen, "parity made no parameterised request at all"
+        unknown = set(seen) - accepted
+        assert not unknown, (
+            f"parity sends {sorted(unknown)}, which /api/sync/pull does not "
+            f"declare — FastAPI will drop them and the caller will never know. "
+            f"Accepted: {sorted(accepted)}"
+        )
+
     def test_both_new_findings_are_in_the_summary_contract(self, db, monkeypatch):
         """The keys must exist even on a clean run.
 
