@@ -49,6 +49,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from database.db import SessionLocal
 from database.models import (Base, Product, Invoice, InvoiceLineItem, Inventory,
@@ -323,20 +325,84 @@ def test_a_missing_invoice_is_404(db):
     assert e.value.status_code == 404
 
 
-def test_payments_are_scoped_to_the_business_not_only_to_the_invoice(db):
-    """Both filters matter. `invoice_id` alone would be enough only if invoice
-    ids were globally unique, and they are per-database autoincrement — the
-    cloud mirror makes that assumption unsafe."""
+def test_a_cross_tenant_payment_can_no_longer_be_written_at_all(db):
+    """This test used to CREATE the corruption in order to prove the query
+    filtered it out. As of the N4-T tenant references it cannot: the database
+    refuses the write.
+
+    That is a strictly stronger guarantee and it is why the old version of this
+    test now fails — the fixture was simulating, inside one database, the exact
+    hazard the constraint was added for. Recorded rather than deleted, because
+    "the test broke" and "the test was made obsolete by a better guarantee" look
+    identical in a diff.
+    """
     inv = _bill(db, 500)
     db.add(InvoicePayment(business_id=BID, invoice_id=inv.id, amount_paid=100.0,
                           payment_mode="Cash", payment_date="2026-03-02"))
-    # A row carrying the neighbour's business_id against the same invoice id.
+    db.commit()
+
     db.add(InvoicePayment(business_id=OTHER, invoice_id=inv.id, amount_paid=999.0,
                           payment_mode="Cash", payment_date="2026-03-02"))
-    db.commit()
+    with pytest.raises(IntegrityError) as e:
+        db.commit()
+    assert "fk_tenant_invoice_payments_invoice_id" in str(e.value)
+    db.rollback()
+
     a = _account(db, inv.id)
-    assert a["paid"] == 100.0, "a payment row from another tenant was counted"
+    assert a["paid"] == 100.0
     assert len(a["payments"]) == 1
+
+
+def test_the_query_is_still_scoped_by_business_even_so(db):
+    """Defence in depth, and NOT redundant with the constraint above.
+
+    The guard is installed by `ensure_tenant_fks`, which deliberately SKIPS
+    installation on any database that already holds violating rows — so a
+    customer mid-repair is running unguarded, and that is precisely when the
+    query-level filter is the only thing left. It therefore still has to be
+    proved, which means writing a row the constraint would normally refuse.
+
+    The trigger is dropped for the duration of this one test and restored
+    afterwards. That is a deliberate, narrow escape hatch: without it the only
+    way to keep this property covered would be to weaken the constraint.
+    """
+    inv = _bill(db, 500)
+    db.add(InvoicePayment(business_id=BID, invoice_id=inv.id, amount_paid=100.0,
+                          payment_mode="Cash", payment_date="2026-03-02"))
+    db.commit()
+
+    from core.accounting.db_invariants import TENANT_FKS, ensure_tenant_fks
+    only = [f for f in TENANT_FKS
+            if f.child == "invoice_payments" and f.fk_column == "invoice_id"]
+    engine = db.get_bind()
+
+    # DDL goes through the ENGINE, not the Session. Dropping a trigger and then
+    # asking `ensure_tenant_fks` to commit on `db.connection()` leaves the
+    # Session's transaction and the raw Connection's fighting over the same
+    # unit of work — which surfaced here as `This transaction is inactive`
+    # rather than as anything to do with the property under test.
+    with engine.connect() as c:
+        for t in (f"{only[0].name}_ins", f"{only[0].name}_upd"):
+            c.execute(text(f"DROP TRIGGER IF EXISTS {t}"))
+        c.commit()
+    try:
+        db.add(InvoicePayment(business_id=OTHER, invoice_id=inv.id,
+                              amount_paid=999.0, payment_mode="Cash",
+                              payment_date="2026-03-02"))
+        db.commit()
+
+        a = _account(db, inv.id)
+        assert a["paid"] == 100.0, "a payment row from another tenant was counted"
+        assert len(a["payments"]) == 1
+    finally:
+        db.rollback()
+        db.query(InvoicePayment).filter(
+            InvoicePayment.business_id == OTHER,
+            InvoicePayment.invoice_id == inv.id).delete(synchronize_session=False)
+        db.commit()
+        db.close()
+        with engine.connect() as c:
+            ensure_tenant_fks(c, only)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

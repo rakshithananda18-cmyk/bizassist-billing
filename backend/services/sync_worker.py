@@ -1034,6 +1034,106 @@ def _repair_stuck_child_payloads(db: Session, business_id: int) -> int:
 _LAST_PARITY: Dict[int, datetime] = {}
 _PARITY_INTERVAL_HOURS = 6      # run at most once every 6 hours per business
 
+# Money tolerance, matching the stored-vs-actual check further down and
+# `core/accounting/db_invariants.py`. Below this, a difference is rounding.
+_FIT_TOLERANCE = 0.05
+
+
+def _cloud_only_row_fits(db, business_id, table, crow, cloud_invs,
+                         local_inv_uid_to_id):
+    """May this cloud-only row be imported, or would it break an invariant?
+
+    Returns `(fits, reason_if_not)`.
+
+    THE PROBLEM THIS SOLVES
+    -----------------------
+    "On the cloud, absent here" has two histories and the row does not say
+    which:
+
+        (a) it never arrived            → importing it is the repair.
+        (b) it arrived and was deleted  → importing it UNDOES the repair.
+
+    There is no tombstone for these tables — `repair_line_items_by_invariant.py`
+    deletes over a raw connection, so `after_delete` never fires and nothing is
+    queued for the cloud. So (b) leaves exactly the same evidence as (a).
+
+    Rather than guess, this asks a question that IS answerable: **would this row
+    still be consistent with the invoice it belongs to?** A payment that pushes
+    `paid_amount` past the invoice total, or a line item that pushes line value
+    past what was billed, is not a missing row — it is a duplicate, whichever
+    history produced it. Withhold it and say so.
+
+    That also settles LCL-OW-0037 correctly. The cloud's ₹124 Bank settlement
+    would make ₹248 on a ₹124 invoice, so it is NOT auto-imported. Which of the
+    two payments is real is a question about what happened at the counter.
+    """
+    # Resolve the cloud row's parent invoice to the LOCAL invoice id. Without a
+    # parent here there is nothing to measure against, so decline — a row whose
+    # invoice is not in this database is not a row this database is missing.
+    cloud_inv_id = crow.get("invoice_id")
+    parent_uid = None
+    for inv in cloud_invs:
+        if inv.get("id") == cloud_inv_id:
+            parent_uid = inv.get("uid")
+            break
+    if not parent_uid:
+        return False, "its cloud invoice could not be resolved in this snapshot"
+
+    local_inv_id = local_inv_uid_to_id.get(parent_uid)
+    if not local_inv_id:
+        return False, "its invoice does not exist in this database"
+
+    try:
+        inv_row = db.execute(text(
+            "SELECT total_amount, cash_discount, round_off FROM invoices "
+            "WHERE id = :iid"
+        ), {"iid": local_inv_id}).fetchone()
+    except Exception as e:
+        return False, f"could not read the local invoice ({e})"
+    if inv_row is None:
+        return False, "its invoice does not exist in this database"
+
+    total = float(inv_row[0] or 0)
+    if total <= 0:
+        # A zero-total invoice cannot bound anything; refuse rather than treat
+        # "no ceiling" as "any amount is fine".
+        return False, "the local invoice has no total to measure against"
+
+    incoming = float(crow.get("amount_paid") if table == "invoice_payments"
+                     else crow.get("line_total") or 0)
+
+    if table == "invoice_payments":
+        current = float(db.execute(text(
+            "SELECT COALESCE(SUM(amount_paid), 0) FROM invoice_payments "
+            "WHERE invoice_id = :iid"
+        ), {"iid": local_inv_id}).scalar() or 0)
+        ceiling = total
+        if current + incoming > ceiling + _FIT_TOLERANCE:
+            return False, (
+                f"it would make paid {current + incoming:.2f} on a "
+                f"{total:.2f} invoice"
+            )
+        return True, ""
+
+    if table == "invoice_line_items":
+        # The system's own invariant, from core/accounting/db_invariants.py:
+        #   SUM(line_total) == total_amount + cash_discount - round_off
+        current = float(db.execute(text(
+            "SELECT COALESCE(SUM(line_total), 0) FROM invoice_line_items "
+            "WHERE invoice_id = :iid"
+        ), {"iid": local_inv_id}).scalar() or 0)
+        ceiling = total + float(inv_row[1] or 0) - float(inv_row[2] or 0)
+        if current + incoming > ceiling + _FIT_TOLERANCE:
+            return False, (
+                f"it would make line value {current + incoming:.2f} against "
+                f"{ceiling:.2f} billed"
+            )
+        return True, ""
+
+    # Any table without an invariant we can check here. Import is not obviously
+    # safe and not obviously wrong, so it is not done silently either way.
+    return False, f"no fit rule is defined for {table}"
+
 
 def _cloud_parity_check(db: Session, business_id: int) -> dict:
     """UID-based cross-DB parity check: local SQLite vs cloud Postgres.
@@ -1087,6 +1187,7 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
         "wrong_invoice": 0,
         "missing":       0,     # here, not on the cloud
         "cloud_only":    0,     # on the cloud, not here (added 2026-08-01)
+        "cloud_only_withheld": 0,   # …and would break an invariant if imported
         "over_paid":     0,     # cloud payments sum to MORE than the invoice total
         "paid_state":    0,
         "errors":        [],
@@ -1421,14 +1522,45 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
         # This is also the only way these rows can ever arrive: the pull cursor
         # is long past their `updated_at`, so no ordinary cycle will re-offer
         # them. Without this they are permanently invisible to both directions.
+        #
+        # ── WHY "ABSENT HERE" IS NOT THE SAME AS "NEVER ARRIVED" ──────────────
+        #
+        # A row on the cloud and not here has TWO possible histories, and this
+        # scan cannot tell them apart from the data alone:
+        #
+        #   (a) it never arrived            — the LCL-OW-0037 case. Import it.
+        #   (b) it arrived and was DELETED  — a repair ran here. Importing it
+        #                                     UNDOES the repair.
+        #
+        # (b) is not hypothetical. `scripts/repair_line_items_by_invariant.py`
+        # deletes duplicate `invoice_line_items`, and it does so over a RAW
+        # connection — so `Mapper.after_delete` never fires and no DELETE is
+        # queued for the cloud. The cloud keeps its copies. Measured on the
+        # cloud's own boot log, 2026-08-01: **31 invoices and 2 b2b_orders still
+        # hold more line value than was billed**, while the local database is
+        # down to 3 rows worth ₹0.04 — precisely because the repair ran HERE and
+        # not there. Every one of those cloud line items is "absent here".
+        #
+        # Importing them would re-corrupt this database on the next sweep, and
+        # keep doing it after every repair, for ever. That is a worse defect
+        # than the one this scan was written to fix.
+        #
+        # There is no tombstone to distinguish (a) from (b), so the rule is:
+        # NEVER let the recovery path violate the invariant the rest of the
+        # system enforces. A row is imported only if it FITS.
         local_uids_present = set(local_map.keys())
         _cloud_only = [u for u in cloud_uids_present if u not in local_uids_present]
         if _cloud_only:
             _by_uid = {r.get("uid"): r for r in cloud_rows if r.get("uid")}
-            _handed_over = 0
+            _handed_over, _withheld = 0, []
             for _cuid in sorted(_cloud_only):
                 _crow = _by_uid.get(_cuid)
                 if _crow is None:
+                    continue
+                _fits, _why = _cloud_only_row_fits(
+                    db, business_id, table, _crow, cloud_invs, local_inv_uid_to_id)
+                if not _fits:
+                    _withheld.append((_cuid, _why))
                     continue
                 if _inbox.remember(
                     db,
@@ -1442,14 +1574,23 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
                     _handed_over += 1
             summary.setdefault("cloud_only", 0)
             summary["cloud_only"] += _handed_over
+            summary.setdefault("cloud_only_withheld", 0)
+            summary["cloud_only_withheld"] += len(_withheld)
             logger.error(
                 "[PARITY] biz=%s: %s %s row(s) exist on the CLOUD but not in "
-                "this database — the pull never delivered them. Handed %s to the "
-                "inbox for retry. uids=%s%s",
+                "this database. Handed %s to the inbox; WITHHELD %s that would "
+                "break an invariant here. uids=%s%s",
                 business_id, len(_cloud_only), table, _handed_over,
-                sorted(_cloud_only)[:10],
+                len(_withheld), sorted(_cloud_only)[:10],
                 " (truncated)" if len(_cloud_only) > 10 else "",
             )
+            for _cuid, _why in _withheld[:10]:
+                logger.error(
+                    "[PARITY] biz=%s: WITHHELD %s uid=%r — %s. Either it was "
+                    "deleted here on purpose or it is a duplicate on the cloud; "
+                    "importing it would re-create corruption. Needs a human.",
+                    business_id, table, _cuid, _why,
+                )
 
     # ── 6. Commit queued repairs ───────────────────────────────────────────────
     # `cloud_only` is in this condition because `inbox.remember` only db.add()s —
@@ -1553,14 +1694,16 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
     # payment. The old total covered only the three local→cloud repairs, so the
     # sweep printed "no drift detected" throughout the LCL-OW-0037 divergence.
     total = (summary["missing"] + summary["wrong_invoice"] + summary["paid_state"]
-             + summary["cloud_only"] + summary["over_paid"])
+             + summary["cloud_only"] + summary["cloud_only_withheld"]
+             + summary["over_paid"])
     if total:
         logger.info(
             "[PARITY] biz=%s: %s finding(s) — wrong_invoice=%s missing=%s "
-            "paid_state=%s cloud_only=%s over_paid=%s",
+            "paid_state=%s cloud_only=%s withheld=%s over_paid=%s",
             business_id, total,
             summary["wrong_invoice"], summary["missing"], summary["paid_state"],
-            summary["cloud_only"], summary["over_paid"],
+            summary["cloud_only"], summary["cloud_only_withheld"],
+            summary["over_paid"],
         )
     else:
         logger.info("[PARITY] biz=%s: cloud parity OK — no drift detected", business_id)

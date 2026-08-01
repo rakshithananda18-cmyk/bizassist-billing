@@ -964,7 +964,8 @@ def _ensure_money_invariants(conn):
     naming the rows that block it.
     """
     try:
-        from core.accounting.db_invariants import ensure_invariants
+        from core.accounting.db_invariants import (ensure_invariants,
+                                                   ensure_tenant_fks)
         report = ensure_invariants(conn)
         if report["skipped_violations"]:
             logger.error(
@@ -974,6 +975,28 @@ def _ensure_money_invariants(conn):
             )
         if report["errors"]:
             logger.error("[Migration] N4: invariant install errors: %s", report["errors"])
+
+        # Tenant-integrity references (N4-T). Run as its OWN step with its own
+        # try/except, not folded into the call above: a failure in either must
+        # not cost the other. That is the same reasoning as finding 58 — one
+        # failing statement must not take the rest of the sweep with it.
+        try:
+            treport = ensure_tenant_fks(conn)
+            if treport["skipped_violations"]:
+                logger.error(
+                    "[Migration] N4-T: %s tenant reference(s) NOT enforced "
+                    "because existing rows cross a tenant boundary: %s",
+                    len(treport["skipped_violations"]),
+                    treport["skipped_violations"],
+                )
+            if treport["errors"]:
+                logger.error("[Migration] N4-T: install errors: %s",
+                             treport["errors"])
+            report["tenant_fks"] = treport
+        except Exception as e:
+            logger.error("[Migration] N4-T: tenant reference step failed: %s",
+                         e, exc_info=True)
+            report["tenant_fks"] = None
         return report
     except Exception as e:
         logger.error("[Migration] N4: money invariants step failed: %s", e, exc_info=True)

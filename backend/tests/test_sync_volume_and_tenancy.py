@@ -442,5 +442,49 @@ class TestOnlyOwnersGetABizID:
         src = open(p, encoding="utf-8").read()
         assert '"--apply"' in src and "DRY RUN" in src
         # It must never touch an owner, and never delete anything.
-        assert "User.parent_business_id != None" in src
-        assert ".delete(" not in src
+        #
+        # This assertion USED to grep for the ORM expression
+        # `User.parent_business_id != None`. The script no longer uses the ORM:
+        # it was ported to `_dbcompat` so it can be pointed at the CLOUD, which
+        # is the only database the defect was ever measured on (32 staff rows
+        # there, 0 locally — so every run of the ORM version correctly reported
+        # "nothing to do" about the wrong database).
+        #
+        # Grepping for an implementation detail is what made this test break on
+        # a change that strengthened the script, so the guarantee is now asserted
+        # BEHAVIOURALLY below instead, and the grep only checks the property that
+        # actually matters: the owner filter, in whatever dialect.
+        assert "parent_business_id IS NOT NULL" in src
+        assert ".delete(" not in src and "DELETE FROM" not in src.upper()
+
+    def test_the_repair_script_never_touches_an_owner(self, tmp_path):
+        """Run it. A source grep cannot tell you what a script does."""
+        import sqlite3
+        import subprocess
+        db = tmp_path / "staff.db"
+        con = sqlite3.connect(db)
+        con.executescript("""
+            CREATE TABLE users(id INTEGER PRIMARY KEY, username VARCHAR,
+                               public_id VARCHAR, parent_business_id INTEGER);
+            CREATE TABLE deleted_businesses(id INTEGER PRIMARY KEY,
+                                            public_id VARCHAR);
+            CREATE TABLE table_alterations(id INTEGER PRIMARY KEY,
+                                           public_id VARCHAR);
+            CREATE TABLE telemetry_events(id INTEGER PRIMARY KEY, bizid VARCHAR);
+            INSERT INTO users VALUES (1,'owner','BA-OWNER1',NULL),
+                                     (2,'cashier','BA-STAFF1',1);
+        """)
+        con.commit()
+        con.close()
+
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
+                              "scripts", "clear_staff_bizids.py")
+        out = subprocess.run([sys.executable, script, "--db", str(db), "--apply"],
+                             capture_output=True, text=True)
+        assert out.returncode == 0, out.stdout + out.stderr
+
+        con = sqlite3.connect(db)
+        rows = dict(con.execute("SELECT id, public_id FROM users").fetchall())
+        con.close()
+        assert rows[1] == "BA-OWNER1", "the OWNER's BizID was taken"
+        assert rows[2] is None, "the staff BizID was not cleared"

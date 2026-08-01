@@ -52,7 +52,7 @@ import pytest
 
 from database.db import SessionLocal
 from database.models import (
-    Base, Invoice, InvoicePayment, SyncInbox, SyncQueue, User,
+    Base, Invoice, InvoiceLineItem, InvoicePayment, SyncInbox, SyncQueue, User,
 )
 from services import sync_worker as SW
 from services.dates import utc_now
@@ -115,6 +115,8 @@ def _clean(s):
     if ids:
         s.query(InvoicePayment).filter(InvoicePayment.invoice_id.in_(ids)).delete(
             synchronize_session=False)
+        s.query(InvoiceLineItem).filter(InvoiceLineItem.invoice_id.in_(ids)).delete(
+            synchronize_session=False)
     s.query(Invoice).filter(Invoice.business_id == BID).delete()
     s.query(SyncInbox).filter(SyncInbox.business_id == BID).delete()
     s.query(SyncQueue).filter(SyncQueue.business_id == BID).delete()
@@ -149,7 +151,14 @@ def _cloud_snapshot(payments, *, paid_amount, total_amount=124.0):
 class TestCloudOnlyRowsAreFound:
 
     def test_a_payment_only_on_the_cloud_is_reported(self, db, monkeypatch):
-        """THE GATE. Before this, the sweep logged 'cloud parity OK'."""
+        """THE GATE. Before this, the sweep logged 'cloud parity OK'.
+
+        NOTICING is the property, not importing. This is the real LCL-OW-0037
+        shape — the cheque is here, the Bank settlement is only on the cloud —
+        and the right outcome is that it is WITHHELD, because bringing it down
+        would make ₹248 on a ₹124 invoice. Either way parity must not be silent
+        about it, which is what it was before.
+        """
         summary = _run_parity(db, monkeypatch, _cloud_snapshot([
             {"id": 71, "uid": LOCAL_PAY_UID, "invoice_id": 835,
              "amount_paid": 124.0, "payment_mode": "Cheque"},
@@ -157,23 +166,34 @@ class TestCloudOnlyRowsAreFound:
              "amount_paid": 124.0, "payment_mode": "Bank"},
         ], paid_amount=248.0))
 
-        assert summary["cloud_only"] == 1, (
-            "the Bank payment exists on the cloud and not here — parity must say so"
+        found = summary["cloud_only"] + summary["cloud_only_withheld"]
+        assert found == 1, (
+            "the Bank payment exists on the cloud and not here — parity must "
+            "say so, whether or not it is safe to import"
         )
 
     def test_it_is_handed_to_the_inbox_with_its_payload(self, db, monkeypatch):
-        """Noticing is not enough; the row has to have somewhere to go.
+        """Noticing is not enough; a row that FITS has to have somewhere to go.
 
         The pull cursor is long past this row's `updated_at`, so no ordinary
         cycle will re-offer it. The inbox is the only route back, and it applies
         through `_apply_pulled_row` — the same single apply path — rather than a
         second INSERT written here.
+
+        The local payment is removed first so the cloud row fits inside the
+        invoice total. That is the state this invoice was actually in on 30 Jul,
+        before it was settled a second time — and had the sweep worked then,
+        this is the path that would have prevented the double payment.
         """
+        db.query(InvoicePayment).filter(
+            InvoicePayment.uid == LOCAL_PAY_UID).delete()
+        db.commit()
+
         _run_parity(db, monkeypatch, _cloud_snapshot([
             {"id": 70, "uid": CLOUD_ONLY_PAY_UID, "invoice_id": 835,
              "amount_paid": 124.0, "payment_mode": "Bank",
              "note": "Settlement (FIFO)"},
-        ], paid_amount=248.0))
+        ], paid_amount=124.0))
 
         held = (db.query(SyncInbox)
                 .filter(SyncInbox.business_id == BID,
@@ -184,6 +204,128 @@ class TestCloudOnlyRowsAreFound:
         assert held.applied_at is None
         # Without the payload there is nothing to re-apply.
         assert json.loads(held.payload)["amount_paid"] == 124.0
+
+    def test_a_payment_that_would_overfill_the_invoice_is_WITHHELD(self, db, monkeypatch):
+        """The guard that stops the cure being worse than the disease.
+
+        "On the cloud, absent here" has two histories and the row does not say
+        which:
+
+            (a) it never arrived            → importing it is the repair.
+            (b) it arrived and was DELETED  → importing it UNDOES the repair.
+
+        There is no tombstone. `repair_line_items_by_invariant.py` deletes over
+        a RAW connection, so `Mapper.after_delete` never fires and no DELETE is
+        queued for the cloud — (b) leaves exactly the same evidence as (a).
+
+        Measured on the cloud's boot log 2026-08-01: 31 invoices there still
+        hold more line value than was billed, while this database is down to 3
+        rows worth ₹0.04, because the repair ran here and not there. Every one
+        of those cloud rows is "absent here". An unguarded import would
+        re-corrupt this database on every sweep, for ever.
+
+        So the rule is not "guess the history" — it is "never let the recovery
+        path violate the invariant the rest of the system enforces".
+        """
+        summary = _run_parity(db, monkeypatch, _cloud_snapshot([
+            {"id": 71, "uid": LOCAL_PAY_UID, "invoice_id": 835,
+             "amount_paid": 124.0, "payment_mode": "Cheque"},
+            {"id": 70, "uid": CLOUD_ONLY_PAY_UID, "invoice_id": 835,
+             "amount_paid": 124.0, "payment_mode": "Bank"},
+        ], paid_amount=248.0, total_amount=124.0))
+
+        assert summary["cloud_only"] == 0, (
+            "importing this would make 248.00 paid on a 124.00 invoice"
+        )
+        assert summary["cloud_only_withheld"] == 1
+        assert db.query(SyncInbox).filter(
+            SyncInbox.uid == CLOUD_ONLY_PAY_UID).count() == 0
+
+    def test_a_payment_that_fits_is_still_imported(self, db, monkeypatch):
+        """Counter-test: the guard must not close the recovery path entirely.
+
+        Same shape as LCL-OW-0037 but with the local cheque absent, which is
+        what the situation looked like BEFORE the invoice was settled twice.
+        Here the cloud row is simply a payment this device never received, it
+        fits inside the invoice total, and it must come down.
+        """
+        # Remove the local payment so the invoice is unpaid here.
+        db.query(InvoicePayment).filter(
+            InvoicePayment.uid == LOCAL_PAY_UID).delete()
+        db.commit()
+
+        summary = _run_parity(db, monkeypatch, _cloud_snapshot([
+            {"id": 70, "uid": CLOUD_ONLY_PAY_UID, "invoice_id": 835,
+             "amount_paid": 124.0, "payment_mode": "Bank"},
+        ], paid_amount=124.0, total_amount=124.0))
+
+        assert summary["cloud_only"] == 1
+        assert summary["cloud_only_withheld"] == 0
+        assert db.query(SyncInbox).filter(
+            SyncInbox.uid == CLOUD_ONLY_PAY_UID).one().reason == "cloud-only"
+
+    def test_a_duplicate_line_item_on_the_cloud_is_not_re_imported(self, db, monkeypatch):
+        """The 31-invoice case, and the one that would have bitten hardest.
+
+        The cloud's own boot log on 2026-08-01 reported **31 invoices and 2
+        b2b_orders holding more line value than was billed**, while this
+        database was down to 3 rows worth ₹0.04 — because
+        `repair_line_items_by_invariant.py` had been run HERE and not there.
+
+        That script deletes over a RAW connection, so `Mapper.after_delete`
+        never fires and no DELETE is queued for the cloud. Every deleted row is
+        therefore still on the cloud and reads as "absent here". An unguarded
+        cloud-only import would put all 31 invoices' worth of duplicates back,
+        on every sweep, undoing the repair each time.
+        """
+        inv_id = db.query(Invoice).filter(Invoice.uid == INV_UID).one().id
+        db.add(InvoiceLineItem(
+            invoice_id=inv_id, uid="li-local-real", product_name="Coffee Powder",
+            quantity=1, unit_price=110.45, line_total=124.0,
+            created_at=utc_now(), updated_at=utc_now()))
+        db.commit()
+
+        summary = _run_parity(db, monkeypatch, {
+            "invoices": [{"id": 835, "uid": INV_UID,
+                          "invoice_id": "LCL-OW-0037",
+                          "paid_amount": 124.0, "total_amount": 124.0}],
+            "invoice_payments": [],
+            # The duplicate the repair deleted here and the cloud still holds.
+            "invoice_line_items": [
+                {"id": 500, "uid": "li-local-real", "invoice_id": 835,
+                 "line_total": 124.0},
+                {"id": 501, "uid": "li-cloud-duplicate", "invoice_id": 835,
+                 "line_total": 124.0},
+            ],
+        })
+
+        assert summary["cloud_only"] == 0, (
+            "importing the duplicate would put line value at 248.00 against "
+            "124.00 billed — re-creating exactly the corruption the repair "
+            "script removed"
+        )
+        assert summary["cloud_only_withheld"] == 1
+        assert db.query(SyncInbox).filter(
+            SyncInbox.uid == "li-cloud-duplicate").count() == 0
+
+    def test_a_cloud_row_whose_invoice_is_not_here_is_withheld(self, db, monkeypatch):
+        """No local parent means no invariant to measure against.
+
+        Declining is right: a row whose invoice this database does not have is
+        not a row this database is missing, and writing it would orphan it.
+        """
+        summary = _run_parity(db, monkeypatch, {
+            "invoices": [{"id": 999, "uid": "some-other-invoice",
+                          "invoice_id": "LCL-OW-9999",
+                          "paid_amount": 50.0, "total_amount": 50.0}],
+            "invoice_payments": [
+                {"id": 90, "uid": "pay-uid-orphan", "invoice_id": 999,
+                 "amount_paid": 50.0, "payment_mode": "Cash"},
+            ],
+            "invoice_line_items": [],
+        })
+        assert summary["cloud_only"] == 0
+        assert summary["cloud_only_withheld"] == 1
 
     def test_a_row_present_on_both_sides_is_not_reported(self, db, monkeypatch):
         """Counter-test: the check must not flag agreement as drift.

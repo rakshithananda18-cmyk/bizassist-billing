@@ -1,0 +1,45 @@
+{
+  "voided_at": "2026-08-01T07:38:07.369398+00:00",
+  "target": "postgresql://postgres.edvttytmqqijmctuiexe:***@aws-1-ap-south-1.pooler.supabase.com:5432/postgres?sslmode=require",
+  "reason": "duplicate settlement of an already-paid invoice",
+  "invoice": {
+    "id": 835,
+    "business_id": 42,
+    "invoice_id": "LCL-OW-0037",
+    "total_amount": 124.0,
+    "paid_amount": 248.0,
+    "status": "Paid"
+  },
+  "payment": {
+    "id": 71,
+    "business_id": 42,
+    "invoice_id": 835,
+    "amount_paid": 124.0,
+    "payment_mode": "Cheque",
+    "payment_date": "2026-08-01",
+    "note": "Settlement (FIFO)",
+    "idempotency_key": "settle-61-1785524336530::869",
+    "uid": "6326fb2a-e55d-494e-9e4d-f9948aacd791",
+    "created_at": "2026-07-31 18:58:56.750969",
+    "updated_at": "2026-07-31 18:58:56.750969"
+  },
+  "ledger_before": [
+    {
+      "id": 70,
+      "uid": "0656a848-31b0-478d-84fe-96811e062bb2",
+      "amount_paid": 124.0,
+      "payment_mode": "Bank",
+      "payment_date": "2026-07-30",
+      "note": "Settlement (FIFO)"
+    },
+    {
+      "id": 71,
+      "uid": "6326fb2a-e55d-494e-9e4d-f9948aacd791",
+      "amount_paid": 124.0,
+      "payment_mode": "Cheque",
+      "payment_date": "2026-08-01",
+      "note": "Settlement (FIFO)"
+    }
+  ],
+  "restore_sql": "INSERT INTO invoice_payments (business_id, invoice_id, amount_paid, payment_mode, payment_date, note, idempotency_key, uid, created_at, updated_at) VALUES (...)"
+}

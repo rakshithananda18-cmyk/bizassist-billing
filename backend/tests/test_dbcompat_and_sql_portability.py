@@ -629,6 +629,14 @@ _SCRIPTS = [
     os.path.join(_BACKEND, "scripts", "repair_line_items_by_invariant.py"),
     os.path.join(_BACKEND, "scripts", "diagnose_money_findings.py"),
     os.path.join(_BACKEND, "scripts", "reconcile_local_vs_cloud.py"),
+    # Appended, never inserted: two tests below address _SCRIPTS by INDEX
+    # (`_SCRIPTS[0]` is the audit, `_SCRIPTS[1]` the line-item repair), so
+    # prepending here would silently re-point those assertions at a different
+    # file and they would keep passing while checking the wrong thing.
+    os.path.join(_BACKEND, "scripts", "void_duplicate_payment.py"),
+    os.path.join(_BACKEND, "scripts", "clear_staff_bizids.py"),
+    os.path.join(_BACKEND, "scripts", "inspect_invoice.py"),
+    os.path.join(_BACKEND, "scripts", "audit_payment_attachment.py"),
 ]
 
 # Each entry: (name, regex, why it breaks). Checked against source with comments

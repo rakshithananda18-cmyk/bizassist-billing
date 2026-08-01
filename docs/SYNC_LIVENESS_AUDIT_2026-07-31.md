@@ -27,7 +27,7 @@ produces a wrong value, an exception, or a failed status. They produce silence.
 | 5 | HIGH | Pull cursor did not survive a restart; fell back to a `SyncLog` proxy | `_PULL_CURSOR: Dict[int,str] = {}` | **FIXED** |
 | 6 | HIGH | A rejected pull row froze all 29 tables, then was abandoned | `_PULL_MAX_FAILED_STREAK` → `logger.critical("They need a human")` | **FIXED** |
 | 7 | HIGH | Unbounded worker pull could never complete on a wide window | 10 s client timeout vs 180 s on the same endpoint from parity | **FIXED** |
-| 8 | ~~MEDIUM~~ | Pre-existing data corruption flagged at migration | Boot log M-7, M-11, overfill ×33 | **RESOLVED — re-measured, see §5.1** |
+| 8 | MEDIUM | Pre-existing data corruption flagged at migration | Boot log M-7, M-11, overfill ×33 | **LOCAL clean, CLOUD still dirty — see the correction in §5.1** |
 | 9 | LOW | Repeated client SSE drops on the cloud Space | `SSE connection failure count: n/5` across 3 devices | **Open — expected for HF, see §5** |
 | 10 | **HIGH** | Sales lost their customer before reaching the DB (`parseInt(name) → NaN → null`) | invoice + payment + journal all recorded the absence at the same instant | **FIXED** |
 | 11 | MEDIUM | Pull-sourced ConflictLogs labelled local/cloud backwards | conflict 61 stored cloud ids under `local_payload` | **FIXED** |
@@ -455,22 +455,52 @@ or its callers.
 
 ## 5. Open items — your call, not mine
 
-### 5.1 Pre-existing data corruption — RESOLVED (re-measured 2026-08-01)
+### 5.1 Pre-existing data corruption — LOCAL clean, CLOUD still dirty
 
-The boot log of 2026-07-30 reported 31 overfilled invoices, 2 b2b_orders, one
-M-7 payment overrun and four M-11 open shifts. **Re-measured against the live
-database using the system's own invariant** — `SUM(line_total) == total_amount +
-cash_discount - round_off`, from `scripts/repair_line_items_by_invariant.py`:
+> ## ⚠ CORRECTION — I measured the wrong database
+>
+> This section previously said **RESOLVED** and showed a "Now" column of zeroes.
+> Every number in it came from the **local SQLite file**. The boot log it was
+> being compared against is the **cloud's**. Two databases, one table, and I
+> reported the healthy one as though it settled the question for both.
+>
+> The cloud's own boot log at 2026-08-01 03:04, minutes after it came back up,
+> says the corruption is all still there. Nothing had been fixed on the cloud,
+> because nothing had been run against the cloud.
+>
+> This is the same mistake as finding 12 in miniature — treating a fact
+> established on one side as though it held on the other. It is worth the space
+> because it is the mistake this whole hybrid design invites.
 
-| Check | Boot log 30 Jul | Now |
-|---|---|---|
-| Invoice overfill | 31 | **3** (2 over by ₹0.02, 1 under) |
-| b2b_orders overfill | 2 | **none** |
-| M-7 payments > total | 1 | **0** |
-| M-11 multiple open shifts | 4 | **none** |
+| Check | Cloud boot log, 30 Jul | **LOCAL** now | **CLOUD** now (01 Aug 03:04) |
+|---|---|---|---|
+| Invoice overfill | 31 | **3** (₹0.04 total) | **31** — ids 806, 796, 813, 809, 790, 814, 803, 789, 773, 797, 804, 783, 799, 801, 776, 793, 798, 775, 791, 772, 805, 816, 778, 792, 802 … |
+| b2b_orders overfill | 2 | **none** | **2** (ids 3 +₹524.16, 2 +₹586.95) |
+| M-7 payments > total | 1 | **0** | **2** — `LCL-OW-0003` (biz 7): 469.00 on a 424.00 invoice; `LCL-OW-0037` (biz 42): **248.00 on a 124.00 invoice** |
+| M-11 multiple open shifts | 4 | **none** | **4** (biz 42, user 42) |
+| Staff holding a BizID | 32 | **0** | **32** |
 
-Nothing to repair. The three remaining rows sit on the script's own ±0.02
-tolerance boundary — rounding, not corruption.
+**LCL-OW-0037 is now confirmed by the cloud itself.** The cloud's boot-time M-7
+check independently reports exactly the double payment §7b reconstructed from
+this side — `total 124.0, but payment rows sum to 248.0`. That is two
+independent measurements, from two databases, of the same event.
+
+Note also what the M-7 check does and does not do. It **catches** this at boot
+and logs it, correctly refusing to auto-correct ("guessing wrong here either
+invents a debt or invents a credit"). Parity, which runs every 30 minutes, did
+not — see findings 14 and 15. The boot check is not a substitute: it fires once,
+into a log, on a Space that restarts rarely.
+
+**Repairing the cloud.** The repair scripts take a target and `_dbcompat.connect`
+accepts a Postgres URL, so they can be pointed at the cloud directly — that is
+what has to happen, since running them locally is what produced this asymmetry.
+**Do not expect sync to carry the repair across.** The scripts delete over a raw
+connection, so `Mapper.after_delete` never fires and no DELETE is ever queued:
+a row deleted on one side stays on the other, indefinitely, with no tombstone.
+
+That asymmetry is also why `_cloud_only_row_fits` exists (§7b.5) — without it,
+the new cloud-only scan would have pulled all 31 invoices' worth of cloud
+duplicates back down and undone the local repair on the next sweep.
 
 > **Correction worth recording.** An earlier pass of this section reported *39
 > invoices, ₹718.68 overstated* and recommended running the repair script. That
@@ -778,6 +808,170 @@ list, and was verified to fail (5 tests red) when the translation is removed.
 serving traffic against a schema that does not match the models is how silent
 corruption starts — but it does mean the safety margin has to sit *before*
 deploy. That is what the new gate is for.
+
+### 7b.5 The cloud-only scan nearly caused a worse bug than it fixed
+
+Caught by reading the cloud's recovery boot log, about an hour after the scan
+was written.
+
+The scan finds rows on the cloud that are absent locally and hands them to the
+inbox. But **"absent here" has two histories and the row does not say which**:
+
+| | |
+|---|---|
+| (a) it never arrived | the LCL-OW-0037 case — importing it is the repair |
+| (b) it arrived and was **deleted** here | a repair ran — importing it **undoes** that repair |
+
+There is no tombstone to tell them apart. `repair_line_items_by_invariant.py`
+deletes over a **raw connection**, so `Mapper.after_delete` never fires and no
+DELETE is queued for the cloud. Case (b) leaves exactly the same evidence as (a).
+
+And (b) is not hypothetical — it is the current state of this system. The cloud
+holds 31 overfilled invoices' worth of duplicate line items that were deleted
+locally (§5.1). Every one reads as "absent here". The unguarded scan would have
+pulled all of them back down and re-corrupted the local database **on every
+sweep, for ever** — a worse defect than the one it was written to fix, shipped
+as its fix.
+
+**The rule that resolves it without guessing the history:** never let the
+recovery path violate the invariant the rest of the system enforces. A row is
+imported only if it *fits* —
+
+* `invoice_payments` — only if it keeps `SUM(amount_paid) <= total_amount`;
+* `invoice_line_items` — only if it keeps
+  `SUM(line_total) <= total_amount + cash_discount - round_off`, the system's
+  own invariant;
+* anything else, or a row whose invoice is not in this database — withheld.
+
+Whichever history produced it, a row that does not fit is a duplicate, and that
+is decidable from the data. Withheld rows are counted separately
+(`cloud_only_withheld`) and logged individually, so they are loud rather than
+silently dropped.
+
+This also settles LCL-OW-0037 the right way: the cloud's ₹124 Bank settlement is
+**not** auto-imported, because it would make ₹248 on a ₹124 invoice. Which of
+the two payments is real is a question about what happened at the counter.
+
+### 7b.6 The cloud row, measured — and one of my hypotheses disproven
+
+`scripts/inspect_cloud_invoice.py LCL-OW-0037 --business-id 7`, 2026-08-01:
+
+```
+  invoice total: 124.00
+
+  LOCAL   invoices.id=869  paid_amount=124.00   (1 payment, 124.00)
+      124.00  Cheque  uid=6326fb2a-e55d-494e-9e4d-f9948aacd791
+              updated_at=2026-07-31 18:58:56   key=settle-61-1785524336530::869
+
+  CLOUD   invoices.id=835  paid_amount=248.00   (2 payments, 248.00)
+      124.00  Bank    uid=0656a848-31b0-478d-84fe-96811e062bb2
+              updated_at=2026-07-30T11:43:09   key=settle-62-1785411785605::835
+      124.00  Cheque  uid=6326fb2a-e55d-494e-9e4d-f9948aacd791
+              updated_at=2026-07-31T18:58:56   key=settle-61-1785524336530::869
+
+  OVER-PAID ON THE CLOUD: 248.00 against a total of 124.00 (excess 124.00)
+  ON THE CLOUD, NOT HERE: ['0656a848-31b0-478d-84fe-96811e062bb2']
+```
+
+Everything §7b.1 reconstructed from this side is confirmed from the other,
+including the timestamp to the second. The cheque carries the **same uid** on
+both sides, so the push worked; only the Bank row is one-directional.
+
+**Correction — `no-uid` was not the mechanism here.** §7b.3 offered it as the
+leading candidate for why the row never landed. The cloud row has a perfectly
+good uid (`0656a848…`), and its `updated_at` is in the past, so the clock-skew
+path is out too. Finding 13 is a real class of defect and the fix stands on its
+own; it was **not** what happened to this row.
+
+What is left is the plainer explanation, and it needs no new defect: between
+30 Jul 11:43 and 31 Jul 19:38 **no pull for this business succeeded at all**
+(findings 5–7 — the 10 s timeout on an unbounded window), and by the time one
+did, the cursor had moved on. The row was never offered to a working apply.
+That is now covered from three directions: the window is paginated, the cursor
+is durable, and the cloud-only scan finds what fell through anyway.
+
+### 7b.7 Runbook — repairing the cloud
+
+Owner's decision, 2026-08-01: **the Bank transfer of 30 Jul 17:13 IST is what
+actually happened.** The cheque entered on the desktop on 31 Jul is the
+duplicate, created because the desktop could not see the bank receipt.
+
+Set the cloud URL once. Deliberately NOT `DATABASE_URL` — a money script that
+inherits whatever the app is pointed at is one stray export away from repairing
+production while you believe you are on a copy:
+
+```bash
+export BIZASSIST_AUDIT_DATABASE_URL="postgresql://…"   # the Space's DB
+```
+
+Every step is a dry run first. Read the output before adding `--apply`.
+
+**Step 0 — measure, so there is a before.**
+
+```bash
+python scripts/audit_money_integrity.py --db "$BIZASSIST_AUDIT_DATABASE_URL"
+python scripts/audit_money_integrity.py            # local, for comparison
+```
+
+**Step 1 — void the duplicate cheque. CLOUD FIRST.**
+
+Cloud first so the cloud is never the inconsistent one; if you stop after this
+step, the cloud is correct and local is unchanged.
+
+```bash
+python scripts/void_duplicate_payment.py 6326fb2a-e55d-494e-9e4d-f9948aacd791 \
+    --db "$BIZASSIST_AUDIT_DATABASE_URL"
+# then, after reading it:
+#   … --db "$BIZASSIST_AUDIT_DATABASE_URL" --apply --i-have-a-restorable-backup
+```
+
+**Step 2 — then local.**
+
+```bash
+python scripts/void_duplicate_payment.py 6326fb2a-e55d-494e-9e4d-f9948aacd791
+python scripts/void_duplicate_payment.py 6326fb2a-e55d-494e-9e4d-f9948aacd791 --apply
+```
+
+Both runs are needed. The delete is **not** queued for sync — see the warning in
+the script's header, and §5.1 for what one-sided repairs have already cost.
+
+**Step 3 — let the Bank receipt come down the normal path.**
+
+Ops → *Run parity check* (`POST /api/sync/parity`). While the cheque is still
+present locally the Bank row is withheld (124 + 124 > 124); once it is gone the
+row fits, parity hands it to the inbox, and `inbox.drain` applies it through
+`_apply_pulled_row`.
+
+Between steps 2 and 3 the local invoice may briefly read `Paid / 124.00` with an
+empty ledger — the cloud header arriving before its payment row. That is
+transient and `reconcile_invoice_paid_state` settles it once the Bank row lands.
+Do not "fix" it by hand in that window.
+
+**Step 4 — verify, on both sides.**
+
+```bash
+python scripts/inspect_cloud_invoice.py LCL-OW-0037 --business-id 7
+```
+
+Expected: one Bank payment of ₹124, same uid on both sides, `Both sides agree.`
+
+**Step 5 — the rest of the cloud, still dry-run first.**
+
+```bash
+# 31 invoices + 2 b2b_orders holding more line value than was billed
+python scripts/repair_line_items_by_invariant.py --db "$BIZASSIST_AUDIT_DATABASE_URL"
+
+# LCL-OW-0003 (biz 7 ON THE CLOUD): 469.00 against a 424.00 total.
+# Inspect before deciding — it is a different business from the local biz 7.
+python scripts/inspect_cloud_invoice.py LCL-OW-0003 --business-id 7
+```
+
+Two items have no `--db` and cannot be pointed at the cloud as things stand:
+
+| Item | Why not, and what to do |
+|---|---|
+| 32 staff sub-accounts holding a BizID | `clear_staff_bizids.py` uses the app engine directly. It needs the `--db` treatment before it can touch the cloud. |
+| 4 open shifts, biz 42 user 42 | Not a script's job — the closing cash figure is a **count, not a calculation**. Close them from the register screen. |
 
 ### 10.4 What is still owed, and to whom
 

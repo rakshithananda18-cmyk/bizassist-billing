@@ -1,0 +1,37 @@
+{
+  "voided_at": "2026-08-01T07:38:08.355091+00:00",
+  "target": "D:\\Dev Workspace\\ai_agent_lab_google(1)\\bizassist-billing\\backend\\bizassist.db",
+  "reason": "duplicate settlement of an already-paid invoice",
+  "invoice": {
+    "id": 869,
+    "business_id": 7,
+    "invoice_id": "LCL-OW-0037",
+    "total_amount": 124.0,
+    "paid_amount": 124.0,
+    "status": "Paid"
+  },
+  "payment": {
+    "id": 71,
+    "business_id": 7,
+    "invoice_id": 869,
+    "amount_paid": 124.0,
+    "payment_mode": "Cheque",
+    "payment_date": "2026-08-01",
+    "note": "Settlement (FIFO)",
+    "idempotency_key": "settle-61-1785524336530::869",
+    "uid": "6326fb2a-e55d-494e-9e4d-f9948aacd791",
+    "created_at": "2026-07-31 18:58:56.750969",
+    "updated_at": "2026-07-31 18:58:56.750969"
+  },
+  "ledger_before": [
+    {
+      "id": 71,
+      "uid": "6326fb2a-e55d-494e-9e4d-f9948aacd791",
+      "amount_paid": 124.0,
+      "payment_mode": "Cheque",
+      "payment_date": "2026-08-01",
+      "note": "Settlement (FIFO)"
+    }
+  ],
+  "restore_sql": "INSERT INTO invoice_payments (business_id, invoice_id, amount_paid, payment_mode, payment_date, note, idempotency_key, uid, created_at, updated_at) VALUES (...)"
+}

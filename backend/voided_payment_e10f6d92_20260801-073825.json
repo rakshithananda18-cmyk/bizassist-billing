@@ -1,0 +1,45 @@
+{
+  "voided_at": "2026-08-01T07:38:25.893486+00:00",
+  "target": "postgresql://postgres.edvttytmqqijmctuiexe:***@aws-1-ap-south-1.pooler.supabase.com:5432/postgres?sslmode=require",
+  "reason": "receipt belongs to BA-W9J21Y invoice LCL-OW-0003 (local row 457, total 45.00); re-tenanted to BA-JABXGD row 786 on the cloud and overpaid it by 45.00. Authoritative copy remains local.",
+  "invoice": {
+    "id": 786,
+    "business_id": 7,
+    "invoice_id": "LCL-OW-0003",
+    "total_amount": 424.0,
+    "paid_amount": 469.0,
+    "status": "Paid"
+  },
+  "payment": {
+    "id": 58,
+    "business_id": 7,
+    "invoice_id": 786,
+    "amount_paid": 45.0,
+    "payment_mode": "cash",
+    "payment_date": "2026-07-06",
+    "note": "Initial payment for invoice LCL-OW-0003",
+    "idempotency_key": null,
+    "uid": "e10f6d92-e55a-4b49-9fcb-b4679bdc56dd",
+    "created_at": "2026-07-05 22:44:01.949529",
+    "updated_at": "2026-07-05 22:44:01.949529"
+  },
+  "ledger_before": [
+    {
+      "id": 11,
+      "uid": "2c98a5e8-7be6-4e14-a2bb-6751311f46f7",
+      "amount_paid": 424.0,
+      "payment_mode": "cash",
+      "payment_date": "2026-07-04",
+      "note": "Initial payment for invoice LCL-OW-0003"
+    },
+    {
+      "id": 58,
+      "uid": "e10f6d92-e55a-4b49-9fcb-b4679bdc56dd",
+      "amount_paid": 45.0,
+      "payment_mode": "cash",
+      "payment_date": "2026-07-06",
+      "note": "Initial payment for invoice LCL-OW-0003"
+    }
+  ],
+  "restore_sql": "INSERT INTO invoice_payments (business_id, invoice_id, amount_paid, payment_mode, payment_date, note, idempotency_key, uid, created_at, updated_at) VALUES (...)"
+}
