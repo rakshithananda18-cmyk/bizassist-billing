@@ -49,7 +49,7 @@ the caller logs it at ERROR. Nothing here swallows an exception quietly.
 """
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func
 
@@ -127,6 +127,20 @@ class ApplyResult:
 # PURE HELPERS for conflict detection — testable without a database
 # ---------------------------------------------------------------------------
 
+def _naive_utc(dt):
+    """An aware datetime converted to UTC and stripped; a naive one untouched.
+
+    Assumes a naive input is ALREADY UTC, which is the app-wide convention
+    documented on `services/dates.utc_now()`. Stated explicitly because the
+    alternative reading — "naive means local time" — would silently shift every
+    timestamp by the machine's offset, and in India that is 5½ hours of drift
+    applied to money records.
+    """
+    if dt is not None and dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
 def parse_dt(value):
     """Parse a synced timestamp. Returns None when it cannot be parsed.
 
@@ -137,13 +151,36 @@ def parse_dt(value):
     syncing forever with no signal at all. An empty value is normal and stays
     quiet; a NON-empty value that fails to parse is a real data defect and is
     logged.
+
+    ALWAYS RETURNS A NAIVE UTC DATETIME (2026-08-01).
+    ---------------------------------------------------------------------------
+    `services/dates.utc_now()` is deliberately naive because "every stored
+    timestamp and comparison in the app is naive-UTC (SQLite hands back naive
+    datetimes; all column defaults are naive)". This function broke that
+    invariant: `.replace("Z", "+00:00")` makes `fromisoformat` return an AWARE
+    datetime for any cloud timestamp carrying an offset, while a local ORM value
+    arrives at line 143 naive and untouched. The two then meet in a comparison.
+
+        [SYNC_INBOX] biz=7 invoices uid='49f60411…' still not appliable
+        (attempt 1/7): can't compare offset-naive and offset-aware datetimes
+
+    That was LCL-OW-0037's own invoice row, stuck in the inbox behind the very
+    repair it was waiting for, and it would have exhausted MAX_AUTO_ATTEMPTS in
+    about six hours and been abandoned.
+
+    Normalising HERE rather than at each comparison is deliberate: this is the
+    boundary where foreign timestamps enter, there are three call sites in two
+    sync modules plus `routes/sync.py:855` comparing against a naive
+    `datetime(1970, 1, 1)`, and fixing it per-comparison leaves the next one to
+    be written wrong. Aware values are converted to UTC before the tzinfo is
+    dropped, so no instant is altered — only its representation.
     """
     if not value:
         return None
     if isinstance(value, datetime):
-        return value
+        return _naive_utc(value)
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return _naive_utc(datetime.fromisoformat(str(value).replace("Z", "+00:00")))
     except Exception as e:
         logger.warning(
             "[SYNC_HOOKS] unparseable timestamp %r (%s) — treating as unknown, so "
