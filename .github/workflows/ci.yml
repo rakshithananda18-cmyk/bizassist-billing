@@ -81,6 +81,49 @@ jobs:
             tests/test_sync_financial_conflicts.py \
             tests/test_ops_health.py
 
+      - name: Run Sync & Tenant Suites on Postgres (finding-17 class guard)
+        # WHY THIS STEP EXISTS (docs/PLATFORM_STATE_AND_PENDING_WORK_2026-08-03.md C-8)
+        #
+        # SQLite has no real type system: it accepts ANY type name in
+        # `ADD COLUMN`, including ones no engine has. So a SQLite-only pass
+        # proves very little about the cloud. That is exactly how
+        # `ALTER TABLE users ADD COLUMN last_login DATETIME` shipped — Postgres
+        # has no DATETIME, the Space crash-looped at import, every device got
+        # 503, and ALL sync stopped (SYNC_LIVENESS_AUDIT finding 17).
+        #
+        # `ensure_tenant_fks` emits DIFFERENT DDL per dialect — composite
+        # FOREIGN KEYs on Postgres, BEFORE-triggers on SQLite — and until this
+        # step the Postgres half had never executed anywhere, including here.
+        # DATA_ARCHITECTURE_OPTIONS exit criterion 2 is "every rule installed on
+        # BOTH databases"; this is the only place that can be shown.
+        #
+        # The Postgres service above is already running, so this costs minutes.
+        #
+        # If this goes red: fix the drift, or skip the individual test with a
+        # written reason. Do NOT add `continue-on-error` — a green tick over a
+        # suite that cannot pass is the failure mode CLEANUP_PLAN §6.2 is about.
+        env:
+          BIZASSIST_TEST_DATABASE_URL: postgresql://postgres:pass@localhost:5432/rls_test
+          JWT_SECRET: dev-test-secret-please-change-0123456789abcdef
+          GROQ_API_KEY: mock_groq_api_key
+        run: |
+          cd backend
+          python -m pytest -q -p no:randomly \
+            tests/test_tenant_fk_invariants.py \
+            tests/test_db_invariants.py \
+            tests/test_migration_step_isolation.py \
+            tests/test_migration_ddl_is_portable.py \
+            tests/test_dbcompat_and_sql_portability.py \
+            tests/test_sync.py \
+            tests/test_sync_pull.py \
+            tests/test_sync_inbox.py \
+            tests/test_sync_idempotency.py \
+            tests/test_sync_liveness_regressions.py \
+            tests/test_parity_is_bidirectional.py \
+            tests/test_sync_volume_and_tenancy.py \
+            tests/test_tenant_scope.py \
+            tests/test_uid_sync_keys.py
+
   # BUG-3 guard: the sync/relay/routing tests are the ones that hide real
   # data-loss bugs. Run them repeatedly, in both fixed and randomized order,
   # to catch order/environment-dependent nondeterminism before it ships.

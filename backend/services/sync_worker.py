@@ -2102,7 +2102,24 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
         # (child pulled before parent), DEFER this record
         # instead of writing a stale source-DB integer id
         # (wrong-row / orphan); it re-applies on a later pull.
-        if resolve_parent_fk_uids(db, model_cls, data, log_prefix="[SYNC_WORKER]"):
+        # `business_id=` is passed for the same reason routes/sync.py:593 passes
+        # it: without it the UID branch of resolve_parent_fk_uids skips its
+        # `AND business_id = :business_id` clause entirely, so a child could
+        # resolve its parent through ANOTHER tenant's row. The push path has
+        # always been scoped; the pull path was not, and the asymmetry is the
+        # thing `resolve_parent_fk_uids` says about itself — "single source of
+        # truth for both apply paths … so the resolution/deferral logic can never
+        # drift".
+        #
+        # The raw-FK branch was only half-covered before: it falls back to
+        # `data.get("business_id")`, which the re-pin above sets — but line-item
+        # tables carry no `business_id` column, so it resolved to None and those
+        # rows were unscoped on BOTH branches. Those are exactly the 9 tables
+        # that cannot have a composite tenant FK either (no tenant column to put
+        # in one), so this call was their only guard and it was not applied.
+        if resolve_parent_fk_uids(db, model_cls, data,
+                                  business_id=business_id,
+                                  log_prefix="[SYNC_WORKER]"):
             return _Applied("deferred")
 
         target_obj = existing if existing else model_cls()
