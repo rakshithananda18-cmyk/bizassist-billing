@@ -1135,6 +1135,136 @@ def _cloud_only_row_fits(db, business_id, table, crow, cloud_invs,
     return False, f"no fit rule is defined for {table}"
 
 
+def _parity_presence_tables() -> list:
+    """Synced tables this sweep can compare by presence, cheapest-first.
+
+    A table qualifies when it carries BOTH `uid` (the only cross-database row
+    identity — core/identity.py) and `business_id` (so the local side can be
+    scoped without a join). The line-item and b2b tables are excluded here
+    because they carry neither a tenant column nor a direct scope; two of them
+    are already covered by `CHILD_SPECS`, and the rest need the parent join that
+    §5 does.
+
+    Derived from MODEL_MAP rather than hard-coded, so a newly synced table is
+    compared automatically instead of silently sitting outside the sweep — which
+    is how 23 of 25 tables came to be uncompared in the first place.
+    """
+    out = []
+    for name, model in _MODEL_MAP.items():
+        cols = {c.name for c in model.__table__.columns}
+        if "uid" in cols and "business_id" in cols:
+            out.append(name)
+    return sorted(out)
+
+
+def _parity_presence_sweep(db: Session, business_id: int, cloud_data: dict,
+                           summary: dict) -> None:
+    """Does each side hold the same ROWS? Detection only — repairs nothing.
+
+    WHY THIS EXISTS
+    ---------------
+    Before 2026-08-03 the sweep compared exactly two tables — `invoice_line_items`
+    and `invoice_payments` (`CHILD_SPECS`) — plus a paid-state check on invoices.
+    Everything else was outside every question it asked, so a whole missing
+    INVOICE, product, customer or expense was invisible to the only continuous
+    cross-database check the system has. The summary still said
+    "cloud parity OK — no drift detected", which is rule 33 in the one component
+    whose entire job is telling "absent" from "not looked at".
+
+    WHY IT IS FREE
+    --------------
+    The pull above already downloads EVERY synced table (no `limit`, deliberately
+    — see §3). The rows are in `cloud_data` whether or not anyone looks at them.
+    Comparing more tables costs no extra network I/O, only local set arithmetic.
+
+    WHY IT DOES NOT REPAIR
+    ----------------------
+    Deliberate, and it is the §7b.5 lesson. The cloud-only scan for line items
+    needed `_cloud_only_row_fits` to avoid re-importing 31 invoices' worth of
+    duplicates that had been deleted locally on purpose — "absent here" has two
+    histories and the row does not say which. That judgement is invariant-shaped
+    for invoice children and does NOT generalise: there is no equivalent of
+    "would this still foot?" for a customer or a product. Auto-repairing 19 more
+    tables on a rule nobody has written would be a bigger defect than the one it
+    closes. So: count it, name it, show it — and let a human decide.
+
+    SYNC LAG IS NOT DIVERGENCE
+    --------------------------
+    A row written locally two seconds ago has not been pushed yet. Counting it as
+    "missing on the cloud" would make this sweep cry wolf on every healthy
+    system. Rows still sitting unsent in `sync_queue` are therefore excluded: a
+    local-only row that is NOT queued is one sync will never deliver on its own,
+    and that is the thing worth reporting.
+    """
+    tables = _parity_presence_tables()
+    per_table: dict = {}
+
+    for table in tables:
+        try:
+            # Local rows for this business that are NOT still waiting in the
+            # outbox. Plain SQL, portable on both engines (no `INSERT OR IGNORE`
+            # lesson repeated here).
+            rows = db.execute(text(
+                f"SELECT uid FROM {table} "
+                f"WHERE business_id = :bid AND uid IS NOT NULL "
+                f"AND id NOT IN ("
+                f"  SELECT entity_id FROM sync_queue "
+                f"  WHERE entity = :tbl AND synced_at IS NULL AND entity_id IS NOT NULL"
+                f")"
+            ), {"bid": business_id, "tbl": table}).fetchall()
+            local_uids = {r[0] for r in rows}
+        except Exception as e:
+            # Unreadable is NOT empty (rule 33). Record and skip the table rather
+            # than reporting every cloud row as missing here.
+            summary["errors"].append(f"presence {table}: {e}")
+            logger.warning("[PARITY] biz=%s: presence scan could not read %s: %s",
+                           business_id, table, e)
+            continue
+
+        cloud_rows = cloud_data.get(table) or []
+        cloud_uids = {r.get("uid") for r in cloud_rows if r.get("uid")}
+        no_uid = sum(1 for r in cloud_rows if not r.get("uid"))
+
+        local_only = local_uids - cloud_uids
+        cloud_only = cloud_uids - local_uids
+
+        summary["presence_no_uid"] += no_uid
+        summary["presence_local_only"] += len(local_only)
+        summary["presence_cloud_only"] += len(cloud_only)
+        summary["tables_compared"] += 1
+
+        if local_only or cloud_only or no_uid:
+            per_table[table] = {
+                "local_only": len(local_only),
+                "cloud_only": len(cloud_only),
+                "no_uid": no_uid,
+            }
+            # An ENTIRE table present here and absent there is a different
+            # statement from N missing rows — it is what an older cloud that does
+            # not know the table looks like. Say so, rather than reporting every
+            # row as a divergence.
+            if local_uids and not cloud_uids:
+                logger.warning(
+                    "[PARITY] biz=%s: the cloud returned NO %s rows at all while "
+                    "this device holds %s. That may be a genuinely empty table on "
+                    "the cloud, or a cloud build that does not sync %s — the "
+                    "snapshot cannot tell them apart. Reported, not repaired.",
+                    business_id, table, len(local_uids), table,
+                )
+            else:
+                logger.warning(
+                    "[PARITY] biz=%s: %s — %s row(s) here not on the cloud, "
+                    "%s row(s) on the cloud not here%s. Detection only; nothing "
+                    "was queued or imported. local_only=%s cloud_only=%s",
+                    business_id, table, len(local_only), len(cloud_only),
+                    f", {no_uid} cloud row(s) carry no uid and cannot be matched"
+                    if no_uid else "",
+                    sorted(local_only)[:5], sorted(cloud_only)[:5],
+                )
+
+    summary["presence_by_table"] = per_table
+
+
 def _cloud_parity_check(db: Session, business_id: int) -> dict:
     """UID-based cross-DB parity check: local SQLite vs cloud Postgres.
 
@@ -1190,6 +1320,18 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
         "cloud_only_withheld": 0,   # …and would break an invariant if imported
         "over_paid":     0,     # cloud payments sum to MORE than the invoice total
         "paid_state":    0,
+        # ── Presence sweep (added 2026-08-03) ────────────────────────────────
+        # Detection-only row comparison across every business-scoped synced
+        # table. `tables_compared` / `tables_total` are the DENOMINATOR: an
+        # all-clear that does not say how much it looked at is the failure this
+        # sweep was guilty of for months (2 of 25 tables, reported as
+        # "cloud parity OK"). Anything rendering this must show both numbers.
+        "tables_compared":     0,
+        "tables_total":        len(_MODEL_MAP),
+        "presence_local_only": 0,   # here, not on the cloud, and NOT queued
+        "presence_cloud_only": 0,   # on the cloud, not here
+        "presence_no_uid":     0,   # cloud rows that cannot be matched at all
+        "presence_by_table":   {},
         "errors":        [],
     }
 
@@ -1608,6 +1750,18 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
                     business_id, table, _cuid, _why,
                 )
 
+    # ── 5c. Presence sweep across every business-scoped table ─────────────────
+    # Runs on the snapshot already downloaded above, so it adds no network cost.
+    # Detection only — see the function docstring for why it deliberately does
+    # not repair. Wrapped because parity is an audit: a failure here must not
+    # cost the caller the findings §5 already produced.
+    try:
+        _parity_presence_sweep(db, business_id, cloud_data, summary)
+    except Exception as e:
+        summary["errors"].append(f"presence sweep failed: {e}")
+        logger.warning("[PARITY] biz=%s: presence sweep failed (non-fatal): %s",
+                       business_id, e)
+
     # ── 6. Commit queued repairs ───────────────────────────────────────────────
     # `cloud_only` is in this condition because `inbox.remember` only db.add()s —
     # it deliberately does not commit, so it can be called from inside the
@@ -1714,18 +1868,34 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
     # sweep printed "no drift detected" throughout the LCL-OW-0037 divergence.
     total = (summary["missing"] + summary["wrong_invoice"] + summary["paid_state"]
              + summary["cloud_only"] + summary["cloud_only_withheld"]
-             + summary["over_paid"])
+             + summary["over_paid"]
+             # Presence findings count too. They are not repaired, but an
+             # all-clear logged over rows one side is missing is exactly the
+             # false reassurance finding 15 was.
+             + summary["presence_local_only"] + summary["presence_cloud_only"])
+
+    # THE DENOMINATOR IS NOT OPTIONAL. "No drift detected" means nothing without
+    # "…across how much?" — this sweep spent months reporting parity OK while
+    # comparing 2 of 25 tables. Every all-clear now states its own coverage.
+    coverage = f"{summary['tables_compared']}+2 of {summary['tables_total']} tables"
+
     if total:
         logger.info(
-            "[PARITY] biz=%s: %s finding(s) — wrong_invoice=%s missing=%s "
-            "paid_state=%s cloud_only=%s withheld=%s over_paid=%s",
-            business_id, total,
+            "[PARITY] biz=%s: %s finding(s) across %s — wrong_invoice=%s "
+            "missing=%s paid_state=%s cloud_only=%s withheld=%s over_paid=%s "
+            "presence_local_only=%s presence_cloud_only=%s no_uid=%s",
+            business_id, total, coverage,
             summary["wrong_invoice"], summary["missing"], summary["paid_state"],
             summary["cloud_only"], summary["cloud_only_withheld"],
             summary["over_paid"],
+            summary["presence_local_only"], summary["presence_cloud_only"],
+            summary["presence_no_uid"],
         )
     else:
-        logger.info("[PARITY] biz=%s: cloud parity OK — no drift detected", business_id)
+        logger.info(
+            "[PARITY] biz=%s: cloud parity OK — no drift detected across %s",
+            business_id, coverage,
+        )
 
     return summary
 
