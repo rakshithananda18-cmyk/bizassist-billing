@@ -81,6 +81,12 @@ const PAGE_TITLES = {
   '/settings':      'App Settings',
 }
 
+// The five screens a counter lives in, for the mobile bottom bar. Deliberately
+// a list of ROUTES, not of nav objects: the icon and label are looked up from
+// the sidebar's own nav list at render time, so this can never drift into
+// showing a tab the sidebar has renamed or the plan has hidden.
+const BOTTOM_BAR_ROUTES = ['/', '/sales', '/stock', '/parties', '/reports']
+
 export default function AppLayout({ children, title }) {
   const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings, fetchSettings } = useAuth()
   const { hasLock, lock, resetInactivityTimer } = useLock()
@@ -720,6 +726,26 @@ export default function AppLayout({ children, title }) {
   // Profile popover menu
   const [showProfileMenu, setShowProfileMenu] = React.useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
+
+  // Whole-sidebar collapse (icon rail) — see BOTTOM_BAR_ROUTES near the bottom
+  // bar for the mobile half of the same navigation problem. Distinct from `collapsed` above, which
+  // collapses individual nav SECTIONS — different key, different concept, and
+  // conflating them would make one setting silently undo the other.
+  // Read from localStorage in the initialiser so the rail is already narrow on
+  // first paint; setting it in an effect makes the sidebar visibly snap.
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(() => {
+    try { return localStorage.getItem('billing_sidebar_collapsed') === 'true' }
+    catch { return false }
+  })
+
+  const toggleSidebarCollapsed = React.useCallback(() => {
+    setSidebarCollapsed(prev => {
+      const next = !prev
+      try { localStorage.setItem('billing_sidebar_collapsed', String(next)) }
+      catch { /* private mode — the toggle still works for this session */ }
+      return next
+    })
+  }, [])
   const profileMenuRef = React.useRef(null)
   const userChipRef = React.useRef(null)
 
@@ -940,7 +966,21 @@ export default function AppLayout({ children, title }) {
 
       {/* ── Sidebar ── */}
       {!isSalesPage && (
-        <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`}>
+        <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
+          {/* Collapse to an icon rail — same affordance as frontend-ai's
+              AppLayout. Hidden on mobile, where the drawer and the bottom bar
+              already handle navigation and a rail would just be a third way to
+              do the same thing. */}
+          <button
+            type="button"
+            className="sidebar-collapse-btn hide-on-mobile"
+            onClick={toggleSidebarCollapsed}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!sidebarCollapsed}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {sidebarCollapsed ? '›' : '‹'}
+          </button>
           {/* Brand */}
           <div className="sidebar-brand">
             {profile?.logo ? (
@@ -1924,9 +1964,15 @@ export default function AppLayout({ children, title }) {
                           className={({ isActive }) =>
                             'nav-link' + (isActive ? ' active' : '')
                           }
+                          // Read by the collapsed rail's hover tooltip. The
+                          // label text itself is hidden when collapsed, so
+                          // without this the rail is a row of unnamed icons.
+                          data-label={label}
                         >
                           <span className="nav-icon">{icon}</span>
-                          {label}
+                          {/* Wrapped so the rail can hide the text without
+                              hiding the icon. It was a bare text node. */}
+                          <span className="nav-label">{label}</span>
                         </NavLink>
                       )
                     })}
@@ -2169,6 +2215,36 @@ export default function AppLayout({ children, title }) {
           }}
           onClose={() => setSidebarCtxMenu(null)}
         />
+      )}
+
+      {/* ── Mobile bottom bar (iOS-style tab bar) ──────────────────────────
+          On a phone the drawer costs two taps to reach anything: open it, then
+          pick. These are the five screens a counter actually lives in, one tap
+          away, in the thumb zone. The drawer stays for everything else.
+
+          Routes are taken from the SAME nav list the sidebar renders, so a
+          renamed or removed route cannot leave a dead tab here — the "two
+          copies of one thing" trap CLEANUP §6.1 records. */}
+      {!isSalesPage && (
+        <nav className="mobile-bottombar" aria-label="Primary">
+          {BOTTOM_BAR_ROUTES.map(to => {
+            const item = orderedVisibleNav.find(n => n.to === to)
+            if (!item) return null          // hidden by plan/role — no dead tab
+            const active = location.pathname === to ||
+              (to !== '/' && location.pathname.startsWith(to))
+            return (
+              <NavLink
+                key={to}
+                to={to}
+                className={'bb-item' + (active ? ' active' : '')}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <span className="bb-icon">{item.icon}</span>
+                <span className="bb-label">{item.label}</span>
+              </NavLink>
+            )
+          })}
+        </nav>
       )}
 
       {/* Mobile Top Header Bar */}

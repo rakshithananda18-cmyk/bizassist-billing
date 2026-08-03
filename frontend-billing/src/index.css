@@ -37,6 +37,12 @@
 
   /* Layout */
   --sidebar-w:     240px;
+  /* Collapsed icon rail. 56px keeps a 40px tap target inside an 8px gutter —
+     below ~48px the icons stop being reliably tappable on a touch till. */
+  --sidebar-rail-w: 56px;
+  /* Height of the mobile bottom bar. Pages add this to their bottom padding so
+     the last row of a table is never trapped under it. */
+  --bottombar-h:   58px;
   --header-h:      56px;
   --zoom:          1; /* CSS zoom factor — updated by JS when user changes App Display Size */
   --radius-sm:     6px;
@@ -304,6 +310,76 @@ img { display: block; max-width: 100%; }
   overflow: hidden;
   min-height: 0;
 }
+
+/* ── Collapsed rail ────────────────────────────────────────────────────────
+   Same idea as frontend-ai's AppLayout: the sidebar shrinks to an icon rail
+   instead of disappearing, so navigation stays one click away while the page
+   gets the width. Width is the ONLY thing that animates — animating layout
+   properties of the whole tree drops frames on the low-end Windows machines
+   these tills run on.
+   Labels are hidden with width/opacity rather than `display:none` so the icons
+   do not reflow as the rail animates. */
+.sidebar.collapsed { width: var(--sidebar-rail-w); }
+
+.sidebar.collapsed .brand-name,
+.sidebar.collapsed .brand-tag,
+.sidebar.collapsed .nav-label,
+.sidebar.collapsed .nav-section-label,
+.sidebar.collapsed .sidebar-footer .footer-text {
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.sidebar.collapsed .nav-link,
+.sidebar.collapsed .sidebar-brand {
+  justify-content: center;
+  gap: 0;
+}
+
+/* The rail still needs to say where you are. */
+.sidebar.collapsed .nav-link.active {
+  background: var(--accent-soft, rgba(99, 102, 241, 0.14));
+}
+
+/* Hovering a rail icon reveals its name — otherwise a collapsed sidebar is a
+   memory test. `title` alone is too slow (~1s OS delay) for a counter. */
+.sidebar.collapsed .nav-link { position: relative; }
+.sidebar.collapsed .nav-link:hover::after {
+  content: attr(data-label);
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  z-index: 60;
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+}
+
+.sidebar-collapse-btn {
+  position: absolute;
+  right: 6px;
+  top: 10px;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.sidebar-collapse-btn:hover { color: var(--text); }
 
 .main-area {
   flex: 1;
@@ -5756,4 +5832,72 @@ body.is-col-resizing * {
   font-size: 0.79rem;
   line-height: 1.5;
   color: var(--text-secondary);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MOBILE BOTTOM BAR  (iOS-style tab bar)
+   ══════════════════════════════════════════════════════════════════════════
+   On a phone the drawer sidebar costs two taps to reach anything: open the
+   drawer, then pick. A fixed bottom bar puts the handful of screens a counter
+   actually uses one tap away, in the thumb zone.
+
+   `env(safe-area-inset-bottom)` is what keeps it clear of the iPhone home
+   indicator; without it the last tab sits under the gesture bar and swallows
+   taps. Harmless on Android and on browsers that do not support it — `env()`
+   with a fallback resolves to 0.
+
+   The bar is hidden while the POS landscape overlay is up, because that screen
+   deliberately owns the whole viewport. */
+.mobile-bottombar { display: none; }
+
+@media (max-width: 768px) {
+  .mobile-bottombar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 900;
+    height: calc(var(--bottombar-h) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--bg-2);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.08);
+    justify-content: space-around;
+    align-items: stretch;
+  }
+
+  .mobile-bottombar .bb-item {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border: 0;
+    background: none;
+    color: var(--text-muted);
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    /* A 44px minimum is the smallest reliably tappable target. */
+    min-height: 44px;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-bottombar .bb-item.active { color: var(--accent, #6366f1); }
+  .mobile-bottombar .bb-item:active { opacity: 0.6; }
+
+  /* Reserve the space. Without this the bar covers the last row of every
+     scrollable list, which reads as "the page is cut off". */
+  .main-area,
+  .page-scroll,
+  .content-scroll {
+    padding-bottom: calc(var(--bottombar-h) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* The POS landscape overlay owns the screen. */
+  body.pos-fullscreen .mobile-bottombar { display: none; }
 }
