@@ -29,6 +29,11 @@ const NAV = [
     section: 'Supply & Inflow',
     items: [
       { to: '/stock',     icon: <InventoryIcon size={16} className="nav-anim-inventory" />, label: 'Stock & Purchases' },
+      // TRIAL ENTRY — remove together with StockPurchases.jsx once the revamped
+      // workspace is signed off (deletion trigger at the top of
+      // StockWorkspace.jsx). Kept visibly labelled so it cannot quietly become
+      // a permanent second way to reach the same screen.
+      { to: '/stock-workspace', icon: <InventoryIcon size={16} className="nav-anim-inventory" />, label: 'Stock (new)' },
       { to: '/b2b', icon: <OrderIcon size={16} className="nav-anim-b2border" />, label: 'B2B' },
       { to: '/import', icon: <ImportIcon size={16} className="nav-anim-import" />, label: 'Data Migration' },
     ]
