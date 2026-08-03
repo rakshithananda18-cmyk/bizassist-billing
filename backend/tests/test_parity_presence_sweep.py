@@ -278,3 +278,52 @@ def test_cloud_rows_without_a_uid_are_counted_separately(db, monkeypatch):
     assert summary["presence_cloud_only"] == 0, (
         "a row that cannot be matched must not be reported as cloud-only"
     )
+
+
+def test_an_unreadable_table_is_reported_not_reported_as_empty(db, monkeypatch):
+    """The same rule one level up: if the LOCAL scan of a table raises, that
+    table is unknown, not empty.
+
+    Without the guard the exception would escape the loop and cost every
+    remaining table its comparison. With a naive `except: continue` the table
+    would silently contribute nothing and the summary would still say parity is
+    fine — the exact false all-clear this sweep exists to end. So the table is
+    named in `errors`, left OUT of `presence_by_table` (no finding is asserted
+    about it), and the sweep carries on with the others."""
+    _add_customer(db, "cust-local-only")
+
+    real_execute = db.execute
+
+    def _unreadable_customers(stmt, *a, **kw):
+        if "FROM customers" in str(stmt):
+            raise RuntimeError("no such table: customers")
+        return real_execute(stmt, *a, **kw)
+
+    monkeypatch.setattr(db, "execute", _unreadable_customers)
+
+    summary = _run(db, monkeypatch, {
+        "products": [{"id": 5, "uid": "prod-cloud-only", "name": "Sugar 50kg"}],
+    })
+
+    assert any("presence customers" in e for e in summary["errors"]), summary["errors"]
+    # Unknown, so no verdict is recorded for it either way.
+    assert "customers" not in summary["presence_by_table"]
+    # …and the failure was contained: the next table was still compared.
+    assert summary["presence_by_table"]["products"]["cloud_only"] == 1
+
+
+def test_a_failing_sweep_does_not_cost_the_caller_the_parity_findings(db, monkeypatch):
+    """The sweep is an ADDITION to parity, so it must not be able to take
+    parity down with it. If it throws, the §5 findings computed before it still
+    reach the caller and the failure is recorded rather than swallowed."""
+    def _boom(*a, **kw):
+        raise RuntimeError("sweep exploded")
+
+    monkeypatch.setattr(SW, "_parity_presence_sweep", _boom)
+
+    summary = _run(db, monkeypatch, {"customers": []})
+
+    assert any("presence sweep failed" in e for e in summary["errors"]), summary["errors"]
+    # Parity itself still answered.
+    assert summary["business_id"] == BID
+    assert "paid_state" in summary
