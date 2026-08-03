@@ -109,13 +109,51 @@ scripts/repair_line_items_by_invariant.py --db <cloud>          [DRY RUN]
 may be right and the lines wrong, or the reverse, and only the printed/filed
 copy settles it."* Deleting those lines moves the P&L on a guess.
 
-### 1.4 Still to dry-run on the cloud
+### 1.4 Journal backfill, dry run against the cloud
 
-`scripts/backfill_journals.py` exists and is the named fix for section B's 47
-journal-less documents. **Not yet run, not even dry.** Note that 18 of the 47 are
-`OPEN-31 … OPEN-50` shift-opening floats (₹15,000 / ₹2,000, biz 7), which may be
-a different question from the 29 real sale documents — worth reading the dry run
-before assuming one fix covers both.
+`scripts/backfill_journals.py` **could not reach the cloud at all** until
+2026-08-03: it had no `--db`, so it could only ever open whatever the
+application was pointed at. This is the same gap `clear_staff_bizids.py` had.
+Fixed — see §1.5 — and then run:
+
+```
+scripts/backfill_journals.py --db <cloud>                        [DRY RUN]
+target: postgresql://postgres.…:***@aws-1-ap-south-1.pooler.…   engine: postgresql
+
+  business  7: 21 invoices
+  business 42: 24 invoices
+  business 53:  2 invoices
+
+  47 document(s) total
+```
+
+Exactly the 47 from section B, and it accounts for **all** of them — including
+the 18 `OPEN-31 … OPEN-50` rows, which the collector classes as invoices rather
+than as a separate shift-float case. The script posts through the same
+`core/accounting/posting` builders the counter uses (so a backfilled entry is
+byte-identical to one posted at sale time) and is idempotent on
+`(business_id, source_type, source_id)`, so re-running posts nothing twice.
+
+**Not applied.** This is the one repair on the list with no ambiguity — it
+*adds* missing journal entries rather than deleting anything, and until it runs
+the trial balance, P&L and party ledger for businesses 7, 42 and 53 are short by
+exactly these documents. It is the strongest candidate to go first once §4's
+backup gate is answered.
+
+### 1.5 `backfill_journals.py` gained `--db` (2026-08-03)
+
+Unlike the raw-SQL repair scripts it needs a real ORM `Session`, so it cannot use
+`_dbcompat.connect`. The flag is therefore resolved **before** `database.db` is
+imported, because that module reads `DATABASE_URL` at import time and builds the
+engine — and, for SQLite, attaches the `PRAGMA foreign_keys=ON` /
+`busy_timeout` listeners. Setting it afterwards would leave the engine bound to
+the original target: the script would print the database you asked for and write
+to the one it had already opened.
+
+It now also prints the target it actually opened, password redacted via
+`_dbcompat._redact` (verified against a synthetic credential). Every serious
+mistake in this project's repair history has been a correct answer about the
+wrong database, so the target is not optional output.
 
 ---
 
@@ -156,7 +194,24 @@ machine is not evidence about the shop's machine.**
 is real and needs the owner's memory** — which invoice did that customer actually
 pay against, `LCL-OW-0006` or `LCL-OW-0024`?
 
-### 2.3 This laptop's own local audit — recorded, not actionable
+### 2.3 This laptop's schema is behind the models
+
+Running `backfill_journals.py` against this laptop's own database fails
+immediately:
+
+```
+sqlite3.OperationalError: no such column: invoices.parent_invoice_id
+```
+
+`parent_invoice_id` is genuinely absent — `invoices` here has 41 columns and the
+models expect more. So this database has not had migrations applied since before
+that column was added, which is consistent with it being last written on 23 July
+and abandoned. It is further confirmation that it is a stale secondary, and one
+more reason not to measure or repair anything from it.
+
+The cloud has the column and the same script runs there without complaint.
+
+### 2.4 This laptop's own local audit — recorded, not actionable
 
 `audit_money_integrity.py --db bizassist.db` → **85 issues** (A: 2, B: 53, C1: 1,
 C2: 1, E: 1, G: 1, I: 26). These describe a stale secondary containing 10,000

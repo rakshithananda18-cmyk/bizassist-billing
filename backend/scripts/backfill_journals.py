@@ -49,6 +49,49 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+# ── --db, resolved BEFORE `database.db` is imported ──────────────────────────
+#
+# WHY IT IS DONE HERE AND NOT IN main()
+# `database/db.py` reads DATABASE_URL **at import time**: it builds the engine,
+# and for SQLite it also attaches the `PRAGMA foreign_keys=ON` /
+# `busy_timeout` connect listeners. Re-pointing anything after the import would
+# leave the engine bound to the original target — the script would print the
+# database you asked for and write to the one it already opened. So the value
+# has to be in the environment before line `from database.db import ...` runs.
+#
+# WHY THIS SCRIPT NEEDED IT AT ALL
+# It posts through `core/accounting/posting`, so unlike the raw-SQL repair
+# scripts it needs a real ORM Session and cannot use `_dbcompat.connect`.
+# Without --db it could only ever reach whatever the APPLICATION was pointed at,
+# which is exactly why the 47 journal-less documents on the CLOUD could not be
+# touched (SYNC_LIVENESS_AUDIT §7b.7 lists this class of gap).
+#
+# This is NOT the "inherit whatever DATABASE_URL happens to be" anti-pattern the
+# runbook warns about: the value comes from an explicit flag the operator typed,
+# and the banner below prints the target it actually opened.
+def _early_db_target() -> "str | None":
+    for i, a in enumerate(sys.argv):
+        if a == "--db" and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+        if a.startswith("--db="):
+            return a.split("=", 1)[1]
+    return None
+
+
+_DB_TARGET = _early_db_target()
+if _DB_TARGET:
+    os.environ["DATABASE_URL"] = _DB_TARGET
+
+
+def _safe_target(url: str) -> str:
+    """The target, with any password removed. Never print a raw URL."""
+    try:
+        from _dbcompat import _redact          # scripts/ is sys.path[0] when run
+        return _redact(url)
+    except Exception:
+        return url.split("@")[-1] if "@" in url else url
+
+
 from database.db import SessionLocal                           # noqa: E402
 from database.models import Invoice, PurchaseInvoice           # noqa: E402
 from core.models import InvoicePayment, JournalEntry, Expense  # noqa: E402
@@ -137,6 +180,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--apply", action="store_true", help="write (default: dry run)")
     ap.add_argument("--business", type=int, default=None)
+    ap.add_argument("--db", default=None,
+                    help="target database (path or postgres URL). Applied before "
+                         "the engine is built — see the note at the top of this "
+                         "file. Defaults to DATABASE_URL / the app's database.")
     args = ap.parse_args()
 
     db = SessionLocal()
@@ -144,6 +191,12 @@ def main() -> int:
         work = collect(db, args.business)
         print("=" * 74)
         print("JOURNAL BACKFILL" + ("  [APPLYING]" if args.apply else "  [DRY RUN]"))
+        # Always state which database was opened. Every serious mistake in this
+        # project's repair history has been a correct answer about the wrong
+        # database (SYNC_LIVENESS_AUDIT §5.1), so the target is not optional
+        # output.
+        print(f"target: {_safe_target(os.environ.get('DATABASE_URL', '(default)'))}"
+              f"   engine: {db.bind.dialect.name}")
         print("=" * 74)
 
         by_biz = {}
