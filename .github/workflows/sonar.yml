@@ -4,6 +4,22 @@ on:
   push:
     branches:
       - main
+    # A docs-only push costs ~26 min of runner time and tells us nothing: the
+    # scan itself is ~18 of those minutes (measured on 637b4d7) analysing
+    # `backend/` and `frontend-billing/src`, neither of which a Markdown edit
+    # touches. This repo keeps long decision records, so docs-only commits are
+    # routine — 439ce97 was one.
+    #
+    # `paths-ignore` skips the run only when EVERY changed file matches, so a
+    # commit that touches code and docs together still gets scanned.
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  # DELIBERATELY NOT filtered on pull_request. If the SonarCloud gate is ever a
+  # REQUIRED check, a skipped run never reports at all and the PR sits on
+  # "Expected — waiting for status" for ever, which is a worse failure than a
+  # wasted scan. Branch protection is not readable from here, so the safe half
+  # is the one that ships.
   pull_request:
     types: [opened, synchronize, reopened]
 
