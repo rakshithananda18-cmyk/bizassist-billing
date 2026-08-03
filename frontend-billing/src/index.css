@@ -312,41 +312,74 @@ img { display: block; max-width: 100%; }
 }
 
 /* ── Collapsed rail ────────────────────────────────────────────────────────
-   Same idea as frontend-ai's AppLayout: the sidebar shrinks to an icon rail
-   instead of disappearing, so navigation stays one click away while the page
-   gets the width. Width is the ONLY thing that animates — animating layout
-   properties of the whole tree drops frames on the low-end Windows machines
-   these tills run on.
-   Labels are hidden with width/opacity rather than `display:none` so the icons
-   do not reflow as the rail animates. */
-.sidebar.collapsed { width: var(--sidebar-rail-w); }
+   Ported from frontend-ai/src/styles/layout.css. Three things there that the
+   first attempt here got wrong, all visible in the same screenshot:
 
-.sidebar.collapsed .brand-name,
-.sidebar.collapsed .brand-tag,
+     1. Labels need `display:none`, not opacity+width. Hidden-but-present text
+        still occupies inline space, so the external "Dashboard BIZASSIST" link
+        overflowed the 56px rail and forced a horizontal scrollbar.
+     2. Nav items must become FIXED 40x40 centred boxes. Left as flex rows with
+        `justify-content:center` they still carried their padding and gap, so
+        the icons sat off-centre.
+     3. The rail needs `overflow: visible` or the hover tooltip is clipped by
+        the sidebar's own `overflow: hidden`.
+   ------------------------------------------------------------------------- */
+.sidebar.collapsed {
+  width: var(--sidebar-rail-w);
+  min-width: var(--sidebar-rail-w);
+  max-width: var(--sidebar-rail-w);
+  align-items: center;
+  overflow: visible;
+}
+
+/* Every scrap of text goes. */
 .sidebar.collapsed .nav-label,
 .sidebar.collapsed .nav-section-label,
+.sidebar.collapsed .brand-name,
+.sidebar.collapsed .brand-tag,
 .sidebar.collapsed .sidebar-footer .footer-text {
-  opacity: 0;
-  width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  pointer-events: none;
+  display: none;
 }
 
-.sidebar.collapsed .nav-link,
+/* The brand block is a wordmark + mark laid out as a row; at 56px it cannot sit
+   beside the toggle without colliding (that overlap is what the screenshot
+   showed). frontend-ai hides it entirely when collapsed — same here. */
 .sidebar.collapsed .sidebar-brand {
-  justify-content: center;
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-nav {
+  align-items: center;
+  padding-left: 0;
+  padding-right: 0;
+  overflow-x: hidden;
+}
+
+.sidebar.collapsed .nav-link {
+  width: 40px;
+  height: 40px;
+  padding: 0;
   gap: 0;
+  margin: 2px auto;
+  justify-content: center;
+  border-radius: 8px;
+  position: relative;
+  overflow: visible;
 }
 
-/* The rail still needs to say where you are. */
-.sidebar.collapsed .nav-link.active {
-  background: var(--accent-soft, rgba(99, 102, 241, 0.14));
+.sidebar.collapsed .nav-link .nav-icon {
+  margin: 0;
+  flex-shrink: 0;
 }
 
-/* Hovering a rail icon reveals its name — otherwise a collapsed sidebar is a
-   memory test. `title` alone is too slow (~1s OS delay) for a counter. */
-.sidebar.collapsed .nav-link { position: relative; }
+/* The 3px active bar is wider than the gutter at this width — the pill
+   background already says which item is active. */
+.sidebar.collapsed .nav-link.active::before {
+  display: none;
+}
+
+/* A rail of unnamed icons is a memory test, and native `title` waits ~1s —
+   too slow at a counter. */
 .sidebar.collapsed .nav-link:hover::after {
   content: attr(data-label);
   position: absolute;
@@ -358,10 +391,17 @@ img { display: block; max-width: 100%; }
   border-radius: 6px;
   padding: 4px 9px;
   font-size: 0.78rem;
+  color: var(--text);
   white-space: nowrap;
   z-index: 60;
   box-shadow: var(--shadow-sm);
   pointer-events: none;
+}
+
+.sidebar.collapsed .sidebar-footer {
+  padding-left: 0;
+  padding-right: 0;
+  align-items: center;
 }
 
 .sidebar-collapse-btn {
@@ -378,8 +418,19 @@ img { display: block; max-width: 100%; }
   background: var(--bg-2);
   color: var(--text-muted);
   cursor: pointer;
+  line-height: 1;
 }
 .sidebar-collapse-btn:hover { color: var(--text); }
+
+/* Collapsed: the brand is gone, so the toggle takes the header slot itself
+   rather than floating over whatever is behind it. */
+.sidebar.collapsed .sidebar-collapse-btn {
+  position: static;
+  width: 40px;
+  height: 40px;
+  margin: 8px auto 6px;
+  border-radius: 8px;
+}
 
 .main-area {
   flex: 1;
@@ -5900,4 +5951,34 @@ body.is-col-resizing * {
 
   /* The POS landscape overlay owns the screen. */
   body.pos-fullscreen .mobile-bottombar { display: none; }
+}
+
+/* ── Collapsed rail: footer ────────────────────────────────────────────────
+   Two defects the first pass left, both visible on /settings:
+
+   1. `.user-info` (business name + "Settings Menu") is a bare block in the
+      footer chip, so at 56px it wrapped and spilled out below the avatar.
+      It is the same fix as `.nav-label` — hide the text, keep the avatar.
+   2. `.profile-menu` is positioned `left:8px; right:8px`, i.e. it sizes itself
+      to the SIDEBAR. In a 56px rail that squeezed a nine-item account menu into
+      ~40px and stacked every label vertically. Anchored to the left edge with a
+      real width instead, so it floats OVER the page like a normal flyout. */
+.sidebar.collapsed .user-info {
+  display: none;
+}
+
+.sidebar.collapsed .user-chip {
+  justify-content: center;
+  gap: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.sidebar.collapsed .profile-menu {
+  left: calc(100% + 8px);
+  right: auto;
+  width: 232px;
+  /* The footer sits inside the sidebar, which is `overflow:hidden` when
+     expanded; the rail sets `overflow:visible` so this can escape. */
+  z-index: 80;
 }

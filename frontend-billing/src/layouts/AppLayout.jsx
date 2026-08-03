@@ -1927,6 +1927,7 @@ export default function AppLayout({ children, title }) {
                             key={label}
                             href={getAiDashboardUrl()}
                             className="nav-link"
+                            data-label={label}
                             onContextMenu={handleCtxMenu}
                             onClick={(e) => {
                               e.preventDefault()
@@ -1943,8 +1944,12 @@ export default function AppLayout({ children, title }) {
                             }}
                           >
                             <span className="nav-icon">{icon}</span>
-                            {label}
-                            {aiGated && (
+                            {/* Wrapped like the NavLink below. As a bare text
+                                node this was the one label the collapsed rail
+                                could not hide, so "Dashboard BIZASSIST" spilled
+                                out of the 56px rail. */}
+                            <span className="nav-label">{label}</span>
+                            {aiGated && !sidebarCollapsed && (
                               <span style={{
                                 marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 800,
                                 letterSpacing: '0.08em', padding: '2px 6px', borderRadius: 6,
