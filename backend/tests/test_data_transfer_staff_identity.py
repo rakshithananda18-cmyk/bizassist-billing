@@ -194,11 +194,19 @@ class TestATransferDoesNotDuplicateStaff:
         )
 
 
-class TestTheSupersededCopyIsMarked:
-    """`routes/migrate.py` is an older, unmounted copy of these endpoints whose
-    `_upsert_users` still has the defect — and, on SQLite, an
+class TestTheSupersededCopyIsGone:
+    """`routes/migrate.py` was an older, unmounted copy of these endpoints whose
+    `_upsert_users` still had the defect — and, on SQLite, an
     `INSERT OR REPLACE INTO users` that resolves on the PRIMARY KEY and would
-    overwrite an unrelated local user outright."""
+    overwrite an unrelated local user outright.
+
+    **Deleted 2026-08-03.** This class previously asserted the retained file
+    carried its `DO NOT REVIVE AS-IS` banner, which is the right test for a file
+    kept on purpose and a FileNotFoundError for one that is gone. What is
+    asserted now is the property that survives the file: it must not return, and
+    the matching logic must stay scoped to the destination owner (the tests
+    above this class).
+    """
 
     def test_it_is_not_mounted(self):
         src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -206,9 +214,22 @@ class TestTheSupersededCopyIsMarked:
         assert "data_transfer_router" in src
         assert "routes.migrate" not in src
 
-    def test_it_warns_against_being_revived_as_is(self):
+    def test_it_no_longer_exists(self):
+        """Two hazards died with it, and both are re-creatable from git history:
+
+        · `public_id` in `_upsert_users`' update fields — an import payload
+          could overwrite the destination business's BizID, the tenant identity
+          spine (core/identity.py).
+        · `INSERT OR REPLACE INTO users` — resolves on the PRIMARY KEY, so it
+          overwrites whichever local user happens to hold that integer.
+
+        `routes/data_transfer.py` has neither. If this file comes back, so do
+        they.
+        """
         p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
                          "routes", "migrate.py")
-        head = open(p, encoding="utf-8").read()[:2500]
-        assert "SUPERSEDED" in head and "DO NOT REVIVE AS-IS" in head
-        assert "INSERT OR REPLACE" in head
+        assert not os.path.exists(p), (
+            "routes/migrate.py has returned. It carries a BizID-overwrite and a "
+            "PK-resolved user upsert that data_transfer.py deliberately does "
+            "not. See docs/CLEANUP_PLAN_2026-07-31.md §1.2."
+        )

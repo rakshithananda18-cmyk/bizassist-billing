@@ -42,31 +42,34 @@ BACKEND = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # Modules that declare routes but are deliberately NOT mounted. Every entry
 # needs a reason, and ideally a removal date.
-ALLOWED_UNMOUNTED = {
-    "routes.migrate": (
-        "Deprecated predecessor of routes/data_transfer.py, retained for a "
-        "cleanup pass. Declares /api/migrate/* which is not served. See "
-        "docs/CLEANUP_PLAN_2026-07-31.md §1."
-    ),
-    # ── Found BY this gate on the day it was written, 2026-07-31 ─────────────
-    # Three more predecessors nobody had noticed. Every path each of them
-    # declares is also declared by a module that IS mounted, so none of them
-    # serves anything. Verified function-by-function — see the cleanup plan §1b.
-    "routes.insights": (
-        "Superseded by routes/ai_insights.py, which declares all 9 of its paths. "
-        "Function comparison: zero unmatched behavioural lines. Pending deletion."
-    ),
-    "routes.smart_insights": (
-        "Superseded by routes/ai_insights.py, which declares both its paths. "
-        "Function comparison: zero unmatched behavioural lines. Pending deletion."
-    ),
-    "routes.sales": (
-        "Superseded by core/api/sales.py, which declares all 4 of its paths and "
-        "is stricter (require_open_shift vs an optional shift). It also exposes "
-        "`uid_token` in invoice responses — the PUBLIC SHARE-LINK secret behind "
-        "GET /public/invoice/{uid_token} — which the live module does not. "
-        "Pending deletion; do not mount."
-    ),
+ALLOWED_UNMOUNTED: dict = {
+    # ── EMPTY, and that is the point ─────────────────────────────────────────
+    #
+    # This gate was written on 2026-07-31 and immediately found four orphaned
+    # route modules — `routes/migrate.py` plus three predecessors nobody had
+    # flagged (`insights`, `smart_insights`, `sales`). They were commented out
+    # that day and **deleted on 2026-08-03**, so nothing needs allow-listing any
+    # more.
+    #
+    # Two of them were not merely untidy, which is worth remembering before
+    # anything is added back here:
+    #
+    #   · `routes/migrate.py::_upsert_users` listed `public_id` in its update
+    #     fields, so an import payload could overwrite the destination
+    #     business's BizID — the tenant identity spine (core/identity.py).
+    #     `routes/data_transfer.py` deliberately excludes it.
+    #
+    #   · `routes/sales.py` returned `uid_token` on every invoice. That is the
+    #     share-link secret behind `GET /public/invoice/{uid_token}`, which
+    #     serves an invoice to anyone holding it, UNAUTHENTICATED.
+    #     `core/api/sales.py` does not expose it.
+    #
+    # An unmounted module is not harmless just because it cannot run today: it
+    # is a working implementation of a hazard, sitting one `include_router` away.
+    # If an entry is ever added here, give it a reason AND a removal date.
+    #
+    # Deletion is pinned by
+    # tests/test_staff_login_name_unique.py::TestTheSupersededModuleIsGone.
 }
 
 

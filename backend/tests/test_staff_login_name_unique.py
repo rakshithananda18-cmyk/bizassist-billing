@@ -205,53 +205,69 @@ class TestItIsWiredIntoTheBootPath:
         assert "_step(conn, _ensure_staff_login_name_unique_index)" in src
 
 
-class TestTheSupersededModuleIsDeprecatedNotSilent:
-    """`routes/migrate.py` is retained for a later cleanup pass, so it has to be
-    loud rather than merely stale."""
+class TestTheSupersededModuleIsGone:
+    """`routes/migrate.py` was DELETED on 2026-08-03.
+
+    WHAT THIS CLASS USED TO ASSERT, AND WHY IT CHANGED
+    --------------------------------------------------
+    While the file was retained it had to be *loud* — three tests read its
+    source and checked the deprecation banner, the two inline `⚠ DEPRECATED —
+    DEFECT` markers, and that the header named every hazard. Those tests were
+    the right ones for a file kept on purpose. They are meaningless for a file
+    that no longer exists, and leaving them would only fail on
+    FileNotFoundError, which says nothing.
+
+    They are replaced by the property that actually matters and outlives the
+    file: **it must not come back.** The module carried a live BizID-overwrite
+    hazard — `_upsert_users` listed `public_id` in its update fields, so an
+    import payload could overwrite the destination business's BizID, the tenant
+    identity spine (`docs/CLEANUP_PLAN_2026-07-31.md` §1.2). `data_transfer.py`
+    excludes it. Reviving this file, or copying `_upsert_users` out of git
+    history, reopens that.
+
+    The other tests in this class are unchanged and still meaningful: they check
+    the app does not mount it, no module imports it, no client calls
+    `/api/migrate/*`, and the live suites exercise `data_transfer` instead.
+    """
 
     def test_it_is_still_unmounted(self):
         src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "main_groq.py"), encoding="utf-8").read()
         assert "routes.migrate" not in src
 
-    def test_importing_it_warns(self):
-        p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
-                         "routes", "migrate.py")
-        src = open(p, encoding="utf-8").read()
-        assert "__deprecated__" in src
-        assert "DeprecationWarning" in src
-        assert "[DEPRECATED] routes.migrate was imported" in src
+    def test_the_file_is_gone_and_stays_gone(self):
+        """The deletion itself, pinned.
 
-    def test_both_defects_are_marked_at_the_lines_not_only_in_the_header(self):
-        """A header is easy to scroll past; the hazards have to sit on the lines
-        someone would copy.
-
-        The whole module was commented out on 2026-07-31 (dead-code pass), so the
-        inline markers are now DOUBLE-commented — `# # ⚠ DEPRECATED — DEFECT …`.
-        This assertion used to anchor on `strip().startswith("# ⚠ …")` and broke
-        the moment that happened. Match the marker wherever it sits in the line
-        instead of assuming its exact prefix, which is what a comment-out pass is
-        always free to change.
+        Not housekeeping: the file's `_upsert_users` could overwrite a
+        business's `public_id` — the BizID, which is the only identifier that
+        may cross a database boundary (core/identity.py). A file that cannot be
+        executed is safe; a file someone un-comments is not, and 1,080 lines of
+        commented-out code is an invitation.
         """
         p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
                          "routes", "migrate.py")
-        src = open(p, encoding="utf-8").read()
-        markers = [ln for ln in src.splitlines() if "⚠ DEPRECATED — DEFECT" in ln]
-        assert len(markers) == 2, markers
-        assert any("1 OF 2" in ln for ln in markers)
-        assert any("DANGEROUS" in ln for ln in markers)
+        assert not os.path.exists(p), (
+            "routes/migrate.py is back. It carries a BizID-overwrite hazard "
+            "(`public_id` in _upsert_users' update fields) that "
+            "routes/data_transfer.py deliberately excludes. Use data_transfer."
+        )
 
-    def test_the_dead_code_banner_names_every_hazard(self):
-        """The module is now commented out, so the banner at the top is what a
-        reader sees first — and it is the thing that has to stop them reviving
-        it. All three hazards must be named there, not only inline."""
-        p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
-                         "routes", "migrate.py")
-        head = open(p, encoding="utf-8").read()[:2200]
-        assert "DEAD CODE — COMMENTED OUT" in head
-        assert "public_id" in head          # BizID overwrite
-        assert "INSERT OR REPLACE" in head  # PK-resolved upsert
-        assert "username" in head           # staff duplication
+    def test_its_three_siblings_are_gone_too(self):
+        """`routes/{insights,smart_insights,sales}.py` went in the same pass.
+
+        `routes/sales.py` matters for the same reason as migrate.py rather than
+        for tidiness: it put `uid_token` in every invoice response. That is the
+        share-link secret behind `GET /public/invoice/{uid_token}`, which serves
+        an invoice to anyone holding it, unauthenticated. `core/api/sales.py`
+        does not expose it (CLEANUP_PLAN §1b).
+        """
+        routes = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
+                              "routes")
+        for name in ("insights.py", "smart_insights.py", "sales.py"):
+            assert not os.path.exists(os.path.join(routes, name)), (
+                f"routes/{name} is back — it is superseded and unmounted. "
+                "See docs/CLEANUP_PLAN_2026-07-31.md §1b."
+            )
 
     def test_the_live_tests_no_longer_exercise_the_dead_copy(self):
         """Testing an unmounted module is worse than not testing it — it reports
