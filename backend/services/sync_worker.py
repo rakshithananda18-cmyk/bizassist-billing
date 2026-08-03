@@ -420,17 +420,87 @@ def _release_push(business_id: int) -> None:
 # business) and stores it here via POST /api/sync/cloud-token. The worker then
 # authenticates pushes with the cloud's OWN token — no shared JWT_SECRET needed.
 # Falls back to the legacy self-signed token for shared-secret setups.
-# File lives in CWD: the app-data dir (packaged) / backend/ (dev).
 from pathlib import Path as _Path
 
-_TOKEN_FILE = _Path("cloud_sync_tokens.json")
+
+def _resolve_token_file() -> _Path:
+    """One location per INSTALL, not one per invocation directory (C-13 item 2).
+
+    This was `_Path("cloud_sync_tokens.json")` — relative, so it resolved against
+    whatever CWD the process happened to start in. In both real deployments that
+    was already correct (packaged: `server_entry` chdirs to BIZASSIST_DATA_DIR;
+    dev: uvicorn runs from `backend/`), so nothing about the running app changes
+    here.
+
+    What it fixes is every OTHER entry point. `_get_cloud_token` is called from
+    `core/identity.py`, `core/api/staff.py`, `routes/b2b_proxy.py` and two
+    scripts, and an audit or repair script imported from the repo root wrote a
+    SECOND, empty token file at the root — where `.gitignore` did not match it
+    until item 1 was fixed, one `git add -A` away from committing live cloud
+    bearer JWTs. Reproduced accidentally while writing the 08-03 audit.
+
+    Resolving absolutely means a script cannot create a stray store, and cannot
+    read an empty one and conclude the device has no token.
+    """
+    data_dir = os.environ.get("BIZASSIST_DATA_DIR")
+    if data_dir:
+        return _Path(data_dir) / "cloud_sync_tokens.json"
+    # Dev and scripts: backend/ is the parent of this services/ package. NOT cwd.
+    return _Path(__file__).resolve().parent.parent / "cloud_sync_tokens.json"
+
+
+_TOKEN_FILE = _resolve_token_file()
+
+# Last reported state of the store, so the line below is logged when the answer
+# CHANGES rather than on every read. `_load_token_map` runs on each sync tick
+# (15 s) — an unconditional log here is four entries a minute for ever, which is
+# how the real signal gets buried.
+_TOKEN_STORE_LAST_STATE: Optional[str] = None
+
+
+def token_store_path() -> _Path:
+    """Where THIS process reads cloud tokens from. Scripts should say it out
+    loud: 'no cloud token' and 'I looked in the wrong place' are the same
+    sentence to a user, and only one of them is worth acting on."""
+    return _TOKEN_FILE
+
+
+def _note_store_state(state: str, level, msg: str, *args) -> None:
+    global _TOKEN_STORE_LAST_STATE
+    if state == _TOKEN_STORE_LAST_STATE:
+        return
+    _TOKEN_STORE_LAST_STATE = state
+    level(msg, *args)
 
 
 def _load_token_map() -> Dict[str, str]:
-    try:
-        return json.loads(_TOKEN_FILE.read_text(encoding="utf-8"))
-    except Exception:
+    """Read the store. ABSENT and UNREADABLE are different answers (rule 33).
+
+    Both used to return `{}` silently, so a corrupt or permission-denied token
+    file was indistinguishable from a device that had simply never been
+    provisioned — and the visible symptom of both is "sync is quiet", which is
+    also what a healthy idle install looks like.
+    """
+    if not _TOKEN_FILE.exists():
+        _note_store_state(
+            "absent", logger.info,
+            "[SYNC_WORKER] No cloud token store at %s — no device provisioned "
+            "here yet. It is written at owner login.", _TOKEN_FILE)
         return {}
+    try:
+        m = json.loads(_TOKEN_FILE.read_text(encoding="utf-8"))
+    except Exception as e:
+        _note_store_state(
+            "unreadable", logger.error,
+            "[SYNC_WORKER] Cloud token store at %s could NOT be read (%s). This "
+            "is UNREADABLE, not empty — sync will now behave exactly as if no "
+            "device were provisioned. Fix or delete the file.", _TOKEN_FILE, e)
+        return {}
+    _note_store_state(
+        "ok", logger.info,
+        "[SYNC_WORKER] Cloud token store %s read — %s business(es) provisioned.",
+        _TOKEN_FILE, len(m))
+    return m
 
 
 def _save_token_map(m: Dict[str, str]) -> None:

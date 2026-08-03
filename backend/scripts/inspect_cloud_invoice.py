@@ -132,9 +132,15 @@ def _wake(url: str) -> None:
 def _fetch_cloud_snapshot(business_id: int, since: str, limit: int) -> dict:
     token = _get_cloud_token(business_id) or ensure_fresh_cloud_token(business_id)
     if not token:
+        # Name the file (C-13 item 3). "No cloud token" and "I read the wrong
+        # file" are the same sentence to whoever runs this, and only one of them
+        # is fixed by signing in.
+        from services.sync_worker import token_store_path
+        store = token_store_path()
         sys.exit(
-            "error: no cloud token for this business. It is written at owner "
-            "login — sign in to the app once, then re-run."
+            f"error: no cloud token for business {business_id}.\n"
+            f"  token store: {store} ({'exists' if store.exists() else 'DOES NOT EXIST'})\n"
+            "  It is written at owner login — sign in to the app once, then re-run."
         )
     print(f"   asking {CLOUD_URL} for changes since {since} (limit {limit}/table)…",
           file=sys.stderr)
