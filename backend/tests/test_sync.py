@@ -4,6 +4,8 @@ import uuid
 import json
 from datetime import datetime, timedelta
 
+import pytest
+
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 os.environ.setdefault("GROQ_API_KEY", "mock_groq_api_key")
 
@@ -27,6 +29,21 @@ def _signup(business_name):
     b = r.json()
     return {"headers": {"Authorization": f"Bearer {b['token']}"}, "bid": b["id"], "username": uname}
 
+_IS_SQLITE = SessionLocal().bind.dialect.name == "sqlite"
+
+
+@pytest.mark.skipif(
+    not _IS_SQLITE,
+    reason=(
+        "The outbox is a LOCAL-INSTALL concept and does not exist on the cloud. "
+        "`database/models.py::_queue_change` returns early unless the dialect is "
+        "sqlite ('Only queue if dialect is sqlite (local client)') — a Postgres "
+        "install IS the sync destination, so queueing there would mean the cloud "
+        "trying to push to itself. Asserting a SyncQueue row on Postgres tests a "
+        "state the product deliberately never reaches. Skipped with a reason "
+        "rather than hidden behind continue-on-error (CLEANUP_PLAN 6.2)."
+    ),
+)
 def test_sync_lifecycle():
     # 1. Sign up test business (local)
     local_user = _signup("Local POS Sync Shop")

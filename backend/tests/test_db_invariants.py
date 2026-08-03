@@ -60,9 +60,22 @@ def conn():
 def _biz(conn):
     """A users row to own the test rows. Needed now that FKs are enforced."""
     uname = f"inv_{uuid.uuid4().hex[:10]}"
+    # Explicit id, derived from MAX(id), rather than leaning on the PK default.
+    #
+    # On Postgres `users.id` is backed by a SEQUENCE, and sibling suites in the
+    # same session insert users with EXPLICIT ids — which does not advance it.
+    # The sequence therefore hands back an id that already exists and the insert
+    # dies on `pk_users` (observed in CI 2026-08-03: "Key (id)=(2) already
+    # exists"). SQLite's rowid picks MAX+1, so this never showed locally.
+    #
+    # The application path does not have this problem — `data_transfer.py`
+    # calls `_reset_sequences()` after any explicit-id import (see its own
+    # comment: "without this, the next cloud-side insert collides"). This is a
+    # fixture-only gap, so it is fixed here rather than in product code.
+    next_id = (conn.execute(text("SELECT MAX(id) FROM users")).scalar() or 0) + 1
     conn.execute(text(
-        "INSERT INTO users (username, password, business_name, role) "
-        "VALUES (:u, 'x', 'Invariant Co', 'owner')"), {"u": uname})
+        "INSERT INTO users (id, username, password, business_name, role) "
+        "VALUES (:i, :u, 'x', 'Invariant Co', 'owner')"), {"i": next_id, "u": uname})
     conn.commit()
     return conn.execute(text(
         "SELECT id FROM users WHERE username = :u"), {"u": uname}).scalar()
@@ -460,9 +473,15 @@ def test_index_refuses_to_install_over_existing_overlaps(conn):
     )
 
     # Resolve the overlap; now it installs.
+    # Match the timestamp by equality, not LIKE. `start_time` is a DateTime, and
+    # on Postgres `timestamp LIKE text` has no operator (`~~`) — it raises
+    # UndefinedFunction. SQLite stores it as text so LIKE happened to work, which
+    # is exactly the kind of SQLite-only assumption this suite now runs on
+    # Postgres to catch.
     conn.execute(text(
         "UPDATE register_shifts SET status='CLOSED', end_time='2026-07-26 21:00:00' "
-        "WHERE business_id = :b AND start_time LIKE '%09:00:00'"), {"b": bid})
+        "WHERE business_id = :b AND start_time = :t"),
+        {"b": bid, "t": "2026-07-26 09:00:00"})
     conn.commit()
     _ensure_single_open_shift_index(conn)
     assert _open_shift_index_exists(conn)

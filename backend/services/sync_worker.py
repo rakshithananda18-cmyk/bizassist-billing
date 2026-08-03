@@ -1440,7 +1440,15 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
                         from database.models import _row_to_dict
                         payload = json.dumps(_row_to_dict(obj), default=str)
                     db.execute(text(
-                        "INSERT OR IGNORE INTO sync_queue "
+                        # Plain INSERT, not `INSERT OR IGNORE`: that is SQLite-only
+                        # syntax and a hard SyntaxError on Postgres, which then
+                        # ABORTS THE WHOLE TRANSACTION (rule 58) — and the handler
+                        # below only logs, so every later statement on this session
+                        # died with InFailedSqlTransaction. Proven by CI on
+                        # 2026-08-03. `sync_queue` has no unique constraint, so
+                        # OR IGNORE never suppressed anything: dropping it is
+                        # behaviour-identical on SQLite and portable.
+                        "INSERT INTO sync_queue "
                         "(business_id, entity, entity_id, operation, payload, created_at) "
                         "VALUES (:bid, :ent, :eid, 'INSERT', :pay, :now)"
                     ), {"bid": business_id, "ent": table,
@@ -1476,7 +1484,15 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
                     # Ensure the correct parent uid is in the payload
                     pay_dict[uid_key] = correct_parent_uid
                     db.execute(text(
-                        "INSERT OR IGNORE INTO sync_queue "
+                        # Plain INSERT, not `INSERT OR IGNORE`: that is SQLite-only
+                        # syntax and a hard SyntaxError on Postgres, which then
+                        # ABORTS THE WHOLE TRANSACTION (rule 58) — and the handler
+                        # below only logs, so every later statement on this session
+                        # died with InFailedSqlTransaction. Proven by CI on
+                        # 2026-08-03. `sync_queue` has no unique constraint, so
+                        # OR IGNORE never suppressed anything: dropping it is
+                        # behaviour-identical on SQLite and portable.
+                        "INSERT INTO sync_queue "
                         "(business_id, entity, entity_id, operation, payload, created_at) "
                         "VALUES (:bid, :ent, :eid, 'UPDATE', :pay, :now)"
                     ), {"bid": business_id, "ent": table,
@@ -1669,7 +1685,10 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
                 from database.models import _row_to_dict
                 pay_dict = _row_to_dict(local_inv)
             db.execute(text(
-                "INSERT OR IGNORE INTO sync_queue "
+                # Plain INSERT — see the note at the `missing` queue site above:
+                # `INSERT OR IGNORE` is SQLite-only and aborts a Postgres
+                # transaction. sync_queue has no unique constraint to conflict on.
+                "INSERT INTO sync_queue "
                 "(business_id, entity, entity_id, operation, payload, created_at) "
                 "VALUES (:bid, 'invoices', :eid, 'UPDATE', :pay, :now)"
             ), {"bid": business_id, "eid": local_inv_id,
