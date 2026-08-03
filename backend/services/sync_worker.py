@@ -361,6 +361,23 @@ _SELF_SIGNED_REJECTED: Dict[int, bool] = {}
 # arrives (store_cloud_token) — i.e. the owner logs in again after an upgrade.
 _PLAN_BLOCKED: Dict[int, bool] = {}
 
+# Businesses whose PULL the cloud has rejected with 401. The push side has had
+# `_SELF_SIGNED_REJECTED` from the start; the pull side had nothing, and the
+# asymmetry showed:
+#
+#   push 401 -> flag set -> one ERROR, then quiet          (biz 133, 19:38:09)
+#   pull 401 -> retry forever -> an ERROR every cycle      (biz 126, 19:40, 19:43, …)
+#
+# Worse, the pull's own message promised a recovery it had just made impossible:
+# it called `_invalidate_cloud_token` (which DELETES the token) and then said
+# "will refresh next cycle" — but `ensure_fresh_cloud_token` opens with
+# `if not token: return None`. There was nothing left to refresh. A token can
+# only come back from an owner login, so that is what the log must say.
+#
+# Cleared by `store_cloud_token`, exactly like the two flags above: a re-login
+# is how a device resumes.
+_PULL_AUTH_BLOCKED: Dict[int, bool] = {}
+
 # ── Push tuning ──────────────────────────────────────────────────────────────
 # A cold free HF Space (CPU tier, embedding model loading on boot) can take far
 # longer than 10 s to apply a batch. The old flat 10 s read timeout aborted the
@@ -431,6 +448,7 @@ def store_cloud_token(business_id: int, token: str) -> None:
     # pause — a re-login is exactly how an upgraded account resumes sync.
     _SELF_SIGNED_REJECTED.pop(business_id, None)
     _PLAN_BLOCKED.pop(business_id, None)
+    _PULL_AUTH_BLOCKED.pop(business_id, None)
     logger.info("[SYNC_WORKER] Cloud sync token stored for business %s", business_id)
 
 
@@ -2903,6 +2921,17 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
     if not do_pull:
         return
 
+    # The cloud has already refused this business's credentials and the token was
+    # dropped. Only an owner login can mint another (`store_cloud_token` clears
+    # this flag), so re-asking every cycle cannot succeed — it just writes an
+    # ERROR every couple of minutes until the real signal is indistinguishable
+    # from the noise, and spends a request per business per cycle doing it.
+    if _PULL_AUTH_BLOCKED.get(business_id):
+        logger.debug(
+            "[SYNC_WORKER] pull skipped for business_id=%s — awaiting a cloud "
+            "token; sign in on this device to resume.", business_id)
+        return
+
     # 3. Pull updates from cloud  (only when explicitly requested, do_pull=True)
     try:
         # (R-2) Use the CLOUD-clock cursor captured from the previous pull's
@@ -2927,8 +2956,18 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
 
         resp = httpx.get(f"{CLOUD_URL}/api/sync/pull", params=params, headers=headers, timeout=_PULL_TIMEOUT)
         if resp.status_code == 401:
+            # Drop the dead token, THEN stop asking. `_invalidate_cloud_token`
+            # removes it entirely, and `ensure_fresh_cloud_token` returns None
+            # when there is no token — so the old message here ("will refresh
+            # next cycle") described a recovery that could not happen, and the
+            # pull retried for ever. Only a login mints a new one.
             _invalidate_cloud_token(business_id)
-            raise Exception("HTTP 401: token rejected by cloud — will refresh next cycle")
+            _PULL_AUTH_BLOCKED[business_id] = True
+            raise Exception(
+                "HTTP 401: token rejected by cloud — the stored token has been "
+                "dropped and pull is PAUSED for this business. It resumes when "
+                "the owner signs in on this device (which provisions a fresh "
+                "cloud token); it will NOT recover on its own.")
         if resp.status_code != 200:
             raise Exception(f"HTTP {resp.status_code}: {resp.text}")
 
