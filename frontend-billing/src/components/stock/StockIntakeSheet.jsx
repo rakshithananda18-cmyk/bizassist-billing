@@ -650,6 +650,14 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
         if (row._type === 'new') {
           const createRes = await authFetch('/billing/products', {
             method: 'POST',
+            // Idempotency, same wall the adjustment below uses. The `:product`
+            // suffix is load-bearing: IdempotencyKey is UNIQUE(business_id,
+            // client_request_id) and is NOT scoped by path, so sending the bare
+            // row key here would make the stock adjustment replay THIS response
+            // and silently record no stock at all.
+            headers: row._idempotency_key
+              ? { 'X-Client-Request-Id': `${row._idempotency_key}:product` }
+              : {},
             body: JSON.stringify({
               name: row.name.trim(),
               barcode: row.barcode || null,

@@ -16,6 +16,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { CloseIcon, PlusIcon, InventoryIcon, SearchIcon, SyncIcon } from '../Icons'
+import { newClientRequestId } from '../../sync/uuid'
 
 // ─────────────────────────── constants / helpers ─────────────────────────────
 
@@ -157,9 +158,18 @@ export default function BulkAddProductsModal({ open, onClose, onSaved, existingP
       const dup = dupReason(r)
       if (dup) { next[i] = { ...r, _status: `skipped — ${dup}` }; setAddRows([...next]); continue }
       next[i] = { ...r, _status: 'saving' }; setAddRows([...next])
+      // One key per ROW, minted on first attempt and kept on the row so a retry
+      // of a failed row reuses it. Without this, "Save all" after a partial
+      // failure re-created every row that had actually succeeded but whose
+      // response never arrived.
+      if (!r._idempotency_key) {
+        r._idempotency_key = newClientRequestId()
+        next[i] = { ...next[i], _idempotency_key: r._idempotency_key }
+      }
       try {
         const res = await authFetch('/billing/products', {
           method: 'POST',
+          headers: { 'X-Client-Request-Id': r._idempotency_key },
           body: JSON.stringify({
             name: r.name.trim(),
             description: r.description || null,

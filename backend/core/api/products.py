@@ -230,8 +230,30 @@ def create_product(
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_active_user),
     db: Session = Depends(get_db),
+    guard: ReplayGuard = Depends(replay_guard),
 ):
-    """Create a new product in the catalogue."""
+    """Create a new product in the catalogue.
+
+    Idempotent on the X-Client-Request-Id header — the same wall
+    `stock_adjustment` has used since it was written.
+
+    WHY THIS WAS ADDED (2026-08-04). It was the only unguarded half of a
+    two-step operation. `StockIntakeSheet` saves a new row by calling THIS
+    endpoint and then `/stock/adjustment`; the second call carried a per-row
+    idempotency key and this one carried nothing. So a double-click, a flaky
+    connection, or an offline outbox replay created a SECOND product with the
+    same name, and only the stock movement was deduplicated. `products` has no
+    unique constraint on (business_id, name) — `services/sync_worker` matches
+    products by name precisely because none exists — so nothing downstream
+    caught it either.
+
+    That is the reported "save is saving multiple times", and it compounded:
+    there is no delete route, so the duplicates could not be removed once made.
+    """
+    hit = guard.replay()
+    if hit is not None:
+        return hit
+
     bid = current_user["id"]
 
     attrs = req.attributes or {}
@@ -296,7 +318,10 @@ def create_product(
     db.refresh(p)
     logger.info("[PRODUCTS] created product %s (biz=%s)", p.id, bid)
     barcodes = PB.list_barcodes(db, bid, p.id)
-    return _product_out(p, include_barcodes=True, barcodes=barcodes, db=db)
+    return guard.store(
+        _product_out(p, include_barcodes=True, barcodes=barcodes, db=db),
+        status_code=201,
+    )
 
 
 @router.get("/products/{product_id}")

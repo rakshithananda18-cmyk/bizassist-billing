@@ -9,6 +9,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
+import { newClientRequestId } from '../../sync/uuid'
 import { CloseIcon, InventoryIcon } from '../Icons'
 import { useConfirm } from '../../contexts/ConfirmContext'
 import { diffFields, summariseFields, isDirty } from '../../utils/diffFields'
@@ -90,6 +91,10 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
   const [barcodes, setBarcodes] = useState([])      // edit mode: existing barcodes
   const [newBarcode, setNewBarcode] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // One idempotency key per create ATTEMPT-SEQUENCE, not per render and not per
+  // click: a retry after a timeout must reuse it (that is the whole point), and
+  // a fresh key is only minted once a create has actually succeeded.
+  const createKeyRef = useRef(newClientRequestId())
   const [error, setError] = useState(null)
   // Snapshot of the form as first loaded — the baseline for the change diff and
   // the "discard unsaved changes?" check.
@@ -207,6 +212,11 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
       } else {
         res = await authFetch('/billing/products', {
           method: 'POST',
+          // Idempotency key held in a ref, so it survives re-renders and a
+          // FAILED attempt keeps the same key — a retry after a timeout is the
+          // case that used to create a second product. Reset only once the
+          // create succeeds (below), so the next "Add product" gets a new key.
+          headers: { 'X-Client-Request-Id': createKeyRef.current },
           body: JSON.stringify({
             ...payload,
             barcode: form.barcode || null,
@@ -221,6 +231,11 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
         throw new Error(err.detail || 'Save failed.')
       }
       const savedProd = await res.json().catch(() => ({}))
+      // Rotate the key only on SUCCESS. Rotating on every attempt would defeat
+      // the guard (a retry would look like a new product); never rotating would
+      // make a second "Add product" in the same mounted modal replay the first
+      // one's response and appear to save while creating nothing.
+      if (!isEdit) createKeyRef.current = newClientRequestId()
       try {
         Object.keys(localStorage).filter(k => k.includes('cache_') && k.includes('products')).forEach(k => localStorage.removeItem(k))
         window.dispatchEvent(new CustomEvent('bizassist:products_updated'))
