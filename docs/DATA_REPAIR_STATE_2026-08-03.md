@@ -409,6 +409,86 @@ export BIZASSIST_AUDIT_DATABASE_URL="postgresql://…"
 
 ---
 
+## 5b. Worked example — `synced_at` does not mean applied (2026-08-03 20:25–21:00)
+
+The clearest demonstration this project has of `DATA_ARCHITECTURE` §2.3, observed
+live on business 133 (BA-Y0DAFT) while restoring sync after the token expiry.
+
+### The stall
+
+72 outbox rows, all `invoice_line_items`, retrying every ~45 s behind an HTTP 500:
+
+```
+overfill guard: line items for invoices 821 would total 565.65,
+exceeding the billed amount 310.22
+```
+
+The guard was **right** — the row is a phantom line on a locally-overfilled
+invoice. The defect is that refusing one row killed the batch: see C-7 in
+[`PLATFORM_STATE_AND_PENDING_WORK_2026-08-03.md`](PLATFORM_STATE_AND_PENDING_WORK_2026-08-03.md),
+where this is recorded as a **dialect** bug (`RaiseException` is `InternalError`
+on Postgres, `IntegrityError` on SQLite, and only the latter is caught per row).
+
+### What was done, and what each step proved
+
+| Action | Result |
+|---|---|
+| Marked **25** rows refused (line items on the 8 overfilled invoices), with a reason on each | Unblocked the queue; **47** pushed, **37** delivered |
+| Queued `register_shifts#2` (uid `c7704bac…`) — **never queued in its life** | ✅ Landed on the cloud as id 31. A genuine M-20a gap, now closed |
+| Queued `customers#58` — also never queued | ✅ Landed |
+| Re-queued the 6 parent invoices 821–826 | ❌ **Acked and lost — again** |
+
+### The finding
+
+The six invoices are stamped `synced_at` locally and are **absent on the cloud**,
+verified by querying Supabase directly rather than trusting the flag. The cause
+is a numbering collision — both sides minted the same numbers for *different*
+documents while sync was down:
+
+| Number | LOCAL uid | CLOUD uid |
+|---|---|---|
+| LCL-OW-0024 | `32723a94…` | `66db68e4…` |
+| LCL-OW-0025 | `772b4130…` | `ee441452…` |
+| LCL-OW-0026 … 0029 | all differ | all differ |
+
+`invoices UNIQUE (business_id, invoice_id)` rejects the local row; the rejection
+is **acked on purpose** (`routes/sync.py:753`, *"ack either way so it isn't
+re-sent every cycle"* — M-13, because refusing would stall the outbox behind an
+unappliable row); `synced_at` is stamped; the row leaves the outbox; the invoice
+is silently absent on the cloud. Its line items then defer for ever on a parent
+that will never arrive.
+
+**Nothing here is a new bug.** It is the documented M-13 trade-off meeting a real
+divergence, and the outcome is exactly what §2.3 predicted.
+
+### The blind spot worth remembering
+
+An **acked-but-absent parent** is invisible to every recovery path:
+
+* `find_unqueued_syncable_rows` / `POST /api/sync/heal` — defines missing as
+  *never queued*. These were queued. **It cannot see them.** (It *did* correctly
+  find the shift and the customer.)
+* `CHILD_SPECS` parity — compares `invoice_line_items` and `invoice_payments`
+  only. Never invoices.
+* The **presence sweep** added 2026-08-03 (C-5) — *does* detect it, and
+  deliberately does not repair.
+
+So today the only thing that would have surfaced these six is a detection-only
+sweep. That is the argument for finishing C-5's repair story, carefully.
+
+### Resolution
+
+`scripts/resolve_duplicate_invoice_numbers.py`, with the owner present — a number
+printed on a customer's copy must not be silently reassigned, and here there are
+documents on **both** sides holding each number. It also clears the `LCL-OW-0006`
+duplicate blocking the M-3 unique index, which is the same divergence one step
+earlier.
+
+**State at the end:** 62 of 72 delivered; 10 line items correctly held and
+visible; 6 invoices blocked on the numbering decision; sync otherwise healthy.
+
+---
+
 ## 6. One-line summary
 
 **The cloud is measured and mostly healthy** — 47 journal-less documents, 31
