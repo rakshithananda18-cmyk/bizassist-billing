@@ -338,6 +338,24 @@ rather than in production.
 > reason. **Do not add `continue-on-error`** — a green tick over a suite that
 > cannot pass is the exact failure mode `CLEANUP_PLAN` §6.2 and rule 33 are about.
 
+> ### ✅ VERIFIED GREEN 2026-08-04 — the caveat above is closed
+>
+> It did not go red. On `8c4fa4b` (CI Pipeline #163, push to `main`), the
+> `backend-tests` job reports:
+>
+> ```
+> success   Run Postgres RLS Tests
+> success   Run Financial Invariants on Postgres (cross-dialect drift guard)
+> success   Run Sync & Tenant Suites on Postgres (finding-17 class guard)
+> ```
+>
+> So the Postgres half of `ensure_tenant_fks` — which §2 records as *"never
+> executed anywhere, including CI"* — has now executed, and it installs cleanly.
+> **§10 question 3 is answered: yes.**
+>
+> Recorded rather than assumed: this was read from the GitHub Actions job steps,
+> not inferred from the workflow file.
+
 ---
 
 ## 8. Recommendation
@@ -406,8 +424,14 @@ permanent.
 
 1. ~~Is the Supabase/HF data genuinely disposable?~~ **ANSWERED 2026-08-03: no — repair, not wipe.** (§6.2)
 2. **Is there a pilot or demo tenant** anyone is currently showing to customers?
-3. **Does §7's CI step pass on Postgres?** Unverified here; the first run answers it.
+3. ~~Does §7's CI step pass on Postgres?~~ **ANSWERED 2026-08-04: yes, green on `8c4fa4b`.** See the verification block in §7.
 4. **Is Option C worth a timeboxed spike now** (§6.3), given it is affordable
    only in this window?
 5. **What is the local-at-rest encryption decision** (C-1)? It must be answered
    *before* Option B, because Option B forecloses the cheap answer.
+   **Design landed 2026-08-03** in
+   [`DECISION_LOCAL_DB_ENCRYPTION_2026-08-03.md`](DECISION_LOCAL_DB_ENCRYPTION_2026-08-03.md);
+   owner positions and recommendations recorded in its §8 on 2026-08-04.
+   Sequencing decided there: **repairs first, encryption after.** The §4.4
+   SQLCipher argument is therefore only one of several supports for rejecting
+   Option B, and the rejection stands however C-1 is finally decided.

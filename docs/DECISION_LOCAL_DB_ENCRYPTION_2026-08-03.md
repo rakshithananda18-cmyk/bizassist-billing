@@ -257,6 +257,131 @@ invocation directory. Same data dir, same class of problem, same fix.
 
 ## 8. Open questions — these are yours, and they change the design
 
+> ### 📌 OWNER POSITIONS + RECOMMENDATIONS — recorded 2026-08-04, not yet executed
+>
+> Raised with the owner. Their position is recorded verbatim in intent; the
+> recommendation is mine. **Nothing here has been built** — this section exists so
+> the reasoning is not re-derived from scratch when the work starts.
+>
+> ---
+>
+> **Q1 — recovery code. Owner asked: does this break using the app on multiple
+> devices, and should we add OTP / WhatsApp login? Budget is free-tier.**
+>
+> *The premise does not apply.* Encryption does not affect multi-device at all,
+> because **the devices never share a database file**. Every install has its own
+> SQLite file and they exchange rows through cloud sync (push/pull). Device B
+> never opens device A's file. The only case that breaks is restoring a file
+> backup onto a different Windows account or machine.
+>
+> **RECOMMENDED — split the answer by hosting mode, because the recovery already
+> exists for half of them:**
+>
+> | Business | Recovery path | Friction |
+> |---|---|---|
+> | **Hybrid** (cloud sync on) | Reinstall, sign in, sync restores it — *works today* | **None. Do not show a code at all** |
+> | **Local-only** (`hosting_mode: None`) | Recovery code, shown once | Only these owners ever see it |
+>
+> To remove even that: **escrow the recovery key on the cloud account for hybrid
+> businesses.** The cloud already holds every one of their invoices, so a key blob
+> beside it adds **zero** new exposure, and recovery becomes "sign in".
+>
+> **REJECTED — OTP / WhatsApp / SMS login for this purpose.** It solves
+> *authentication* (proving who you are at login), which already exists. This is
+> *key recovery* (getting a secret back), which OTP does not address: a thief
+> holding the laptop and phone passes the OTP, and an honest owner with a wiped PC
+> still has no key. WhatsApp Business API and SMS both bill per message — real
+> money, on a free tier, for something that does not solve the problem. If
+> stronger login is wanted later, **TOTP already works in the admin console**
+> (authenticator app, no per-message cost); extend that rather than buying SMS.
+>
+> ---
+>
+> **Q2 — startup passphrase. Owner's position: secure our app rather than the
+> whole machine, and record every action with who and when.**
+>
+> **AGREED, and it is the right threat model for this product.** A passphrase buys
+> protection against a stolen powered-on PC and costs silent sync death after
+> every power cut — a bad trade on a shop till.
+>
+> **RECOMMENDED — do not build wrapping 3 (§4). Invest in the trail instead**,
+> which is further along than the audit records: `database/models.py::TableAlteration`
+> already stores `username · user_id · public_id (BizID) · table_name · action ·
+> record_id · old_values · new_values · created_at` — who, what, which row, before
+> and after, when — and the `record_id = NULL` defect that made every INSERT
+> unattributable is fixed.
+>
+> Three cheap follow-ups, in order:
+> 1. **Verify coverage of the actions that matter** — voids, refunds, discounts,
+>    price changes, shift close, staff creation, settings changes. The trail is
+>    driven by ORM flushes, so **auth events are probably absent** (a login is not
+>    a table write) and "who was logged in at 3pm" is usually the first question
+>    asked. Unverified — check before relying on it.
+> 2. **Surface it in the UI.** A log nobody can read is a log nobody uses.
+> 3. **Keep it local and append-only.** Its removal from `MODEL_MAP` was correct —
+>    replicated rows carried cloud integers that read as the wrong business.
+>
+> ---
+>
+> **Q3 — sequencing against the repair backlog. Owner asked for a recommendation.**
+>
+> **RECOMMENDED — repairs FIRST, encryption after.**
+>
+> * The repair work is live and known (six open items in
+>   [`DATA_REPAIR_STATE_2026-08-03.md`](DATA_REPAIR_STATE_2026-08-03.md)); the
+>   scripts work today and encryption breaks all 8 of them on day one.
+> * The window does not close. "Only affordable with no installed base" holds
+>   until launch, so encryption can follow repairs by weeks and lose nothing.
+> * The reverse order blocks urgent work behind non-urgent work: 8 scripts
+>   rewritten before a single broken invoice can be touched.
+>
+> **When encryption is built, route all 8 scripts through ONE shared opener**
+> rather than each calling `sqlite3.connect()`. Then the key is taught to one
+> function, not eight — the same "one gate, not one call site per endpoint" lesson
+> already recorded as C-4.
+>
+> ---
+>
+> **Q4 — support's recovery story. Owner asked for a recommendation.**
+>
+> **RECOMMENDED, two parts:**
+> 1. **Nudge local-only businesses onto hybrid, framed as BACKUP rather than
+>    sync.** "Your books are safe if this PC dies" is what a shop owner responds
+>    to, and it makes Q1 and Q4 disappear for everyone who accepts.
+> 2. **Add an export-backup file encrypted with a password the owner chooses.**
+>    Machine-independent, so it restores anywhere — precisely what a DPAPI-bound
+>    key is not. Worth building even if the live database is never encrypted.
+>
+> Then write the phone answer down **before** the first person has to say it.
+>
+> ---
+>
+> **Q5 — does declining C-1 reopen local Postgres? Owner's reason for asking: they
+> had read Postgres is better than SQLite, and it is already the cloud engine.**
+>
+> Postgres *is* the better database **for the job Postgres does** — many clients
+> over a network, one server, an administrator. That is the cloud, and it is the
+> right choice there. A shop counter is the opposite job: one process, one
+> machine, nobody administering it, must survive a power cut. SQLite is the most
+> widely deployed database in the world for exactly that shape.
+>
+> The dialect-drift pain behind the question is real (every money rule written
+> twice; 52 dialect-conditional branches; one `DATETIME` token once took the cloud
+> down). **But that benefit has already been banked** — as of 2026-08-03 CI runs
+> the money, sync, tenant-FK and migration suites against real Postgres and they
+> pass, which catches drift at the point of change. See §7 of
+> [`DECISION_LOCAL_POSTGRES_2026-08-03.md`](DECISION_LOCAL_POSTGRES_2026-08-03.md).
+>
+> And the deciding fact is unchanged: **same engine still does not mean same ids.**
+> A business would remain `7` locally and `42` on the cloud, and every piece of the
+> BizID machinery would stay exactly as it is.
+>
+> **RECOMMENDED — SQLite stays on the till.** Optionally make Postgres the local
+> *dev* default (one environment variable, reversible, customers untouched) to feel
+> drift sooner. The §4.4 SQLCipher argument is now only one of several supports for
+> that rejection, so the rejection stands regardless of how C-1 is decided.
+
+
 1. **Is the recovery code acceptable as a setup step?** It adds friction to
    first-run and it is the only thing standing between a Windows reinstall and a
    shop losing its books. If it is unacceptable, encryption should not ship —
