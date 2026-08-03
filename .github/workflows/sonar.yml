@@ -29,9 +29,30 @@ jobs:
           pip install pytest-cov
 
       - name: Run Backend Tests with Coverage
+        # `-n auto --dist loadscope` is NOT a speed tweak here, it is the only
+        # supported way to run this suite — the same flags ci.yml and
+        # `run_tests.ps1 -Fast` use, and for the reason ci.yml already states:
+        # conftest.py keys the SQLite file on the xdist worker id
+        # (test_bizassist_gw0.db, gw1, …), so each worker gets its OWN database
+        # and --dist loadscope keeps a whole module on one worker.
+        #
+        # Run serially, all 2050 tests share a single test_bizassist.db and
+        # accumulate each other's state. 28 of them then fail on fixed-identity
+        # collisions across modules — `admin` and `own_totp_owner` are signed up,
+        # force-logged-out and token-version-bumped by one module and expected
+        # intact by the next (test_backend, test_admin_console_sso,
+        # test_review1_hardening, test_totp_and_metrics, test_invoice_account).
+        # Reproduced locally: 28 failed / 2020 passed serial, 2050 passed with
+        # these flags, same commit.
+        #
+        # That is why this job has been red since it was added while the
+        # identical suite was green in ci.yml: the scan never ran at all, it was
+        # skipped behind a test step failing on its invocation rather than on
+        # the code. pytest-cov combines the per-worker coverage data itself, so
+        # the XML the scanner uploads is unaffected.
         run: |
           cd backend
-          python -m pytest -q --ignore=tests/test_rls_postgres.py --cov=. --cov-report=xml
+          python -m pytest -q -n auto --dist loadscope --ignore=tests/test_rls_postgres.py --cov=. --cov-report=xml
         env:
           # DATABASE_URL is deliberately NOT set here. tests/conftest.py owns it:
           # it resolves a per-xdist-worker SQLite file (or honours
