@@ -227,6 +227,37 @@ data:
 > once and removes the "which of two payments actually happened at the counter"
 > question entirely, because nothing happened at any counter.
 
+> ## ✅ DECIDED 2026-08-03 — **REPAIR, NOT WIPE**
+>
+> Owner's call: take the repair path. **This section does not apply and the wipe
+> must not be run.** `SYNC_LIVENESS_AUDIT_2026-07-31.md` §7b.7 is the procedure,
+> and the six data items above stay open until it is executed.
+>
+> **Two consequences, because they change other decisions:**
+>
+> 1. **Option C (§6.3) is no longer a free schema change.** Its 3 → 7.5 re-score
+>    assumed an empty database. With data that must survive, a uid-PK change
+>    needs a real migration again — still far cheaper than post-launch, but not
+>    near-zero. **Re-rate it ≈ 6.0 as a next step**, and treat that spike as
+>    genuinely optional rather than obviously worth doing.
+> 2. **Every repair runs against BOTH databases, separately.** There are still no
+>    tombstones (A-1), and the repair scripts delete over raw connections so
+>    `Mapper.after_delete` never fires and no DELETE is queued. A row removed on
+>    one side stays on the other indefinitely. The runbook's "run it on both
+>    databases" is not caution — it is the missing feature written down as a
+>    procedure.
+>
+> **Blocker list refreshed 2026-08-03 — it was stale, in the good direction:**
+>
+> | Script | §7b.7 said | Verified state |
+> |---|---|---|
+> | `clear_staff_bizids.py` | "no `--db`, cannot touch the cloud" | **Has `--db`** (added in `feb0c5f`), plus `--apply` and `--i-have-a-restorable-backup` |
+> | `audit_payment_attachment.py` | listed as `--db`-less | **By design** — takes `--local` / `--cloud`, read-only on both, has no `--apply` and cannot acquire one |
+> | `prune_unused_staff.py` | — | Still no `--db`. Not in the repair path; needs cloud-tombstone coordination first |
+> | 4 open shifts (biz 42) | "not a script's job" | **Unchanged.** `closing_cash_actual` is a COUNT, not a calculation — close them from the register screen |
+>
+> The original pre-conditions below are kept for the record only.
+
 **I have not done this and am not recommending it blind.** Two things to confirm
 first, because the action is irreversible:
 
@@ -317,7 +348,7 @@ rather than in production.
 | **CI on Postgres (§7)** | **Yes, now.** Hours of work, most of the benefit, zero customer risk |
 | **SQLCipher (C-1)** | **Yes, now.** Only affordable while there is no installed base |
 | **Option C — uid PKs (§6.3)** | **Spike now, decide before first paying install.** This is what actually ends the divergent-id problem |
-| **Wipe and reseed (§6.2)** | **Probably — pending your confirmation.** Closes six open data items at once |
+| ~~Wipe and reseed (§6.2)~~ | **REJECTED 2026-08-03 — repair instead.** Six data items stay open; §7b.7 is the path, run on both databases |
 | **Option A** | **Unchanged: do it.** Required under every option |
 
 If Postgres locally is still wanted after this, take it in two reversible steps
@@ -373,7 +404,7 @@ permanent.
 
 ## 10. Open questions for the owner
 
-1. **Is the Supabase/HF data genuinely disposable?** (§6.2 — gates six items.)
+1. ~~Is the Supabase/HF data genuinely disposable?~~ **ANSWERED 2026-08-03: no — repair, not wipe.** (§6.2)
 2. **Is there a pilot or demo tenant** anyone is currently showing to customers?
 3. **Does §7's CI step pass on Postgres?** Unverified here; the first run answers it.
 4. **Is Option C worth a timeboxed spike now** (§6.3), given it is affordable
