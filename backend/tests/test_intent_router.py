@@ -298,9 +298,50 @@ def _run_eval():
     return correct / len(_EVAL_CASES), lines
 
 
+# Building the real router DOWNLOADS the MiniLM weights from huggingface.co the
+# first time. `importorskip` below covers the library being absent but not the
+# weights being unreachable, so a Hub outage or — as happened on main at
+# d156230, [gw2] — a plain HTTP 429 from a shared CI runner IP turned somebody
+# else's rate limit into a red build on our default branch.
+#
+# Skipping is the honest outcome and it is the same judgement `importorskip`
+# already makes one line down: if the model cannot be loaded, this test has not
+# measured anything, so it must not report a verdict either way. What it must
+# NOT do is skip on a real failure, so only fetch-shaped errors qualify and
+# everything else re-raises with its original traceback.
+_FETCH_FAILURE_MODULES = ("huggingface_hub", "httpx", "requests", "urllib3", "socket")
+_FETCH_FAILURE_MARKERS = (
+    "429", "too many requests", "rate limit", "503", "504",
+    "couldn't connect", "could not connect", "connection", "timed out",
+    "timeout", "offline", "temporarily unavailable", "max retries",
+)
+
+
+def _is_weights_unavailable(exc: BaseException) -> bool:
+    """True when the failure is FETCHING the weights, not using them."""
+    for e in (exc, exc.__cause__, exc.__context__):
+        if e is None:
+            continue
+        if type(e).__module__.split(".")[0] in _FETCH_FAILURE_MODULES:
+            return True
+        if any(m in str(e).lower() for m in _FETCH_FAILURE_MARKERS):
+            return True
+    return False
+
+
 def test_semantic_router_eval_accuracy(capsys):
     pytest.importorskip("sentence_transformers")
-    accuracy, lines = _run_eval()
+    try:
+        accuracy, lines = _run_eval()
+    except Exception as e:
+        if not _is_weights_unavailable(e):
+            raise
+        pytest.skip(
+            f"MiniLM weights could not be fetched ({type(e).__name__}: "
+            f"{str(e).strip().splitlines()[0][:160]}). The eval measures the "
+            "REAL encoder, so an unreachable Hub means no measurement — not a "
+            "failing router."
+        )
 
     # Always surface the real number + breakdown (visible with `pytest -s`).
     report = f"\n[intent_router eval] accuracy = {accuracy:.0%} on {len(_EVAL_CASES)} cases\n" + "\n".join(lines)
@@ -309,4 +350,27 @@ def test_semantic_router_eval_accuracy(capsys):
 
     # Floor only — this is a measuring instrument, not the cutover gate. We read
     # the printed number to decide threshold/seed tuning before wiring it in.
+    #
+    # NB: outside the try above on purpose. A router that loads fine and scores
+    # badly is a RESULT, and must fail — only fetching the weights may skip.
     assert accuracy >= 0.95, report
+
+
+def test_only_fetch_failures_downgrade_the_eval_to_a_skip():
+    """Pins the guard so it cannot rot into a blanket 'ignore failures'.
+
+    The whole risk of skipping on an exception is that it also hides the bugs
+    you wanted the test to catch. These are the four cases that matter."""
+    class _HubError(Exception):
+        pass
+    _HubError.__module__ = "huggingface_hub.errors"
+
+    # Unreachable weights — skip.
+    assert _is_weights_unavailable(_HubError("429 Client Error: Too Many Requests"))
+    assert _is_weights_unavailable(RuntimeError("We couldn't connect to huggingface.co"))
+
+    # Our own code being broken — must still fail the build.
+    assert not _is_weights_unavailable(
+        AttributeError("'SemanticRouter' object has no attribute 'classify'"))
+    assert not _is_weights_unavailable(
+        ValueError("seed set is empty — the router has nothing to match against"))
