@@ -353,9 +353,9 @@ documents say is pending but is actually **done** (§4.2), and what is pending a
 | A-7 | Repair `e10f6d92` and `6326fb2a` on the cloud; run §7b.7 runbook | SYNC_AUDIT §7b.7 | **Unknown — could not verify.** Needs the real databases (§0.1). |
 | A-8 | 8 invoices with no customer link (4 relinkable, 4 need a human) | CLEANUP §0a-1 | **Unknown — could not verify.** Production data. |
 | A-9 | 59 sync conflicts awaiting owner review | CLEANUP §0a-3 | **Unknown — could not verify.** Production data. |
-| A-10 | Delete the 4 orphan route modules + 19 orphan frontend files | CLEANUP §1, §1b, §1c | **Open.** All still present: `routes/{migrate,insights,smart_insights,sales}.py`; `pages/B2BNetwork.jsx` (599 L), `pages/B2BOrders.jsx` (697 L), `components/b2b/CatalogOrderModal.jsx` (215 L), `pages/Staff.jsx` (379 L), `components/Money.jsx`, `api/b2bClient.js`. |
-| A-11 | Root-level ad-hoc scripts (`check_db.py`, `debug_*.py`, `repair_line_items.py`) | CLEANUP §4 | **Open.** All still at repo root. |
-| A-12 | `create_direct_connection` — decide against the B2B flow | CLEANUP §2 | **Open.** Still defined, still 0 callers outside its definition. |
+| A-10 | Delete the 4 orphan route modules + 19 orphan frontend files | CLEANUP §1, §1b, §1c | ~~Open~~ **DONE** (`cc43a27`, merged to `main` 2026-08-03). 22 files / −4,287 lines; both allow-lists emptied and the gates rewritten to ask "is it gone?". |
+| A-11 | Root-level ad-hoc scripts (`check_db.py`, `debug_*.py`, `repair_line_items.py`) | CLEANUP §4 | **Open.** Measured 2026-08-04: **7** at the repo root (`check_db.py`, `debug_fk.py`, `debug_lineitem.py`, `debug_remap.py`, `generate_sample_data.py`, `repair_line_items.py`, `serve_dashboard.py`) and ~25 more at `backend/` root, of which only `app.py`, `main_groq.py`, `server_entry.py` and `logging_config.py` are application modules. Needs an owner decision on which are still wanted — deletion is not reversible from a guess. |
+| A-12 | `create_direct_connection` — decide against the B2B flow | CLEANUP §2 | ~~Open~~ **DONE 2026-07-31.** Deleted; only the explanatory NOTE at `core/connection/service.py:482` remains, and the approval flow it bypassed now lives in migration `e5c9a1d7b3f2`. This row was already stale when the audit was written. |
 | A-13 | Promote `register_shifts` to `FINANCIAL_ENTITIES` (policy call) | SYNC_AUDIT §5.3 | **Open.** Deliberately left to the owner. |
 
 ### 4.2 Documented as pending, but actually **done** — update the docs
@@ -625,6 +625,37 @@ module the last three audits were about, and the gate that exists to catch it
 does not look there.
 **Severity: LOW (latent). Fix: make the gate walk a directory, not a list.**
 
+> ### ✅ APPLIED 2026-08-04 — the gate now walks the directory
+>
+> `_SCRIPTS` in `tests/test_dbcompat_and_sql_portability.py` is derived from
+> `os.listdir(backend/scripts)`, so coverage went **8 → 22** and can no longer
+> drift: a new script is gated the moment it lands. This mattered more than
+> "LOW" suggested — the 14 that were outside the gate included
+> `backfill_journals.py` and `resolve_duplicate_invoice_numbers.py`, **both of
+> which the repair runbook points at the CLOUD.**
+>
+> Three scripts are exempt, each with its reason in `_SQLITE_ONLY_BY_DESIGN`, and
+> the map is self-cleaning: `test_no_script_opens_sqlite_directly` asserts every
+> listed script STILL trips the rule, so an exemption that outlives its reason
+> fails until it is deleted.
+>
+> | Script | Why |
+> |---|---|
+> | `check_outbox_rows.py` | Reads `sync_queue`, the LOCAL outbox, read-only. The cloud has no outbox — it is the destination. |
+> | `quarantine_fk_orphans.py` | **KNOWN GAP, not a decision.** Advertises `--db` and closes audit check G, which runs on both databases, so it should be portable and is not. Now visible instead of merely absent. |
+> | `repair_duplicate_line_items.py` | One-shot repair of the 2026-07-17 incident; in no current runbook. |
+>
+> **Scoping note, because it is the part that could have gone wrong.** Only the
+> three PORTABILITY rules walk the directory. The `out()`-not-`print` rule stays
+> on the curated cross-dialect list: `out()` comes from `_dbcompat`, so the rule
+> is meaningless for scripts that do not use the compat layer, and applying it to
+> all 22 would have demanded a print→out() rewrite of a dozen one-shot tools
+> while buying no portability at all.
+>
+> Two near misses recorded in the file: `backfill_journals.py` and
+> `check_local_sync_backlog.py` already import `_dbcompat` but still report with
+> bare `print`, so they are portability-gated but not yet on the stricter list.
+
 ---
 
 **C-11 · Exit criterion 4 contradicts a deliberate design decision.**
@@ -644,6 +675,14 @@ can never be signed off:
 > ConflictLog, and on the Ops console.
 
 **Severity: LOW (documentation), but it blocks sign-off.**
+
+> ### ✅ APPLIED 2026-08-04
+>
+> Criterion 4 in `DATA_ARCHITECTURE_OPTIONS_2026-08-01.md` §"This is finished
+> when" now reads *"...absent on the far side **and unreported**"*, with the
+> reasoning inline so the next reader does not re-propose the original wording —
+> the same failure mode the rejected `CHECK (paid_amount <= total_amount)` entry
+> was written to prevent.
 
 ---
 

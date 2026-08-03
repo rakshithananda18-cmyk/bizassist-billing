@@ -624,20 +624,115 @@ def test_the_audit_never_inherits_DATABASE_URL_by_accident(monkeypatch):
 # 4. THE GATE — SQL portability analyser over the scripts' own source
 # ══════════════════════════════════════════════════════════════════════════════
 
-_SCRIPTS = [
-    os.path.join(_BACKEND, "scripts", "audit_money_integrity.py"),
-    os.path.join(_BACKEND, "scripts", "repair_line_items_by_invariant.py"),
-    os.path.join(_BACKEND, "scripts", "diagnose_money_findings.py"),
-    os.path.join(_BACKEND, "scripts", "reconcile_local_vs_cloud.py"),
-    # Appended, never inserted: two tests below address _SCRIPTS by INDEX
-    # (`_SCRIPTS[0]` is the audit, `_SCRIPTS[1]` the line-item repair), so
-    # prepending here would silently re-point those assertions at a different
-    # file and they would keep passing while checking the wrong thing.
-    os.path.join(_BACKEND, "scripts", "void_duplicate_payment.py"),
-    os.path.join(_BACKEND, "scripts", "clear_staff_bizids.py"),
-    os.path.join(_BACKEND, "scripts", "inspect_invoice.py"),
-    os.path.join(_BACKEND, "scripts", "audit_payment_attachment.py"),
+_SCRIPTS_DIR = os.path.join(_BACKEND, "scripts")
+
+# Two scripts the assertions below address BY NAME. They used to be `_SCRIPTS[0]`
+# and `_SCRIPTS[1]`, which is why the old list carried a comment forbidding
+# anyone from inserting at the front — a directory walk cannot honour that, and
+# naming them removes the hazard rather than restating it.
+_AUDIT_SCRIPT = os.path.join(_SCRIPTS_DIR, "audit_money_integrity.py")
+_LINE_ITEM_REPAIR = os.path.join(_SCRIPTS_DIR, "repair_line_items_by_invariant.py")
+
+
+def _all_scripts():
+    """C-10 — every script, discovered, not remembered.
+
+    This was a hand-written list of 8 paths. `backend/scripts/` holds 22, so 14
+    were silently outside the gate — including `backfill_journals.py` and
+    `resolve_duplicate_invoice_numbers.py`, both of which the repair runbook
+    points at the CLOUD. A gate you have to remember to extend is a gate that
+    drifts, and the drift is invisible: a new script is not *failing* the gate,
+    it is simply absent from it.
+
+    `_dbcompat.py` is excluded because it IS the portability layer — its
+    `sqlite3.connect` calls are the implementation of the rule, not a breach.
+    """
+    return sorted(
+        os.path.join(_SCRIPTS_DIR, f)
+        for f in os.listdir(_SCRIPTS_DIR)
+        if f.endswith(".py") and f != "_dbcompat.py"
+    )
+
+
+_SCRIPTS = _all_scripts()
+
+# Scripts that do NOT have to be portable, each with the reason. This is the
+# escape hatch the directory walk needs, and it is deliberately shaped so it
+# cannot rot: `test_no_script_opens_sqlite_directly` asserts that every name here
+# STILL trips the rule, so an entry that has been fixed fails until it is
+# removed. Adding a name is a claim about the script, not a way to go green.
+_SQLITE_ONLY_BY_DESIGN = {
+    "check_outbox_rows.py": (
+        "Reads `sync_queue` — the LOCAL outbox. The cloud has no outbox; it is "
+        "the destination. Opens the file read-only (`mode=ro`). Pointing this at "
+        "Postgres is a category error, not a portability gap."
+    ),
+    "quarantine_fk_orphans.py": (
+        "KNOWN GAP, not a design decision. It advertises `--db` and closes check "
+        "G of audit_money_integrity, which is run against BOTH databases — so it "
+        "SHOULD be portable and is not. Recorded here so the gate can see it; "
+        "previously it was simply missing from a hand-written list, which looks "
+        "identical to passing."
+    ),
+    "repair_duplicate_line_items.py": (
+        "One-shot repair of a named past incident (spurious invoice_line_items "
+        "created 2026-07-17). Not in any current runbook. If it is ever re-run "
+        "against the cloud it must be ported first."
+    ),
+}
+
+# The stronger architectural rule: these are the scripts DESIGNED to run against
+# either engine, so they must go through the compat layer rather than merely
+# avoid SQLite-only SQL. Still explicit — it is a statement of intent about a
+# script, which a directory listing cannot infer.
+_CROSS_DIALECT_SCRIPTS = [
+    os.path.join(_SCRIPTS_DIR, f) for f in (
+        "audit_money_integrity.py",
+        "repair_line_items_by_invariant.py",
+        "diagnose_money_findings.py",
+        "reconcile_local_vs_cloud.py",
+        "void_duplicate_payment.py",
+        "clear_staff_bizids.py",
+        "inspect_invoice.py",
+        "audit_payment_attachment.py",
+    )
 ]
+
+# NEAR MISSES, recorded rather than quietly left out. `backfill_journals.py` and
+# `check_local_sync_backlog.py` already `from _dbcompat import`, so they pass the
+# compat-layer rule — but both still report with bare `print`, which the `out()`
+# rule below exists to stop (a money figure through a cp1252 console is a crash).
+# They are covered by the PORTABILITY walk above, which is the part that matters
+# for pointing them at Postgres; promoting them to the stricter list is a
+# print→out() sweep of two money scripts and is deliberately not bundled into a
+# test-scoping change.
+_COMPAT_LAYER_BUT_STILL_PRINTING = (
+    "backfill_journals.py",
+    "check_local_sync_backlog.py",
+)
+
+
+def _exempt(path) -> bool:
+    return os.path.basename(path) in _SQLITE_ONLY_BY_DESIGN
+
+
+def test_every_exemption_names_a_script_that_exists():
+    """A reason attached to a deleted file is a comment, not a rule."""
+    for name in _SQLITE_ONLY_BY_DESIGN:
+        assert os.path.exists(os.path.join(_SCRIPTS_DIR, name)), (
+            f"{name} is exempted from the portability gate but no longer exists"
+        )
+
+
+def test_the_gate_covers_every_script_in_the_directory():
+    """The C-10 property itself: coverage is derived, never maintained by hand."""
+    on_disk = {f for f in os.listdir(_SCRIPTS_DIR)
+               if f.endswith(".py") and f != "_dbcompat.py"}
+    assert {os.path.basename(p) for p in _SCRIPTS} == on_disk
+    assert len(on_disk) > 8, (
+        "the walk found no more than the 8 hand-listed scripts — if scripts/ "
+        "really shrank, this assertion is the thing to update"
+    )
 
 # Each entry: (name, regex, why it breaks). Checked against source with comments
 # and docstrings removed, so the files can still EXPLAIN the hazard in prose —
@@ -798,6 +893,15 @@ def test_no_script_opens_sqlite_directly(path):
     fires on correct code is a gate people switch off.
     """
     hits = _scan(path, r"sqlite3\.connect")
+    name = os.path.basename(path)
+    if name in _SQLITE_ONLY_BY_DESIGN:
+        # Self-cleaning: once a listed script stops opening sqlite3 directly,
+        # THIS assertion fails until the exemption is deleted. An exemption that
+        # outlives its reason is how a gate quietly stops covering things.
+        assert hits, (
+            f"{name} is listed in _SQLITE_ONLY_BY_DESIGN but no longer opens "
+            "sqlite3 directly — remove the exemption")
+        pytest.skip(f"SQLite-only by design — {_SQLITE_ONLY_BY_DESIGN[name]}")
     assert not hits, "\n".join(hits)
 
 
@@ -809,6 +913,9 @@ def test_executed_sql_is_portable_or_explicitly_dialect_guarded(path):
     line-based version was exempting `execute("PRAGMA foreign_key_check")` as
     prose because the string contains no SELECT.
     """
+    if _exempt(path):
+        pytest.skip(
+            f"SQLite-only by design — {_SQLITE_ONLY_BY_DESIGN[os.path.basename(path)]}")
     problems = []
     for lineno, sql, guarded in _executed_sql(path):
         if guarded:
@@ -857,6 +964,9 @@ def test_the_precise_gate_sees_into_f_strings(tmp_path):
 def test_no_lowercase_two_arg_round_on_a_sql_line(path):
     """The uppercase rule cannot see `round(x, 2)` written inside SQL in lower
     case. On a line that is visibly SQL, treat it as SQL."""
+    if _exempt(path):
+        pytest.skip(
+            f"SQLite-only by design — {_SQLITE_ONLY_BY_DESIGN[os.path.basename(path)]}")
     hits = []
     for n, line in enumerate(open(path, encoding="utf-8").read().splitlines(), 1):
         if _in_sql(line) and re.search(r"\bround\s*\([^;]*,\s*\d+\s*\)", line):
@@ -881,7 +991,7 @@ def test_the_gate_does_NOT_flag_pythons_own_round():
 
 
 def test_both_scripts_go_through_the_compat_layer():
-    for path in _SCRIPTS:
+    for path in _CROSS_DIALECT_SCRIPTS:
         src = open(path, encoding="utf-8").read()
         assert "from _dbcompat import" in src, (
             f"{os.path.basename(path)} does not use the portable layer")
@@ -890,7 +1000,7 @@ def test_both_scripts_go_through_the_compat_layer():
 def test_the_audit_opens_read_only():
     """It is now pointed at production. 'It only runs SELECTs' being true today
     is not the same as it being unable to write."""
-    src = open(_SCRIPTS[0], encoding="utf-8").read()
+    src = open(_AUDIT_SCRIPT, encoding="utf-8").read()
     assert "connect(target, readonly=True)" in src
 
 
@@ -938,7 +1048,7 @@ def test_a_sqlite_apply_does_not_need_the_backup_flag(tmp_path, monkeypatch, cap
 def test_the_repair_verifies_before_it_commits():
     """The old shape committed and then re-checked, which is no shape at all for
     a database with no .bak beside it."""
-    src = open(_SCRIPTS[1], encoding="utf-8").read()
+    src = open(_LINE_ITEM_REPAIR, encoding="utf-8").read()
     verify = src.index("still, still_unres = find_offenders(con, args.business)")
     commit = src.index("con.commit()", verify)
     rollback = src.index("con.rollback()", verify)
@@ -948,7 +1058,7 @@ def test_the_repair_verifies_before_it_commits():
 def test_the_export_never_contains_a_raw_dsn():
     """The export is written to disk and routinely pasted into tickets; a
     Postgres DSN carries the password."""
-    src = open(_SCRIPTS[1], encoding="utf-8").read()
+    src = open(_LINE_ITEM_REPAIR, encoding="utf-8").read()
     block = src[src.index("json.dump("):src.index("json.dump(") + 400]
     assert '"database": con.label' in block
     assert "args.db" not in block
@@ -1120,10 +1230,16 @@ def test_the_export_is_written_before_anything_is_deleted(tmp_path, monkeypatch,
     assert "postgresql://" not in json.dumps(data)
 
 
-@pytest.mark.parametrize("path", _SCRIPTS, ids=lambda p: os.path.basename(p))
+@pytest.mark.parametrize("path", _CROSS_DIALECT_SCRIPTS,
+                         ids=lambda p: os.path.basename(p))
 def test_the_scripts_report_through_out_not_bare_print(path):
     """A bare `print` of a money figure is a crash waiting for a cp1252 console.
-    Asserted on the source so a new one cannot slip in."""
+    Asserted on the source so a new one cannot slip in.
+
+    Scoped to the cross-dialect scripts, NOT the directory walk: `out()` comes
+    from `_dbcompat`, so this rule only means anything for scripts that use the
+    compat layer. Applying it to all 22 would demand a print→out() rewrite of a
+    dozen one-shot tools and buy no portability."""
     hits = _scan(path, r"(?<![\w.])print\(")
     assert not hits, ("use out() from _dbcompat so the report cannot die of an "
                       "encoding error:\n" + "\n".join(hits))

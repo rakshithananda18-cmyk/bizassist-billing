@@ -365,7 +365,14 @@ This is finished when all of the following hold, measured and not asserted:
 1. `audit_payment_attachment.py` reports **0** in all four categories.
 2. `ensure_tenant_fks` reports every rule `installed` on **both** databases.
 3. A deletion on one database is observable on the other without human action.
-4. No row is marked `synced_at` that is absent on the far side.
+4. No row is marked `synced_at` that is absent on the far side **and
+   unreported**. *(Reworded 2026-08-04 — C-11. As first written this criterion
+   contradicted a deliberate design decision and could therefore never be signed
+   off: `routes/sync.py` acks rejected rows on purpose — `processed_count += 1
+   # ack either way` — because refusing would stall the outbox behind a row that
+   can never apply. A rejected row IS `synced_at` while absent on the cloud, by
+   design. What must be true is that it is never SILENT: it must appear in
+   `rejected[]`, in the ConflictLog, and on the Ops console.)*
 5. `audit_money_integrity` sections B, C1, H, I and J are all `[ ok ]` on the cloud.
 6. Every guard in the tree has a test that goes red when its fix is reverted.
 
