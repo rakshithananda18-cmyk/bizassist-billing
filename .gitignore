@@ -10,8 +10,14 @@ __pycache__/
 .env
 backend/.env
 
-# Sync tokens — runtime credentials, never commit
-backend/cloud_sync_tokens.json
+# Sync tokens — runtime credentials, never commit.
+# NOT path-anchored: `_TOKEN_FILE = Path("cloud_sync_tokens.json")` in
+# services/sync_worker.py is CWD-relative ("the app-data dir (packaged) /
+# backend/ (dev)"), so any backend module imported from the repo root writes the
+# file HERE instead. Anchoring this to backend/ left that copy untracked-but-not-
+# ignored — one `git add -A` from committing live cloud bearer JWTs. Reproduced
+# accidentally on 2026-08-03. Match it at any depth.
+cloud_sync_tokens.json
 
 # Admin audit trail — runtime data (may reference businesses)
 backend/logs/admin_audit.jsonl
