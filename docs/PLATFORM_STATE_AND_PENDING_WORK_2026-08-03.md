@@ -511,6 +511,58 @@ module already establishes that principle two hundred lines further down —
 apply"*.
 **Severity: MEDIUM (latent), HIGH (if it fires).**
 
+> ### 🔴 C-7 IS LIVE — and it is broader than described above. 2026-08-03 20:25
+>
+> It fired in production, on business 133 (BA-Y0DAFT). **72 outbox rows, stalled
+> behind one line item, retrying every ~45 s indefinitely:**
+>
+> ```
+> Push failed for business_id=133: HTTP 500:
+>   (psycopg2.errors.RaiseException) overfill guard: line items for invoices 821
+>   would total 565.65, exceeding the billed amount 310.22
+>   CONTEXT: PL/pgSQL function bizassist_guard_line_item_overfill() line 9
+> ```
+>
+> The trigger is **correct** — local `invoice_line_items` uid `b4570fc7…`
+> (Wheat Flour 10kg, ₹255.44) is one of the 13 known local overfill rows, and
+> cloud invoice 821 is already full. The cloud is right to refuse it.
+>
+> **The defect is that refusing one row kills the whole batch, and it is a
+> DIALECT bug — verified, not inferred:**
+>
+> | Engine | Guard raises | SQLAlchemy class | `except IntegrityError` at `routes/sync.py:670` |
+> |---|---|---|---|
+> | SQLite | `RAISE(ABORT)` → `sqlite3.IntegrityError` | `IntegrityError` | ✅ caught per row |
+> | **Postgres** | `RAISE EXCEPTION` → `psycopg2.errors.RaiseException`, a subclass of **`psycopg2.InternalError`** | **`InternalError`** | ❌ escapes |
+>
+> On Postgres it falls to the outer `except Exception` (`:768`) → `db.rollback()`
+> → `HTTP 500` → the worker never acks → the same chunk retries for ever.
+>
+> **So this is not only the `APPEND_ONLY_DELETE_BLOCKLIST` 422 case.** *Every*
+> database-level guard this project installs — the overfill trigger, the 13
+> tenant-FK triggers, the money `CHECK`s — poisons the outbox when it fires
+> against the cloud. The guards and the sync engine disagree about what a
+> per-row rejection looks like, and the disagreement only exists on the engine
+> the cloud actually runs.
+>
+> **A second finding underneath it:** the push has **no per-row SAVEPOINT**. The
+> pull path wraps every row in `db.begin_nested()` (`sync_worker.py:2075`); the
+> push does not. On Postgres any row-level failure aborts the transaction, so
+> even the `IntegrityError` path above is unsound there — its dedupe `SELECT` at
+> `:678` would hit `InFailedSqlTransaction`. It has survived only because uid
+> collisions are rare.
+>
+> **The fix is therefore not a wider `except`.** Widening it alone would catch
+> the error on an already-aborted transaction and continue into rows that cannot
+> apply. It needs, in order:
+> 1. a per-row `SAVEPOINT` on the push, mirroring `_apply_pulled_row`;
+> 2. then catching the guard class alongside `IntegrityError`, recording the row
+>    in `rejected[]` (it is already the established contract — acked so the
+>    outbox drains, reported so the device knows its write did not survive).
+>
+> **Severity: HIGH, live.** Filed as the successor to C-7; do not close C-7
+> without both parts.
+
 ---
 
 **C-8 · The tenant FK work — the centrepiece of `feb0c5f` — is never exercised on Postgres in CI.**
