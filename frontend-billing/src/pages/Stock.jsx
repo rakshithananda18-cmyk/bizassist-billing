@@ -109,7 +109,12 @@ const INV_COLUMNS = [
   { key: 'actions',  label: 'Actions',  width: 88 },
 ]
 
-export default function Stock({ embedded = false, headerTabs = null }) {
+export default function Stock({ embedded = false, headerTabs = null, inlinePage = false }) {
+  // `inlinePage` — render as a NORMAL page (Contacts / B2B shape) instead of an
+  // app-window with minimize + close chrome. Off by default so the existing
+  // /stock route is byte-for-byte unchanged while the revamp is on trial; only
+  // StockWorkspace.jsx passes it. Remove the prop and the branches with
+  // StockPurchases.jsx once the new page is signed off.
   const { authFetch, settings, user } = useAuth()
   const { attributesSchema } = useBusinessConfig()
   const settingsRef = useRef(settings)
@@ -695,6 +700,14 @@ export default function Stock({ embedded = false, headerTabs = null }) {
     <PageShell embedded={embedded} title="Stock & Inventory">
       <style>{`
         .inv-shell { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+        /* Normal-page variant. The grid still needs a BOUNDED height or its
+           internal scrollers (.inv-table-wrap, .inv-sidebar) collapse and the
+           table stops scrolling — that is the missing-scroll complaint, so the
+           height is capped rather than set to auto. */
+        .inv-shell--inline { height: calc(100vh - 132px); min-height: 420px; }
+        @media (max-width: 768px) {
+          .inv-shell--inline { height: calc(100vh - 168px); }
+        }
         .inv-body { flex: 1; display: flex; min-height: 0; overflow: hidden; }
         .inv-main { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; padding: 0 16px 12px; overflow: hidden; }
         .inv-sidebar {
@@ -735,14 +748,14 @@ export default function Stock({ embedded = false, headerTabs = null }) {
         .inv-table-wrap { flex: 1; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
       `}</style>
 
-      <div className="inv-shell">
+      <div className={`inv-shell${inlinePage ? ' inv-shell--inline' : ''}`}>
         {/* ── Top bar — shared WorkspaceTopBar (identical to Purchases/Parties/Payments) ── */}
         <WorkspaceTopBar
           settingsTab="inventory"
-          windowControls={true}
-          showMinimize={true}
-          onClose={handleCloseStockPage}
-          onMinimize={handleMinimizeStockPage}
+          windowControls={!inlinePage}
+          showMinimize={!inlinePage}
+          onClose={inlinePage ? undefined : handleCloseStockPage}
+          onMinimize={inlinePage ? undefined : handleMinimizeStockPage}
           actions={
             <>
               {/* Alert flash */}

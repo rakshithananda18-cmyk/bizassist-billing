@@ -25,7 +25,9 @@ const fmt = (n) =>
 // ============================================================================
 // ── 2. STATE INITIALIZATION (BILLS & MODALS) ──
 // ============================================================================
-export default function Purchases({ embedded = false, headerTabs = null }) {
+export default function Purchases({ embedded = false, headerTabs = null, inlinePage = false }) {
+  // See Stock.jsx — same trial flag, same removal condition. Purchase Bills
+  // already had showMinimize={false}, so only the close button differs here.
   const { authFetch, settings } = useAuth()
   const confirm = useConfirm()
 
@@ -451,7 +453,7 @@ export default function Purchases({ embedded = false, headerTabs = null }) {
         {headerTabs && (
           <WorkspaceTopBar
             settingsTab="transactions"
-            windowControls={true}
+            windowControls={!inlinePage}
             showMinimize={false}
             actions={
               <>

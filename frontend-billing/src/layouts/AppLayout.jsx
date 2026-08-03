@@ -962,10 +962,19 @@ export default function AppLayout({ children, title }) {
     ? user.username.slice(0, 2).toUpperCase()
     : 'BZ'
 
-  // Full-bleed POS layout: Billing and Stock & Purchases only. Contacts &
-  // Payments (/parties) stays in the normal app layout with the sidebar.
+  // Full-bleed POS layout: Billing and the LEGACY Stock & Purchases page only.
+  // Contacts & Payments (/parties) stays in the normal app layout with the
+  // sidebar, and so does the revamped /stock-workspace.
+  //
+  // `/stock-workspace` is excluded explicitly because `startsWith('/stock')`
+  // matches it too — which is why the new page rendered with no sidebar at all
+  // and looked "full screen" no matter what its own shell did. The whole point
+  // of the revamp is to be a normal page, so it must not inherit this.
+  // When the trial ends and /stock points at StockWorkspace, drop the
+  // `/stock` clause entirely rather than adding another exception.
   const isSalesPage = location.pathname === '/sales'
-    || location.pathname.startsWith('/stock')
+    || (location.pathname.startsWith('/stock')
+        && !location.pathname.startsWith('/stock-workspace'))
   const pageTitle = title || PAGE_TITLES[location.pathname] || 'BizAssist'
 
   return (

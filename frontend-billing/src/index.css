@@ -5989,3 +5989,51 @@ body.is-col-resizing * {
      expanded; the rail sets `overflow:visible` so this can escape. */
   z-index: 80;
 }
+
+/* ── Stock workspace shell (trial page) ────────────────────────────────────
+   Mirrors `.b2b-shell` / `.b2b-body` so the revamped Stock page has the same
+   geometry as every other workspace: full-height flex column, header and tabs
+   pinned, body scrolling internally. Delete alongside StockWorkspace.jsx if the
+   trial is abandoned. */
+.stock-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+.stock-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* The child sizes itself inside the body now, so the standalone height cap
+   that .inv-shell--inline carries must not fight it. */
+.stock-body .inv-shell--inline {
+  height: 100%;
+  min-height: 0;
+}
+
+/* ── New workspace: the top bar must not swallow its own buttons ───────────
+   `.ws-top-bar` is a fixed-height, non-wrapping flex row and `.ws-embed` sets
+   `overflow-x: hidden`, so once the sidebar is expanded the row runs out of
+   width and New Product / the panel + settings icons are simply CLIPPED — not
+   scrolled to, not collapsed into a menu, just gone. Every one of those is a
+   real action, so the row wraps instead of hiding them.
+
+   Scoped to `.stock-body` so the legacy /stock page keeps its current
+   behaviour byte-for-byte while the revamp is on trial. */
+.stock-body .ws-embed { overflow-x: visible; }
+
+.stock-body .ws-top-bar {
+  height: auto;
+  min-height: 48px;
+  flex-wrap: wrap;
+  row-gap: 6px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+/* The spacer that right-aligns the actions must not force a wrap on its own. */
+.stock-body .ws-top-bar > div[style*="flex: 1"] { min-width: 0; }

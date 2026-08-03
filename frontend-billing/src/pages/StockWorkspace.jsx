@@ -89,18 +89,49 @@ export default function StockWorkspace() {
     navigate(`${BASE}/${id}`, { replace: true })
   }
 
+  const active = TABS.find(t => t.id === tab)
+
   return (
     <AppLayout title="Stock & Purchases">
-      {/* The tabs own a row. Note there is no `inline` and no `headerTabs`
-          prop below — that pairing is the whole change. */}
-      <PageTabs tabs={TABS} active={tab} onChange={handleTabChange} />
+      {/* Shell geometry copied from `.b2b-shell` — a full-height flex column
+          whose body scrolls internally, with nothing above the header, so the
+          title and tabs land at the same y as every other workspace. */}
+      <div className="slide-up stock-shell">
 
-      {/* Children rendered UNMODIFIED. `embedded` keeps them from drawing their
-          own page chrome; without `headerTabs` they keep their own toolbar and
-          every button on it. */}
-      {tab === 'purchase'
-        ? <Purchases embedded />
-        : <Stock embedded />}
+        {/* Signature Page Header — the same block B2B and Contacts & Payments
+            use. This is the piece that was missing: the old page had no page
+            header at all, which is why it read as an app window rather than a
+            page. */}
+        <div className="page-header">
+          <div className="page-header-left">
+            <h1 className="page-title">
+              <InventoryIcon size={20} style={{ color: 'var(--accent)' }} /> Stock &amp; Purchases
+            </h1>
+            <p className="page-subtitle">
+              What is on the shelf and what came in — items, intake, catalogue,
+              godowns and supplier bills in one place
+            </p>
+          </div>
+
+          {/* Tabs live on the RIGHT of the header, where B2B and Contacts put
+              their header actions. `inline` is the compact in-header variant of
+              PageTabs — the same one the old page used, but in a header row
+              that belongs to this page instead of injected into the child's
+              toolbar, which is what made the old strip unreadable. */}
+          <div className="page-actions">
+            <PageTabs inline tabs={TABS} active={tab} onChange={handleTabChange} />
+          </div>
+        </div>
+
+        {/* Children rendered UNMODIFIED apart from `inlinePage`, which only
+            drops their window chrome. Every button, modal and handler is still
+            theirs. */}
+        <div className="stock-body">
+          {tab === 'purchase'
+            ? <Purchases embedded inlinePage />
+            : <Stock embedded inlinePage />}
+        </div>
+      </div>
     </AppLayout>
   )
 }
