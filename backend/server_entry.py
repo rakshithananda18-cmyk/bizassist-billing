@@ -15,6 +15,64 @@ import sys
 from pathlib import Path
 
 
+def _read_wrapped_secret(wrapped_file: Path) -> str | None:
+    """Unwrap <data_dir>/jwt-secret.dpapi, or None if it cannot be read.
+
+    None covers the cases that matter: a different Windows user, a reinstalled
+    profile, a data directory restored onto another machine. The caller mints a
+    fresh secret — which costs everyone a re-login and nothing else, because this
+    secret signs SESSIONS, not data. (Hybrid installs take their secret from
+    `.env` above and never reach this path at all.)
+    """
+    if not wrapped_file.exists():
+        return None
+    from core import dpapi
+    plain = dpapi.unprotect(wrapped_file.read_bytes())
+    if plain is None:
+        print("[server_entry] jwt-secret.dpapi could not be unwrapped on this "
+              "machine/profile — minting a fresh secret. Everyone signs in "
+              "again; no data is affected.", file=sys.stderr)
+        return None
+    return plain.decode("utf-8").strip()
+
+
+def _persist_secret(base: Path, secret: str) -> None:
+    """Write the secret DPAPI-wrapped when possible, plaintext when not.
+
+    The plaintext fallback is for Linux/macOS dev and CI, where there is no
+    DPAPI. It is stated out loud rather than silently degraded, because a
+    "secret at rest" that is sometimes not is exactly the kind of thing that
+    gets believed.
+
+    The legacy plaintext file is removed ONLY after the wrapped copy has been
+    read back successfully. Deleting first and failing second would lock the
+    owner out of their own sessions to gain nothing.
+    """
+    from core import dpapi
+    wrapped_file = base / "jwt-secret.dpapi"
+    legacy_file = base / "jwt-secret"
+
+    blob = dpapi.protect(secret.encode("utf-8"))
+    if blob is None:
+        legacy_file.write_text(secret, encoding="utf-8")
+        if dpapi.available():
+            print("[server_entry] DPAPI refused to wrap jwt-secret; it is on "
+                  "disk in PLAINTEXT.", file=sys.stderr)
+        return
+
+    wrapped_file.write_bytes(blob)
+    # Verify before destroying the only other copy.
+    if _read_wrapped_secret(wrapped_file) != secret:
+        print("[server_entry] jwt-secret.dpapi did not read back correctly — "
+              "keeping the plaintext file.", file=sys.stderr)
+        legacy_file.write_text(secret, encoding="utf-8")
+        return
+    if legacy_file.exists():
+        legacy_file.unlink()
+        print("[server_entry] jwt-secret migrated to DPAPI; the plaintext copy "
+              "has been removed.", file=sys.stderr)
+
+
 def _ensure_jwt_secret(data_dir: str | None) -> None:
     """
     services/auth.py hard-fails without JWT_SECRET. The packaged app ships no
@@ -23,9 +81,20 @@ def _ensure_jwt_secret(data_dir: str | None) -> None:
       1. Already in the environment → use it.
       2. .env in the data dir → loaded (lets users share the cloud's secret,
          REQUIRED for hybrid sync: local-signed tokens must verify on the cloud).
-      3. Otherwise generate once and persist to <data_dir>/jwt-secret so local
+      3. <data_dir>/jwt-secret.dpapi → unwrapped via Windows DPAPI.
+      4. <data_dir>/jwt-secret → LEGACY plaintext. Read, re-persisted wrapped,
+         and the plaintext deleted.
+      5. Otherwise generate once and persist (wrapped where possible) so local
          sessions survive restarts. (Hybrid sync will 401 until the user drops
          the shared secret into .env — local & cloud-mode use is unaffected.)
+
+    WHY WRAPPED (C-1 §7). This file used to be written in cleartext next to
+    `bizassist.db`. On a hybrid install the secret it holds SIGNS TOKENS THE
+    CLOUD ACCEPTS, so a copy of this one file is a copy of the shop's cloud
+    identity — a worse leak than the price book the encryption work is about.
+    DPAPI binds it to this Windows user on this machine, so a copied data
+    directory is useless. It does NOT defend against anything running as that
+    same user; see docs/DECISION_LOCAL_DB_ENCRYPTION_2026-08-03.md §1.
     """
     if os.environ.get("JWT_SECRET"):
         return
@@ -41,13 +110,17 @@ def _ensure_jwt_secret(data_dir: str | None) -> None:
         if os.environ.get("JWT_SECRET"):
             return
 
-    secret_file = base / "jwt-secret"
-    if secret_file.exists():
-        secret = secret_file.read_text(encoding="utf-8").strip()
-    else:
-        import secrets as _secrets
-        secret = _secrets.token_urlsafe(48)
-        secret_file.write_text(secret, encoding="utf-8")
+    secret = _read_wrapped_secret(base / "jwt-secret.dpapi")
+
+    if secret is None:
+        legacy_file = base / "jwt-secret"
+        if legacy_file.exists():
+            secret = legacy_file.read_text(encoding="utf-8").strip()
+        else:
+            import secrets as _secrets
+            secret = _secrets.token_urlsafe(48)
+        _persist_secret(base, secret)
+
     os.environ["JWT_SECRET"] = secret
 
 
