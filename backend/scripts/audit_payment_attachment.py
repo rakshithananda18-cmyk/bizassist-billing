@@ -65,7 +65,12 @@ _SQL = (
     "SELECT p.uid AS uid, p.amount_paid AS amount_paid, "
     "       p.business_id AS pay_biz, p.payment_mode AS payment_mode, "
     "       p.payment_date AS payment_date, "
-    "       i.id AS inv_row, i.invoice_id AS inv_no, "
+    # `i.uid` is the ONLY stable cross-database identity for the parent
+    # document (core/identity.py). Without it this audit could compare parents
+    # only by NUMBER, and an invoice whose number differs between databases was
+    # indistinguishable from a payment attached to a different document — see
+    # the `number_drift` bucket below.
+    "       i.id AS inv_row, i.invoice_id AS inv_no, i.uid AS inv_uid, "
     "       i.business_id AS inv_biz, i.total_amount AS inv_total, "
     "       u.public_id AS inv_bizid, u.business_name AS inv_bizname "
     "FROM invoice_payments p "
@@ -138,7 +143,7 @@ def main() -> int:
         A, B = _load(a), _load(b)
         shared = sorted(set(A) & set(B))
 
-        buckets = {"wrong_tenant": [], "wrong_invoice": [],
+        buckets = {"wrong_tenant": [], "wrong_invoice": [], "number_drift": [],
                    "amount_drift": [], "orphaned": []}
         for uid in shared:
             ra, rb = A[uid], B[uid]
@@ -150,6 +155,39 @@ def main() -> int:
             # miss the real ones.
             if (ra["inv_bizid"] or "\x00a") != (rb["inv_bizid"] or "\x00b"):
                 buckets["wrong_tenant"].append((uid, ra, rb))
+            # ── PARENT IDENTITY IS THE uid, NOT THE NUMBER ───────────────────
+            #
+            # This used to compare `inv_no` alone and call any difference
+            # WRONG INVOICE (M-9) — money on the wrong document. Measured
+            # 2026-08-03, that diagnosis was wrong on the only row it fired on:
+            #
+            #   payment fab17765  →  invoice uid 66db68e4  on BOTH databases
+            #     local : that invoice is numbered LCL-OW-0006  (a DUPLICATE —
+            #             the same business already has LCL-OW-0006, and the M-3
+            #             unique index cannot install because of it)
+            #     cloud : the same invoice is numbered LCL-OW-0024
+            #
+            # The receipt was on the correct document the whole time. What
+            # differed was the document's NUMBER on one side. Those are not the
+            # same defect and they do not have the same repair:
+            #
+            #   WRONG INVOICE  the money is on the wrong document. Needs the
+            #                  owner's memory — which invoice did the customer
+            #                  actually pay against?
+            #   NUMBER DRIFT   the money is right. The invoice is mislabelled on
+            #                  one side, which is a numbering repair
+            #                  (scripts/resolve_duplicate_invoice_numbers.py)
+            #                  and needs no recollection at all.
+            #
+            # Reporting the second as the first sends the owner to answer a
+            # question that was never asked. Compare the uid first; fall back to
+            # the number only when a uid is missing on either side, where it is
+            # the best identity available.
+            elif ra.get("inv_uid") and rb.get("inv_uid"):
+                if str(ra["inv_uid"]) != str(rb["inv_uid"]):
+                    buckets["wrong_invoice"].append((uid, ra, rb))
+                elif str(ra["inv_no"]) != str(rb["inv_no"]):
+                    buckets["number_drift"].append((uid, ra, rb))
             elif str(ra["inv_no"]) != str(rb["inv_no"]):
                 buckets["wrong_invoice"].append((uid, ra, rb))
             elif abs(_f(ra["amount_paid"]) - _f(rb["amount_paid"])) > _TOLERANCE:
@@ -174,8 +212,11 @@ def main() -> int:
         titles = {
             "wrong_tenant": "WRONG TENANT — the same receipt is on two "
                             "different businesses' invoices",
-            "wrong_invoice": "WRONG INVOICE — same business, different "
-                             "invoice (M-9)",
+            "wrong_invoice": "WRONG INVOICE — same business, the receipt hangs "
+                             "off a DIFFERENT document (uid) (M-9)",
+            "number_drift": "NUMBER DRIFT — same document (uid), but its "
+                            "invoice NUMBER differs between databases. The "
+                            "money is correctly placed; the label is not",
             "amount_drift": "AMOUNT DRIFT — same parent, different amount",
             "orphaned": "ORPHANED — the parent invoice is missing on one side",
         }

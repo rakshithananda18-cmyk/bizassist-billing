@@ -190,11 +190,79 @@ explained by staleness. But this laptop's database was rebuilt/renumbered at som
 point, and a re-import can re-attach a payment, so **the attachment on this
 machine is not evidence about the shop's machine.**
 
-**Action: re-run §3 on the shop laptop. If `fab17765` still disagrees there, it
-is real and needs the owner's memory** — which invoice did that customer actually
-pay against, `LCL-OW-0006` or `LCL-OW-0024`?
+> ### ✅ RESOLVED 2026-08-03 — and the original diagnosis was WRONG
+>
+> The backend was started on this laptop, migrations ran, and its boot log named
+> the real defect:
+>
+> ```
+> [Migration] M-3: cannot enforce invoice-number uniqueness — 1 duplicate
+> number(s) already exist … biz 133 'LCL-OW-0006' x2
+> ```
+>
+> Matched by **uid** — the only valid cross-database identity — the payment was
+> never misattached:
+>
+> | invoice uid | LOCAL | CLOUD |
+> |---|---|---|
+> | `29325381…` | `LCL-OW-0006` ₹310 | `LCL-OW-0006` ₹310 ✅ |
+> | `66db68e4…` | **`LCL-OW-0006`** ₹310 ❌ duplicate | `LCL-OW-0024` ₹310 |
+> | `32723a94…` | `LCL-OW-0024` ₹424 | **absent on the cloud** |
+>
+> Both receipts follow their invoice uid correctly on **both** databases —
+> `8855d3e1` → `29325381`, `fab17765` → `66db68e4`. **The money is on the right
+> document.** What differs is that document's *number* on the local side.
+>
+> So this is a **numbering defect, not a misattachment**, and it needs no
+> recollection from anyone. Two local rows to settle:
+>
+> * uid `66db68e4` is numbered `LCL-OW-0006` locally and `LCL-OW-0024` on the
+>   cloud. The cloud is right; the local number is the duplicate blocking M-3.
+> * uid `32723a94` (₹424) holds `LCL-OW-0024` locally and **has never reached
+>   the cloud**, so it is squatting on the number `66db68e4` should carry.
+>   Renumbering naively would collide — `scripts/resolve_duplicate_invoice_numbers.py`
+>   is the tool for this, and it must run with the owner present because a number
+>   printed on a customer's copy must not be silently reassigned.
+>
+> **The audit tool was fixed, because it could not have told these apart.**
+> `audit_payment_attachment.py` compared parent invoices by *number* and its SQL
+> never selected `i.uid`, so "same document, different label" was indistinguishable
+> from "money on the wrong document" — and it reported the second. It now compares
+> the parent **uid** first and has a separate `NUMBER DRIFT` bucket. Re-run:
+>
+> ```
+> [ ok ] WRONG INVOICE — the receipt hangs off a DIFFERENT document (uid)   (0)
+> [FAIL] NUMBER DRIFT — same document (uid), the invoice NUMBER differs      (1)
+> ```
+>
+> This is the "guards that could not fail" class (§2.4 of the data-architecture
+> document): a diagnostic that reports the wrong finding sends the owner to
+> answer a question that was never asked.
 
-### 2.3 This laptop's schema is behind the models
+### 2.3 This laptop's schema WAS behind the models — fixed by a boot
+
+> **✅ CLOSED 2026-08-03.** The backend was started on this machine and the
+> migration runner added every missing column in one pass:
+>
+> ```
+> [Migration] Added users.last_login · table_alterations.public_id
+> [Migration] Added invoices.parent_invoice_id · purchase_invoices.parent_invoice_id
+> [Migration] Added invoice_line_items.returned_qty · b2b_*.uid …
+> [N4-T] tenant-integrity references enforced: 13 rules
+> ```
+>
+> So the schema gap below is gone, and all 13 tenant FKs installed cleanly on
+> SQLite. The section is kept because the *reason* it mattered still holds — a
+> database that has not been booted recently is not a database you can measure.
+>
+> The boot also re-confirmed, on this machine, what the audit reported:
+> 13 overfilled invoices, 11 staff holding a BizID, the duplicate
+> `LCL-OW-0006`, and two M-7 anomalies (`C1-0002` recorded ₹2,533 paid against
+> ₹104 of payment rows; `OW-0003` total ₹124 against ₹311 of rows). All are on
+> businesses 126/133 — this laptop's copies — and none is auto-corrected, which
+> is correct: guessing invents either a debt or a credit.
+
+### 2.3b The original schema-drift finding, for the record
 
 Running `backfill_journals.py` against this laptop's own database fails
 immediately:
