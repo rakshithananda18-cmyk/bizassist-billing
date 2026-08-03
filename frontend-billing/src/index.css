@@ -5949,8 +5949,15 @@ body.is-col-resizing * {
     padding-bottom: calc(var(--bottombar-h) + env(safe-area-inset-bottom, 0px));
   }
 
-  /* The POS landscape overlay owns the screen. */
-  body.pos-fullscreen .mobile-bottombar { display: none; }
+  /* The POS counter owns the whole screen — the bar must not sit over the
+     keypad. `isSalesPage` is the same condition AppLayout uses to hide the
+     sidebar and show the rotate-device overlay.
+     NOTE: an earlier draft of this rule keyed on `body.pos-fullscreen`, a class
+     nothing in the tree ever sets, so it silently did nothing. The bar is not
+     rendered on /sales at all (see `!isSalesPage` in AppLayout), which is the
+     real guard; this rule is the CSS belt to that braces. */
+  .pos-portrait-overlay ~ .mobile-bottombar,
+  body:has(.pos-portrait-overlay) .mobile-bottombar { display: none; }
 }
 
 /* ── Collapsed rail: footer ────────────────────────────────────────────────

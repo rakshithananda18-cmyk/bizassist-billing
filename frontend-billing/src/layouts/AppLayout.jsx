@@ -85,6 +85,12 @@ const PAGE_TITLES = {
 // a list of ROUTES, not of nav objects: the icon and label are looked up from
 // the sidebar's own nav list at render time, so this can never drift into
 // showing a tab the sidebar has renamed or the plan has hidden.
+// Workspaces that open with the sidebar collapsed to its rail. Stock is a wide
+// data grid built as a full-bleed POS surface; the nav costs it 240px it has a
+// real use for. Prefix match, so /stock/inventory, /stock/purchases and any
+// future tab inherit it.
+const AUTO_COLLAPSE_ROUTES = ['/stock']
+
 const BOTTOM_BAR_ROUTES = ['/', '/sales', '/stock', '/parties', '/reports']
 
 export default function AppLayout({ children, title }) {
@@ -737,6 +743,24 @@ export default function AppLayout({ children, title }) {
     try { return localStorage.getItem('billing_sidebar_collapsed') === 'true' }
     catch { return false }
   })
+
+  // Routes that want the width more than they want the nav. Entering one
+  // collapses the rail; LEAVING restores whatever the owner's saved preference
+  // was, so this never silently becomes their global setting.
+  //
+  // Keyed on pathname only, which is what makes manual override work: the
+  // effect fires when you ARRIVE, so expanding the rail while you are on the
+  // page sticks until you navigate away and come back.
+  React.useEffect(() => {
+    const wantsRail = AUTO_COLLAPSE_ROUTES.some(p => location.pathname.startsWith(p))
+    if (wantsRail) {
+      setSidebarCollapsed(true)
+      return
+    }
+    try {
+      setSidebarCollapsed(localStorage.getItem('billing_sidebar_collapsed') === 'true')
+    } catch { /* private mode — leave whatever is on screen */ }
+  }, [location.pathname])
 
   const toggleSidebarCollapsed = React.useCallback(() => {
     setSidebarCollapsed(prev => {
