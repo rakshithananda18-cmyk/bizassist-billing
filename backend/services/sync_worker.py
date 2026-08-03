@@ -499,15 +499,18 @@ def _token_expiry(token: str) -> Optional[datetime]:
     """
     try:
         import jwt as _jwt
-        # NOSONAR python:S5659 — unverified decode is the POINT here, see above.
-        # A local install does not hold the cloud's JWT_SECRET, so verifying
-        # would fail on exactly the installs that need renewal most. Nothing
-        # from this payload is trusted: the only value read is `exp`, and the
-        # only thing it decides is WHEN to ask the cloud to renew. The cloud
-        # verifies the signature itself on /auth/refresh and rejects a forged or
-        # revoked token there. A tampered `exp` can therefore make this device
-        # renew too early or too late — it cannot authenticate anything.
-        payload = _jwt.decode(token, options={"verify_signature": False})
+        # Unverified decode is the POINT here — see the docstring. A local
+        # install does not hold the cloud's JWT_SECRET, so verifying would fail
+        # on exactly the installs that need renewal most. Nothing from this
+        # payload is trusted: the only value read is `exp`, and the only thing
+        # it decides is WHEN to ask the cloud to renew. The cloud verifies the
+        # signature itself on /auth/refresh and rejects a forged or revoked
+        # token there. A tampered `exp` can therefore make this device renew too
+        # early or too late — it cannot authenticate anything.
+        #
+        # The marker must be a TRAILING comment on the reported line; Sonar
+        # ignores it on any other line, which is why the block above did nothing.
+        payload = _jwt.decode(token, options={"verify_signature": False})  # NOSONAR python:S5659
         exp = payload.get("exp")
         return datetime.utcfromtimestamp(int(exp)) if exp else None
     except Exception:
