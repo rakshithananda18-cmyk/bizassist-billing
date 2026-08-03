@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy import text, func
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, InternalError
 
 from database.db import get_db, sync_disabled_var
 from services.auth import (
@@ -667,7 +667,29 @@ def push_changes(
                 ent_name = entity_map.get(change.entity)
                 if ent_name:
                     entities_to_broadcast.add(ent_name)
-            except IntegrityError as ie:
+            except (IntegrityError, InternalError) as ie:
+                # C-7. A Postgres TRIGGER that fires `RAISE EXCEPTION` — the
+                # line-item overfill guard, database/migration.py:912 — is
+                # SQLSTATE P0001, i.e. psycopg2.errors.RaiseException, which is a
+                # subclass of InternalError and NOT of IntegrityError. SQLite's
+                # half of the same guard uses RAISE(ABORT), which IS an
+                # IntegrityError, so this handler caught it locally and every
+                # test passed. On the cloud the row escaped to the batch-level
+                # `except Exception` below, the whole push answered 500, and the
+                # device re-sent the identical poisoned batch for ever.
+                #
+                # The SAVEPOINT above has already rolled this row back, so the
+                # session is usable and the row is a row-level refusal like any
+                # other: ack it (M-13) so the outbox drains, and report it.
+                #
+                # Only SQLSTATE class P0 (PL/pgSQL RAISE) qualifies. Catching
+                # InternalError wholesale would swallow 25P02
+                # InFailedSqlTransaction, which every remaining row in the batch
+                # raises once the connection is genuinely sick — acking those
+                # would discard the rest of the batch instead of retrying it.
+                if isinstance(ie, InternalError) and not str(
+                        getattr(ie.orig, "pgcode", "")).startswith("P0"):
+                    raise
                 # Most likely a concurrent insert of the same uid (two overlapping
                 # pushes) — the row now EXISTS. Re-fetch by uid and UPDATE it
                 # (merge) so the change actually lands instead of being dropped,
