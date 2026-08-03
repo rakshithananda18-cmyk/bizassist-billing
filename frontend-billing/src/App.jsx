@@ -32,6 +32,7 @@ import InvoiceViewer  from './invoice/InvoiceViewer'
 import PublicInvoiceViewer from './pages/PublicInvoiceViewer'
 import Support from './pages/Support'
 import AppLayout from './layouts/AppLayout'
+import StockWorkspace from './pages/StockWorkspace'
 
 
 function ProtectedRoute({ children }) {
@@ -59,6 +60,11 @@ function AppRoutes() {
       {/* New unified Money workspace (runs alongside /parties until verified) */}
       <Route path="/money"        element={<ProtectedRoute><Money  /></ProtectedRoute>} />
       <Route path="/money/:view"  element={<ProtectedRoute><Money  /></ProtectedRoute>} />
+      {/* Revamped Stock workspace — runs ALONGSIDE /stock until verified, the
+          same pattern /money uses next to /parties. Deletion trigger is written
+          at the top of StockWorkspace.jsx. */}
+      <Route path="/stock-workspace"       element={<ProtectedRoute><StockWorkspace /></ProtectedRoute>} />
+      <Route path="/stock-workspace/:tab"  element={<ProtectedRoute><StockWorkspace /></ProtectedRoute>} />
       <Route path="/stock"        element={<ProtectedRoute><StockPurchases /></ProtectedRoute>} />
       <Route path="/stock/:tab"   element={<ProtectedRoute><StockPurchases /></ProtectedRoute>} />
       <Route path="/reports"  element={<ProtectedRoute><Reports   /></ProtectedRoute>} />

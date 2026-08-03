@@ -89,7 +89,7 @@ const PAGE_TITLES = {
 // data grid built as a full-bleed POS surface; the nav costs it 240px it has a
 // real use for. Prefix match, so /stock/inventory, /stock/purchases and any
 // future tab inherit it.
-const AUTO_COLLAPSE_ROUTES = ['/stock']
+const AUTO_COLLAPSE_ROUTES = ['/stock', '/stock-workspace']
 
 const BOTTOM_BAR_ROUTES = ['/', '/sales', '/stock', '/parties', '/reports']
 
