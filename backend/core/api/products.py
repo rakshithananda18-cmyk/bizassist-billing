@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from database.db import get_db
@@ -322,6 +323,102 @@ def create_product(
         _product_out(p, include_barcodes=True, barcodes=barcodes, db=db),
         status_code=201,
     )
+
+
+# Tables whose rows are HISTORY. A product named on any of them cannot be
+# deleted, because deleting it would leave a past document pointing at nothing —
+# the exact orphan class `quarantine_fk_orphans.py` exists to clean up. The
+# answer for these is deactivation, which keeps the row and hides it from the
+# catalogue. Table names are literals from this list, never user input.
+_PRODUCT_HISTORY_REFS = [
+    ("invoice_line_items",          "sales invoice"),
+    ("purchase_invoice_line_items", "purchase invoice"),
+    ("purchase_order_line_items",   "purchase order"),
+    ("stock_transfer_line_items",   "stock transfer"),
+    ("b2b_order_line_items",        "B2B order"),
+    ("stock_ledger",                "stock movement"),
+]
+
+
+@router.delete("/products/{product_id}")
+def delete_product(
+    product_id: int,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(restrict_cashier_only),
+    db: Session = Depends(get_db),
+):
+    """Permanently remove a product that has never been used.
+
+    DELETE and DEACTIVATE are both offered on purpose, because they answer two
+    different questions:
+
+      * **Deactivate** (`PATCH {is_active: false}`) — "stop selling this."
+        The row stays, so every past invoice still renders and every report
+        still foots. This is the right answer for anything a shop has ever
+        traded.
+      * **Delete** (here) — "this should never have existed."
+        A typo, a duplicate, an import mistake. Only possible while the product
+        is genuinely unused.
+
+    Refusing the delete when history exists is not caution, it is the invariant:
+    `invoice_line_items.product_id` is a real FK, and orphaning it is precisely
+    what `scripts/quarantine_fk_orphans.py` was written to repair after
+    `PRAGMA foreign_keys` was found OFF on local installs.
+
+    The product's OWN rows — barcodes and inventory positions — are removed with
+    it. They describe the product rather than record a transaction.
+    """
+    bid = current_user["id"]
+    p = db.query(Product).filter(
+        Product.id == product_id, Product.business_id == bid
+    ).first()
+    if p is None:
+        raise HTTPException(status_code=404, detail=f"Product {product_id} not found")
+
+    blockers = []
+    for table, label in _PRODUCT_HISTORY_REFS:
+        n = db.execute(
+            text(f"SELECT COUNT(*) FROM {table} WHERE product_id = :pid"),
+            {"pid": product_id},
+        ).scalar() or 0
+        if n:
+            blockers.append(f"{n} {label}{'s' if n != 1 else ''}")
+
+    if blockers:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"'{p.name}' is used by {', '.join(blockers)} and cannot be "
+                "deleted — that would leave those documents pointing at a "
+                "product that no longer exists. Deactivate it instead: it stops "
+                "appearing in the catalogue and on the counter, and every past "
+                "record keeps working."
+            ),
+        )
+
+    # ORM deletes, NOT `query(...).delete()`. A bulk delete skips
+    # `Mapper.after_delete`, so nothing is queued and the row lives on in the
+    # cloud for ever — finding C-6, and the reason this endpoint uses the slow
+    # spelling deliberately.
+    for bc in db.query(ProductBarcode).filter(
+            ProductBarcode.business_id == bid,
+            ProductBarcode.product_id == product_id).all():
+        db.delete(bc)
+    for inv in db.query(Inventory).filter(
+            Inventory.business_id == bid,
+            Inventory.product_id == product_id).all():
+        db.delete(inv)
+
+    name = p.name
+    db.delete(p)
+    db.commit()
+
+    from services.immediate_sync import trigger_data_sync
+    trigger_data_sync(bid, db)
+    background_tasks.add_task(realtime_manager.broadcast, bid,
+                              {"type": "sync.trigger", "entity": "product"})
+    logger.info("[PRODUCTS] deleted product %s '%s' (biz=%s)", product_id, name, bid)
+    return {"deleted": True, "id": product_id, "name": name}
 
 
 @router.get("/products/{product_id}")
