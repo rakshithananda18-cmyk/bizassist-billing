@@ -56,9 +56,24 @@ Two further identity notes, both real:
   id 1) vs `BA-YYB4V2` (cloud id 1). Same name, same username `admin`, same
   integer id, **two different tenants**. This is exactly the trap §2.5 of the
   data-architecture document describes, live.
-* **`Load Test Shop 9999` has no BizID at all**, so it cannot sync and never has.
-  Its 10,000 invoices and 4,897 payments are noise in any local↔cloud comparison
-  and must be excluded from every count.
+* **`Load Test Shop 9999` HAS a BizID as of 2026-08-03** — `BA-Z3Z5BD`, handed to
+  it by the migration's legacy-owner backfill on the 19:32 boot
+  (*"Backfilled BizID for 1 legacy owner(s)"*). It is now registered in the
+  **cloud LAN discovery registry** alongside the real businesses.
+
+  **It does not sync, and the reason is one field.** Its `hosting_mode` is
+  `None`, so `run_hybrid_sync` skips it and `_queue_change` declines every row
+  (*"has no settings at all — hosting_mode is unknown and the row is NOT
+  queued"*). Only businesses **126** and **133** are `hybrid`.
+
+  **This is a loaded gun, not a live defect.** Flip that one field — a stray
+  Settings save, a seeded fixture, a future backfill that defaults it — and
+  10,000 invoices, 20,170 line items and 20,226 stock-ledger rows push to the
+  production cloud. Worth deleting the business outright, or pinning
+  `hosting_mode: "local"` on it so the value is explicit rather than absent.
+
+  Its 10,000 invoices and 4,897 payments remain noise in any local↔cloud
+  comparison and must be excluded from every count.
 
 ---
 
