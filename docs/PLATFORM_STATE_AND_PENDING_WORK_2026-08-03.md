@@ -47,6 +47,33 @@ about which side you measured:
   them.** They remain open until someone runs the audit scripts against the
   real two databases.
 
+> ### ⚠ CORRECTION — 2026-08-03, later the same day
+>
+> The paragraph above is **partly wrong and partly still right**, and the
+> difference matters.
+>
+> **Wrong:** I called `backend/bizassist.db` "not the production install". It
+> **is** the paired install — four businesses match on BizID (JABXGD, Y0DAFT,
+> E3PBH9, 1W9FAA). What misled me was the 10,000 synthetic `Load Test Shop 9999`
+> invoices sitting alongside 75 real ones, and the fact that the local integer
+> ids had been renumbered since the 01-Aug audit (6/7/11/87 → 126/133/125/132).
+> Renumbering is exactly what the BizID spine exists to survive, so I read a
+> renumbered pair as an unrelated database.
+>
+> **Still right, for a different reason:** it is a **stale secondary**. The file
+> was last written **2026-07-23**; the live install is on **another laptop** and
+> the cloud carries invoices through 30 July. So it was still the wrong database
+> to measure — just not the wrong *fleet*.
+>
+> **What changed as a result:** the cloud items are now **measured**, not open.
+> `audit_money_integrity` against Supabase returns 81 issues — 47 journal-less
+> documents, 31 line-item overfills, 2 b2b orders, 4 open shifts — and both the
+> ₹124 double payment (`LCL-OW-0037`) and the cross-tenant receipt (`e10f6d92`)
+> are **already resolved**. The *local* side remains genuinely unmeasured.
+>
+> Full detail, and the procedure for the correct laptop, in
+> [`DATA_REPAIR_STATE_2026-08-03.md`](DATA_REPAIR_STATE_2026-08-03.md).
+
 * **Code claims are verified; data claims are not.** Every statement about what
   the code does was checked by reading it. Every statement about production data
   is quoted from the earlier documents and labelled as such.
