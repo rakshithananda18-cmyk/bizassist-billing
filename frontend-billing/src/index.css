@@ -6015,6 +6015,22 @@ body.is-col-resizing * {
   z-index: 80;
 }
 
+/* ── Contacts & Payments shell ────────────────────────────────────────────
+   Same geometry as `.stock-shell`: the page header and workspace tabs are
+   pinned, the active view scrolls inside. Kept as its own pair of names rather
+   than reusing `.stock-*` so the two workspaces can diverge without one
+   silently restyling the other. */
+.khata-shell { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.khata-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  container-type: inline-size;
+}
+
 /* ── Stock workspace shell ─────────────────────────────────────────────────
    Mirrors `.b2b-shell` / `.b2b-body` so the Stock page has the same geometry as
    every other workspace: full-height flex column, header and tabs pinned, body

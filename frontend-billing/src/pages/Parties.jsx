@@ -45,7 +45,12 @@ const PARTY_FIELDS = [
   { key: 'payment_terms', label: 'Payment terms' },
 ]
 
-export default function Parties({ embedded = false, headerTabs = null }) {
+export default function Parties({ embedded = false, headerTabs = null, inlinePage = false }) {
+  // `inlinePage` — ContactsPayments owns the page header and the workspace tabs,
+  // so this view renders only its own toolbar and body. `headerTabs` is the
+  // older arrangement where the tabs were injected into that toolbar; both are
+  // "embedded", hence the combined flag.
+  const inWorkspace = Boolean(headerTabs) || inlinePage
   const { authFetch, user, settings } = useAuth()
   const navigate = useNavigate()
   const label = useDocLabels()
@@ -466,7 +471,7 @@ export default function Parties({ embedded = false, headerTabs = null }) {
 
   return (
     <PageShell embedded={embedded} title="Parties & Invoices">
-      <div className={`${headerTabs ? 'fade-in ws-embed' : 'slide-up'}`}>
+      <div className={`${inWorkspace ? 'fade-in ws-embed' : 'slide-up'}`}>
 
         {alert && (
           <div className={`alert alert-${alert.type} mb-4`}>
@@ -475,7 +480,8 @@ export default function Parties({ embedded = false, headerTabs = null }) {
           </div>
         )}
 
-        {/* Signature Page Header — Always at the top */}
+        {/* Signature Page Header — owned by ContactsPayments when embedded. */}
+        {!inlinePage && (
         <div className="page-header">
           <div className="page-header-left">
             <h1 className="page-title">
@@ -489,15 +495,21 @@ export default function Parties({ embedded = false, headerTabs = null }) {
             </button>
           </div>
         </div>
+        )}
 
         {/* Embedded (Godown): 48px workspace bar */}
-        {headerTabs && (
+        {inWorkspace && (
           <WorkspaceTopBar
             settingsTab="parties"
-            actions={null}
+            actions={inlinePage ? (
+              <button className="btn btn-primary btn-sm ws-bar-action"
+                onClick={() => { setForm(defaultForm); setShowModal(true) }}>
+                <PlusIcon size={13} /> Add Party
+              </button>
+            ) : null}
           >
             {headerTabs}
-            <WsDivider />
+            {headerTabs && <WsDivider />}
             <button className={`ws-tab ${activeTab === 'Customers' ? 'active' : ''}`} onClick={() => setActiveTab('Customers')}>
               Customers <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>({customers.length})</span>
             </button>
@@ -512,7 +524,7 @@ export default function Parties({ embedded = false, headerTabs = null }) {
 
         {/* ── Unified filter bar: Search | FilterDropdown | SortDropdown ── */}
         <div className="page-subbar" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {!headerTabs ? (
+          {!inWorkspace ? (
             <div className="tabs" style={{ margin: 0, flexShrink: 0 }}>
               <button className={`tab${activeTab === 'Customers' ? ' active' : ''}`} onClick={() => setActiveTab('Customers')}>
                 Customers <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({customers.length})</span>

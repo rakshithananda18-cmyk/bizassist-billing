@@ -60,16 +60,41 @@ export default function ContactsPayments() {
     navigate(`/parties/${id}`)
   }
 
-  // Rendered INSIDE the active view's workspace bar (replacing its old title).
-  const headerTabs = <PageTabs inline tabs={TABS} active={tab} onChange={handleTabChange} />
-
   return (
     <AppLayout title="Contacts & Payments">
-      {tab === 'payments'
-        ? <Payments  embedded headerTabs={headerTabs} />
-        : tab === 'invoices'
-        ? <InvoicesPage embedded headerTabs={headerTabs} />
-        : <Parties   embedded headerTabs={headerTabs} />}
+      {/* Same shape as StockWorkspace: THIS page owns the header and the
+          workspace tabs; the views own their own toolbars.
+
+          The tabs used to be injected into the active view's `WorkspaceTopBar`
+          via a `headerTabs` element, which meant all three views rendered an
+          identical "Contacts & Payments" title and subtitle — three copies of
+          one header, on a strip below a bar that already existed. Payments went
+          further and rendered its primary action twice, once in that header and
+          once in its own toolbar. Owning the header here deletes all of it. */}
+      <div className="slide-up khata-shell">
+        <div className="page-header">
+          <div className="page-header-left">
+            <h1 className="page-title">
+              <ContactsIcon size={20} style={{ color: 'var(--accent)' }} /> Contacts &amp; Payments
+            </h1>
+            <p className="page-subtitle">
+              Manage customer &amp; vendor accounts, credit limits, outstanding
+              balances, and payment transactions
+            </p>
+          </div>
+          <div className="page-actions">
+            <PageTabs inline tabs={TABS} active={tab} onChange={handleTabChange} />
+          </div>
+        </div>
+
+        <div className="khata-body">
+          {tab === 'payments'
+            ? <Payments  embedded inlinePage />
+            : tab === 'invoices'
+            ? <InvoicesPage embedded inlinePage />
+            : <Parties   embedded inlinePage />}
+        </div>
+      </div>
     </AppLayout>
   )
 }

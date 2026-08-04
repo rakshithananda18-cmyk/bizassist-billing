@@ -42,7 +42,11 @@ const defaultForm = {
   date: new Date().toISOString().slice(0, 10),
 }
 
-export default function Payments({ embedded = false, headerTabs = null }) {
+export default function Payments({ embedded = false, headerTabs = null, inlinePage = false }) {
+  // See Parties.jsx. Dropping this view's own page header also removes the
+  // duplicate primary action: `Record Payment` / `Log Expense` were rendered
+  // BOTH in that header and in the toolbar below it.
+  const inWorkspace = Boolean(headerTabs) || inlinePage
   const { authFetch, settings, user } = useAuth()
   const confirm = useConfirm()
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
@@ -578,8 +582,9 @@ export default function Payments({ embedded = false, headerTabs = null }) {
   return (
     <PageShell embedded={embedded} title="Payments">
       <>
-      <div className={`${headerTabs ? 'fade-in ws-embed' : 'slide-up'}`}>
+      <div className={`${inWorkspace ? 'fade-in ws-embed' : 'slide-up'}`}>
         {/* Signature Page Header */}
+        {!inlinePage && (
         <div className="page-header">
           <div className="page-header-left">
             <h1 className="page-title">
@@ -609,6 +614,7 @@ export default function Payments({ embedded = false, headerTabs = null }) {
             </div>
           )}
         </div>
+        )}
 
 
         {alert && (
@@ -620,7 +626,7 @@ export default function Payments({ embedded = false, headerTabs = null }) {
 
         {/* Embedded (Khata): the SAME 48px workspace bar as Godown's tabs —
             workspace tabs · divider · group switch · actions · window controls. */}
-        {headerTabs && (
+        {inWorkspace && (
           <WorkspaceTopBar
             settingsTab="transactions"
             windowControls={false}

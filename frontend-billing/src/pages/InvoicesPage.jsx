@@ -19,7 +19,9 @@ import InvoicesListView from '../components/payments/InvoicesListView'
 import useInvoiceActions from '../hooks/useInvoiceActions'
 import { useDocLabels } from '../hooks/useDocLabels'
 
-export default function InvoicesPage({ embedded = false, headerTabs = null }) {
+export default function InvoicesPage({ embedded = false, headerTabs = null, inlinePage = false }) {
+  // See Parties.jsx — ContactsPayments owns the header when `inlinePage`.
+  const inWorkspace = Boolean(headerTabs) || inlinePage
   const { authFetch } = useAuth()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -39,8 +41,9 @@ export default function InvoicesPage({ embedded = false, headerTabs = null }) {
 
   return (
     <PageShell embedded={embedded} title="Invoices">
-      <div className={`${headerTabs ? 'fade-in ws-embed' : 'slide-up'}`}>
-        {/* Signature Page Header */}
+      <div className={`${inWorkspace ? 'fade-in ws-embed' : 'slide-up'}`}>
+        {/* Signature Page Header — the parent's job when embedded. */}
+        {!inlinePage && (
         <div className="page-header">
           <div className="page-header-left">
             <h1 className="page-title">
@@ -65,15 +68,31 @@ export default function InvoicesPage({ embedded = false, headerTabs = null }) {
             </button>
           </div>
         </div>
+        )}
 
         {/* Workspace top bar (when embedded in Khata) */}
-        {headerTabs && (
+        {inWorkspace && (
           <WorkspaceTopBar
             settingsTab="transactions"
             windowControls={false}
-            actions={null}
+            actions={inlinePage ? (
+              <button className="btn btn-primary btn-sm ws-bar-action"
+                onClick={() => navigate('/sales')}>
+                <PlusIcon size={13} /> New Invoice
+              </button>
+            ) : null}
           >
             {headerTabs}
+            {/* Without the injected tabs this bar would open with nothing on the
+                left, so it names itself — same as the Purchase Bills bar. */}
+            {inlinePage && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 4 }}>
+                <BillsIcon size={18} style={{ color: 'var(--accent)' }} />
+                <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                  Invoices
+                </span>
+              </div>
+            )}
           </WorkspaceTopBar>
         )}
 
