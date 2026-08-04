@@ -6112,3 +6112,19 @@ body.is-col-resizing * {
   .khata-body .ws-bar-action { display: none; }
   .khata-body .ws-bar-more   { display: inline-flex; align-items: center; }
 }
+
+/* ── Controls shed their LABEL before anything is taken away ───────────────
+   Filters and Sort are icon+text when there is room and icon-only when there
+   is not. Dropping ~90px of text is far cheaper than folding a whole control
+   into a menu, so this step comes first: the control stays visible, one click
+   away, and only its wording goes. Both keep a `title`, so the icon is never
+   unexplained.
+
+   Applies to the two workspace shells only — a bare `.ctl-label` rule would
+   silently restyle every other FilterDropdown in the app. */
+@container (max-width: 1080px) {
+  .khata-body .ctl-label,
+  .stock-body .ctl-label { display: none; }
+  .khata-body .filter-dropdown-btn,
+  .stock-body .filter-dropdown-btn { padding: 0 10px; }
+}

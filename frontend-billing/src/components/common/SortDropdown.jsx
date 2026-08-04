@@ -148,7 +148,7 @@ export default function SortDropdown({
         }}
       >
         {SORT_ICON}
-        <span>
+        <span className="ctl-label">
           {activeField
             ? `${activeField.label} ${sortConfig.direction === 'asc' ? ASC_ICON : DESC_ICON}`
             : 'Sort'}

@@ -107,7 +107,7 @@ export default function FilterDropdown({ filters = [], className = '', style = {
       <button ref={buttonRef} type="button" className={`filter-dropdown-btn ${className}`}
         onClick={handleToggle} title="Filters" style={btnStyle}>
         <FilterIcon size={14} />
-        <span>Filters</span>
+        <span className="ctl-label">Filters</span>
         {activeCount > 0 && (
           <span style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

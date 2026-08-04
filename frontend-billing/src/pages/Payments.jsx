@@ -606,7 +606,11 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
   const filterControls = (
     <>
           {/* Search — always first */}
-          <div className="search-bar" style={{ margin: 0, height: 34, boxSizing: 'border-box', display: 'flex', alignItems: 'center', minWidth: 180, flex: '0 0 auto' }}>
+          {/* Flexes rather than sitting at a fixed 249px. The search box is the
+              one control on this bar that degrades gracefully — a narrower
+              field still works — so it gives up width before any control is
+              hidden or folded. Matches the Contacts bar. */}
+          <div className="search-bar" style={{ margin: 0, height: 34, boxSizing: 'border-box', display: 'flex', alignItems: 'center', flex: '1 1 170px', minWidth: 150, maxWidth: 280 }}>
             <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
             <input
               value={search}
@@ -812,8 +816,10 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
                     {/* Secondary actions carry `ws-bar-action` so the
                         container query can fold them into the ⋯ menu; the
                         primary Record Payment below never folds. */}
+                    {/* NOT `ws-bar-action`: settling dues is a priority action
+                        and stays on the bar. Only Show Summary folds. */}
                     {canSettleDues && (
-                      <button className="btn btn-secondary btn-sm ws-bar-action" onClick={openSettleDues}>
+                      <button className="btn btn-secondary btn-sm" onClick={openSettleDues}>
                         <CheckIcon size={13} /> Settle Dues
                       </button>
                     )}
@@ -826,8 +832,6 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
                         setCtxMenu({ x: r.right - 210, y: r.bottom, items: [
                           { label: showStats ? 'Hide Summary' : 'Show Summary',
                             icon: <SummaryIcon size={13} />, action: () => setShowStats(!showStats) },
-                          ...(canSettleDues ? [{ label: 'Settle Dues',
-                            icon: <CheckIcon size={13} />, action: openSettleDues }] : []),
                         ] })
                       }}
                     >
