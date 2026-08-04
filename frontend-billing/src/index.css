@@ -1526,6 +1526,14 @@ img { display: block; max-width: 100%; }
   border-bottom: 1px solid var(--border);
 }
 .data-table th {
+  /* STICKY inside `.data-table-wrap`, which is the scrolling box. Applied to
+     `th` rather than `thead` — sticky on the section element is not honoured
+     consistently, and each cell needs its own background or the rows show
+     through as they pass underneath. */
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-3);
   padding: 10px 12px;
   font-size: 11.5px;
   font-weight: 600;
@@ -6064,6 +6072,26 @@ body.is-col-resizing * {
    stopped rendering that bar.) */
 .khata-body .page-subbar,
 .stock-body .page-subbar { top: 0; }
+
+/* Workspace toolbars sit on the PAGE, not on the table.
+   Measured against the Invoices tab, which already read correctly: its control
+   row uses the page background with a 14px gap before the grid, so the table
+   below is clearly a separate bounded card. The `.ws-top-bar` used instead a
+   surface colour of its own (--bg-2, the same as the table) and butted
+   straight against it, so bar and grid fused into one slab and the table
+   stopped looking like a table. Same three properties, same result. */
+.khata-body .ws-top-bar,
+.stock-body .ws-top-bar,
+/* `.ws-embed` is repeated because WorkspaceTopBar's own <style> carries
+   `.ws-embed .ws-top-bar { margin: 0 }` at (0,2,0) and is injected into <head>
+   AFTER this stylesheet, so an equal-specificity rule here loses on source
+   order. Third time a component-local rule has quietly beaten the stylesheet
+   today — those declarations belong here, not in the component. */
+.khata-body .ws-embed .ws-top-bar,
+.stock-body .ws-embed .ws-top-bar {
+  background: var(--bg);
+  margin-bottom: 14px;
+}
 
 /* ── Contacts & Payments shell ────────────────────────────────────────────
    Same geometry as `.stock-shell`: the page header and workspace tabs are

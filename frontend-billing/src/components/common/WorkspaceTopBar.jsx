@@ -33,11 +33,12 @@ export default function WorkspaceTopBar({
         .ws-top-bar {
           height: 48px; border-bottom: 1px solid var(--border);
           display: flex; align-items: center; padding: 0 12px; gap: 6px; flex-shrink: 0;
-          /* Frosted glass — translucent surface blurring the content beneath */
+          /* SOLID, and the same surface the table uses (--bg-2). The bar was a
+             72%-transparent frosted panel, so the page background showed
+             through it and it read as a different material sitting above the
+             grid rather than as the grid's own header strip. */
           position: sticky; top: 0; z-index: 40;
-          background: color-mix(in srgb, var(--bg-2) 72%, transparent);
-          backdrop-filter: blur(12px) saturate(1.35);
-          -webkit-backdrop-filter: blur(12px) saturate(1.35);
+          background: var(--bg-2);
         }
         .ws-tab {
           display: inline-flex; align-items: center; gap: 6px;
