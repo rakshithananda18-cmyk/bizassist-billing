@@ -94,7 +94,8 @@ export default function StockWorkspace() {
             <h1 className="page-title">
               <InventoryIcon size={20} style={{ color: 'var(--accent)' }} /> Stock &amp; Purchases
             </h1>
-            <p className="page-subtitle">
+            <p className="page-subtitle"
+               title="What is on the shelf and what came in — items, intake, catalogue, godowns and supplier bills in one place">
               What is on the shelf and what came in — items, intake, catalogue,
               godowns and supplier bills in one place
             </p>

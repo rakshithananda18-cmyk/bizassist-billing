@@ -607,20 +607,24 @@ img { display: block; max-width: 100%; }
   position: sticky;
   top: 0;
   z-index: 25;
-  min-height: 60px;
+  /* 60 -> 48: the header holds a 24px title over a one-line subtitle. The old
+     floor forced empty space on every page even when nothing needed it. */
+  min-height: 48px;
   box-sizing: border-box;
   background: color-mix(in srgb, var(--bg) 92%, var(--bg-2, #1e1e24));
   backdrop-filter: blur(16px) saturate(1.4);
   -webkit-backdrop-filter: blur(16px) saturate(1.4);
   margin-left: -36px;
   margin-right: -36px;
-  padding: 10px 36px;
+  padding: var(--pad-block) 36px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 16px;
+  /* 16 -> 8. Measured on /parties/contacts: header 76 + margin 16 + bar 48 +
+     subbar 55 = 195px of chrome before the first row, in a 496px viewport. */
+  margin-bottom: 8px;
   flex-shrink: 0;
   box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
 }
@@ -637,7 +641,7 @@ img { display: block; max-width: 100%; }
   /* full-bleed so the pinned background covers the page gutter */
   margin-left: -36px;
   margin-right: -36px;
-  padding: 10px 36px;
+  padding: var(--pad-block) 36px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 14px;
   box-sizing: border-box;
@@ -1267,6 +1271,13 @@ img { display: block; max-width: 100%; }
   letter-spacing: 0.01em;
   margin: 0;
   line-height: 1.35;
+  /* ONE line. This is descriptive text nobody re-reads, and when it wrapped it
+     added 15px to the header of every page — measured 30px tall on
+     /parties/contacts. Call sites carry the full text in `title`. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 .page-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
 

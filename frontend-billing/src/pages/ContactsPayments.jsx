@@ -77,7 +77,8 @@ export default function ContactsPayments() {
             <h1 className="page-title">
               <ContactsIcon size={20} style={{ color: 'var(--accent)' }} /> Contacts &amp; Payments
             </h1>
-            <p className="page-subtitle">
+            <p className="page-subtitle"
+               title="Manage customer & vendor accounts, credit limits, outstanding balances, and payment transactions">
               Manage customer &amp; vendor accounts, credit limits, outstanding
               balances, and payment transactions
             </p>

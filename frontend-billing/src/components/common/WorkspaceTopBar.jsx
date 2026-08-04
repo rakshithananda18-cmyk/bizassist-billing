@@ -55,7 +55,13 @@ export default function WorkspaceTopBar({
         .ws-embed { padding: 0 0 12px; width: 100%; box-sizing: border-box; overflow-x: hidden; }
         .ws-embed .ws-top-bar { margin: 0; padding: 0 16px; width: 100%; box-sizing: border-box; }
         .ws-embed .page-subbar {
-          margin: 0; padding: 10px 16px; width: 100%; box-sizing: border-box;
+          /* Density comes from the shared token, not a literal. This rule is
+             (0,2,0) and beats the plain .page-subbar rule, so a hardcoded value
+             here silently wins over any app-wide density change — which is
+             exactly what happened: the subbar stayed 55px tall while every
+             other block tightened.
+             NOTE: this whole block is a JS template literal. No backticks. */
+          margin: 0; padding: var(--pad-block) 16px; width: 100%; box-sizing: border-box;
           top: 48px;                       /* pin right below the 48px bar */
         }
       `}</style>
