@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session
 from core.models import B2BConnection, B2BOrder, B2BOrderLineItem
 from core.billing import sequence as SEQ
 from database.models import (
-    Invoice, Product, Inventory, PurchaseInvoice, PurchaseInvoiceLineItem,
-    User, Vendor,
+    Customer, Invoice, Product, Inventory, PurchaseInvoice,
+    PurchaseInvoiceLineItem, User, Vendor,
 )
 
 logger = logging.getLogger("bizassist.order")
@@ -415,6 +415,44 @@ def _buyer_vendor_for_order(db: Session, *, order: B2BOrder, seller: User) -> Ve
     return vendor
 
 
+def _seller_customer_for_order(db: Session, *, order: B2BOrder, buyer: User) -> Customer:
+    """Find/create the seller-owned customer row for this connected buyer.
+
+    The exact mirror of :func:`_buyer_vendor_for_order`. The buyer side has
+    always linked its purchase bill to a Vendor; the seller side recorded only
+    ``customer=<business name>`` with a NULL ``customer_id``, so every B2B sale
+    landed in "Other Invoices" and never reached the buyer's ledger. A B2B
+    counterparty is a customer to the seller exactly as it is a vendor to the
+    buyer — both halves now say so.
+    """
+    customer = None
+    if buyer.gstin:
+        customer = db.query(Customer).filter(
+            Customer.business_id == order.seller_business_id,
+            Customer.gstin == buyer.gstin,
+        ).first()
+    if customer is None and not buyer.gstin:
+        customer = db.query(Customer).filter(
+            Customer.business_id == order.seller_business_id,
+            Customer.name == buyer.business_name,
+        ).first()
+    if customer is None:
+        customer = Customer(
+            business_id=order.seller_business_id,
+            name=buyer.business_name,
+            gstin=buyer.gstin,
+            phone=buyer.phone,
+            email=buyer.email,
+            address=buyer.address,
+            state_code=buyer.state_code,
+            pan=buyer.pan,
+            is_active=True,
+        )
+        db.add(customer)
+        db.flush()
+    return customer
+
+
 def _ensure_buyer_purchase_invoice(db: Session, *, order: B2BOrder, buyer: User,
                                    seller: User, sale_invoice: Invoice) -> PurchaseInvoice:
     """Create the buyer's bill/payable, deliberately without a second stock move."""
@@ -598,10 +636,12 @@ def sync_completed_order(db: Session, order: B2BOrder):
         if inv is None:
             raise ValueError("B2B order points to a supplier invoice outside the seller business")
     else:
+        seller_customer = _seller_customer_for_order(db, order=order, buyer=buyer)
         inv = billing.create_sale_invoice(
             db,
             business_id=order.seller_business_id,
             customer=buyer.business_name,
+            customer_id=seller_customer.id,
             invoice_no=f"B2B-{order.order_number}",
             invoice_type="B2B",
             place_of_supply=buyer.state_code or None,
