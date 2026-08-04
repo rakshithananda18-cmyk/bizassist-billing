@@ -22,7 +22,7 @@ export default function SessionExpiredModal({ onSignOut }) {
       <div style={{
         background: 'var(--bg-2, #1a1a1a)',
         border: '1px solid var(--border, rgba(255, 255, 255, 0.12))',
-        borderRadius: 24,
+        maxHeight: '90vh', overflowY: 'auto', borderRadius: 24,
         padding: '40px 48px',
         width: '100%',
         maxWidth: 500,

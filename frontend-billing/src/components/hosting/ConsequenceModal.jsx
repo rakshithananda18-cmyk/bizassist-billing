@@ -144,7 +144,7 @@ export default function ConsequenceModal({ fromMode, toMode, onCancel, onConfirm
     >
       <div
         className="pf-modal"
-        style={{ maxWidth: 480, background: 'var(--bg-2, #181818)', border: '1px solid var(--border, rgba(255,255,255,0.12))', borderRadius: 16, padding: '26px 30px', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}
+        style={{ maxWidth: 480, background: 'var(--bg-2, #181818)', border: '1px solid var(--border, rgba(255,255,255,0.12))', maxHeight: '90vh', overflowY: 'auto', borderRadius: 16, padding: '26px 30px', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}
         onMouseDown={e => e.stopPropagation()}
       >
         {/* Header */}

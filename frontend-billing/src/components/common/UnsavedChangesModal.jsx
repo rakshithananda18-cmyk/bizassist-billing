@@ -54,7 +54,7 @@ export default function UnsavedChangesModal({ blocker, message }) {
           width: 380,
           background: 'var(--bg-2)',
           border: '1px solid var(--border)',
-          borderRadius: 14,
+          maxHeight: '90vh', overflowY: 'auto', borderRadius: 14,
           boxShadow: '0 24px 60px rgba(0,0,0,0.35)',
           padding: '28px 28px 24px',
           animation: 'ucm-slide-in 0.18s cubic-bezier(.34,1.56,.64,1)',

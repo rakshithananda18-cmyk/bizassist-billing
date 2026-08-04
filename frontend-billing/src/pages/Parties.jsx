@@ -695,7 +695,15 @@ export default function Parties({ embedded = false, headerTabs = null }) {
                     >
                       <td>
                         <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</div>
-                        {p.address && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.address}</div>}
+                        {/* One line, ellipsised, full text on hover. A postal
+                            address wrapped to 2-3 lines here was setting the
+                            height of EVERY cell in the row — measured 109px per
+                            contact, of which 46px was this element alone. The
+                            address is reference detail, not something scanned
+                            down a list; the row is for finding the party. */}
+                        {p.address && (
+                          <div className="row-subline" title={p.address}>{p.address}</div>
+                        )}
                       </td>
                       <td>{p.phone || '—'}</td>
                       {activeTab === 'Customers' && <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{p.email || '—'}</td>}

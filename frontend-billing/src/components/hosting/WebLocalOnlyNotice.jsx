@@ -48,7 +48,7 @@ export default function WebLocalOnlyNotice() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9997, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ background: 'var(--bg-2, #1a1a1a)', border: '1px solid var(--border, rgba(255,255,255,0.12))', borderRadius: 16, padding: '28px 32px', width: '100%', maxWidth: 480, boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
+      <div style={{ background: 'var(--bg-2, #1a1a1a)', border: '1px solid var(--border, rgba(255,255,255,0.12))', maxHeight: '90vh', overflowY: 'auto', borderRadius: 16, padding: '28px 32px', width: '100%', maxWidth: 480, boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: '1.12rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: 12 }}>
           <MonitorIcon size={20} style={{ color: 'var(--accent)' }} />
           <span>Your data is on your desktop</span>

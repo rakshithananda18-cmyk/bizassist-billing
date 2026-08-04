@@ -103,7 +103,7 @@ export default function SyncNudgeModal() {
       <div style={{
         background: 'var(--bg-2, #1c1c1e)',
         border: '1px solid var(--border, rgba(255,255,255,0.12))',
-        borderRadius: 18,
+        maxHeight: '90vh', overflowY: 'auto', borderRadius: 18,
         padding: '28px 30px 22px',
         width: '100%', maxWidth: 460,
         boxShadow: '0 32px 96px rgba(0,0,0,0.55)',

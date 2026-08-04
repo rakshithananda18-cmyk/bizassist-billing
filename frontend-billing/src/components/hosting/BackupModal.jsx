@@ -161,7 +161,7 @@ export default function BackupModal({ token, direction = 'cloud-to-local', onCom
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--bg-2, #1a1a1a)', border: '1px solid var(--border, rgba(255,255,255,0.12))', borderRadius: 16, padding: '30px 34px', width: '100%', maxWidth: 520, boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
+      <div style={{ background: 'var(--bg-2, #1a1a1a)', border: '1px solid var(--border, rgba(255,255,255,0.12))', maxHeight: '90vh', overflowY: 'auto', borderRadius: 16, padding: '30px 34px', width: '100%', maxWidth: 520, boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
 
         {/* Header */}
         <div style={{ fontSize: '1.12rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
