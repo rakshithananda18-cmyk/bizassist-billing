@@ -1352,8 +1352,18 @@ def _ensure_sync_queue_dedup_index(conn):
             return
 
         if is_pg:
+            # `schemaname = current_schema()` is NOT decoration. `pg_indexes`
+            # spans EVERY schema, so an index of this name anywhere in the
+            # database answers "already installed" for a table that does not
+            # have it — the function then returns having deduped nothing, and
+            # the guard it is supposed to install is silently absent. CI proved
+            # it: sibling suites create this index in `public`, and the check
+            # then skipped a different schema's table that still held three
+            # duplicate rows. An existence probe that cannot distinguish
+            # "installed here" from "installed somewhere" is rule 33.
             already = conn.execute(text(
-                "SELECT 1 FROM pg_indexes WHERE indexname = :n"), {"n": idx_name}).fetchone()
+                "SELECT 1 FROM pg_indexes WHERE indexname = :n "
+                "AND schemaname = current_schema()"), {"n": idx_name}).fetchone()
         else:
             already = conn.execute(text(
                 "SELECT 1 FROM sqlite_master WHERE type='index' AND name=:n"),

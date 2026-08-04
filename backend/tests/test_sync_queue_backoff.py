@@ -98,7 +98,12 @@ def conn(tmp_path):
 def _index_exists(conn):
     """Did the migration actually install its backstop on THIS connection?"""
     if conn.dialect.name == "postgresql":
-        sql = "SELECT 1 FROM pg_indexes WHERE indexname = :n"
+        # Scoped to the current schema for the same reason the migration is:
+        # sibling suites install this index in `public`, so an unqualified probe
+        # reports success for a schema that does not have it — which is exactly
+        # how this assertion passed while the dedup had not run.
+        sql = ("SELECT 1 FROM pg_indexes WHERE indexname = :n "
+               "AND schemaname = current_schema()")
     else:
         sql = "SELECT 1 FROM sqlite_master WHERE type='index' AND name = :n"
     return conn.execute(
