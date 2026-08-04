@@ -731,7 +731,9 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
                         )}
                       </td>
                       <td>{p.phone || '—'}</td>
-                      {activeTab === 'Customers' && <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>{p.email || '—'}</td>}
+                      {activeTab === 'Customers' && (
+                        <td className="td-clip" style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }} title={p.email || ''}>{p.email || '—'}</td>
+                      )}
                       <td className="td-mono" style={{ fontSize: '0.78rem' }}>{p.gstin || '—'}</td>
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{outstanding > 0 ? <span className="badge badge-danger">{fmt(outstanding)}</span> : <span className="badge badge-success">Nil</span>}</td>
                       <td style={{ color: 'var(--text-muted)', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
@@ -742,24 +744,37 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
                       </td>
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        {/* ICON-ONLY, with the label in `title`. Text buttons
+                            made this the widest column in the table by a
+                            distance — 347px of 1203px, which is what pushed the
+                            grid 235px past its container and cut the column in
+                            half. InvoiceActions already renders row actions this
+                            way, which is why the Invoices grid fits; this is the
+                            same convention, not a new one. Every action is also
+                            in the row's right-click menu. */}
                         {activeTab === 'Customers' ? (
                           <>
-                            <button className="btn btn-secondary btn-sm" onClick={() => handleViewInvoices(p)}><BillsIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> View Invoices</button>
+                            <button className="btn btn-secondary btn-sm row-act" onClick={() => handleViewInvoices(p)}
+                              title="View invoices" aria-label="View invoices"><BillsIcon size={14} /></button>
                             {outstanding > 0 && !isCashier && (
                               <button
-                                className="btn btn-secondary btn-sm"
+                                className="btn btn-secondary btn-sm row-act"
                                 onClick={() => navigate(`/parties/payments?customer=${encodeURIComponent(p.name)}`)}
-                                title="View this customer's transactions in the Payments tab"
+                                title="Settle — view this customer's transactions"
+                                aria-label="Settle dues"
                               >
-                                <CheckIcon size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> Settle
+                                <CheckIcon size={14} />
                               </button>
                             )}
                             {outstanding > 0 && (
-                              <button className="btn btn-sm" style={{ backgroundColor: '#166534', color: '#ffffff', border: 'none' }} onClick={() => handleWhatsAppReminder(p)} title="Send payment reminder on WhatsApp"><MessageIcon size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> Send Reminder</button>
+                              <button className="btn btn-sm row-act" style={{ backgroundColor: '#166534', color: '#ffffff', border: 'none' }}
+                                onClick={() => handleWhatsAppReminder(p)}
+                                title="Send payment reminder on WhatsApp" aria-label="Send payment reminder"><MessageIcon size={14} /></button>
                             )}
                           </>
                         ) : (
-                          <button className="btn btn-secondary btn-sm" onClick={() => handleViewPurchases(p)}><InventoryIcon size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> View Purchases</button>
+                          <button className="btn btn-secondary btn-sm row-act" onClick={() => handleViewPurchases(p)}
+                            title="View purchases" aria-label="View purchases"><InventoryIcon size={14} /></button>
                         )}
                         </div>
                       </td>

@@ -1574,6 +1574,31 @@ img { display: block; max-width: 100%; }
   text-align: center;
 }
 
+/* Long free-text cells CLIP rather than widen the grid. A table sizes itself
+   to its widest content, so one long email or address drags every other column
+   along and pushes the grid past its container — which is how the Actions
+   column ended up half off-screen. `max-width` is what makes this bite: without
+   it the cell just asks for its natural width again. Full value stays in the
+   cell's `title`. */
+.data-table td.td-clip {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Icon-only row action. Square, so a row of them reads as a group rather than
+   as ragged buttons, and so the Actions column stays a predictable width
+   regardless of how many an individual row happens to show. */
+.row-act {
+  padding: 0 8px;
+  min-width: 30px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Secondary line under a row's primary label (address under a party name, etc).
    ONE line, always. Free-wrapping text here sets the height of every cell in
    the row, so a long address costs ~46px on every row whether or not anyone
@@ -1584,7 +1609,10 @@ img { display: block; max-width: 100%; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 32ch;
+  /* 32ch made the Name column the second-widest in the grid at 198px. The
+     sub-line is context, not the thing being scanned — the name above it is —
+     so it gets the smaller share. */
+  max-width: 24ch;
 }
 .data-table tbody tr { transition: background var(--dur) var(--ease); }
 .data-table tbody tr:nth-child(even) { background: var(--bg-3); }
