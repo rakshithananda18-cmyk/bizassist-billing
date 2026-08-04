@@ -545,7 +545,7 @@ export default function CheckoutModal({
         const savedCust = await res.json()
         setAlert({ type: 'success', msg: `Customer ${isEdit ? 'updated' : 'created'} successfully!` })
         setShowCustDrawer(false)
-        const updatedCustRes = await authFetch('/billing/customers')
+        const updatedCustRes = await authFetch('/billing/customers?per_page=500')
         if (updatedCustRes.ok) {
           const custData = await updatedCustRes.json()
           let custItems = Array.isArray(custData) ? custData : (custData && Array.isArray(custData.items) ? custData.items : [])

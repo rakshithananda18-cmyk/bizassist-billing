@@ -98,7 +98,7 @@ export default function IntakePurchasePanel({ rows = [], authFetch, distributor:
 
   useEffect(() => {
     if (!authFetch) return
-    authFetch('/billing/vendors')
+    authFetch('/billing/vendors?per_page=500')
       .then((r) => (r.ok ? r.json() : { items: [] }))
       .then((d) => setVendors(d.items || []))
       .catch(() => {})

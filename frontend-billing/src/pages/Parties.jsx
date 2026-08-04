@@ -8,7 +8,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import { useAuth } from '../contexts/AuthContext'
-import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, HandshakeIcon, InventoryIcon, MessageIcon, PlusIcon, PrinterIcon, SearchIcon, SyncIcon, UserIcon, WarehouseIcon, ExpandIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, CopyIcon, CloseIcon, ContactsIcon, HandshakeIcon, InventoryIcon, MessageIcon, PlusIcon, PrinterIcon, SearchIcon, SyncIcon, UserIcon, WarehouseIcon, ExpandIcon } from '../components/Icons'
 import PartyFormModal from '../components/parties/PartyFormModal'
 import SaleReturnModal from '../components/parties/SaleReturnModal'
 import { logger } from '../utils/logger'
@@ -87,8 +87,13 @@ export default function Parties({ embedded = false, headerTabs = null }) {
   const load = useCallback(() => {
     setLoading(true)
     Promise.all([
-      authFetch('/billing/customers').then(r => r.ok ? r.json() : []).catch(() => []),
-      authFetch('/billing/vendors').then(r => r.ok ? r.json() : []).catch(() => []),
+      // per_page is REQUIRED here. The endpoints default to 20 and this page has
+      // no pagination control, so without it the list silently stopped at the
+      // 20th contact alphabetically and the tab badge reported that truncated
+      // count as the total — 23 customers displayed as "Customers (20)".
+      // Matches InvoicesListView's `/invoices?per_page=500`.
+      authFetch('/billing/customers?per_page=500').then(r => r.ok ? r.json() : []).catch(() => []),
+      authFetch('/billing/vendors?per_page=500').then(r => r.ok ? r.json() : []).catch(() => []),
       authFetch('/billing/invoices').then(r => r.ok ? r.json() : []).catch(() => []),
       authFetch('/purchases').then(r => r.ok ? r.json() : []).catch(() => []),
     ]).then(([c, v, invs, purchs]) => {
@@ -315,14 +320,11 @@ export default function Parties({ embedded = false, headerTabs = null }) {
     navigate(`/parties/invoices?customer=${encodeURIComponent(customer.name)}`)
   }
 
+  // The vendor half of handleViewInvoices. Purchase bills live on the Stock
+  // workspace's Purchase tab, whose search already matches supplier_name, so
+  // this seeds it rather than adding a second filter.
   const handleViewPurchases = (vendor) => {
-    // Vendor purchases: still use local state (no dedicated Purchases tab yet).
-    // TODO: add a Purchases tab to the workspace and navigate similarly.
-    confirm({
-      mode: 'alert',
-      title: 'Coming soon',
-      message: `Purchases view for ${vendor.name} — coming soon in the workspace.`,
-    })
+    navigate(`/stock/purchase?vendor=${encodeURIComponent(vendor.name)}`)
   }
 
   const handleWhatsAppReminder = (party) => {
@@ -626,7 +628,7 @@ export default function Parties({ embedded = false, headerTabs = null }) {
                             { label: 'Print Invoice', icon: <PrinterIcon size={13} />, action: () => handlePrintInvoice(p.invoice_number || p.invoice_no) },
                             { label: 'Share on WhatsApp', icon: <MessageIcon size={13} />, action: () => handleWhatsAppShareInvoice(p) },
                             { divider: true },
-                            { label: 'Copy Invoice No', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(p.invoice_number || p.invoice_no || '') },
+                            { label: 'Copy Invoice No', icon: <CopyIcon size={13} />, action: () => navigator.clipboard.writeText(p.invoice_number || p.invoice_no || '') },
                           ]})
                         }}
                       >
@@ -686,8 +688,8 @@ export default function Parties({ embedded = false, headerTabs = null }) {
                           { label: 'View Invoices', icon: <BillsIcon size={13} />, action: () => navigate(`/parties/invoices?customer=${encodeURIComponent(p.name)}`) },
                           { label: 'Send Payment Reminder', icon: <MessageIcon size={13} />, action: () => handleWhatsAppReminder(p) },
                           { divider: true },
-                          { label: 'Copy Phone', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(p.phone || '') },
-                          { label: 'Copy Name', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(p.name || '') },
+                          { label: 'Copy Phone', icon: <CopyIcon size={13} />, action: () => navigator.clipboard.writeText(p.phone || '') },
+                          { label: 'Copy Name', icon: <CopyIcon size={13} />, action: () => navigator.clipboard.writeText(p.name || '') },
                         ]})
                       }}
                     >

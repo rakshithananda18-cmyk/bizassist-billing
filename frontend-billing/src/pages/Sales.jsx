@@ -986,7 +986,7 @@ export default function Sales(props = {}) {
     }
 
     const fetchCustomers = () =>
-      _authFetch('/billing/customers')
+      _authFetch('/billing/customers?per_page=500')
         .then(r => r.ok ? r.json() : [])
         .catch(() => [])
         .then(c => {
