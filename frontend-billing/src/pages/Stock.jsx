@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
-import { AlertIcon, CheckIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon, ExpandIcon, SidebarIcon } from '../components/Icons'
+import { AlertIcon, CheckIcon, CopyIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon, ExpandIcon, SidebarIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import CustomSelect from '../components/common/CustomSelect'
 import AdjustStockModal from '../components/stock/AdjustStockModal'
@@ -696,6 +696,21 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
     { key: 'godowns',  label: 'Godowns',       icon: <WarehouseIcon size={14} /> },
   ]
 
+  // ── Top-bar actions — declared once, rendered twice ────────────────────────
+  // `.ws-top-bar` is a fixed-height, non-wrapping row, so a bar too narrow to
+  // hold these CLIPS the trailing ones. Below the breakpoint the buttons are
+  // hidden and the same list is handed to the ⋯ menu instead (see index.css).
+  // One array so the two renderings cannot drift apart.
+  const toolbarActions = [
+    { label: 'Adjust Stock',   icon: <ZapIcon size={13} />,      action: () => { setAdjustForm(defaultAdjust); setShowAdjustModal(true) } },
+    { label: 'Transfer Stock', icon: <SyncIcon size={13} />,     action: () => { setTransferForm(defaultTransfer); setShowTransferModal(true) } },
+    { divider: true },
+    { label: 'Labels',                                           action: () => setShowLabelModal(true) },
+    { label: exporting ? 'Exporting…' : 'Export',
+      icon: <DownloadIcon size={13} />, action: handleExport, disabled: exporting },
+    { label: 'New Product',    icon: <PlusIcon size={13} />,     action: () => { setEditProduct(null); setShowAddModal(true) }, primary: true },
+  ]
+
   return (
     <PageShell embedded={embedded} title="Stock & Inventory">
       <style>{`
@@ -774,32 +789,40 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                   </button>
                 </div>
               )}
+              {/* Wide bar: every action is its own button. `display` lives in
+                  `.ws-bar-action`, NOT inline — an inline style would beat the
+                  `display:none` that collapses them. */}
+              {toolbarActions.map((a, i) => a.divider
+                ? <WsDivider key={i} className="ws-bar-divider" />
+                : (
+                  <button
+                    key={i}
+                    className={`btn ${a.primary ? 'btn-primary' : 'btn-secondary'} btn-sm ws-bar-action`}
+                    disabled={a.disabled}
+                    onClick={a.action}
+                  >
+                    {a.icon} {a.label}
+                  </button>
+                )
+              )}
+
+              {/* Narrow bar: the same list, in the same ContextMenu the grid
+                  already uses. Anchored to the button's own rect so the menu
+                  hangs off its right edge; ContextMenu clamps to the viewport. */}
               <button
-                className="btn btn-secondary btn-sm"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-                onClick={() => { setAdjustForm(defaultAdjust); setShowAdjustModal(true) }}
+                className="btn btn-secondary btn-sm ws-bar-more"
+                title="More actions"
+                aria-label="More actions"
+                onClick={e => {
+                  const r = e.currentTarget.getBoundingClientRect()
+                  setCtxMenu({
+                    x: r.right - 210,
+                    y: r.bottom,
+                    items: toolbarActions.filter(a => !a.disabled),
+                  })
+                }}
               >
-                <ZapIcon size={13} /> Adjust Stock
-              </button>
-              <button
-                className="btn btn-secondary btn-sm"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-                onClick={() => { setTransferForm(defaultTransfer); setShowTransferModal(true) }}
-              >
-                <SyncIcon size={13} /> Transfer Stock
-              </button>
-              <WsDivider />
-              <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-                onClick={() => setShowLabelModal(true)}>
-                Labels
-              </button>
-              <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-                disabled={exporting} onClick={handleExport}>
-                <DownloadIcon size={13} /> {exporting ? 'Exporting…' : 'Export'}
-              </button>
-              <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-                onClick={() => { setEditProduct(null); setShowAddModal(true) }}>
-                <PlusIcon size={13} /> New Product
+                &#8943;
               </button>
               {activeView === 'intake' && intakeRows.length > 0 && (
                 <button
@@ -994,12 +1017,12 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                                     { divider: true },
                                     {
                                       label: 'Copy Product Code',
-                                      icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
+                                      icon: <CopyIcon size={13} />,
                                       action: () => navigator.clipboard.writeText(p.sku || p.id),
                                     },
                                     {
                                       label: 'Copy Name',
-                                      icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
+                                      icon: <CopyIcon size={13} />,
                                       action: () => navigator.clipboard.writeText(p.name),
                                     },
                                   ],

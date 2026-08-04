@@ -13,8 +13,8 @@
 import { useNavigate } from 'react-router-dom'
 import { CloseIcon, SettingsIcon } from '../Icons'
 
-export const WsDivider = () => (
-  <div style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 4px' }} />
+export const WsDivider = ({ className = '' }) => (
+  <div className={className} style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 4px' }} />
 )
 
 export default function WorkspaceTopBar({
