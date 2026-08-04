@@ -846,7 +846,11 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
             }
           >
             {headerTabs}
-            <WsDivider />
+            {/* Only a SEPARATOR — it needs something on both sides. `headerTabs`
+                is null now that the workspace tabs live in the page header, so
+                this rendered as a stray rule floating at the far left of the
+                bar with nothing before it. */}
+            {headerTabs && <WsDivider />}
             {[
               { key: 'general', label: 'General Operations', firstTab: 'All' },
               { key: 'expenses', label: 'Expenses & Purchases', firstTab: 'Made' },
@@ -862,6 +866,9 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
                 </button>
               )
             })}
+            {/* Separates the view switch from the search/filter controls, the
+                same way the divider after the page icon does on Stock. */}
+            <WsDivider />
           </WorkspaceTopBar>
         )}
 

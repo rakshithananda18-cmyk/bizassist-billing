@@ -6093,6 +6093,23 @@ body.is-col-resizing * {
   margin-bottom: 14px;
 }
 
+/* The Invoices tab renders its controls in a `.page-subbar` rather than a
+   `.ws-top-bar`, so it needs the toolbar's geometry explicitly or the three
+   tabs sit at different heights with different gutters. `.ws-embed` is in the
+   selector to outrank WorkspaceTopBar's own (0,2,0) rule for the same element. */
+.khata-body .ws-embed .page-subbar,
+.khata-body .page-subbar {
+  height: 48px;
+  /* The base `.page-subbar` is FULL-BLEED: `margin: 0 -36px` paired with
+     `padding: … 36px` so its background covers the page gutter. Change the
+     padding without the margin and the row hangs 36px off both edges — which
+     clipped the search box and New Invoice. Inside a workspace shell there is
+     no gutter to cover, so both go. */
+  margin-left: 0;
+  margin-right: 0;
+  padding: 0 16px;
+}
+
 /* ── Contacts & Payments shell ────────────────────────────────────────────
    Same geometry as `.stock-shell`: the page header and workspace tabs are
    pinned, the active view scrolls inside. Kept as its own pair of names rather
@@ -6195,8 +6212,13 @@ body.is-col-resizing * {
    Applies to the two workspace shells only — a bare `.ctl-label` rule would
    silently restyle every other FilterDropdown in the app. */
 @container (max-width: 1080px) {
-  .khata-body .ctl-label,
-  .stock-body .ctl-label { display: none; }
-  .khata-body .filter-dropdown-btn,
-  .stock-body .filter-dropdown-btn { padding: 0 10px; }
+  /* Scoped to `.ws-top-bar`. The container query measures the SHELL, but the
+     Invoices tab's controls live in a `.page-subbar` that carries only a search
+     box and three buttons — it has room to spare at the same container width,
+     so collapsing its labels stripped names off controls that had nothing to
+     gain from it. Only the crowded toolbar sheds text. */
+  .khata-body .ws-top-bar .ctl-label,
+  .stock-body .ws-top-bar .ctl-label { display: none; }
+  .khata-body .ws-top-bar .filter-dropdown-btn,
+  .stock-body .ws-top-bar .filter-dropdown-btn { padding: 0 10px; }
 }

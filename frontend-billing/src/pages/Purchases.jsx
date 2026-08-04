@@ -454,6 +454,16 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
   // workspace's. Was `headerTabs` alone, which missed the inlinePage case.
   const tabsInBar = Boolean(headerTabs) || inlinePage
 
+  // Search box, defined once. It goes INSIDE the workspace toolbar when
+  // embedded — otherwise this view spends a whole 48px row on a single input,
+  // which is what the other three tabs stopped doing.
+  const searchBox = (
+    <div className="search-bar" style={{ margin: 0, height: 34, boxSizing: 'border-box', display: 'flex', alignItems: 'center', flex: '1 1 170px', minWidth: 150, maxWidth: 280 }}>
+      <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
+      <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search bills…" style={{ fontSize: '0.82rem' }} />
+    </div>
+  )
+
   return (
     <PageShell embedded={embedded} title="Purchases">
       <div className={`${tabsInBar ? 'fade-in ws-embed' : 'slide-up'}`}>
@@ -471,6 +481,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
             showMinimize={false}
             actions={
               <>
+                {searchBox}
                 <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={openReturnModal}>
                   <SyncIcon size={13} /> Record Return
                 </button>
@@ -536,33 +547,30 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
         )}
 
         {/* Tabs + Search (tabs live in the top bar when embedded) */}
+        {!tabsInBar && (
         <div className="flex items-center justify-between page-subbar" style={{ flexWrap: 'wrap', gap: 12 }}>
-          {!tabsInBar ? (
-            <div className="tabs">
-              {['Pending Review', 'Confirmed', 'Returns (Debit Notes)'].map(t => (
-                <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)}>
-                  {t}
-                  <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>
-                    ({
-                      t === 'Returns (Debit Notes)'
-                        ? debitNotes.length
-                        : bills.filter(b => b.status === (t === 'Pending Review' ? 'pending' : 'confirmed')).length
-                    })
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : <div />}
-          <div className="search-bar">
-            <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search bills…" />
+          <div className="tabs">
+            {['Pending Review', 'Confirmed', 'Returns (Debit Notes)'].map(t => (
+              <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)}>
+                {t}
+                <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>
+                  ({
+                    t === 'Returns (Debit Notes)'
+                      ? debitNotes.length
+                      : bills.filter(b => b.status === (t === 'Pending Review' ? 'pending' : 'confirmed')).length
+                  })
+                </span>
+              </button>
+            ))}
           </div>
+          {searchBox}
           {isRefreshing && (
             <span className="toolbar-refresh-spinner">
               <span className="spin" /> Refreshing…
             </span>
           )}
         </div>
+        )}
 
         {/* Table */}
         {(() => {
