@@ -21,7 +21,6 @@ import StockIntakeSheet from '../components/stock/StockIntakeSheet'
 import IntakePurchasePanel from '../components/stock/IntakePurchasePanel'
 import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import ContextMenu from '../components/common/ContextMenu'
-import OverflowActions from '../components/common/OverflowActions'
 import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
 import { useResizableColumns } from '../hooks/useResizableColumns'
 import ColumnResizer from '../components/common/ColumnResizer'
@@ -789,11 +788,35 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                   </button>
                 </div>
               )}
-              {/* Shows as many as FIT and folds the rest into a ⋯ menu.
-                  Replaces a `@container (max-width: …)` breakpoint: the fold
-                  now responds to the sidebar rail, the display-size zoom and
-                  changing labels, none of which a width query can observe. */}
-              <OverflowActions items={toolbarActions} />
+              {/* Folded by a container query on `.stock-body` — see index.css.
+                  A measured "show as many as fit" version was attempted and
+                  reverted: this toolbar's sibling tabs are flex items that
+                  SHRINK under pressure, so "does it fit" has no stable answer
+                  without also pinning their widths. The breakpoint is coarser
+                  but correct, and it tracks the sidebar because the container
+                  IS the content area. */}
+              {toolbarActions.map((a, i) => (
+                <button
+                  key={i}
+                  className={`btn ${a.primary ? 'btn-primary' : 'btn-secondary'} btn-sm ws-bar-action`}
+                  disabled={a.disabled}
+                  onClick={a.action}
+                >
+                  {a.icon} {a.label}
+                </button>
+              ))}
+              <button
+                className="btn btn-secondary btn-sm ws-bar-more"
+                title="More actions"
+                aria-label="More actions"
+                onClick={e => {
+                  const r = e.currentTarget.getBoundingClientRect()
+                  setCtxMenu({ x: r.right - 210, y: r.bottom,
+                               items: toolbarActions.filter(a => !a.disabled) })
+                }}
+              >
+                &#8943;
+              </button>
               {activeView === 'intake' && intakeRows.length > 0 && (
                 <button
                   className={`btn btn-secondary btn-sm ${isSidebarCollapsed ? 'active' : ''}`}

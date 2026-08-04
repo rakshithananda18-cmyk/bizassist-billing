@@ -6065,29 +6065,22 @@ body.is-col-resizing * {
 }
 
 /* ── Workspace toolbar overflow ────────────────────────────────────────────
-   The fold is now MEASURED, not declared — see `useOverflowFit` /
-   `OverflowActions`. A `@container (max-width: 1000px)` rule lived here and was
-   replaced because a width query cannot see the three things that actually move
-   this bar: the sidebar collapsing to its rail, the user's App Display Size
-   zoom (CSS pixels != rendered pixels), and labels that change width.
+   Folds the Stock toolbar's actions into a ⋯ menu when the bar is too narrow.
 
-   `display: inline-flex` is load-bearing, not cosmetic. Without it the row is a
-   BLOCK box and the buttons lay out as inline content on a shared text
-   baseline — so a button with an icon and one without ("Labels") sit 4px apart
-   vertically, which reads as a broken toolbar.
+   Measured on the CONTAINER (`.stock-body`), not the viewport: the bar's width
+   is the viewport MINUS the sidebar, and that sidebar toggles between a ~56px
+   rail and ~240px expanded, so one viewport width means two different bars.
+   `html` also carries a user-set `zoom`, so rendered pixels and CSS pixels
+   differ by a factor a media query cannot see.
 
-   `position: relative` anchors the hidden measuring copies inside
-   OverflowActions: they are absolutely positioned, and without a positioned
-   ancestor they would resolve against the page and drag the layout around.
+   1000px = the toolbar's measured requirement (965px) plus slack.
 
-   `flex-shrink: 0` keeps the row content-sized. It must NOT shrink — the hook
-   derives available space from the parent minus the fixed siblings, and a row
-   that squashes would feed its own shrinkage back into that sum. */
-.ovf-actions {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+   A JS "show exactly as many as fit" version was built and reverted — see the
+   note in Stock.jsx. */
+.ws-bar-action { display: inline-flex; align-items: center; gap: 5px; }
+.ws-bar-more   { display: none; }
+
+@container (max-width: 1000px) {
+  .stock-body .ws-bar-action { display: none; }
+  .stock-body .ws-bar-more   { display: inline-flex; align-items: center; }
 }
-.ovf-more { flex-shrink: 0; }
