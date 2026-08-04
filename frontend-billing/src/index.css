@@ -1610,6 +1610,36 @@ img { display: block; max-width: 100%; }
   vertical-align: middle;
 }
 
+/* ── One control height across every toolbar ───────────────────────────────
+   Measured before this rule: the catalogue toolbar rendered four different
+   heights on one row (search 34, dropdowns 38, Fit columns 25, the count 16)
+   sitting on four different baselines, and the Contacts bar was no better
+   (tabs 27, search 34, Add Party 30, gear 28). Nothing was wrong individually;
+   they just came from four component families that each picked their own.
+
+   34px because the search input is the one control that cannot shrink without
+   its text clipping, so everything else meets it. Plain text (a row count) is
+   deliberately excluded — it aligns by centring, not by being a box. */
+.ws-top-bar .ws-tab,
+.ws-top-bar .btn,
+.ws-top-bar .form-select,
+.ws-top-bar .search-bar,
+.ws-top-bar .filter-dropdown-btn,
+.ws-top-bar .col-layout-btn,
+.inv-panel-toolbar .btn,
+.inv-panel-toolbar .form-select,
+.inv-panel-toolbar .search-bar,
+.inv-panel-toolbar .filter-dropdown-btn,
+.inv-panel-toolbar .col-layout-btn {
+  height: 34px;
+  /* `min-height` too, not just `height`. There is a separate, deliberate FORM
+     standard — `.form-input, .form-select { min-height: 38px }` — so a control
+     shared between a modal and a toolbar keeps its 38px floor and ignores the
+     height set here. Forms stay 38; toolbars are 34. */
+  min-height: 34px;
+  box-sizing: border-box;
+}
+
 /* Icon-only row action. Square, so a row of them reads as a group rather than
    as ragged buttons, and so the Actions column stays a predictable width
    regardless of how many an individual row happens to show. */

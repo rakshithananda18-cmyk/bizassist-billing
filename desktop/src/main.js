@@ -77,6 +77,14 @@ function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // PRINTING DEPENDS ON THIS. Electron defaults `plugins` to false, which
+      // turns OFF Chromium's built-in PDF viewer. Every invoice print in the
+      // app fetches a PDF, drops it into a hidden <iframe> and calls
+      // `contentWindow.print()` (useInvoiceActions.print, usePaymentFlow) — with
+      // the viewer disabled the iframe never renders the PDF, so print() has an
+      // empty document and silently does nothing. A browser has the viewer on
+      // by default, which is why this only ever failed in the desktop app.
+      plugins: true,
     },
   });
 
@@ -152,7 +160,7 @@ function openAiWindow(url) {
     backgroundColor: '#0b1020',
     title: 'Dashboard BIZASSIST',
     icon: path.join(__dirname, '..', 'build', 'icon.png'),
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, plugins: true },
   });
   
   aiWindow.webContents.on('before-input-event', (e, input) => {

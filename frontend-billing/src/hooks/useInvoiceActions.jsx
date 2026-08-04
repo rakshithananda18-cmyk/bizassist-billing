@@ -49,7 +49,32 @@ export default function useInvoiceActions(authFetch, { onChanged } = {}) {
       iframe.style.display = 'none'
       iframe.src = url
       document.body.appendChild(iframe)
-      iframe.onload = () => iframe.contentWindow.print()
+
+      // Cleaned up, and the print call guarded. Previously the iframe and its
+      // object URL were left in the document forever — one of each per print —
+      // and `print()` sat outside the try, so a renderer that refuses it (the
+      // desktop app with the PDF viewer disabled) failed silently with no toast.
+      const cleanup = () => {
+        try { window.URL.revokeObjectURL(url) } catch { /* already gone */ }
+        iframe.remove()
+      }
+      iframe.onload = () => {
+        try {
+          iframe.contentWindow.print()
+          // Give the dialog time to take over; removing the frame under it
+          // cancels the job on some platforms.
+          setTimeout(cleanup, 60000)
+        } catch (err) {
+          logger.error('[INVOICE] print dialog refused', err)
+          toast('error', 'Could not open the print dialog.')
+          cleanup()
+        }
+      }
+      iframe.onerror = () => {
+        logger.error('[INVOICE] print iframe failed to load the PDF')
+        toast('error', 'Could not load the invoice PDF for printing.')
+        cleanup()
+      }
     } catch (err) {
       logger.error('[INVOICE] print failed', err)
       toast('error', 'Error printing invoice.')

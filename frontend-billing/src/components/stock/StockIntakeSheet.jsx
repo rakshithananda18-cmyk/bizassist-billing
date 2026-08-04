@@ -770,9 +770,12 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
 
       {/* ── Top bar: scanner + search + upload + global ref ─────────────── */}
+      {/* No top padding: the workspace toolbar's 14px margin already spaces this
+          row. The extra 10px made Stock Intake sit 24px below the bar while the
+          Catalogue sat at 14 — the two views read as different layouts. */}
       <div style={{
         display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap',
-        padding: '10px 0', borderBottom: '2px solid var(--border)', flexShrink: 0,
+        padding: '0 0 10px', borderBottom: '2px solid var(--border)', flexShrink: 0,
       }}>
         {/* ONE field for scanning AND searching (was two adjacent inputs — a
             loud accent-bordered scan box next to a plain search box, i.e. two
@@ -1367,9 +1370,12 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
 
 
       {/* ── Footer: summary + save ───────────────────────────────────────── */}
+      {/* Footer mirrors the header: 48px tall like every toolbar in the app, so
+          the sheet is bounded by two rows of the same height rather than by two
+          differently-sized strips. */}
       <div style={{
         display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap',
-        padding: '10px 0', borderTop: '1px solid var(--border)', flexShrink: 0,
+        minHeight: 48, padding: '8px 0 0', borderTop: '1px solid var(--border)', flexShrink: 0,
       }}>
         <span style={{ fontSize: '0.79rem', color: 'var(--text-muted)', flex: 1 }}>
           {summary ? (

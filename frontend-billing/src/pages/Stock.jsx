@@ -810,7 +810,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
           cursor: pointer; transition: background var(--dur-fast) var(--ease);
         }
         .inv-alert-row:hover { background: var(--bg-3); }
-        .inv-full-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 14px 16px; overflow: hidden; }
+        .inv-full-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 0 16px 14px; overflow: hidden; }
         .inv-panel-toolbar {
           display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
           padding-bottom: 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; margin-bottom: 12px;
@@ -920,7 +920,9 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
 
             {/* ── INTAKE ─────────────────────────────────────────────────── */}
             {/* Keep mounted always so rows aren't lost when switching tabs */}
-            <div style={{ display: activeView === 'intake' ? 'flex' : 'none', flexDirection: 'column', height: '100%', paddingTop: 12 }}>
+            {/* No paddingTop: the workspace toolbar carries a 14px margin-bottom, so an
+                extra 12px here made this view's gap 26px against everyone else's 14. */}
+            <div style={{ display: activeView === 'intake' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
               <StockIntakeSheet
                 products={products}
                 prefillProduct={prefillProduct}

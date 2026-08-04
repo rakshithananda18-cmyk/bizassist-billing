@@ -78,8 +78,10 @@ export default function WorkspaceTopBar({
             title={`Configure ${settingsTab.charAt(0).toUpperCase() + settingsTab.slice(1)} Settings`}
             onClick={() => navigate(`/settings?tab=${settingsTab}`)}
             style={{
+              // 34, matching every other control on the bar. It was 28, which
+              // read as a slightly-too-small odd one out at the end of the row.
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, borderRadius: 6, border: '1px solid var(--border)',
+              width: 34, height: 34, borderRadius: 6, border: '1px solid var(--border)',
               background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)',
               transition: 'background .12s, color .12s',
               marginLeft: 4,
