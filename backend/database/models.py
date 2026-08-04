@@ -848,6 +848,26 @@ class SyncQueue(Base):
     synced_at   = Column(DateTime, nullable=True)
     error       = Column(Text, nullable=True)
 
+    # ── Per-row backoff — the outbox half of what `sync_inbox` already had ────
+    # A DEFERRED row keeps `synced_at = NULL` on purpose (M-20: a deferral is not
+    # a rejection) and was therefore re-sent on EVERY cycle, forever, with no
+    # counter and no delay. Measured 2026-08-04 on the local DB: 31 pending rows
+    # against 13 distinct targets — the same three rows re-queued 7 times each
+    # over one day, because a deferred child is re-queued by the heal scan while
+    # its parent never arrives.
+    #
+    # Two costs. Every cycle spends its push budget re-sending rows the cloud has
+    # already refused; and the drain window is `ORDER BY id LIMIT 100`, so once
+    # stuck rows fill it, nothing else for that business ever syncs again. The
+    # queue was on a path to that, not at it — which is why this is backoff, not
+    # a bigger rescue.
+    #
+    # `attempts` is NOT reset when a row is re-queued with a fresher payload: the
+    # re-queue is the symptom of the stall, so letting it reset the timer would
+    # defeat the backoff entirely.
+    attempts        = Column(Integer, default=0, nullable=False)
+    next_attempt_at = Column(DateTime, index=True, nullable=True)
+
 
 class SyncInbox(Base):
     """The PULL-side counterpart of ``sync_queue`` — rows the cloud sent that
@@ -1439,20 +1459,51 @@ def _queue_change(connection, target, operation):
 
     # Insert into sync_queue using connection
     try:
-        connection.execute(
+        # ── Refresh the pending row rather than stacking another copy ─────────
+        # Written as SELECT-then-UPDATE/INSERT rather than `ON CONFLICT`: the
+        # upsert form has to infer the partial unique index, and if that index
+        # is not there yet (a database that has not run the migration) it fails
+        # instead of inserting. The except below swallows to protect the sale
+        # (M-20a), so the row would be silently dropped — the exact failure this
+        # whole file is scarred by. This form needs no index to be correct; the
+        # index is only the backstop.
+        #
+        # `attempts` / `next_attempt_at` are deliberately NOT reset here. The
+        # heal scan re-queues a deferred row every cycle, so resetting would
+        # hand it a fresh timer each time and cancel the backoff.
+        existing = connection.execute(
             text(
-                "INSERT INTO sync_queue (business_id, entity, entity_id, operation, payload, created_at) "
-                "VALUES (:business_id, :entity, :entity_id, :operation, :payload, :created_at)"
+                # NULL-safe on business_id: `= NULL` is never true, and a few
+                # rows do carry a NULL business_id.
+                "SELECT id FROM sync_queue WHERE "
+                "((business_id IS NULL AND :business_id IS NULL) OR business_id = :business_id) "
+                "AND entity = :entity AND entity_id = :entity_id "
+                "AND operation = :operation AND synced_at IS NULL LIMIT 1"
             ),
-            {
-                "business_id": bid,
-                "entity": tbl,
-                "entity_id": entity_id,
-                "operation": operation,
-                "payload": payload,
-                "created_at": utc_now()
-            }
-        )
+            {"business_id": bid, "entity": tbl,
+             "entity_id": entity_id, "operation": operation},
+        ).fetchone()
+
+        if existing:
+            connection.execute(
+                text("UPDATE sync_queue SET payload = :payload WHERE id = :id"),
+                {"payload": payload, "id": existing[0]},
+            )
+        else:
+            connection.execute(
+                text(
+                    "INSERT INTO sync_queue (business_id, entity, entity_id, operation, payload, created_at, attempts) "
+                    "VALUES (:business_id, :entity, :entity_id, :operation, :payload, :created_at, 0)"
+                ),
+                {
+                    "business_id": bid,
+                    "entity": tbl,
+                    "entity_id": entity_id,
+                    "operation": operation,
+                    "payload": payload,
+                    "created_at": utc_now()
+                }
+            )
     except Exception as e:
         # ── M-20a · the swallow that can lose a whole register's takings ───────
         #

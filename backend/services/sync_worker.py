@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 
 import httpx
-from sqlalchemy import text, func
+from sqlalchemy import text, func, or_
 from sqlalchemy.orm import Session
 
 from database.db import SessionLocal, engine, sync_disabled_var
@@ -386,6 +386,22 @@ _PULL_AUTH_BLOCKED: Dict[int, bool] = {}
 # a generous budget and chunk the outbox so each request completes in-window.
 _PUSH_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=60.0, pool=10.0)
 _PUSH_CHUNK_SIZE = 20
+
+# Outbox backoff for rows the cloud HELD (deferred / unaccounted). Doubling from
+# one minute, capped at an hour: a parent that is a few seconds behind its child
+# still lands on the next cycle, while a parent that is never coming stops
+# costing a push every cycle. The cap is deliberate — the row must keep retrying
+# forever, because the parent CAN still arrive (a later sync, a repair script),
+# and a row that gave up permanently is a lost write.
+_PUSH_BACKOFF_BASE_SEC = 60
+_PUSH_BACKOFF_MAX_SEC  = 3600
+
+
+def _push_backoff(attempts: int) -> timedelta:
+    """Delay before a held outbox row is offered again. attempts >= 1."""
+    seconds = min(_PUSH_BACKOFF_BASE_SEC * (2 ** max(0, attempts - 1)),
+                  _PUSH_BACKOFF_MAX_SEC)
+    return timedelta(seconds=seconds)
 
 # (Guard) Per-business in-flight flag so a slow push can't overlap with the next
 # scheduler tick / a manual flush for the same business — overlapping pushes
@@ -2530,9 +2546,17 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         return
 
     # 2. Query next unsynced batch
+    # Rows in backoff are EXCLUDED from the window, not just skipped inside it.
+    # The window is `ORDER BY id LIMIT 100`; a permanently-deferred row sitting
+    # at the head consumes a slot on every cycle forever, so filtering after the
+    # limit would still let stuck rows crowd out fresh ones and eventually starve
+    # the business entirely. See SyncQueue.attempts.
     queue_items = (
         db.query(SyncQueue)
-        .filter(SyncQueue.business_id == business_id, SyncQueue.synced_at.is_(None))
+        .filter(SyncQueue.business_id == business_id,
+                SyncQueue.synced_at.is_(None),
+                or_(SyncQueue.next_attempt_at.is_(None),
+                    SyncQueue.next_attempt_at <= utc_now()))
         .order_by(SyncQueue.id.asc())
         .limit(100)
         .all()
@@ -2824,9 +2848,16 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                         it.error = ("deferred by cloud: parent not present yet"
                                     if (_c["entity"], _c["entity_id"]) in _defer_keys
                                     else "cloud did not account for this row; kept queued")
+                        # Held rows keep synced_at NULL (M-20) but now back off,
+                        # so a parent that is never coming costs one push per
+                        # backoff interval instead of one per cycle.
+                        it.attempts = (it.attempts or 0) + 1
+                        it.next_attempt_at = now + _push_backoff(it.attempts)
                         continue
                     it.synced_at = now
                     it.error = None
+                    it.attempts = 0
+                    it.next_attempt_at = None
                     _acked += 1
                 db.commit()
                 total_pushed += _acked

@@ -300,6 +300,10 @@ _COLUMN_MIGRATIONS = [
     {"table": "purchase_invoice_line_items", "column": "returned_qty",      "ddl": "ALTER TABLE purchase_invoice_line_items ADD COLUMN returned_qty REAL DEFAULT 0.0"},
     {"table": "invoices",                    "column": "parent_invoice_id", "ddl": "ALTER TABLE invoices ADD COLUMN parent_invoice_id INTEGER"},
     {"table": "purchase_invoices",           "column": "parent_invoice_id", "ddl": "ALTER TABLE purchase_invoices ADD COLUMN parent_invoice_id INTEGER"},
+    # Outbox per-row backoff. A deferred row keeps synced_at NULL by design, so
+    # without these it is re-sent every cycle forever — see SyncQueue.attempts.
+    {"table": "sync_queue", "column": "attempts",        "ddl": "ALTER TABLE sync_queue ADD COLUMN attempts INTEGER DEFAULT 0"},
+    {"table": "sync_queue", "column": "next_attempt_at", "ddl": "ALTER TABLE sync_queue ADD COLUMN next_attempt_at DATETIME"},
 ]
 
 
@@ -1316,6 +1320,93 @@ def _ensure_uid_unique_indexes(conn):
             logger.error("[Migration] _ensure_uid_unique_indexes %s: %s", table, e)
 
 
+def _ensure_sync_queue_dedup_index(conn):
+    """Collapse duplicate PENDING outbox rows, then stop them recurring.
+
+    `sync_queue` had four plain indexes and no uniqueness of any kind, so the
+    same unsent row could be queued again and again. `sync_inbox` — the pull-side
+    counterpart written later — carries `ix_sync_inbox_dedup` for exactly this
+    reason; the outbox never got the equivalent.
+
+    Measured on the local DB 2026-08-04: 31 pending rows against 13 distinct
+    targets. `invoice_line_items#75`, `#76` and `invoice_payments#6` each held
+    SEVEN copies, queued once per cycle across a day, because the heal scan
+    re-queues a deferred child while its parent never arrives. The queue grows
+    monotonically, and the drain window is `ORDER BY id LIMIT 100` — so this ends
+    with the window full of duplicates and that business syncing nothing at all.
+
+    Keeps the OLDEST row of each group, not the newest: `created_at` is the only
+    evidence of how long a row has been stuck, and that age is what any
+    "pending too long" rule has to read. Its payload is refreshed from the
+    newest duplicate so keeping the old row does not mean shipping stale state.
+
+    Scoped by `WHERE synced_at IS NULL` — history of already-pushed rows is left
+    exactly as it is, and a later legitimate re-queue of the same entity is
+    still allowed once the earlier one has drained.
+    """
+    idx_name = "uix_sync_queue_pending_target"
+    is_pg = conn.dialect.name == "postgresql"
+    try:
+        from sqlalchemy import inspect as sa_inspect
+        if "sync_queue" not in set(sa_inspect(conn).get_table_names()):
+            return
+
+        if is_pg:
+            already = conn.execute(text(
+                "SELECT 1 FROM pg_indexes WHERE indexname = :n"), {"n": idx_name}).fetchone()
+        else:
+            already = conn.execute(text(
+                "SELECT 1 FROM sqlite_master WHERE type='index' AND name=:n"),
+                {"n": idx_name}).fetchone()
+        if already:
+            return   # DB already enforces it — no scan
+
+        # 1. Freshest payload onto the row we are keeping (the oldest of each group).
+        conn.execute(text("""
+            UPDATE sync_queue SET payload = (
+                SELECT s2.payload FROM sync_queue s2
+                 WHERE s2.synced_at IS NULL
+                   AND s2.business_id IS NOT DISTINCT FROM sync_queue.business_id
+                   AND s2.entity = sync_queue.entity
+                   AND s2.entity_id = sync_queue.entity_id
+                   AND s2.operation = sync_queue.operation
+                 ORDER BY s2.id DESC LIMIT 1)
+             WHERE synced_at IS NULL
+        """ if is_pg else """
+            UPDATE sync_queue SET payload = (
+                SELECT s2.payload FROM sync_queue s2
+                 WHERE s2.synced_at IS NULL
+                   AND IFNULL(s2.business_id,-1) = IFNULL(sync_queue.business_id,-1)
+                   AND s2.entity = sync_queue.entity
+                   AND s2.entity_id = sync_queue.entity_id
+                   AND s2.operation = sync_queue.operation
+                 ORDER BY s2.id DESC LIMIT 1)
+             WHERE synced_at IS NULL
+        """))
+
+        # 2. Drop every pending duplicate except the oldest of each group.
+        result = conn.execute(text("""
+            DELETE FROM sync_queue WHERE synced_at IS NULL AND id NOT IN (
+                SELECT MIN(id) FROM sync_queue WHERE synced_at IS NULL
+                 GROUP BY business_id, entity, entity_id, operation)
+        """))
+        if result.rowcount:
+            logger.info(
+                "[Migration] sync_queue dedup: removed %s duplicate pending row(s)",
+                result.rowcount)
+        conn.commit()
+
+        # 3. The backstop. Partial so it constrains only the pending window.
+        conn.execute(text(
+            f"CREATE UNIQUE INDEX IF NOT EXISTS {idx_name} ON sync_queue "
+            f"(business_id, entity, entity_id, operation) WHERE synced_at IS NULL"))
+        conn.commit()
+        logger.info("[Migration] Created %s", idx_name)
+    except Exception as e:
+        # Never fatal: a queue that cannot be deduped must still accept writes.
+        logger.warning("[Migration] sync_queue dedup index: %s", e)
+
+
 def _migrate_session_nulls(conn):
     try:
         conn.execute(text(
@@ -1503,6 +1594,7 @@ def run_migrations_and_seed():
         _step(conn, _migrate_inventory_stock_precision)
         _step(conn, _backfill_null_uids)
         _step(conn, _ensure_uid_unique_indexes)  # dedup once + create partial unique index (no-op after first boot)
+        _step(conn, _ensure_sync_queue_dedup_index)  # same shape, for the outbox pending window
         _step(conn, _backfill_staff_login_name)
         _step(conn, _backfill_b2b_connection_consent)
         # M-7: re-derive any invoice whose paid state drifted from its ledger
