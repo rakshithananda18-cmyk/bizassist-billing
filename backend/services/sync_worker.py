@@ -188,6 +188,70 @@ _CHILD_TABLE_PARENT_MAP = {
 }
 
 
+def queue_child_with_parent(db, *, business_id: int, entity: str, row_id: int,
+                            payload: str) -> int:
+    """Queue a child row, and its parent too if the parent has never been queued.
+
+    A CHILD WITHOUT ITS PARENT ON THE CLOUD CAN NEVER APPLY. The cloud defers it
+    ("parent not present yet") and the device re-sends it forever.
+
+    That is not hypothetical. Measured on a device 2026-08-04:
+    `invoice_line_items` 75 and 76 sat pending for a day against invoice 778
+    (`OW-0002`), which had NEVER been queued and never would be. The two paths
+    disagree about age:
+
+      · `find_unqueued_syncable_rows` floors its scan at the oldest outbox entry
+        so it cannot re-push years of history. Invoice 778 was created 23 days
+        BEFORE that floor, so the heal scan is structurally forbidden from
+        queueing it.
+      · The parity sweep has no such floor. It compares uids against the cloud
+        every 30 minutes, finds the two line items missing, and queues them —
+        against a parent the other path will never send.
+
+    So the queue grew one deferred pair per parity run, forever. The floor is
+    right in general; what was missing is that pulling in ONE parent because a
+    real child depends on it is not "re-pushing history", it is the difference
+    between a write landing and a write never landing.
+
+    Returns the number of rows queued (0-2).
+    """
+    from database.models import SyncQueue as _SQ, _serialize_orm_obj
+
+    queued = 0
+    parent = _CHILD_TABLE_PARENT_MAP.get(entity)
+    if parent:
+        parent_tbl, fk_col = parent
+        parent_id = db.execute(
+            text(f"SELECT {fk_col} FROM {entity} WHERE id = :i"), {"i": row_id}
+        ).scalar()
+        if parent_id:
+            has_row = db.query(_SQ.id).filter(
+                _SQ.entity == parent_tbl, _SQ.entity_id == parent_id).first()
+            if not has_row:
+                parent_cls = _MODEL_MAP.get(parent_tbl)
+                obj = (db.query(parent_cls).filter(parent_cls.id == parent_id).first()
+                       if parent_cls else None)
+                if obj is not None:
+                    try:
+                        ppayload = json.dumps(_serialize_orm_obj(obj, db), default=str)
+                    except Exception:
+                        ppayload = json.dumps(_row_to_dict(obj), default=str)
+                    queue_row_if_absent(db, business_id=business_id,
+                                        entity=parent_tbl, entity_id=parent_id,
+                                        operation="INSERT", payload=ppayload)
+                    queued += 1
+                    logger.warning(
+                        "[SYNC_HEAL] biz=%s: queued PARENT %s#%s because %s#%s "
+                        "depends on it and the parent had never been queued — "
+                        "without it the child defers forever.",
+                        business_id, parent_tbl, parent_id, entity, row_id)
+
+    if queue_row_if_absent(db, business_id=business_id, entity=entity,
+                           entity_id=row_id, operation="INSERT", payload=payload):
+        queued += 1
+    return queued
+
+
 def find_unqueued_syncable_rows(db, business_id: int, entities=None, limit=200):
     """Syncable rows this device has NEVER put in the outbox.
 
@@ -1689,10 +1753,12 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
                         try:
                             payload = json.dumps(_serialize_orm_obj(obj, conn), default=str)
                         except Exception:
-                            from database.models import _row_to_dict
+                            # Module-level helper — `_row_to_dict` is defined in
+                            # this file, NOT in database.models. Importing it
+                            # from there raised ImportError, so this fallback
+                            # could never actually run.
                             payload = json.dumps(_row_to_dict(obj), default=str)
                     else:
-                        from database.models import _row_to_dict
                         payload = json.dumps(_row_to_dict(obj), default=str)
                     # Was a plain INSERT, on the reasoning that `sync_queue` had
                     # no unique constraint so nothing could conflict. That is no
@@ -1704,9 +1770,13 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
                     # for once, on 2026-08-03, from the SQLite-only
                     # `INSERT OR IGNORE`. The shared guard checks first, so the
                     # conflict cannot arise on either dialect.
-                    queue_row_if_absent(db, business_id=business_id, entity=table,
-                                        entity_id=obj.id, operation="INSERT",
-                                        payload=payload)
+                    # …and the parent, if this is a child row whose parent has
+                    # never been queued. This sweep has no age floor while the
+                    # heal scan does, so it is the path that can queue a child
+                    # against a parent nothing will ever send.
+                    queue_child_with_parent(db, business_id=business_id,
+                                            entity=table, row_id=obj.id,
+                                            payload=payload)
                     summary["missing"] += 1
                     logger.warning(
                         "[PARITY] biz=%s: %s uid=%r MISSING on cloud — queued INSERT",
@@ -1730,10 +1800,8 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
                         try:
                             pay_dict = _serialize_orm_obj(obj, conn)
                         except Exception:
-                            from database.models import _row_to_dict
                             pay_dict = _row_to_dict(obj)
                     else:
-                        from database.models import _row_to_dict
                         pay_dict = _row_to_dict(obj)
                     # Ensure the correct parent uid is in the payload
                     pay_dict[uid_key] = correct_parent_uid
@@ -1945,10 +2013,8 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
                 try:
                     pay_dict = _serialize_orm_obj(local_inv, conn)
                 except Exception:
-                    from database.models import _row_to_dict
                     pay_dict = _row_to_dict(local_inv)
             else:
-                from database.models import _row_to_dict
                 pay_dict = _row_to_dict(local_inv)
             db.execute(text(
                 # Plain INSERT — see the note at the `missing` queue site above:

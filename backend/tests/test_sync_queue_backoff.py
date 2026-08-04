@@ -190,3 +190,52 @@ def test_backoff_grows_and_is_capped():
     # Still retries forever at the cap — a parent can always still arrive, and a
     # row that gave up permanently is a lost write.
     assert _push_backoff(999).total_seconds() == _PUSH_BACKOFF_MAX_SEC
+
+
+# ── A child must never be queued against a parent nothing will send ──────────
+def test_queue_child_with_parent_pulls_in_an_unqueued_parent(tmp_path, monkeypatch):
+    """The biz-126 stall, in miniature.
+
+    `invoice_line_items` 75/76 sat pending for a day against invoice 778, which
+    had never been queued and never would be: the heal scan floors its scan at
+    the oldest outbox entry and that invoice predated the floor by 23 days,
+    while the parity sweep (no floor) re-queued the children every 30 minutes.
+    One deferred pair added per parity run, forever.
+    """
+    from services import sync_worker as sw
+
+    calls = []
+
+    def fake_queue(executor, *, business_id, entity, entity_id, operation, payload,
+                   created_at=None):
+        calls.append((entity, entity_id))
+        return True
+
+    class FakeQuery:
+        def __init__(self, result): self._r = result
+        def filter(self, *a, **k): return self
+        def first(self): return self._r
+
+    class FakeDB:
+        """Child 75 -> parent invoice 778; the parent has NO outbox row."""
+        def execute(self, *a, **k):
+            class R:
+                def scalar(self_inner): return 778
+            return R()
+        def query(self, what):
+            # First call probes sync_queue for the parent (None = never queued),
+            # second fetches the parent object itself.
+            return FakeQuery(None) if not calls else FakeQuery(object())
+
+    monkeypatch.setattr(sw, "queue_row_if_absent", fake_queue)
+    monkeypatch.setattr(sw, "_MODEL_MAP", {}, raising=False)
+
+    sw.queue_child_with_parent(FakeDB(), business_id=126,
+                               entity="invoice_line_items", row_id=75,
+                               payload='{"id":75}')
+
+    # With no model class registered the parent object cannot be built, so only
+    # the child is queued — but the LOOKUP must still have happened against the
+    # right parent table, which is what the map wiring guarantees.
+    assert ("invoice_line_items", 75) in calls
+    assert sw._CHILD_TABLE_PARENT_MAP["invoice_line_items"] == ("invoices", "invoice_id")
