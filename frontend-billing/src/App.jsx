@@ -21,7 +21,6 @@ import Sales     from './pages/Sales'
 import LiveView  from './pages/LiveView'
 import ContactsPayments from './pages/ContactsPayments'
 import Money     from './pages/Money'
-import StockPurchases from './pages/StockPurchases'
 import Reports   from './pages/Reports'
 import Import    from './pages/Import'
 import B2B       from './pages/B2B'
@@ -60,13 +59,8 @@ function AppRoutes() {
       {/* New unified Money workspace (runs alongside /parties until verified) */}
       <Route path="/money"        element={<ProtectedRoute><Money  /></ProtectedRoute>} />
       <Route path="/money/:view"  element={<ProtectedRoute><Money  /></ProtectedRoute>} />
-      {/* Revamped Stock workspace — runs ALONGSIDE /stock until verified, the
-          same pattern /money uses next to /parties. Deletion trigger is written
-          at the top of StockWorkspace.jsx. */}
-      <Route path="/stock-workspace"       element={<ProtectedRoute><StockWorkspace /></ProtectedRoute>} />
-      <Route path="/stock-workspace/:tab"  element={<ProtectedRoute><StockWorkspace /></ProtectedRoute>} />
-      <Route path="/stock"        element={<ProtectedRoute><StockPurchases /></ProtectedRoute>} />
-      <Route path="/stock/:tab"   element={<ProtectedRoute><StockPurchases /></ProtectedRoute>} />
+      <Route path="/stock"        element={<ProtectedRoute><StockWorkspace /></ProtectedRoute>} />
+      <Route path="/stock/:tab"   element={<ProtectedRoute><StockWorkspace /></ProtectedRoute>} />
       <Route path="/reports"  element={<ProtectedRoute><Reports   /></ProtectedRoute>} />
       <Route path="/import"   element={<ProtectedRoute><Import    /></ProtectedRoute>} />
       {/* Unified B2B workspace (Order · Outgoing · Incoming · Connections).

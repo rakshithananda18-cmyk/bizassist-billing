@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import ContactsPayments from '../pages/ContactsPayments'
-import StockPurchases from '../pages/StockPurchases'
+import StockWorkspace from '../pages/StockWorkspace'
 
 // Passthrough layout — avoids pulling in nav/sidebar internals.
 vi.mock('../layouts/AppLayout', () => ({
@@ -71,22 +71,22 @@ describe('Parties (Contacts & Payments workspace)', () => {
   })
 })
 
-describe('Stock (Stock & Purchases workspace)', () => {
+describe('Stock & Purchases workspace (/stock)', () => {
   it('defaults to the Inventory view with both tabs for owners', async () => {
-    renderAt(<StockPurchases />, '/stock', '/stock')
+    renderAt(<StockWorkspace />, '/stock', '/stock')
     expect(await screen.findByText('STOCK_VIEW')).toBeInTheDocument()
     expect(screen.getByText('Purchase Bills')).toBeInTheDocument()
   })
 
   it('serves /stock/purchase as a real route', async () => {
-    renderAt(<StockPurchases />, '/stock', '/stock/purchase')
+    renderAt(<StockWorkspace />, '/stock', '/stock/purchase')
     expect(await screen.findByText('PURCHASES_VIEW')).toBeInTheDocument()
     expect(screen.queryByText('STOCK_VIEW')).not.toBeInTheDocument()
   })
 
   it('hides the Purchase Bills tab from cashiers and refuses the deep link', async () => {
     mockUser = { id: 2, role: 'cashier' }
-    renderAt(<StockPurchases />, '/stock', '/stock/purchase')
+    renderAt(<StockWorkspace />, '/stock', '/stock/purchase')
     // deep link to purchase falls back to inventory; the tab is not rendered
     expect(await screen.findByText('STOCK_VIEW')).toBeInTheDocument()
     expect(screen.queryByText('Purchase Bills')).not.toBeInTheDocument()

@@ -29,11 +29,6 @@ const NAV = [
     section: 'Supply & Inflow',
     items: [
       { to: '/stock',     icon: <InventoryIcon size={16} className="nav-anim-inventory" />, label: 'Stock & Purchases' },
-      // TRIAL ENTRY — remove together with StockPurchases.jsx once the revamped
-      // workspace is signed off (deletion trigger at the top of
-      // StockWorkspace.jsx). Kept visibly labelled so it cannot quietly become
-      // a permanent second way to reach the same screen.
-      { to: '/stock-workspace', icon: <InventoryIcon size={16} className="nav-anim-inventory" />, label: 'Stock (new)' },
       { to: '/b2b', icon: <OrderIcon size={16} className="nav-anim-b2border" />, label: 'B2B' },
       { to: '/import', icon: <ImportIcon size={16} className="nav-anim-import" />, label: 'Data Migration' },
     ]
@@ -94,7 +89,7 @@ const PAGE_TITLES = {
 // data grid built as a full-bleed POS surface; the nav costs it 240px it has a
 // real use for. Prefix match, so /stock/inventory, /stock/purchases and any
 // future tab inherit it.
-const AUTO_COLLAPSE_ROUTES = ['/stock', '/stock-workspace']
+const AUTO_COLLAPSE_ROUTES = ['/stock']
 
 const BOTTOM_BAR_ROUTES = ['/', '/sales', '/stock', '/parties', '/reports']
 
@@ -962,19 +957,15 @@ export default function AppLayout({ children, title }) {
     ? user.username.slice(0, 2).toUpperCase()
     : 'BZ'
 
-  // Full-bleed POS layout: Billing and the LEGACY Stock & Purchases page only.
-  // Contacts & Payments (/parties) stays in the normal app layout with the
-  // sidebar, and so does the revamped /stock-workspace.
+  // Full-bleed POS layout: the Billing counter ONLY.
   //
-  // `/stock-workspace` is excluded explicitly because `startsWith('/stock')`
-  // matches it too — which is why the new page rendered with no sidebar at all
-  // and looked "full screen" no matter what its own shell did. The whole point
-  // of the revamp is to be a normal page, so it must not inherit this.
-  // When the trial ends and /stock points at StockWorkspace, drop the
-  // `/stock` clause entirely rather than adding another exception.
+  // `pos-layout-shell` suppresses the <aside> entirely, so anything matched
+  // here has no sidebar at all. /stock used to be matched because the old
+  // Stock & Purchases page was an app-window; the workspace that replaced it is
+  // a normal page and gets the normal layout. The clause is gone rather than
+  // carrying an exception for the page that superseded it — /parties and /stock
+  // are both ordinary pages now, and only the counter is full-bleed.
   const isSalesPage = location.pathname === '/sales'
-    || (location.pathname.startsWith('/stock')
-        && !location.pathname.startsWith('/stock-workspace'))
   const pageTitle = title || PAGE_TITLES[location.pathname] || 'BizAssist'
 
   return (

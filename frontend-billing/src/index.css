@@ -5990,11 +5990,10 @@ body.is-col-resizing * {
   z-index: 80;
 }
 
-/* ── Stock workspace shell (trial page) ────────────────────────────────────
-   Mirrors `.b2b-shell` / `.b2b-body` so the revamped Stock page has the same
-   geometry as every other workspace: full-height flex column, header and tabs
-   pinned, body scrolling internally. Delete alongside StockWorkspace.jsx if the
-   trial is abandoned. */
+/* ── Stock workspace shell ─────────────────────────────────────────────────
+   Mirrors `.b2b-shell` / `.b2b-body` so the Stock page has the same geometry as
+   every other workspace: full-height flex column, header and tabs pinned, body
+   scrolling internally. */
 .stock-shell {
   display: flex;
   flex-direction: column;
@@ -6029,8 +6028,8 @@ body.is-col-resizing * {
 
    1400px = the bar's own content (~1010px) + an expanded sidebar + padding.
 
-   Scoped to `.stock-body` so the legacy /stock page keeps its current
-   behaviour byte-for-byte while the revamp is on trial. */
+   Scoped to `.stock-body` so only this workspace's bar collapses; other
+   `.ws-top-bar` users are unaffected. */
 .ws-bar-action { display: inline-flex; align-items: center; gap: 5px; }
 .ws-bar-more   { display: none; }
 

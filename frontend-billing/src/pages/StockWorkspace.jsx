@@ -1,39 +1,24 @@
 // ============================================================================
-// Page: StockWorkspace.jsx — the revamped Stock & Purchases workspace.
+// Page: StockWorkspace.jsx — the Stock & Purchases workspace.
 // ----------------------------------------------------------------------------
-// RUNS ALONGSIDE `StockPurchases.jsx` UNTIL VERIFIED, the same way `/money` runs
-// alongside `/parties`. Routes:
+//   /stock/inventory   → Stock view
+//   /stock/purchase    → Purchases view
 //
-//   /stock-workspace/inventory   → Stock view      (new shell)
-//   /stock-workspace/purchase    → Purchases view  (new shell)
-//   /stock/*                     → the existing page, untouched
-//
-// DELETION TRIGGER — write it down now, not later. This page replaces
-// `StockPurchases.jsx` once all of these work here: Stock & Items, Purchase
+// Replaced `StockPurchases.jsx`, which ran in parallel at /stock-workspace
+// until all ten of its features were verified here (Stock & Items, Purchase
 // Bills, Stock Intake, Catalogue, Godowns, Adjust Stock, Transfer Stock,
-// Labels, Export, New Product. When they do: point `/stock` at this component,
-// delete `StockPurchases.jsx`, and drop this note.
-// Without a written trigger a parallel page stops being a migration and becomes
-// a second copy — CLEANUP_PLAN §6.1, and the bill for it was the 22-file orphan
-// sweep in cc43a27.
+// Labels, Export, New Product — checked in a browser 2026-08-04, which is how
+// the Purchase tab's missing toolbar and duplicate header were found). The
+// trial page, its nav entry and the parallel route are all gone; there is one
+// Stock page and one URL for it.
 //
-// WHAT ACTUALLY CHANGED, AND WHAT DELIBERATELY DID NOT
-// ----------------------------------------------------
-// Changed — the SHELL only:
-//   · The workspace tabs get their own full-width row instead of being injected
-//     into the child view's toolbar via `headerTabs`. That injection is why the
-//     old page crammed 5 tabs and 6 action buttons onto one strip that then
-//     fought the app header for vertical space.
-//   · `PageTabs` is used in its DEFAULT mode rather than `inline`. `inline` is
-//     the compact in-toolbar variant; every other workspace uses the full-width
-//     one. This is adopting the existing convention, not inventing a look.
-//
-// NOT changed — anything the counter uses:
-//   · `Stock.jsx` and `Purchases.jsx` are rendered VERBATIM. Every button, modal
-//     and handler is theirs and is untouched, which is what makes this shell
-//     swap safe to run in parallel.
-//   · Tab ids, the `/stock/:tab` URL vocabulary, the cashier restriction on
-//     Purchase Bills, and the remembered-tab key are all carried over exactly.
+// THE SHELL IS THIS FILE'S ONLY JOB.
+//   · The workspace tabs live in the page header instead of being injected into
+//     the child view's toolbar via `headerTabs`. That injection is why the old
+//     page crammed 5 tabs and 6 action buttons onto one strip.
+//   · `Stock.jsx` and `Purchases.jsx` render VERBATIM apart from `inlinePage`,
+//     which only drops their window chrome. Every button, modal and handler is
+//     still theirs.
 // ============================================================================
 import { useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
@@ -51,7 +36,7 @@ import Purchases from './Purchases'
 // place and makes the new one feel broken when it is not.
 const LAST_TAB_KEY = 'godown_last_tab'
 
-const BASE = '/stock-workspace'
+const BASE = '/stock'
 
 export default function StockWorkspace() {
   const { tab: tabParam } = useParams()
