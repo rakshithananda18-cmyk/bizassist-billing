@@ -379,7 +379,11 @@ def test_the_sync_queue_insert_no_longer_fails_silently():
     device, and when it throws the outbox looks perfectly drained.
     """
     blk = _queue_change_block()
-    ins = blk[blk.index("INSERT INTO sync_queue"):]
+    # The INSERT statement itself now lives in `queue_row_if_absent` (the shared
+    # guard all three raw enqueue sites route through). What this test protects
+    # is unchanged: the call that decides whether a sale leaves the device must
+    # not have a silent except behind it.
+    ins = blk[blk.index("queue_row_if_absent("):]
     assert "pass" not in ins.split("except Exception as e:")[1][:400], (
         "the sync_queue INSERT is swallowing its exception silently again")
     assert "FAILED to queue" in ins
@@ -391,7 +395,7 @@ def test_a_serialisation_failure_is_reported():
     """A row queued with payload=NULL is a promise the outbox cannot keep."""
     blk = _queue_change_block()
     ser = blk[blk.index("_serialize_orm_obj"):]
-    ser = ser[:ser.index("INSERT INTO sync_queue")]
+    ser = ser[:ser.index("queue_row_if_absent(")]
     assert "could NOT serialise" in ser
     assert "exc_info=True" in ser
 

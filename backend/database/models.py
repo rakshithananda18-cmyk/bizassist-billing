@@ -865,7 +865,14 @@ class SyncQueue(Base):
     # `attempts` is NOT reset when a row is re-queued with a fresher payload: the
     # re-queue is the symptom of the stall, so letting it reset the timer would
     # defeat the backoff entirely.
-    attempts        = Column(Integer, default=0, nullable=False)
+    # `server_default` as well as `default`, and not for symmetry: rows reach
+    # this table by raw `INSERT INTO sync_queue (...)` from the ORM event, not
+    # through the mapper, so a Python-side default never fires for them. The
+    # migration's `ADD COLUMN attempts INTEGER DEFAULT 0` gives an existing
+    # database the server default; without this line a table built fresh by
+    # `create_all` would have `NOT NULL` and no default, and every raw enqueue
+    # that omitted the column would fail the constraint.
+    attempts        = Column(Integer, default=0, server_default="0", nullable=False)
     next_attempt_at = Column(DateTime, index=True, nullable=True)
 
 
@@ -1230,6 +1237,67 @@ def _get_business_id(obj, connection=None) -> int | None:
                 return None
     return None
 
+def queue_row_if_absent(executor, *, business_id, entity, entity_id,
+                        operation, payload, created_at=None):
+    """Queue an outbox row, or refresh the pending one that is already there.
+
+    THE ONLY WAY A ROW SHOULD ENTER `sync_queue`. Three call sites reach this
+    table by raw SQL — the ORM-event enqueue below, `_heal_unqueued_rows`, and
+    the parity sweep's missing-row branch — and before the partial unique index
+    existed all three could stack duplicates of the same unsent row. That is how
+    one target ended up with seven pending copies in a day.
+
+    Now that `uix_sync_queue_pending_target` exists, a blind INSERT does not
+    merely duplicate, it RAISES. On Postgres that aborts the whole transaction
+    and every later statement dies with InFailedSqlTransaction (rule 58) — the
+    exact failure the parity sweep's `INSERT OR IGNORE` comment describes
+    already having been paid for once. So the check lives here, once, rather
+    than in each caller's own try/except.
+
+    Written as SELECT-then-UPDATE/INSERT rather than `ON CONFLICT`: the upsert
+    form has to infer the partial index, and on a database that has not run the
+    migration yet it fails instead of inserting. Callers swallow to protect the
+    business write (M-20a), so that would silently drop the row. This form is
+    correct with or without the index; the index is only the backstop.
+
+    `attempts` / `next_attempt_at` are deliberately NOT reset on refresh. The
+    heal scan re-queues a deferred row every cycle, so resetting would hand it a
+    fresh timer each time and cancel the backoff entirely.
+    """
+    existing = executor.execute(
+        text(
+            # NULL-safe on business_id: `= NULL` is never true, and some rows
+            # do carry a NULL business_id.
+            "SELECT id FROM sync_queue WHERE "
+            "((business_id IS NULL AND :business_id IS NULL) OR business_id = :business_id) "
+            "AND entity = :entity AND entity_id = :entity_id "
+            "AND operation = :operation AND synced_at IS NULL LIMIT 1"
+        ),
+        {"business_id": business_id, "entity": entity,
+         "entity_id": entity_id, "operation": operation},
+    ).fetchone()
+
+    if existing:
+        executor.execute(
+            text("UPDATE sync_queue SET payload = :payload WHERE id = :id"),
+            {"payload": payload, "id": existing[0]},
+        )
+        return False
+
+    executor.execute(
+        text(
+            "INSERT INTO sync_queue (business_id, entity, entity_id, operation, "
+            "payload, created_at, attempts) "
+            "VALUES (:business_id, :entity, :entity_id, :operation, :payload, "
+            ":created_at, 0)"
+        ),
+        {"business_id": business_id, "entity": entity, "entity_id": entity_id,
+         "operation": operation, "payload": payload,
+         "created_at": created_at or utc_now()},
+    )
+    return True
+
+
 def _sync_queue_logger():
     """Lazily resolved so importing models.py never depends on logging setup."""
     import logging
@@ -1471,39 +1539,9 @@ def _queue_change(connection, target, operation):
         # `attempts` / `next_attempt_at` are deliberately NOT reset here. The
         # heal scan re-queues a deferred row every cycle, so resetting would
         # hand it a fresh timer each time and cancel the backoff.
-        existing = connection.execute(
-            text(
-                # NULL-safe on business_id: `= NULL` is never true, and a few
-                # rows do carry a NULL business_id.
-                "SELECT id FROM sync_queue WHERE "
-                "((business_id IS NULL AND :business_id IS NULL) OR business_id = :business_id) "
-                "AND entity = :entity AND entity_id = :entity_id "
-                "AND operation = :operation AND synced_at IS NULL LIMIT 1"
-            ),
-            {"business_id": bid, "entity": tbl,
-             "entity_id": entity_id, "operation": operation},
-        ).fetchone()
-
-        if existing:
-            connection.execute(
-                text("UPDATE sync_queue SET payload = :payload WHERE id = :id"),
-                {"payload": payload, "id": existing[0]},
-            )
-        else:
-            connection.execute(
-                text(
-                    "INSERT INTO sync_queue (business_id, entity, entity_id, operation, payload, created_at, attempts) "
-                    "VALUES (:business_id, :entity, :entity_id, :operation, :payload, :created_at, 0)"
-                ),
-                {
-                    "business_id": bid,
-                    "entity": tbl,
-                    "entity_id": entity_id,
-                    "operation": operation,
-                    "payload": payload,
-                    "created_at": utc_now()
-                }
-            )
+        queue_row_if_absent(connection, business_id=bid, entity=tbl,
+                            entity_id=entity_id, operation=operation,
+                            payload=payload)
     except Exception as e:
         # ── M-20a · the swallow that can lose a whole register's takings ───────
         #

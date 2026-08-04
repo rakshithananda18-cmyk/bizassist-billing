@@ -1404,6 +1404,14 @@ def _ensure_sync_queue_dedup_index(conn):
         logger.info("[Migration] Created %s", idx_name)
     except Exception as e:
         # Never fatal: a queue that cannot be deduped must still accept writes.
+        #
+        # The rollback is NOT optional (rule 58). `_step` clears the transaction
+        # only when the step RAISES; catching here and returning normally means
+        # it never gets the chance, so on Postgres a failure anywhere above
+        # would leave the shared connection aborted and every later migration
+        # step would die with InFailedSqlTransaction — reported as four
+        # downstream errors that hide this one.
+        _rollback_quietly(conn, "sync_queue dedup index")
         logger.warning("[Migration] sync_queue dedup index: %s", e)
 
 

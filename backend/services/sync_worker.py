@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from database.db import SessionLocal, engine, sync_disabled_var
 from logging_config import current_bizid_var
 from database.models import (
+    queue_row_if_absent,
     User, SyncQueue, SyncLog, ConflictLog,
     Base, Customer, Vendor, Product, Invoice, InvoiceLineItem,
     Inventory, LegacyPayment, StockLedger, ProductBarcode, BusinessSettings,
@@ -1011,16 +1012,13 @@ def _heal_unqueued_rows(db: Session, business_id: int) -> int:
             else:
                 payload = json.dumps(_row_to_dict(obj), default=str)
 
-            db.execute(
-                text(
-                    "INSERT INTO sync_queue "
-                    "(business_id, entity, entity_id, operation, payload, created_at) "
-                    "VALUES (:bid, :ent, :eid, 'INSERT', :pay, :now)"
-                ),
-                {"bid": business_id, "ent": entity,
-                 "eid": row_id,      "pay": payload,
-                 "now": utc_now()},
-            )
+            # Routed through the shared guard: this scan runs every cycle and
+            # re-finds the same unqueued row until it lands, so a blind INSERT
+            # is precisely what stacked duplicates. It now also cannot violate
+            # uix_sync_queue_pending_target and abort the transaction.
+            queue_row_if_absent(db, business_id=business_id, entity=entity,
+                                entity_id=row_id, operation="INSERT",
+                                payload=payload)
             queued += 1
         except Exception as e:
             logger.warning(
@@ -1696,20 +1694,19 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
                     else:
                         from database.models import _row_to_dict
                         payload = json.dumps(_row_to_dict(obj), default=str)
-                    db.execute(text(
-                        # Plain INSERT, not `INSERT OR IGNORE`: that is SQLite-only
-                        # syntax and a hard SyntaxError on Postgres, which then
-                        # ABORTS THE WHOLE TRANSACTION (rule 58) — and the handler
-                        # below only logs, so every later statement on this session
-                        # died with InFailedSqlTransaction. Proven by CI on
-                        # 2026-08-03. `sync_queue` has no unique constraint, so
-                        # OR IGNORE never suppressed anything: dropping it is
-                        # behaviour-identical on SQLite and portable.
-                        "INSERT INTO sync_queue "
-                        "(business_id, entity, entity_id, operation, payload, created_at) "
-                        "VALUES (:bid, :ent, :eid, 'INSERT', :pay, :now)"
-                    ), {"bid": business_id, "ent": table,
-                        "eid": obj.id, "pay": payload, "now": utc_now()})
+                    # Was a plain INSERT, on the reasoning that `sync_queue` had
+                    # no unique constraint so nothing could conflict. That is no
+                    # longer true — uix_sync_queue_pending_target now makes a
+                    # duplicate RAISE, and the handler below only logs, which on
+                    # Postgres aborts the transaction and kills every later
+                    # statement with InFailedSqlTransaction (rule 58). That is
+                    # the same failure this comment already recorded being paid
+                    # for once, on 2026-08-03, from the SQLite-only
+                    # `INSERT OR IGNORE`. The shared guard checks first, so the
+                    # conflict cannot arise on either dialect.
+                    queue_row_if_absent(db, business_id=business_id, entity=table,
+                                        entity_id=obj.id, operation="INSERT",
+                                        payload=payload)
                     summary["missing"] += 1
                     logger.warning(
                         "[PARITY] biz=%s: %s uid=%r MISSING on cloud — queued INSERT",

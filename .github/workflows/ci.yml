@@ -117,6 +117,7 @@ jobs:
             tests/test_sync.py \
             tests/test_sync_pull.py \
             tests/test_sync_inbox.py \
+            tests/test_sync_queue_backoff.py \
             tests/test_sync_idempotency.py \
             tests/test_sync_liveness_regressions.py \
             tests/test_parity_is_bidirectional.py \
