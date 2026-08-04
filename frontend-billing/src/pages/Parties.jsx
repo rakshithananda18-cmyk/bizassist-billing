@@ -469,75 +469,13 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
     }
   }
 
-  return (
-    <PageShell embedded={embedded} title="Parties & Invoices">
-      <div className={`${inWorkspace ? 'fade-in ws-embed' : 'slide-up'}`}>
-
-        {alert && (
-          <div className={`alert alert-${alert.type} mb-4`}>
-            {alert.type === 'success' ? '✅' : '❌'} {alert.msg}
-            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }} aria-label="Close"><CloseIcon size={16} /></button>
-          </div>
-        )}
-
-        {/* Signature Page Header — owned by ContactsPayments when embedded. */}
-        {!inlinePage && (
-        <div className="page-header">
-          <div className="page-header-left">
-            <h1 className="page-title">
-              <ContactsIcon size={20} style={{ color: 'var(--accent)' }} /> Contacts & Payments
-            </h1>
-            <p className="page-subtitle">Manage customer & vendor accounts, credit limits, outstanding balances, and payment transactions</p>
-          </div>
-          <div className="page-actions">
-            <button className="btn btn-primary" onClick={() => { setForm(defaultForm); setShowModal(true) }}>
-              <PlusIcon size={14} /> Add Party
-            </button>
-          </div>
-        </div>
-        )}
-
-        {/* Embedded (Godown): 48px workspace bar */}
-        {inWorkspace && (
-          <WorkspaceTopBar
-            settingsTab="parties"
-            actions={inlinePage ? (
-              <button className="btn btn-primary btn-sm ws-bar-action"
-                onClick={() => { setForm(defaultForm); setShowModal(true) }}>
-                <PlusIcon size={13} /> Add Party
-              </button>
-            ) : null}
-          >
-            {headerTabs}
-            {headerTabs && <WsDivider />}
-            <button className={`ws-tab ${activeTab === 'Customers' ? 'active' : ''}`} onClick={() => setActiveTab('Customers')}>
-              Customers <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>({customers.length})</span>
-            </button>
-            <button className={`ws-tab ${activeTab === 'Vendors' ? 'active' : ''}`} onClick={() => setActiveTab('Vendors')}>
-              Vendors <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>({vendors.length})</span>
-            </button>
-            <button className={`ws-tab ${activeTab === 'Other Invoices' ? 'active' : ''}`} onClick={() => setActiveTab('Other Invoices')}>
-              Other Invoices <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>({invoices.filter(i => !i.customer_id).length})</span>
-            </button>
-          </WorkspaceTopBar>
-        )}
-
-        {/* ── Unified filter bar: Search | FilterDropdown | SortDropdown ── */}
-        <div className="page-subbar" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {!inWorkspace ? (
-            <div className="tabs" style={{ margin: 0, flexShrink: 0 }}>
-              <button className={`tab${activeTab === 'Customers' ? ' active' : ''}`} onClick={() => setActiveTab('Customers')}>
-                Customers <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({customers.length})</span>
-              </button>
-              <button className={`tab${activeTab === 'Vendors' ? ' active' : ''}`} onClick={() => setActiveTab('Vendors')}>
-                Vendors <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({vendors.length})</span>
-              </button>
-              <button className={`tab${activeTab === 'Other Invoices' ? ' active' : ''}`} onClick={() => setActiveTab('Other Invoices')}>
-                Casual / Other Invoices <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({invoices.filter(i => !i.customer_id).length})</span>
-              </button>
-            </div>
-          ) : null}
-
+  // Search / Filter / Sort, defined once and placed differently per layout:
+  // INSIDE the workspace toolbar when embedded (one bar, not two), or in the
+  // standalone `.page-subbar` on the legacy route. Measured before merging —
+  // toolbar 488px + these 160px + a flexible search against 979px available,
+  // so the row genuinely holds them rather than hiding half.
+  const filterControls = (
+    <>
           {/* Search — always first */}
           <div className="search-bar" style={{ margin: 0, height: 34, boxSizing: 'border-box', display: 'flex', alignItems: 'center', flex: '1 1 200px', maxWidth: 320 }}>
             <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
@@ -580,7 +518,82 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
               <span className="spin" /> Refreshing…
             </span>
           )}
+    </>
+  )
+
+  return (
+    <PageShell embedded={embedded} title="Parties & Invoices">
+      <div className={`${inWorkspace ? 'fade-in ws-embed' : 'slide-up'}`}>
+
+        {alert && (
+          <div className={`alert alert-${alert.type} mb-4`}>
+            {alert.type === 'success' ? '✅' : '❌'} {alert.msg}
+            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }} aria-label="Close"><CloseIcon size={16} /></button>
+          </div>
+        )}
+
+        {/* Signature Page Header — owned by ContactsPayments when embedded. */}
+        {!inlinePage && (
+        <div className="page-header">
+          <div className="page-header-left">
+            <h1 className="page-title">
+              <ContactsIcon size={20} style={{ color: 'var(--accent)' }} /> Contacts & Payments
+            </h1>
+            <p className="page-subtitle">Manage customer & vendor accounts, credit limits, outstanding balances, and payment transactions</p>
+          </div>
+          <div className="page-actions">
+            <button className="btn btn-primary" onClick={() => { setForm(defaultForm); setShowModal(true) }}>
+              <PlusIcon size={14} /> Add Party
+            </button>
+          </div>
         </div>
+        )}
+
+        {/* Embedded (Godown): 48px workspace bar */}
+        {inWorkspace && (
+          <WorkspaceTopBar
+            settingsTab="parties"
+            actions={inlinePage ? (
+              <>
+                {filterControls}
+                <button className="btn btn-primary btn-sm ws-bar-action"
+                  onClick={() => { setForm(defaultForm); setShowModal(true) }}>
+                  <PlusIcon size={13} /> Add Party
+                </button>
+              </>
+            ) : null}
+          >
+            {headerTabs}
+            {headerTabs && <WsDivider />}
+            <button className={`ws-tab ${activeTab === 'Customers' ? 'active' : ''}`} onClick={() => setActiveTab('Customers')}>
+              Customers <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>({customers.length})</span>
+            </button>
+            <button className={`ws-tab ${activeTab === 'Vendors' ? 'active' : ''}`} onClick={() => setActiveTab('Vendors')}>
+              Vendors <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>({vendors.length})</span>
+            </button>
+            <button className={`ws-tab ${activeTab === 'Other Invoices' ? 'active' : ''}`} onClick={() => setActiveTab('Other Invoices')}>
+              Other Invoices <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>({invoices.filter(i => !i.customer_id).length})</span>
+            </button>
+          </WorkspaceTopBar>
+        )}
+
+        {/* ── Unified filter bar: Search | FilterDropdown | SortDropdown ── */}
+        {!inWorkspace && (
+          <div className="page-subbar" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div className="tabs" style={{ margin: 0, flexShrink: 0 }}>
+              <button className={`tab${activeTab === 'Customers' ? ' active' : ''}`} onClick={() => setActiveTab('Customers')}>
+                Customers <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({customers.length})</span>
+              </button>
+              <button className={`tab${activeTab === 'Vendors' ? ' active' : ''}`} onClick={() => setActiveTab('Vendors')}>
+                Vendors <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({vendors.length})</span>
+              </button>
+              <button className={`tab${activeTab === 'Other Invoices' ? ' active' : ''}`} onClick={() => setActiveTab('Other Invoices')}>
+                Casual / Other Invoices <span style={{ marginLeft: 4, fontSize: '0.68rem', opacity: 0.7 }}>({invoices.filter(i => !i.customer_id).length})</span>
+              </button>
+            </div>
+            {filterControls}
+          </div>
+        )}
 
         {/* Table */}
         {(() => {
