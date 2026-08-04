@@ -50,9 +50,14 @@ export default function ContactsPayments() {
     localStorage.setItem(LAST_TAB_KEY, tab)
   }, [tab, tabParam, navigate])
 
+  // PUSHES, unlike the canonicalizing redirect above. A tab click is a place
+  // the operator chose to be, so Back returns to the previous tab instead of
+  // leaving the page entirely. The redirect must stay `replace` — a pushed
+  // entry there is one Back lands on and is immediately redirected off, i.e. a
+  // Back button that cannot escape. Matches Money.jsx's setView.
   const handleTabChange = (id) => {
     localStorage.setItem(LAST_TAB_KEY, id)
-    navigate(`/parties/${id}`, { replace: true })
+    navigate(`/parties/${id}`)
   }
 
   // Rendered INSIDE the active view's workspace bar (replacing its old title).

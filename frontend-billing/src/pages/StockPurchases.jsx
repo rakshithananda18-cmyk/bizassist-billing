@@ -62,7 +62,7 @@ export default function StockPurchases() {
 
   const handleTabChange = (id) => {
     localStorage.setItem(LAST_TAB_KEY, id)
-    navigate(`/stock/${id}`, { replace: true })
+    navigate(`/stock/${id}`)
   }
 
   // Rendered INSIDE the active view's workspace bar (replacing its old title).

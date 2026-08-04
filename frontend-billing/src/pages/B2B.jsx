@@ -53,8 +53,12 @@ export default function B2B() {
   const confirm = useConfirm()
 
   const [params, setParams] = useSearchParams()
+  // DERIVED from the URL, not held in state. State seeded once at mount was
+  // fine while goTab replaced the entry — nothing else could move the URL. Now
+  // that it pushes, Back moves the URL, and a mount-seeded copy would sit on
+  // the old tab and make Back look dead.
   const urlTab = params.get('tab')
-  const [tab, setTab] = useState(TABS.some(t => t.key === urlTab) ? urlTab : 'order')
+  const tab = TABS.some(t => t.key === urlTab) ? urlTab : 'order'
 
   const [alert, setAlert] = useState(null)
   const [toast, setToast] = useState(null)
@@ -71,13 +75,14 @@ export default function B2B() {
     setTimeout(() => setToast(null), 5000)
   }, [])
 
+  // Pushes, so Back walks back through the tabs instead of leaving /b2b — see
+  // ContactsPayments.handleTabChange.
   const goTab = useCallback((key) => {
-    setTab(key)
     setParams(prev => {
       const next = new URLSearchParams(prev)
       next.set('tab', key)
       return next
-    }, { replace: true })
+    })
   }, [setParams])
 
   // ── Data ──────────────────────────────────────────────────────────────────

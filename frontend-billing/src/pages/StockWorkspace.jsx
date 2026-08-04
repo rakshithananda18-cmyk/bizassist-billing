@@ -84,9 +84,11 @@ export default function StockWorkspace() {
     localStorage.setItem(LAST_TAB_KEY, tab)
   }, [tab, tabParam, navigate])
 
+  // Pushes — see ContactsPayments.handleTabChange for why this one pushes and
+  // the canonicalizing redirect above does not.
   const handleTabChange = (id) => {
     localStorage.setItem(LAST_TAB_KEY, id)
-    navigate(`${BASE}/${id}`, { replace: true })
+    navigate(`${BASE}/${id}`)
   }
 
   const active = TABS.find(t => t.id === tab)
