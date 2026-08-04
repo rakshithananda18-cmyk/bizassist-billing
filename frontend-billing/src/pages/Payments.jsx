@@ -579,6 +579,169 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
 
   const setExpenseField = (k, v) => setExpenseForm(f => ({ ...f, [k]: v }))
 
+  // Shared by the toolbar button and the ⋯ overflow menu, so the two cannot
+  // drift. Arrived via "Settle" on a contact (?customer=Name): carry that
+  // customer into the modal pre-selected and locked, and pre-fill the amount
+  // from their total pending dues so the cashier does not re-type the balance.
+  const openSettleDues = () => {
+    if (customerFilter) {
+      const dueRows = getFilteredPayments().filter(
+        p => p.type === 'pending_due' && p.party_name === customerFilter
+      )
+      const totalDue = dueRows.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0)
+      const custId = dueRows.find(p => p._customerId)?._customerId ?? null
+      setSettlePreset({ customerName: customerFilter, customerId: custId, outstanding: totalDue })
+    } else {
+      setSettlePreset(null)
+    }
+    setShowSettleModal(true)
+  }
+
+  const canSettleDues = !isCashier && getFilteredPayments().some(p => p.type === 'pending_due')
+
+  // Search / view switch / Filters / Sort — defined once, placed in the
+  // workspace toolbar when embedded so this view has ONE bar instead of two.
+  // The five transaction-type chips that used to sit here moved into
+  // FilterDropdown, which is what made a single row fit.
+  const filterControls = (
+    <>
+          {/* Search — always first */}
+          <div className="search-bar" style={{ margin: 0, height: 34, boxSizing: 'border-box', display: 'flex', alignItems: 'center', minWidth: 180, flex: '0 0 auto' }}>
+            <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={activeTab === 'Expenses' ? 'Search expenses…' : 'Search transactions…'}
+              style={{ fontSize: '0.82rem' }}
+            />
+          </div>
+          {/* View switch only — the type chips moved into FilterDropdown. */}
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+            {(['Made', 'Expenses'].includes(activeTab) ? ['Made', 'Expenses'] : []).map(t => (
+              headerTabs ? (
+                <button key={t} className={`ws-tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
+                  {t}
+                </button>
+              ) : (
+                <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)} style={{ margin: 0, padding: '4px 10px', fontSize: '0.8rem' }}>
+                  {t}
+                </button>
+              )
+            ))}
+          </div>
+          {/* FilterDropdown — Customer, Date range, Mode, Amount range */}
+          <FilterDropdown
+            filters={[
+              // Transaction TYPE. These were five chips on their own row, which
+              // is what made this view need two toolbars. They are a filter over
+              // the list — not a view switch like Made/Expenses, which changes
+              // the primary action — so they belong here, the same way
+              // InvoicesListView puts its status chips in the dropdown.
+              ...(!['Made', 'Expenses'].includes(activeTab) ? [{
+                key: 'txnType',
+                label: 'Transaction type',
+                type: 'chips',
+                // '' for the default, not 'All': FilterDropdown counts any
+                // non-empty value as an active filter, so 'All' lit the badge
+                // up as "1 filter applied" when nothing was filtered at all.
+                value: activeTab === 'All' ? '' : activeTab,
+                onChange: v => setActiveTab(v || 'All'),
+                options: [
+                  { value: '',              label: 'All' },
+                  { value: 'Invoices',      label: 'Invoices' },
+                  { value: 'Received',      label: 'Received' },
+                  { value: 'Pending Dues',  label: 'Pending Dues' },
+                  { value: 'Credit Notes',  label: 'Credit Notes' },
+                ],
+              }] : []),
+              {
+                key: 'customer',
+                label: 'Customer',
+                type: 'select',
+                value: customerNameFilter,
+                onChange: setCustomerNameFilter,
+                options: [
+                  { value: '', label: 'All Customers' },
+                  ...[...new Set(
+                    [...payments, ...pendingDues].map(p =>
+                      p.party_name || p.customer_name || p.supplier_name || p.customer || ''
+                    ).filter(Boolean)
+                  )].sort().map(name => ({ value: name, label: name })),
+                ],
+              },
+              {
+                key: 'date',
+                label: 'Date Range',
+                type: 'daterange',
+                value: dateFilter,
+                onChange: setDateFilter,
+              },
+              {
+                key: 'mode',
+                label: 'Payment Mode',
+                type: 'chips',
+                value: modeFilter,
+                onChange: setModeFilter,
+                options: [
+                  { value: '', label: 'All Modes' },
+                  { value: 'UPI', label: 'UPI' },
+                  { value: 'Cash', label: 'Cash' },
+                  { value: 'Bank', label: 'Bank Transfer' },
+                  { value: 'Cheque', label: 'Cheque' },
+                ],
+              },
+              {
+                key: 'amount',
+                label: 'Amount Range',
+                type: 'amountrange',
+                value: amountFilter,
+                onChange: setAmountFilter,
+              },
+            ]}
+          />
+          {/* SortDropdown — sort + group-by, reusable common component */}
+          <SortDropdown
+            fields={[
+              { value: 'date',       label: 'Date' },
+              { value: 'party_name', label: 'Customer' },
+              { value: 'amount',     label: 'Amount' },
+            ]}
+            sortConfig={sortConfig}
+            onSortChange={setSortConfig}
+            groupFields={[
+              { value: '',           label: 'None' },
+              { value: 'party_name', label: 'Customer' },
+              { value: 'date',       label: 'Date' },
+            ]}
+            groupBy={groupBy}
+            onGroupChange={setGroupBy}
+          />
+          {/* Customer filter chip — shown inline when ?customer= param is set */}
+          {customerFilter && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '4px 12px', borderRadius: 20, height: 34, boxSizing: 'border-box',
+              background: 'rgba(99,102,241,0.12)',
+              border: '1px solid rgba(99,102,241,0.45)',
+              color: '#6366f1', fontSize: '0.82rem', fontWeight: 600, flexShrink: 0,
+            }}>
+              {customerFilter}
+              <button
+                onClick={() => navigate('/parties/payments', { replace: true })}
+                title="Clear — show all transactions"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', padding: 0, fontSize: '1.1rem', lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                aria-label="Clear customer filter"
+              >×</button>
+            </span>
+          )}
+          {isRefreshing && (
+            <span className="toolbar-refresh-spinner">
+              <span className="spin" /> Refreshing…
+            </span>
+          )}
+    </>
+  )
+
   return (
     <PageShell embedded={embedded} title="Payments">
       <>
@@ -632,9 +795,10 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
             windowControls={false}
             actions={
               <>
+                {inlinePage && filterControls}
                 <button
                   onClick={() => setShowStats(!showStats)}
-                  className={`ws-tab ${showStats ? 'active' : ''}`}
+                  className={`ws-tab ws-bar-action ${showStats ? 'active' : ''}`}
                   style={{ padding: '6px 10px' }}
                 >
                   <SummaryIcon size={12} /> {showStats ? 'Hide Summary' : 'Show Summary'}
@@ -645,29 +809,30 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
                   </button>
                 ) : (
                   <>
-                    {/* Settle Dues — only shown when there are pending dues in the current filtered view */}
-                    {!isCashier && getFilteredPayments().some(p => p.type === 'pending_due') && (
-                      <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={() => {
-                        // Arrived via "Settle" on a contact (?customer=Name): carry
-                        // that customer into the modal so it's pre-selected + locked,
-                        // AND pre-fill the amount from their total pending dues
-                        // (summing the visible Pending rows for this customer) so the
-                        // cashier doesn't have to re-type the balance.
-                        if (customerFilter) {
-                          const dueRows = getFilteredPayments().filter(
-                            p => p.type === 'pending_due' && p.party_name === customerFilter
-                          )
-                          const totalDue = dueRows.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0)
-                          const custId = dueRows.find(p => p._customerId)?._customerId ?? null
-                          setSettlePreset({ customerName: customerFilter, customerId: custId, outstanding: totalDue })
-                        } else {
-                          setSettlePreset(null)
-                        }
-                        setShowSettleModal(true)
-                      }}>
+                    {/* Secondary actions carry `ws-bar-action` so the
+                        container query can fold them into the ⋯ menu; the
+                        primary Record Payment below never folds. */}
+                    {canSettleDues && (
+                      <button className="btn btn-secondary btn-sm ws-bar-action" onClick={openSettleDues}>
                         <CheckIcon size={13} /> Settle Dues
                       </button>
                     )}
+                    <button
+                      className="btn btn-secondary btn-sm ws-bar-more"
+                      title="More actions"
+                      aria-label="More actions"
+                      onClick={e => {
+                        const r = e.currentTarget.getBoundingClientRect()
+                        setCtxMenu({ x: r.right - 210, y: r.bottom, items: [
+                          { label: showStats ? 'Hide Summary' : 'Show Summary',
+                            icon: <SummaryIcon size={13} />, action: () => setShowStats(!showStats) },
+                          ...(canSettleDues ? [{ label: 'Settle Dues',
+                            icon: <CheckIcon size={13} />, action: openSettleDues }] : []),
+                        ] })
+                      }}
+                    >
+                      &#8943;
+                    </button>
                     <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={() => { setForm(defaultForm); setShowModal(true) }}>
                       <PlusIcon size={13} /> Record Payment
                     </button>
@@ -804,123 +969,11 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
         </div>
 
         {/* ── Unified filter bar: Search | Sub-tabs | FilterDropdown ── */}
-        <div className="page-subbar" style={{ display: 'flex', flexFlow: 'row wrap', gap: 8, alignItems: 'center' }}>
-          {/* Search — always first */}
-          <div className="search-bar" style={{ margin: 0, height: 34, boxSizing: 'border-box', display: 'flex', alignItems: 'center', minWidth: 180, flex: '0 0 auto' }}>
-            <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder={activeTab === 'Expenses' ? 'Search expenses…' : 'Search transactions…'}
-              style={{ fontSize: '0.82rem' }}
-            />
+        {!inWorkspace && (
+          <div className="page-subbar" style={{ display: 'flex', flexFlow: 'row wrap', gap: 8, alignItems: 'center' }}>
+            {filterControls}
           </div>
-          {/* Sub-tabs */}
-          <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-            {(['Made', 'Expenses'].includes(activeTab)
-              ? ['Made', 'Expenses']
-              : ['All', 'Invoices', 'Received', 'Pending Dues', 'Credit Notes']
-            ).map(t => (
-              headerTabs ? (
-                <button key={t} className={`ws-tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
-                  {t}
-                </button>
-              ) : (
-                <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)} style={{ margin: 0, padding: '4px 10px', fontSize: '0.8rem' }}>
-                  {t}
-                </button>
-              )
-            ))}
-          </div>
-          {/* FilterDropdown — Customer, Date range, Mode, Amount range */}
-          <FilterDropdown
-            filters={[
-              {
-                key: 'customer',
-                label: 'Customer',
-                type: 'select',
-                value: customerNameFilter,
-                onChange: setCustomerNameFilter,
-                options: [
-                  { value: '', label: 'All Customers' },
-                  ...[...new Set(
-                    [...payments, ...pendingDues].map(p =>
-                      p.party_name || p.customer_name || p.supplier_name || p.customer || ''
-                    ).filter(Boolean)
-                  )].sort().map(name => ({ value: name, label: name })),
-                ],
-              },
-              {
-                key: 'date',
-                label: 'Date Range',
-                type: 'daterange',
-                value: dateFilter,
-                onChange: setDateFilter,
-              },
-              {
-                key: 'mode',
-                label: 'Payment Mode',
-                type: 'chips',
-                value: modeFilter,
-                onChange: setModeFilter,
-                options: [
-                  { value: '', label: 'All Modes' },
-                  { value: 'UPI', label: 'UPI' },
-                  { value: 'Cash', label: 'Cash' },
-                  { value: 'Bank', label: 'Bank Transfer' },
-                  { value: 'Cheque', label: 'Cheque' },
-                ],
-              },
-              {
-                key: 'amount',
-                label: 'Amount Range',
-                type: 'amountrange',
-                value: amountFilter,
-                onChange: setAmountFilter,
-              },
-            ]}
-          />
-          {/* SortDropdown — sort + group-by, reusable common component */}
-          <SortDropdown
-            fields={[
-              { value: 'date',       label: 'Date' },
-              { value: 'party_name', label: 'Customer' },
-              { value: 'amount',     label: 'Amount' },
-            ]}
-            sortConfig={sortConfig}
-            onSortChange={setSortConfig}
-            groupFields={[
-              { value: '',           label: 'None' },
-              { value: 'party_name', label: 'Customer' },
-              { value: 'date',       label: 'Date' },
-            ]}
-            groupBy={groupBy}
-            onGroupChange={setGroupBy}
-          />
-          {/* Customer filter chip — shown inline when ?customer= param is set */}
-          {customerFilter && (
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '4px 12px', borderRadius: 20, height: 34, boxSizing: 'border-box',
-              background: 'rgba(99,102,241,0.12)',
-              border: '1px solid rgba(99,102,241,0.45)',
-              color: '#6366f1', fontSize: '0.82rem', fontWeight: 600, flexShrink: 0,
-            }}>
-              {customerFilter}
-              <button
-                onClick={() => navigate('/parties/payments', { replace: true })}
-                title="Clear — show all transactions"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6366f1', padding: 0, fontSize: '1.1rem', lineHeight: 1, display: 'flex', alignItems: 'center' }}
-                aria-label="Clear customer filter"
-              >×</button>
-            </span>
-          )}
-          {isRefreshing && (
-            <span className="toolbar-refresh-spinner">
-              <span className="spin" /> Refreshing…
-            </span>
-          )}
-        </div>
+        )}
 
         {/* Table & Content */}
         {loading ? (
