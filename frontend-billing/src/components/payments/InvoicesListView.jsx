@@ -32,6 +32,12 @@ const STATUS_OPTIONS = [
 export default function InvoicesListView({
   authFetch, actions, reloadKey = 0, showStatusChips = false,
   customerFilter = null, onClearCustomerFilter = null,
+  // Page-level buttons (New Invoice, settings) rendered at the END of this
+  // component's existing filter row. The Invoices tab used to stack that row
+  // under a near-empty WorkspaceTopBar holding only a title and one button —
+  // two 48px bars for one line of content. Passing them here collapses it to
+  // one without moving this component's filter state anywhere.
+  barActions = null,
 }) {
   const [rows, setRows]       = useState([])
   const [loading, setLoading] = useState(true)
@@ -202,6 +208,9 @@ export default function InvoicesListView({
           style={{ height: 34, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <SyncIcon size={14} />
         </button>
+
+        {barActions && <div style={{ flex: 1 }} />}
+        {barActions}
       </div>
 
       <div className="data-table-wrap" style={{ overflowX: 'auto' }}>

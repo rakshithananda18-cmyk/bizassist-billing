@@ -71,32 +71,22 @@ export default function InvoicesPage({ embedded = false, headerTabs = null, inli
         )}
 
         {/* Workspace top bar (when embedded in Khata) */}
-        {inWorkspace && (
-          <WorkspaceTopBar
-            settingsTab="transactions"
-            windowControls={false}
-            actions={inlinePage ? (
-              <button className="btn btn-primary btn-sm ws-bar-action"
-                onClick={() => navigate('/sales')}>
-                <PlusIcon size={13} /> New Invoice
-              </button>
-            ) : null}
-          >
+        {/* No WorkspaceTopBar when embedded: its whole content is one button,
+            and InvoicesListView already renders a control row directly below.
+            Two bars for that is 48px of nothing — the button moves into that
+            row instead. */}
+        {inWorkspace && !inlinePage && (
+          <WorkspaceTopBar settingsTab="transactions" windowControls={false} actions={null}>
             {headerTabs}
-            {/* Without the injected tabs this bar would open with nothing on the
-                left, so it names itself — same as the Purchase Bills bar. */}
-            {inlinePage && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 4 }}>
-                <BillsIcon size={18} style={{ color: 'var(--accent)' }} />
-                <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                  Invoices
-                </span>
-              </div>
-            )}
           </WorkspaceTopBar>
         )}
 
         <InvoicesListView
+          barActions={inlinePage ? (
+            <button className="btn btn-primary btn-sm" onClick={() => navigate('/sales')}>
+              <PlusIcon size={13} /> New Invoice
+            </button>
+          ) : null}
           authFetch={authFetch}
           reloadKey={reloadKey}
           showStatusChips

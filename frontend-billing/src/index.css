@@ -6026,6 +6026,17 @@ body.is-col-resizing * {
   z-index: 80;
 }
 
+/* A sticky sub-bar inside a workspace shell pins to the TOP of that shell.
+   `.page-subbar` defaults to `top: var(--page-header-h)`, which is correct when
+   the page header scrolls with the document — but these shells scroll their own
+   body BELOW a header that never moves, so the same offset parks the bar 64px
+   down its container and leaves a dead band above it. (The old
+   `.ws-embed .page-subbar { top: 48px }` override lived inside
+   WorkspaceTopBar's own <style>, so it silently vanished on any view that
+   stopped rendering that bar.) */
+.khata-body .page-subbar,
+.stock-body .page-subbar { top: 0; }
+
 /* ── Contacts & Payments shell ────────────────────────────────────────────
    Same geometry as `.stock-shell`: the page header and workspace tabs are
    pinned, the active view scrolls inside. Kept as its own pair of names rather
@@ -6107,7 +6118,12 @@ body.is-col-resizing * {
 /* Transactions folds earlier: its bar also carries the search box, Filters and
    Sort, so it needs 1152px of content against the 974px available at this size
    — measured, 178px over. Only the SECONDARY actions fold; Record Payment is
-   the primary and stays put. */
+   the primary and stays put.
+
+   `ws-bar-action` means "may be folded into a ⋯ menu". NEVER put it on a
+   primary action, and never on a bar that has no ⋯ — this rule is app-wide, so
+   marking `New Invoice` and `Add Party` with it hid them outright on the
+   Invoices and Contacts bars, with no way to reach either. */
 @container (max-width: 1180px) {
   .khata-body .ws-bar-action { display: none; }
   .khata-body .ws-bar-more   { display: inline-flex; align-items: center; }

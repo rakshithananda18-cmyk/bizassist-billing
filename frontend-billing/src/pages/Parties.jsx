@@ -556,7 +556,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
             actions={inlinePage ? (
               <>
                 {filterControls}
-                <button className="btn btn-primary btn-sm ws-bar-action"
+                <button className="btn btn-primary btn-sm"
                   onClick={() => { setForm(defaultForm); setShowModal(true) }}>
                   <PlusIcon size={13} /> Add Party
                 </button>
