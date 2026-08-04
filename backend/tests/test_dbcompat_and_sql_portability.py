@@ -1243,3 +1243,31 @@ def test_the_scripts_report_through_out_not_bare_print(path):
     hits = _scan(path, r"(?<![\w.])print\(")
     assert not hits, ("use out() from _dbcompat so the report cannot die of an "
                       "encoding error:\n" + "\n".join(hits))
+
+
+def test_no_unqualified_pg_index_existence_probe():
+    """`pg_indexes` spans EVERY schema, so an existence check on `indexname`
+    alone answers "already installed" for a table that does not have it.
+
+    The migration then returns early: no dedup, and the unique index it exists
+    to install is silently absent. Proven in CI on 2026-08-04 — sibling suites
+    had created `uix_sync_queue_pending_target` in `public`, so the check
+    skipped a different schema's table that still held three duplicate rows,
+    and the "already installed" answer was unfalsifiable (rule 33).
+
+    These probes guard invoice-number uniqueness, one-open-shift-per-user,
+    staff login uniqueness and the uid indexes — every one of them is an
+    integrity rule that quietly not existing is the worst outcome.
+    """
+    import pathlib
+    src = pathlib.Path(__file__).resolve().parents[1] / "database" / "migration.py"
+    text = src.read_text(encoding="utf-8")
+
+    probes = text.count("FROM pg_indexes WHERE indexname = :n")
+    qualified = text.count("AND schemaname = current_schema()")
+    assert probes > 0, "probe spelling changed — update this guard"
+    assert probes == qualified, (
+        f"{probes - qualified} pg_indexes existence probe(s) in migration.py are "
+        "not scoped with `AND schemaname = current_schema()`; each one can "
+        "report an index installed in another schema as installed here"
+    )

@@ -527,7 +527,8 @@ def _ensure_invoice_number_unique_index(conn):
     try:
         if is_pg:
             already = conn.execute(text(
-                "SELECT 1 FROM pg_indexes WHERE indexname = :n"), {"n": idx_name}).fetchone()
+                "SELECT 1 FROM pg_indexes WHERE indexname = :n "
+                "AND schemaname = current_schema()"), {"n": idx_name}).fetchone()
         else:
             already = conn.execute(text(
                 "SELECT 1 FROM sqlite_master WHERE type='index' AND name = :n"),
@@ -606,7 +607,8 @@ def _ensure_single_open_shift_index(conn):
     try:
         if is_pg:
             already = conn.execute(text(
-                "SELECT 1 FROM pg_indexes WHERE indexname = :n"), {"n": idx_name}).fetchone()
+                "SELECT 1 FROM pg_indexes WHERE indexname = :n "
+                "AND schemaname = current_schema()"), {"n": idx_name}).fetchone()
         else:
             already = conn.execute(text(
                 "SELECT 1 FROM sqlite_master WHERE type='index' AND name = :n"),
@@ -699,7 +701,8 @@ def _ensure_staff_login_name_unique_index(conn):
     try:
         if is_pg:
             already = conn.execute(text(
-                "SELECT 1 FROM pg_indexes WHERE indexname = :n"), {"n": idx_name}).fetchone()
+                "SELECT 1 FROM pg_indexes WHERE indexname = :n "
+                "AND schemaname = current_schema()"), {"n": idx_name}).fetchone()
         else:
             already = conn.execute(text(
                 "SELECT 1 FROM sqlite_master WHERE type='index' AND name = :n"),
@@ -1244,7 +1247,8 @@ def _ensure_uid_unique_indexes(conn):
             # ── Check whether the index already exists ──────────────────────
             if is_pg:
                 already = conn.execute(text(
-                    "SELECT 1 FROM pg_indexes WHERE indexname = :n"
+                    "SELECT 1 FROM pg_indexes WHERE indexname = :n "
+                    "AND schemaname = current_schema()"
                 ), {"n": idx_name}).fetchone()
             else:
                 already = conn.execute(text(
