@@ -5,10 +5,11 @@
 //              new batches, and records debit note purchase returns.
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import { useAuth } from '../contexts/AuthContext'
 import { useConfirm } from '../contexts/ConfirmContext'
-import { BillsIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIcon, ImportIcon, InfoIcon, SearchIcon, SyncIcon, UploadIcon, ExpandIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, CopyIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIcon, ImportIcon, InfoIcon, SearchIcon, SyncIcon, UploadIcon, ExpandIcon } from '../components/Icons'
 import CustomSelect from '../components/common/CustomSelect'
 import PurchaseOcrModal from '../components/purchases/PurchaseOcrModal'
 import PurchaseReturnModal from '../components/purchases/PurchaseReturnModal'
@@ -41,7 +42,10 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
   const [loading, setLoading]       = useState(true)
   const [activeTab, setActiveTab]   = useState('Pending Review')
   const [isFullScreen, setIsFullScreen] = useState(false)
-  const [search, setSearch]         = useState('')
+  // `?vendor=` seeds the search box so Contacts can drill through to a supplier's
+  // bills. The existing filter already matches supplier_name — no second filter.
+  const [urlParams] = useSearchParams()
+  const [search, setSearch]         = useState(urlParams.get('vendor') || '')
   const [showModal, setShowModal]   = useState(false)
   const [dragOver, setDragOver]     = useState(false)
   const [file, setFile]             = useState(null)
@@ -444,13 +448,23 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
   // ============================================================================
   // ── 5. RENDER BILLS CATALOG LAYOUT (JSX) ──
   // ============================================================================
+  // True when the workspace toolbar is on screen, so the sub-tabs and the
+  // standalone page header must NOT also render — otherwise the view shows the
+  // Pending/Confirmed/Returns tabs twice, and its own title under the
+  // workspace's. Was `headerTabs` alone, which missed the inlinePage case.
+  const tabsInBar = Boolean(headerTabs) || inlinePage
+
   return (
     <PageShell embedded={embedded} title="Purchases">
-      <div className={`${headerTabs ? 'fade-in ws-embed' : 'slide-up'}`}>
+      <div className={`${tabsInBar ? 'fade-in ws-embed' : 'slide-up'}`}>
 
         {/* Embedded (Godown): the SAME 48px workspace bar as the Stock tab —
-            workspace tabs · divider · view tabs · actions · window controls. */}
-        {headerTabs && (
+            workspace tabs · divider · view tabs · actions · window controls.
+            `inlinePage` gets it too: StockWorkspace passes no headerTabs (its
+            tabs live in the page header), and without this the tab rendered NO
+            toolbar and fell through to the standalone page header below —
+            a second "Purchases" title under the workspace's own. */}
+        {(headerTabs || inlinePage) && (
           <WorkspaceTopBar
             settingsTab="transactions"
             windowControls={!inlinePage}
@@ -466,17 +480,20 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
               </>
             }
           >
-            {/* Page icon & name — matches Stock.jsx left alignment */}
+            {/* Page icon & name — matches Stock.jsx left alignment. Said
+                "Stock & Inventory" on the PURCHASES bar; harmless while both
+                tabs showed the same string, wrong the moment this bar appears
+                under a workspace header that already says it. */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 4 }}>
               <BillsIcon size={18} style={{ color: 'var(--accent)' }} />
               <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
-                Stock & Inventory
+                Purchase Bills
               </span>
             </div>
             <WsDivider />
             {/* Outer workspace tabs (Stock & Items | Purchase Bills) */}
             {headerTabs}
-            <WsDivider />
+            {headerTabs && <WsDivider />}
             {/* Inner sub-tabs: Pending Review · Confirmed · Returns */}
             {['Pending Review', 'Confirmed', 'Returns (Debit Notes)'].map(t => (
               <button key={t} className={`ws-tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
@@ -501,7 +518,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
         )}
 
         {/* Standalone header (legacy /purchases route only) */}
-        {!headerTabs && (
+        {!tabsInBar && (
           <div className="page-header">
             <div className="page-header-left">
               <h1 className="page-title">Purchases</h1>
@@ -520,7 +537,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
 
         {/* Tabs + Search (tabs live in the top bar when embedded) */}
         <div className="flex items-center justify-between page-subbar" style={{ flexWrap: 'wrap', gap: 12 }}>
-          {!headerTabs ? (
+          {!tabsInBar ? (
             <div className="tabs">
               {['Pending Review', 'Confirmed', 'Returns (Debit Notes)'].map(t => (
                 <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)}>
@@ -608,8 +625,8 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
                       setCtxMenu({ x: e.clientX, y: e.clientY, items: [
                         { label: 'View Details', icon: <BillsIcon size={13} />, action: () => handleViewDetail(b) },
                         { divider: true },
-                        { label: 'Copy Bill No', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(b.invoice_number || b.bill_number || String(b.id)) },
-                        { label: 'Copy Supplier', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(b.supplier_name || '') },
+                        { label: 'Copy Bill No', icon: <CopyIcon size={13} />, action: () => navigator.clipboard.writeText(b.invoice_number || b.bill_number || String(b.id)) },
+                        { label: 'Copy Supplier', icon: <CopyIcon size={13} />, action: () => navigator.clipboard.writeText(b.supplier_name || '') },
                       ]})
                     }}
                   >
