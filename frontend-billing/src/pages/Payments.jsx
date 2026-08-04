@@ -9,7 +9,7 @@ import PageShell from '../components/common/PageShell'
 import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
 import { useAuth } from '../contexts/AuthContext'
 import { useConfirm } from '../contexts/ConfirmContext'
-import { BillsIcon, CashIcon, CheckIcon, CloseIcon, ContactsIcon, PhoneIcon, PlusIcon, WarehouseIcon, SearchIcon, ExpandIcon, SummaryIcon, SparkleIcon, InfoIcon, AlertIcon, ChevronDownIcon } from '../components/Icons'
+import { BillsIcon, CashIcon, CheckIcon, CopyIcon, CloseIcon, ContactsIcon, PhoneIcon, PlusIcon, WarehouseIcon, SearchIcon, ExpandIcon, SummaryIcon, SparkleIcon, InfoIcon, AlertIcon, ChevronDownIcon } from '../components/Icons'
 
 import { logger } from '../utils/logger'
 import CustomSelect from '../components/common/CustomSelect'
@@ -1107,8 +1107,8 @@ export default function Payments({ embedded = false, headerTabs = null }) {
                           e.preventDefault()
                           setCtxMenu({ x: e.clientX, y: e.clientY, items: [
                             { label: 'View Invoice', icon: <BillsIcon size={13} />, action: () => setViewingInvoiceNo(d.invoice_id) },
-                            { label: 'Copy Invoice No', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(d.invoice_id || '') },
-                            { label: 'Copy Customer Name', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(d.customer_name || '') },
+                            { label: 'Copy Invoice No', icon: <CopyIcon size={13} />, action: () => navigator.clipboard.writeText(d.invoice_id || '') },
+                            { label: 'Copy Customer Name', icon: <CopyIcon size={13} />, action: () => navigator.clipboard.writeText(d.customer_name || '') },
                           ]})
                         }}
                       >
@@ -1209,8 +1209,8 @@ export default function Payments({ embedded = false, headerTabs = null }) {
                           e.preventDefault()
                           setCtxMenu({ x: e.clientX, y: e.clientY, items: [
                             { label: 'View Ref Invoice', icon: <BillsIcon size={13} />, action: () => setViewingInvoiceNo(cn.invoice_id) },
-                            { label: 'Copy CN No', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(cn.credit_note_number || cn.invoice_id || '') },
-                            { label: 'Copy Customer Name', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(cn.customer_name || '') },
+                            { label: 'Copy CN No', icon: <CopyIcon size={13} />, action: () => navigator.clipboard.writeText(cn.credit_note_number || cn.invoice_id || '') },
+                            { label: 'Copy Customer Name', icon: <CopyIcon size={13} />, action: () => navigator.clipboard.writeText(cn.customer_name || '') },
                           ]})
                         }}
                       >
@@ -1319,7 +1319,7 @@ export default function Payments({ embedded = false, headerTabs = null }) {
                           e.preventDefault()
                           setCtxMenu({ x: e.clientX, y: e.clientY, items: [
                             ...(p.invoice_number || p.invoice_ref ? [{ label: 'View Invoice', icon: <BillsIcon size={13} />, action: () => setViewingInvoiceNo(p.invoice_number || p.invoice_ref) }] : []),
-                            { label: 'Copy Reference', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>, action: () => navigator.clipboard.writeText(p.reference || p.invoice_number || '') },
+                            { label: 'Copy Reference', icon: <CopyIcon size={13} />, action: () => navigator.clipboard.writeText(p.reference || p.invoice_number || '') },
                             { label: 'Copy Amount', icon: <CashIcon size={13} />, action: () => navigator.clipboard.writeText(String(p.amount || '')) },
                           ]})
                         }}

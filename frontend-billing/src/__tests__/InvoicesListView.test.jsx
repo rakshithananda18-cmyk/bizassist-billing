@@ -50,6 +50,33 @@ describe('InvoicesListView', () => {
     expect(actions.recordPayment).toHaveBeenCalledWith(expect.objectContaining({ invoice_no: 'INV-1' }))
   })
 
+  // The right-click menu and the Actions column are two renderings of ONE list
+  // (invoiceActionItems). This is the check that they stay one list — if the
+  // menu ever stops honouring the norms flags, a cashier gets an action the
+  // buttons correctly refuse.
+  it('right-click menu honours the same norms gating as the buttons', async () => {
+    render(<InvoicesListView authFetch={authFetch()} actions={mockActions()} />)
+    await waitFor(() => expect(screen.getByText('INV-1')).toBeInTheDocument())
+
+    fireEvent.contextMenu(screen.getByText('INV-1').closest('tr'))
+    expect(document.querySelector('.ctx-menu').textContent).toContain('Record payment')
+
+    fireEvent.contextMenu(screen.getByText('INV-2').closest('tr'))
+    const menu = document.querySelector('.ctx-menu')
+    expect(menu.textContent).toContain('View invoice')
+    expect(menu.textContent).not.toContain('Record payment')
+  })
+
+  it('right-click menu fires the shared action', async () => {
+    const actions = mockActions()
+    render(<InvoicesListView authFetch={authFetch()} actions={actions} />)
+    await waitFor(() => expect(screen.getByText('INV-1')).toBeInTheDocument())
+
+    fireEvent.contextMenu(screen.getByText('INV-1').closest('tr'))
+    fireEvent.click(screen.getByText('Print / PDF'))
+    expect(actions.print).toHaveBeenCalledWith('INV-1')
+  })
+
   it('filters by search', async () => {
     render(<InvoicesListView authFetch={authFetch()} actions={mockActions()} />)
     await waitFor(() => expect(screen.getByText('INV-1')).toBeInTheDocument())

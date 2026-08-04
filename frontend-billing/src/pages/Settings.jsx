@@ -11,7 +11,7 @@ import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { formatIST } from '../utils/format'
 import { useLock } from '../contexts/LockContext'
 import { API_BASE, IS_LOCAL_APP, updateApiBase } from '../config'
-import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon, MonitorIcon, SyncIcon, ZapIcon, WifiOffIcon, RobotIcon, DevicesIcon, TruckIcon, PackageIcon, OrderIcon, CartIcon, CashIcon, ArrowDownIcon, ArrowUpIcon, TaxIcon, EditIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, CopyIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon, MonitorIcon, SyncIcon, ZapIcon, WifiOffIcon, RobotIcon, DevicesIcon, TruckIcon, PackageIcon, OrderIcon, CartIcon, CashIcon, ArrowDownIcon, ArrowUpIcon, TaxIcon, EditIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import { SkylineLoader } from '../components/Logo'
 import { getHeaderLayout, isHeaderLineEnabled, moveItem } from '../utils/printLayout'
@@ -23,6 +23,7 @@ import MigrationModal from '../components/hosting/MigrationModal'
 import BackupModal from '../components/hosting/BackupModal'
 import FileBackupCard from '../components/hosting/FileBackupCard'
 import CustomSelect from '../components/common/CustomSelect'
+import ContextMenu from '../components/common/ContextMenu'
 import { clearBillingProfileCache } from '../hooks/useBillingProfile'
 import { clearDiscoveryCache } from '../utils/networkDiscovery'
 
@@ -99,6 +100,7 @@ export default function Settings() {
   // Remove confirmation inline
   const [removeTarget,   setRemoveTarget]   = useState(null)  // { id, username }
   const [editingPrefixes, setEditingPrefixes] = useState({})
+  const [ctxMenu, setCtxMenu] = useState(null)  // { x, y, items } for right-click
 
   const getAvailableCounterOptions = useCallback((list) => {
     const base = ['C1', 'C2', 'C3', 'C4', 'C5']
@@ -2016,7 +2018,20 @@ export default function Settings() {
                       </thead>
                       <tbody>
                         {staffList.map(s => (
-                          <tr key={s.id}>
+                          <tr key={s.id}
+                            style={{ cursor: 'context-menu' }}
+                            onContextMenu={e => {
+                              e.preventDefault()
+                              // Mirrors the Actions column — same two handlers,
+                              // no action reachable here that isn't a button.
+                              setCtxMenu({ x: e.clientX, y: e.clientY, items: [
+                                { label: 'Reset password', icon: <LockIcon size={13} />, action: () => { setResetTarget(s); setResetPw(''); setResetError('') } },
+                                { label: 'Copy username', icon: <CopyIcon size={13} />, action: () => navigator.clipboard.writeText(s.username || '') },
+                                { divider: true },
+                                { label: 'Remove staff', icon: <CloseIcon size={13} />, action: () => setRemoveTarget(s), danger: true },
+                              ]})
+                            }}
+                          >
                             <td className="td-primary" style={{ fontWeight: 600 }}>{s.username}</td>
                             <td>
                               <span className="badge badge-muted" style={{ textTransform: 'capitalize' }}>{s.role}</span>
@@ -2427,6 +2442,8 @@ export default function Settings() {
           </div>
         </div>
       )}
+
+      <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />
     </AppLayout>
   )
 }

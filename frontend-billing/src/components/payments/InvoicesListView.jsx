@@ -3,10 +3,12 @@
 // Filter bar matches Transactions tab: Search | Filters | Sort | [Customer chip] | Refresh
 // ============================================================================
 import React, { useEffect, useState, useCallback, useMemo } from 'react'
-import { SyncIcon, SearchIcon } from '../Icons'
-import InvoiceActions from '../invoice/InvoiceActions'
+import { SyncIcon, SearchIcon, CopyIcon } from '../Icons'
+import InvoiceActions, { invoiceActionItems } from '../invoice/InvoiceActions'
+import { useDocLabels } from '../../hooks/useDocLabels'
 import FilterDropdown from '../common/FilterDropdown'
 import SortDropdown from '../common/SortDropdown'
+import ContextMenu from '../common/ContextMenu'
 import { formatISTDateTime } from '../../utils/format'
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
@@ -38,6 +40,8 @@ export default function InvoicesListView({
   const [dateFilter, setDateFilter] = useState({ from: '', to: '' })
   const [amountFilter, setAmountFilter] = useState({ min: '', max: '' })
   const [sortConfig, setSortConfig] = useState({ key: 'invoice_date', direction: 'desc' })
+  const [ctxMenu, setCtxMenu] = useState(null)  // { x, y, items } for right-click
+  const label = useDocLabels()
 
   // ── Pagination State (25 items per page) ──────────────────────────
   const PAGE_SIZE = 25
@@ -219,7 +223,19 @@ export default function InvoicesListView({
                 {customerFilter ? `No invoices found for "${customerFilter}".` : 'No invoices found.'}
               </td></tr>
             ) : paginatedRows.map(inv => (
-              <tr key={inv.id}>
+              <tr key={inv.id}
+                style={{ cursor: 'context-menu' }}
+                onContextMenu={e => {
+                  e.preventDefault()
+                  setCtxMenu({ x: e.clientX, y: e.clientY, items: [
+                    // Same norms-gated list the Actions column renders as buttons.
+                    ...invoiceActionItems(inv, actions, null, label),
+                    { divider: true },
+                    { label: 'Copy Invoice No', icon: <CopyIcon size={13} />, action: () => navigator.clipboard.writeText(inv.invoice_no || '') },
+                    { label: 'Copy Customer Name', icon: <CopyIcon size={13} />, action: () => navigator.clipboard.writeText(inv.customer_name || '') },
+                  ]})
+                }}
+              >
                 <td style={{ whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: '0.78rem', color: 'var(--accent-warm, #c2410c)', fontWeight: 600, cursor: 'pointer' }}
                   onClick={() => actions.view(inv.invoice_no)}>
                   {inv.invoice_no}
@@ -278,6 +294,8 @@ export default function InvoicesListView({
           </div>
         </div>
       )}
+
+      <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />
     </div>
   )
 }
