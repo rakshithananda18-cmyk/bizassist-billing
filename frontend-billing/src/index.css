@@ -1595,6 +1595,21 @@ img { display: block; max-width: 100%; }
   white-space: nowrap;
 }
 
+/* A deactivated product is still listed (you can filter to it) but must not
+   read as sellable — dimmed, with an explicit tag rather than colour alone. */
+.data-table tr.row-inactive td { opacity: 0.55; }
+.tag-inactive {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--warning, #b45309);
+  background: var(--warning-dim, rgba(245,158,11,0.14));
+  vertical-align: middle;
+}
+
 /* Icon-only row action. Square, so a row of them reads as a group rather than
    as ragged buttons, and so the Actions column stays a predictable width
    regardless of how many an individual row happens to show. */

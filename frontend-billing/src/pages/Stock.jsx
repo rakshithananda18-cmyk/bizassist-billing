@@ -23,6 +23,7 @@ import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import ContextMenu from '../components/common/ContextMenu'
 import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
 import { useResizableColumns } from '../hooks/useResizableColumns'
+import { useConfirm } from '../contexts/ConfirmContext'
 import ColumnResizer from '../components/common/ColumnResizer'
 
 const fmt = (n) =>
@@ -116,6 +117,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   // StockWorkspace.jsx passes it. Remove the prop and the branches with
   // StockPurchases.jsx once the new page is signed off.
   const { authFetch, settings, user } = useAuth()
+  const confirm = useConfirm()
   const { attributesSchema } = useBusinessConfig()
   const settingsRef = useRef(settings)
   useEffect(() => {
@@ -241,6 +243,10 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   const categories = [...new Set(products.map(p => p.category).filter(Boolean))]
 
   const [stockStatusFilter, setStockStatusFilter] = useState('')
+  // Defaults to 'active' on purpose: the whole point of deactivating a product
+  // is that it leaves the catalogue. The dropdown is what makes it findable
+  // again — without it, deactivating would look like deletion.
+  const [activeFilter, setActiveFilter] = useState('active')
   const [sortConfig, setSortConfig] = useState({ key: '', direction: '' })
 
   const handleSort = (key) => {
@@ -254,10 +260,61 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
     setSortConfig({ key, direction })
   }
 
+  // ── Deactivate / delete ────────────────────────────────────────────────
+  // Two different questions, per the backend contract:
+  //   deactivate = "stop selling this"  (row stays, history keeps working)
+  //   delete     = "this should never have existed" (only while unused)
+  const toggleProductActive = async (p) => {
+    const next = p.is_active === false
+    try {
+      const res = await authFetch(`/billing/products/${p.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: next }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Update failed')
+      setAlert({ type: 'success', msg: `${p.name} ${next ? 'reactivated' : 'deactivated'}.` })
+      load()
+    } catch (e) {
+      setAlert({ type: 'danger', msg: e.message })
+    }
+  }
+
+  const deleteProduct = async (p) => {
+    const ok = await confirm({
+      mode: 'delete',
+      entity: p.name,
+      title: `Delete ${p.name}?`,
+      message: 'This permanently removes the product, its barcodes and its stock positions. It is only possible while the product has never been used.',
+    })
+    if (!ok) return
+    try {
+      const res = await authFetch(`/billing/products/${p.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        // SURFACE THE 409 VERBATIM. The backend names the exact blockers
+        // ("used by 3 invoice lines…") and redirects to deactivate — that
+        // message IS the feature. Collapsing it into "delete failed" throws
+        // away the only thing that tells the owner what to do next.
+        const detail = (await res.json().catch(() => ({}))).detail
+        throw new Error(detail || `Delete failed (${res.status})`)
+      }
+      setAlert({ type: 'success', msg: `${p.name} deleted.` })
+      load()
+    } catch (e) {
+      setAlert({ type: 'danger', msg: e.message })
+    }
+  }
+
   const getFilteredProducts = () => {
     let items = products.filter(p => {
       if (catFilter && p.category !== catFilter) return false
       
+      // `is_active` may be undefined on older payloads — treat missing as active
+      // so a stale cache never hides a live product.
+      const isActive = p.is_active !== false
+      if (activeFilter === 'active' && !isActive) return false
+      if (activeFilter === 'inactive' && isActive) return false
+
       const status = getStatus(p)
       if (stockStatusFilter === 'in' && status !== 'In Stock') return false
       if (stockStatusFilter === 'low' && status !== 'Low') return false
@@ -907,6 +964,12 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                     <option value="low">Low Stock</option>
                     <option value="out">Out of Stock</option>
                   </CustomSelect>
+                  <CustomSelect className="form-select" style={{ height: 34, fontSize: '0.82rem', minWidth: 110, width: 'auto', flexShrink: 0 }}
+                    value={activeFilter} onChange={e => setActiveFilter(e.target.value)}>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="">All</option>
+                  </CustomSelect>
                   <div style={{ flex: 1 }} />
                   {isRefreshing && (
                     <span className="toolbar-refresh-spinner">
@@ -981,6 +1044,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                           return (
                             <tr
                               key={p.id}
+                              className={p.is_active === false ? 'row-inactive' : undefined}
                               style={{ background: isLow ? 'rgba(239,68,68,.03)' : undefined, cursor: 'context-menu' }}
                               onContextMenu={e => {
                                 e.preventDefault()
@@ -1008,6 +1072,19 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                                       action: () => { setTransferForm({ ...defaultTransfer, product_id: p.id }); setShowTransferModal(true) },
                                     },
                                     { divider: true },
+                                    { divider: true },
+                                    {
+                                      label: p.is_active === false ? 'Reactivate Product' : 'Deactivate Product',
+                                      icon: <CheckIcon size={13} />,
+                                      action: () => toggleProductActive(p),
+                                    },
+                                    {
+                                      label: 'Delete Product',
+                                      icon: <CloseIcon size={13} />,
+                                      danger: true,
+                                      action: () => deleteProduct(p),
+                                    },
+                                    { divider: true },
                                     {
                                       label: 'Copy Product Code',
                                       icon: <CopyIcon size={13} />,
@@ -1025,6 +1102,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                               <td className="td-mono" style={{ textAlign: 'left' }}>{p.sku || '—'}</td>
                               <td className="td-primary" style={{ textAlign: 'left' }}>
                                 {p.name}
+                                {p.is_active === false && <span className="tag-inactive">Inactive</span>}
                                 {p.barcode && <div style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.66rem' }}>{p.barcode}</div>}
                               </td>
                               <td className="td-mono">{p.hsn_sac || '—'}</td>
