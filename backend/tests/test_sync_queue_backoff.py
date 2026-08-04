@@ -52,24 +52,57 @@ _SCHEMA = "sync_queue_backoff_test"
 @pytest.fixture
 def conn(tmp_path):
     on_pg = _PG_URL.startswith(("postgresql://", "postgres://"))
-    engine = create_engine(_PG_URL if on_pg else f"sqlite:///{tmp_path/'q.db'}")
-    with engine.connect() as c:
-        if on_pg:
-            c.execute(text(f'DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE'))
-            c.execute(text(f'CREATE SCHEMA {_SCHEMA}'))
-            c.execute(text(f'SET search_path TO {_SCHEMA}'))
+    if not on_pg:
+        engine = create_engine(f"sqlite:///{tmp_path/'q.db'}")
+        with engine.connect() as c:
+            SyncQueue.__table__.create(c)
             c.commit()
-        # Built from the MODEL, not a hand-written copy, so the test also fails
-        # if the declared schema and what the migration expects drift apart.
-        SyncQueue.__table__.create(c)
-        c.commit()
-        try:
             yield c
-        finally:
-            if on_pg:
-                c.rollback()
-                c.execute(text(f'DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE'))
-                c.commit()
+        engine.dispose()
+        return
+
+    # search_path goes on the CONNECTION, not a `SET` afterwards.
+    #
+    # `_ensure_sync_queue_dedup_index` decides whether the table exists via
+    # `sa_inspect(conn).get_table_names()`, which resolves against SQLAlchemy's
+    # `default_schema_name` — read once from `current_schema()` when the
+    # connection is established. A later `SET search_path` does not change it,
+    # so the inspector kept looking in `public`, found no `sync_queue`, and the
+    # migration returned early having done nothing. The tests then failed on
+    # `assert 3 == 1` and DID NOT RAISE: not a bug in the migration, a fixture
+    # that never let it run. Passing `-c search_path=` at connect time makes
+    # `current_schema()` the throwaway schema from the start.
+    admin = create_engine(_PG_URL)
+    with admin.connect() as a:
+        a.execute(text(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE"))
+        a.execute(text(f"CREATE SCHEMA {_SCHEMA}"))
+        a.commit()
+
+    engine = create_engine(
+        _PG_URL, connect_args={"options": f"-csearch_path={_SCHEMA}"})
+    try:
+        with engine.connect() as c:
+            # Built from the MODEL, not a hand-written copy, so the test also
+            # fails if the declared schema and what the migration expects drift.
+            SyncQueue.__table__.create(c)
+            c.commit()
+            yield c
+    finally:
+        engine.dispose()
+        with admin.connect() as a:
+            a.execute(text(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE"))
+            a.commit()
+        admin.dispose()
+
+
+def _index_exists(conn):
+    """Did the migration actually install its backstop on THIS connection?"""
+    if conn.dialect.name == "postgresql":
+        sql = "SELECT 1 FROM pg_indexes WHERE indexname = :n"
+    else:
+        sql = "SELECT 1 FROM sqlite_master WHERE type='index' AND name = :n"
+    return conn.execute(
+        text(sql), {"n": "uix_sync_queue_pending_target"}).fetchone() is not None
 
 
 def _ts(s):
@@ -99,6 +132,15 @@ def test_dedup_keeps_oldest_row_with_newest_payload(conn):
     _q(conn, 126, "invoice_line_items", 75, "INSERT", '{"v":3}', "2026-08-04 08:39:37")
 
     _ensure_sync_queue_dedup_index(conn)
+
+    # Checked FIRST and separately: the migration guards on "does this table
+    # exist", so a fixture that puts the table somewhere it cannot see makes it
+    # return having done nothing at all. That reads as `assert 3 == 1` — a
+    # dedup that looks broken — and cost a CI round trip to tell apart. If the
+    # index is absent the function never ran, which is a different problem.
+    assert _index_exists(conn), (
+        "_ensure_sync_queue_dedup_index did not run — it could not see the "
+        "sync_queue table, so nothing below is being exercised")
 
     rows = conn.execute(text(
         "SELECT id, created_at, payload FROM sync_queue WHERE synced_at IS NULL")).fetchall()
