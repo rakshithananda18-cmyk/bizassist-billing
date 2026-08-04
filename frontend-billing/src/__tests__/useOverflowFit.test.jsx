@@ -11,6 +11,8 @@ beforeEach(() => {
   containerWidth = 1000
   global.ResizeObserver = class { observe(){} disconnect(){} }
   Element.prototype.getBoundingClientRect = function () {
+    // Only the PARENT reports the available width now; the row itself is
+    // content-sized and must not be the measuring source (that was circular).
     const w = this.hasAttribute?.('data-fit-item') ? ITEM_W : containerWidth
     return { width: w, height: 30, top: 0, left: 0, right: w, bottom: 30 }
   }
@@ -20,9 +22,11 @@ function Bar({ n }) {
   const ref = useRef(null)
   const fit = useOverflowFit(ref, n, { gap: 0 })
   return (
+    <div data-parent>
     <div ref={ref}>
       {Array.from({ length: n }, (_, i) => <span key={i} data-fit-item>i{i}</span>)}
       <span data-testid="fit">{fit}</span>
+    </div>
     </div>
   )
 }

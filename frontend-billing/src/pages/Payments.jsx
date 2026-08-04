@@ -633,6 +633,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
             actions={
               <>
                 <button
+                  data-fit-item
                   onClick={() => setShowStats(!showStats)}
                   className={`ws-tab ${showStats ? 'active' : ''}`}
                   style={{ padding: '6px 10px' }}

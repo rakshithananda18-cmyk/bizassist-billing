@@ -6064,48 +6064,30 @@ body.is-col-resizing * {
   min-height: 0;
 }
 
-/* ── New workspace: the top bar collapses instead of wrapping ──────────────
-   `.ws-top-bar` is a fixed-height, non-wrapping flex row, so once the sidebar
-   is expanded the row runs out of width and the trailing buttons are simply
-   CLIPPED — not scrolled to, just gone. Wrapping onto a second line fixed the
-   clipping but cost the bar its fixed 48px height. Instead the buttons fold
-   into the ⋯ menu (Stock.jsx `toolbarActions`), so the bar keeps one line at
-   every width and no action is ever unreachable.
+/* ── Workspace toolbar overflow ────────────────────────────────────────────
+   The fold is now MEASURED, not declared — see `useOverflowFit` /
+   `OverflowActions`. A `@container (max-width: 1000px)` rule lived here and was
+   replaced because a width query cannot see the three things that actually move
+   this bar: the sidebar collapsing to its rail, the user's App Display Size
+   zoom (CSS pixels != rendered pixels), and labels that change width.
 
-   MEASURED ON THE CONTAINER, NOT THE VIEWPORT.
+   `display: inline-flex` is load-bearing, not cosmetic. Without it the row is a
+   BLOCK box and the buttons lay out as inline content on a shared text
+   baseline — so a button with an icon and one without ("Labels") sit 4px apart
+   vertically, which reads as a broken toolbar.
 
-   This was `@media (max-width: 1400px)`, and viewport width is the wrong
-   quantity twice over:
+   `position: relative` anchors the hidden measuring copies inside
+   OverflowActions: they are absolutely positioned, and without a positioned
+   ancestor they would resolve against the page and drag the layout around.
 
-     · It ignores the sidebar. The bar's width is the viewport MINUS the
-       sidebar, and that sidebar toggles between a ~56px rail and ~240px
-       expanded. One viewport width therefore means two very different bars.
-     · It ignores display scaling. On a 150% display the window is ~1918 device
-       pixels but `innerWidth` reports 1282 CSS px, so a visibly wide screen sat
-       under the breakpoint and collapsed a toolbar that had 93px to spare.
-       Measured 2026-08-04: container 1187px, content 1094px — it fit, and the
-       buttons were hidden anyway. The Electron window and a browser tab differ
-       the same way, which is why the desktop app and the web build disagreed.
-
-   `@container` asks the only question that matters: is the bar itself wide
-   enough?
-
-   1000px = the toolbar's real requirement (965px measured) plus slack. Two
-   traps in arriving at that number, both of which produced a wrong threshold
-   first time:
-     · `html` carries `zoom: 0.8`, so getBoundingClientRect reports RENDERED
-       pixels while `@container` evaluates UNZOOMED CSS pixels. Every raw
-       measurement is 0.8x what the query sees.
-     · The bar's flex:1 spacer must be excluded. It absorbs slack, so counting
-       it inflates "required width" by whatever room happens to be free.
-
-   Scoped to `.stock-body` so only this workspace's bar collapses; other
-   `.ws-top-bar` users are unaffected. */
-.ws-bar-action { display: inline-flex; align-items: center; gap: 5px; }
-.ws-bar-more   { display: none; }
-
-@container (max-width: 1000px) {
-  .stock-body .ws-bar-action,
-  .stock-body .ws-bar-divider { display: none; }
-  .stock-body .ws-bar-more    { display: inline-flex; align-items: center; }
+   `flex-shrink: 0` keeps the row content-sized. It must NOT shrink — the hook
+   derives available space from the parent minus the fixed siblings, and a row
+   that squashes would feed its own shrinkage back into that sum. */
+.ovf-actions {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
+.ovf-more { flex-shrink: 0; }

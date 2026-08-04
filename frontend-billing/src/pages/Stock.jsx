@@ -21,6 +21,7 @@ import StockIntakeSheet from '../components/stock/StockIntakeSheet'
 import IntakePurchasePanel from '../components/stock/IntakePurchasePanel'
 import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import ContextMenu from '../components/common/ContextMenu'
+import OverflowActions from '../components/common/OverflowActions'
 import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
 import { useResizableColumns } from '../hooks/useResizableColumns'
 import ColumnResizer from '../components/common/ColumnResizer'
@@ -704,7 +705,6 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   const toolbarActions = [
     { label: 'Adjust Stock',   icon: <ZapIcon size={13} />,      action: () => { setAdjustForm(defaultAdjust); setShowAdjustModal(true) } },
     { label: 'Transfer Stock', icon: <SyncIcon size={13} />,     action: () => { setTransferForm(defaultTransfer); setShowTransferModal(true) } },
-    { divider: true },
     { label: 'Labels',                                           action: () => setShowLabelModal(true) },
     { label: exporting ? 'Exporting…' : 'Export',
       icon: <DownloadIcon size={13} />, action: handleExport, disabled: exporting },
@@ -789,41 +789,11 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                   </button>
                 </div>
               )}
-              {/* Wide bar: every action is its own button. `display` lives in
-                  `.ws-bar-action`, NOT inline — an inline style would beat the
-                  `display:none` that collapses them. */}
-              {toolbarActions.map((a, i) => a.divider
-                ? <WsDivider key={i} className="ws-bar-divider" />
-                : (
-                  <button
-                    key={i}
-                    className={`btn ${a.primary ? 'btn-primary' : 'btn-secondary'} btn-sm ws-bar-action`}
-                    disabled={a.disabled}
-                    onClick={a.action}
-                  >
-                    {a.icon} {a.label}
-                  </button>
-                )
-              )}
-
-              {/* Narrow bar: the same list, in the same ContextMenu the grid
-                  already uses. Anchored to the button's own rect so the menu
-                  hangs off its right edge; ContextMenu clamps to the viewport. */}
-              <button
-                className="btn btn-secondary btn-sm ws-bar-more"
-                title="More actions"
-                aria-label="More actions"
-                onClick={e => {
-                  const r = e.currentTarget.getBoundingClientRect()
-                  setCtxMenu({
-                    x: r.right - 210,
-                    y: r.bottom,
-                    items: toolbarActions.filter(a => !a.disabled),
-                  })
-                }}
-              >
-                &#8943;
-              </button>
+              {/* Shows as many as FIT and folds the rest into a ⋯ menu.
+                  Replaces a `@container (max-width: …)` breakpoint: the fold
+                  now responds to the sidebar rail, the display-size zoom and
+                  changing labels, none of which a width query can observe. */}
+              <OverflowActions items={toolbarActions} />
               {activeView === 'intake' && intakeRows.length > 0 && (
                 <button
                   className={`btn btn-secondary btn-sm ${isSidebarCollapsed ? 'active' : ''}`}

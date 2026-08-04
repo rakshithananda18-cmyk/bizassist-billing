@@ -53,7 +53,26 @@ export function useOverflowFit(containerRef, count, { gap = 6, reserve = 0 } = {
       measured.current = true
     }
 
-    const avail = el.getBoundingClientRect().width - reserve
+    // AVAILABLE SPACE COMES FROM THE PARENT, NOT FROM `el`.
+    //
+    // `el` is content-sized: it is as wide as whatever is currently inside it.
+    // Measuring it to decide what to put inside it is circular — hide a button
+    // and it shrinks, which "proves" there is even less room, which hides the
+    // next one. First run of this hook collapsed all five Stock actions into
+    // the ⋯ menu on a 1163px bar for exactly that reason.
+    //
+    // Siblings that GROW (the toolbar's flex:1 spacer) are slack, not content,
+    // so they count as zero — otherwise the spacer expands to fill the gap and
+    // reintroduces the same circularity from the other side.
+    const parent = el.parentElement
+    if (!parent) return
+    const fixedSiblings = [...parent.children].reduce((sum, c) => {
+      if (c === el) return sum
+      if (getComputedStyle(c).flexGrow !== '0') return sum
+      return sum + c.getBoundingClientRect().width
+    }, 0)
+    const avail = parent.getBoundingClientRect().width - fixedSiblings - reserve
+
     let used = 0
     let n = 0
     for (let i = 0; i < widths.current.length; i++) {
@@ -72,10 +91,15 @@ export function useOverflowFit(containerRef, count, { gap = 6, reserve = 0 } = {
     const el = containerRef.current
     if (!el) return
     recompute()
-    // ResizeObserver rather than a window listener: the bar's width changes
-    // when the SIDEBAR toggles, which fires no window resize at all.
+    // OBSERVE THE PARENT. `el` is content-sized and does not shrink, so its own
+    // box never changes and a ResizeObserver on it never fires — the row stayed
+    // frozen at five buttons all the way down to a 600px bar. The parent is the
+    // thing whose width actually moves.
+    //
+    // ResizeObserver rather than a window listener, because the bar also
+    // changes width when the SIDEBAR toggles, which fires no window resize.
     const ro = new ResizeObserver(recompute)
-    ro.observe(el)
+    ro.observe(el.parentElement || el)
     return () => ro.disconnect()
   }, [containerRef, recompute])
 
