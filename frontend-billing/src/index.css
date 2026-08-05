@@ -6127,11 +6127,11 @@ body.is-col-resizing * {
    stopped looking like a table. Same three properties, same result. */
 .khata-body .ws-top-bar,
 .stock-body .ws-top-bar,
-/* `.ws-embed` is repeated because WorkspaceTopBar's own <style> carries
-   `.ws-embed .ws-top-bar { margin: 0 }` at (0,2,0) and is injected into <head>
-   AFTER this stylesheet, so an equal-specificity rule here loses on source
-   order. Third time a component-local rule has quietly beaten the stylesheet
-   today — those declarations belong here, not in the component. */
+/* `.ws-embed` is repeated to outrank `.ws-embed .ws-top-bar { margin: 0 }`,
+   which is (0,2,0) and now lives further down this file (it used to be injected
+   from WorkspaceTopBar's own <style>, which is what made it win). The extra
+   class is still doing work — it wins on SPECIFICITY, not source order, so this
+   pair survives the block below being moved. */
 .khata-body .ws-embed .ws-top-bar,
 .stock-body .ws-embed .ws-top-bar {
   background: var(--bg);
@@ -6141,7 +6141,7 @@ body.is-col-resizing * {
 /* The Invoices tab renders its controls in a `.page-subbar` rather than a
    `.ws-top-bar`, so it needs the toolbar's geometry explicitly or the three
    tabs sit at different heights with different gutters. `.ws-embed` is in the
-   selector to outrank WorkspaceTopBar's own (0,2,0) rule for the same element. */
+   selector to outrank the (0,2,0) `.ws-embed .page-subbar` rule below. */
 .khata-body .ws-embed .page-subbar,
 .khata-body .page-subbar {
   height: 48px;
@@ -6153,6 +6153,60 @@ body.is-col-resizing * {
   margin-left: 0;
   margin-right: 0;
   padding: 0 16px;
+}
+
+/* ── Workspace toolbar (migrated out of WorkspaceTopBar.jsx) ──────────────
+   These rules lived in a component-local <style> block. That put them in the
+   document AFTER this stylesheet, so they beat every equal-specificity rule
+   here on source order — which is why the three blocks above carry inflated
+   selectors and apologetic comments. Worse, they existed only while the
+   component was mounted: `.ws-embed .page-subbar { top: 48px }` silently
+   vanished on any view that stopped rendering the bar.
+
+   PLACEMENT IS LOAD-BEARING. They sit immediately after the .khata-body /
+   .stock-body overrides so the cascade resolves exactly as it did when they
+   were injected: equal-specificity conflicts still go to these rules (later in
+   the file), and the (0,3,0) overrides above still win on specificity. Moving
+   this block earlier flips `top` and `margin` on the workspace sub-bars.
+
+   NOTE for whoever edits the component: this is plain CSS now, so backticks are
+   fine here. They were not inside the template literal — one in a comment took
+   the whole app down with `ReferenceError: subbar is not defined`. */
+.ws-top-bar {
+  height: 48px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 12px; gap: 6px; flex-shrink: 0;
+  /* SOLID, and the same surface the table uses (--bg-2). The bar was a
+     72%-transparent frosted panel, so the page background showed through it and
+     it read as a different material sitting above the grid rather than as the
+     grid's own header strip. */
+  position: sticky; top: 0; z-index: 40;
+  background: var(--bg-2);
+}
+.ws-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.82rem;
+  font-weight: 600; border: none; background: transparent; color: var(--text-secondary);
+  /* Was a hardcoded `.15s`. tokens.test.js only reads index.css, so living in
+     the component is what let it sit off the motion system unnoticed; the move
+     surfaced it immediately. A tab-pill hover is micro feedback → --dur-fast. */
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.ws-tab:hover { background: var(--bg-3); color: var(--text-primary); }
+.ws-tab.active {
+  background: var(--accent-muted, rgba(192,97,42,.12));
+  color: var(--accent, #c0612a);
+  border: 1px solid rgba(192,97,42,.25);
+}
+/* Embedded-page gutter: clean container alignment without negative margin bleeding */
+.ws-embed { padding: 0 0 12px; width: 100%; box-sizing: border-box; overflow-x: hidden; }
+.ws-embed .ws-top-bar { margin: 0; padding: 0 16px; width: 100%; box-sizing: border-box; }
+.ws-embed .page-subbar {
+  /* Density comes from the shared token, not a literal. This rule is (0,2,0)
+     and beats the plain .page-subbar rule, so a hardcoded value here silently
+     wins over any app-wide density change — which is exactly what happened: the
+     subbar stayed 55px tall while every other block tightened. */
+  margin: 0; padding: var(--pad-block) 16px; width: 100%; box-sizing: border-box;
+  top: 48px;                       /* pin right below the 48px bar */
 }
 
 /* ── Contacts & Payments shell ────────────────────────────────────────────

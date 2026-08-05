@@ -29,43 +29,6 @@ export default function WorkspaceTopBar({
   const navigate = useNavigate()
   return (
     <>
-      <style>{`
-        .ws-top-bar {
-          height: 48px; border-bottom: 1px solid var(--border);
-          display: flex; align-items: center; padding: 0 12px; gap: 6px; flex-shrink: 0;
-          /* SOLID, and the same surface the table uses (--bg-2). The bar was a
-             72%-transparent frosted panel, so the page background showed
-             through it and it read as a different material sitting above the
-             grid rather than as the grid's own header strip. */
-          position: sticky; top: 0; z-index: 40;
-          background: var(--bg-2);
-        }
-        .ws-tab {
-          display: inline-flex; align-items: center; gap: 6px;
-          padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.82rem;
-          font-weight: 600; border: none; background: transparent; color: var(--text-secondary);
-          transition: background .15s, color .15s;
-        }
-        .ws-tab:hover { background: var(--bg-3); color: var(--text-primary); }
-        .ws-tab.active {
-          background: var(--accent-muted, rgba(192,97,42,.12));
-          color: var(--accent, #c0612a);
-          border: 1px solid rgba(192,97,42,.25);
-        }
-        /* Embedded-page gutter: clean container alignment without negative margin bleeding */
-        .ws-embed { padding: 0 0 12px; width: 100%; box-sizing: border-box; overflow-x: hidden; }
-        .ws-embed .ws-top-bar { margin: 0; padding: 0 16px; width: 100%; box-sizing: border-box; }
-        .ws-embed .page-subbar {
-          /* Density comes from the shared token, not a literal. This rule is
-             (0,2,0) and beats the plain .page-subbar rule, so a hardcoded value
-             here silently wins over any app-wide density change — which is
-             exactly what happened: the subbar stayed 55px tall while every
-             other block tightened.
-             NOTE: this whole block is a JS template literal. No backticks. */
-          margin: 0; padding: var(--pad-block) 16px; width: 100%; box-sizing: border-box;
-          top: 48px;                       /* pin right below the 48px bar */
-        }
-      `}</style>
       <div className="ws-top-bar">
         {children}
 
