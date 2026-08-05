@@ -131,6 +131,13 @@ function createMainWindow() {
       openAiWindow(url);
       return { action: 'deny' };
     }
+    // A PRINT SHEET, not an external target. Stock's Purchase / GRN summary
+    // opens a BLANK child window, writes the document into it and calls
+    // print(). Denying that made window.open() return null, so the caller hit
+    // its `if (!w) return` and the print silently did nothing — in the desktop
+    // app only, because a browser allows the popup. A blank target is our own
+    // document, never somebody else's page, so it is safe to allow.
+    if (!url || url === 'about:blank') return { action: 'allow' };
     if (/^https?:\/\//.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });

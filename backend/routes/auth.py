@@ -23,8 +23,9 @@ _DB_MODE = "cloud" if ("postgresql" in DATABASE_URL or "postgres" in DATABASE_UR
 # triggered a live httpx call which showed as 4-5 "Automatically synced"
 # log lines per session. After the activation-code plan is in place this
 # whole function can be removed; until then cap it at once per 30 min.
-_SUB_SYNC_COOLDOWN_SECS = 1800  # 30 minutes
-_sub_sync_last: dict[int, float] = {}  # business_id → last sync epoch
+_SUB_SYNC_COOLDOWN_SECS = 1800  # 30 min — after a check the cloud actually answered
+_SUB_SYNC_RETRY_SECS = 60       # after one that never happened; see below
+_sub_sync_next: dict[int, float] = {}  # business_id → earliest next cloud check
 
 
 class LoginRequest(BaseModel):
@@ -958,17 +959,28 @@ def _sync_subscription_from_cloud(user: User, db: Session, force: bool = False):
     # ── Cooldown guard: skip cloud call if checked recently ──────────────────
     business_id = user.parent_business_id or user.id
     now = time.time()
-    if not force and now - _sub_sync_last.get(business_id, 0) < _SUB_SYNC_COOLDOWN_SECS:
+    if not force and now < _sub_sync_next.get(business_id, 0):
         logger.debug(f"[SETTINGS] Subscription cloud sync skipped (cooldown) for business {business_id}")
         return
-    _sub_sync_last[business_id] = now
     # ─────────────────────────────────────────────────────────────────────────
     from services.sync_worker import CLOUD_URL, _get_cloud_token
     import httpx
 
     token = _get_cloud_token(business_id)
     if not token:
+        # No cloud identity yet — nothing was asked and nothing was spent, so
+        # do NOT arm the cooldown. The cooldown used to be armed above this
+        # line, before the token lookup and before the request, which made a
+        # check that never happened buy 30 minutes of silence. At app start
+        # this path routinely wins the race against the login's cloud-token
+        # provisioning, so an admin's Pro grant stayed invisible on the desktop
+        # for half an hour, with no way to ask again.
         return
+
+    # A request is about to leave: arm the SHORT window so parallel callers
+    # don't stampede the cloud, and extend it only once the cloud answers. A
+    # timeout or a 5xx must not buy the full cooldown either.
+    _sub_sync_next[business_id] = now + _SUB_SYNC_RETRY_SECS
 
     try:
         # Fetch latest settings/subscription from the cloud
@@ -978,6 +990,8 @@ def _sync_subscription_from_cloud(user: User, db: Session, force: bool = False):
             timeout=5.0
         )
         if resp.status_code == 200:
+            # The cloud answered. Now the long cooldown is earned.
+            _sub_sync_next[business_id] = time.time() + _SUB_SYNC_COOLDOWN_SECS
             cloud_settings = resp.json()
             cloud_sub = cloud_settings.get("subscription")
             if cloud_sub:

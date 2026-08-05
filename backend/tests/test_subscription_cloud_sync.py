@@ -60,6 +60,55 @@ def test_plan_syncs_from_cloud_even_when_local_hosting_mode_is_local(monkeypatch
     assert sub.get("status") == "active"
 
 
+def test_missing_token_does_not_lock_out_the_next_check(monkeypatch):
+    """Regression: an admin's Pro grant stayed invisible for 30 minutes.
+
+    The cooldown was armed BEFORE the cloud-token lookup, so the very first
+    GET /settings at app start — which routinely beats the login's token
+    provisioning — bought half an hour of silence without ever asking the
+    cloud anything. Neither existing test caught it: both pass ?force=true,
+    which is exactly the path that skips the cooldown.
+    """
+    acct = _signup()
+    auth = {"Authorization": f"Bearer {acct['token']}"}
+
+    import services.sync_worker as sw
+    import httpx
+
+    # 1. App start, token not provisioned yet. Unforced, like the real client.
+    monkeypatch.setattr(sw, "_get_cloud_token", lambda business_id: None)
+    r = client.get("/settings", headers=auth)
+    assert r.status_code == 200
+    assert (r.json().get("subscription") or {}).get("plan", "free") == "free"
+
+    # 2. Login finishes, the token lands, and the admin has granted Pro. The
+    #    next unforced read must actually ask — no 30-minute lockout.
+    monkeypatch.setattr(sw, "_get_cloud_token", lambda business_id: "cloud-tok")
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _FakeResp())
+    r = client.get("/settings", headers=auth)
+    assert (r.json().get("subscription") or {}).get("plan") == "pro", \
+        "a check that never happened must not arm the cooldown"
+
+
+def test_successful_check_still_holds_the_cooldown(monkeypatch):
+    """The other half: once the cloud HAS answered, stop asking. Without this
+    the fix above would turn every GET /settings into a cloud round-trip."""
+    acct = _signup()
+    auth = {"Authorization": f"Bearer {acct['token']}"}
+
+    import services.sync_worker as sw
+    import httpx
+    monkeypatch.setattr(sw, "_get_cloud_token", lambda business_id: "cloud-tok")
+
+    calls = []
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: calls.append(a) or _FakeResp())
+
+    client.get("/settings", headers=auth)
+    assert len(calls) == 1
+    client.get("/settings", headers=auth)
+    assert len(calls) == 1, "a second read inside the cooldown must not re-ask the cloud"
+
+
 def test_pure_local_account_makes_no_cloud_call(monkeypatch):
     """No cloud token → no network call, plan stays free."""
     acct = _signup()
