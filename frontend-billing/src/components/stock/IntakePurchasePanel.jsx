@@ -11,7 +11,10 @@
 //                    Cash Disc → Payable.  Item Disc / Cess / Freight / Cash
 //                    Disc are editable so Payable is meaningful.
 //   • Payment      — mode + due date.
-//   • Print        — opens a clean Purchase / GRN summary sheet to print.
+//   • Print        — delegates to the owner via `onPrint`. This panel used to
+//                    carry its own copy of the GRN sheet as a fallback, but the
+//                    only caller always passes `onPrint`, so the copy never ran
+//                    and quietly drifted from the live one in Stock.jsx.
 //
 // Everything is computed live from the intake rows passed in; nothing here is
 // persisted yet (distributor + payment are a later backend pass).
@@ -159,65 +162,6 @@ export default function IntakePurchasePanel({ rows = [], authFetch, distributor:
       address: '',
     }))
     setVendorQuery('')
-  }
-
-  const printGRN = () => {
-    const w = window.open('', '_blank', 'width=800,height=900')
-    if (!w) return
-    const rowsHtml = rows.map((r, i) => {
-      const q = parseFloat(r.qty) || 0, f = parseFloat(r.free) || 0
-      const c = parseFloat(r.cost_price) || 0, g = gstOf(r)
-      const amt = q * c, taxAmt = amt * g / 100
-      return `<tr>
-        <td>${i + 1}</td><td>${r.name || ''}</td><td style="text-align:right">${q}</td>
-        <td style="text-align:right">${f}</td><td style="text-align:right">${c.toFixed(2)}</td>
-        <td style="text-align:right">${g}%</td><td style="text-align:right">${taxAmt.toFixed(2)}</td>
-        <td style="text-align:right">${(amt + taxAmt).toFixed(2)}</td></tr>`
-    }).join('')
-    const slabHtml = slabList.map((s) =>
-      `<tr><td>GST ${s.rate}%</td><td style="text-align:right">${s.taxable.toFixed(2)}</td><td style="text-align:right">${s.tax.toFixed(2)}</td></tr>`).join('')
-    w.document.write(`<!doctype html><html><head><title>Purchase / GRN Summary</title>
-      <style>
-        body{font-family:Arial,sans-serif;color:#111;padding:24px;font-size:12px}
-        h1{font-size:18px;margin:0 0 4px} h2{font-size:13px;margin:18px 0 6px;border-bottom:1px solid #999;padding-bottom:3px}
-        table{width:100%;border-collapse:collapse;margin-top:6px} th,td{border:1px solid #bbb;padding:5px 7px;font-size:11px}
-        th{background:#eee;text-align:left} .tot{display:flex;justify-content:space-between;padding:3px 0}
-        .tot.big{font-size:15px;font-weight:800;border-top:2px solid #333;margin-top:6px;padding-top:6px}
-        .grid{display:flex;gap:32px} .grid>div{flex:1}
-      </style></head><body>
-      <h1>Purchase / GRN Summary</h1>
-      <div style="color:#555">${new Date().toLocaleString('en-IN')}</div>
-      <div class="grid">
-        <div><h2>Distributor</h2>
-          <div>${dist.name || '—'}</div>
-          <div>GSTIN: ${dist.gstin || '—'}</div>
-          <div>PAN: ${dist.pan || '—'}</div>
-          <div>FSSAI: ${dist.fssai || '—'}</div>
-          <div>Phone: ${dist.phone || '—'}</div>
-          <div>Address: ${dist.address || '—'}</div>
-        </div>
-        <div><h2>Invoice / Payment</h2>
-          <div>Invoice No: ${dist.invoice_no || '—'}</div><div>Invoice Date: ${dist.invoice_date || '—'}</div>
-          <div>Payment: ${pay.mode}${pay.due_date ? ' · due ' + pay.due_date : ''}</div></div>
-      </div>
-      <h2>Items</h2>
-      <table><thead><tr><th>#</th><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Free</th>
-        <th style="text-align:right">Cost</th><th style="text-align:right">Tax%</th><th style="text-align:right">Tax</th><th style="text-align:right">Net</th></tr></thead>
-        <tbody>${rowsHtml}</tbody></table>
-      <h2>Tax Breakdown</h2>
-      <table><thead><tr><th>Slab</th><th style="text-align:right">Taxable</th><th style="text-align:right">Tax</th></tr></thead><tbody>${slabHtml || '<tr><td colspan=3>—</td></tr>'}</tbody></table>
-      <h2>Summary</h2>
-      <div class="tot"><span>Gross Amount</span><span>${money(gross)}</span></div>
-      <div class="tot"><span>Item Disc</span><span>${money(itemDisc)}</span></div>
-      <div class="tot"><span>Taxable</span><span>${money(taxable)}</span></div>
-      <div class="tot"><span>Tax</span><span>${money(taxTotal)}</span></div>
-      <div class="tot"><span>Cess</span><span>${money(cess)}</span></div>
-      <div class="tot"><span>Cash Disc</span><span>-${money(cashDisc)}</span></div>
-      <div class="tot big"><span>Payable Amount</span><span>${money(payable)}</span></div>
-      </body></html>`)
-    w.document.close()
-    w.focus()
-    setTimeout(() => { w.print() }, 250)
   }
 
   const numField = (key, ph) => (
@@ -384,7 +328,7 @@ export default function IntakePurchasePanel({ rows = [], authFetch, distributor:
 
       {/* Print */}
       <div style={{ padding: '10px 12px' }}>
-        <button type="button" onClick={onPrint || printGRN} disabled={rows.length === 0}
+        <button type="button" onClick={onPrint} disabled={rows.length === 0 || !onPrint}
           style={{ width: '100%', padding: '8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-3)', color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.8rem', cursor: rows.length === 0 ? 'not-allowed' : 'pointer', opacity: rows.length === 0 ? 0.5 : 1 }}>
           🖨 Print Purchase / GRN Summary
         </button>
