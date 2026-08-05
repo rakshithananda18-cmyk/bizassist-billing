@@ -228,6 +228,25 @@ const fmt = (val) => {
   return `₹${Number(val).toFixed(2)}`
 }
 
+// One placeholder, two mount points (full-screen and normal). The wording turns
+// on whether a report is already chosen: after a date-range change the report is
+// still selected and only needs re-running, so "Select a report" would be wrong.
+// Deliberately says nothing about WHY there is no data — it also covers a party
+// report waiting on a party pick, and a guess there would be a lie half the time.
+function ReportPlaceholder({ report }) {
+  return (
+    <div className="empty-state card">
+      <div className="empty-icon"><TaxIcon size={32} /></div>
+      <h3>{report ? `Run ${report.title}` : 'Select a report'}</h3>
+      <p>
+        {report
+          ? 'Generate the report to see results for the selected period.'
+          : 'Pick a report above and set your date range — the results appear here.'}
+      </p>
+    </div>
+  )
+}
+
 export default function Reports() {
   const { authFetch } = useAuth()
 
@@ -271,12 +290,20 @@ export default function Reports() {
     }
   }
 
-  const setDate = (k, v) => setDateRange(d => ({ ...d, [k]: v }))
-
-  const applyQuick = (fn) => {
-    const range = fn()
-    setDateRange(range)
+  // Changing the range INVALIDATES whatever is on screen. The section header and
+  // every CSV filename below are built from the CURRENT `dateRange`, so keeping
+  // the previous result would label old rows with a period they don't cover —
+  // and export them under that name. Clearing drops back to the placeholder,
+  // which prompts to re-run. (The reported symptom was the narrower one: a stale
+  // "No transactions recorded for this period" surviving a range change.)
+  const changeRange = (next) => {
+    setDateRange(next)
+    setReportData(null)
   }
+
+  const setDate = (k, v) => changeRange(d => ({ ...d, [k]: v }))
+
+  const applyQuick = (fn) => changeRange(fn())
 
   // Selecting a report from the nav: party reports wait for a party pick in the
   // left rail; everything else generates immediately.
@@ -556,11 +583,7 @@ export default function Reports() {
               </div>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '16px 20px' }}>
                 {reportData === null ? (
-                  <div className="empty-state card">
-                    <div className="empty-icon"><TaxIcon size={32} /></div>
-                    <h3>Select a report</h3>
-                    <p>Pick a report above and set your date range — the results appear here.</p>
-                  </div>
+                  <ReportPlaceholder report={activeReport} />
                 ) : (() => {
                   const View = {
                     'day-book': DayBookView, 'balance-sheet': BalanceSheetView, 'trial-balance': TrialBalanceView,
@@ -577,11 +600,7 @@ export default function Reports() {
           <div className="reports-panel reports-workarea">
             <section className="reports-output-col" style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column', height: '100%' }}>
         {reportData === null ? (
-          <div className="empty-state card">
-            <div className="empty-icon"><TaxIcon size={32} /></div>
-            <h3>Select a report</h3>
-            <p>Pick a report above and set your date range — the results appear here.</p>
-          </div>
+          <ReportPlaceholder report={activeReport} />
         ) : (
           <div className="slide-up" style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', overflow: 'hidden' }}>
             <div className="flex items-center justify-between mb-4" style={{ flexShrink: 0 }}>
