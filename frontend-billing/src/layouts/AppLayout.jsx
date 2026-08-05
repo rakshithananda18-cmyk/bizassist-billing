@@ -1214,7 +1214,15 @@ export default function AppLayout({ children, title }) {
                   marginTop: '8px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '12px'
+                  gap: '12px',
+                  // The panel grows with its content — outbox chips, timestamps,
+                  // a worker log — and had neither a height cap nor a scroller,
+                  // so on a busy or failing sync everything below the fold was
+                  // simply unreachable. That includes the "Push to Cloud" button
+                  // at the bottom, i.e. the one control that acts on what the
+                  // panel is reporting.
+                  maxHeight: 'calc(100vh - 180px)',
+                  overflowY: 'auto',
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1614,6 +1622,28 @@ export default function AppLayout({ children, title }) {
                   }}>
                     <strong>Sync Worker Log:</strong><br />
                     {queueDepth.last_error}
+                    {/* A 401 is the one sync failure that NEVER recovers on its
+                        own: the backend drops the dead token and pauses, and
+                        only a login mints a new one (services/sync_worker.py
+                        says exactly this in the server log). The panel was
+                        showing the raw `{"detail":"Invalid token"}` and nothing
+                        else, so an owner watching the outbox climb had no way
+                        to know it was waiting on them, or that waiting longer
+                        would never help. */}
+                    {/401|invalid token/i.test(String(queueDepth.last_error)) && (
+                      <div style={{
+                        marginTop: 8, paddingTop: 8,
+                        borderTop: '1px solid rgba(239, 68, 68, 0.2)',
+                        color: 'var(--text-primary)', fontWeight: 600,
+                      }}>
+                        Sign out and sign back in on this device to reconnect.
+                        <div style={{ fontWeight: 400, color: 'var(--text-secondary)', marginTop: 2 }}>
+                          This device&apos;s cloud access expired. Nothing is lost —
+                          the {queueDepth.pending_count ?? 0} waiting change(s) stay
+                          in the outbox and upload once you&apos;re signed in again.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
