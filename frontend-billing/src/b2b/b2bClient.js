@@ -53,8 +53,13 @@ async function unwrap(res, fallback) {
   }
   let detail = fallback
   try {
-    const body = await res.json()
-    detail = body?.detail || fallback
+    const d = (await res.json())?.detail
+    // FastAPI validation errors (422) send `detail` as an ARRAY of
+    // {loc, msg, type}. Left as-is it reached the banner as "[object Object]",
+    // which is how a plain missing-field error read as an unexplained failure.
+    detail = (Array.isArray(d)
+      ? d.map(e => `${e?.loc?.slice(-1)[0] ?? 'field'}: ${e?.msg || 'invalid'}`).join('; ')
+      : typeof d === 'string' ? d : '') || fallback
   } catch { /* non-JSON error body — keep the fallback */ }
   const err = new Error(detail)
   err.status = res.status
@@ -129,7 +134,11 @@ export async function fetchConnections(authFetch, { status, limit = 200, offset 
     as_buyer: data?.as_buyer || [],
     incoming_requests: data?.incoming_requests || [],
     outgoing_requests: data?.outgoing_requests || [],
-    counts: data?.counts || { accepted: 0, incoming: 0, outgoing: 0 },
+    // Pending rows the backend can't attribute to a sender (R3). Dropping the
+    // key here is what made them invisible: they are in no other bucket, so the
+    // connection simply never appeared anywhere in the UI.
+    unclaimed_requests: data?.unclaimed_requests || [],
+    counts: data?.counts || { accepted: 0, incoming: 0, outgoing: 0, unclaimed: 0 },
     total: data?.total ?? 0,
   }
 }

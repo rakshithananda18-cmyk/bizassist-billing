@@ -30,9 +30,13 @@ const since = (iso) => {
 }
 
 // ── Request card (used by both Pending and Sent) ─────────────────────────────
-function RequestCard({ conn, mine, busy, onApprove, onReject, onCancel }) {
+function RequestCard({ conn, mine, busy, onApprove, onReject, onCancel, onResend }) {
   // `mine` = I raised this request, so I can only withdraw it.
   const role = conn.my_role === 'seller' ? 'as your customer' : 'as your supplier'
+  // Pending, but the backend has no record of who sent it (legacy, imported or
+  // mirrored row). Under R3 nobody may approve it, so Approve/Decline would
+  // just 403. Re-sending claims it and hands the decision to the other side.
+  const stuck = conn.requester_unknown
   return (
     <div className="b2b-request">
       <div className="b2b-request-body">
@@ -41,16 +45,24 @@ function RequestCard({ conn, mine, busy, onApprove, onReject, onCancel }) {
           <span className="td-mono b2b-request-bizid">{conn.counterparty_bizid}</span>
         </div>
         <div className="b2b-request-role">
-          {mine
-            ? <>You asked to connect with them {role.replace('as your', 'as their').replace('customer', 'supplier').replace('supplier', 'customer')} · sent {since(conn.created_at)}</>
-            : <>Wants to connect {role} · requested {since(conn.created_at)}</>}
+          {stuck
+            ? <>Stuck {role} · we can’t tell who sent this, so neither side can approve it. Re-send to restart it.</>
+            : mine
+              ? <>You asked to connect with them {role.replace('as your', 'as their').replace('customer', 'supplier').replace('supplier', 'customer')} · sent {since(conn.created_at)}</>
+              : <>Wants to connect {role} · requested {since(conn.created_at)}</>}
         </div>
         {conn.request_message && (
           <div className="b2b-request-msg">“{conn.request_message}”</div>
         )}
       </div>
       <div className="b2b-request-actions">
-        {mine ? (
+        {stuck ? (
+          <button className="btn btn-primary btn-sm" disabled={busy || !conn.counterparty_bizid}
+            title={conn.counterparty_bizid ? 'Send this request again in your name' : 'This business is not resolvable on this device'}
+            onClick={() => onResend(conn)}>
+            <ConnectionIcon size={13} /> Re-send
+          </button>
+        ) : mine ? (
           <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} disabled={busy} onClick={() => onCancel(conn)}>
             Withdraw
           </button>
@@ -190,6 +202,7 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
   const {
     as_seller: customers, as_buyer: suppliers,
     incoming_requests: incoming, outgoing_requests: outgoing,
+    unclaimed_requests: unclaimed = [],
     loading, busyId,
     sendRequest, approve, reject, cancel, revoke, savePolicy, probe,
   } = connections
@@ -206,9 +219,14 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
   const [policyFor, setPolicyFor] = useState(null)
   const [revokeFor, setRevokeFor] = useState(null)
 
-  // Categorize requests by role
-  const incomingSuppliers = incoming.filter(c => c.my_role !== 'seller')
-  const incomingCustomers = incoming.filter(c => c.my_role === 'seller')
+  // Categorize requests by role. Unclaimed rows ride in the "received" bucket:
+  // they are nobody's to approve, but they are real stuck connections and this
+  // is the only place an owner would look for them. Folding them in here rather
+  // than adding a fourth pill means the counts, the empty states and the badges
+  // pick them up for free — being counted is what makes them visible at all.
+  const received = [...incoming, ...unclaimed]
+  const incomingSuppliers = received.filter(c => c.my_role !== 'seller')
+  const incomingCustomers = received.filter(c => c.my_role === 'seller')
   const outgoingSuppliers = outgoing.filter(c => c.my_role !== 'seller')
   const outgoingCustomers = outgoing.filter(c => c.my_role === 'seller')
 
@@ -229,10 +247,19 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
     e.preventDefault()
     if (!bizid.trim()) return
     setSending(true)
-    const ok = await sendRequest({ bizid, role: connectAs, message })
+    // Key must be `connectAs` — b2bClient maps it to the backend's required
+    // `connect_as`. It was `role`, so every request POSTed without the field
+    // and came back 422 with an unreadable validation array as the banner.
+    const ok = await sendRequest({ bizid, connectAs, message })
     setSending(false)
     if (ok) { setBizid(''); setMessage(''); setTarget(undefined); setActiveTab(connectAs === 'buyer' ? 'suppliers' : 'customers'); setSubStatus('sent') }
   }
+
+  // Re-send a stuck (unattributable) request in my own name. The backend CLAIMS
+  // the existing row rather than creating a second one, so this moves it from
+  // "nobody can approve" to a normal request addressed to the counterparty.
+  // `connect_as` is my side of the link, which is exactly `my_role`.
+  const resend = (conn) => sendRequest({ bizid: conn.counterparty_bizid, connectAs: conn.my_role })
 
   return (
     <div className="b2b-connections">
@@ -422,7 +449,7 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
                   <div className="b2b-request-list">
                     {incomingSuppliers.map(c => (
                       <RequestCard key={c.id} conn={c} mine={false} busy={busyId === c.id}
-                        onApprove={approve} onReject={reject} onCancel={cancel} />
+                        onApprove={approve} onReject={reject} onCancel={cancel} onResend={resend} />
                     ))}
                   </div>
                 )}
@@ -506,7 +533,7 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
                   <div className="b2b-request-list">
                     {incomingCustomers.map(c => (
                       <RequestCard key={c.id} conn={c} mine={false} busy={busyId === c.id}
-                        onApprove={approve} onReject={reject} onCancel={cancel} />
+                        onApprove={approve} onReject={reject} onCancel={cancel} onResend={resend} />
                     ))}
                   </div>
                 )}
