@@ -1112,8 +1112,19 @@ def _parent_has_uid(parent_table_name: str) -> bool:
 
 
 def _serialize_orm_obj(obj, connection=None) -> dict:
+    try:
+        from database.sync_map import LOCAL_ONLY_COLUMNS
+    except Exception:
+        LOCAL_ONLY_COLUMNS = frozenset()
+
     d = {}
     for column in obj.__table__.columns:
+        # A column whose value only means something in THIS database never
+        # crosses — see LOCAL_ONLY_COLUMNS. Both databases number their uploads
+        # independently, so a copied `file_id` does not go stale upstream, it
+        # points at somebody else's import.
+        if column.name in LOCAL_ONLY_COLUMNS:
+            continue
         val = getattr(obj, column.name)
         if isinstance(val, datetime):
             val = val.isoformat()

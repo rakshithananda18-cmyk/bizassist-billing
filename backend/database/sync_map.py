@@ -218,6 +218,27 @@ APPEND_ONLY_DELETE_BLOCKLIST: frozenset = frozenset({
 })
 
 
+# Columns that are meaningful ONLY inside the database that wrote them, and so
+# must never be copied across the boundary — the same rule as the BizID spine,
+# applied to a bookkeeping column instead of a tenant id.
+#
+# `file_id` points at `uploaded_files.id`. That table is not synced and has no
+# `uid`, and the column is a plain Integer rather than a declared ForeignKey, so
+# `_serialize_orm_obj`'s uid resolution never sees it and the LOCAL id was
+# pushed verbatim. Both databases number their uploads independently from small
+# integers for the same business, so the value does not merely become
+# meaningless upstream — it collides. `DELETE /upload/{file_id}` purges rows by
+# exactly this column, so deleting an upload on the cloud could purge inventory
+# that arrived from a different device's import.
+#
+# Stripping it leaves the column NULL on rows that crossed over, which is the
+# truth: that import did not happen in this database. If uploads ever need to be
+# shared, the fix is to make `uploaded_files` a synced entity with a uid and
+# declare a real ForeignKey — then the existing resolve_parent_fk_uids machinery
+# handles it correctly and this entry goes away.
+LOCAL_ONLY_COLUMNS: frozenset = frozenset({"file_id"})
+
+
 # B2B tables are scoped by TWO owner columns instead of the usual single
 # `business_id`, so tenant-isolation filters have to OR them. Single source of
 # truth for the cloud pull endpoint.
