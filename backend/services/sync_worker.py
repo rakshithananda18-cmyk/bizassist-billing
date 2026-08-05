@@ -2534,6 +2534,37 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
 def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool = False, do_pull: bool = False):
     business_id = user.id
 
+    # ── Lift a stale Pro-plan pause ──────────────────────────────────────────
+    # A cloud 402 sets `_PLAN_BLOCKED`, and the gate further down then returns
+    # early every cycle so we stop pushing data the cloud will refuse. Correct.
+    #
+    # The flag was cleared ONLY by `store_cloud_token`, i.e. by an owner
+    # re-login. But a plan becomes Pro with no new token — routes/auth.py::
+    # _sync_subscription_from_cloud pulls the subscription down on an ordinary
+    # /settings read — so an upgraded business stayed paused indefinitely while
+    # the app itself displayed "Current plan: Pro", the outbox climbed, and the
+    # panel showed a stale "requires the Pro plan" from the refusal hours
+    # earlier. Nothing anywhere told the owner a re-login was the cure.
+    #
+    # This runs BEFORE the cloud health probe on purpose: it is a local read and
+    # needs no network, and the probe returns early on an outage — which would
+    # leave the stale flag in place for exactly as long as the cloud is down.
+    if _PLAN_BLOCKED.get(business_id):
+        try:
+            from services.admin_service import effective_plan
+            if effective_plan(user) == "pro":
+                _PLAN_BLOCKED.pop(business_id, None)
+                logger.info(
+                    "[SYNC_WORKER] business %s is on the Pro plan now — clearing the "
+                    "plan pause and resuming sync without waiting for a re-login",
+                    business_id,
+                )
+            # Still free: leave the flag; the gate below does the returning.
+        except Exception:
+            # Couldn't read the plan — keep the pause. Failing closed only
+            # delays sync; failing open spams the cloud with rejected pushes.
+            pass
+
     # M-12: rows the pull's apply path REJECTED. Declared at FUNCTION scope, not
     # inside the pull block, because the cursor decision at the end of this
     # function has to be able to read it on every path — including the paths
@@ -2603,8 +2634,10 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
     _OFFLINE_STATE[business_id] = False
 
     # Pro-plan pause: the cloud already refused this business's sync (402). Don't
-    # keep pushing data it will reject — wait until the owner re-logs in after an
-    # upgrade (store_cloud_token clears this flag).
+    # keep pushing data it will reject.
+    #
+    # The pause is re-evaluated at the TOP of this function (see there); by here
+    # it means the business is genuinely still on the free plan.
     if _PLAN_BLOCKED.get(business_id):
         return
 
