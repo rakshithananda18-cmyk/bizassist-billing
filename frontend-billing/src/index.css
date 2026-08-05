@@ -6217,7 +6217,18 @@ body.is-col-resizing * {
      and beats the plain .page-subbar rule, so a hardcoded value here silently
      wins over any app-wide density change — which is exactly what happened: the
      subbar stayed 55px tall while every other block tightened. */
-  margin: 0; padding: var(--pad-block) 16px; width: 100%; box-sizing: border-box;
+
+  /* HORIZONTAL only. This was the `margin: 0` shorthand, whose job is to undo
+     the base rule's full-bleed `margin: 0 -36px` — inside a workspace shell
+     there is no page gutter to cover. But the shorthand also wiped the base
+     rule's `margin-bottom: 14px`, and that 14px is the gap that separates the
+     toolbar from the table card. On the Invoices tab, where no `.ws-top-bar`
+     renders and this row IS the toolbar, the table butted straight against it
+     while Contacts and Transactions (whose `.ws-top-bar` carries its own 14px)
+     looked correct. Same mount-coupling as the `top` offset above: harmless
+     while this block only existed alongside a bar, wrong once it always does. */
+  margin-left: 0; margin-right: 0;
+  padding: var(--pad-block) 16px; width: 100%; box-sizing: border-box;
 }
 /* The OFFSET, though, is only correct when there is a 48px bar to sit under. */
 .ws-embed .ws-top-bar ~ .page-subbar { top: 48px; }
