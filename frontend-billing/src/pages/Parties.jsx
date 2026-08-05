@@ -295,6 +295,28 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
     }
   }
 
+  // Deactivate = "stop transacting with them"; the row stays and every past
+  // invoice, payment and ledger line keeps working. There is deliberately no
+  // delete: unlike a product, a party is referenced by money history from the
+  // moment it exists, so the products contract's "should never have existed"
+  // case has no honest equivalent here.
+  const togglePartyActive = async (p) => {
+    const next = p.is_active === false
+    const kind = activeTab === 'Customers' ? 'customers' : 'vendors'
+    try {
+      const res = await authFetch(`/billing/${kind}/${p.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: next }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Update failed')
+      setAlert({ type: 'success', msg: `${p.name} ${next ? 'reactivated' : 'deactivated'}.` })
+      load()
+    } catch (e) {
+      setAlert({ type: 'danger', msg: e.message })
+    }
+  }
+
   const handlePrintInvoice = async (invoiceNo) => {
     if (!invoiceNo) return
     try {
@@ -706,6 +728,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
                   const outstanding = parseFloat(p.outstanding_balance ?? 0)
                   return (
                     <tr key={p.id}
+                      className={p.is_active === false ? 'row-inactive' : undefined}
                       style={{ cursor: 'context-menu' }}
                       onContextMenu={e => {
                         e.preventDefault()
@@ -713,13 +736,29 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
                           { label: 'View Invoices', icon: <BillsIcon size={13} />, action: () => navigate(`/parties/invoices?customer=${encodeURIComponent(p.name)}`) },
                           { label: 'Send Payment Reminder', icon: <MessageIcon size={13} />, action: () => handleWhatsAppReminder(p) },
                           { divider: true },
+                          // Lives in the right-click menu, not the action rail.
+                          // The rail is icon-only precisely because text buttons
+                          // there made Actions the widest column in the table
+                          // (347px of 1203px) and pushed the grid past its
+                          // container — same reason products puts it here.
+                          {
+                            label: p.is_active === false
+                              ? `Reactivate ${activeTab === 'Customers' ? 'Customer' : 'Vendor'}`
+                              : `Deactivate ${activeTab === 'Customers' ? 'Customer' : 'Vendor'}`,
+                            icon: <CheckIcon size={13} />,
+                            action: () => togglePartyActive(p),
+                          },
+                          { divider: true },
                           { label: 'Copy Phone', icon: <CopyIcon size={13} />, action: () => navigator.clipboard.writeText(p.phone || '') },
                           { label: 'Copy Name', icon: <CopyIcon size={13} />, action: () => navigator.clipboard.writeText(p.name || '') },
                         ]})
                       }}
                     >
                       <td>
-                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</div>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {p.name}
+                          {p.is_active === false && <span className="tag-inactive">Inactive</span>}
+                        </div>
                         {/* One line, ellipsised, full text on hover. A postal
                             address wrapped to 2-3 lines here was setting the
                             height of EVERY cell in the row — measured 109px per
