@@ -38,14 +38,6 @@ from database.sync_map import (                                     # noqa: E402
 # Columns that carry an integer id across the boundary without uid resolution.
 #
 # ── STILL OPEN (real, unfixed) ───────────────────────────────────────────────
-#   godown_id — `godowns` IS synced and DOES have a uid, so the machinery to do
-#     this correctly already exists; the column is simply a plain Integer rather
-#     than a declared ForeignKey, so nothing resolves it. A local godown id
-#     therefore names a DIFFERENT warehouse upstream. Declaring
-#     ForeignKey("godowns.id") fixes it for new rows via the existing path, but
-#     adds a DDL constraint on fresh databases and does not repair rows already
-#     pushed — so it needs a deliberate decision plus a backfill, not a drive-by.
-#
 #   reference_id — polymorphic (points at an invoice, a purchase, a transfer …
 #     depending on a sibling type column), so no single ForeignKey can express
 #     it. Needs a type-aware resolver, or to be dropped from the payload the way
@@ -56,14 +48,11 @@ from database.sync_map import (                                     # noqa: E402
 #                    BizID gates (routes/sync.py, services/sync_worker.py).
 #   user_id        → covered by _USER_FK_REPOINT_ENTITIES.
 #   anything on a  → PULL_ONLY table is never pushed from local at all.
+#
+# `godown_id` was here across five tables and is now FIXED: declaring
+# ForeignKey("godowns.id") wires it into the existing uid path on both sides.
 KNOWN_UNRESOLVED = {
-    ("inventory", "godown_id"),
-    ("invoices", "godown_id"),
-    ("purchase_invoices", "godown_id"),
-    ("stock_ledger", "godown_id"),
     ("stock_ledger", "reference_id"),
-    ("stock_transfers", "from_godown_id"),
-    ("stock_transfers", "to_godown_id"),
 }
 
 

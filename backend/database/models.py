@@ -292,7 +292,7 @@ class Invoice(Base, BusinessOwnedMixin, GSTFieldsMixin):
 
     # New FK
     customer_id       = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
-    godown_id         = Column(Integer, nullable=True, index=True)
+    godown_id         = Column(Integer, ForeignKey("godowns.id"), nullable=True, index=True)
     parent_invoice_id = Column(Integer, ForeignKey("invoices.id"),  nullable=True, index=True)  # link credit note → sale
 
     # Payment tracking
@@ -403,7 +403,7 @@ class Inventory(Base, BusinessOwnedMixin):
 
     vendor_id     = Column(Integer, ForeignKey("vendors.id"),  nullable=True, index=True)
     product_id    = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
-    godown_id     = Column(Integer, nullable=True, index=True)
+    godown_id     = Column(Integer, ForeignKey("godowns.id"), nullable=True, index=True)
 
     unit          = Column(String,  nullable=True, default="Nos")
     hsn_sac       = Column(String,  nullable=True)
@@ -593,7 +593,7 @@ class PurchaseInvoice(Base, BusinessOwnedMixin, GSTFieldsMixin):
     status         = Column(String, nullable=True, default="Pending")
     notes          = Column(Text,   nullable=True)
     file_id        = Column(Integer, nullable=True, index=True)
-    godown_id      = Column(Integer, nullable=True, index=True)
+    godown_id      = Column(Integer, ForeignKey("godowns.id"), nullable=True, index=True)
     parent_invoice_id = Column(Integer, ForeignKey("purchase_invoices.id"), nullable=True, index=True)  # link debit note → purchase
 
     supplier_ref   = relationship("Vendor", back_populates="purchase_invoices", foreign_keys=[supplier_id])

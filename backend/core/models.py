@@ -85,7 +85,7 @@ class StockLedger(Base, TimestampMixin):
     reference_id   = Column(Integer, nullable=True)
     note           = Column(Text,    nullable=True)
     device_id      = Column(String,  nullable=True)                # which device created it (sync/audit)
-    godown_id      = Column(Integer, nullable=True, index=True)
+    godown_id      = Column(Integer, ForeignKey("godowns.id"), nullable=True, index=True)
     batch_no       = Column(String,  nullable=True, index=True)
     expiry_date    = Column(String,  nullable=True)
 
@@ -545,8 +545,8 @@ class StockTransfer(Base, BusinessOwnedMixin):
     __tablename__ = "stock_transfers"
 
     transfer_date  = Column(String, nullable=False)  # YYYY-MM-DD
-    from_godown_id = Column(Integer, nullable=False)
-    to_godown_id   = Column(Integer, nullable=False)
+    from_godown_id = Column(Integer, ForeignKey("godowns.id"), nullable=False)
+    to_godown_id   = Column(Integer, ForeignKey("godowns.id"), nullable=False)
     notes          = Column(Text, nullable=True)
 
     line_items = relationship(
