@@ -13,7 +13,8 @@ Phase A hardening (Admin Console plan):
   logs/admin_audit.jsonl (same pattern as telemetry — no DB migration).
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
@@ -297,13 +298,12 @@ def business_metrics(db: Session) -> dict:
 
         sub = _settings_dict(b).get("subscription") or {}
         if plan == "pro" and sub.get("expires_at"):
-            try:
-                exp = datetime.fromisoformat(str(sub["expires_at"]).replace("Z", "+00:00")).replace(tzinfo=None)
-                if now < exp <= now + timedelta(days=14):
-                    expiring_14d.append({"business_id": b.id, "business_name": b.business_name,
-                                         "bizid": b.public_id, "expires_at": exp.isoformat()})
-            except Exception:
-                pass
+            # Same helper as the entitlement check — the console must not warn
+            # about an expiry a day off from the one actually enforced.
+            exp = expiry_moment(sub["expires_at"])
+            if exp is not None and now < exp <= now + timedelta(days=14):
+                expiring_14d.append({"business_id": b.id, "business_name": b.business_name,
+                                     "bizid": b.public_id, "expires_at": exp.isoformat()})
 
         inv = inv_rows.get(b.id, {"count": 0, "last": None})
         if inv["count"] >= 1:
@@ -794,6 +794,44 @@ def totp_disable(admin: User, code: str, db: Session) -> dict:
     return {"status": "success", "message": "2FA disabled."}
 
 
+def expiry_moment(raw) -> Optional[datetime]:
+    """The instant a subscription lapses, as naive UTC. None if unparseable.
+
+    Single source of truth: this was parsed inline in two places that had to
+    agree — the entitlement check below and the "expiring within 14 days"
+    metric — and both carried the same two defects.
+
+    1. A DATE means the END of that date. `expires_at` is typed as a string and
+       documented as "ISO date", so an admin enters `2026-09-01`. That parses to
+       midnight, so the old check cut access off at the START of the stated day:
+       a customer paid through 1 September was on the free plan for all of
+       1 September, and granting "expires today" gave zero access. Every
+       consumer product reads that date as "access through that day", so a
+       date-only value now runs to the end of it. An explicit timestamp is
+       honoured exactly as written — it says what it means.
+
+    2. An offset is CONVERTED, not discarded. The old code called
+       `.replace(tzinfo=None)`, which drops `+05:30` and leaves the wall-clock
+       reading to be compared against UTC — up to 14 hours of error either way.
+    """
+    if raw in (None, ""):
+        return None
+    s = str(raw).strip()
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+    # No time component at all → a whole day was granted, so it runs to the end
+    # of it. Midnight the NEXT day is the first moment access is gone.
+    if "T" not in s and " " not in s:
+        dt = dt + timedelta(days=1)
+    return dt
+
+
 def effective_plan(user: User) -> str:
     """The user's current plan, accounting for expiry. Staff inherit the owner's
     plan via the caller passing the owner row."""
@@ -801,13 +839,9 @@ def effective_plan(user: User) -> str:
     plan = (sub.get("plan") or "free").lower()
     if plan == "free":
         return "free"
-    exp = sub.get("expires_at")
-    if exp:
-        try:
-            if datetime.fromisoformat(str(exp).replace("Z", "+00:00")).replace(tzinfo=None) < utc_now():
-                return "free"
-        except Exception:
-            pass
+    exp = expiry_moment(sub.get("expires_at"))
+    if exp is not None and exp <= utc_now():
+        return "free"
     return plan
 
 
