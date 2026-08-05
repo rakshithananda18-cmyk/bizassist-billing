@@ -1103,11 +1103,19 @@ def _heal_unqueued_rows(db: Session, business_id: int) -> int:
 def _repair_stuck_child_payloads(db: Session, business_id: int) -> int:
     """Patch already-stuck outbox entries that are missing parent UID fields.
 
-    When a child row (invoice_line_items, invoice_payments, etc.) was queued
-    without enrichment (e.g. by an older version of _heal_unqueued_rows that
-    used _row_to_dict), its payload lacks `invoice_id_uid`. The cloud then
-    falls back to the raw integer FK, which does not exist in its DB, and
-    defers the row forever — producing the CRITICAL deferral loop seen in logs.
+    When a row was queued without enrichment — by an older _heal_unqueued_rows
+    using _row_to_dict, or by a repair script writing over raw DB-API so no
+    mapper event fired — its payload carries the raw local FK and no `*_uid`.
+    The receiver has nothing portable to resolve against, and depending on the
+    column either defers the row for ever (NOT NULL parent) or DROPS the link
+    (nullable parent, M-9 set_null).
+
+    Covers every pending row and every declared foreign key. It used to be a
+    hardcoded map of six child tables with one parent each, which could not see
+    a parent row's OWN foreign keys — so `invoices.customer_id` was invisible to
+    it. That blind spot is what let ten invoices sit unenriched until the
+    receiver's set_null path tripped a NOT NULL constraint on `conflict_logs`
+    and froze the entire push loop for a business.
 
     This function detects those stuck rows and patches the payload in-place
     by looking up the parent UID from the local DB. It runs on every push
@@ -1115,78 +1123,94 @@ def _repair_stuck_child_payloads(db: Session, business_id: int) -> int:
 
     Returns the number of rows patched.
     """
-    child_entities = list(_CHILD_TABLE_PARENT_MAP.keys())
-    if not child_entities:
-        return 0
-
-    # Build a parameterised IN clause
-    placeholders = ", ".join(f":e{i}" for i in range(len(child_entities)))
-    params: dict = {"bid": business_id}
-    for i, ent in enumerate(child_entities):
-        params[f"e{i}"] = ent
-
+    # EVERY pending row, not just the child tables. The entity filter was the
+    # other half of the blind spot described below: even once the loop could
+    # handle a parent's own foreign keys, it would never have been handed an
+    # `invoices` row to look at.
+    #
+    # ponytail: re-parses each pending payload every push cycle. Cheap at the
+    # queue sizes seen so far (tens to low hundreds) and it short-circuits
+    # without a single query once the uids are present. Filter in SQL if an
+    # outbox ever gets big enough for this to show up.
     try:
         stuck = db.execute(
             text(
-                f"SELECT id, entity, entity_id, payload FROM sync_queue "
-                f"WHERE synced_at IS NULL AND business_id = :bid "
-                f"AND entity IN ({placeholders}) ORDER BY id"
+                "SELECT id, entity, entity_id, payload FROM sync_queue "
+                "WHERE synced_at IS NULL AND business_id = :bid ORDER BY id"
             ),
-            params,
+            {"bid": business_id},
         ).fetchall()
     except Exception as e:
-        logger.warning("[SYNC_HEAL] could not query stuck child rows: %s", e)
+        logger.warning("[SYNC_HEAL] could not query stuck outbox rows: %s", e)
         return 0
 
     if not stuck:
         return 0
 
     patched = 0
-    parent_tbl_map = {
-        "invoice_line_items":          ("invoices",          "invoice_id",          "invoice_id_uid"),
-        "purchase_invoice_line_items": ("purchase_invoices", "purchase_invoice_id", "purchase_invoice_id_uid"),
-        "purchase_order_line_items":   ("purchase_orders",   "purchase_order_id",   "purchase_order_id_uid"),
-        "stock_transfer_line_items":   ("stock_transfers",   "transfer_id",         "transfer_id_uid"),
-        "invoice_payments":            ("invoices",          "invoice_id",          "invoice_id_uid"),
-        "shift_cash_movements":        ("register_shifts",   "shift_id",            "shift_id_uid"),
-    }
+    from database.models import _parent_has_uid
 
     for row in stuck:
         sq_id, entity, entity_id, payload_str = row
-        spec = parent_tbl_map.get(entity)
-        if not spec:
-            continue
-
-        parent_tbl, fk_col, uid_key = spec
-        pay = json.loads(payload_str) if payload_str else {}
-
-        # Already has the uid — nothing to do
-        if pay.get(uid_key):
-            continue
-
-        fk_val = pay.get(fk_col)
-        if not fk_val:
+        model = _MODEL_MAP.get(entity)
+        if model is None or not payload_str:
             continue
 
         try:
-            uid_row = db.execute(
-                text(f'SELECT uid FROM "{parent_tbl}" WHERE id = :id'),
-                {"id": fk_val},
-            ).fetchone()
-        except Exception as _e:
-            logger.warning("[SYNC_HEAL] uid lookup for %s.%s=%s failed: %s",
-                           parent_tbl, fk_col, fk_val, _e)
-            continue
+            pay = json.loads(payload_str)
+        except Exception:
+            continue        # corrupt payloads are dead-lettered by the pusher
 
-        if not uid_row or not uid_row[0]:
-            continue
+        changed = False
+        # Derived from DECLARED foreign keys rather than a hardcoded table of
+        # child→parent pairs. That map listed six child entities with one parent
+        # each, so it could not see a PARENT row's own foreign keys — and
+        # `invoices.customer_id` is exactly that. Ten invoices for business 126
+        # sat in the outbox with a raw customer id and no uid, and the cloud,
+        # unable to resolve them, dropped the link and tried to log it; that log
+        # violated a NOT NULL constraint and took the whole push down every 15
+        # seconds. Had this loop covered them it would have self-healed on the
+        # next cycle and none of it would have happened.
+        for fk in model.__table__.foreign_keys:
+            fk_col = fk.parent.name
+            parent_tbl = fk.column.table.name
 
-        uid_str = str(uid_row[0])
-        pay[uid_key] = uid_str
-        # Also set the shorter alias (invoice_uid, shift_uid, etc.) that
-        # resolve_parent_fk_uids probes as a fallback.
-        base = fk_col[:-3] if fk_col.endswith("_id") else fk_col
-        pay[f"{base}_uid"] = uid_str
+            # `users` has no `uid`; asking for one raises UndefinedColumn on
+            # Postgres and aborts the whole transaction. Same guard, same
+            # reason, as in _serialize_orm_obj.
+            if not _parent_has_uid(parent_tbl):
+                continue
+
+            base = fk_col[:-3] if fk_col.endswith("_id") else fk_col
+            uid_key, alias_key = f"{fk_col}_uid", f"{base}_uid"
+            if pay.get(uid_key) or pay.get(alias_key):
+                continue
+
+            fk_val = pay.get(fk_col)
+            if not fk_val:
+                continue
+
+            try:
+                uid_row = db.execute(
+                    text(f'SELECT uid FROM "{parent_tbl}" WHERE "{fk.column.name}" = :id'),
+                    {"id": fk_val},
+                ).fetchone()
+            except Exception as _e:
+                logger.warning("[SYNC_HEAL] uid lookup for %s.%s=%s failed: %s",
+                               parent_tbl, fk_col, fk_val, _e)
+                continue
+
+            if not uid_row or not uid_row[0]:
+                continue
+
+            uid_str = str(uid_row[0])
+            pay[uid_key] = uid_str
+            # The shorter alias too — resolve_parent_fk_uids probes both.
+            pay[alias_key] = uid_str
+            changed = True
+
+        if not changed:
+            continue
 
         try:
             db.execute(
