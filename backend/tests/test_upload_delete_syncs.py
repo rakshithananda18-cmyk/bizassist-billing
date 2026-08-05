@@ -92,22 +92,63 @@ def test_deleting_an_upload_queues_the_row_deletions():
 
     r = client.delete(f"/upload/{up_id}", headers=auth)
     assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["kept"]["invoices"] == 1
+    assert body["note"], "keeping the rows silently would be the worst of both"
 
     db = SessionLocal()
     try:
-        assert db.query(Invoice).filter(Invoice.id == invoice_id).first() is None, \
-            "the invoice should be gone locally"
+        # KEPT, not purged. Deleting it here would remove it on this device only
+        # — `invoices` is append-only across the boundary, so the deletion can
+        # never be replicated, and the cloud would hold it forever.
+        assert db.query(Invoice).filter(Invoice.id == invoice_id).first() is not None, \
+            "an accounting record must not be destroyed by deleting an import"
 
-        # `invoices` is APPEND-ONLY across the boundary, so its delete must NOT
-        # be queued. The receiver rejects a blocklisted DELETE with a 422 that
-        # covers the whole payload, and the outbox re-sends the same window
-        # every cycle — one queued row here would stall the business's sync
-        # permanently. Deleting an upload is a LOCAL purge for these entities.
+        # And nothing may be queued either: the receiver rejects a blocklisted
+        # DELETE with a 422 covering the whole payload, and the outbox re-sends
+        # the same window every cycle, so one such row stalls the business's
+        # sync permanently.
         assert not _queued_deletes(db, bid, "invoices"), (
             "queued a DELETE for an append-only entity — the push endpoint will "
             "422 the entire batch and this business will stop syncing"
         )
         assert not _queued_deletes(db, bid, "payments")
+    finally:
+        db.close()
+
+
+def test_cascade_never_wipes_the_ledger():
+    """`cascade=true` on an invoice import used to delete EVERY invoice the
+    business had — on one device only, unreplicable. That is the same rule as
+    above in its most destructive form."""
+    acct = _signup()
+    auth = {"Authorization": f"Bearer {acct['token']}"}
+    bid = acct["user"]["id"] if isinstance(acct.get("user"), dict) else acct["id"]
+
+    db = SessionLocal()
+    try:
+        up = UploadedFile(business_id=bid, filename="books.csv", file_type="invoice")
+        db.add(up)
+        db.commit()
+        db.refresh(up)
+        up_id = up.id
+
+        # An invoice from a DIFFERENT import entirely — cascade would take it too.
+        other = Invoice(business_id=bid, invoice_id=f"INV-{uuid.uuid4().hex[:6]}",
+                        customer="Unrelated", amount=50.0, status="paid")
+        db.add(other)
+        db.commit()
+        other_id = other.id
+    finally:
+        db.close()
+
+    r = client.delete(f"/upload/{up_id}?cascade=true", headers=auth)
+    assert r.status_code == 200, r.text
+
+    db = SessionLocal()
+    try:
+        assert db.query(Invoice).filter(Invoice.id == other_id).first() is not None, \
+            "cascade wiped an unrelated invoice — the whole ledger was in scope"
     finally:
         db.close()
 

@@ -408,23 +408,44 @@ async def delete_upload(
         file_type = uploaded.file_type
         logger.info(f"Deleting upload record for file '{uploaded.filename}' of type '{file_type}'...")
 
-        # Delete ALL database records parsed from this specific file (by file_id).
+        # Delete the database records parsed from this specific file (by file_id).
         # A single upload can populate multiple tables — e.g. a PDF invoice
         # writes Invoice + Inventory + Payment rows under one file_id — so we
-        # purge from every table by file_id rather than only the table matching
-        # the recorded file_type. Otherwise inventory/payment rows are orphaned.
-        del_invoices = _purge(db, Invoice,
-                              Invoice.file_id == file_id,
-                              Invoice.business_id == active_user_id)
+        # purge by file_id rather than only the table matching the recorded
+        # file_type. Otherwise inventory rows are orphaned.
         del_inventory = _purge(db, Inventory,
                                Inventory.file_id == file_id,
                                Inventory.business_id == active_user_id)
-        del_payments = _purge(db, LegacyPayment,
-                              LegacyPayment.file_id == file_id,
-                              LegacyPayment.business_id == active_user_id)
+
+        # ── MONEY DOCUMENTS ARE NOT PURGED ───────────────────────────────────
+        # `invoices` and `payments` are append-only across the sync boundary
+        # (database/sync_map.py::APPEND_ONLY_DELETE_BLOCKLIST), so their
+        # deletions cannot be replicated — by design, for the same reason a
+        # locked period is re-opened with an unlock EVENT and never by deleting
+        # the lock (M-2).
+        #
+        # Deleting them here therefore removed them on THIS device only and left
+        # them in the other database forever. Worse, `_cloud_parity_check` pulls
+        # every synced table from 2020-01-01 twice a day, so the drift it
+        # created was re-encountered by an auditor that cannot reconcile it.
+        #
+        # Removing the file record is not the same act as destroying the books,
+        # so this now does only the first. Undoing an import that produced real
+        # invoices needs the products-style contract — refuse with the blockers
+        # named, and reverse rather than delete — plus a two-sided delete for the
+        # genuinely untouched case. Both are follow-up work; leaving the rows is
+        # the honest interim, because it creates no divergence at all.
+        kept_invoices = db.query(Invoice).filter(
+            Invoice.file_id == file_id,
+            Invoice.business_id == active_user_id,
+        ).count()
+        kept_payments = db.query(LegacyPayment).filter(
+            LegacyPayment.file_id == file_id,
+            LegacyPayment.business_id == active_user_id,
+        ).count()
         logger.info(
-            f"Deleted records for file {file_id} — invoices: {del_invoices}, "
-            f"inventory: {del_inventory}, payments: {del_payments}."
+            f"Deleted records for file {file_id} — inventory: {del_inventory}. "
+            f"KEPT (append-only) — invoices: {kept_invoices}, payments: {kept_payments}."
         )
 
         # delete the uploaded file record
@@ -450,15 +471,19 @@ async def delete_upload(
         # optional cascade: delete all rows of that type for this business
         if cascade:
             logger.info(f"Cascading deletion of all '{file_type}' records for user {active_user_id}...")
-            if file_type == "invoice":
-                deleted_all = _purge(db, Invoice, Invoice.business_id == active_user_id)
-                logger.info(f"Cascaded delete of all invoices: {deleted_all} records removed.")
-            elif file_type == "inventory":
+            if file_type == "inventory":
                 deleted_all = _purge(db, Inventory, Inventory.business_id == active_user_id)
                 logger.info(f"Cascaded delete of all inventory: {deleted_all} records removed.")
-            elif file_type == "payment":
-                deleted_all = _purge(db, LegacyPayment, LegacyPayment.business_id == active_user_id)
-                logger.info(f"Cascaded delete of all payments: {deleted_all} records removed.")
+            elif file_type in ("invoice", "payment"):
+                # Same rule as above, and this is the far more dangerous form of
+                # it: cascade deleted EVERY invoice or payment the business had,
+                # not just this file's, on one device only.
+                logger.warning(
+                    "Cascade requested for '%s' on business %s — refused. These "
+                    "are append-only documents; a one-sided purge of the entire "
+                    "ledger is exactly what the sync boundary forbids.",
+                    file_type, active_user_id,
+                )
 
         db.commit()
         invalidate_user_cache(active_user_id)   # bust only this tenant's cache -- data deleted
@@ -467,7 +492,17 @@ async def delete_upload(
         return {
             "message": "deleted",
             "file_id": file_id,
-            "cascade": cascade
+            "cascade": cascade,
+            "deleted": {"inventory": del_inventory, "embeddings": deleted_embs},
+            # Reported, not silent: the caller asked to delete an import and only
+            # part of it went. Saying so is the whole point of keeping the rows.
+            "kept": {"invoices": kept_invoices, "payments": kept_payments},
+            "note": (
+                f"The file record was removed. {kept_invoices} invoice(s) and "
+                f"{kept_payments} payment(s) from this import were KEPT — they are "
+                "accounting records and are never deleted on one device only. "
+                "Reverse them instead if they are wrong."
+            ) if (kept_invoices or kept_payments) else None,
         }
     except HTTPException:
         db.rollback()
