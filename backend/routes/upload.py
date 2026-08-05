@@ -361,6 +361,30 @@ async def get_upload_data(
 # -----------------------------------
 
 
+def _purge(db: Session, model, *filters) -> int:
+    """Delete matching rows THROUGH the ORM, so the sync outbox sees them.
+
+    `Query.delete()` emits one DELETE straight to the database and skips the
+    ORM unit of work entirely, so `Mapper.after_delete`
+    (database/models.py::handle_after_delete) never fires and nothing is queued.
+    The rows then vanish here and live on forever in the other database — the
+    same class of silent divergence as a script writing over raw DB-API.
+
+    It also bypasses `cascade="all, delete-orphan"`. An invoice's line items
+    were left to the database's own FK cascade, which is likewise event-free, so
+    the children disappeared locally and stayed in the cloud unreferenced.
+
+    The cost is N statements instead of one. This is an explicit, destructive
+    admin action on a single uploaded file, not a hot path, and correctness is
+    the whole point of the change.
+    ponytail: batch it if a purge ever gets big enough to matter.
+    """
+    rows = db.query(model).filter(*filters).all()
+    for row in rows:
+        db.delete(row)
+    return len(rows)
+
+
 @router.delete("/upload/{file_id}")
 async def delete_upload(
     file_id: int,
@@ -389,18 +413,15 @@ async def delete_upload(
         # writes Invoice + Inventory + Payment rows under one file_id — so we
         # purge from every table by file_id rather than only the table matching
         # the recorded file_type. Otherwise inventory/payment rows are orphaned.
-        del_invoices = db.query(Invoice).filter(
-            Invoice.file_id == file_id,
-            Invoice.business_id == active_user_id
-        ).delete()
-        del_inventory = db.query(Inventory).filter(
-            Inventory.file_id == file_id,
-            Inventory.business_id == active_user_id
-        ).delete()
-        del_payments = db.query(LegacyPayment).filter(
-            LegacyPayment.file_id == file_id,
-            LegacyPayment.business_id == active_user_id
-        ).delete()
+        del_invoices = _purge(db, Invoice,
+                              Invoice.file_id == file_id,
+                              Invoice.business_id == active_user_id)
+        del_inventory = _purge(db, Inventory,
+                               Inventory.file_id == file_id,
+                               Inventory.business_id == active_user_id)
+        del_payments = _purge(db, LegacyPayment,
+                              LegacyPayment.file_id == file_id,
+                              LegacyPayment.business_id == active_user_id)
         logger.info(
             f"Deleted records for file {file_id} — invoices: {del_invoices}, "
             f"inventory: {del_inventory}, payments: {del_payments}."
@@ -409,7 +430,10 @@ async def delete_upload(
         # delete the uploaded file record
         db.delete(uploaded)
 
-        # Delete associated document embeddings
+        # Delete associated document embeddings. Deliberately still a bulk
+        # delete: `document_embeddings` is not in database/sync_map.py, so there
+        # is no outbox row to miss, and an import can produce a great many of
+        # them. Nothing to gain by loading them all into the session.
         deleted_embs = db.query(DocumentEmbedding).filter(
             DocumentEmbedding.file_id == file_id,
             DocumentEmbedding.business_id == active_user_id
@@ -427,13 +451,13 @@ async def delete_upload(
         if cascade:
             logger.info(f"Cascading deletion of all '{file_type}' records for user {active_user_id}...")
             if file_type == "invoice":
-                deleted_all = db.query(Invoice).filter(Invoice.business_id == active_user_id).delete()
+                deleted_all = _purge(db, Invoice, Invoice.business_id == active_user_id)
                 logger.info(f"Cascaded delete of all invoices: {deleted_all} records removed.")
             elif file_type == "inventory":
-                deleted_all = db.query(Inventory).filter(Inventory.business_id == active_user_id).delete()
+                deleted_all = _purge(db, Inventory, Inventory.business_id == active_user_id)
                 logger.info(f"Cascaded delete of all inventory: {deleted_all} records removed.")
             elif file_type == "payment":
-                deleted_all = db.query(LegacyPayment).filter(LegacyPayment.business_id == active_user_id).delete()
+                deleted_all = _purge(db, LegacyPayment, LegacyPayment.business_id == active_user_id)
                 logger.info(f"Cascaded delete of all payments: {deleted_all} records removed.")
 
         db.commit()
