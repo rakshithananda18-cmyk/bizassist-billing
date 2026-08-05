@@ -474,6 +474,31 @@ export default function Settings() {
     }
   }
 
+  // Force a plan re-check against the cloud. `fetchSettings(true)` sends
+  // ?force=true, which is the only way past the backend's 30-minute cooldown.
+  // Until now the ONLY control that did this was "Refresh Plan Status" in the
+  // sync panel, rendered only when sync is on AND the plan is free — so a local
+  // install had no way to ask at all, and a plan granted on the admin portal
+  // just didn't turn up.
+  //
+  // ABOVE the early return below: everything under it runs only once `settings`
+  // has loaded, so a hook there is called on the second render and not the
+  // first. React counts hooks per render, so that is a hard crash on load.
+  const [checkingPlan, setCheckingPlan] = useState(false)
+  const [planChecked, setPlanChecked] = useState(false)
+  const recheckPlan = async () => {
+    setCheckingPlan(true)
+    setPlanChecked(false)
+    try {
+      await fetchSettings(true)
+      setPlanChecked(true)
+    } catch (err) {
+      logger.error('[Settings] plan re-check failed:', err)
+    } finally {
+      setCheckingPlan(false)
+    }
+  }
+
   // ── Loading state ──────────────────────────────────────────────────────────
   if (!settings) {
     return (
@@ -660,6 +685,45 @@ export default function Settings() {
           {/* ═══════════════════════════ GENERAL ══════════════════════════════ */}
           {activeTab === 'general' && (
             <>
+              {/* ── Group 0: Subscription ───────────────────────────
+                  The plan had no display anywhere in the app — it only ever
+                  gated features, so "am I on Pro?" was unanswerable and a grant
+                  that hadn't arrived was indistinguishable from one that had. */}
+              <div className="inv-group">
+                <div className="inv-group-header">
+                  <span className="inv-group-title">Subscription</span>
+                  <span className="inv-group-badge">{subscription?.plan === 'pro' ? 'Pro' : 'Free'}</span>
+                  <span className="inv-group-desc">Managed by your provider</span>
+                </div>
+                <div className="inv-row">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Current plan: {subscription?.plan === 'pro' ? 'Pro' : 'Free'}
+                      {subscription?.expires_at && (
+                        <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
+                          {' '}· renews {new Date(subscription.expires_at).toLocaleDateString('en-IN')}
+                        </span>
+                      )}
+                    </div>
+                    <div className="inv-row-hint">
+                      {checkingPlan
+                        ? 'Checking with the cloud…'
+                        : planChecked
+                          ? `Checked just now — you're on the ${subscription?.plan === 'pro' ? 'Pro' : 'Free'} plan.`
+                          : 'This device re-checks periodically. If your plan was just changed, check now rather than waiting.'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={recheckPlan}
+                    disabled={checkingPlan}
+                  >
+                    {checkingPlan ? 'Checking…' : 'Check for updates'}
+                  </button>
+                </div>
+              </div>
+
               {/* ── Group 1: Appearance ─────────────────────────── */}
               <div className="inv-group">
                 <div className="inv-group-header">
