@@ -397,30 +397,62 @@ def resolve_parent_fk_uids(
                         "can be restored; a dropped row cannot.",
                         log_prefix, table_name, fk_col, raw, parent_table, fk_col,
                     )
-                    try:
-                        from database.models import ConflictLog
-                        _biz_id = data.get("business_id")
-                        _row_id = data.get("id")
-                        if _biz_id is not None:
-                            db.add(ConflictLog(
-                                business_id=_biz_id,
-                                entity=table_name,
-                                entity_id=_row_id,
-                                local_updated_at=None,
-                                cloud_updated_at=None,
-                                local_payload="{}",
-                                cloud_payload=__import__('json').dumps(
-                                    {"fk_col": fk_col, "raw_value": raw,
-                                     "parent_table": parent_table, "action": "set_null"},
-                                    default=str,
-                                ),
-                                resolved_at=None,
-                                resolution="fk_nulled",
-                            ))
-                    except Exception as _e:
-                        logger.error(
-                            "%s: could not write fk_nulled ConflictLog for %s.id=%s: %s",
-                            log_prefix, table_name, data.get("id"), _e,
+                    # ── Best-effort telemetry that MUST NOT break the sync ────
+                    # This block took production down for a whole business.
+                    #
+                    #   · `conflict_logs.entity_id` is NOT NULL, and `_row_id`
+                    #     is `data.get("id")` — which is absent here by design,
+                    #     because the receiving database assigns its own primary
+                    #     key and strips the source one. So every fk_nulled
+                    #     event on Postgres inserted a NULL into a NOT NULL
+                    #     column.
+                    #   · The `except` below could never catch it: `db.add()`
+                    #     only STAGES the row, and the violation is raised at
+                    #     flush, far outside this frame.
+                    #   · Rule 58 — on Postgres a failed statement aborts the
+                    #     whole transaction. So the push 500'd with
+                    #     "transaction has been rolled back due to a previous
+                    #     exception during flush", the outbox never drained, and
+                    #     it retried every 15 s indefinitely.
+                    #
+                    # Two rules now: never stage a row we know is invalid, and
+                    # write it inside a SAVEPOINT so ANY future failure here
+                    # rolls back only this insert. A record of a dropped link is
+                    # worth having; it is not worth the sync it is observing.
+                    _biz_id = data.get("business_id")
+                    _row_id = data.get("id")
+                    if _biz_id is not None and _row_id is not None:
+                        try:
+                            from database.models import ConflictLog
+                            with db.begin_nested():
+                                db.add(ConflictLog(
+                                    business_id=_biz_id,
+                                    entity=table_name,
+                                    entity_id=_row_id,
+                                    local_updated_at=None,
+                                    cloud_updated_at=None,
+                                    local_payload="{}",
+                                    cloud_payload=__import__('json').dumps(
+                                        {"fk_col": fk_col, "raw_value": raw,
+                                         "parent_table": parent_table, "action": "set_null"},
+                                        default=str,
+                                    ),
+                                    resolved_at=None,
+                                    resolution="fk_nulled",
+                                ))
+                        except Exception as _e:
+                            logger.error(
+                                "%s: could not write fk_nulled ConflictLog for %s.id=%s: %s",
+                                log_prefix, table_name, _row_id, _e,
+                            )
+                    else:
+                        # The warning above already names the row and the link it
+                        # lost, so nothing is unrecorded — only unqueryable.
+                        logger.info(
+                            "%s: no ConflictLog row for %s.%s — the payload carries "
+                            "no primary key (the receiver assigns its own), and "
+                            "conflict_logs.entity_id is NOT NULL.",
+                            log_prefix, table_name, fk_col,
                         )
                     data[fk_col] = None
                     continue
