@@ -34,6 +34,8 @@
 // stay visible offline.
 // ============================================================================
 
+import { formatApiError } from '../utils/apiError'
+
 /**
  * Normalise a path. Deliberately a no-op beyond adding the leading slash — see
  * the header: B2B must travel on the session's OWN backend, because the token is
@@ -53,13 +55,7 @@ async function unwrap(res, fallback) {
   }
   let detail = fallback
   try {
-    const d = (await res.json())?.detail
-    // FastAPI validation errors (422) send `detail` as an ARRAY of
-    // {loc, msg, type}. Left as-is it reached the banner as "[object Object]",
-    // which is how a plain missing-field error read as an unexplained failure.
-    detail = (Array.isArray(d)
-      ? d.map(e => `${e?.loc?.slice(-1)[0] ?? 'field'}: ${e?.msg || 'invalid'}`).join('; ')
-      : typeof d === 'string' ? d : '') || fallback
+    detail = formatApiError(await res.json(), fallback)
   } catch { /* non-JSON error body — keep the fallback */ }
   const err = new Error(detail)
   err.status = res.status

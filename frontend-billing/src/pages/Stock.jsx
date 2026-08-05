@@ -10,6 +10,7 @@ import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { AlertIcon, CheckIcon, CopyIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon, ExpandIcon, SidebarIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
+import { formatApiError } from '../utils/apiError'
 import CustomSelect from '../components/common/CustomSelect'
 import AdjustStockModal from '../components/stock/AdjustStockModal'
 import TransferStockModal from '../components/stock/TransferStockModal'
@@ -194,18 +195,6 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   
   const [submitting, setSubmitting]         = useState(false)
   const [alert, setAlert]                   = useState(null)
-
-  const formatError = (err, fallback) => {
-    if (!err) return fallback
-    if (typeof err.detail === 'string') return err.detail
-    if (Array.isArray(err.detail)) {
-      return err.detail.map(d => `${d.loc ? d.loc.join('.') : 'error'}: ${d.msg || ''}`).join(', ')
-    }
-    if (err.detail && typeof err.detail === 'object') {
-      return JSON.stringify(err.detail)
-    }
-    return err.message || fallback
-  }
 
   const load = useCallback(() => {
     setLoading(true)
@@ -410,10 +399,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
         load()
       } else {
         const err = await res.json().catch(() => ({}))
-        const detail = Array.isArray(err.detail)
-          ? err.detail.map(d => `${d.loc?.slice(-1)[0] ?? 'field'}: ${d.msg}`).join('; ')
-          : (err.detail || 'Failed to adjust stock.')
-        setAlert({ type: 'danger', msg: detail })
+        setAlert({ type: 'danger', msg: formatApiError(err, 'Failed to adjust stock.') })
       }
     } catch {
       setAlert({ type: 'danger', msg: 'Network error.' })
@@ -438,7 +424,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
         load()
       } else {
         const err = await res.json().catch(() => ({}))
-        setAlert({ type: 'danger', msg: formatError(err, 'Failed to add godown.') })
+        setAlert({ type: 'danger', msg: formatApiError(err, 'Failed to add godown.') })
       }
     } catch {
       setAlert({ type: 'danger', msg: 'Network error.' })
@@ -484,7 +470,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
         load()
       } else {
         const err = await res.json().catch(() => ({}))
-        setAlert({ type: 'danger', msg: formatError(err, 'Failed to transfer stock.') })
+        setAlert({ type: 'danger', msg: formatApiError(err, 'Failed to transfer stock.') })
       }
     } catch {
       setAlert({ type: 'danger', msg: 'Network error.' })

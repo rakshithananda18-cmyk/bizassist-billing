@@ -12,6 +12,7 @@ import { BillsIcon, CheckIcon, CopyIcon, CloseIcon, ContactsIcon, HandshakeIcon,
 import PartyFormModal from '../components/parties/PartyFormModal'
 import SaleReturnModal from '../components/parties/SaleReturnModal'
 import { logger } from '../utils/logger'
+import { formatApiError } from '../utils/apiError'
 import { buildUpiUri, buildWhatsAppShareUrl, normalizePhoneIN } from '../utils/share'
 import { applyDelta, hasDelta } from '../sync/applyDelta'
 import FilterDropdown from '../components/common/FilterDropdown'
@@ -282,11 +283,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
         load()
       } else {
         const err = await res.json().catch(() => ({}))
-        // Pydantic 422 returns detail as array — flatten to readable string
-        const detail = Array.isArray(err.detail)
-          ? err.detail.map(d => `${d.loc?.slice(-1)[0] ?? 'field'}: ${d.msg}`).join('; ')
-          : (err.detail || 'Failed to add party.')
-        setAlert({ type: 'danger', msg: detail })
+        setAlert({ type: 'danger', msg: formatApiError(err, 'Failed to add party.') })
       }
     } catch {
       setAlert({ type: 'danger', msg: 'Network error.' })
