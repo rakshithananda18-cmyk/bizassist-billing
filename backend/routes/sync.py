@@ -48,6 +48,7 @@ from database.sync_map import (
     ENTITY_BROADCAST_MAP,
     TWO_SIDED_OWNER_COLUMNS,
     PULL_ONLY_TABLES,
+    APPEND_ONLY_DELETE_BLOCKLIST,
     resolve_parent_fk_uids,
     _USER_FK_REPOINT_ENTITIES,
 )
@@ -57,26 +58,10 @@ from database.sync_map import (
 from core.sync import apply_hooks as _apply_hooks
 
 
-APPEND_ONLY_DELETE_BLOCKLIST = frozenset({
-    # Money/audit documents and their lines.
-    "invoices",
-    "invoice_line_items",
-    "payments",
-    "invoice_payments",
-    "purchase_invoices",
-    "purchase_invoice_line_items",
-    "purchase_orders",
-    "purchase_order_line_items",
-    "expenses",
-    # Stock/accounting ledgers are historical truth, not mutable state.
-    "stock_ledger",
-    "b2b_ledgers",
-    # The lock/unlock history is the evidence that the books were closed. A
-    # sync-borne DELETE here would erase a close event and silently re-open a
-    # locked period on the destination — the books must be re-opened by an
-    # explicit unlock EVENT (a new row), never by deleting the lock. (M-2)
-    "period_locks",
-})
+# APPEND_ONLY_DELETE_BLOCKLIST now lives in database/sync_map.py so the SENDER
+# can honour it too — see the note there. The 422 below stays as the receiving
+# side's backstop; the enqueue guard is the thing that keeps such a row out of
+# the outbox in the first place.
 
 
 # Child tables deliberately do not duplicate ``business_id``.  Every mutation

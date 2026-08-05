@@ -180,6 +180,44 @@ PULL_ONLY_TABLES: frozenset = frozenset({
 })
 
 
+# Entities whose rows are APPEND-ONLY across the sync boundary: the receiver
+# refuses a sync-borne DELETE for any of them (routes/sync.py raises 422).
+#
+# It lives here, beside PULL_ONLY_TABLES, because BOTH ends need it. It used to
+# be defined only in routes/sync.py, i.e. only on the receiving side, so the
+# SENDER was free to queue a delete the receiver could never accept. That is not
+# a wasted row — the push endpoint scans the whole batch and rejects the ENTIRE
+# payload before applying any of it, and the outbox re-sends the same window
+# (ORDER BY id LIMIT 100) every cycle. One such row at the front of the queue
+# therefore stops that business syncing ANYTHING, permanently.
+#
+# Found immediately after routes/upload.py started deleting invoices and
+# payments through the ORM (C-6) instead of with a bulk `Query.delete()` that
+# fired no mapper events. Nothing else in the codebase ORM-deletes a blocklisted
+# entity today, so no outbox has been poisoned — but the only thing that had
+# been preventing it was that the enqueue path happened never to be reached.
+APPEND_ONLY_DELETE_BLOCKLIST: frozenset = frozenset({
+    # Money/audit documents and their lines.
+    "invoices",
+    "invoice_line_items",
+    "payments",
+    "invoice_payments",
+    "purchase_invoices",
+    "purchase_invoice_line_items",
+    "purchase_orders",
+    "purchase_order_line_items",
+    "expenses",
+    # Stock/accounting ledgers are historical truth, not mutable state.
+    "stock_ledger",
+    "b2b_ledgers",
+    # The lock/unlock history is the evidence that the books were closed. A
+    # sync-borne DELETE here would erase a close event and silently re-open a
+    # locked period on the destination — the books must be re-opened by an
+    # explicit unlock EVENT (a new row), never by deleting the lock. (M-2)
+    "period_locks",
+})
+
+
 # B2B tables are scoped by TWO owner columns instead of the usual single
 # `business_id`, so tenant-isolation filters have to OR them. Single source of
 # truth for the cloud pull endpoint.

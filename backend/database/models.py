@@ -1404,6 +1404,26 @@ def _queue_change(connection, target, operation):
         _sync_queue_logger().warning(
             "[SYNC_QUEUE] could not check PULL_ONLY_TABLES for %s: %s", tbl, e)
 
+    # 3c. APPEND-ONLY entities never carry a DELETE across the boundary. The
+    # receiver rejects one with a 422 covering the WHOLE payload, and the outbox
+    # re-sends the same window every cycle — so a single such row at the front of
+    # the queue stops the business syncing anything at all, permanently. Refusing
+    # it here means the outbox cannot hold a row that is guaranteed to poison it.
+    # routes/sync.py keeps its 422 as the receiving-side backstop.
+    if operation == "DELETE":
+        try:
+            from database.sync_map import APPEND_ONLY_DELETE_BLOCKLIST
+            if tbl in APPEND_ONLY_DELETE_BLOCKLIST:
+                _decline(tbl, target, operation,
+                         "append-only entity (a money/audit document is never "
+                         "deleted across the sync boundary; the row is removed "
+                         "locally only)")
+                return
+        except Exception as e:
+            _sync_queue_logger().warning(
+                "[SYNC_QUEUE] could not check APPEND_ONLY_DELETE_BLOCKLIST for "
+                "%s: %s", tbl, e)
+
     # 4. Only queue if dialect is sqlite (local client)
     if connection.dialect.name != "sqlite":
         return

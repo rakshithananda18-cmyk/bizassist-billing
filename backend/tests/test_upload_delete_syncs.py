@@ -8,8 +8,15 @@ so `Mapper.after_delete` never fires and nothing lands in `sync_queue`. The rows
 disappeared on this device and stayed in the other database forever — the same
 silent divergence a raw-DB-API script causes, but from a normal API call.
 
-`invoices`, `inventory` and `payments` are all in database/sync_map.py, so every
-one of those deletions is supposed to be queued.
+But only SOME of those deletions may cross the boundary. `invoices` and
+`payments` are APPEND-ONLY (database/sync_map.py::APPEND_ONLY_DELETE_BLOCKLIST):
+the receiver 422s a delete for them, and because that 422 covers the whole
+payload and the outbox re-sends the same window every cycle, queueing one would
+stall the business's sync permanently. `inventory` is not append-only, and that
+is the deletion C-6 was genuinely losing.
+
+So the two halves are tested separately: the syncable one must be queued, and
+the append-only ones must not.
 """
 import json
 import os
@@ -26,7 +33,7 @@ from fastapi.testclient import TestClient           # noqa: E402
 from sqlalchemy import text                          # noqa: E402
 from main_groq import app                            # noqa: E402
 from database.db import SessionLocal                 # noqa: E402
-from database.models import Invoice, UploadedFile    # noqa: E402
+from database.models import Inventory, Invoice, UploadedFile   # noqa: E402
 
 client = TestClient(app)
 
@@ -90,11 +97,61 @@ def test_deleting_an_upload_queues_the_row_deletions():
     try:
         assert db.query(Invoice).filter(Invoice.id == invoice_id).first() is None, \
             "the invoice should be gone locally"
-        queued = _queued_deletes(db, bid, "invoices")
-        assert queued, (
-            "the invoice was deleted locally but nothing was queued — the other "
-            "database will keep it forever"
+
+        # `invoices` is APPEND-ONLY across the boundary, so its delete must NOT
+        # be queued. The receiver rejects a blocklisted DELETE with a 422 that
+        # covers the whole payload, and the outbox re-sends the same window
+        # every cycle — one queued row here would stall the business's sync
+        # permanently. Deleting an upload is a LOCAL purge for these entities.
+        assert not _queued_deletes(db, bid, "invoices"), (
+            "queued a DELETE for an append-only entity — the push endpoint will "
+            "422 the entire batch and this business will stop syncing"
         )
-        assert invoice_id in [row[0] for row in queued]
+        assert not _queued_deletes(db, bid, "payments")
+    finally:
+        db.close()
+
+
+def test_deleting_an_upload_queues_a_syncable_row_deletion():
+    """The other half: `inventory` is NOT append-only, so its delete must reach
+    the outbox. This is the part of C-6 that was a genuine loss — the rows went
+    locally and stayed in the other database forever."""
+    acct = _signup()
+    auth = {"Authorization": f"Bearer {acct['token']}"}
+    bid = acct["user"]["id"] if isinstance(acct.get("user"), dict) else acct["id"]
+
+    db = SessionLocal()
+    try:
+        db.execute(text("UPDATE users SET settings = :s WHERE id = :b"), {
+            "s": json.dumps({"general": {"hosting_mode": "hybrid"}}), "b": bid,
+        })
+        db.commit()
+
+        up = UploadedFile(business_id=bid, filename="stock.csv", file_type="inventory")
+        db.add(up)
+        db.commit()
+        db.refresh(up)
+        up_id = up.id
+
+        item = Inventory(business_id=bid, file_id=up_id, product_name="Widget", stock=5.0)
+        db.add(item)
+        db.commit()
+        item_id = item.id
+
+        db.execute(text("DELETE FROM sync_queue WHERE business_id = :b"), {"b": bid})
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.delete(f"/upload/{up_id}", headers=auth)
+    assert r.status_code == 200, r.text
+
+    db = SessionLocal()
+    try:
+        queued = _queued_deletes(db, bid, "inventory")
+        assert item_id in [row[0] for row in queued], (
+            "the inventory row was deleted locally but nothing was queued — the "
+            "other database will keep it forever"
+        )
     finally:
         db.close()
