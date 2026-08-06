@@ -94,7 +94,7 @@ const AUTO_COLLAPSE_ROUTES = ['/stock']
 const BOTTOM_BAR_ROUTES = ['/', '/sales', '/stock', '/parties', '/reports']
 
 export default function AppLayout({ children, title }) {
-  const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings, fetchSettings, switchMode } = useAuth()
+  const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings, fetchSettings } = useAuth()
   const { hasLock, lock, resetInactivityTimer } = useLock()
   const confirm = useConfirm()
   const navigate = useNavigate()
@@ -227,27 +227,53 @@ export default function AppLayout({ children, title }) {
   // fine" while nothing synced. Two of those never recover without the owner
   // acting, and nothing told them to.
   //
-  // The local inference stays as the fallback for an older backend that does
-  // not send `halt` — losing the Pro warning on upgrade would be a regression.
-  const halt = queueDepth?.halt || null
-  const haltReason = halt?.reason || (isSyncOn && isFreePlan ? 'plan_required' : null)
+  // An older backend sends no `halt` at all, so this must degrade to the local
+  // inference rather than assume healthy.
+  const serverHalt = queueDepth?.halt?.reason || null
 
-  // Only a PLAN halt is "paused" in the sense the existing UI means: a state
-  // the owner resolves by changing their subscription. The others are faults.
-  const isSyncPaused = isSyncOn && haltReason === 'plan_required'
+  // The client can see one halt the worker cannot: a free plan that has not yet
+  // been REFUSED by the cloud. `_PLAN_BLOCKED` is only set by a 402 response, so
+  // before the first attempt of a process there is no flag to report.
+  const planHalt = isSyncOn && isFreePlan ? 'plan_required' : null
+
+  // Precedence mirrors routes/sync.py::_HALT_ORDER, which ranks the plan ABOVE
+  // an outage. It has to: the health probe runs before the plan gate, so a
+  // free-plan business whose flag is not set yet reports `offline` during any
+  // outage — and "sync resumes automatically" is false when the plan is what is
+  // actually blocking. Everything above `offline` still wins outright.
+  const haltReason = (serverHalt && serverHalt !== 'offline' ? serverHalt : null)
+                     || planHalt
+                     || serverHalt
 
   // What the owner must do, if anything. Drives the single sync control.
+  //
+  // `auth_expired` is PULL-ONLY. `_PULL_AUTH_BLOCKED` is checked after the push
+  // leg has already run (sync_worker.py:3161), so uploads keep working via the
+  // self-signed fallback; only cloud→local downloads stop. Saying "sync stopped"
+  // there would send an owner hunting for data loss that is not happening.
+  // A secret mismatch halts both legs, hence the separate copy.
   const HALT_COPY = {
     plan_required:   { title: 'Sync paused — Pro required',
                        detail: 'Cloud sync needs the Pro plan. Nothing is lost — changes wait here.' },
-    auth_expired:    { title: 'Sign-in expired',
-                       detail: 'This device’s cloud access expired. Sign out and back in to reconnect.' },
+    auth_expired:    { title: 'Cloud downloads paused',
+                       detail: 'This device’s cloud sign-in expired. Your changes still upload, but edits from your other devices stop arriving until you sign in again.' },
     secret_mismatch: { title: 'Sign-in expired',
                        detail: 'This device could not authenticate with the cloud. Sign out and back in to reconnect.' },
     offline:         { title: 'Offline',
                        detail: 'The cloud is unreachable. Sync resumes automatically.' },
   }
   const haltCopy = haltReason ? HALT_COPY[haltReason] : null
+
+  // One tone for every halt surface. The text was made halt-aware and the colour
+  // was not — the colour ternaries only knew about the PLAN halt, so a
+  // "Sign-in expired" badge with an empty outbox rendered GREEN. The label said
+  // broken and the colour said fine, on the same chip.
+  const haltTone = !haltReason ? null
+    : haltReason === 'offline' ? 'var(--text-muted)'
+    : 'var(--warning, #f59e0b)'
+  const haltTint = !haltReason ? null
+    : haltReason === 'offline' ? 'rgba(148,163,184,0.12)'
+    : 'rgba(245, 158, 11, 0.1)'
 
   // ── Cloud Pull Countdown (hybrid mode only) ───────────────────────────────
   const pullIntervalSec = Math.max(
@@ -1042,18 +1068,16 @@ export default function AppLayout({ children, title }) {
                       marginTop: '4px',
                       width: 'fit-content',
                       transition: 'all 0.2s ease',
-                      backgroundColor: isSyncPaused
-                        ? 'rgba(245, 158, 11, 0.1)'
-                        : (effectiveMode === 'hybrid'
+                      backgroundColor: haltTint
+                        || (effectiveMode === 'hybrid'
                             ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'rgba(239, 68, 68, 0.1)' :
                                queueDepth.pending_count > 0 ? 'rgba(245, 158, 11, 0.1)' :
                                !syncHealth.isOnline ? 'rgba(255, 255, 255, 0.05)' : 'rgba(34, 197, 94, 0.1)')
                             : (syncHealth.status === 'connected' ? 'rgba(34, 197, 94, 0.1)' :
                                syncHealth.status === 'connecting' ? 'rgba(245, 158, 11, 0.1)' :
                                'rgba(239, 68, 68, 0.1)')),
-                      color: isSyncPaused
-                        ? 'var(--warning, #f59e0b)'
-                        : (effectiveMode === 'hybrid'
+                      color: haltTone
+                        || (effectiveMode === 'hybrid'
                             ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger, #ef4444)' :
                                queueDepth.pending_count > 0 ? 'var(--warning, #f59e0b)' :
                                !syncHealth.isOnline ? 'var(--text-muted)' : 'var(--success, #22c55e)')
@@ -1263,9 +1287,8 @@ export default function AppLayout({ children, title }) {
                     <span style={{ color: 'var(--text-secondary)' }}>Status</span>
                     <span style={{
                       fontWeight: '700',
-                      color: isSyncPaused
-                        ? 'var(--warning, #f59e0b)'
-                        : (effectiveMode === 'hybrid'
+                      color: haltTone
+                        || (effectiveMode === 'hybrid'
                             ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger)' :
                                queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)')
                             : (syncHealth.status === 'connected' ? 'var(--success)' :
@@ -1330,11 +1353,16 @@ export default function AppLayout({ children, title }) {
                             <span style={{ color: 'var(--text-secondary)' }}>Sync Outbox</span>
                             <span style={{
                               fontWeight: '600',
-                              color: isSyncPaused ? 'var(--warning, #f59e0b)' : (queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)')
+                              color: (haltReason && haltReason !== 'auth_expired')
+                                ? haltTone
+                                : (queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)')
                             }}>
+                              {/* `auth_expired` is deliberately absent: it blocks
+                                  the PULL only, so the outbox really is draining
+                                  and calling it "Held" would be a false alarm. */}
                               {haltReason === 'plan_required' ? 'Paused — Pro Required'
                                 : haltReason === 'offline' ? 'Waiting — offline'
-                                : haltReason ? 'Held — sign in again'
+                                : haltReason === 'secret_mismatch' ? 'Held — sign in again'
                                 : (queueDepth.pending_count > 0 ? `${queueDepth.pending_count} pending` : 'Fully Synced')}
                             </span>
                           </div>
@@ -1767,7 +1795,10 @@ export default function AppLayout({ children, title }) {
                         <div style={{ color: 'var(--text-secondary)', marginTop: 2 }}>
                           {haltCopy.detail}
                         </div>
-                        {(queueDepth.pending_count || 0) > 0 && (
+                        {/* Only for halts that actually stop the upload. Under
+                            `auth_expired` the outbox is still draining, so a
+                            "waiting" count would read as stuck data. */}
+                        {haltReason !== 'auth_expired' && (queueDepth.pending_count || 0) > 0 && (
                           <div style={{ color: 'var(--text-muted)', marginTop: 2 }}>
                             {queueDepth.pending_count} change
                             {queueDepth.pending_count === 1 ? '' : 's'} waiting — nothing is lost.
@@ -1798,7 +1829,13 @@ export default function AppLayout({ children, title }) {
                         else if (haltReason === 'auth_expired' || haltReason === 'secret_mismatch') logout()
                         else handleSyncNow()
                       }}
-                      disabled={syncing || checkingPlan || haltReason === 'offline'}
+                      // NOT disabled while offline. The worker re-probes on its
+                      // own interval and this panel polls every 30s, so after
+                      // reconnecting the owner faced a dead button for up to a
+                      // minute while everything visibly worked again. The flush
+                      // endpoint only schedules a background run, so a press
+                      // during a real outage costs nothing.
+                      disabled={syncing || checkingPlan}
                       style={{
                         width: '100%',
                         padding: '6px 12px',
@@ -1829,7 +1866,10 @@ export default function AppLayout({ children, title }) {
                       ) : haltReason === 'auth_expired' || haltReason === 'secret_mismatch' ? (
                         <>Sign in again</>
                       ) : haltReason === 'offline' ? (
-                        <>Waiting for the cloud…</>
+                        <>
+                          <SyncIcon size={12} className={syncing ? 'sync-spinner-small' : ''} />
+                          {syncing ? 'Trying…' : 'Try again'}
+                        </>
                       ) : (
                         <>
                           <SyncIcon size={12} className={syncing ? 'sync-spinner-small' : ''} />
@@ -1930,9 +1970,15 @@ export default function AppLayout({ children, title }) {
                           style={{ fontSize: '0.72rem', padding: '3px 9px' }}
                           onClick={(e) => {
                             e.stopPropagation()
-                            // switchMode surfaces its own 402 toast if the plan
-                            // lapsed between this render and the click.
-                            switchMode?.('hybrid')
+                            setShowSyncPopover(false)
+                            // Deep-link into the SAME guarded flow Settings uses
+                            // — HostingModeSection probes the cloud first, then
+                            // runs preflight → consequence → migration. Calling
+                            // switchMode() straight from here skipped all four
+                            // and, because enabling hybrid force-logs-out to
+                            // re-mint the JWT, signed the owner out of a hover
+                            // panel with no warning and no reachability check.
+                            navigate('/settings?tab=advanced&switch=hybrid')
                           }}
                         >
                           Turn on Local + Cloud

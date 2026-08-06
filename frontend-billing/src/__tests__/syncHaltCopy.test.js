@@ -19,11 +19,24 @@ const BACKEND_REASONS = {
 }
 
 // Mirrors HALT_COPY + the button branches in layouts/AppLayout.jsx.
+// `holdsOutbox` is the one that is easy to get wrong: `auth_expired` blocks the
+// PULL only — `_PULL_AUTH_BLOCKED` is checked after the push leg has already run
+// (sync_worker.py:3161), so uploads keep going and calling the outbox "held" is
+// a false alarm about data loss that is not happening.
 const HALT_COPY = {
-  plan_required: { title: 'Sync paused — Pro required', action: 'check_plan' },
-  auth_expired: { title: 'Sign-in expired', action: 'logout' },
-  secret_mismatch: { title: 'Sign-in expired', action: 'logout' },
-  offline: { title: 'Offline', action: 'none' },
+  plan_required: { title: 'Sync paused — Pro required', action: 'check_plan', holdsOutbox: true },
+  auth_expired: { title: 'Cloud downloads paused', action: 'logout', holdsOutbox: false },
+  secret_mismatch: { title: 'Sign-in expired', action: 'logout', holdsOutbox: true },
+  offline: { title: 'Offline', action: 'retry', holdsOutbox: true },
+}
+
+// Mirrors the haltReason precedence in layouts/AppLayout.jsx.
+const resolveHalt = (serverReason, { isSyncOn, isFreePlan }) => {
+  const planHalt = isSyncOn && isFreePlan ? 'plan_required' : null
+  return (serverReason && serverReason !== 'offline' ? serverReason : null)
+    || planHalt
+    || serverReason
+    || null
 }
 
 describe('sync halt vocabulary', () => {
@@ -46,10 +59,63 @@ describe('sync halt vocabulary', () => {
   it('the recovery action matches how the backend says it is fixed', () => {
     // The mapping that matters: "Check plan status" does nothing for a dead
     // token, and an outage needs no action at all.
-    const expected = { relogin: 'logout', upgrade: 'check_plan', wait: 'none' }
+    // `wait` → a live retry, not a dead button. The outage clears on its own,
+    // but the worker re-probes on its own interval and the panel polls every
+    // 30s, so after reconnecting the owner would face a disabled control for up
+    // to a minute while everything else visibly worked.
+    const expected = { relogin: 'logout', upgrade: 'check_plan', wait: 'retry' }
     for (const [reason, fix] of Object.entries(BACKEND_REASONS)) {
       expect(HALT_COPY[reason].action).toBe(expected[fix])
     }
+  })
+
+  it('never leaves a halt without an action the owner can take', () => {
+    for (const [reason, copy] of Object.entries(HALT_COPY)) {
+      expect(copy.action, `"${reason}" renders a halt with no way out`).not.toBe('none')
+    }
+  })
+
+  it('says the outbox is held only when it actually is', () => {
+    // auth_expired stops downloads, not uploads. The panel must not imply the
+    // owner's own sales are stuck.
+    expect(HALT_COPY.auth_expired.holdsOutbox).toBe(false)
+    expect(HALT_COPY.auth_expired.title).not.toMatch(/sync (paused|stopped)/i)
+    for (const r of ['plan_required', 'secret_mismatch', 'offline']) {
+      expect(HALT_COPY[r].holdsOutbox).toBe(true)
+    }
+  })
+})
+
+describe('halt precedence', () => {
+  const FREE = { isSyncOn: true, isFreePlan: true }
+  const PRO = { isSyncOn: true, isFreePlan: false }
+
+  it('a free plan outranks an outage', () => {
+    // The worker probes cloud health BEFORE the plan gate, so during any outage
+    // a free-plan business reports `offline` — and "resumes automatically" is
+    // false when the plan is the real blocker. Matches _HALT_ORDER, which ranks
+    // plan above offline.
+    expect(resolveHalt('offline', FREE)).toBe('plan_required')
+    expect(resolveHalt('offline', PRO)).toBe('offline')
+  })
+
+  it('an auth fault outranks the local plan guess', () => {
+    // Both of these need the owner to sign in again; neither is fixed by the
+    // plan. Telling a lapsed-token user to check their subscription is the
+    // wrong-fix bug this whole feature exists to remove.
+    expect(resolveHalt('secret_mismatch', FREE)).toBe('secret_mismatch')
+    expect(resolveHalt('auth_expired', FREE)).toBe('auth_expired')
+  })
+
+  it('covers a free plan the worker has not refused yet', () => {
+    // `_PLAN_BLOCKED` is only set by a cloud 402, so a fresh process reports no
+    // halt at all until the first push attempt.
+    expect(resolveHalt(null, FREE)).toBe('plan_required')
+  })
+
+  it('reports nothing when nothing is wrong', () => {
+    expect(resolveHalt(null, PRO)).toBe(null)
+    expect(resolveHalt(null, { isSyncOn: false, isFreePlan: true })).toBe(null)
   })
 
   it('only a plan halt counts as "paused"', () => {
