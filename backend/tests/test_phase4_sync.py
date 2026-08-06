@@ -132,7 +132,13 @@ def test_order_completion_posts_both_sides():
             PurchaseInvoice.invoice_number == f"B2B-{order_number}",
         ).first()
         assert purchase is not None
-        assert purchase.status == "Pending"
+        # LOWERCASE, and deliberately so. This asserted "Pending" because that
+        # is what the code wrote, not because it was right: the Purchase Bills
+        # list buckets on 'pending'/'confirmed', so the capitalised value put
+        # every B2B bill in NO tab — invisible in the UI while still driving the
+        # supplier's outstanding balance. The test agreed with the defect and so
+        # could never catch it. See tests/test_purchase_status_vocabulary.py.
+        assert purchase.status == "pending"
         assert purchase.total_amount == inv.total_amount
         assert len(purchase.line_items) == 1
         assert purchase.line_items[0].quantity == 5

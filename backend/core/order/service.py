@@ -481,7 +481,12 @@ def _ensure_buyer_purchase_invoice(db: Session, *, order: B2BOrder, buyer: User,
         invoice_number=f"B2B-{order.order_number}",
         invoice_date=sale_invoice.invoice_date,
         due_date=sale_invoice.due_date,
-        status="Pending",
+        # LOWERCASE — the purchase-bill vocabulary. Every other writer and the
+        # Purchase Bills list use 'pending' / 'confirmed'; this one wrote
+        # "Pending", so a B2B bill matched no tab and was invisible while still
+        # driving the supplier's outstanding balance. (Sale invoices use a
+        # separate, capitalised vocabulary — do not unify them.)
+        status="pending",
         notes=f"Automatically generated from completed B2B order {order.order_number}",
         gstin_buyer=buyer.gstin,
         place_of_supply=sale_invoice.place_of_supply,

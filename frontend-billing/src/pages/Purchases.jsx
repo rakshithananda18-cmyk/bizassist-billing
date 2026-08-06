@@ -225,8 +225,14 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
       })
     } else {
       items = bills.filter(b => {
-        if (activeTab === 'Pending Review' && b.status !== 'pending') return false
-        if (activeTab === 'Confirmed' && b.status !== 'confirmed') return false
+        // Case-INSENSITIVE. A bill whose status matches no tab is in no bucket
+        // and simply cannot be seen, while still counting towards the supplier's
+        // outstanding balance — which is computed server-side from the same row.
+        // A B2B order wrote "Pending" against this reader's 'pending' and
+        // produced exactly that: a vendor owed money for a bill shown nowhere.
+        const st = String(b.status || '').toLowerCase()
+        if (activeTab === 'Pending Review' && st !== 'pending') return false
+        if (activeTab === 'Confirmed' && st !== 'confirmed') return false
         return !q || b.invoice_number?.toLowerCase().includes(q) || b.bill_number?.toLowerCase().includes(q) || b.supplier_name?.toLowerCase().includes(q)
       })
     }
@@ -513,7 +519,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
                   ({
                     t === 'Returns (Debit Notes)'
                       ? debitNotes.length
-                      : bills.filter(b => b.status === (t === 'Pending Review' ? 'pending' : 'confirmed')).length
+                      : bills.filter(b => String(b.status || '').toLowerCase() === (t === 'Pending Review' ? 'pending' : 'confirmed')).length
                   })
                 </span>
               </button>
@@ -557,7 +563,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
                   ({
                     t === 'Returns (Debit Notes)'
                       ? debitNotes.length
-                      : bills.filter(b => b.status === (t === 'Pending Review' ? 'pending' : 'confirmed')).length
+                      : bills.filter(b => String(b.status || '').toLowerCase() === (t === 'Pending Review' ? 'pending' : 'confirmed')).length
                   })
                 </span>
               </button>
