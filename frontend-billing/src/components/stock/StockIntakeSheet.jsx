@@ -32,6 +32,7 @@ import {
 } from '../Icons'
 import ScanSearchField from '../common/ScanSearchField'
 import ContextMenu from '../common/ContextMenu'
+import IntakeConfirmSheet from './IntakeConfirmSheet'
 
 // ── Intake grid columns (order MUST match the <tbody> cell order) ────────────
 // Drives the header + the POS-style fold-collapse. Collapse ≠ hide: it's a
@@ -48,6 +49,12 @@ const INTAKE_COLS = [
   { key: 'mrp',     label: 'MRP ₹',     short: 'MRP',     width: 80,  align: 'right', title: 'Maximum Retail Price' },
   { key: 'cost',    label: 'Cost ₹',    short: 'COST',    width: 80,  align: 'right', title: 'Purchase rate per unit (before tax)' },
   { key: 'sell',    label: 'Sell ₹',    short: 'SELL',    width: 80,  align: 'right', title: 'Selling price per unit' },
+  // The POS sells at four base tiers (lib/priceOptions.js). Two of them were
+  // only reachable from the product edit panel, so a delivery that changed the
+  // wholesale rate could not be entered where the rest of the bill was typed.
+  // Collapsible like every other optional column — right-click to fold.
+  { key: 'wholesale',   label: 'Wholesale ₹',   short: 'WHSL',  width: 80, align: 'right', title: 'Wholesale tier price (a POS price option)' },
+  { key: 'distributor', label: 'Distributor ₹', short: 'DIST',  width: 84, align: 'right', title: 'Distributor tier price (a POS price option)' },
   { key: 'disc',    label: 'Disc%',     short: 'DISC%',   width: 54,  align: 'right', title: 'Discount off MRP' },
   { key: 'discamt', label: 'Disc Amt',  short: 'DISC ₹',  width: 68,  align: 'right', title: 'MRP − Sell, per unit' },
   { key: 'cgst',    label: 'CGST%',     short: 'CGST%',   width: 54,  align: 'right', title: 'Central GST rate %' },
@@ -258,6 +265,8 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
 
   const [globalRef, setGlobalRef] = useState('')   // bill reference, fills all empty reasons
   const [saving, setSaving] = useState(false)
+  // Review-before-commit. Nothing is written until this is confirmed.
+  const [confirming, setConfirming] = useState(false)
   const [summary, setSummary] = useState(null)
   const [scanCode, setScanCode] = useState('')
   const [searching, setSearching] = useState(false)
@@ -618,6 +627,8 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
     if (readyRows.length === 0) return
     setSaving(true); setSummary(null)
     let ok = 0, failed = 0
+    // Stock went in but the price update did not — reported, never silent.
+    const priceWarnings = []
     const keys = readyRows.map(r => r._key)
     // Snapshot rows ONCE before any async state mutations. Reading `rows` inside
     // the loop would use the stale closure value from the render that created
@@ -703,6 +714,11 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
             selling_price: num(row.selling_price) > 0 ? num(row.selling_price) : null,
             cost_price: num(row.cost_price) > 0 ? num(row.cost_price) : null,
             mrp: num(row.mrp) > 0 ? num(row.mrp) : null,
+            // Sent regardless of _price_mode, like the three above: the BATCH
+            // always records what this delivery cost and sells at. The mode
+            // only decides whether the PRODUCT's tiers are overwritten too.
+            wholesale_price: num(row.wholesale_price) > 0 ? num(row.wholesale_price) : null,
+            distributor_price: num(row.distributor_price) > 0 ? num(row.distributor_price) : null,
           }),
         })
         // Only a successful response proves that this row was recorded. A
@@ -717,30 +733,84 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
         if (row._type === 'existing') {
           const newSell = num(row.selling_price)
           const newCost = num(row.cost_price)
-          const patchBody = {
-            name: row.name?.trim(),
-            barcode: row.barcode?.trim() || null,
-            sku: row.sku?.trim() || null,
-            category: row.category?.trim() || null,
-            unit: row.unit || 'pcs',
-            brand: row.brand?.trim() || null,
-            hsn_sac: row.hsn_sac?.trim() || null,
-            cgst_rate: row.cgst_rate !== '' ? num(row.cgst_rate) : null,
-            sgst_rate: row.sgst_rate !== '' ? num(row.sgst_rate) : null,
-            min_stock: row.min_stock !== '' ? num(row.min_stock) : null,
-            description: row.description?.trim() || null,
-            wholesale_price: row.wholesale_price !== '' ? num(row.wholesale_price) : null,
-            distributor_price: row.distributor_price !== '' ? num(row.distributor_price) : null,
-            mrp: row.mrp !== '' ? num(row.mrp) : null,
-          }
+          // BLANK MEANS "LEAVE IT ALONE", not "erase it".
+          //
+          // Every field here used to fall back to `null` when the cell was
+          // empty, and `UpdateProduct` accepts null — so a stock intake could
+          // silently wipe a product's SKU, barcode, HSN, category or tax rates
+          // just because the intake grid does not show that column. The row is
+          // seeded from the product, which hid it most of the time; a row built
+          // any other way (bill upload, an OCR match) writes the blanks.
+          //
+          // `UpdateProduct` treats an OMITTED field as unchanged, so omitting is
+          // the honest encoding of "the user did not touch this".
+          const patchBody = {}
+          const setText = (k, v) => { const t = v?.trim?.(); if (t) patchBody[k] = t }
+          const setNum = (k, v) => { if (v !== '' && v != null) patchBody[k] = num(v) }
+
+          setText('name', row.name)
+          setText('barcode', row.barcode)
+          setText('sku', row.sku)
+          setText('category', row.category)
+          setText('brand', row.brand)
+          setText('hsn_sac', row.hsn_sac)
+          setText('description', row.description)
+          if (row.unit) patchBody.unit = row.unit
+          setNum('cgst_rate', row.cgst_rate)
+          setNum('sgst_rate', row.sgst_rate)
+          setNum('min_stock', row.min_stock)
+          // ── Prices only move in 'update' mode ───────────────────────────
+          // ALL of them, not just sell and cost. The chip says "Update price"
+          // and the product carries five; writing two of them left wholesale,
+          // distributor and MRP on their old values with nothing saying so.
+          // In 'new_batch' mode every price is left alone — which is the whole
+          // meaning of that mode, and previously wholesale/distributor/MRP were
+          // written anyway because they sat outside this branch.
           if (row._price_mode === 'update') {
             if (newSell > 0) patchBody.selling_price = newSell
             if (newCost > 0) patchBody.cost_price = newCost
+            // BLANK MEANS "LEAVE IT ALONE", not "erase it". These used to send
+            // `null` for an empty cell, so clearing a tier — or an intake on a
+            // product whose tiers were never seeded — silently wiped a price
+            // the owner had set elsewhere. `UpdateProduct` treats an omitted
+            // field as unchanged, so omitting is the honest encoding of blank.
+            // Typing an explicit 0 still writes 0: that is a deliberate "unset
+            // this tier", which the catalogue renders as an em dash.
+            if (row.wholesale_price !== '' && row.wholesale_price != null) {
+              patchBody.wholesale_price = num(row.wholesale_price)
+            }
+            if (row.distributor_price !== '' && row.distributor_price != null) {
+              patchBody.distributor_price = num(row.distributor_price)
+            }
+            if (row.mrp !== '' && row.mrp != null) {
+              patchBody.mrp = num(row.mrp)
+            }
           }
-          await authFetch(`/billing/products/${pid}`, {
-            method: 'PATCH',
-            body: JSON.stringify(patchBody),
-          }).catch(() => {}) // non-critical
+          // 'new_batch' needs no else: patchBody now starts empty and prices are
+          // only ever ADDED above, so "keep the current price" is simply the
+          // absence of those keys. It used to need explicit deletes because the
+          // prices were built unconditionally and had to be taken back out.
+
+          // NOT "non-critical". This was `.catch(() => {})` with no `res.ok`
+          // check — and `fetch` only rejects on a network failure, so any 4xx or
+          // 5xx resolved normally and was discarded. The row then reported
+          // saved while the price never moved, so the sheet showed the number
+          // you typed and the catalogue showed the truth: "I changed it but the
+          // catalogue is stale". The stock movement above already succeeded, so
+          // this must not fail the row — but it must SAY so.
+          try {
+            const pRes = await authFetch(`/billing/products/${pid}`, {
+              method: 'PATCH',
+              body: JSON.stringify(patchBody),
+            })
+            if (!pRes.ok) {
+              const d = await pRes.json().catch(() => ({}))
+              throw new Error(d.detail || `HTTP ${pRes.status}`)
+            }
+          } catch (pErr) {
+            priceWarnings.push(`${row.name || 'item'}: ${pErr.message}`)
+            logger.error('[INTAKE] price/detail update failed', pErr)
+          }
         }
 
         setRow(key, { _status: 'ok' })
@@ -752,13 +822,20 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
     }
 
     setSaving(false)
-    setSummary({ ok, failed })
+    setSummary({ ok, failed, priceWarnings })
     if (ok > 0) {
       try {
         Object.keys(localStorage).filter(k => k.includes('cache_') && k.includes('products')).forEach(k => localStorage.removeItem(k))
         window.dispatchEvent(new CustomEvent('bizassist:products_updated'))
       } catch { /* ignore */ }
       onSaved?.(ok)
+    }
+    // Confirmed and fully recorded → the sheet has served its purpose. A
+    // PARTIAL save keeps its rows: the failed ones still carry their error and
+    // are the only record of what did not go in.
+    if (ok > 0 && failed === 0) {
+      setRows([])
+      setEditingRowKey?.(null)
     }
   }
 
@@ -1228,6 +1305,26 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
                         />
                       </TCell>
 
+                      {/* Wholesale tier (editable — a POS price option) */}
+                      <TCell>
+                        <NumCell
+                          value={r.wholesale_price}
+                          onChange={v => setRow(r._key, { wholesale_price: v })}
+                          disabled={cellDisabled}
+                          placeholder="whsl"
+                        />
+                      </TCell>
+
+                      {/* Distributor tier (editable — a POS price option) */}
+                      <TCell>
+                        <NumCell
+                          value={r.distributor_price}
+                          onChange={v => setRow(r._key, { distributor_price: v })}
+                          disabled={cellDisabled}
+                          placeholder="dist"
+                        />
+                      </TCell>
+
                       {/* Disc% off selling price (computed) */}
                       <TCell style={{ textAlign: 'right', verticalAlign: 'middle' }}>
                         <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
@@ -1381,6 +1478,16 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
           {summary ? (
             <b style={{ color: summary.failed ? '#ef4444' : '#22c55e' }}>
               ✓ {summary.ok} saved{summary.failed ? ` · ${summary.failed} failed — fix and save again` : ''}
+              {summary.priceWarnings?.length > 0 && (
+                // Stock went in, the price did not. Saying "saved" alone is what
+                // made the catalogue look stale when it was simply telling the
+                // truth about a price that never changed.
+                <div style={{ color: 'var(--warning, #b45309)', fontWeight: 600, marginTop: 2 }}>
+                  ⚠ stock recorded, but the price could not be updated for{' '}
+                  {summary.priceWarnings.length} item
+                  {summary.priceWarnings.length !== 1 ? 's' : ''} — {summary.priceWarnings[0]}
+                </div>
+              )}
             </b>
           ) : rows.length === 0 ? (
             'No items yet — scan a barcode or upload a bill'
@@ -1445,7 +1552,7 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
           className="btn btn-primary"
           style={{ fontWeight: 700, minWidth: 140 }}
           disabled={saving || readyRows.length === 0}
-          onClick={saveAll}
+          onClick={() => setConfirming(true)}
         >
           {saving
             ? <><span className="spinner" style={{ width: 13, height: 13, borderWidth: 2, marginRight: 6 }} />Saving…</>
@@ -1453,6 +1560,16 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
           }
         </button>
       </div>
+
+      <IntakeConfirmSheet
+        open={confirming}
+        rows={readyRows}
+        adjustments={adjustments}
+        distributor={distributor}
+        saving={saving}
+        onEdit={() => setConfirming(false)}
+        onConfirm={async () => { await saveAll(); setConfirming(false) }}
+      />
     </div>
   )
 }

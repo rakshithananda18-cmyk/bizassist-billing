@@ -101,6 +101,13 @@ const INV_COLUMNS = [
   { key: 'mrp',      label: 'MRP ₹',    align: 'right' },
   { key: 'cost',     label: 'Cost ₹',   align: 'right' },
   { key: 'sell',     label: 'Sell ₹',   align: 'right' },
+  // The POS sells at four base tiers (lib/priceOptions.js): Standard,
+  // Wholesale, Distributor, MRP. The catalogue showed only three of them, so
+  // two of the prices a cashier can pick were invisible here — and the sort
+  // already handled `wholesale_price`/`distributor_price`, for columns that
+  // had never been added.
+  { key: 'wholesale', label: 'Wholesale ₹', align: 'right', title: 'Wholesale tier price (POS price option)' },
+  { key: 'distributor', label: 'Distributor ₹', align: 'right', title: 'Distributor tier price (POS price option)' },
   { key: 'tax',      label: 'Tax%',     align: 'right', title: 'Total GST rate' },
   { key: 'disc',     label: 'Disc%',    align: 'right', title: 'Discount off MRP' },
   { key: 'roi',      label: 'ROI%',     align: 'right', title: 'Return on cost = (Sell−Cost)/Cost' },
@@ -1101,6 +1108,15 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                               <td style={{ textAlign: 'right' }}>{num(d.mrp || null)}</td>
                               <td style={{ textAlign: 'right' }}>{num(d.cost || null)}</td>
                               <td style={{ textAlign: 'right', fontWeight: 600 }}>{num(d.sell || null)}</td>
+                              {/* A tier left at 0 is not "free" — it is unset, and
+                                  getPriceOptions drops it, so POS never offers it.
+                                  Show that as an em dash rather than ₹0. */}
+                              <td style={{ textAlign: 'right', color: p.wholesale_price > 0 ? 'inherit' : 'var(--text-muted)' }}>
+                                {p.wholesale_price > 0 ? num(p.wholesale_price) : '—'}
+                              </td>
+                              <td style={{ textAlign: 'right', color: p.distributor_price > 0 ? 'inherit' : 'var(--text-muted)' }}>
+                                {p.distributor_price > 0 ? num(p.distributor_price) : '—'}
+                              </td>
                               <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{d.gst ? `${d.gst.toFixed(0)}%` : '—'}</td>
                               <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{pct(d.discPct)}</td>
                               <td style={{ textAlign: 'right', color: d.roi == null ? 'var(--text-muted)' : d.roi >= 0 ? good : 'var(--danger)' }}>{pct(d.roi)}</td>
