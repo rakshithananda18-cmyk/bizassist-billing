@@ -4613,6 +4613,20 @@ input[type="checkbox"] {
   overflow: auto !important;
   max-height: none !important;
   padding: 0 !important;
+  /* The overlay sets `touch-action: none` so the PAGE BEHIND cannot scroll.
+     That property inherits to descendants, so it also refused touch and
+     precision-trackpad scrolling INSIDE the panel — the table looked frozen
+     while a mouse wheel still worked, which reads as "scroll is broken".
+     Re-enable panning here: the overlay keeps its guard, the scrollable region
+     gets its gestures back. */
+  touch-action: pan-x pan-y !important;
+  /* A flex child's default `min-height: auto` refuses to shrink below its
+     content, so `overflow: auto` never engages and the table is clipped by the
+     panel instead of scrolling. Belt-and-braces — the component sets this
+     inline too, but every other full-screen table in the app relies on this
+     rule alone. */
+  min-height: 0 !important;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Fullscreen button — shown on desktop and mobile landscape */
