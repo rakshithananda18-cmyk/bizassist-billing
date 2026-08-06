@@ -143,7 +143,7 @@ export const HELP_CONTENT = {
     steps: [
       { t: 'Hosting mode', d: 'Local (this device only), Hybrid (local + cloud sync) or Cloud. Switching runs a guided, merge-safe migration.' },
       { t: 'Staff management — two sectors', d: 'Create staff as CASHIER (sales sector: the billing counter, own counter prefix) or SUPPLY ADDER (stock sector: inventory, label printing, purchase bills). Each sector only sees its own pages; neither sees reports, margins or money settings.' },
-      { t: 'Backups', d: 'Sync with cloud (merge, newer wins) or download a full backup file to keep offline. Restore merges — it never deletes newer local data.' },
+      { t: 'Backups', d: 'Sync with cloud fills in whatever either side is missing, in both directions — it never overwrites or deletes. Or download a full backup file to keep offline; restoring it tops up missing records without reverting newer work.' },
       { t: 'Printing & labels', d: 'Invoice template, thermal printer mode/size, what prints on bills, and custom transaction names.' },
       { t: 'Security', d: 'Passcode lock for the app, and Force-logout style protections are managed by your provider.' },
     ],

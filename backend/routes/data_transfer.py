@@ -52,7 +52,7 @@ from sqlalchemy import text, inspect
 from sqlalchemy.orm import Session
 
 from database.db import get_db, engine, DATABASE_URL
-from services.auth import require_business_owner, resolve_business_id_in_db
+from services.auth import require_business_owner, require_plan, resolve_business_id_in_db
 from core.connection import transfer as b2b_transfer
 
 router = APIRouter()
@@ -516,9 +516,18 @@ def _upsert_rows(
     Preserves original IDs.  Per-row errors do not abort the batch.
 
     merge=False (default, migration): destination row is overwritten on conflict.
-    merge=True  (sync buttons): **non-destructive Last-Write-Wins** — insert new
-                rows, update an existing row ONLY when the incoming copy is newer
-                (`updated_at`), and never delete or clobber a newer/local-only row.
+    merge=True: **non-destructive Last-Write-Wins** — insert new rows, update an
+                existing row ONLY when the incoming copy is newer (`updated_at`),
+                and never delete or clobber a newer/local-only row.
+
+    UNREACHABLE FROM THE API. Both branches are id-preserving, and `import_data`
+    rejects `remap_ids=false` with a 422, so nothing routes here any more — the
+    live path is `_import_with_remap`, which SKIPS an existing row rather than
+    comparing timestamps. The `?merge=true` the sync callers sent was therefore
+    read by nobody, and this docstring is the reason several UI strings promised
+    a Last-Write-Wins behaviour the product has never actually performed.
+    Direct unit tests (test_sync_migration_fixes.py) keep it covered, which is
+    what made it look live.
 
     Returns the number of rows successfully inserted/updated.
     """
@@ -1043,6 +1052,18 @@ def import_data(
     remap_ids: bool = True,
     merge: bool = False,
     current_user: dict = Depends(require_business_owner),
+    # Writing a whole tenant into the cloud IS cloud sync, and it was the one
+    # door into it with no plan check: /api/sync/push carries require_plan and
+    # this did not, so the Settings "Local → Cloud" button uploaded a free-plan
+    # business in full. The cloud token it uses is minted at every owner login
+    # regardless of plan, so nothing else was stopping it either.
+    #
+    # Deliberately NOT on /export. Enforcement only bites where
+    # SUBSCRIPTION_ENFORCED=1 — the cloud — so this refuses free uploads TO the
+    # cloud while leaving untouched: local file restore, imports into the local
+    # DB (including the cloud → local leg of the Settings sync), and every
+    # migration path. Taking your own data out is never plan-gated.
+    _plan: dict = Depends(require_plan("pro")),   # 402 for free plan when SUBSCRIPTION_ENFORCED=1
     db: Session = Depends(get_db),
 ):
     """
@@ -1060,6 +1081,17 @@ def import_data(
     rewrites and tenant-validates foreign keys. ID-preserving upserts are
     disabled because source primary-key collisions can overwrite unrelated
     destination records.
+
+    What this DOES, precisely: it inserts rows the destination does not already
+    have, matched on the durable `uid` or a scoped natural key. An already-present
+    row is skipped — not compared, not updated. So an import can never overwrite
+    or delete anything, and equally it never carries an EDIT across. Edits travel
+    through the sync worker, which orders by a cloud-issued cursor instead of
+    trusting two machines' clocks.
+
+    `merge` is only read by the retired id-preserving path below and is a no-op
+    for every caller that reaches this endpoint. Kept in the signature so old
+    clients still sending `?merge=true` do not 422 on an unexpected parameter.
 
     Response: {"imported": {...}, "total": N, "id_remap": {"from":122,"to":7}}
     """

@@ -4,9 +4,11 @@
 // a dead disk meant lost books. This card gives every install (local, hybrid,
 // cloud) a one-tap "Download backup file" (full JSON export of this business's
 // data via GET /api/data-transfer/export) and a "Restore from file" that
-// replays it through POST /api/data-transfer/import?merge=true — the same
-// battle-tested non-destructive Last-Write-Wins merge the cloud sync uses, so
-// a restore can never clobber newer local rows.
+// replays it through POST /api/data-transfer/import — the same path the cloud
+// sync uses. That path INSERTS only what is missing and skips anything already
+// present, so restoring an old backup tops up the gaps without reverting newer
+// work. (It is not a Last-Write-Wins merge, as this comment used to claim: the
+// LWW branch is unreachable and `?merge=true` was read by nobody.)
 import React, { useState, useRef } from 'react'
 import { API_BASE } from '../../config'
 import { logger } from '../../utils/logger'
@@ -62,7 +64,7 @@ export default function FileBackupCard({ token, bizId = '' }) {
       const text = await file.text()
       let payload
       try { payload = JSON.parse(text) } catch { throw new Error('That file is not a valid BizAssist backup (.json).') }
-      const res = await fetch(`${API_BASE}/api/data-transfer/import?merge=true&remap_ids=true`, {
+      const res = await fetch(`${API_BASE}/api/data-transfer/import?remap_ids=true`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

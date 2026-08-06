@@ -2196,6 +2196,10 @@ export default function Settings() {
                   }
                 }}
                 token={token}
+                // The cloud refuses a free-plan upload with a 402 (the import
+                // route is Pro-gated). Pass the plan so the button can say that
+                // up front instead of running two legs to earn an error.
+                isFreePlan={subscription?.plan !== 'pro'}
                 autoSwitchTarget={IS_LOCAL_APP ? searchParams.get('switch') : null}
                 onAutoSwitchConsumed={() => {
                   // one-shot: strip ?switch= so a refresh doesn't re-open the flow

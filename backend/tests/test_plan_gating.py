@@ -117,6 +117,42 @@ def test_pro_sync_allowed_when_enforced(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# data-transfer gate — the OTHER door into the cloud
+# ---------------------------------------------------------------------------
+# /api/sync/push was gated and /api/data-transfer/import was not, though both
+# write a whole tenant into the cloud database. The Settings "Local → Cloud"
+# button used the ungated one, and the cloud token it authenticates with is
+# minted at every owner login regardless of plan — so a free business could
+# upload its entire book. Same gate, same conditions.
+def test_free_import_blocked_when_enforced(monkeypatch):
+    monkeypatch.setenv("SUBSCRIPTION_ENFORCED", "1")
+    _, _, headers = _signup()
+    r = client.post("/api/data-transfer/import", headers=headers,
+                    json={"tables": {"customers": []}})
+    assert r.status_code == 402, r.text
+    assert "pro" in r.json()["detail"].lower()
+
+
+def test_free_import_allowed_when_not_enforced(monkeypatch):
+    """Local installs never enforce, so file restore and the cloud → local leg
+    of the Settings sync keep working on a free plan."""
+    monkeypatch.delenv("SUBSCRIPTION_ENFORCED", raising=False)
+    _, _, headers = _signup()
+    r = client.post("/api/data-transfer/import", headers=headers,
+                    json={"tables": {"customers": []}})
+    assert r.status_code == 200, r.text
+
+
+def test_export_is_never_plan_gated(monkeypatch):
+    """Taking your own data out is not a paid feature. It is also how the
+    offline backup file is produced, and how the cloud → local leg reads."""
+    monkeypatch.setenv("SUBSCRIPTION_ENFORCED", "1")
+    _, _, headers = _signup()
+    r = client.get("/api/data-transfer/export", headers=headers)
+    assert r.status_code == 200, r.text
+
+
+# ---------------------------------------------------------------------------
 # admin grant path end-to-end
 # ---------------------------------------------------------------------------
 def test_admin_grant_flips_target_to_premium():

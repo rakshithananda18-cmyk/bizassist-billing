@@ -13,7 +13,7 @@ import FileBackupCard from '../hosting/FileBackupCard'
 import { Toggle } from './SettingsPrimitives'
 
 // ─── Hosting Mode Section (card-based mode switcher with modal chain) ─────────
-export default function HostingModeSection({ currentMode, onModeChange, token, autoSwitchTarget = null, onAutoSwitchConsumed = null }) {
+export default function HostingModeSection({ currentMode, onModeChange, token, isFreePlan = false, autoSwitchTarget = null, onAutoSwitchConsumed = null }) {
   const { localProbe, cloudProbe, internetProbe, sseProbe, recheck } = useReadinessProbe()
   const [preflightTarget,  setPreflightTarget]  = useState(null)  // 'local'|'cloud'|'hybrid'
   const [consequenceTarget, setConsequenceTarget] = useState(null)
@@ -412,35 +412,27 @@ export default function HostingModeSection({ currentMode, onModeChange, token, a
       )}
 
       {/* Manual data sync (downloaded app only — needs localhost + network).
-          Non-destructive Last-Write-Wins merge; does NOT switch hosting mode. */}
+          Insert-what-is-missing, both directions; does NOT switch hosting mode. */}
       {IS_LOCAL_APP && (() => {
+        // Two separate reasons the button cannot run, and they need different
+        // words: offline clears itself, a free plan does not. Both are checked
+        // here because the upload leg is Pro-gated server-side (402) — without
+        // this the owner would watch the download succeed and the upload fail.
         const offline = typeof navigator !== 'undefined' && navigator.onLine === false
-        const lastSyncText = (dir) => {
+        const blocked = isFreePlan ? 'plan' : offline ? 'offline' : null
+        // Newest of the two legs. Each leg still stamps its own key — they
+        // complete independently, and a run that stopped after the download
+        // should not claim the upload happened too.
+        const lastSyncText = () => {
           try {
-            const iso = localStorage.getItem(`bizassist_last_sync_${dir}`)
-            if (!iso) return 'Never synced'
-            return `Last synced: ${formatIST(iso)}`
+            const stamps = ['cloud-to-local', 'local-to-cloud']
+              .map(d => localStorage.getItem(`bizassist_last_sync_${d}`))
+              .filter(Boolean)
+              .sort()
+            if (!stamps.length) return 'Never synced'
+            return `Last synced: ${formatIST(stamps[stamps.length - 1])}`
           } catch { return '' }
         }
-        const btn = (dir, label) => (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <button
-              onClick={() => !offline && setBackupDir(dir)}
-              disabled={offline}
-              title={offline ? 'Connect to the internet to sync' : ''}
-              style={{
-                flexShrink: 0, padding: '8px 14px', borderRadius: 8,
-                background: offline ? 'rgba(255,255,255,0.08)' : 'var(--accent)',
-                color: offline ? 'var(--text-muted)' : '#fff', border: 'none',
-                cursor: offline ? 'not-allowed' : 'pointer',
-                fontSize: '0.8rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6,
-              }}
-            >
-              <SyncIcon size={14} /> {label}
-            </button>
-            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', paddingLeft: 2 }}>{lastSyncText(dir)}</span>
-          </div>
-        )
         return (
           <div style={{
             marginTop: 14, padding: '12px 14px', borderRadius: 10,
@@ -449,13 +441,45 @@ export default function HostingModeSection({ currentMode, onModeChange, token, a
             <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               Sync data with cloud
             </div>
+            {/* ONE control, both directions.
+                This was two buttons, "Cloud → Local" and "Local → Cloud", and
+                the import only ever INSERTS what the destination is missing
+                (routes/data_transfer.py — an existing row is skipped, never
+                compared or overwritten). So neither direction contains the
+                other and one press was always half the job: the owner had to
+                know which side was behind, and in the normal case — both sides
+                holding rows the other lacks — the honest answer was "both".
+                Running the two legs in sequence is the whole operation, and
+                because each only fills gaps it is safe to repeat. */}
             <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 10 }}>
-              Merge data between this device and the cloud (newer wins — nothing is overwritten). Does not change your hosting mode.
-              {offline && <span style={{ color: '#ef4444' }}> You’re offline — connect to sync.</span>}
+              Adds anything either side is missing, in both directions. Nothing is
+              overwritten or removed, and your hosting mode stays the same.
+              {' '}Day-to-day edits sync on their own in the background — this is for
+              filling gaps after an outage or a new device.
+              {blocked === 'plan' && (
+                <span style={{ color: 'var(--warning, #f59e0b)' }}>
+                  {' '}Cloud sync needs the Pro plan — your data stays safely on this device.
+                </span>
+              )}
+              {blocked === 'offline' && <span style={{ color: '#ef4444' }}> You’re offline — connect to sync.</span>}
             </div>
-            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-              {btn('cloud-to-local', 'Cloud → Local Sync')}
-              {btn('local-to-cloud', 'Local → Cloud Sync')}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <button
+                onClick={() => !blocked && setBackupDir('both')}
+                disabled={!!blocked}
+                title={blocked === 'plan' ? 'Upgrade to Pro to sync with the cloud'
+                  : blocked === 'offline' ? 'Connect to the internet to sync' : ''}
+                style={{
+                  alignSelf: 'flex-start', padding: '8px 14px', borderRadius: 8,
+                  background: blocked ? 'rgba(255,255,255,0.08)' : 'var(--accent)',
+                  color: blocked ? 'var(--text-muted)' : '#fff', border: 'none',
+                  cursor: blocked ? 'not-allowed' : 'pointer',
+                  fontSize: '0.8rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                <SyncIcon size={14} /> Sync with cloud
+              </button>
+              <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', paddingLeft: 2 }}>{lastSyncText()}</span>
             </div>
           </div>
         )
