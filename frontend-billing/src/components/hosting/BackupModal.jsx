@@ -18,13 +18,13 @@ import { CheckIcon, CloseIcon, ShieldIcon, SyncIcon } from '../Icons'
  * scoped natural key — it is SKIPPED. Not compared, not updated. So this is an
  * insert-what-is-missing pass, and it can never overwrite or delete anything.
  *
- * It is NOT Last-Write-Wins, whatever the old copy here claimed. The LWW branch
- * lives in `_upsert_rows`, which is only reachable with `remap_ids=false` — and
- * that returns 422 ("Unsafe id-preserving import is disabled"). `?merge=true`
- * was therefore a parameter nothing read, and an edit made on one side has never
- * crossed to the other through this modal. Edits propagate through the
- * continuous outbox sync, which compares against a CLOUD-issued cursor and so
- * does not depend on two machines agreeing about the time.
+ * It is NOT Last-Write-Wins, whatever the old copy here claimed. That branch
+ * lived in `_upsert_rows`, reachable only with `remap_ids=false` — which returns
+ * 422 ("Unsafe id-preserving import is disabled"). `?merge=true` was a parameter
+ * nothing read, and an edit made on one side has never crossed to the other
+ * through this modal; the whole path has since been deleted. Edits propagate
+ * through the continuous outbox sync, which compares against a CLOUD-issued
+ * cursor and so does not depend on two machines agreeing about the time.
  *
  * Because neither direction contains the other, one leg is half the job — which
  * is why the Settings control runs both. Both legs are idempotent, so a retry

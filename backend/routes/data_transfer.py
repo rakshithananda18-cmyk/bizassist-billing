@@ -51,7 +51,7 @@ import sqlalchemy as sa
 from sqlalchemy import text, inspect
 from sqlalchemy.orm import Session
 
-from database.db import get_db, engine, DATABASE_URL
+from database.db import get_db
 from services.auth import require_business_owner, require_plan, resolve_business_id_in_db
 from core.connection import transfer as b2b_transfer
 
@@ -244,25 +244,6 @@ def _detect_source_owner_id(tables: dict) -> int | None:
         if not row.get("parent_business_id"):
             return int(row["id"])
     return None
-
-
-def _remap_rows(rows: list[dict], local_id: int, cloud_id: int) -> list[dict]:
-    """
-    Replace local_id → cloud_id in every field that carries a business/owner id.
-    Handles: business_id, parent_business_id, user_id (only when == local_id).
-    Does NOT touch unrelated integer fields.
-    """
-    if local_id == cloud_id:
-        return rows  # already aligned — no remapping needed
-
-    remapped = []
-    for row in rows:
-        r = dict(row)
-        for field in ("business_id", "parent_business_id", "user_id"):
-            if r.get(field) == local_id:
-                r[field] = cloud_id
-        remapped.append(r)
-    return remapped
 
 
 def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_tables: set) -> int:
@@ -502,173 +483,6 @@ def _free_invoice_number_on_import(db: Session, business_id, number: str, uid):
             number, business_id, e, salvaged,
         )
         return salvaged
-
-
-def _upsert_rows(
-    db: Session,
-    table_name: str,
-    rows: list[dict],
-    existing_tables: set[str],
-    merge: bool = False,
-) -> int:
-    """
-    Insert (or update on PK conflict) rows into `table_name`.
-    Preserves original IDs.  Per-row errors do not abort the batch.
-
-    merge=False (default, migration): destination row is overwritten on conflict.
-    merge=True: **non-destructive Last-Write-Wins** — insert new rows, update an
-                existing row ONLY when the incoming copy is newer (`updated_at`),
-                and never delete or clobber a newer/local-only row.
-
-    UNREACHABLE FROM THE API. Both branches are id-preserving, and `import_data`
-    rejects `remap_ids=false` with a 422, so nothing routes here any more — the
-    live path is `_import_with_remap`, which SKIPS an existing row rather than
-    comparing timestamps. The `?merge=true` the sync callers sent was therefore
-    read by nobody, and this docstring is the reason several UI strings promised
-    a Last-Write-Wins behaviour the product has never actually performed.
-    Direct unit tests (test_sync_migration_fixes.py) keep it covered, which is
-    what made it look live.
-
-    Returns the number of rows successfully inserted/updated.
-    """
-    if not rows or table_name not in existing_tables:
-        return 0
-
-    try:
-        insp = inspect(db.bind)
-        col_info = insp.get_columns(table_name)
-        pk_constraint = insp.get_pk_constraint(table_name)
-        pk_cols: set[str] = set(pk_constraint.get("constrained_columns", []))
-    except Exception as exc:
-        logger.warning("migrate/import: cannot inspect %s — %s", table_name, exc)
-        return 0
-
-    col_names = {c["name"] for c in col_info}
-    # (Bug-A) SQLite stores booleans as 0/1 integers; Postgres columns are real
-    # BOOLEAN and reject an integer via raw SQL ("is of type boolean but
-    # expression is of type integer"). Coerce these columns back to bool so
-    # customers/products/invoices/barcodes/godowns actually import.
-    bool_cols = {c["name"] for c in col_info if isinstance(c["type"], sa.Boolean)}
-    has_updated_at = "updated_at" in col_names
-    count = 0
-    dialect = db.bind.dialect.name  # "sqlite" | "postgresql"
-    pk_str = ", ".join(f'"{c}"' for c in sorted(pk_cols))
-
-    for row in rows:
-        # Only keep columns that exist in the current schema
-        filtered = {k: v for k, v in row.items() if k in col_names}
-        if not filtered:
-            continue
-        # Coerce integer/string booleans to real bools for BOOLEAN columns.
-        for bc in bool_cols:
-            if bc in filtered and filtered[bc] is not None and not isinstance(filtered[bc], bool):
-                v = filtered[bc]
-                filtered[bc] = (
-                    v != 0 if isinstance(v, (int, float))
-                    else str(v).strip().lower() in ("1", "true", "t", "yes", "y")
-                )
-
-        # (M-3 x §9.3b) A bill whose number is already held by a DIFFERENT
-        # document here is renumbered, not dropped. Inserting it verbatim
-        # violates the unique index, and the `except` below then SKIPS the row —
-        # a silently lost sale. Only fires on a uid mismatch, so re-importing
-        # the same bill still updates in place.
-        if table_name == "invoices" and filtered.get("invoice_id"):
-            filtered["invoice_id"] = _free_invoice_number_on_import(
-                db, filtered.get("business_id"), filtered["invoice_id"],
-                filtered.get("uid"))
-
-        col_list = list(filtered.keys())
-        placeholders = ", ".join(f":{c}" for c in col_list)
-        col_str = ", ".join(f'"{c}"' for c in col_list)
-        update_cols = [c for c in col_list if c not in pk_cols]
-
-        if not pk_cols:
-            # No primary key to conflict on — plain insert.
-            sql = text(f'INSERT INTO "{table_name}" ({col_str}) VALUES ({placeholders})')
-        elif not update_cols:
-            sql = text(
-                f'INSERT INTO "{table_name}" ({col_str}) VALUES ({placeholders}) '
-                f"ON CONFLICT ({pk_str}) DO NOTHING"
-            )
-        elif merge:
-            # (Sync) Non-destructive Last-Write-Wins: insert new rows; update an
-            # existing one ONLY when the incoming copy is newer. Rows with no
-            # timestamp, or where the destination is newer, are kept untouched.
-            update_set = ", ".join(f'"{c}" = EXCLUDED."{c}"' for c in update_cols)
-            if has_updated_at:
-                sql = text(
-                    f'INSERT INTO "{table_name}" ({col_str}) VALUES ({placeholders}) '
-                    f'ON CONFLICT ({pk_str}) DO UPDATE SET {update_set} '
-                    f'WHERE EXCLUDED."updated_at" > "{table_name}"."updated_at"'
-                )
-            else:
-                sql = text(
-                    f'INSERT INTO "{table_name}" ({col_str}) VALUES ({placeholders}) '
-                    f"ON CONFLICT ({pk_str}) DO NOTHING"
-                )
-        else:
-            # Mirror / overwrite (migration default): destination row replaced.
-            # (M-4) Both dialects use ON CONFLICT … DO UPDATE — never the
-            # destructive SQLite INSERT OR REPLACE, which deletes+reinserts.
-            update_set = ", ".join(f'"{c}" = EXCLUDED."{c}"' for c in update_cols)
-            sql = text(
-                f'INSERT INTO "{table_name}" ({col_str}) VALUES ({placeholders}) '
-                f"ON CONFLICT ({pk_str}) DO UPDATE SET {update_set}"
-            )
-
-        # (M-1) SAVEPOINT per row: a bad row rolls back ONLY itself, never the
-        # whole import. Without this, db.rollback() discarded every row already
-        # imported in this transaction while the API still reported success.
-        try:
-            with db.begin_nested():
-                db.execute(sql, filtered)
-            count += 1
-        except Exception as exc:
-            # Log only the DB driver's concise message (exc.orig), not the full
-            # SQLAlchemy statement+params dump — that was flooding the log and
-            # slowing the import on every failed row.
-            orig = getattr(exc, "orig", exc)
-            reason = str(orig).strip().splitlines()[0] if orig else str(exc)
-            logger.warning(
-                "migrate/import: row skip in %s (pk=%s): %s",
-                table_name,
-                {k: filtered.get(k) for k in pk_cols},
-                reason,
-            )
-
-    return count
-
-
-def _reset_sequences(db: Session, table_names: list[str]) -> None:
-    """
-    (M-2) After importing rows with their original explicit ``id``s, bump each
-    Postgres identity sequence to MAX(id). Without this, the next cloud-side
-    INSERT calls nextval() and collides with an already-imported id (silent
-    IntegrityError / ON CONFLICT skip → new records appear to vanish).
-
-    No-op on SQLite (its rowid allocator already advances past inserted ids).
-    """
-    if db.bind.dialect.name != "postgresql":
-        return
-    for t in table_names:
-        try:
-            with db.begin_nested():
-                seq = db.execute(
-                    text("SELECT pg_get_serial_sequence(:t, 'id')"), {"t": t}
-                ).scalar()
-                if not seq:
-                    continue  # table has no id sequence (e.g. composite/no PK)
-                # Table name comes from our own _EXPORT_ORDER allow-list, not user
-                # input, so f-string interpolation here is safe.
-                db.execute(
-                    text(
-                        f'SELECT setval(:seq, COALESCE((SELECT MAX(id) FROM "{t}"), 1), true)'
-                    ),
-                    {"seq": seq},
-                )
-        except Exception as exc:
-            logger.warning("migrate/import: sequence reset skipped for %s — %s", t, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -935,9 +749,10 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
                 table_map[old_id] = existing_id
             continue
 
-        # Same guard as in _upsert_rows. Applied in BOTH because these are two
-        # separate insert paths, and an invariant that lives in only one of two
-        # paths is the exact defect M-7 was.
+        # M-7: an incoming invoice number that already exists in this business
+        # must be renumbered, not inserted as a duplicate. This used to be
+        # duplicated in `_upsert_rows` too — that path is gone, so this is now
+        # the only place it lives.
         if table_name == "invoices" and filtered.get("invoice_id"):
             filtered["invoice_id"] = _free_invoice_number_on_import(
                 db, filtered.get("business_id") or dest_owner_id,
@@ -1089,9 +904,11 @@ def import_data(
     through the sync worker, which orders by a cloud-issued cursor instead of
     trusting two machines' clocks.
 
-    `merge` is only read by the retired id-preserving path below and is a no-op
-    for every caller that reaches this endpoint. Kept in the signature so old
-    clients still sending `?merge=true` do not 422 on an unexpected parameter.
+    `merge` is ACCEPTED AND IGNORED. It selected a Last-Write-Wins branch of the
+    id-preserving importer, which the `remap_ids` guard above made unreachable
+    and which has since been deleted. The parameter stays in the signature only
+    so an older client still sending `?merge=true` is not rejected for passing
+    an unknown one.
 
     Response: {"imported": {...}, "total": N, "id_remap": {"from":122,"to":7}}
     """
@@ -1129,7 +946,7 @@ def import_data(
     logger.info(
         "migrate/import: user=%s source_owner_id=%s dest_owner_id=%s mode=%s",
         current_user.get("username"), source_owner_id, dest_owner_id,
-        "remap" if remap_ids else ("merge-lww" if merge else "mirror"),
+        "remap",
     )
 
     # Process only the canonical allow-list. The table list is never caller-led.
@@ -1163,21 +980,13 @@ def import_data(
                         skipped_out=b2b_skipped)
                 else:
                     n = 0
-            elif remap_ids:
+            else:
                 n = _import_with_remap(
                     db, table_name, rows, dest_owner_id, source_owner_id, existing, id_maps
                 )
-            else:
-                remapped = _remap_rows(rows, source_owner_id, dest_owner_id)
-                n = _upsert_rows(db, table_name, remapped, existing, merge=merge)
 
             if n > 0:
                 imported[table_name] = n
-
-        # (M-2) Only the id-preserving path inserts explicit ids → realign
-        # sequences. Remap mode used the DB's own sequence already.
-        if not remap_ids:
-            _reset_sequences(db, list(imported.keys()))
 
         db.commit()
 
@@ -1187,7 +996,10 @@ def import_data(
         raise HTTPException(status_code=500, detail=f"Import failed: {exc}")
 
     total = sum(imported.values())
-    _mode = "remap" if remap_ids else ("merge-lww" if merge else "mirror")
+    # Still reported, now constant: the other two values ("mirror", "merge-lww")
+    # named the id-preserving importer, which is gone. Kept in the response so
+    # clients reading `mode` do not break.
+    _mode = "remap"
     remap_info = {"from": source_owner_id, "to": dest_owner_id} if source_owner_id != dest_owner_id else None
     logger.info(
         "migrate/import: dest_owner_id=%s imported=%s total=%s remap=%s mode=%s",

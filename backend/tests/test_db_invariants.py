@@ -68,10 +68,12 @@ def _biz(conn):
     # dies on `pk_users` (observed in CI 2026-08-03: "Key (id)=(2) already
     # exists"). SQLite's rowid picks MAX+1, so this never showed locally.
     #
-    # The application path does not have this problem — `data_transfer.py`
-    # calls `_reset_sequences()` after any explicit-id import (see its own
-    # comment: "without this, the next cloud-side insert collides"). This is a
-    # fixture-only gap, so it is fixed here rather than in product code.
+    # The application path does not have this problem — the importer no longer
+    # inserts explicit ids at all. `_import_with_remap` lets the destination
+    # allocate every id from its own sequence and rewrites the FKs, so there is
+    # nothing to realign afterwards. (`_reset_sequences` existed for the
+    # id-preserving importer and was deleted with it.) This is a fixture-only
+    # gap, so it is fixed here rather than in product code.
     next_id = (conn.execute(text("SELECT MAX(id) FROM users")).scalar() or 0) + 1
     conn.execute(text(
         "INSERT INTO users (id, username, password, business_name, role) "

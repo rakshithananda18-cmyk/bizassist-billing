@@ -36,7 +36,7 @@ from database.db import SessionLocal
 # exercise the code that really runs. Testing the dead copy was worse than
 # useless: it reported green for code that cannot execute, while its
 # `_upsert_users` kept a defect the live one had already fixed.
-from routes.data_transfer import _upsert_rows, _resolve_owner_id, _import_with_remap
+from routes.data_transfer import _resolve_owner_id, _import_with_remap
 from services.realtime import RealtimeManager
 
 client = TestClient(app)
@@ -59,66 +59,49 @@ def _signup(business_name: str) -> dict:
 # ---------------------------------------------------------------------------
 # M-1 — one poison row must NOT wipe rows already imported in the same txn
 # ---------------------------------------------------------------------------
+# Was written against `_upsert_rows`, the id-preserving importer. That path is
+# gone (unreachable behind the remap_ids 422, deleted with its LWW branch), but
+# the invariant is not: `_import_with_remap` carries its own per-row SAVEPOINT,
+# and it is the only importer left. Pointed at the live one so the guarantee
+# keeps a test instead of losing it with the code it used to describe.
 def test_partial_import_does_not_discard_prior_rows(monkeypatch):
+    owner = _signup("Poison Co")
+    bid = owner["bid"]
     db = SessionLocal()
-    good1, poison, good2 = _rid(), _rid(), _rid()
+    tag = _rid()
     try:
+        existing = set(inspect(db.bind).get_table_names())
         original_execute = db.execute
 
         def failing_execute(statement, params=None, *args, **kwargs):
-            # Make exactly the poison row's INSERT blow up.
-            if isinstance(params, dict) and params.get("name") == "POISON":
+            # Make exactly the poison row's INSERT blow up. Only the INSERT
+            # passes the whole row as params, so the lookups are untouched.
+            if isinstance(params, dict) and params.get("name") == f"POISON-{tag}":
                 raise RuntimeError("simulated bad row")
             return original_execute(statement, params, *args, **kwargs)
 
         monkeypatch.setattr(db, "execute", failing_execute)
 
         rows = [
-            {"id": good1,  "business_id": 1, "name": "GoodBefore"},
-            {"id": poison, "business_id": 1, "name": "POISON"},
-            {"id": good2,  "business_id": 1, "name": "GoodAfter"},
+            {"id": _rid(), "business_id": bid, "name": f"GoodBefore-{tag}"},
+            {"id": _rid(), "business_id": bid, "name": f"POISON-{tag}"},
+            {"id": _rid(), "business_id": bid, "name": f"GoodAfter-{tag}"},
         ]
-        applied = _upsert_rows(db, "customers", rows, {"customers"})
+        applied = _import_with_remap(db, "customers", rows, bid, bid, existing, {})
 
         # Only the two good rows count; the poison row was rolled back on its
-        # own SAVEPOINT (the old db.rollback() would have nuked GoodBefore too).
+        # own SAVEPOINT (a bare db.rollback() would have nuked GoodBefore too).
         assert applied == 2
 
         monkeypatch.undo()  # restore execute for the verifying SELECT
         names = {
             r[0]
             for r in db.execute(
-                text("SELECT name FROM customers WHERE id IN (:a, :b, :c)"),
-                {"a": good1, "b": poison, "c": good2},
+                text("SELECT name FROM customers WHERE business_id = :b"),
+                {"b": bid},
             ).fetchall()
         }
-        assert names == {"GoodBefore", "GoodAfter"}  # poison absent, goods survive
-    finally:
-        db.rollback()
-        db.close()
-
-
-# ---------------------------------------------------------------------------
-# M-4 — upsert must keep columns not present in the incoming row
-# ---------------------------------------------------------------------------
-def test_upsert_preserves_unmapped_columns():
-    db = SessionLocal()
-    cid = _rid()
-    try:
-        _upsert_rows(db, "customers",
-                     [{"id": cid, "business_id": 1, "name": "Orig", "phone": "111"}],
-                     {"customers"})
-        # Second upsert omits phone — DO UPDATE must leave the stored phone intact.
-        # The old INSERT OR REPLACE would delete+reinsert and null it out.
-        _upsert_rows(db, "customers",
-                     [{"id": cid, "business_id": 1, "name": "Renamed"}],
-                     {"customers"})
-
-        row = db.execute(
-            text("SELECT name, phone FROM customers WHERE id = :i"), {"i": cid}
-        ).first()
-        assert row[0] == "Renamed"
-        assert row[1] == "111"   # preserved
+        assert names == {f"GoodBefore-{tag}", f"GoodAfter-{tag}"}
     finally:
         db.rollback()
         db.close()
@@ -276,34 +259,42 @@ def test_import_remap_assigns_new_ids_and_rewrites_fk():
 
 
 # ---------------------------------------------------------------------------
-# LWW merge mode: insert new, keep newer, never blindly overwrite
+# An import must NOT overwrite a row the destination already has
 # ---------------------------------------------------------------------------
-def test_merge_lww_keeps_newer_inserts_new():
+# Replaces `test_merge_lww_keeps_newer_inserts_new`, which asserted the opposite:
+# that a newer incoming copy overwrites the stored one. That was true of
+# `_upsert_rows(merge=True)` — code no caller could reach, because `import_data`
+# 422s on `remap_ids=false`. The live importer skips an already-present row
+# outright, so the product has never performed Last-Write-Wins here, and the
+# passing test was the main evidence that it did.
+def test_import_never_overwrites_an_existing_row():
+    owner = _signup("No Clobber Co")
+    bid = owner["bid"]
     db = SessionLocal()
-    cid = _rid()
-    cid2 = _rid()
+    tag = _rid()
     try:
-        # Seed a local row with a NEWER timestamp.
-        _upsert_rows(db, "customers",
-                     [{"id": cid, "business_id": 1, "name": "NewLocal", "updated_at": "2026-06-26T12:00:00"}],
-                     {"customers"})
-        # Merge an OLDER incoming version → must be KEPT (not overwritten).
-        _upsert_rows(db, "customers",
-                     [{"id": cid, "business_id": 1, "name": "OldIncoming", "updated_at": "2026-06-20T00:00:00"}],
-                     {"customers"}, merge=True)
-        assert db.execute(text("SELECT name FROM customers WHERE id=:i"), {"i": cid}).scalar() == "NewLocal"
+        existing = set(inspect(db.bind).get_table_names())
+        uid = f"uid-noclobber-{tag}"
 
-        # Merge a NEWER incoming version → applied.
-        _upsert_rows(db, "customers",
-                     [{"id": cid, "business_id": 1, "name": "NewerIncoming", "updated_at": "2026-06-27T00:00:00"}],
-                     {"customers"}, merge=True)
-        assert db.execute(text("SELECT name FROM customers WHERE id=:i"), {"i": cid}).scalar() == "NewerIncoming"
+        n1 = _import_with_remap(db, "customers", [
+            {"id": _rid(), "business_id": bid, "name": f"Stored-{tag}",
+             "phone": f"9{tag}", "uid": uid},
+        ], bid, bid, existing, {})
+        assert n1 == 1
 
-        # Merge a brand-new row → inserted.
-        _upsert_rows(db, "customers",
-                     [{"id": cid2, "business_id": 1, "name": "FreshRow", "updated_at": "2026-06-26T00:00:00"}],
-                     {"customers"}, merge=True)
-        assert db.execute(text("SELECT COUNT(*) FROM customers WHERE id=:i"), {"i": cid2}).scalar() == 1
+        # Same uid, different content, and NEWER — still refused.
+        n2 = _import_with_remap(db, "customers", [
+            {"id": _rid(), "business_id": bid, "name": f"Incoming-{tag}",
+             "phone": f"9{tag}", "uid": uid,
+             "updated_at": "2099-01-01T00:00:00"},
+        ], bid, bid, existing, {})
+        assert n2 == 0, "an already-present row must be skipped, not updated"
+
+        rows = db.execute(
+            text("SELECT name FROM customers WHERE uid = :u"), {"u": uid},
+        ).fetchall()
+        assert len(rows) == 1, "and certainly not duplicated"
+        assert rows[0][0] == f"Stored-{tag}"
     finally:
         db.rollback()
         db.close()
