@@ -51,6 +51,26 @@ export function getPriceOptions(item, products, productBatches) {
         formatted_date: b.created_at ? new Date(b.created_at).toLocaleDateString('en-GB') : '—'
       })
     }
+    // Wholesale / distributor per BATCH. A delivery can arrive at a different
+    // trade rate than the last one, and without these the only way to record
+    // that was to overwrite the product's tier — losing the distinction the
+    // batch exists to preserve.
+    if (b.wholesale_price && b.wholesale_price > 0) {
+      rawOptions.push({
+        label: `Batch ${b.batch_no || '—'} Wholesale`,
+        price: b.wholesale_price,
+        created_at: b.created_at,
+        formatted_date: b.created_at ? new Date(b.created_at).toLocaleDateString('en-GB') : '—'
+      })
+    }
+    if (b.distributor_price && b.distributor_price > 0) {
+      rawOptions.push({
+        label: `Batch ${b.batch_no || '—'} Distributor`,
+        price: b.distributor_price,
+        created_at: b.created_at,
+        formatted_date: b.created_at ? new Date(b.created_at).toLocaleDateString('en-GB') : '—'
+      })
+    }
   })
 
   const seen = new Set()

@@ -412,6 +412,13 @@ class Inventory(Base, BusinessOwnedMixin):
     mrp           = Column(Float,   nullable=True)
     cost_price    = Column(Float,   nullable=True, default=0.0)
     selling_price = Column(Float,   nullable=True, default=0.0)
+    # The remaining two POS tiers, per batch. A delivery can arrive at a
+    # different wholesale rate than the last one, and "New Batch" mode exists
+    # precisely so that lands on the BATCH instead of overwriting the product.
+    # Without these, a batch-specific wholesale price had nowhere to go: the
+    # only options were clobbering the product tier or losing the distinction.
+    wholesale_price   = Column(Float, nullable=True, default=0.0)
+    distributor_price = Column(Float, nullable=True, default=0.0)
     reorder_point = Column(Integer, nullable=True, default=10)
     category      = Column(String,  nullable=True)
 

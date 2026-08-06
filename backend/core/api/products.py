@@ -102,6 +102,10 @@ class StockAdjustmentRequest(BaseModel):
     selling_price: Optional[float] = None
     cost_price: Optional[float] = None
     mrp: Optional[float] = None
+    # Batch-level wholesale/distributor tiers. Optional and omitted-means-
+    # unchanged, exactly like the three above.
+    wholesale_price: Optional[float] = None
+    distributor_price: Optional[float] = None
     client_request_id: Optional[str] = None  # idempotency key from client
 
     def model_post_init(self, __context: Any) -> None:  # type: ignore[override]
@@ -112,7 +116,9 @@ class StockAdjustmentRequest(BaseModel):
             raise ValueError("qty_delta cannot be zero")
         for field_name, val in [("selling_price", self.selling_price),
                                 ("cost_price", self.cost_price),
-                                ("mrp", self.mrp)]:
+                                ("mrp", self.mrp),
+                                ("wholesale_price", self.wholesale_price),
+                                ("distributor_price", self.distributor_price)]:
             if val is not None and not math.isfinite(val):
                 raise ValueError(f"{field_name} must be a finite number")
             if val is not None and val < 0:
@@ -567,6 +573,8 @@ def get_product_stock(
             "stock": b.stock or 0,
             "selling_price": b.selling_price,
             "mrp": b.mrp,
+            "wholesale_price": b.wholesale_price,
+            "distributor_price": b.distributor_price,
             "created_at": b.created_at.isoformat() if b.created_at else None
         })
 
@@ -638,8 +646,13 @@ def stock_adjustment(
         # projection with the correct balance. Only enrich it with optional
         # batch pricing metadata here. Never apply qty_delta a second time:
         # Inventory.stock is a rebuildable cache, not another stock register.
+        # Every priced field must appear here. This gate listed only three, so
+        # an intake that carried ONLY a wholesale or distributor rate skipped
+        # the whole block and the batch kept the column default — silently, and
+        # indistinguishably from "the supplier charged nothing".
         if (req.selling_price is not None or req.cost_price is not None
-                or req.mrp is not None):
+                or req.mrp is not None or req.wholesale_price is not None
+                or req.distributor_price is not None):
             db.flush()
             inv_row = db.query(Inventory).filter(
                 Inventory.business_id == bid,
@@ -663,6 +676,10 @@ def stock_adjustment(
                     selling_price=req.selling_price if req.selling_price is not None else p.selling_price,
                     cost_price=req.cost_price if req.cost_price is not None else p.cost_price,
                     mrp=req.mrp if req.mrp is not None else p.mrp,
+                    wholesale_price=(req.wholesale_price if req.wholesale_price is not None
+                                     else p.wholesale_price),
+                    distributor_price=(req.distributor_price if req.distributor_price is not None
+                                       else p.distributor_price),
                     expiry_date=req.expiry_date,
                 )
                 db.add(inv_row)
@@ -673,6 +690,10 @@ def stock_adjustment(
                     inv_row.cost_price = req.cost_price
                 if req.mrp is not None:
                     inv_row.mrp = req.mrp
+                if req.wholesale_price is not None:
+                    inv_row.wholesale_price = req.wholesale_price
+                if req.distributor_price is not None:
+                    inv_row.distributor_price = req.distributor_price
                 if req.expiry_date:
                     inv_row.expiry_date = req.expiry_date
 

@@ -185,6 +185,13 @@ def _refresh_inventory_cache(db, business_id: int, *, product_id, product_name, 
                     selling_price=prod.selling_price,
                     cost_price=prod.cost_price,
                     mrp=prod.mrp,
+                    # The other two POS tiers, seeded the same way. Without
+                    # these a new batch inherited three of the product's five
+                    # prices and defaulted the rest to 0 — and 0 is dropped by
+                    # getPriceOptions, so the tier silently vanished from the
+                    # POS picker for that batch's stock.
+                    wholesale_price=prod.wholesale_price,
+                    distributor_price=prod.distributor_price,
                     category=prod.category,
                 )
                 db.add(inv)

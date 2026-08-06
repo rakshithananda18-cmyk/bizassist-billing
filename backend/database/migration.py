@@ -198,6 +198,8 @@ _COLUMN_MIGRATIONS = [
     {"table": "invoices", "column": "cash_discount",    "ddl": "ALTER TABLE invoices ADD COLUMN cash_discount REAL DEFAULT 0.0"},
     # inventory additions
     {"table": "inventory", "column": "godown_id",       "ddl": "ALTER TABLE inventory ADD COLUMN godown_id INTEGER"},
+    {"table": "inventory", "column": "wholesale_price",   "ddl": "ALTER TABLE inventory ADD COLUMN wholesale_price FLOAT"},
+    {"table": "inventory", "column": "distributor_price", "ddl": "ALTER TABLE inventory ADD COLUMN distributor_price FLOAT"},
     # users additions
     {"table": "users", "column": "parent_business_id",  "ddl": "ALTER TABLE users ADD COLUMN parent_business_id INTEGER"},
     {"table": "users", "column": "public_id",           "ddl": "ALTER TABLE users ADD COLUMN public_id TEXT"},

@@ -130,6 +130,49 @@ describe('getPriceOptions', () => {
     expect(labels.indexOf('Batch NEW Price')).toBeLessThan(labels.indexOf('Batch OLD Price'))
     expect(opts.map(o => o.price)).toEqual([90, 80, 70, 100, 95, 110, 85])
   })
+
+  // ── batch-level wholesale / distributor ──────────────────────────────────
+  // A delivery can arrive at a different TRADE rate than the last one. Before
+  // the batch carried these, the only way to record that was to overwrite the
+  // product's tier — losing the very distinction the batch exists to keep.
+
+  it('offers a batch wholesale and distributor rate', () => {
+    const batches = {
+      1: [{ batch_no: 'B2', wholesale_price: 88, distributor_price: 77, created_at: '2026-06-01' }],
+    }
+    const labels = getPriceOptions({ product_id: 1 }, PRODUCTS, batches).map(o => o.label)
+    expect(labels).toContain('Batch B2 Wholesale')
+    expect(labels).toContain('Batch B2 Distributor')
+  })
+
+  it('dedupes a batch tier that matches the product tier', () => {
+    // Product wholesale is 80. A batch at the same 80 must not appear twice —
+    // two identical prices in the picker is a choice with no meaning.
+    const batches = { 1: [{ batch_no: 'SAME', wholesale_price: 80, created_at: '2026-06-01' }] }
+    const opts = getPriceOptions({ product_id: 1 }, PRODUCTS, batches)
+    expect(opts.filter(o => o.price === 80)).toHaveLength(1)
+    expect(opts.map(o => o.label)).not.toContain('Batch SAME Wholesale')
+  })
+
+  it('drops a zero or missing batch tier', () => {
+    // 0 means "unset", not "free". Offering ₹0 in the picker would let a
+    // cashier ring up a sale at nothing.
+    const batches = {
+      1: [{ batch_no: 'Z', wholesale_price: 0, distributor_price: null, created_at: '2026-06-01' }],
+    }
+    const labels = getPriceOptions({ product_id: 1 }, PRODUCTS, batches).map(o => o.label)
+    expect(labels).not.toContain('Batch Z Wholesale')
+    expect(labels).not.toContain('Batch Z Distributor')
+    expect(getPriceOptions({ product_id: 1 }, PRODUCTS, batches).every(o => o.price > 0)).toBe(true)
+  })
+
+  it('keeps batches without the new fields working', () => {
+    // Rows written before the columns existed carry neither key. They must
+    // still yield their selling price rather than throwing.
+    const batches = { 1: [{ batch_no: 'LEGACY', selling_price: 85, created_at: '2026-01-01' }] }
+    const labels = getPriceOptions({ product_id: 1 }, PRODUCTS, batches).map(o => o.label)
+    expect(labels).toContain('Batch LEGACY Price')
+  })
 })
 
 describe('withQty (MRP-scheme overcharge bug)', () => {
