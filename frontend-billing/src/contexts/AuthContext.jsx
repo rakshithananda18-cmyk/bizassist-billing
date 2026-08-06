@@ -3,6 +3,7 @@ import { API_BASE, updateApiBase, IS_LOCAL_APP, CLOUD_URL, LOCAL_URL } from '../
 import { resolveHostingMode, shouldPersistMode } from '../utils/resolveHostingMode'
 import { logger, setBizId } from '../utils/logger'
 import { reconcileBizIdOnLogin } from '../utils/loginSync'
+import { isUpgradeToPro } from '../utils/planTransition'
 import { discoverLocalBackend, getNetworkMode, clearDiscoveryCache } from '../utils/networkDiscovery'
 import { reconcileDeviceModeOnLogin } from '../utils/deviceMode'
 import { syncManager } from '../sync/syncManager'
@@ -924,6 +925,53 @@ export function AuthProvider({ children }) {
       window.removeEventListener('refresh-settings', handleRefreshSettings)
     }
   }, [fetchSettings])
+
+  // ── Ask again, occasionally ───────────────────────────────────────────────
+  // `settings` was fetched on login and then never again unless something
+  // dispatched `refresh-settings`. The backend was willing to answer the whole
+  // time — GET /settings re-checks the plan against the cloud — but nothing
+  // asked, so an admin granting Pro was invisible until the next sign-in.
+  //
+  // A poll, not a push: the device that needs to hear "you're Pro now" is a
+  // FREE device, which runs no sync worker and holds no cloud listener. There
+  // is no open channel to push over, and opening one for every non-paying
+  // install to carry a message that may never come is the wrong trade.
+  //
+  // Cheap on purpose: the server owns the real rate limit (a per-business
+  // cooldown, short while free and 30 min once Pro), so most of these ticks
+  // cost one local read and no network at all.
+  useEffect(() => {
+    if (!token) return
+    const t = setInterval(() => {
+      window.dispatchEvent(new CustomEvent('refresh-settings'))
+    }, 5 * 60 * 1000)
+    return () => clearInterval(t)
+  }, [token])
+
+  // ── Free → Pro, without a re-login ────────────────────────────────────────
+  // The plan arriving is not the same as the app reacting to it. Cloud sync
+  // becomes available at this moment, and the divergence check that offers to
+  // move the backlog runs only at login — so an owner who had just paid saw
+  // nothing happen and had to sign out and back in to collect what they bought.
+  //
+  // Only the free → pro EDGE — see utils/planTransition for the three ways
+  // "no" is the right answer here.
+  const prevPlanRef = React.useRef(undefined)
+  useEffect(() => {
+    const plan = settings?.subscription?.plan
+    const prev = prevPlanRef.current
+    prevPlanRef.current = plan
+    if (!token || !isUpgradeToPro(prev, plan)) return
+
+    logger.info('[AuthContext] plan upgraded to Pro — re-running the cloud divergence check')
+    // The nudge snoozes itself for 4h; an upgrade is exactly the event that
+    // should clear it. SyncNudgeModal owns that key and listens for this.
+    window.dispatchEvent(new CustomEvent('plan-upgraded'))
+
+    let cloudTok = null
+    try { cloudTok = localStorage.getItem('bizassist_cloud_token') } catch { /* ignore */ }
+    reconcileBizIdOnLogin(token, cloudTok)
+  }, [settings?.subscription?.plan, token])
 
   useEffect(() => {
     const handleUnauthorized = () => {

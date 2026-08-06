@@ -47,8 +47,20 @@ export default function SyncNudgeModal() {
       } catch (_) {}
       setInfo(e?.detail || { delta: 0, direction: 'cloud-to-local' })
     }
+    // An upgrade to Pro clears the snooze. The nudge is a PAID feature, so a
+    // free account can never have seen it — but a lapsed-then-renewed account
+    // can, and the 4h silence it bought was about a plan that no longer
+    // applies. AuthContext fires this immediately before re-running the check,
+    // and the check is a network round trip, so the clear always lands first.
+    const onUpgrade = () => {
+      try { sessionStorage.removeItem(SNOOZE_KEY) } catch (_) {}
+    }
     window.addEventListener('cloud-data-available', onEvt)
-    return () => window.removeEventListener('cloud-data-available', onEvt)
+    window.addEventListener('plan-upgraded', onUpgrade)
+    return () => {
+      window.removeEventListener('cloud-data-available', onEvt)
+      window.removeEventListener('plan-upgraded', onUpgrade)
+    }
   }, [])
 
   const handleRemindLater = () => {

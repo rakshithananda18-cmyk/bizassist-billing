@@ -25,6 +25,16 @@ _DB_MODE = "cloud" if ("postgresql" in DATABASE_URL or "postgres" in DATABASE_UR
 # whole function can be removed; until then cap it at once per 30 min.
 _SUB_SYNC_COOLDOWN_SECS = 1800  # 30 min — after a check the cloud actually answered
 _SUB_SYNC_RETRY_SECS = 60       # after one that never happened; see below
+
+# …but only once the answer is "Pro". A FREE business is the one case where the
+# answer is expected to change, and to change because a human just paid for it.
+# Making them wait up to 30 minutes to see what they bought — with no signal
+# that anything is coming — is the worst place in the whole flow to be thrifty.
+# A free account also has nothing to sync, so this check is the only cloud call
+# it ever makes; asking once a minute costs a request the account is otherwise
+# not making at all. Pro keeps the long window: its answer rarely changes and
+# there are real sync calls to leave room for.
+_SUB_SYNC_FREE_COOLDOWN_SECS = 60
 _sub_sync_next: dict[int, float] = {}  # business_id → earliest next cloud check
 
 
@@ -990,10 +1000,17 @@ def _sync_subscription_from_cloud(user: User, db: Session, force: bool = False):
             timeout=5.0
         )
         if resp.status_code == 200:
-            # The cloud answered. Now the long cooldown is earned.
-            _sub_sync_next[business_id] = time.time() + _SUB_SYNC_COOLDOWN_SECS
             cloud_settings = resp.json()
             cloud_sub = cloud_settings.get("subscription")
+            # The cloud answered, so a cooldown is earned — but its length
+            # depends on the ANSWER, not on the fact that we asked. Free keeps
+            # checking; Pro settles down. Armed from the cloud's reply rather
+            # than the stored plan so an upgrade takes effect on this very call.
+            _sub_sync_next[business_id] = time.time() + (
+                _SUB_SYNC_COOLDOWN_SECS
+                if (cloud_sub or {}).get("plan") == "pro"
+                else _SUB_SYNC_FREE_COOLDOWN_SECS
+            )
             if cloud_sub:
                 # Update local DB settings with the cloud subscription info
                 plan_holder = user
