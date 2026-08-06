@@ -12,14 +12,22 @@ const SNOOZE_MS  = 4 * 60 * 60 * 1000  // 4 hours
  * cloud and this device hold different amounts of data, sensed at login via
  * a read-only count compare (see utils/loginSync.js → 'cloud-data-available').
  *
- * Two directions:
+ * The detected direction decides what this SAYS, not what it DOES:
  *   • 'cloud-to-local' — cloud has data not yet on this device (e.g. another
- *     device billed while this desktop app was closed). Offer to pull it down.
+ *     device billed while this desktop app was closed).
  *   • 'local-to-cloud' — this device has data not yet on the cloud (e.g. billed
- *     offline, or cloud was unreachable). Offer to push it up.
+ *     offline, or cloud was unreachable).
+ *
+ * The sync itself runs BOTH legs. The direction here comes from comparing total
+ * row COUNTS, and a count says which side has more rows, not which side is
+ * complete: the ordinary case after any divergence is that each side holds rows
+ * the other lacks, and a bigger local count hides a cloud-only invoice just as
+ * easily. Acting on the guess fixed half the gap and left the rest to be noticed
+ * later. Running both legs makes the guess only a matter of phrasing — and the
+ * import inserts what is missing without overwriting, so the extra leg is free.
  *
  * Buttons:
- *   • "Sync Now"      — opens BackupModal in the correct direction.
+ *   • "Sync Now"      — opens BackupModal, both directions.
  *   • "Remind Later"  — snoozes the nudge for 4 hours (sessionStorage).
  *
  * Data movement stays gated behind an explicit click — nothing syncs automatically.
@@ -57,7 +65,7 @@ export default function SyncNudgeModal() {
     return (
       <BackupModal
         token={token}
-        direction={direction}
+        direction="both"
         onComplete={() => { setSyncing(false); setInfo(null) }}
         onError={() => { /* BackupModal shows its own error UI; keep it open */ }}
       />
@@ -78,7 +86,7 @@ export default function SyncNudgeModal() {
       that {n === 1 ? "isn't" : "aren't"} on this desktop yet —
       probably billed from another device or the web app.
       <div style={{ marginTop: 8, color: 'var(--text-primary)', opacity: 0.7, fontSize: '0.8rem' }}>
-        Sync down = safe merge. Nothing on this device gets deleted.
+        Syncing fills the gaps both ways. Nothing is overwritten or deleted.
       </div>
     </>
   ) : (
@@ -88,7 +96,7 @@ export default function SyncNudgeModal() {
       that {n === 1 ? "isn't" : "aren't"} on the cloud yet —
       your other devices won't see {n === 1 ? 'it' : 'them'} until you sync.
       <div style={{ marginTop: 8, color: 'var(--text-primary)', opacity: 0.7, fontSize: '0.8rem' }}>
-        Sync up = safe merge. Nothing on the cloud gets deleted.
+        Syncing fills the gaps both ways. Nothing is overwritten or deleted.
       </div>
     </>
   )
