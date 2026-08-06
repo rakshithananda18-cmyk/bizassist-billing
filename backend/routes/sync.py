@@ -1100,7 +1100,53 @@ def get_queue_depth(
         "last_status":    last_log.status if last_log else "idle",
         "last_error":     last_log.error  if last_log else None,
         "instant_pull":   instant_pull,
+        "halt":           _halt_state(business_id),
     }
+
+
+# ── Why sync stopped ─────────────────────────────────────────────────────────
+# Precedence, most-actionable first. Two of these NEVER recover on their own.
+_HALT_ORDER = (
+    # (flag name, reason, how the owner fixes it)
+    ("_SELF_SIGNED_REJECTED", "secret_mismatch", "relogin"),
+    ("_PULL_AUTH_BLOCKED",    "auth_expired",    "relogin"),
+    ("_PLAN_BLOCKED",         "plan_required",   "upgrade"),
+    ("_OFFLINE_STATE",        "offline",         "wait"),
+)
+
+
+def _halt_state(business_id: int) -> dict:
+    """Why the sync worker is not running for this business, or reason=None.
+
+    THE GAP THIS CLOSES. The worker has four halt states and this endpoint
+    exposed none of them — callers had only `last_error`, the newest SyncLog
+    row. But every halt SHORT-CIRCUITS BEFORE WRITING A LOG, so once one is
+    set no new row ever appears and the client replays the error that preceded
+    it, indefinitely. That is how a panel showed "Cloud sync requires the Pro
+    plan" for hours after the plan was already Pro.
+
+    `last_error` answers "what went wrong last time we tried". This answers
+    "are we even trying", which is a different question and the one an owner is
+    actually asking.
+
+    These are per-process, in-memory flags: after a restart they are empty and
+    this reports healthy until the next cycle re-detects the condition. That is
+    correct — a restart genuinely clears the worker's belief, and re-detection
+    takes one interval.
+    """
+    try:
+        from services import sync_worker as _sw
+    except Exception:
+        return {"reason": None, "recoverable_by": None}
+
+    for attr, reason, fix in _HALT_ORDER:
+        # Truthiness, not key presence: `_OFFLINE_STATE` is explicitly set to
+        # False when the cloud comes back, so `bid in dict` would report an
+        # outage forever after the first one.
+        if getattr(_sw, attr, {}).get(business_id):
+            return {"reason": reason, "recoverable_by": fix}
+
+    return {"reason": None, "recoverable_by": None}
 
 
 @router.get("/api/sync/conflicts")

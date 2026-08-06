@@ -94,7 +94,7 @@ const AUTO_COLLAPSE_ROUTES = ['/stock']
 const BOTTOM_BAR_ROUTES = ['/', '/sales', '/stock', '/parties', '/reports']
 
 export default function AppLayout({ children, title }) {
-  const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings, fetchSettings } = useAuth()
+  const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings, fetchSettings, switchMode } = useAuth()
   const { hasLock, lock, resetInactivityTimer } = useLock()
   const confirm = useConfirm()
   const navigate = useNavigate()
@@ -163,7 +163,7 @@ export default function AppLayout({ children, title }) {
   const aiGated = !subscription?.plan || subscription?.plan !== 'pro'
 
   const isFreePlan = !subscription?.plan || subscription?.plan !== 'pro'
-  const isSyncPaused = isSyncOn && isFreePlan
+
 
   const [sessionExpired, setSessionExpired] = React.useState(false)
   const [checkingPlan, setCheckingPlan] = React.useState(false)
@@ -218,7 +218,36 @@ export default function AppLayout({ children, title }) {
     last_status: 'idle',
     last_error: null
   })
-  const [flushing, setFlushing] = React.useState(false)
+
+  // ── Why sync stopped, from the SERVER ────────────────────────────────────
+  // `queue-depth` now reports the worker's actual halt state. Before this the
+  // UI inferred it as `isSyncOn && isFreePlan`, which was right by coincidence
+  // for one of four causes and blind to the rest: a dead cloud token, a
+  // JWT_SECRET mismatch and a plain outage all rendered as "everything is
+  // fine" while nothing synced. Two of those never recover without the owner
+  // acting, and nothing told them to.
+  //
+  // The local inference stays as the fallback for an older backend that does
+  // not send `halt` — losing the Pro warning on upgrade would be a regression.
+  const halt = queueDepth?.halt || null
+  const haltReason = halt?.reason || (isSyncOn && isFreePlan ? 'plan_required' : null)
+
+  // Only a PLAN halt is "paused" in the sense the existing UI means: a state
+  // the owner resolves by changing their subscription. The others are faults.
+  const isSyncPaused = isSyncOn && haltReason === 'plan_required'
+
+  // What the owner must do, if anything. Drives the single sync control.
+  const HALT_COPY = {
+    plan_required:   { title: 'Sync paused — Pro required',
+                       detail: 'Cloud sync needs the Pro plan. Nothing is lost — changes wait here.' },
+    auth_expired:    { title: 'Sign-in expired',
+                       detail: 'This device’s cloud access expired. Sign out and back in to reconnect.' },
+    secret_mismatch: { title: 'Sign-in expired',
+                       detail: 'This device could not authenticate with the cloud. Sign out and back in to reconnect.' },
+    offline:         { title: 'Offline',
+                       detail: 'The cloud is unreachable. Sync resumes automatically.' },
+  }
+  const haltCopy = haltReason ? HALT_COPY[haltReason] : null
 
   // ── Cloud Pull Countdown (hybrid mode only) ───────────────────────────────
   const pullIntervalSec = Math.max(
@@ -226,46 +255,19 @@ export default function AppLayout({ children, title }) {
     30
   )
   const [nextPullIn, setNextPullIn] = React.useState(null)   // seconds until next auto-pull
-  const [pulling, setPulling] = React.useState(false)        // "Pull Now" in-flight
+  const [syncing, setSyncing] = React.useState(false)        // manual "Sync now" in-flight
 
-  const handleSyncFlush = React.useCallback(async () => {
-    if (!token) return
-    setFlushing(true)
-    try {
-      const res = await fetch(`${API_BASE}/api/sync/flush`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      if (res.ok) {
-        setTimeout(async () => {
-          try {
-            const r = await fetch(`${API_BASE}/api/sync/queue-depth`, {
-              headers: { Authorization: `Bearer ${token}` }
-            })
-            if (r.ok) {
-              const data = await r.json()
-              setQueueDepth(data)
-            }
-          } catch (e) {}
-          setFlushing(false)
-          // Notify the queue-depth effect listener so it refreshes immediately
-          // without waiting for the next 30s poll tick.
-          window.dispatchEvent(new CustomEvent('sync-flushed'))
-        }, 1500)
-      } else {
-        setFlushing(false)
-      }
-    } catch (err) {
-      logger.error('Failed to trigger manual sync flush:', err)
-      setFlushing(false)
-    }
-  }, [token])
-
-  // "Pull from Cloud Now" — triggers the backend flush (which also pulls),
-  // then resets the countdown to full interval.
-  const handlePullNow = React.useCallback(async () => {
-    if (!token || pulling) return
-    setPulling(true)
+  // "Sync now" — the ONLY manual sync control.
+  //
+  // There used to be two buttons, "Push to Cloud" and "Pull from Cloud Now",
+  // and they hit the SAME endpoint: the second just added `?pull=true`, which
+  // pushes the outbox AND fetches cloud-authored rows. So push-only was a
+  // strict subset that could never be the better choice, while asking the
+  // owner to pick a direction asked them to know which side was stale — which
+  // is the app's job, not theirs.
+  const handleSyncNow = React.useCallback(async () => {
+    if (!token || syncing) return
+    setSyncing(true)
     try {
       // ?pull=true is REQUIRED — without it the backend only flushes the outbox
       // (push) and never fetches cloud-authored rows, so this button silently
@@ -282,15 +284,15 @@ export default function AppLayout({ children, title }) {
           })
           if (r.ok) setQueueDepth(await r.json())
         } catch (e) {}
-        setPulling(false)
+        setSyncing(false)
         setNextPullIn(pullIntervalSec)
         window.dispatchEvent(new CustomEvent('sync-flushed'))
       }, 2000)
     } catch (err) {
       logger.error('Pull from cloud failed:', err)
-      setPulling(false)
+      setSyncing(false)
     }
-  }, [token, pulling, pullIntervalSec])
+  }, [token, syncing, pullIntervalSec])
 
   React.useEffect(() => {
     if (effectiveMode !== 'hybrid' || !token) return
@@ -348,7 +350,7 @@ export default function AppLayout({ children, title }) {
   React.useEffect(() => {
     if (effectiveMode !== 'hybrid') return
     const tick = () => {
-      if (pulling) {
+      if (syncing) {
         setNextPullIn(0)
         return
       }
@@ -363,7 +365,7 @@ export default function AppLayout({ children, title }) {
     tick()
     const t = setInterval(tick, 1000)
     return () => clearInterval(t)
-  }, [effectiveMode, queueDepth.last_sync_time, pullIntervalSec, pulling])
+  }, [effectiveMode, queueDepth.last_sync_time, pullIntervalSec, syncing])
 
   const userId = user?.id || 'default'
 
@@ -1064,10 +1066,15 @@ export default function AppLayout({ children, title }) {
                     }}
                     title="Click to view sync health check details"
                   >
-                    {isSyncPaused ? (
+                    {haltReason ? (
                       <>
                         <AlertIcon size={10} strokeWidth={2.5} />
-                        <span>Sync Paused</span>
+                        {/* The badge names the actual halt. "Sync Paused" for a
+                            dead token or an outage told the owner nothing and
+                            pointed at the wrong fix. */}
+                        <span>{haltReason === 'plan_required' ? 'Sync Paused'
+                             : haltReason === 'offline' ? 'Offline'
+                             : 'Sign-in expired'}</span>
                       </>
                     ) : effectiveMode === 'hybrid' ? (
                       <>
@@ -1264,8 +1271,8 @@ export default function AppLayout({ children, title }) {
                             : (syncHealth.status === 'connected' ? 'var(--success)' :
                                syncHealth.status === 'connecting' ? 'var(--warning)' : 'var(--danger)'))
                     }}>
-                      {isSyncPaused
-                        ? 'Sync Paused (Pro Required)'
+                      {haltCopy
+                        ? haltCopy.title
                         : (effectiveMode === 'hybrid'
                             ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'Sync Error' :
                                queueDepth.pending_count > 0 ? 'Syncing...' : 'Synced')
@@ -1325,7 +1332,10 @@ export default function AppLayout({ children, title }) {
                               fontWeight: '600',
                               color: isSyncPaused ? 'var(--warning, #f59e0b)' : (queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)')
                             }}>
-                              {isSyncPaused ? 'Paused — Pro Required' : (queueDepth.pending_count > 0 ? `${queueDepth.pending_count} pending` : 'Fully Synced')}
+                              {haltReason === 'plan_required' ? 'Paused — Pro Required'
+                                : haltReason === 'offline' ? 'Waiting — offline'
+                                : haltReason ? 'Held — sign in again'
+                                : (queueDepth.pending_count > 0 ? `${queueDepth.pending_count} pending` : 'Fully Synced')}
                             </span>
                           </div>
 
@@ -1670,19 +1680,23 @@ export default function AppLayout({ children, title }) {
                         now, and which way is it going". Push already emitted
                         sync.progress; pull had no feedback at all, so the
                         button just sat there for the ~2s round trip. */}
-                    {(flushing || pulling || syncProgress) && (
+                    {(syncing || syncProgress) && (
                       <div style={{
                         padding: '6px 9px',
                         borderRadius: 'var(--radius-sm, 4px)',
-                        background: pulling ? 'rgba(99,179,237,0.10)' : 'rgba(34,197,94,0.10)',
-                        border: `1px solid ${pulling ? 'rgba(99,179,237,0.30)' : 'rgba(34,197,94,0.30)'}`,
+                        background: 'rgba(34,197,94,0.10)',
+                        border: '1px solid rgba(34,197,94,0.30)',
                         fontSize: '0.72rem',
                         color: 'var(--text-secondary)'
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span className="sync-spinner-small" />
-                          <strong style={{ color: pulling ? 'var(--info, #63b3ed)' : 'var(--success, #22c55e)' }}>
-                            {pulling ? 'Pulling from cloud…' : 'Pushing to cloud…'}
+                          {/* One manual sync does BOTH legs, so naming a
+                              direction here would be a coin flip. The push
+                              progress counter below still reports real numbers
+                              when the outbox has something to send. */}
+                          <strong style={{ color: 'var(--success, #22c55e)' }}>
+                            {syncProgress?.total > 0 ? 'Uploading changes…' : 'Syncing with cloud…'}
                           </strong>
                           {syncProgress?.total > 0 && (
                             <span style={{ marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }}>
@@ -1698,7 +1712,7 @@ export default function AppLayout({ children, title }) {
                             <div style={{
                               width: `${Math.min(100, Math.round((syncProgress.done / syncProgress.total) * 100))}%`,
                               height: '100%',
-                              background: pulling ? 'var(--info, #63b3ed)' : 'var(--success, #22c55e)',
+                              background: 'var(--success, #22c55e)',
                               transition: 'width 0.3s ease'
                             }} />
                           </div>
@@ -1731,89 +1745,98 @@ export default function AppLayout({ children, title }) {
                       </span>
                     </div>
 
-                    {/* ── Push outbox now ── */}
+                    {/* Why sync is not running, in one line, above the action
+                        that fixes it. The panel previously showed only the raw
+                        worker log — and because every halt short-circuits before
+                        writing a log, that line was frequently HOURS stale and
+                        described a cause that had already been resolved. */}
+                    {haltCopy && (
+                      <div style={{
+                        padding: '7px 9px',
+                        borderRadius: 'var(--radius-sm, 4px)',
+                        background: haltReason === 'offline'
+                          ? 'rgba(148,163,184,0.10)' : 'rgba(245,158,11,0.10)',
+                        border: `1px solid ${haltReason === 'offline'
+                          ? 'rgba(148,163,184,0.30)' : 'rgba(245,158,11,0.30)'}`,
+                        fontSize: '0.72rem', lineHeight: 1.4,
+                      }}>
+                        <strong style={{
+                          color: haltReason === 'offline'
+                            ? 'var(--text-secondary)' : 'var(--warning, #f59e0b)',
+                        }}>{haltCopy.title}</strong>
+                        <div style={{ color: 'var(--text-secondary)', marginTop: 2 }}>
+                          {haltCopy.detail}
+                        </div>
+                        {(queueDepth.pending_count || 0) > 0 && (
+                          <div style={{ color: 'var(--text-muted)', marginTop: 2 }}>
+                            {queueDepth.pending_count} change
+                            {queueDepth.pending_count === 1 ? '' : 's'} waiting — nothing is lost.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ── ONE manual sync control ────────────────────────
+                        Was two buttons hitting the same endpoint: "Push to
+                        Cloud" (`/api/sync/flush`) and "Pull from Cloud Now"
+                        (the same call with `?pull=true`, which pushes AND
+                        pulls). Push-only was therefore a strict subset that
+                        could never be the better choice, and offering the
+                        choice asked the owner to know which side was stale.
+
+                        When sync is HALTED the control is REPLACED, not
+                        disabled: a button that cannot work is what made the
+                        401 loop unreadable. */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        if (isSyncPaused) {
-                          handleCheckPlan(e)
-                        } else {
-                          handleSyncFlush()
-                        }
+                        // The recovery must MATCH the fault. "Check plan status"
+                        // does nothing for a dead token, and an outage needs no
+                        // action at all — offering the wrong one is what made
+                        // the 401 loop unreadable.
+                        if (haltReason === 'plan_required') handleCheckPlan(e)
+                        else if (haltReason === 'auth_expired' || haltReason === 'secret_mismatch') logout()
+                        else handleSyncNow()
                       }}
-                      disabled={flushing || checkingPlan}
+                      disabled={syncing || checkingPlan || haltReason === 'offline'}
                       style={{
                         width: '100%',
                         padding: '6px 12px',
-                        // Push = GREEN (outgoing, matches the healthy sync-outbox
-                        // colour), Pull = BLUE (incoming). Both used to be blue,
-                        // which made the two actions visually indistinguishable.
-                        backgroundColor: (flushing || checkingPlan) ? 'rgba(255,255,255,0.08)' : 'var(--success, #22c55e)',
-                        color: (flushing || checkingPlan) ? 'var(--text-muted)' : '#fff',
+                        backgroundColor: (syncing || checkingPlan)
+                          ? 'rgba(255,255,255,0.08)'
+                          : 'var(--success, #22c55e)',
+                        color: (syncing || checkingPlan) ? 'var(--text-muted)' : '#fff',
                         border: 'none',
                         borderRadius: 'var(--radius-sm, 4px)',
-                        cursor: (flushing || checkingPlan) ? 'not-allowed' : 'pointer',
-                        fontWeight: '600',
+                        cursor: (syncing || checkingPlan) ? 'not-allowed' : 'pointer',
+                        fontWeight: '700',
                         fontSize: '0.75rem',
-                        transition: 'background-color 0.2s',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        gap: '6px'
+                        gap: '6px',
+                        transition: 'all 0.2s',
                       }}
+                      title={haltCopy
+                        ? haltCopy.detail
+                        : `Push anything waiting and fetch cloud changes now. Auto-pull runs every ${pullIntervalSec}s.`}
                     >
-                      {isSyncPaused ? (
+                      {haltReason === 'plan_required' ? (
                         <>
                           <span className={checkingPlan ? 'sync-spinner-small' : ''} />
-                          {checkingPlan ? 'Checking...' : 'Refresh Plan Status'}
+                          {checkingPlan ? 'Checking…' : 'Check plan status'}
                         </>
+                      ) : haltReason === 'auth_expired' || haltReason === 'secret_mismatch' ? (
+                        <>Sign in again</>
+                      ) : haltReason === 'offline' ? (
+                        <>Waiting for the cloud…</>
                       ) : (
                         <>
-                          <SyncIcon size={12} className={flushing ? 'sync-spinner-small' : ''} />
-                          {flushing ? 'Syncing Now...' : '↑ Push to Cloud'}
+                          <SyncIcon size={12} className={syncing ? 'sync-spinner-small' : ''} />
+                          {syncing ? 'Syncing…' : 'Sync now'}
                         </>
                       )}
                     </button>
-
-                    {/* ── Pull from cloud now ── */}
-                    {!isSyncPaused && (
-                      <button
-                        id="sync-pull-now-btn"
-                        onClick={(e) => { e.stopPropagation(); handlePullNow() }}
-                        disabled={pulling || flushing}
-                        style={{
-                          width: '100%',
-                          padding: '6px 12px',
-                          backgroundColor: 'rgba(99, 179, 237, 0.1)',
-                          color: pulling ? 'var(--text-muted)' : 'var(--info, #63b3ed)',
-                          border: '1px solid rgba(99, 179, 237, 0.3)',
-                          borderRadius: 'var(--radius-sm, 4px)',
-                          cursor: (pulling || flushing) ? 'not-allowed' : 'pointer',
-                          fontWeight: '600',
-                          fontSize: '0.75rem',
-                          transition: 'all 0.2s',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '6px',
-                          opacity: (pulling || flushing) ? 0.6 : 1
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!pulling && !flushing) {
-                            e.currentTarget.style.backgroundColor = 'rgba(99,179,237,0.18)'
-                            e.currentTarget.style.borderColor = 'rgba(99,179,237,0.55)'
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'rgba(99,179,237,0.1)'
-                          e.currentTarget.style.borderColor = 'rgba(99,179,237,0.3)'
-                        }}
-                        title={`Auto-pull runs every ${pullIntervalSec}s. Click to pull from cloud immediately.`}
-                      >
-                        <SyncIcon size={12} className={pulling ? 'sync-spinner-small' : ''} />
-                        {pulling ? 'Pulling from Cloud…' : '↓ Pull from Cloud Now'}
-                      </button>
-                    )}
                   </div>
                 )}
 
@@ -1865,6 +1888,54 @@ export default function AppLayout({ children, title }) {
                           }}
                         >
                           Use Local + Cloud on this device
+                        </button>
+                      </div>
+                    )}
+
+                    {/* ── Pro, but this device is offline-only ──────────────
+                        A paying owner on Local mode saw NOTHING here: no sign
+                        the plan was active, no way to turn sync on without
+                        knowing to look in Settings → Hosting. So Pro looked
+                        broken when it was simply not switched on.
+
+                        The prompt never switches by itself. Two reasons, both
+                        load-bearing:
+                          · `savedMode === 'local'` is an explicit owner opt-out
+                            and resolveHostingMode honours it above the derived
+                            default — auto-flipping would overrule a choice.
+                          · `general.hosting_mode` lives on users.settings, which
+                            is account-scoped and LWW-synced. Flipping it on one
+                            device rewrites it for EVERY device; that exact
+                            failure is documented in shouldPersistMode.
+
+                        Owner only — cashiers are already refused server-side
+                        (routes/auth.py blocks `hosting_mode` for them), so
+                        offering the button would just produce a 403. */}
+                    {IS_LOCAL_APP
+                      && effectiveMode === 'local'
+                      && hostingMode !== 'hybrid'
+                      && !isFreePlan
+                      && !isCashier
+                      && (
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+                        <div style={{ color: 'var(--success, #22c55e)', marginBottom: 2, fontWeight: 700 }}>
+                          Pro is active
+                        </div>
+                        <div style={{ marginBottom: 6 }}>
+                          Cloud sync is off for this device, so nothing is backed up or
+                          shared with your other devices.
+                        </div>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.72rem', padding: '3px 9px' }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            // switchMode surfaces its own 402 toast if the plan
+                            // lapsed between this render and the click.
+                            switchMode?.('hybrid')
+                          }}
+                        >
+                          Turn on Local + Cloud
                         </button>
                       </div>
                     )}
