@@ -150,6 +150,20 @@ def _extract_image_text(file_bytes: bytes) -> str:
     except ImportError:
         raise ValueError("OCR dependencies not installed. Run: pip install pytesseract pillow")
 
+    # `pytesseract` is a WRAPPER. It imports cleanly with no OCR engine present,
+    # so the guard above cannot catch a deployment that lacks the binary — which
+    # is exactly the shape the cloud image had, and the owner was told to pip
+    # install packages that were already installed. Check for the engine itself.
+    try:
+        pytesseract.get_tesseract_version()
+    except Exception:
+        raise ValueError(
+            "The Tesseract OCR engine is not installed on this server, so a "
+            "photo of a bill cannot be read here. Reading images normally uses "
+            "the AI vision model instead — this fallback only runs when that is "
+            "unavailable, so check the AI provider key first."
+        )
+
     try:
         image = Image.open(io.BytesIO(file_bytes))
         try:
@@ -268,6 +282,10 @@ def extract_purchase_from_image(file_bytes: bytes, ext: str) -> dict:
     and far more accurate on angled phone photos than classic OCR.
     Tries Groq-vision → Gemini-vision → Claude-vision; raises if none succeed
     so the caller can fall back to Tesseract."""
+    # Why a provider failed, so the final error can say it. A swallowed
+    # provider error plus a "no key available" message sent the owner
+    # hunting for a key that was already set.
+    provider_errors: list[str] = []
     mime = _mime_for(ext)
     data_uri = f"data:{mime};base64,{base64.b64encode(file_bytes).decode()}"
     user_text = (
@@ -296,6 +314,7 @@ def extract_purchase_from_image(file_bytes: bytes, ext: str) -> dict:
             return _parse_json_loose(completion.choices[0].message.content)
         except Exception as e:
             logger.warning(f"[Purchase Image] Groq vision failed: {e}")
+            provider_errors.append(f"Groq: {e}")
 
     # 2) Gemini vision via its OpenAI-compatible endpoint (httpx, no new dep)
     gem_key = os.getenv("GEMINI_API_KEY")
@@ -328,6 +347,7 @@ def extract_purchase_from_image(file_bytes: bytes, ext: str) -> dict:
             return _parse_json_loose(data["choices"][0]["message"]["content"])
         except Exception as e:
             logger.warning(f"[Purchase Image] Gemini vision failed: {e}")
+            provider_errors.append(f"Gemini: {e}")
 
     # 3) Claude vision
     claude_key = os.getenv("CLAUDE_API_KEY")
@@ -351,7 +371,13 @@ def extract_purchase_from_image(file_bytes: bytes, ext: str) -> dict:
             return _parse_json_loose(message.content[0].text)
         except Exception as e:
             logger.warning(f"[Purchase Image] Claude vision failed: {e}")
+            provider_errors.append(f"Claude: {e}")
 
+    if provider_errors:
+        raise ValueError(
+            "The AI vision model could not read this image: "
+            + "; ".join(provider_errors)
+        )
     raise ValueError("No vision-capable LLM key available (GROQ/GEMINI/CLAUDE).")
 
 
@@ -408,12 +434,27 @@ def parse_purchase_file(file_bytes: bytes, filename: str) -> dict:
     if ext in [".png", ".jpg", ".jpeg", ".webp"]:
         # Prefer the vision LLM (no system OCR binary, better on photos). Falls
         # back to Tesseract only if vision is disabled or every provider fails.
+        vision_error = None
         if os.getenv("PURCHASE_OCR_VISION", "1") != "0":
             try:
                 return extract_purchase_from_image(file_bytes, ext)
             except Exception as e:
+                vision_error = e
                 logger.warning(f"[Purchase Image] vision path failed ({e}); falling back to Tesseract OCR.")
-        raw_text = _extract_image_text(file_bytes)
+        try:
+            raw_text = _extract_image_text(file_bytes)
+        except Exception as ocr_error:
+            # BOTH paths failed. The fallback's message alone is misleading: it
+            # describes the last thing tried, not the reason the preferred path
+            # was abandoned — and vision failing (no provider key, provider
+            # outage) is the actual cause. Report the real one.
+            if vision_error is not None:
+                raise ValueError(
+                    f"Could not read this image. The AI vision model failed "
+                    f"({vision_error}), and the offline OCR fallback is also "
+                    f"unavailable ({ocr_error})."
+                ) from ocr_error
+            raise
         return extract_structured_purchase_invoice(raw_text)
 
     raise ValueError(f"Unsupported file type '{ext}'. Only PDFs and images are supported.")

@@ -25,6 +25,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential gcc \
         libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
         libgdk-pixbuf-2.0-0 libharfbuzz0b libffi-dev shared-mime-info \
+        # OCR fallback for bill uploads. `pytesseract` and `pdf2image` are only
+        # PYTHON WRAPPERS — they import fine without these, so the code's
+        # ImportError guard never fires and the failure surfaced instead as a
+        # pdf2image/Tesseract error telling the owner to pip install packages
+        # that were already installed. tesseract-ocr is the OCR engine itself;
+        # poppler-utils is what pdf2image shells out to.
+        # This is a Docker SDK Space, so `packages.txt` is ignored — system
+        # packages have to be here.
+        tesseract-ocr poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
