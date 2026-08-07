@@ -20,6 +20,62 @@ def parse_date(date_str):
     return _parse_date(date_str)
 
 
+def low_stock_products(db: Session, business_id: int) -> list[tuple]:
+    """Products at or below their restock floor. ONE definition, two callers.
+
+    Stock is per PRODUCT, summed from `stock_ledger` — the append-only truth —
+    not from `inventory`, which holds one row per BATCH and is a cached
+    projection. Counting batches makes a well-stocked product with three
+    sold-through batches look like three stockouts; that is exactly what the
+    notification bell did on its first day, while this dashboard, on the same
+    data, correctly reported none.
+
+    The floor is the product's own `attributes.min_stock` when the merchant set
+    one, else the business's configured `low_stock_threshold` (10 by default).
+    That fallback used to be 0, which meant the "needs restocking" panel stayed
+    empty until a product hit exactly zero — by which point restocking is late,
+    and for the many businesses that never set a per-product minimum the panel
+    never said anything at all. A warning that only fires at zero is a warning
+    that arrives after the sale is lost.
+
+    Returns [(name, qty, floor)] sorted lowest first.
+    """
+    import json as _json
+    from sqlalchemy import func as _func
+    from database.models import Product, AlertConfig
+    from core.models import StockLedger
+
+    cfg = db.query(AlertConfig).filter(AlertConfig.business_id == business_id).first()
+    default_floor = float((cfg.low_stock_threshold if cfg else None) or 10)
+
+    stock_by_pid = dict(
+        db.query(StockLedger.product_id,
+                 _func.coalesce(_func.sum(StockLedger.qty_delta), 0.0))
+        .filter(StockLedger.business_id == business_id)
+        .group_by(StockLedger.product_id)
+        .all()
+    )
+
+    rows = []
+    for p in db.query(Product).filter(Product.business_id == business_id).all():
+        if not p.track_inventory:      # services / prepared food hold no stock
+            continue
+        qty = float(stock_by_pid.get(p.id) or 0.0)
+        floor = None
+        if p.attributes:
+            try:
+                floor = float(_json.loads(p.attributes).get("min_stock") or 0.0) or None
+            except Exception:
+                floor = None
+        if floor is None:
+            floor = default_floor
+        if qty <= floor:
+            rows.append((p.name, qty, floor))
+
+    rows.sort(key=lambda r: r[1])
+    return rows
+
+
 def business_insights(user_id: int, db: Session) -> dict:
     insights = []
     overdue = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").all()
@@ -97,39 +153,15 @@ def dashboard_summary(user_id: int, db: Session) -> dict:
     if rev_30d > 0:
         gross_margin = round(max(-999.0, ((rev_30d - purchases_30d) / rev_30d) * 100), 1)
     
-    # Stock for every product in ONE grouped query instead of a per-product
-    # SUM (the old N+1 that dominated dashboard latency in cloud). Matches
-    # current_stock's product_id path exactly: SUM(qty_delta) per product_id.
-    stock_rows = (
-        db.query(StockLedger.product_id,
-                 _func.coalesce(_func.sum(StockLedger.qty_delta), 0.0))
-        .filter(StockLedger.business_id == user_id)
-        .group_by(StockLedger.product_id)
-        .all()
-    )
-    stock_by_pid = {pid: float(qty or 0.0) for pid, qty in stock_rows}
-
-    low_stock_items = []
-    low_stock_count = 0
-    for p in products:
-        if p.track_inventory:
-            stock = stock_by_pid.get(p.id, 0.0)
-            min_s = 0.0
-            if p.attributes:
-                try:
-                    attrs = json.loads(p.attributes)
-                    min_s = float(attrs.get("min_stock") or 0.0)
-                except Exception:
-                    pass
-            if stock <= min_s:
-                low_stock_count += 1
-                low_stock_items.append({
-                    "name": p.name,
-                    "quantity": stock,
-                    "min_stock": min_s
-                })
-                
-    low_stock_items = low_stock_items[:5]
+    # Shared with the notification bell so the two can never disagree — they
+    # were on screen together saying "0 need restocking" and "3 out of stock".
+    # See low_stock_products() for why stock is per product, from the ledger.
+    _low = low_stock_products(db, user_id)
+    low_stock_count = len(_low)
+    low_stock_items = [
+        {"name": name, "quantity": qty, "min_stock": floor}
+        for name, qty, floor in _low[:5]
+    ]
     
     recent_invoices_db = sorted(valid_invoices, key=lambda i: (i.invoice_date or "", i.id), reverse=True)[:5]
     recent_invoices = []

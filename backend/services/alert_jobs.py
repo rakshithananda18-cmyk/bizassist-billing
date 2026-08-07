@@ -167,39 +167,53 @@ def run_overdue_alerts():
 # ── Job 2: Low Stock ─────────────────────────────────────────
 
 def run_low_stock_alerts():
+    """Email the same list the dashboard KPI and the notification bell show.
+
+    This used to run its own query — `inventory.stock <= threshold` — and
+    `inventory` holds ONE ROW PER BATCH. A product stocked across six batches
+    with three sold through was counted as three separate low-stock lines, so
+    the email said "9 products low" where the app said none. Three surfaces,
+    two answers, and the email was the one nobody could check against the
+    screen.
+
+    `low_stock_products` is now the single definition: one figure per PRODUCT,
+    summed from `stock_ledger`, against the product's own `min_stock` or the
+    business's configured threshold. See services/insights_service.py.
+    """
     logger.info("[SCHED] Running low stock alerts...")
     configs = [c for c in _load_active_configs() if c["alert_low_stock"]]
     if not configs:
         logger.info("[SCHED] No businesses opted into low stock alerts.")
         return
 
+    from services.insights_service import low_stock_products
+
     db = SessionLocal()
     try:
         for cfg in configs:
-            bid       = cfg["business_id"]
-            threshold = cfg["low_stock_threshold"]
-
-            low = (
-                db.query(Inventory)
-                .filter(Inventory.business_id == bid, Inventory.stock <= threshold)
-                .order_by(Inventory.stock.asc())
-                .limit(15)
-                .all()
-            )
+            bid = cfg["business_id"]
+            low = low_stock_products(db, bid)
 
             if not low:
                 logger.info(f"[ALERT] No low stock items for business_id={bid}. Skipping.")
                 continue
 
+            out_of_stock = [r for r in low if r[1] <= 0]
             lines = [
                 f"📦 BizAssist: Low Stock Alert",
                 f"Business: {cfg['business_name']}",
                 f"",
-                f"{len(low)} product(s) are at or below {threshold} units:",
+                f"{len(low)} product(s) are at or below their reorder level:",
                 f"",
             ]
-            for item in low:
-                lines.append(f"  • {item.product_name}: {item.stock} unit(s) remaining")
+            # Each product carries its OWN floor now, so a single "at or below N
+            # units" header would misdescribe any product with a min_stock set.
+            for name, qty, floor in low[:15]:
+                lines.append(f"  • {name}: {qty:g} left (reorder at {floor:g})")
+            if len(low) > 15:
+                lines.append(f"  … and {len(low) - 15} more.")
+            if out_of_stock:
+                lines += ["", f"{len(out_of_stock)} of these are OUT OF STOCK and cannot be sold."]
             lines += [
                 f"",
                 f"Reorder soon to avoid stockouts and lost sales.",
@@ -305,10 +319,15 @@ def run_daily_summary():
             collection_rate = round((paid_rev / total_rev * 100)) if total_rev else 0
 
             # Inventory stats
-            threshold      = cfg["low_stock_threshold"]
             exp_days       = cfg["expiry_days_threshold"]
+            # `inv_total` counts BATCH rows, and is labelled "Total Products"
+            # below — see the note there. Low stock uses the shared per-product
+            # definition, the same one the dashboard KPI and the bell use; this
+            # line used to count batches and so reported a different number from
+            # everything else in the product.
+            from services.insights_service import low_stock_products
             inv_total      = db.query(Inventory).filter(Inventory.business_id == bid).count()
-            low_stock_cnt  = db.query(Inventory).filter(Inventory.business_id == bid, Inventory.stock <= threshold).count()
+            low_stock_cnt  = len(low_stock_products(db, bid))
 
             all_items = db.query(Inventory).filter(Inventory.business_id == bid).all()
             expiring_cnt = 0
@@ -332,8 +351,11 @@ def run_daily_summary():
                 f"  Pending          : {pending_cnt} invoice(s) awaiting payment",
                 f"",
                 f"── Inventory ────────────────────",
-                f"  Total Products   : {inv_total}",
-                f"  Low Stock (≤{threshold}) : {low_stock_cnt} item(s)",
+                # Batch rows, not distinct products — renamed rather than
+                # changed, because "how many stock lots am I holding" is a real
+                # figure and the only thing this ever counted.
+                f"  Stock Batches    : {inv_total}",
+                f"  Low Stock        : {low_stock_cnt} product(s) at/below reorder level",
                 f"  Expiring Soon    : {expiring_cnt} item(s) within {exp_days} days",
                 f"",
             ]
