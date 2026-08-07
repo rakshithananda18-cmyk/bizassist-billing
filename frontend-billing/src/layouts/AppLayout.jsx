@@ -2271,6 +2271,12 @@ export default function AppLayout({ children, title }) {
               </div>
             )}
             
+            {/* Where UniversalSearch puts its sidebar row once the floating
+                trigger is dismissed — directly above the profile. Empty until
+                then; the component portals into it, so the search state stays
+                in one file. */}
+            <div id="usearch-slot" />
+
             {showProfileMenu && (
               <div className="profile-menu" ref={profileMenuRef} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                 <div className="profile-menu-header">

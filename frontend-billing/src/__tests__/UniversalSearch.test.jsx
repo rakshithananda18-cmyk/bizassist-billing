@@ -33,15 +33,69 @@ const openPalette = () => {
 const type = (value) =>
   fireEvent.change(screen.getByPlaceholderText(/Search invoices/i), { target: { value } })
 
+/** AppLayout renders this inside the sidebar; the palette portals into it. */
+const mountSidebarSlot = () => {
+  const el = document.createElement('div')
+  el.id = 'usearch-slot'
+  document.body.appendChild(el)
+  return el
+}
+
 beforeEach(() => {
   authFetch.mockReset()
   navigate.mockReset()
   mockUser = { role: 'owner' }
   authFetch.mockResolvedValue(ok({ items: [] }))
+  localStorage.clear()
 })
-afterEach(() => { vi.clearAllTimers() })
+afterEach(() => {
+  vi.clearAllTimers()
+  // querySelectorAll, not getElementById: the reload case below mounts a
+  // second slot, and one left behind would leak into the next test.
+  document.querySelectorAll('#usearch-slot').forEach(el => el.remove())
+})
 
 describe('UniversalSearch', () => {
+  it('opens on Ctrl+Space', () => {
+    // The advertised shortcut. `code` is asserted alongside `key` because a
+    // modified space does not report `' '` consistently across browsers.
+    draw()
+    fireEvent.keyDown(document.body, { key: ' ', code: 'Space', ctrlKey: true })
+    expect(screen.getByPlaceholderText(/Search invoices/i)).toBeTruthy()
+    fireEvent.keyDown(window, { key: ' ', code: 'Space', ctrlKey: true })
+    expect(screen.queryByPlaceholderText(/Search invoices/i)).toBeNull()
+  })
+
+  it('leaves an unmodified space alone', () => {
+    // Typing a space in the query must not toggle the palette shut.
+    draw()
+    openPalette()
+    fireEvent.keyDown(screen.getByPlaceholderText(/Search invoices/i), { key: ' ', code: 'Space' })
+    expect(screen.getByPlaceholderText(/Search invoices/i)).toBeTruthy()
+  })
+
+  it('counts each group in its heading', () => {
+    draw()
+    openPalette()
+    type('print')
+    // The number is that group's own size, not the whole result list's — the
+    // settings half is capped at 4 while pages also match 'print'.
+    const headings = [...document.querySelectorAll('.usearch-group')]
+    const settings = headings.find(h => h.textContent.startsWith('Settings'))
+    expect(settings.textContent).toBe('Settings4')
+    expect(headings.length).toBeGreaterThan(0)
+  })
+
+  it('does not repeat the group name on every row in it', () => {
+    // A settings row hinting "Settings" under a "Settings" heading is noise.
+    // The tab it lives on is the fact worth the space.
+    draw()
+    openPalette()
+    type('logo')
+    expect(screen.getByText('Print Logo').closest('.usearch-row').textContent)
+      .toMatch(/Print$/)
+  })
+
   it('opens on Ctrl+K and closes on Escape', () => {
     draw()
     expect(screen.queryByPlaceholderText(/Search invoices/i)).toBeNull()
@@ -139,6 +193,108 @@ describe('UniversalSearch', () => {
     } finally {
       window.removeEventListener('keydown', posHandler)
     }
+  })
+
+  it('stops the OPENING Ctrl+K reaching the POS too', () => {
+    // Ctrl+K is free in DEFAULT_FUNC_KEYS, but lib/posKeys.js merges whatever
+    // sits in localStorage.pos_func_keys over those defaults and the shortcuts
+    // modal lets an owner rebind anything. So an owner who put saveInvoice on
+    // Ctrl+K would otherwise open the palette AND save the bill on one press.
+    //
+    // Fired at document.body, not window: dispatching ON window makes window the
+    // target, which collapses capture/bubble to registration order and lets the
+    // handler registered first win. A real keypress reaches window's capture
+    // listener before any bubble listener, which is what this asserts.
+    const posHandler = vi.fn()
+    window.addEventListener('keydown', posHandler)      // bubble, like Sales.jsx
+    try {
+      draw()
+      fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true })
+      expect(screen.getByPlaceholderText(/Search invoices/i)).toBeTruthy()
+      expect(posHandler).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('keydown', posHandler)
+    }
+  })
+
+  it('collapses into the sidebar when dismissed, and stays there', async () => {
+    mountSidebarSlot()
+    const { unmount } = draw()
+
+    await waitFor(() => expect(document.querySelector('.usearch-close')).toBeTruthy())
+    fireEvent.click(document.querySelector('.usearch-close'))
+
+    expect(document.querySelector('.usearch-dock')).toBeNull()
+    const row = document.querySelector('#usearch-slot .usearch-slot-btn')
+    expect(row).toBeTruthy()
+    expect(row.textContent).toMatch(/Find anything/i)
+
+    // A dismiss that a reload undoes is decoration, not a control.
+    unmount()
+    document.querySelectorAll('#usearch-slot').forEach(el => el.remove())
+    mountSidebarSlot()
+    draw()
+    await waitFor(() => expect(document.querySelector('#usearch-slot .usearch-slot-btn')).toBeTruthy())
+    expect(document.querySelector('.usearch-dock')).toBeNull()
+  })
+
+  it('opens the palette from the sidebar row', async () => {
+    mountSidebarSlot()
+    localStorage.setItem('usearch_fab_hidden', '1')
+    draw()
+
+    const row = await waitFor(() => {
+      const el = document.querySelector('#usearch-slot .usearch-slot-main')
+      expect(el).toBeTruthy()
+      return el
+    })
+    fireEvent.click(row)
+    expect(screen.getByPlaceholderText(/Search invoices/i)).toBeTruthy()
+  })
+
+  it('puts the floating trigger back from the sidebar row', async () => {
+    // Dismissing is reversible or it is a trap: the expand glyph is the only
+    // way back, so it gets a test rather than a hope.
+    mountSidebarSlot()
+    localStorage.setItem('usearch_fab_hidden', '1')
+    draw()
+
+    const expand = await waitFor(() => {
+      const el = document.querySelector('#usearch-slot .usearch-slot-expand')
+      expect(el).toBeTruthy()
+      return el
+    })
+    fireEvent.click(expand)
+
+    expect(document.querySelector('.usearch-dock')).toBeTruthy()
+    expect(document.querySelector('#usearch-slot .usearch-slot-btn')).toBeNull()
+    expect(localStorage.getItem('usearch_fab_hidden')).toBeNull()   // survives a reload
+  })
+
+  it('offers the way back from inside the palette too', async () => {
+    // The sidebar row's glyph is display:none in the 56px collapsed rail, so
+    // it cannot be the only restore. This one is reachable in every state.
+    mountSidebarSlot()
+    localStorage.setItem('usearch_fab_hidden', '1')
+    draw()
+    await waitFor(() => expect(document.querySelector('.usearch-slot-btn')).toBeTruthy())
+
+    openPalette()
+    fireEvent.click(screen.getByText(/Show floating button/i))
+
+    expect(document.querySelector('.usearch-dock')).toBeTruthy()
+    expect(localStorage.getItem('usearch_fab_hidden')).toBeNull()
+    // Restoring closes the palette, or the change happens behind an overlay.
+    expect(screen.queryByPlaceholderText(/Search invoices/i)).toBeNull()
+  })
+
+  it('keeps the floating trigger where there is no sidebar to fall back to', async () => {
+    // /sales renders no sidebar. Honouring the stored dismiss there would
+    // leave the page with no visible way into search at all.
+    localStorage.setItem('usearch_fab_hidden', '1')
+    draw()
+    await waitFor(() => expect(document.querySelector('.usearch-dock')).toBeTruthy())
+    expect(document.querySelector('.usearch-close')).toBeNull()   // nothing to dismiss into
   })
 
   it('keeps working when the record lookup fails', async () => {

@@ -5086,6 +5086,13 @@ textarea {
   --grad-premium-soft:   linear-gradient(135deg, rgba(193, 95, 60, 0.07) 0%, rgba(79, 70, 229, 0.10) 100%);
   --shadow-premium:      0 4px 12px rgba(99, 99, 255, 0.2);
   --shadow-premium-lg:   0 8px 28px rgba(99, 99, 255, 0.28);
+  /* Bright halo for elements that must read as lit rather than merely raised.
+     box-shadow cannot take a gradient, so the two stops of --grad-premium are
+     cast as two offset shadows — warm up-left, indigo down-right — which
+     matches the 135deg the gradient itself runs at. The -lg above tops out at
+     0.28 alpha of one flat colour, which disappears against a light page. */
+  --glow-premium:       -4px 6px 22px rgba(193, 95, 60, 0.40),
+                         6px 12px 32px rgba(79, 70, 229, 0.48);
 }
 
 /* Gradient button — use for every premium/subscription CTA */
@@ -6434,4 +6441,339 @@ body.is-col-resizing * {
   .stock-body .ws-top-bar .ctl-label { display: none; }
   .khata-body .ws-top-bar .filter-dropdown-btn,
   .stock-body .ws-top-bar .filter-dropdown-btn { padding: 0 10px; }
+}
+
+/* ── Universal search (components/UniversalSearch.jsx) ──────────────────────
+   Two entry points, one palette:
+
+     .usearch-dock   floating trigger, centred over the CONTENT panel
+     .usearch-slot   the sidebar row it collapses into once dismissed
+
+   Centring is on the content panel, not the viewport, so it does not drift
+   left of the reading column. `left` starts where the sidebar ends and
+   `margin-inline: auto` does the rest — no translateX(-50%), which means the
+   hover lift cannot break the centring by forgetting to re-state it.
+   ------------------------------------------------------------------------- */
+.usearch-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 22px;
+  width: fit-content;
+  margin-inline: auto;
+  z-index: 901;                        /* one above .mobile-bottombar */
+}
+
+/* Sidebar offsets. `:has()` rather than a prop because the collapse state
+   already lives in a class on .sidebar — the same approach the POS portrait
+   overlay uses further down. No sidebar at all (/sales) falls through to the
+   viewport-centred default above. */
+@media (min-width: 769px) {
+  body:has(.sidebar) .usearch-dock { left: calc(var(--sidebar-w) + 7px); }
+  body:has(.sidebar.collapsed) .usearch-dock { left: calc(var(--sidebar-rail-w) + 7px); }
+}
+
+.usearch-fab {
+  position: relative;             /* anchors the gradient ring below */
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  height: 44px;
+  padding: 0 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  background: var(--bg-2, #1a1a1a);    /* fallback if color-mix is unsupported */
+  background: color-mix(in srgb, var(--bg-2, #1a1a1a) 62%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.22);
+  transition: gap var(--dur-slow) var(--ease), padding var(--dur-slow) var(--ease),
+              transform var(--dur-slow) var(--ease), border-color var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease);
+}
+
+/* Label and shortcut are collapsed to zero width, not display:none — width is
+   animatable, and they stay in the accessibility tree either way. */
+.usearch-fab .usearch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: max-width var(--dur-slow) var(--ease), opacity var(--dur) var(--ease);
+}
+
+/* Gradient RING, not a gradient fill. A solid gradient background turns the
+   trigger into a CTA and throws away the glass; the ring plus the halo carry
+   the premium identity while the pill still reads as a search affordance.
+   The fill stays translucent so backdrop-filter has something to do.
+
+   Standard two-layer mask: one box clipped to the content, one to the border,
+   composited so only the 1.5px rim survives. A `background: … padding-box,
+   … border-box` one-liner cannot be used here — the translucent fill would
+   let the gradient bleed through the middle. */
+.usearch-fab::before,
+.usearch-slot-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: var(--grad-premium);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.usearch-fab:hover,
+.usearch-fab:focus-visible {
+  gap: 9px;
+  padding: 0 17px;
+  transform: translateY(-2px);
+  border-color: transparent;      /* the ring takes over the edge */
+  color: var(--text-primary);
+  box-shadow: var(--glow-premium);
+}
+
+.usearch-fab:hover::before,
+.usearch-fab:focus-visible::before { opacity: 1; }
+
+.usearch-fab:hover .usearch-search-icon { color: var(--accent); }
+
+.usearch-fab:hover .usearch-label,
+.usearch-fab:focus-visible .usearch-label {
+  max-width: 200px;
+  opacity: 1;
+}
+
+/* Dismiss. Sits on the pill's shoulder, revealed with the label so it cannot
+   be hit by accident while the trigger is at rest. */
+.usearch-close {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-2, #1a1a1a);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.usearch-dock:hover .usearch-close,
+.usearch-close:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.usearch-close:hover { color: var(--text-primary); border-color: var(--border-strong); }
+
+@media (max-width: 768px) {
+  .usearch-dock {
+    bottom: calc(var(--bottombar-h) + env(safe-area-inset-bottom, 0px) + 14px);
+  }
+  /* Touch has no hover: show the label and the dismiss permanently rather
+     than never. */
+  .usearch-fab { gap: 9px; padding: 0 17px; }
+  .usearch-fab .usearch-label { max-width: 200px; opacity: 1; }
+  .usearch-close { opacity: 1; pointer-events: auto; }
+}
+
+/* ── Sidebar row (shown once the floating trigger is dismissed) ───────────── */
+.usearch-slot-btn {
+  position: relative;             /* anchors the gradient ring */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 20px);
+  margin: 6px 10px 8px;        /* sits in the footer, just above the profile */
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.usearch-slot-btn:hover,
+.usearch-slot-btn:focus-within {
+  border-color: transparent;      /* the ring takes over the edge */
+  color: var(--text-primary);
+  box-shadow: var(--glow-premium);
+}
+
+.usearch-slot-btn:hover::before,
+.usearch-slot-btn:focus-within::before { opacity: 1; }
+
+/* The row's two jobs: the body opens the palette, the glyph puts the floating
+   trigger back. Both inherit the row's colour so the gradient hover flips them
+   to white together. */
+.usearch-slot-main,
+.usearch-slot-expand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.usearch-slot-main { flex: 1; min-width: 0; }
+
+.usearch-slot-expand {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.usearch-slot-expand:hover,
+.usearch-slot-expand:focus-visible { opacity: 1; }
+
+.usearch-slot-btn .usearch-slot-text {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* In the 56px rail only the magnifier survives — same rule the nav labels
+   follow above. Geometry copied from `.sidebar.collapsed .nav-link` so the
+   tile lines up with the nav icons and the profile avatar below it. */
+.sidebar.collapsed .usearch-slot-btn {
+  width: 40px;
+  height: 40px;
+  margin: 6px auto 8px;
+  padding: 0;
+  gap: 0;
+  border-radius: 8px;
+  justify-content: center;
+}
+
+/* Without this the inner button keeps `flex: 1`, fills the tile, and leaves
+   the icon pinned to its left edge instead of centred in the box. */
+.sidebar.collapsed .usearch-slot-main {
+  flex: 0 0 auto;
+  width: 100%;
+  height: 100%;
+  gap: 0;
+  justify-content: center;
+}
+
+.sidebar.collapsed .usearch-slot-btn .usearch-slot-text,
+.sidebar.collapsed .usearch-slot-btn .usearch-slot-expand { display: none; }
+
+/* ── Palette results ─────────────────────────────────────────────────────── */
+/* Group headings stay put while the list scrolls under them. */
+.usearch-group {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 9px 10px 5px;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--bg-2, #1a1a1a);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.usearch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.usearch-row[aria-selected="true"] {
+  background: color-mix(in srgb, var(--accent, #6366f1) 16%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent, #6366f1);
+}
+
+.usearch-row .usearch-icon {
+  flex-shrink: 0;
+  display: flex;
+  color: var(--text-muted);
+}
+
+.usearch-row[aria-selected="true"] .usearch-icon { color: var(--accent, #6366f1); }
+
+.usearch-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  flex-shrink: 0;              /* the results list scrolls, this does not */
+}
+
+.usearch-foot span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Pushed to the far end so it never sits among the key hints. */
+.usearch-restore {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.usearch-restore:hover,
+.usearch-restore:focus-visible {
+  border-color: var(--accent);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-premium);
+}
+
+.usearch-fab kbd,
+.usearch-foot kbd {
+  font-size: 0.62rem;
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  line-height: 1.4;
 }
