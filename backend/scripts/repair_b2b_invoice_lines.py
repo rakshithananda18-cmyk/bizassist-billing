@@ -93,6 +93,76 @@ def _held_order_lines(db, order_number: str) -> list[dict]:
     return list(by_uid.values())
 
 
+def _post_stock(db, inv, args) -> int:
+    """Second pass: the SALE movements the dropped lines took with them.
+
+    Separate and opt-in because it is a different kind of write. Rebuilding the
+    lines restores a DOCUMENT to what it always said it was; posting stock moves
+    TODAY's on-hand figure. Same reference (`invoice` / invoice.id) and the same
+    `record_movement` the real sale path uses, so the resulting ledger rows are
+    indistinguishable from ones posted at the time.
+    """
+    from database.models import InvoiceLineItem, Product
+    from core.models import StockLedger
+    from core.stock import ledger as SL
+
+    lines = db.query(InvoiceLineItem).filter(
+        InvoiceLineItem.invoice_id == inv.id).all()
+    if not lines:
+        out("\nRefusing — no line items on this invoice. Rebuild the lines first "
+            "(run without --post-stock); stock must follow the document, not "
+            "precede it.")
+        return 1
+
+    existing_moves = db.query(StockLedger).filter(
+        StockLedger.business_id == args.business,
+        StockLedger.reference_type == "invoice",
+        StockLedger.reference_id == inv.id).count()
+    if existing_moves:
+        out(f"\nRefusing — {existing_moves} stock movement(s) already reference this "
+            "invoice. Posting again would deduct the same sale twice.")
+        return 1
+
+    out(f"\n{'PRODUCT':26} {'ON HAND':>9} {'QTY':>6} {'AFTER':>9}")
+    planned = []
+    for ln in lines:
+        product = (db.query(Product)
+                   .filter(Product.id == ln.product_id,
+                           Product.business_id == args.business).first())
+        tracked = True if product is None else (product.track_inventory is not False)
+        if not tracked or not ln.quantity:
+            out(f"  {str(ln.product_name)[:24]:24} {'—':>9} {'—':>6} "
+                f"{'(not stock-tracked)':>9}")
+            continue
+        cur = SL.current_stock(db, args.business, product_id=ln.product_id)
+        after = cur - float(ln.quantity)
+        flag = "  <-- would go NEGATIVE" if after < 0 else ""
+        out(f"  {str(ln.product_name)[:24]:24} {cur:>9} {ln.quantity:>6} {after:>9}{flag}")
+        planned.append(ln)
+
+    if not planned:
+        out("\nNothing to post — no stock-tracked line on this invoice.")
+        return 0
+
+    if not args.apply:
+        out(f"\nDRY RUN — nothing written. Re-run with --apply --post-stock to post "
+            f"{len(planned)} movement(s).")
+        return 0
+
+    for ln in planned:
+        SL.record_movement(
+            db, business_id=args.business, movement_type=SL.SALE,
+            qty_delta=-float(ln.quantity),
+            product_id=ln.product_id, product_name=ln.product_name,
+            reference_type="invoice", reference_id=inv.id,
+            note=f"sale {inv.invoice_id} (repaired)",
+            batch_no=ln.batch_no, expiry_date=ln.expiry_date,
+        )
+    db.commit()
+    out(f"\nAPPLIED. {len(planned)} SALE movement(s) posted against invoice {inv.id}.")
+    return 0
+
+
 def main() -> int:
     use_utf8_stdout()
     ap = argparse.ArgumentParser(
@@ -102,7 +172,11 @@ def main() -> int:
     ap.add_argument("--business", type=int, required=True,
                     help="business_id that owns the invoice (LOCAL id)")
     ap.add_argument("--apply", action="store_true",
-                    help="actually write the lines (default is a dry run)")
+                    help="actually write (default is a dry run)")
+    ap.add_argument("--post-stock", action="store_true", dest="post_stock",
+                    help="second pass: post the SALE movements the dropped lines "
+                         "took with them. Requires the lines to be back already, "
+                         "and refuses if any movement for this invoice exists.")
     args = ap.parse_args()
 
     from core.billing.commands import _compute_line, _round2
@@ -131,6 +205,10 @@ def main() -> int:
         out(f"Stored subtotal: {inv.subtotal}")
         out(f"Stored total   : {inv.total_amount}")
         out(f"Existing lines : {existing}")
+
+        if args.post_stock:
+            return _post_stock(db, inv, args)
+
         if existing:
             out("\nRefusing — this invoice already has line items. This script only "
                 "fills a gap; it never edits or replaces what is there.")
