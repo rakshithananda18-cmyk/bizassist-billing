@@ -1158,6 +1158,46 @@ def _serialize_orm_obj(obj, connection=None) -> dict:
                 #
                 # SQLite tolerated it because it has no aborted-transaction state,
                 # so this only ever broke against the cloud.
+                # `users` is the one FK target with no `uid` — it identifies
+                # itself by `public_id` (the BizID). Skipping it outright meant
+                # every FK into users crossed as a BARE SOURCE INTEGER, which is
+                # precisely what the BizID spine forbids: the same business is
+                # id 7 on the cloud and 126 locally.
+                #
+                # For register_shifts/shift_cash_movements that was harmless —
+                # the apply side re-points their `user_id` to the owner. But
+                # b2b_connections and b2b_orders carry seller_business_id /
+                # buyer_business_id / requested_by_business_id, and NOTHING
+                # re-points those. They arrived pointing at whatever local user
+                # happened to hold the cloud's integer, or at nothing at all, and
+                # SQLite with foreign_keys=ON rejected the insert outright:
+                # "FOREIGN KEY constraint failed", every cycle, forever.
+                #
+                # Emitting the BizID gives the receiver something it can actually
+                # resolve. Named `_bizid`, not `_uid`, because it is a different
+                # identifier with different rules — see core/identity.py.
+                if parent_table_name == "users":
+                    try:
+                        with connection.begin_nested():
+                            row = connection.execute(
+                                text('SELECT public_id, business_name FROM "users" '
+                                     f'WHERE "{fk.column.name}" = :id'),
+                                {"id": parent_val},
+                            ).fetchone()
+                        if row and row[0]:
+                            d[f"{parent_col_name}_bizid"] = str(row[0])
+                            if row[1]:
+                                # Carried so an unknown counterparty can be
+                                # stubbed with a readable name rather than a code.
+                                d[f"{parent_col_name}_bizname"] = str(row[1])
+                    except Exception as e:
+                        logging.getLogger("bizassist.sync_queue").warning(
+                            "_serialize_orm_obj: BizID lookup failed for %s.%s (%s) — "
+                            "row is still serialized without it",
+                            obj.__table__.name, parent_col_name, e,
+                        )
+                    continue
+
                 if not _parent_has_uid(parent_table_name):
                     continue
 

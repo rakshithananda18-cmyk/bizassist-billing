@@ -369,6 +369,45 @@ def resolve_parent_fk_uids(
         if raw in (None, ""):
             continue
         if parent_table == "users":
+            # `users` is not synced, so its integer ids never mean anything
+            # across the boundary. Two kinds of FK point here and they need
+            # opposite treatment:
+            #
+            #   · `user_id` on register_shifts / shift_cash_movements — the row
+            #     belongs to THIS business, so the caller re-points it to the
+            #     owner (_USER_FK_REPOINT_ENTITIES). Nothing to do here.
+            #   · the B2B party columns (seller_business_id, buyer_business_id,
+            #     requested_by_business_id) — these name a DIFFERENT business,
+            #     so re-pointing them at the owner would be a lie and leaving
+            #     the raw integer is an FK violation. They must resolve through
+            #     the counterparty's BizID, which the serializer now sends as
+            #     `<col>_bizid`.
+            #
+            # Without this branch, every b2b_connections and b2b_orders row
+            # arriving from the cloud failed with "FOREIGN KEY constraint
+            # failed" and took its line items down with it (they defer waiting
+            # for a parent order that could never land).
+            bizid = data.get(f"{fk_col}_bizid")
+            if not bizid:
+                continue          # legacy payload or a same-business user FK
+            try:
+                # The stub-or-resolve rule already exists for the data-transfer
+                # path; reusing it keeps ONE definition of what a counterparty
+                # is. An unknown counterparty becomes a directory-entry stub
+                # carrying the real BizID, so a later sync matches the same
+                # identity rather than creating a second one.
+                from core.connection.transfer import _resolve_user
+                resolved = _resolve_user(
+                    db, {}, bizid, data.get(f"{fk_col}_bizname"), create_stub=True)
+            except Exception as e:
+                logger.warning("%s: BizID resolve failed for %s.%s=%s: %s",
+                               log_prefix, table_name, fk_col, bizid, e)
+                return True       # unproven → defer, never write a guess
+            if not resolved:
+                logger.info("%s: deferring %s — counterparty BizID %s unresolvable",
+                            log_prefix, table_name, bizid)
+                return True
+            data[fk_col] = resolved
             continue
 
         try:
