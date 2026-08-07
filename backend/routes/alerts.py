@@ -164,6 +164,173 @@ def trigger_alert_manually(
         raise HTTPException(status_code=500, detail="Failed to trigger alert manually.")
 
 
+# ── GET in-app notifications ──────────────────────────────────
+#
+# The scheduled jobs in services/alert_jobs.py already work out everything an
+# owner needs told — overdue invoices, low stock, expiring batches — and then
+# hand the result to notifier.notify(), which drops it on the floor when SMTP is
+# not configured (the default). So the app has always known that fifteen products
+# are below threshold and has never had a way to say so.
+#
+# Computed on request rather than stored. There is no state a notifications table
+# would hold that the source rows do not already hold, and a stored copy would
+# need invalidating every time stock moved or an invoice was paid — which is
+# most of what this application does. These are three indexed reads scoped to one
+# business; the freshness is free.
+#
+# Read-only by construction: no writes, no side effects, safe to poll.
+
+# Defaults matching AlertConfig's column defaults, for the businesses — the
+# majority — that never opened the alerts screen. Returning nothing for them
+# would make the feature look broken rather than quiet.
+_DEFAULT_ALERT_PREFS = {
+    "alert_overdue": True, "alert_low_stock": True, "alert_expiry": True,
+    "low_stock_threshold": 10, "expiry_days_threshold": 30,
+}
+
+
+_ALERTS_OFF = {"alert_overdue": False, "alert_low_stock": False, "alert_expiry": False,
+               "low_stock_threshold": 10, "expiry_days_threshold": 30}
+
+
+def _alert_prefs(db: Session, business_id: int) -> dict:
+    """This business's alert preferences, or the defaults."""
+    cfg = db.query(AlertConfig).filter(AlertConfig.business_id == business_id).first()
+    if not cfg:
+        return _DEFAULT_ALERT_PREFS
+    if not cfg.active:
+        # `active=False` is an explicit "stop telling me". The bell honours it
+        # rather than treating itself as a separate channel the switch missed.
+        return _ALERTS_OFF
+    return {
+        "alert_overdue":         bool(cfg.alert_overdue),
+        "alert_low_stock":       bool(cfg.alert_low_stock),
+        "alert_expiry":          bool(cfg.alert_expiry),
+        "low_stock_threshold":   cfg.low_stock_threshold or 10,
+        "expiry_days_threshold": cfg.expiry_days_threshold or 30,
+    }
+
+
+@router.get("/notifications")
+def list_notifications(
+    current_user: dict = Depends(restrict_cashier),
+    db: Session = Depends(get_db),
+):
+    """What this business needs told, right now.
+
+    Same findings as the scheduled email alerts, from the same queries, minus
+    the delivery channel that silently discards them.
+    """
+    from database.models import Invoice, Inventory
+    from services.dates import parse_date_only, biz_now
+    from services.auth import resolve_business_id_in_db
+    from services.insights_service import low_stock_products
+
+    # The canonical resolver, not `current_user["id"]`. A token's integer id
+    # means nothing outside the database that issued it, and for a manager's
+    # staff token it is the STAFF row — which owns no stock and no invoices, so
+    # the bell would have shown them a permanently empty list. This resolves
+    # through the BizID to the owner row. See core/identity.py.
+    bid = resolve_business_id_in_db(current_user, db)
+    prefs = _alert_prefs(db, bid)
+    items: list[dict] = []
+
+    if prefs.get("alert_overdue"):
+        overdue = (
+            db.query(Invoice)
+            .filter(Invoice.business_id == bid, Invoice.status == "Overdue")
+            .order_by(Invoice.amount.desc())
+            .all()
+        )
+        if overdue:
+            total = sum(inv.amount or 0 for inv in overdue)
+            items.append({
+                "kind": "overdue", "severity": "warning",
+                "title": f"{len(overdue)} overdue invoice{'' if len(overdue) == 1 else 's'}",
+                "detail": f"₹{total:,.0f} outstanding. Largest: {overdue[0].customer or 'unnamed'}.",
+                "count": len(overdue),
+                "route": "/sales",
+            })
+
+    if prefs.get("alert_low_stock"):
+        # The SAME function the dashboard's "Low Stock Items" KPI calls. They sat
+        # on screen together disagreeing — "0 need restocking" beside "3 out of
+        # stock" — because this endpoint had its own copy that counted inventory
+        # BATCHES. One definition now; they cannot drift again.
+        low = low_stock_products(db, bid)
+        if low:
+            out_of_stock = [r for r in low if r[1] <= 0]
+            name, qty, floor = low[0]
+            detail = f"At or below {floor:g} units. Lowest: {name} ({qty:g})."
+            if out_of_stock:
+                detail = f"{len(out_of_stock)} already out of stock. " + detail
+            items.append({
+                "kind": "low_stock",
+                # Out of stock is not the same warning as running low — you
+                # cannot sell it at all, so it outranks the rest of the list.
+                "severity": "danger" if out_of_stock else "warning",
+                "title": f"{len(low)} product{'' if len(low) == 1 else 's'} low on stock",
+                "detail": detail,
+                "count": len(low),
+                "route": "/stock",
+            })
+
+    if prefs.get("alert_expiry"):
+        days = prefs["expiry_days_threshold"]
+        # `biz_now()`, not `datetime.today()`: expiry is a merchant wall-clock
+        # question and the server may not be in their timezone. The scheduled
+        # job still uses today() — worth aligning, but not from here.
+        today = biz_now().date()
+        batches = (
+            db.query(Inventory)
+            .filter(Inventory.business_id == bid, Inventory.expiry_date != None)  # noqa: E711
+            .all()
+        )
+        expiring, expired = [], []
+        for item in batches:
+            exp = parse_date_only(item.expiry_date)
+            if exp is None or (item.stock or 0) <= 0:
+                continue          # nothing on the shelf to lose
+            left = (exp - today).days
+            if left < 0:
+                expired.append(item)
+            elif left <= days:
+                expiring.append((item, left))
+
+        # Already-expired stock is reported SEPARATELY, and first. The email job
+        # only ever looked at `0 <= days_left <= days`, so stock that had already
+        # gone off fell out of the window and was never mentioned again — the one
+        # state where the owner most needs telling, silently skipped.
+        if expired:
+            items.append({
+                "kind": "expired", "severity": "danger",
+                "title": f"{len(expired)} batch{'' if len(expired) == 1 else 'es'} past expiry",
+                "detail": f"Still counted in stock. Oldest: {expired[0].product_name}.",
+                "count": len(expired),
+                "route": "/stock",
+            })
+        if expiring:
+            expiring.sort(key=lambda x: x[1])
+            soonest, left = expiring[0]
+            items.append({
+                "kind": "expiring", "severity": "warning",
+                "title": f"{len(expiring)} batch{'' if len(expiring) == 1 else 'es'} expiring soon",
+                "detail": f"Within {days} days. Soonest: {soonest.product_name} "
+                          f"({left} day{'' if left == 1 else 's'}).",
+                "count": len(expiring),
+                "route": "/stock",
+            })
+
+    # Most-urgent first, so the bell's colour and the first row agree.
+    order = {"danger": 0, "warning": 1, "info": 2}
+    items.sort(key=lambda i: order.get(i["severity"], 3))
+    return {
+        "items": items,
+        "count": len(items),
+        "severity": items[0]["severity"] if items else None,
+    }
+
+
 # ── GET scheduler status ──────────────────────────────────────
 
 @router.get("/scheduler")

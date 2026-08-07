@@ -412,6 +412,82 @@ img { display: block; max-width: 100%; }
   align-items: center;
 }
 
+/* The minimized-bill card in a 56px rail.
+   It is a full-width block of stacked text rows — invoice name, item count,
+   total — so in the rail it kept its natural width and spilled out of the
+   sidebar, with every line clipped down its left edge.
+
+   Collapsed to the same 40px tile the nav uses, keeping ONLY the ⚡ mark. The
+   card cannot simply be hidden: it is the sole route back to a draft bill, and
+   losing it in the rail would strand the sale. Its rows carry inline styles
+   from the JSX, hence `!important` on the two that set `display` themselves —
+   that is the case the keyword exists for, not a shortcut around specificity. */
+.sidebar.collapsed .pos-minimized-card {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  gap: 0;
+  margin-bottom: 8px;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
+/* Name / items / total rows carry inline display:flex, so !important is
+   required to override the higher-specificity inline style. */
+.sidebar.collapsed .pos-minimized-card > div:not(:first-child) {
+  display: none !important;
+}
+
+/* Header row: the inline style has display:flex + justifyContent:space-between,
+   so we need !important to centre the icon. The span text node is collapsed via
+   font-size:0; the SVG carries its own dimensions so it stays visible. */
+.sidebar.collapsed .pos-minimized-card > div:first-child {
+  display: flex !important;
+  justify-content: center !important;
+  width: 100%;
+  gap: 0;
+}
+.sidebar.collapsed .pos-minimized-card > div:first-child > span {
+  font-size: 0 !important;
+  line-height: 0 !important;
+}
+.sidebar.collapsed .pos-minimized-card > div:first-child > span svg {
+  display: block !important;
+  width: 18px !important;
+  height: 18px !important;
+  margin: 0 !important;
+}
+
+/* Discard is destructive and its 16px hit target would sit on top of the icon
+   at this width. Restore the bill first, or expand the rail. */
+.sidebar.collapsed .pos-minimized-card button {
+  display: none !important;
+}
+
+/* Same tooltip affordance as the nav icons — otherwise the rail shows an
+   unexplained ⚡ tile. */
+.sidebar.collapsed .pos-minimized-card:hover::after {
+  content: attr(data-label);
+  position: absolute;
+  /* Align to the right edge of the 56px rail (card is 40px and centered,
+     leaving 8px gutter on each side). Using the rail width keeps the tooltip
+     flush with where nav-link tooltips appear. */
+  left: calc(var(--sidebar-rail-w) + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-size: 0.78rem;
+  color: var(--text);
+  white-space: nowrap;
+  z-index: 60;
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+}
+
 .sidebar-collapse-btn {
   position: absolute;
   right: 6px;

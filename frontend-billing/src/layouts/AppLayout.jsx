@@ -2168,6 +2168,10 @@ export default function AppLayout({ children, title }) {
             {minimizedBill && (
               <div
                 className="pos-minimized-card"
+                // Read by the rail tooltip when the sidebar is collapsed, where
+                // the card shrinks to a bare ⚡ tile and every figure below is
+                // hidden. Same mechanism the nav icons use.
+                data-label={`Minimized invoice — ${minimizedBill.itemsCount} items, ₹${minimizedBill.totalAmt.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
                 onClick={() => {
                   const targetUid = user?.user_id || user?.id
                   if (targetUid) {
@@ -2230,6 +2234,7 @@ export default function AppLayout({ children, title }) {
               <div
                 className="pos-minimized-card"
                 style={{ marginTop: minimizedBill ? 10 : 0, borderLeft: '3px solid var(--accent)' }}
+                data-label={`Live view — counter ${minimizedLive.counter}`}
                 onClick={() => {
                   const targetUid = user?.user_id || user?.id
                   const targetCounter = minimizedLive.counter;
