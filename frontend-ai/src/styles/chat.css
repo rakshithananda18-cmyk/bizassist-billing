@@ -208,6 +208,22 @@ html.chat-active .chat-box {
 }
 .bot-mark--done { color: var(--accent-color); }
 
+/* Progress line beside the generating mark. The backend streams these the whole
+   time an agent run is working; without somewhere to put them a complex
+   question looked identical to a hung one for minutes at a stretch. */
+.bot-mark--gen {
+    align-items: center;
+    gap: 8px;
+}
+.bot-mark-status {
+    font-size: 0.78rem;
+    color: var(--muted-color, #8a8a8a);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 32ch;
+}
+
 /* Bot message — NO background, plain text */
 .bot {
     background: transparent;

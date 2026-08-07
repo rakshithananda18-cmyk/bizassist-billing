@@ -607,9 +607,26 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
         "meta": {"tokens": acc["in"] + acc["out"], "model": selected_model,
                  "model_tier": route, "cached": False},
     }
-    set_cached_query_response(active_user_id, user_query, envelope, history_salt)
-    _log_chat(active_user_id, user_query, full_text, session_id, session_title,
-              source="ai", model_tier=route)
+    # An answer that generated NOTHING is not an answer. Caching it serves it
+    # instantly for CACHE_TTL (600s) without re-calling the model, and logging it
+    # writes it into the owner's chat history as a real assistant turn — so one
+    # upstream blip became ten minutes of confident wrong replies plus a
+    # permanent record of them. Seen in production two seconds apart:
+    #
+    #   [AGENT-LOOP] run failed: 401 Invalid API Key
+    #   [DONE] source=ai tier=AI_COMPLEX tokens=0 cached=False
+    #   [CACHE] HIT source=ai
+    #   [DONE] source=ai tier=AI_COMPLEX tokens=0 cached=True
+    #
+    # Infrastructure failures now raise before reaching here (agent_loop), so
+    # this guard covers what is left: a model that returned empty content.
+    if full_text and full_text.strip():
+        set_cached_query_response(active_user_id, user_query, envelope, history_salt)
+        _log_chat(active_user_id, user_query, full_text, session_id, session_title,
+                  source="ai", model_tier=route)
+    else:
+        logger.warning("[AI] empty answer for user=%s tier=%s — not cached, not "
+                       "logged to history", active_user_id, route)
     yield {"type": "final", "envelope": envelope}
 
 

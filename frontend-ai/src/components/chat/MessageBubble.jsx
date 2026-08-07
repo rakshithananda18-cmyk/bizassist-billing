@@ -107,7 +107,19 @@ export default function MessageBubble({ msg, innerRef, query, sessionId, memoryF
         {msg.source && msg.source !== 'error'
           ? <div className="bot-mark bot-mark--done"><BuildingMark size={30} /></div>
           : (!msg.source && msg.source !== 'error')
-            ? <div className="bot-mark bot-mark--gen"><SkylineLoader size={34} /></div>
+            ? (
+              <div className="bot-mark bot-mark--gen">
+                <SkylineLoader size={34} />
+                {/* The backend has always sent these — "Planning query…",
+                    "Fetching invoice data…" — and Chat.jsx has always stored
+                    them on `_streamStatus`. Nothing ever rendered it, so a
+                    complex question showed a blank bubble for the whole run,
+                    which can legitimately take minutes. */}
+                {msg._streamStatus && (
+                  <span className="bot-mark-status">{msg._streamStatus}</span>
+                )}
+              </div>
+            )
             : null}
       </div>
     </div>

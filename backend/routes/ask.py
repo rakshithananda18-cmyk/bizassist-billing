@@ -11,6 +11,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 import os
+import queue
+import threading
+
+# How long a stream may stay silent before a comment frame is sent. Well under
+# the 60 s idle timeout common to reverse proxies, and far cheaper than the
+# alternative — a working request killed mid-answer.
+_HEARTBEAT_SECS = int(os.getenv("SSE_HEARTBEAT_SECS", "15"))
 
 from services.auth import get_active_user, restrict_cashier, require_plan
 from services.groq_client import make_groq_client
@@ -86,12 +93,55 @@ def ask_ai_stream(prompt: Prompt, current_user: dict = Depends(restrict_cashier)
     from services.ai_router import handle_stream
 
     def generator():
-        yield from handle_stream(
-            prompt_message=prompt.message,
-            session_id_in=prompt.session_id,
-            current_user=current_user,
-            client=_client,
-        )
+        # ── Heartbeat ────────────────────────────────────────────────────────
+        # An agent run is legitimately silent for long stretches: the LLM router
+        # call, then up to AGENT_MAX_TOOL_ROUNDS model calls at GROQ_TIMEOUT_SECS
+        # each. Nothing crossed the wire between them, so any intermediary with
+        # an idle timeout — the HF Space's proxy included — was free to drop a
+        # connection that was still working. The client then saw its reader
+        # finish with no `done` event and spun forever.
+        #
+        # A comment frame (`: …`) is the SSE no-op: it keeps the connection warm
+        # and every parser ignores it, including the `data: ` check in Chat.jsx.
+        #
+        # The pipeline is a BLOCKING generator, so it cannot be interleaved with
+        # a timer directly — iterating it parks this thread inside next() for the
+        # whole quiet period, which is exactly when a heartbeat is needed. Hence
+        # the worker thread: it feeds a queue, and this side polls with a
+        # timeout, emitting a beat whenever the queue is empty.
+        q: "queue.Queue" = queue.Queue(maxsize=64)
+        _DONE = object()
+
+        def _pump():
+            try:
+                for chunk in handle_stream(
+                    prompt_message=prompt.message,
+                    session_id_in=prompt.session_id,
+                    current_user=current_user,
+                    client=_client,
+                ):
+                    q.put(chunk)
+            except BaseException as exc:          # noqa: BLE001 — re-raised below
+                q.put(exc)
+            finally:
+                q.put(_DONE)
+
+        threading.Thread(target=_pump, name="ask-stream", daemon=True).start()
+
+        while True:
+            try:
+                item = q.get(timeout=_HEARTBEAT_SECS)
+            except queue.Empty:
+                yield ": keepalive\n\n"
+                continue
+            if item is _DONE:
+                return
+            if isinstance(item, BaseException):
+                # handle_stream already converts failures into `error` events;
+                # anything reaching here escaped it, and must not be swallowed
+                # into silence — that is the bug this endpoint is being fixed for.
+                raise item
+            yield item
 
     return StreamingResponse(
         generator(),

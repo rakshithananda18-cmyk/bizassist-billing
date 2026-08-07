@@ -30,17 +30,30 @@ MAX_ROUNDS     = int(os.getenv("AGENT_MAX_TOOL_ROUNDS", "5"))
 MAX_TOOL_CHARS = int(os.getenv("MAX_TOOL_CHARS", "4000"))
 
 
-def _friendly_error(e: Exception) -> str:
-    """Turn a raw exception into an honest, non-alarming message for the user.
-    A 429/quota error means the daily AI budget is spent, not that anything broke."""
+def _is_quota(e: Exception) -> bool:
+    """A spent budget, as opposed to something being broken.
+
+    THE DISTINCTION THIS DRAWS. Both used to become answer text, and that is the
+    difference between a true statement and a fabricated one. "The daily limit is
+    reached" is a real, correct answer to give an owner. "The advisor hit an
+    error — please try again" for a rejected API key is not: nothing the owner
+    can do fixes it, and re-asking cannot even reach the model because the reply
+    was cached. Measured on this machine's logs: 161 of 315 fresh AI turns (51%)
+    returned zero tokens — no model output at all — while being logged and shown
+    as ordinary `source=ai` answers.
+    """
     msg = str(e).lower()
-    is_quota = "429" in msg or "rate_limit" in msg or "tokens per day" in msg \
-        or "quota" in msg or getattr(e, "status_code", None) == 429
-    if is_quota:
-        return ("*The daily AI analysis limit has been reached.* Quick answers "
-                "(totals, overdue, invoices, customers) still work — only the deep "
-                "analysis pauses until the limit resets (usually within an hour).")
-    return "*The advisor hit an error — please try again.*"
+    return ("429" in msg or "rate_limit" in msg or "tokens per day" in msg
+            or "quota" in msg or getattr(e, "status_code", None) == 429)
+
+
+def _friendly_error(e: Exception) -> str:
+    """Quota text only. Anything else is not this function's to describe —
+    it propagates, and `ai_router.handle_stream` maps it to a real error event
+    (it already has the wording for a rejected key; it simply never saw one)."""
+    return ("*The daily AI analysis limit has been reached.* Quick answers "
+            "(totals, overdue, invoices, customers) still work — only the deep "
+            "analysis pauses until the limit resets (usually within an hour).")
 
 _SYSTEM = (
     "You are BIZASSIST — a sharp business advisor for a distributor, wholesaler, or retailer, "
@@ -132,7 +145,13 @@ def run_agent_loop(user_query: str, business_id: int, history: list) -> dict:
             answer = resp.choices[0].message.content or ""
     except Exception as e:
         logger.error(f"[AGENT-LOOP] run failed: {e}", exc_info=True)
-        answer = _friendly_error(e)
+        # Tokens spent before the failure are still spent — record them, then
+        # decide. A quota stop is an answer; anything else is an error and must
+        # travel as one, or the caller caches it and serves it as a real reply.
+        _log_tokens(business_id, t_in, t_out, "/ask")
+        if _is_quota(e):
+            return {"text": _friendly_error(e), "tokens_in": t_in, "tokens_out": t_out}
+        raise
     _log_tokens(business_id, t_in, t_out, "/ask")
     return {"text": answer, "tokens_in": t_in, "tokens_out": t_out}
 
@@ -193,8 +212,21 @@ def run_agent_loop_stream(user_query: str, business_id: int, history: list):
                 t_out += max(1, len(full_text) // 4)
     except Exception as e:
         logger.error(f"[AGENT-LOOP] stream failed: {e}", exc_info=True)
-        if not full_text:
+        _log_tokens(business_id, t_in, t_out, "/ask/stream")
+        if full_text:
+            # Content already reached the user. Ending the turn here keeps what
+            # they have; raising now would replace a partial answer with an
+            # error and lose it.
+            yield _sse("ag_done", tokens={"input": t_in, "output": t_out},
+                       full_text=full_text)
+            return
+        if _is_quota(e):
             yield _sse("token", content=_friendly_error(e))
+            yield _sse("ag_done", tokens={"input": t_in, "output": t_out},
+                       full_text=_friendly_error(e))
+            return
+        # Nothing was produced and it is not a budget stop — let it travel.
+        raise
 
     _log_tokens(business_id, t_in, t_out, "/ask/stream")
     yield _sse("ag_done", tokens={"input": t_in, "output": t_out}, full_text=full_text)

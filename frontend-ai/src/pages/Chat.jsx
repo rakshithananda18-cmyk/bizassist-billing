@@ -175,12 +175,18 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
       })
 
       if (!res.ok || !res.body) {
-        // Fallback: server returned an error before streaming started
-        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        // Server failed BEFORE streaming started. Two different envelopes reach
+        // here and only one was being read: the /ask pipeline raises AskError →
+        // `{error, code}`, but a FastAPI HTTPException returns `{detail}`. Every
+        // 401 / 402 (plan) / 403 (role) / 503 (no GROQ_API_KEY) is the second
+        // shape, so all of them rendered as a bare "Request failed" and the
+        // server's actual explanation — including "Add GROQ_API_KEY" — was
+        // unreachable in the UI.
+        const err = await res.json().catch(() => ({}))
         setLoading(false)
         setMessages(prev => [...prev, {
           role: 'assistant',
-          content: `❌ ${err.error || 'Request failed'}`,
+          content: `❌ ${err.error || err.detail || `Request failed (HTTP ${res.status})`}`,
           source: 'error',
         }])
         return
@@ -205,6 +211,15 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
           if (i >= 0 && msgs[i].role === 'assistant') msgs[i] = updater(msgs[i])
           return msgs
         })
+
+      // Did the server ever say it was finished? A stream can end without one
+      // of these — a proxy idle-timeout, a container restart, a dropped
+      // connection — and the reader simply returns done:true. The placeholder
+      // then keeps `source: null` forever, which MessageBubble renders as the
+      // SkylineLoader with no timeout and no error. That is the "spinner that
+      // never ends" symptom, and it is invisible in the logs because nothing
+      // threw.
+      let sawTerminal = false
 
       while (true) {
         const { done, value } = await reader.read()
@@ -237,6 +252,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
               break
 
             case 'done': {
+              sawTerminal = true
               if (evt.session_id && evt.session_id !== activeId) {
                 // We already hold this turn's messages locally (just streamed) —
                 // mark the session so the activeId effect doesn't re-fetch history
@@ -266,11 +282,27 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
             }
 
             case 'error':
+              sawTerminal = true
               if (evt.status_code === 429) triggerRateLimit(60)
               updateLast(m => ({ ...m, content: `❌ ${evt.message}`, source: 'error', _streamStatus: null }))
               break
           }
         }
+      }
+
+      // The reader finished. If neither `done` nor `error` ever arrived the
+      // turn is unresolved, and leaving it that way is the one outcome the user
+      // cannot act on. Partial text is kept — it is real output the model
+      // produced — but the bubble is closed so the loader stops.
+      if (!sawTerminal) {
+        updateLast(m => ((m.content || '').trim()
+          ? { ...m, source: m.source || 'ai', _streamStatus: null, _truncated: true }
+          : {
+              ...m,
+              content: '❌ The connection dropped before the answer arrived. Please ask again.',
+              source: 'error',
+              _streamStatus: null,
+            }))
       }
     } catch (err) {
       setLoading(false)
