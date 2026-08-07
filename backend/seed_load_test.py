@@ -17,6 +17,25 @@ from sqlalchemy.orm import Session
 # Add the backend directory to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+# ── FAIL CLOSED, exactly as the test suite does ──────────────────────────────
+# database/db.py already refuses to open a non-test database in a test context,
+# but it detects that context from BIZASSIST_TESTING or an argv basename
+# starting with "test_". This file is named `seed_` and is run by hand, so it
+# tripped NEITHER — and with no DATABASE_URL exported it silently inherited
+# .env's `sqlite:///./bizassist.db`, the REAL database.
+#
+# What that cost, measured 2026-08-08: this script inserts its business with an
+# EXPLICIT id (`User(id=business_id, …)` below). Run once against the dev DB on
+# 2026-07-23 it created users.id = 9999. SQLite then allocates MAX(id)+1
+# forever, so the next two REAL businesses signed up as 10000 and 10001 instead
+# of 134 and 135. Nothing is corrupt, but the id space never recovers, and the
+# same seed rows sit in the same tables as the real books.
+#
+# Declaring the test context here reuses that guard verbatim rather than adding
+# a second one: point DATABASE_URL at a URL containing "test" to seed, and the
+# real database is refused with the existing, explanatory error.
+os.environ["BIZASSIST_TESTING"] = "1"
+
 from database.db import SessionLocal
 from database.models import User, Product, Customer
 from core.stock import ledger as SL
