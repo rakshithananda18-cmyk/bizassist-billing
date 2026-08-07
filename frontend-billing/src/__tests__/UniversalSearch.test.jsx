@@ -349,6 +349,20 @@ describe('UniversalSearch — Ask AI', () => {
     expect(askRow()).toBeTruthy()
   })
 
+  it('does not offer it when the owner switches it off', () => {
+    mockSettings = { subscription: { plan: 'pro' }, general: { ai_search_enabled: false } }
+    draw(); openPalette(); type('why are my sales down')
+    expect(askRow()).toBeUndefined()
+  })
+
+  it('offers it when the setting has never been saved', () => {
+    // An account that predates the key must keep the current behaviour rather
+    // than silently lose the row.
+    mockSettings = { subscription: { plan: 'pro' }, general: {} }
+    draw(); openPalette(); type('why are my sales down')
+    expect(askRow()).toBeTruthy()
+  })
+
   it('does not offer it on a free plan', () => {
     mockSettings = { subscription: { plan: 'free' } }
     draw(); openPalette(); type('why are my sales down')
@@ -366,6 +380,32 @@ describe('UniversalSearch — Ask AI', () => {
     // 'sugar' is a half-typed product name, not a question.
     mockSettings = PRO
     draw(); openPalette(); type('sugar')
+    expect(askRow()).toBeUndefined()
+  })
+
+  it('does not offer it for a ONE-WORD navigation query', () => {
+    // Reported: 'setting' is 7 chars, cleared the length bar, and the assistant
+    // answered about invoice totals and a "Send Reminder" button that does not
+    // exist. One word is a page, a product or a customer — all of which the
+    // palette already resolves instantly and for free.
+    mockSettings = PRO
+    draw(); openPalette(); type('setting')
+    expect(askRow()).toBeUndefined()
+    // ...and the page match is still right there.
+    expect(screen.getByText('Settings')).toBeTruthy()
+  })
+
+  it('still offers it for a short multi-word question', () => {
+    // No question word here, and it must still qualify — a whitelist would
+    // train owners to phrase things for the parser.
+    mockSettings = PRO
+    draw(); openPalette(); type('sales down')
+    expect(askRow()).toBeTruthy()
+  })
+
+  it('ignores trailing whitespace when counting words', () => {
+    mockSettings = PRO
+    draw(); openPalette(); type('setting   ')
     expect(askRow()).toBeUndefined()
   })
 

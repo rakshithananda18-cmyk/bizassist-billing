@@ -793,6 +793,13 @@ _DEFAULT_SETTINGS = {
         "quantity_decimal_places": 2,
         "amount_decimal_places": 2,
         "app_zoom": 100,                 # UI scale percentage: 80-130
+        # Offer "Ask AI" in the search palette (Pro only; the server gate on
+        # /ask/stream is what actually enforces that). Defaults ON so nothing
+        # changes for anyone who never opens Settings, but it is switchable
+        # because the row's usefulness depends on how the owner searches: the
+        # local matchers only handle prefix-style typing, so a natural-language
+        # query finds nothing locally and falls through to the assistant.
+        "ai_search_enabled": True,
         "hosting_mode": "cloud" if "postgres" in DATABASE_URL or "postgresql" in DATABASE_URL else "local",         # local | hybrid | cloud
         "realtime_sync_global": True,
         "realtime_sync_sales": True,

@@ -804,6 +804,23 @@ export default function Settings() {
                   </div>
                   <Toggle id="privacy_mode" checked={g.privacy_mode === true} onChange={v => patch('general', 'privacy_mode', v)} />
                 </div>
+
+                {/* `!== false` so an account saved before this setting existed
+                    keeps the current behaviour instead of silently losing the
+                    row the day the key is added. */}
+                <div className="inv-row" id="set-ai_search_enabled">
+                  <div className="inv-row-body">
+                    <div className="inv-row-label">
+                      Ask AI from Search  <span className={`inv-tag ${g.ai_search_enabled !== false ? 'inv-tag-on' : 'inv-tag-off'}`}>{g.ai_search_enabled !== false ? 'ON' : 'OFF'}</span>
+                    </div>
+                    <div className="inv-row-hint">
+                      Offers &quot;Ask AI&quot; in the search palette (Ctrl+Space) for questions of
+                      two words or more. Turn off to keep search to records, pages and settings only.
+                      Requires the Pro plan; never runs while you type.
+                    </div>
+                  </div>
+                  <Toggle id="ai_search_enabled" checked={g.ai_search_enabled !== false} onChange={v => patch('general', 'ai_search_enabled', v)} />
+                </div>
               </div>
 
               {!isCashier && (

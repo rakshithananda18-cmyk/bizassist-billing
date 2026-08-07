@@ -64,6 +64,7 @@ export const PAGE_INDEX = [
  * grows without a speculative sweep through a 2,500-line file.
  */
 export const SETTINGS_INDEX = [
+  { tab: 'general', key: 'ai_search_enabled',    label: 'Ask AI from Search' },
   { tab: 'print', key: 'theme_color',            label: 'Invoice Theme Colour' },
   { tab: 'print', key: 'text_size',              label: 'Text Size' },
   { tab: 'print', key: 'thermal_page_size',      label: 'Thermal Page Size' },

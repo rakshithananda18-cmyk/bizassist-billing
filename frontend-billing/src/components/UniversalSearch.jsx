@@ -37,9 +37,28 @@ import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
  */
 
 const DEBOUNCE_MS = 250
-// Below this the query is more likely a half-typed product name than a
-// question, and offering to spend router tokens on it is noise.
+
+/** Is this typed text a QUESTION, or is it a thing the owner is navigating to?
+ *
+ *  Length alone was not enough. `setting` is seven characters and offered the
+ *  assistant, which duly spent router tokens answering a question nobody asked
+ *  — it replied about invoice totals and pointed at a "Send Reminder" button
+ *  that does not exist. One word is a product, a customer or a page; the
+ *  palette already resolves those instantly and for free.
+ *
+ *  Two signals, both cheap and local:
+ *    · at least two words — a single token is a name, not a question
+ *    · still long enough to be more than an abbreviation
+ *
+ *  Deliberately NOT a question-word whitelist ("why/how/what…"): "sales down
+ *  vs last month" is a fair question with no question word in it, and a
+ *  whitelist would quietly train owners to phrase things for the parser. */
 const MIN_ASK_CHARS = 6
+const MIN_ASK_WORDS = 2
+
+function looksLikeAQuestion(q) {
+  return q.length >= MIN_ASK_CHARS && q.split(/\s+/).filter(Boolean).length >= MIN_ASK_WORDS
+}
 const MAX_RECORDS = 8
 const MAX_STATIC = 4
 
@@ -104,7 +123,12 @@ export default function UniversalSearch() {
   // Mirrored here so a free plan is never SHOWN a control that would 402: the
   // server decides, the client just avoids offering a dead end.
   const isPro = ((settings?.subscription?.plan || '').toLowerCase() === 'pro')
-  const aiEligible = isPro && !isCashier && !aiUnavailable
+  // Owner's own switch (Settings → General). `!== false` so an account saved
+  // before the key existed keeps the current behaviour rather than silently
+  // losing the row. This is a PREFERENCE, not a security control — the gate
+  // that matters is server-side on /ask/stream.
+  const aiSearchOn = settings?.general?.ai_search_enabled !== false
+  const aiEligible = isPro && aiSearchOn && !isCashier && !aiUnavailable
 
   // ── Results ───────────────────────────────────────────────────────────────
   const results = React.useMemo(() => {
@@ -131,9 +155,8 @@ export default function UniversalSearch() {
       Icon: KIND_META[r.kind]?.Icon || SearchIcon,
     })).filter(r => r.route)
     // LAST, always. A record the owner was reaching for must never be pushed
-    // down the list by an offer to think about it instead. Below MIN_ASK_CHARS
-    // the query is more likely a half-typed name than a question.
-    const aiRow = (aiEligible && q.length >= MIN_ASK_CHARS) ? [{
+    // down the list by an offer to think about it instead.
+    const aiRow = (aiEligible && looksLikeAQuestion(q)) ? [{
       group: 'Ask AI', label: q, hint: 'Ask the assistant', ask: true, Icon: SparkleIcon,
     }] : []
     return [...recs, ...pages, ...settingsRows, ...aiRow]
