@@ -29,6 +29,7 @@ from services.auth import get_active_user
 from services.realtime import realtime_manager
 from core.billing import commands as billing
 from core.billing import print_payload as PP
+from core.billing import sequence as SEQ
 from core.catalog import barcode as PB
 from core import templates as T
 from core.sync.idempotency import ReplayGuard, replay_guard
@@ -217,6 +218,44 @@ def resolve_barcode(code: str,
     if p is None:
         raise HTTPException(status_code=404, detail=f"No product for barcode '{code}'")
     return _product_out(p)
+
+
+@router.get("/sales/next-number")
+def next_invoice_number_preview(
+    counter_prefix: Optional[str] = None,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db),
+):
+    """The number the NEXT sale in this counter's series will get. Reserves
+    nothing — display only.
+
+    WHY THIS EXISTS. The POS used to derive the number it shows from the invoice
+    list it already had in memory, and that list is fetched with a SEVEN-DAY
+    window (`/billing/invoices?from_date=…`, pages/Sales.jsx). A counter that had
+    not billed for a week saw an empty series and restarted its display at 0001 —
+    observed on business 126, whose draft tab read `LCL-OW-0001` while
+    `LCL-OW-0001..0003` had existed since 2026-07-03. The number that finally got
+    SAVED was always correct, because the server allocates it; only the number
+    the operator was looking at beforehand was wrong, which is worse than it
+    sounds on a counter where the operator reads it aloud.
+
+    `sequence.peek_number` alone is not enough: it reads `document_sequences`,
+    and that row does not exist until the series is first allocated through the
+    server (business 126 has no rows at all). So this applies the same heal
+    `next_number` does — the max of the persisted counter and the highest number
+    actually present in the series.
+    """
+    bid = current_user["id"]
+    series = SEQ.normalize_series(counter_prefix)
+    counter = SEQ.current_value(db, bid, series)
+    observed = billing._series_max(db, bid, series)
+    return {
+        "series": series,
+        "next": SEQ.format_number(series, max(counter, observed) + 1),
+        # The floor the client should never number below, so multi-tab naming can
+        # keep distributing from here without re-deriving it from a partial list.
+        "last": max(counter, observed),
+    }
 
 
 @router.get("/sales/{invoice_no}")

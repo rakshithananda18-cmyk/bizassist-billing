@@ -795,8 +795,32 @@ export default function Sales(props = {}) {
   // had the global-max number, which scrambles multi-counter numbering).
   // Series math + tab re-numbering are pure (lib/posInvoiceNumbers.js); this
   // page only binds the current counter prefix.
+  // The server's last-issued number for this counter's series. `dbInvoices` is
+  // fetched with a seven-day window, so on its own it makes a counter that has
+  // not billed this week look brand new and restart the DISPLAYED number at
+  // 0001. A ref, not state: it is a floor for the next naming pass, and making
+  // it state would re-render every tab each time it refreshed.
+  const seriesFloorRef = useRef(0)
+
+  const refreshSeriesFloor = useCallback(async () => {
+    const series = getCounterPrefix().replace(/-$/, '')
+    try {
+      const res = await authFetch(`/sales/next-number?counter_prefix=${encodeURIComponent(series)}`)
+      if (!res.ok) return
+      const d = await res.json()
+      if (Number.isFinite(Number(d?.last))) seriesFloorRef.current = Number(d.last)
+    } catch (err) {
+      // Display-only. The SAVED number is allocated server-side regardless, so a
+      // failed preview must never block billing — it just falls back to what the
+      // in-memory list can see.
+      logger.error('[POS] next-number preview failed:', err)
+    }
+  }, [authFetch, getCounterPrefix])
+
+  useEffect(() => { refreshSeriesFloor() }, [refreshSeriesFloor])
+
   const syncTabNames = useCallback((currentTabs, existingInvoices) =>
-    syncTabNamesFor(currentTabs, existingInvoices, getCounterPrefix()),
+    syncTabNamesFor(currentTabs, existingInvoices, getCounterPrefix(), seriesFloorRef.current),
   [getCounterPrefix])
 
   // Load business settings once on mount. ROOT-CAUSE FIX: `settings` was local
@@ -884,7 +908,7 @@ export default function Sales(props = {}) {
   }, [form.items.length])
 
   const getNextInvoiceNo = useCallback((existingInvoices) =>
-    nextInvoiceNo(existingInvoices, getCounterPrefix()),
+    nextInvoiceNo(existingInvoices, getCounterPrefix(), seriesFloorRef.current),
   [getCounterPrefix])
 
   // matchesKey now lives in lib/posKeys.js (imported above).

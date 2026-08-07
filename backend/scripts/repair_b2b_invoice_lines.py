@@ -93,6 +93,72 @@ def _held_order_lines(db, order_number: str) -> list[dict]:
     return list(by_uid.values())
 
 
+def _reverse_stock(db, inv, args) -> int:
+    """Undo a `--post-stock` that should not have run.
+
+    WHY THIS EXISTS. `--post-stock` decides "was this sale already deducted?" by
+    looking for ledger rows whose reference is (`invoice`, invoice.id). That test
+    is not sufficient: on B2B-ORD-20260805-0001 the seller's six SALE movements
+    were posted at the time against reference_id 841 — an invoice id belonging to
+    a DIFFERENT business — so the check found nothing and the sale was deducted a
+    second time.
+
+    Compensating ADJUSTMENT rows rather than a DELETE, for two reasons: the rows
+    have already pushed to the cloud (a local delete would not reach them, and
+    stock_ledger is on the append-only delete blocklist), and an append-only
+    ledger should show that a mistake was made and reversed, not pretend it never
+    happened.
+    """
+    from core.models import StockLedger
+    from core.stock import ledger as SL
+
+    moves = (db.query(StockLedger)
+             .filter(StockLedger.business_id == args.business,
+                     StockLedger.reference_type == "invoice",
+                     StockLedger.reference_id == inv.id,
+                     StockLedger.movement_type == SL.SALE)
+             .order_by(StockLedger.id).all())
+    if not moves:
+        out("\nNothing to reverse — no SALE movement references this invoice.")
+        return 1
+
+    net = sum(float(m.qty_delta or 0) for m in
+              db.query(StockLedger).filter(
+                  StockLedger.business_id == args.business,
+                  StockLedger.reference_type == "invoice",
+                  StockLedger.reference_id == inv.id).all())
+    if abs(net) < 1e-9:
+        out(f"\nRefusing — movements for this invoice already net to zero "
+            f"({len(moves)} sale row(s) with matching reversals). Reversing again "
+            "would inflate stock.")
+        return 1
+
+    out(f"\n{'PRODUCT':26} {'ON HAND':>9} {'REVERSE':>8} {'AFTER':>9}")
+    for m in moves:
+        cur = SL.current_stock(db, args.business, product_id=m.product_id)
+        out(f"  {str(m.product_name)[:24]:24} {cur:>9} {-float(m.qty_delta):>8} "
+            f"{cur - float(m.qty_delta):>9}")
+
+    if not args.apply:
+        out(f"\nDRY RUN — nothing written. Re-run with --apply --reverse-stock to "
+            f"post {len(moves)} compensating movement(s).")
+        return 0
+
+    for m in moves:
+        SL.record_movement(
+            db, business_id=args.business, movement_type=SL.ADJUSTMENT,
+            qty_delta=-float(m.qty_delta),
+            product_id=m.product_id, product_name=m.product_name,
+            reference_type="invoice", reference_id=inv.id,
+            note=f"reversal: {inv.invoice_id} was already deducted under another "
+                 f"reference; ledger row {m.id} posted in error",
+        )
+    db.commit()
+    out(f"\nAPPLIED. {len(moves)} compensating ADJUSTMENT(s) posted. On-hand is "
+        "back to what it was before the erroneous deduction.")
+    return 0
+
+
 def _post_stock(db, inv, args) -> int:
     """Second pass: the SALE movements the dropped lines took with them.
 
@@ -177,6 +243,10 @@ def main() -> int:
                     help="second pass: post the SALE movements the dropped lines "
                          "took with them. Requires the lines to be back already, "
                          "and refuses if any movement for this invoice exists.")
+    ap.add_argument("--reverse-stock", action="store_true", dest="reverse_stock",
+                    help="undo a --post-stock that should not have run, with "
+                         "compensating ADJUSTMENT movements. Use when the sale was "
+                         "already deducted under a DIFFERENT reference.")
     args = ap.parse_args()
 
     from core.billing.commands import _compute_line, _round2
@@ -206,6 +276,8 @@ def main() -> int:
         out(f"Stored total   : {inv.total_amount}")
         out(f"Existing lines : {existing}")
 
+        if args.reverse_stock:
+            return _reverse_stock(db, inv, args)
         if args.post_stock:
             return _post_stock(db, inv, args)
 
