@@ -118,6 +118,74 @@ describe('two-leg sync', () => {
     }
   })
 
+  it('does not re-upload what leg 1 just brought down', async () => {
+    // Leg 2 writes into the database leg 1 read, so leg 1's rows are already
+    // there and the far end would only skip them. Sending them anyway cost a
+    // second full tenant — 32.6 MB on the load-test business.
+    const cloudRows = [{ uid: 'a' }, { uid: 'b' }, { uid: 'c' }]
+    const bodies = []
+    mockFetch((url, opts) => {
+      if (url.includes('/export')) {
+        // Leg 2 reads the local DB *after* leg 1 landed: the cloud's three rows
+        // plus one that only ever existed on this device.
+        return ok(url.startsWith(CLOUD_URL)
+          ? { tables: { customers: cloudRows } }
+          : { tables: { customers: [...cloudRows, { uid: 'local-only' }] } })
+      }
+      if (url.includes('/import')) {
+        bodies.push(JSON.parse(opts.body))
+        return ok({ imported: {}, total: 0 })
+      }
+      return null
+    })
+
+    render(<BackupModal token="t" direction="both" />)
+    await waitFor(() => expect(screen.getByText(/Sync complete/i)).toBeTruthy())
+
+    expect(bodies[0].tables.customers).toHaveLength(3)              // leg 1: unfiltered
+    expect(bodies[1].tables.customers.map(r => r.uid)).toEqual(['local-only'])
+  })
+
+  it('still uploads an old row the cloud never got', async () => {
+    // The self-healing property a `since` filter would have destroyed: this row
+    // predates every sync stamp, and it is exactly the row that must travel.
+    const bodies = []
+    mockFetch((url, opts) => {
+      if (url.includes('/export')) {
+        return ok(url.startsWith(CLOUD_URL)
+          ? { tables: { customers: [{ uid: 'shared' }] } }
+          : { tables: { customers: [{ uid: 'shared' }, { uid: 'stranded-2019' }] } })
+      }
+      if (url.includes('/import')) {
+        bodies.push(JSON.parse(opts.body))
+        return ok({ imported: { customers: 1 }, total: 1 })
+      }
+      return null
+    })
+
+    render(<BackupModal token="t" direction="both" />)
+    await waitFor(() => expect(screen.getByText(/Sync complete/i)).toBeTruthy())
+    expect(bodies[1].tables.customers.map(r => r.uid)).toContain('stranded-2019')
+  })
+
+  it('keeps rows that carry no uid', async () => {
+    // `users` has no uid — it identifies by public_id. With no key that is safe
+    // to match on, the only correct move is to send the row.
+    const bodies = []
+    mockFetch((url, opts) => {
+      if (url.includes('/export')) return ok({ tables: { users: [{ id: 1, username: 'owner' }] } })
+      if (url.includes('/import')) {
+        bodies.push(JSON.parse(opts.body))
+        return ok({ imported: {}, total: 0 })
+      }
+      return null
+    })
+
+    render(<BackupModal token="t" direction="both" />)
+    await waitFor(() => expect(screen.getByText(/Sync complete/i)).toBeTruthy())
+    expect(bodies[1].tables.users).toHaveLength(1)
+  })
+
   it('says nothing was missing rather than claiming work', async () => {
     mockFetch((url) => {
       if (url.includes('/export')) return ok(exportBody(9))

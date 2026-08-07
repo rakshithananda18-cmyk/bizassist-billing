@@ -30,13 +30,10 @@ import { CheckIcon, CloseIcon, ShieldIcon, SyncIcon } from '../Icons'
  * is why the Settings control runs both. Both legs are idempotent, so a retry
  * (or a second press) re-imports nothing.
  *
- * ponytail: leg 2 re-uploads everything leg 1 just downloaded — `export` has no
- * since-filter, so a full round trip moves the whole tenant twice. Measured on
- * the 10k-invoice load-test business: 55,064 rows / 32.6 MB per leg, nearly all
- * of it discarded as already-present. Shipped anyway because it costs exactly
- * what pressing the two old buttons cost, and a real shop is orders of magnitude
- * smaller. Upgrade path when it bites: give `/api/data-transfer/export` a
- * `since` parameter and pass the leg's own `bizassist_last_sync_*` stamp.
+ * Leg 2 no longer re-uploads what leg 1 just brought down — see
+ * `withoutAlreadyThere` below. That used to cost a second full tenant: 55,064
+ * rows / 32.6 MB on the 10k-invoice load-test business, nearly all of it
+ * discarded at the far end as already-present.
  */
 const LEGS = {
   'cloud-to-local': {
@@ -100,6 +97,47 @@ function countRows(exportPayload) {
     .reduce((s, rows) => s + (Array.isArray(rows) ? rows.length : 0), 0)
 }
 
+/** Per-table set of the `uid`s an export payload carries. */
+function uidIndex(tables) {
+  const idx = {}
+  for (const [name, rows] of Object.entries(tables || {})) {
+    if (Array.isArray(rows)) idx[name] = new Set(rows.map(r => r?.uid).filter(Boolean))
+  }
+  return idx
+}
+
+/**
+ * Drop the rows the destination provably already holds.
+ *
+ * On a 'both' run, leg 2 uploads INTO the very database leg 1 just read, so
+ * every row in leg 1's payload is present up there by definition. Matching on
+ * `uid` because that is the importer's own primary dedupe key (`_uid_lookup`,
+ * routes/data_transfer.py) — these rows are SKIPPED server-side regardless, so
+ * this changes what crosses the wire and never what ends up stored.
+ *
+ * NOT a `since` filter, which is what this once pointed at as the fix. The only
+ * timestamp on hand is a client-side `new Date()`, and making a round trip
+ * depend on two machines agreeing about the time is exactly what the outbox's
+ * cloud-issued cursor exists to avoid (see the note above). A set difference
+ * needs no clock. It also keeps the pass self-healing: a row missing from leg
+ * 1's payload is still uploaded, however old it is — a `since` filter would
+ * skip it forever.
+ *
+ * Rows carrying no `uid` are always kept. `users` has none (it identifies by
+ * public_id), and without a uid there is no key here that is safe to match on.
+ */
+function withoutAlreadyThere(tables, seen) {
+  if (!seen) return tables
+  const out = {}
+  for (const [name, rows] of Object.entries(tables || {})) {
+    const known = seen[name]
+    out[name] = (known && Array.isArray(rows))
+      ? rows.filter(r => !(r?.uid && known.has(r.uid)))
+      : rows
+  }
+  return out
+}
+
 export default function BackupModal({ token, direction = 'both', onComplete, onError }) {
   const plan = PLANS[direction] || PLANS['both']
 
@@ -157,13 +195,16 @@ export default function BackupModal({ token, direction = 'both', onComplete, onE
     const acc = {}
     let step = 0
     let lastDst = LOCAL_URL
+    // uid index of what the previous leg read, when that source is also the
+    // next leg's destination. Null on the first leg and on any one-leg run.
+    let seen = null
 
     const applied = () => plan.legs
       .filter(k => acc[k]?.total != null)
       .map(k => `${LEGS[k].result.toLowerCase()} ${acc[k].total} record${acc[k].total === 1 ? '' : 's'}`)
 
     try {
-      for (const legKey of plan.legs) {
+      for (const [li, legKey] of plan.legs.entries()) {
         const leg = LEGS[legKey]
         lastDst = leg.dst
 
@@ -173,7 +214,20 @@ export default function BackupModal({ token, direction = 'both', onComplete, onE
         if (!exRes.ok) throw new Error(`Could not read from the source: HTTP ${exRes.status}`)
         const exportData = await exRes.json()
         if (cancelled.current) return
-        acc[legKey] = { read: countRows(exportData) }
+
+        // Index this payload for the NEXT leg, but only when that leg writes
+        // back into the database we just read from — true for 'both', where
+        // leg 1 reads the cloud and leg 2 writes to it.
+        const nextLeg = LEGS[plan.legs[li + 1]]
+        const forNextLeg = nextLeg && nextLeg.dst === leg.src
+          ? uidIndex(exportData?.tables || {})
+          : null
+
+        // `read` is what this leg will actually send, not what the source holds
+        // — the difference is the rows the destination already has.
+        const tables = withoutAlreadyThere(exportData?.tables || {}, seen)
+        seen = forNextLeg
+        acc[legKey] = { read: countRows({ tables }) }
         setResults({ ...acc })
         mark(step, 'done'); step++
 
@@ -184,7 +238,7 @@ export default function BackupModal({ token, direction = 'both', onComplete, onE
         advance(step); setProgress(Math.round((step / STEPS.length) * 100))
         const imRes = await fetch(`${leg.dst}/api/data-transfer/import?remap_ids=true`, {
           method: 'POST', headers: headersFor(leg.dst),
-          body: JSON.stringify({ tables: exportData?.tables || {} }),
+          body: JSON.stringify({ tables }),
         })
         if (!imRes.ok) {
           // A cloud-side 401 means the cloud sync token is missing/expired (it's a
