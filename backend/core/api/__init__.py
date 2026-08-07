@@ -29,6 +29,7 @@ from core.api.compliance import router as compliance_router
 from core.api.sync import router as sync_router
 from core.api.realtime import router as realtime_router
 from core.api.biz_id import router as biz_id_router
+from core.api.search import router as search_router
 
 core_router = APIRouter()
 core_router.include_router(sales_router)
@@ -51,5 +52,6 @@ core_router.include_router(compliance_router)
 core_router.include_router(sync_router)
 core_router.include_router(realtime_router)
 core_router.include_router(biz_id_router)
+core_router.include_router(search_router)
 
 __all__ = ["core_router"]
