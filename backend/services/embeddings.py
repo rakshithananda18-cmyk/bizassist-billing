@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import threading
 import time
 from datetime import datetime
 from typing import Optional, Any
@@ -14,6 +15,38 @@ logger = logging.getLogger("bizassist.embeddings")
 
 CHROMA_DB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "chroma_db"))
 _chroma_client = None
+
+# ── Why this feature has an off switch ───────────────────────────────────────
+# Observed 2026-08-07, reproduced twice: a request reached
+# `[CHROMA] Initialized persistent client` and the ENTIRE backend stopped —
+# not just that request. No further log lines at all, including the sync worker
+# that had been running every 15 s and the APScheduler jobs. The process was
+# alive and accepting connections; nothing ever answered.
+#
+# The block is inside the persisted HNSW segment, in native code, while holding
+# the GIL: `faulthandler.dump_traceback_later(..., exit=True)` armed on a
+# separate thread never fired. That is the important property — NO Python-level
+# timeout, thread, or `except` can rescue it, because no Python bytecode runs
+# anywhere in the process until the native call returns.
+#
+# Correlation, in order: worker pid 14696 froze mid-Chroma; an independent probe
+# process then blocked on the same collection while a sibling collection in the
+# same client answered in 0.17 s; uvicorn's --reload respawned the worker after
+# an unrelated file edit; the probe immediately returned in 0.10 s. Shared
+# access to one persisted HNSW index — and `--reload` runs two processes that
+# both import this module.
+#
+# So: chat memory is a NICE-TO-HAVE (semantic recall of past conversations to
+# enrich AI_SIMPLE prompts) that can take the whole product down. It gets a kill
+# switch that needs no code change or redeploy, and a lock that at least stops
+# this process contending with itself.
+CHAT_MEMORY_ENABLED = os.getenv("CHAT_MEMORY_ENABLED", "1") != "0"
+
+# Serialises Chroma access WITHIN this process. It cannot help across processes
+# (that needs the kill switch above, or a single-writer design), but it removes
+# the case we can actually control: request threads, the scheduler and the sync
+# worker all reaching the same index at once.
+_chroma_lock = threading.Lock()
 
 # ── Local embedding model (free, no API key needed) ──────────────────
 # all-MiniLM-L6-v2: 22MB, 384-dim, fast on CPU, good semantic quality.
@@ -149,24 +182,32 @@ def save_chat_memory(business_id: int, session_id: str, session_title: str, user
     """
     Saves a QA conversation turn to Chroma vector database for semantic retrieval.
     """
+    if not CHAT_MEMORY_ENABLED:
+        return
     try:
         collection = get_chat_memory_collection()
         embedding = generate_embedding(user_query)
+        # Logged either side of the native call, because when this froze the last
+        # line in the log was "Initialized persistent client" — which pointed at
+        # client construction (0.12 s, never the problem) instead of the write.
+        # An unmatched "writing" line is now the signature of the freeze.
+        logger.debug("[CHROMA] writing chat turn for business %s", business_id)
         doc_id = f"chat_{business_id}_{session_id}_{int(time.time())}_{np.random.randint(1000, 9999)}"
         
-        collection.add(
-            ids=[doc_id],
-            embeddings=[embedding],
-            metadatas=[{
-                "business_id": int(business_id),
-                "session_id": str(session_id),
-                "session_title": str(session_title or "Untitled Conversation"),
-                "user_query": str(user_query),
-                "assistant_response": str(assistant_response),
-                "timestamp": utc_now().isoformat()
-            }],
-            documents=[user_query]
-        )
+        with _chroma_lock:
+            collection.add(
+                ids=[doc_id],
+                embeddings=[embedding],
+                metadatas=[{
+                    "business_id": int(business_id),
+                    "session_id": str(session_id),
+                    "session_title": str(session_title or "Untitled Conversation"),
+                    "user_query": str(user_query),
+                    "assistant_response": str(assistant_response),
+                    "timestamp": utc_now().isoformat()
+                }],
+                documents=[user_query]
+            )
         logger.info(f"[CHROMA] Saved chat turn for user {business_id}, session {session_id}")
     except Exception as e:
         logger.error(f"[CHROMA] Failed to save chat memory: {e}", exc_info=True)
@@ -177,6 +218,8 @@ def search_chat_memories(business_id: int, query: str, limit: int = 3) -> str:
     returning a formatted context block.
     Skips gracefully if model is still loading (returns empty string).
     """
+    if not CHAT_MEMORY_ENABLED:
+        return ""
     if not is_model_ready():
         logger.debug("[CHROMA] Model not ready yet — skipping memory search.")
         return ""
