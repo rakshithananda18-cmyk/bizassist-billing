@@ -2029,6 +2029,22 @@ img { display: block; max-width: 100%; }
 .fade-in  { animation: fadeIn  200ms var(--ease); }
 .slide-up { animation: slideUp 220ms var(--ease); display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
+/* A card dropped straight into .slide-up must keep its content height.
+   .slide-up is `flex: 1; min-height: 0`, so it is exactly as tall as the
+   scrolling .page-content and never taller. Its children are flex items, and
+   the automatic minimum size that would normally stop one shrinking below its
+   content applies ONLY to items with `overflow: visible` — .card sets
+   `overflow: hidden`, so its min-height resolves to 0. The card was being
+   squashed into the leftover space and clipping the rest, which is why a long
+   form (Profile) had no scrollbar: nothing ever overflowed into the scroll
+   container to scroll.
+
+   Scoped to .card because it is the element carrying `overflow: hidden`;
+   ordinary divs are already protected. A card that genuinely wants to fill the
+   viewport and scroll internally declares its own `flex` inline, and that wins
+   over this. */
+.slide-up > .card { flex-shrink: 0; }
+
 /* === UTILITIES === */
 .flex       { display: flex; }
 .flex-col   { display: flex; flex-direction: column; }
