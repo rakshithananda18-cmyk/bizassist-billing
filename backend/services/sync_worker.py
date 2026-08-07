@@ -2198,6 +2198,11 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
     """
     _conflicts = 0
     _hook_failure = None
+    # Set only on the LWW branch below, read unconditionally further down — an
+    # INSERT (no existing row) never reaches the assignment, so these must exist
+    # from the start or a brand-new row raises NameError inside the savepoint.
+    _conflict_pending = False
+    _conflict_local_ts = None
     rec_uid = record.get("uid")
     rec_id = record.get("id")
     if not rec_id and not rec_uid:
@@ -2413,51 +2418,25 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
             # Local version is newer, skip cloud version
             return _Applied("skipped", reason="lww-local-newer")
 
-        # (M-8) The cloud version is newer and is about to
-        # overwrite a LOCAL financial row. LWW is correct and
-        # unchanged — but a money record edited in two places
-        # must not have one version vanish without trace.
-        # Snapshot the losing side BEFORE we clobber it.
+        # (M-8 / R-9) The cloud version is newer and is about to overwrite a
+        # local row. LWW is correct and unchanged — but a record edited in two
+        # places must not have one version vanish without trace, so the losing
+        # side is snapshotted before the clobber.
         #
-        # This check existed on the push path only, so an
-        # overwrite arriving by PULL was silently lost — the
-        # same one-directional blind spot as M-7.
-        if _apply_hooks.log_financial_conflict(
-            db,
-            business_id=business_id,
-            entity=table_name,
-            entity_id=getattr(existing, "id", rec_id),
-            incoming=dict(record),
-            existing_row=existing,
-            incoming_updated_at=cloud_updated_at,
-            existing_updated_at=local_updated_at,
-            # On the PULL path `incoming` is the CLOUD row and `existing`
-            # is this device's. Without this the ConflictLog columns —
-            # and the "This device / Cloud" labels in Ops — come out
-            # backwards.
-            incoming_is_local=False,
-            log_prefix="[SYNC_WORKER]",
-        ):
-            _conflicts += 1
-
-        # (R-9) Non-financial master-data: log the losing
-        # local version before the cloud version lands.
-        if _apply_hooks.log_master_data_conflict(
-            db,
-            business_id=business_id,
-            entity=table_name,
-            entity_id=getattr(existing, "id", rec_id),
-            incoming=dict(record),
-            existing_row=existing,
-            incoming_updated_at=cloud_updated_at,
-            existing_updated_at=local_updated_at,
-            resolution="cloud_won",
-            # Same as the financial hook above: on PULL, `incoming` is the
-            # CLOUD row and `existing` is this device's.
-            incoming_is_local=False,
-            log_prefix="[SYNC_WORKER]",
-        ):
-            _conflicts += 1
+        # NOT LOGGED HERE. The parent-FK check further down can still DEFER this
+        # row, and a deferred row is never written at all — so logging at this
+        # point recorded an overwrite that did not happen, ONCE PER ATTEMPT. The
+        # inbox retries a deferred row up to MAX_AUTO_ATTEMPTS (7) times, so one
+        # invoice waiting on an absent customer produced 8 identical ConflictLog
+        # rows, same entity, same two timestamps, and the owner's review list
+        # filled with copies of a conflict that had never occurred.
+        #
+        # The decision is made here (this is where LWW resolves and where
+        # `local_updated_at` exists); the RECORD is written below, after the row
+        # is known to be applying. Still before any field is touched, so the
+        # snapshot is of the losing version.
+        _conflict_pending = True
+        _conflict_local_ts = local_updated_at
 
 
     # Apply field updates inside a per-row SAVEPOINT so a
@@ -2512,6 +2491,45 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
                                   business_id=business_id,
                                   log_prefix="[SYNC_WORKER]"):
             return _Applied("deferred")
+
+        # The row is now going to be written, so the overwrite is real and the
+        # losing version is worth recording. Deliberately after the deferral
+        # return above and before the first `setattr` below — a conflict logged
+        # any earlier describes a write that may never happen, and any later
+        # would snapshot the row after it had already been overwritten.
+        if _conflict_pending:
+            if _apply_hooks.log_financial_conflict(
+                db,
+                business_id=business_id,
+                entity=table_name,
+                entity_id=getattr(existing, "id", rec_id),
+                incoming=dict(record),
+                existing_row=existing,
+                incoming_updated_at=cloud_updated_at,
+                existing_updated_at=_conflict_local_ts,
+                # On the PULL path `incoming` is the CLOUD row and `existing`
+                # is this device's. Without this the ConflictLog columns — and
+                # the "This device / Cloud" labels in Ops — come out backwards.
+                incoming_is_local=False,
+                log_prefix="[SYNC_WORKER]",
+            ):
+                _conflicts += 1
+
+            # (R-9) Non-financial master-data: same rule, different table set.
+            if _apply_hooks.log_master_data_conflict(
+                db,
+                business_id=business_id,
+                entity=table_name,
+                entity_id=getattr(existing, "id", rec_id),
+                incoming=dict(record),
+                existing_row=existing,
+                incoming_updated_at=cloud_updated_at,
+                existing_updated_at=_conflict_local_ts,
+                resolution="cloud_won",
+                incoming_is_local=False,
+                log_prefix="[SYNC_WORKER]",
+            ):
+                _conflicts += 1
 
         target_obj = existing if existing else model_cls()
 
