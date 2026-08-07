@@ -12,6 +12,7 @@ import {
  *  button is decoration. The sidebar row is the permanent way back. */
 const HIDE_KEY = 'usearch_fab_hidden'
 import { matchPages, matchSettings, settingsRoute } from '../config/searchIndex'
+import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
 
 /**
  * UniversalSearch — one place to find anything, from anywhere.
@@ -239,7 +240,11 @@ export default function UniversalSearch() {
             setAsk(a => a && ({ ...a, done: true, status: null, error: evt.content || 'The assistant could not answer.' }))
           } else if (evt.type === 'done') {
             sawTerminal = true
-            setAsk(a => a && ({ ...a, done: true, status: null }))
+            // `source` decides whether this is an answer or a proposal. The
+            // router returns source:'action' for the five write actions
+            // (send_payment_reminders, mark_invoice_paid, …) with a confirm
+            // chip in `suggestions` — and NEVER executes them itself.
+            setAsk(a => a && ({ ...a, done: true, status: null, source: evt.source }))
           }
         }
       }
@@ -490,6 +495,29 @@ export default function UniversalSearch() {
                     {ask.status && <div className="usearch-ask-status">{ask.status}</div>}
                     {!ask.text && !ask.status && !ask.done && (
                       <div className="usearch-ask-status">Working…</div>
+                    )}
+                    {/* HAND-OFF, not a second confirm flow.
+                        source:'action' means the router proposed one of the five
+                        write actions — two of which email customers and one of
+                        which marks an invoice paid. It has already refused to run
+                        it and returned a confirm chip.
+                        The palette does not render that chip on purpose: a
+                        money-and-email confirmation implemented in two surfaces
+                        is two places to drift, and Ctrl+Space → type → Enter is
+                        the wrong ceremony for "email 20 customers". The AI page
+                        owns confirmation; this points at it. */}
+                    {ask.done && ask.source === 'action' && (
+                      <div className="usearch-ask-handoff">
+                        <span>Confirming this happens in the AI Advisor, where you
+                              can review exactly what will be sent or changed.</span>
+                        {getAiDashboardUrl()
+                          ? <button type="button" onClick={() => openAiDashboard()}>
+                              Open AI Advisor
+                            </button>
+                          : <span className="usearch-ask-status">
+                              The AI Advisor is not available from this device.
+                            </span>}
+                      </div>
                     )}
                   </div>
                 )}

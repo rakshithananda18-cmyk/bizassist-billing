@@ -18,6 +18,13 @@ const navigate = vi.fn()
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ authFetch, user: mockUser, settings: mockSettings }),
 }))
+// vi.hoisted: vi.mock is lifted above the file, so a plain top-level const is
+// still in its TDZ when the factory runs.
+const { openAiDashboard } = vi.hoisted(() => ({ openAiDashboard: vi.fn() }))
+vi.mock('../config/aiDashboard', () => ({
+  getAiDashboardUrl: () => 'http://localhost:5173',
+  openAiDashboard,
+}))
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom')
   return { ...actual, useNavigate: () => navigate }
@@ -445,5 +452,90 @@ describe('UniversalSearch — Ask AI', () => {
     // Leaving it on screen under new text reads as a reply to the new question.
     type('why are my sales down in august')
     expect(document.querySelector('.usearch-ask')).toBeNull()
+  })
+})
+
+// ── ACTION hand-off ──────────────────────────────────────────────────────────
+// The router returns source:'action' for the five WRITE actions
+// (send_payment_reminders, mark_invoice_paid, email_reminder_digest,
+// escalate_overdue, draft_reorder_po) — two of which email customers and one of
+// which marks an invoice paid. It never executes them; it returns a confirm chip.
+//
+// The palette deliberately does NOT render that chip. A money-and-email
+// confirmation implemented in two surfaces is two places to drift, and
+// Ctrl+Space → type → Enter is the wrong ceremony for "email 20 customers".
+// It hands off to the AI Advisor, which owns confirmation.
+describe('UniversalSearch — action hand-off', () => {
+  const PRO = { subscription: { plan: 'pro' } }
+
+  const sse = (...events) => ({
+    ok: true, status: 200,
+    body: {
+      getReader() {
+        const chunks = events.map(e => new TextEncoder().encode(`data: ${JSON.stringify(e)}
+
+`))
+        let i = 0
+        return { read: async () => (i < chunks.length
+          ? { done: false, value: chunks[i++] }
+          : { done: true, value: undefined }) }
+      },
+    },
+  })
+  const askRow = () => [...document.querySelectorAll('.usearch-row')]
+    .find(r => r.textContent.includes('Ask the assistant'))
+
+  const ACTION_REPLY = [
+    { type: 'replace', content: 'I can send payment reminders for you. Nothing is sent or changed until you confirm.' },
+    { type: 'done', source: 'action', suggestions: [{ id: 'send_payment_reminders', confirm: true }] },
+  ]
+
+  it('offers the AI Advisor instead of a confirm button', async () => {
+    mockSettings = PRO
+    authFetch.mockImplementation((path) => path.includes('/ask/stream')
+      ? Promise.resolve(sse(...ACTION_REPLY))
+      : Promise.resolve(ok({ items: [] })))
+
+    draw(); openPalette(); type('send payment reminders to overdue customers')
+    await act(async () => { fireEvent.click(askRow()) })
+
+    await waitFor(() => expect(document.querySelector('.usearch-ask-handoff')).toBeTruthy())
+    fireEvent.click(screen.getByText(/Open AI Advisor/i))
+    expect(openAiDashboard).toHaveBeenCalled()
+  })
+
+  it('never renders a confirm control for a write action', async () => {
+    mockSettings = PRO
+    authFetch.mockImplementation((path) => path.includes('/ask/stream')
+      ? Promise.resolve(sse(...ACTION_REPLY))
+      : Promise.resolve(ok({ items: [] })))
+
+    draw(); openPalette(); type('send payment reminders to overdue customers')
+    await act(async () => { fireEvent.click(askRow()) })
+    await waitFor(() => expect(document.querySelector('.usearch-ask-handoff')).toBeTruthy())
+
+    // Assert on the CONTROLS, not the prose — the hand-off copy legitimately
+    // contains the word "Confirming", and matching text made this test fail on
+    // its own explanation rather than on behaviour.
+    // Accessible name, not text: the dismiss control is icon-only.
+    const buttons = [...document.querySelectorAll('.usearch-ask button')]
+      .map(b => b.getAttribute('aria-label') || b.textContent.trim())
+    expect(buttons).toEqual(['Dismiss answer', 'Open AI Advisor'])
+    // And nothing in the palette may reach the execute endpoint.
+    expect(authFetch.mock.calls.map(c => String(c[0])).some(p => p.includes('/action'))).toBe(false)
+  })
+
+  it('does not hand off for an ordinary answer', async () => {
+    mockSettings = PRO
+    authFetch.mockImplementation((path) => path.includes('/ask/stream')
+      ? Promise.resolve(sse({ type: 'token', content: 'Revenue is down 12%.' },
+                            { type: 'done', source: 'ai' }))
+      : Promise.resolve(ok({ items: [] })))
+
+    draw(); openPalette(); type('why are my sales down')
+    await act(async () => { fireEvent.click(askRow()) })
+    await waitFor(() => expect(document.querySelector('.usearch-ask-body')?.textContent)
+      .toContain('Revenue is down 12%.'))
+    expect(document.querySelector('.usearch-ask-handoff')).toBeNull()
   })
 })

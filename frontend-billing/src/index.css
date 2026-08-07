@@ -6854,3 +6854,29 @@ body.is-col-resizing * {
   line-height: 1.5;
   color: var(--danger, #ef4444);
 }
+
+.usearch-ask-handoff {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.usearch-ask-handoff button {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: none;
+  color: var(--text-primary);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: box-shadow var(--dur) var(--ease);
+}
+
+.usearch-ask-handoff button:hover { box-shadow: var(--shadow-premium); }
