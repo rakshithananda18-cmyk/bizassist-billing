@@ -179,3 +179,79 @@ def test_a_payload_with_no_bizid_is_left_alone():
     finally:
         db.rollback()
         db.close()
+
+
+# ── seller_invoice_id: the column the party fix missed ───────────────────────
+#
+# 740b11e taught the serializer to emit a BizID for the two PARTY columns. It
+# could not help `b2b_orders.seller_invoice_id`, which was declared as a bare
+# `Column(Integer)` with no ForeignKey — and BOTH halves of the spine machinery
+# iterate `__table__.foreign_keys`. With nothing to walk, the serializer emitted
+# no uid and the resolver never inspected the column, so the sender's raw
+# invoice id was written through verbatim.
+#
+# Measured on ORD-20260805-0001: the cloud sent seller_invoice_id=841 — its own
+# id for the seller's B2B invoice. In the receiving database 841 is business
+# 9999's load-test invoice LT-000015. The order pointed at another tenant's
+# sale, which is the M-9 mis-link class on a money document.
+
+def test_the_serializer_sends_the_seller_invoice_uid():
+    from core.models import B2BOrder
+    from core.billing import commands as billing
+
+    seller = _signup("Inv Seller")
+    buyer = _signup("Inv Buyer")
+    db = SessionLocal()
+    try:
+        inv = billing.create_sale_invoice(
+            db, business_id=seller, place_of_supply="29", invoice_no="SIU-1",
+            lines=[{"product_name": "Thing", "quantity": 1, "unit_price": 100}])
+        order = B2BOrder(seller_business_id=seller, buyer_business_id=buyer,
+                         order_number=f"ORD-{uuid.uuid4().hex[:8]}",
+                         order_date="2026-08-08", status="completed",
+                         seller_invoice_id=inv.id)
+        db.add(order)
+        db.commit()
+
+        payload = _serialize_orm_obj(order, db)
+        assert payload["seller_invoice_id"] == inv.id
+        # The durable half. Without this the receiver has only the sender's int.
+        assert payload["seller_invoice_id_uid"] == inv.uid
+    finally:
+        db.rollback()
+        db.close()
+
+
+def test_a_foreign_seller_invoice_id_is_never_written_through():
+    """The receiving database's 841 is not the sender's 841.
+
+    `seller_invoice_id` is NULLABLE, so an unresolvable link follows the
+    resolver's nullable rule: null it and keep the order, rather than defer a
+    whole B2B order over a link that is only a convenience pointer. What must
+    NEVER happen is the raw foreign integer surviving into the column.
+    """
+    from core.models import B2BOrder
+
+    seller = _signup("Inv Seller Two")
+    buyer = _signup("Inv Buyer Two")
+    db = SessionLocal()
+    try:
+        data = {
+            "seller_business_id": 999005,
+            "buyer_business_id": 999006,
+            "seller_business_id_bizid": _bizid(db, seller),
+            "buyer_business_id_bizid": _bizid(db, buyer),
+            "order_number": f"ORD-{uuid.uuid4().hex[:8]}",
+            "order_date": "2026-08-08",
+            "status": "completed",
+            # The sender's id for ITS invoice, with no uid to resolve it here.
+            "seller_invoice_id": 841,
+        }
+        resolve_parent_fk_uids(db, B2BOrder, data, business_id=seller)
+        assert data["seller_invoice_id"] != 841, (
+            "the sender's raw invoice id survived into the column — this is the "
+            "mis-link that pointed an order at another tenant's invoice")
+        assert data["seller_invoice_id"] is None
+    finally:
+        db.rollback()
+        db.close()

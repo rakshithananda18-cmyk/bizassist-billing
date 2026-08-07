@@ -446,7 +446,21 @@ class B2BOrder(Base, TimestampMixin):
     notes              = Column(Text, nullable=True)
     # Phase 4 sync: the seller sale invoice this order posted to (NULL until the
     # order is completed). Its presence is the exactly-once guard for the sync.
-    seller_invoice_id  = Column(Integer, nullable=True)
+    #
+    # THE ForeignKey IS LOad-BEARING, not decoration. Both halves of the spine
+    # machinery iterate `__table__.foreign_keys`: `_serialize_orm_obj` to emit the
+    # parent's durable `uid`, and `resolve_parent_fk_uids` to rewrite the column
+    # to the LOCAL parent id (or NULL it, since this column is nullable). Declared
+    # as a bare Integer this column was invisible to both, so it crossed database
+    # boundaries as a raw source id and was written verbatim — exactly what that
+    # resolver's docstring forbids: "a FOREIGN KEY IS ONLY WRITTEN WHEN IT IS
+    # PROVEN LOCAL".
+    #
+    # Measured on ORD-20260805-0001: the cloud sent seller_invoice_id=841, its
+    # own id for the seller's B2B invoice. Locally 841 is business 9999's
+    # load-test invoice LT-000015. Same class as the seller/buyer business ids
+    # fixed in 740b11e — this column was missed because it had no FK to walk.
+    seller_invoice_id  = Column(Integer, ForeignKey("invoices.id"), nullable=True)
 
     created_at         = Column(DateTime, default=utc_now)
     updated_at         = Column(DateTime, default=utc_now, onupdate=utc_now)
