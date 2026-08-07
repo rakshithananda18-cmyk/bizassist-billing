@@ -9,6 +9,47 @@ from PIL import Image
 
 logger = logging.getLogger("bizassist.purchase_ocr")
 
+# ── Stop asking for a model this key cannot have ─────────────────────────────
+# Vision is an OPTIMISATION, not a requirement: a photo can always go
+# image → Tesseract → text → Groq text model, which is the same destination the
+# vision path reaches in one hop. So when the vision model is refused, the right
+# move is to stop trying, not to fail the upload.
+#
+# Observed 2026-08-07: `meta-llama/llama-4-scout-17b-16e-instruct` returns 404
+# "does not exist or you do not have access to it" for a key that authenticates
+# fine. That is an entitlement, and no number of retries changes it — but every
+# bill scanned paid a full round trip to discover it again before falling back.
+#
+# Same shape as `_SELF_SIGNED_REJECTED` in services/sync_worker.py: a failure
+# that cannot self-heal is remembered, so it costs one call rather than one per
+# request. In-process, so a restart re-checks — if the account gains vision
+# access, it resumes on its own with nothing to configure.
+_VISION_UNAVAILABLE = False
+
+
+def _note_vision_failure(e: Exception) -> None:
+    """Latch OFF only for refusals that are permanent for this key.
+
+    A 429 or a timeout is the model being busy — retry those. A 404/403 on the
+    MODEL is the account not having it, which will read exactly the same on
+    every future upload.
+    """
+    global _VISION_UNAVAILABLE
+    msg = str(e).lower()
+    permanent = ("model_not_found" in msg
+                 or "does not exist or you do not have access" in msg
+                 or ("404" in msg and "model" in msg)
+                 or "403" in msg)
+    if permanent and not _VISION_UNAVAILABLE:
+        _VISION_UNAVAILABLE = True
+        logger.error(
+            "[Purchase Image] vision model refused for this API key (%s). "
+            "Vision is DISABLED for this process; bill scanning continues via "
+            "Tesseract OCR. Grant the key access to a vision model, or set "
+            "GROQ_VISION_MODEL to one it has, then restart to re-enable.",
+            str(e)[:160],
+        )
+
 _SCANNED_TEXT_THRESHOLD = 50
 
 # One shared extraction schema/prompt, used by both the text path (PDF/OCR text
@@ -294,7 +335,7 @@ def extract_purchase_from_image(file_bytes: bytes, ext: str) -> dict:
 
     # 1) Groq vision (OpenAI-compatible chat with an image part)
     groq_key = os.getenv("GROQ_API_KEY")
-    if groq_key:
+    if groq_key and not _VISION_UNAVAILABLE:
         try:
             from services.groq_client import DEFAULT_VISION_MODEL, make_groq_client
             client = make_groq_client(groq_key)
@@ -312,8 +353,17 @@ def extract_purchase_from_image(file_bytes: bytes, ext: str) -> dict:
             logger.info("[Purchase Image] extracted via Groq vision")
             return _parse_json_loose(completion.choices[0].message.content)
         except Exception as e:
+            _note_vision_failure(e)
             logger.warning(f"[Purchase Image] Groq vision failed: {e}")
             provider_errors.append(f"Groq: {e}")
+    elif _VISION_UNAVAILABLE:
+        # Skipped, not silent: the caller falls through to Tesseract, and the
+        # reason is on the record so nobody hunts for a vision bug that is
+        # actually an account entitlement.
+        provider_errors.append(
+            "Groq vision: skipped — this key has no access to the vision model "
+            "(see the earlier log line). Using OCR instead."
+        )
 
     if provider_errors:
         raise ValueError(
