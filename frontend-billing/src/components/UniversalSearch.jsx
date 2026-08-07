@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
 import {
   SearchIcon, CloseIcon, PackageIcon, ContactsIcon,
-  TruckIcon, BillsIcon, SettingsIcon, ChevronRightIcon, ExpandIcon,
+  TruckIcon, BillsIcon, SettingsIcon, ChevronRightIcon, ExpandIcon, SparkleIcon,
 } from './Icons'
 
 /** Dismissing the floating trigger has to outlive a reload, or the close
@@ -36,6 +36,9 @@ import { matchPages, matchSettings, settingsRoute } from '../config/searchIndex'
  */
 
 const DEBOUNCE_MS = 250
+// Below this the query is more likely a half-typed product name than a
+// question, and offering to spend router tokens on it is noise.
+const MIN_ASK_CHARS = 6
 const MAX_RECORDS = 8
 const MAX_STATIC = 4
 
@@ -67,7 +70,7 @@ function recordRoute(item) {
 }
 
 export default function UniversalSearch() {
-  const { authFetch, user } = useAuth()
+  const { authFetch, user, settings } = useAuth()
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [open, setOpen] = React.useState(false)
@@ -75,12 +78,32 @@ export default function UniversalSearch() {
     try { return localStorage.getItem(HIDE_KEY) === '1' } catch { return false }
   })
   const [slot, setSlot] = React.useState(null)
+
+  // ── Ask AI (Phase 1: read-only Q&A) ───────────────────────────────────────
+  // `ask` is null until the user explicitly chooses the Ask AI row. NOTHING
+  // here runs on a keystroke: /search is debounced and cheap, but the AI router
+  // costs ~841 tokens per invocation before the model even answers
+  // (docs/AI_TOKEN_ECONOMICS_2026-08-07.md), so firing it per character typed
+  // would be ruinous. It is an explicit act, always.
+  const [ask, setAsk] = React.useState(null)   // {q, text, status, error, done}
+  // Latched when the backend says 503 — "AI features aren't configured on this
+  // device" (no GROQ_API_KEY). That is not an error the counter can act on, so
+  // the row disappears for the session instead of failing every time it is used.
+  const [aiUnavailable, setAiUnavailable] = React.useState(false)
+  const askAbortRef = React.useRef(null)
   const [query, setQuery] = React.useState('')
   const [records, setRecords] = React.useState([])
   const [cursor, setCursor] = React.useState(0)
   const inputRef = React.useRef(null)
 
   const isCashier = ((user?.role || '').toLowerCase() === 'cashier')
+
+  // AI is Pro-only and refuses cashiers — both enforced server-side on
+  // /ask/stream (require_plan("pro", force_enforcement=True) + restrict_cashier).
+  // Mirrored here so a free plan is never SHOWN a control that would 402: the
+  // server decides, the client just avoids offering a dead end.
+  const isPro = ((settings?.subscription?.plan || '').toLowerCase() === 'pro')
+  const aiEligible = isPro && !isCashier && !aiUnavailable
 
   // ── Results ───────────────────────────────────────────────────────────────
   const results = React.useMemo(() => {
@@ -93,7 +116,9 @@ export default function UniversalSearch() {
       group: 'Pages & actions', label: p.label, hint: '', route: p.route,
       Icon: ChevronRightIcon,
     }))
-    const settings = matchSettings(q, { isCashier }).slice(0, MAX_STATIC).map(s => ({
+    // NOT named `settings` — that shadows the auth context's `settings`, which
+    // this memo now depends on for the plan check.
+    const settingsRows = matchSettings(q, { isCashier }).slice(0, MAX_STATIC).map(s => ({
       group: 'Settings', label: s.label, route: settingsRoute(s),
       hint: s.tab.charAt(0).toUpperCase() + s.tab.slice(1),
       Icon: SettingsIcon,
@@ -104,8 +129,14 @@ export default function UniversalSearch() {
       route: recordRoute(r),
       Icon: KIND_META[r.kind]?.Icon || SearchIcon,
     })).filter(r => r.route)
-    return [...recs, ...pages, ...settings]
-  }, [query, records, isCashier])
+    // LAST, always. A record the owner was reaching for must never be pushed
+    // down the list by an offer to think about it instead. Below MIN_ASK_CHARS
+    // the query is more likely a half-typed name than a question.
+    const aiRow = (aiEligible && q.length >= MIN_ASK_CHARS) ? [{
+      group: 'Ask AI', label: q, hint: 'Ask the assistant', ask: true, Icon: SparkleIcon,
+    }] : []
+    return [...recs, ...pages, ...settingsRows, ...aiRow]
+  }, [query, records, isCashier, aiEligible])
 
   // ── Record lookup, debounced ──────────────────────────────────────────────
   React.useEffect(() => {
@@ -128,15 +159,109 @@ export default function UniversalSearch() {
 
   React.useEffect(() => { setCursor(0) }, [query])
 
+  // Editing the query retires the previous answer: it belonged to a different
+  // question, and leaving it on screen under new text reads as a reply to the
+  // new one. The in-flight request is aborted rather than left to land.
+  React.useEffect(() => {
+    askAbortRef.current?.abort()
+    setAsk(null)
+  }, [query])
+
   const close = React.useCallback(() => {
     setOpen(false); setQuery(''); setRecords([])
+    askAbortRef.current?.abort()
+    setAsk(null)
   }, [])
 
+  /** Ask the assistant. Explicit-only — never called from the typing path.
+   *
+   *  Streams /ask/stream, the same endpoint frontend-ai uses. Reusing it rather
+   *  than adding a second AI route keeps ONE router, one cache, one set of
+   *  failure rules; a parallel path would drift the way two hosting-mode
+   *  implementations already did.
+   *
+   *  Phase 1 is READ-ONLY: whatever comes back is rendered as text. The router
+   *  can return ACTION results (drafting an email, for one), and a search box
+   *  must not fire one off the back of a keystroke and an Enter. Actions get an
+   *  explicit confirm step in Phase 2 or they do not ship. */
+  const runAsk = React.useCallback(async (q) => {
+    askAbortRef.current?.abort()
+    const ctl = new AbortController()
+    askAbortRef.current = ctl
+    setAsk({ q, text: '', status: 'Thinking…', error: null, done: false })
+
+    try {
+      const res = await authFetch('/ask/stream', {
+        method: 'POST',
+        body: JSON.stringify({ message: q }),
+        signal: ctl.signal,
+      })
+
+      if (!res.ok || !res.body) {
+        // Two envelope shapes reach here and only one used to be read: the /ask
+        // pipeline raises AskError -> {error, code}, while a FastAPI
+        // HTTPException returns {detail}. 402 (plan), 403 (role) and 503 (no
+        // GROQ_API_KEY) are all the second shape.
+        const body = await res.json().catch(() => ({}))
+        if (res.status === 503) setAiUnavailable(true)
+        setAsk(a => ({
+          ...a, done: true, status: null,
+          error: body.error || body.detail || `Request failed (HTTP ${res.status})`,
+        }))
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      // A stream can end with no terminal event — a proxy idle-timeout, a
+      // container restart — and the reader just returns done:true. Without this
+      // the pane would sit on "Thinking…" forever with nothing thrown and
+      // nothing logged: the eternal-spinner shape.
+      let sawTerminal = false
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split('\n\n')
+        buffer = parts.pop()
+        for (const part of parts) {
+          const t = part.trim()
+          if (!t.startsWith('data: ')) continue
+          let evt
+          try { evt = JSON.parse(t.slice(6)) } catch { continue }
+          if (evt.type === 'status') setAsk(a => a && ({ ...a, status: evt.content }))
+          else if (evt.type === 'token') setAsk(a => a && ({ ...a, text: a.text + evt.content, status: null }))
+          else if (evt.type === 'replace') setAsk(a => a && ({ ...a, text: evt.content, status: null }))
+          else if (evt.type === 'error') {
+            sawTerminal = true
+            setAsk(a => a && ({ ...a, done: true, status: null, error: evt.content || 'The assistant could not answer.' }))
+          } else if (evt.type === 'done') {
+            sawTerminal = true
+            setAsk(a => a && ({ ...a, done: true, status: null }))
+          }
+        }
+      }
+      if (!sawTerminal) {
+        setAsk(a => a && ({
+          ...a, done: true, status: null,
+          error: a.text ? null : 'The connection ended before an answer arrived.',
+        }))
+      }
+    } catch (err) {
+      if (ctl.signal.aborted) return          // the user moved on; not a failure
+      logger.error('[SEARCH] ask failed:', err)
+      setAsk(a => a && ({ ...a, done: true, status: null, error: 'Could not reach the assistant.' }))
+    }
+  }, [authFetch])
+
   const go = React.useCallback((item) => {
+    if (item?.ask) { runAsk(item.label); return }   // stays open to show the answer
     if (!item?.route) return
     close()
     navigate(item.route)
-  }, [close, navigate])
+  }, [close, navigate, runAsk])
 
   // ── Keyboard ──────────────────────────────────────────────────────────────
   // CAPTURE phase, on window. The POS binds Escape, Ctrl+S, Ctrl+P and `+` at
@@ -179,7 +304,14 @@ export default function UniversalSearch() {
       // the separate native `input` event, not by keydown.
       e.stopImmediatePropagation()
 
-      if (e.key === 'Escape') { e.preventDefault(); close(); return }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        // One Escape dismisses the ANSWER, the next closes the palette. Closing
+        // both at once would throw away a result the owner is still reading
+        // because they reached for the key that normally means "back".
+        if (ask) { askAbortRef.current?.abort(); setAsk(null); return }
+        close(); return
+      }
       if (openCombo) { e.preventDefault(); close(); return }
       if (e.key === 'ArrowDown') {
         e.preventDefault()
@@ -194,7 +326,7 @@ export default function UniversalSearch() {
     }
     window.addEventListener('keydown', onKeyDown, true)   // capture
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [open, results, cursor, close, go])
+  }, [open, results, cursor, close, go, ask])
 
   React.useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 0)
@@ -332,6 +464,37 @@ export default function UniversalSearch() {
                 <CloseIcon size={15} />
               </button>
             </div>
+
+            {/* The answer sits ABOVE the list, not instead of it: the records
+                that matched are still the fastest way to what the owner wanted,
+                and replacing them with prose would make asking a question a
+                one-way door. */}
+            {ask && (
+              <div className="usearch-ask">
+                <div className="usearch-ask-head">
+                  <SparkleIcon size={13} />
+                  <span>{ask.q}</span>
+                  <button type="button" onClick={() => { askAbortRef.current?.abort(); setAsk(null) }}
+                          aria-label="Dismiss answer">
+                    <CloseIcon size={13} />
+                  </button>
+                </div>
+                {ask.error ? (
+                  <div className="usearch-ask-error">{ask.error}</div>
+                ) : (
+                  <div className="usearch-ask-body">
+                    {ask.text}
+                    {/* A status line, not a spinner: the router is legitimately
+                        silent for seconds at a time and "Thinking…" that never
+                        says what it is doing is how the eternal spinner hid. */}
+                    {ask.status && <div className="usearch-ask-status">{ask.status}</div>}
+                    {!ask.text && !ask.status && !ask.done && (
+                      <div className="usearch-ask-status">Working…</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div style={{ overflowY: 'auto', padding: 6 }}>
               {!query.trim() ? (

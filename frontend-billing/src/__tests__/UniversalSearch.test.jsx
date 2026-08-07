@@ -12,10 +12,11 @@ import { MemoryRouter } from 'react-router-dom'
 
 const authFetch = vi.fn()
 let mockUser = { role: 'owner' }
+let mockSettings = null
 const navigate = vi.fn()
 
 vi.mock('../contexts/AuthContext', () => ({
-  useAuth: () => ({ authFetch, user: mockUser }),
+  useAuth: () => ({ authFetch, user: mockUser, settings: mockSettings }),
 }))
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom')
@@ -45,6 +46,7 @@ beforeEach(() => {
   authFetch.mockReset()
   navigate.mockReset()
   mockUser = { role: 'owner' }
+  mockSettings = null
   authFetch.mockResolvedValue(ok({ items: [] }))
   localStorage.clear()
 })
@@ -304,5 +306,144 @@ describe('UniversalSearch', () => {
     openPalette()
     type('gst')
     expect(screen.getByText('GST Summary')).toBeTruthy()
+  })
+})
+
+// ── Ask AI (Phase 1) ─────────────────────────────────────────────────────────
+// /ask/stream is Pro-only and refuses cashiers, enforced server-side. The client
+// mirrors both so a free plan is never SHOWN a control that would 402.
+//
+// The load-bearing assertion is that NOTHING fires while typing: /search is
+// cheap and debounced, but the AI router costs ~841 tokens per invocation before
+// the model answers at all. Per-keystroke would be ruinous.
+describe('UniversalSearch — Ask AI', () => {
+  const PRO = { subscription: { plan: 'pro' } }
+
+  /** An SSE body, chunked exactly as the endpoint emits it. */
+  const sse = (...events) => ({
+    ok: true, status: 200,
+    body: {
+      getReader() {
+        const chunks = events.map(e => new TextEncoder().encode(`data: ${JSON.stringify(e)}\n\n`))
+        let i = 0
+        return { read: async () => (i < chunks.length
+          ? { done: false, value: chunks[i++] }
+          : { done: true, value: undefined }) }
+      },
+    },
+  })
+
+  const askRow = () => [...document.querySelectorAll('.usearch-row')]
+    .find(r => r.textContent.includes('Ask the assistant'))
+
+  it('offers the row to a Pro owner', () => {
+    mockSettings = PRO
+    draw(); openPalette(); type('why are my sales down')
+    expect(askRow()).toBeTruthy()
+  })
+
+  it('does not offer it on a free plan', () => {
+    mockSettings = { subscription: { plan: 'free' } }
+    draw(); openPalette(); type('why are my sales down')
+    expect(askRow()).toBeUndefined()
+  })
+
+  it('does not offer it to a cashier, even on Pro', () => {
+    mockSettings = PRO
+    mockUser = { role: 'cashier' }
+    draw(); openPalette(); type('why are my sales down')
+    expect(askRow()).toBeUndefined()
+  })
+
+  it('does not offer it for a short query', () => {
+    // 'sugar' is a half-typed product name, not a question.
+    mockSettings = PRO
+    draw(); openPalette(); type('sugar')
+    expect(askRow()).toBeUndefined()
+  })
+
+  it('NEVER calls the AI while typing', async () => {
+    mockSettings = PRO
+    draw(); openPalette()
+    type('why are my sales down this month')
+    await waitFor(() => expect(authFetch).toHaveBeenCalled(), { timeout: 2000 })
+    const paths = authFetch.mock.calls.map(c => c[0])
+    expect(paths.some(p => String(p).includes('/ask'))).toBe(false)
+    expect(paths.some(p => String(p).includes('/search'))).toBe(true)
+  })
+
+  it('streams an answer only once the row is chosen', async () => {
+    mockSettings = PRO
+    authFetch.mockImplementation((path) => path.includes('/ask/stream')
+      ? Promise.resolve(sse({ type: 'token', content: 'Sales fell ' },
+                            { type: 'token', content: '12% in July.' },
+                            { type: 'done', source: 'ai' }))
+      : Promise.resolve(ok({ items: [] })))
+
+    draw(); openPalette(); type('why are my sales down')
+    await act(async () => { fireEvent.click(askRow()) })
+
+    await waitFor(() => expect(document.querySelector('.usearch-ask-body')?.textContent)
+      .toContain('Sales fell 12% in July.'))
+    // The palette stays open: the records that matched are still the fastest
+    // route to what the owner wanted.
+    expect(screen.getByPlaceholderText(/Search invoices/i)).toBeTruthy()
+  })
+
+  it('hides the row for the session when AI is not configured (503)', async () => {
+    mockSettings = PRO
+    authFetch.mockImplementation((path) => path.includes('/ask/stream')
+      ? Promise.resolve({ ok: false, status: 503, json: async () => ({ detail: "AI features aren't configured on this device." }) })
+      : Promise.resolve(ok({ items: [] })))
+
+    draw(); openPalette(); type('why are my sales down')
+    await act(async () => { fireEvent.click(askRow()) })
+
+    await waitFor(() => expect(document.querySelector('.usearch-ask-error')?.textContent)
+      .toMatch(/aren't configured/i))
+    // Offering it again would fail identically every time.
+    type('why are my sales down again')
+    expect(askRow()).toBeUndefined()
+  })
+
+  it('surfaces a mid-stream error instead of spinning', async () => {
+    mockSettings = PRO
+    authFetch.mockImplementation((path) => path.includes('/ask/stream')
+      ? Promise.resolve(sse({ type: 'error', content: 'The model is rate limited.' }))
+      : Promise.resolve(ok({ items: [] })))
+
+    draw(); openPalette(); type('why are my sales down')
+    await act(async () => { fireEvent.click(askRow()) })
+    await waitFor(() => expect(document.querySelector('.usearch-ask-error')?.textContent)
+      .toContain('rate limited'))
+  })
+
+  it('does not spin forever when the stream ends with no terminal event', async () => {
+    // A proxy idle-timeout or container restart ends the reader with done:true
+    // and no 'done' event. Without a guard the pane sits on "Thinking…".
+    mockSettings = PRO
+    authFetch.mockImplementation((path) => path.includes('/ask/stream')
+      ? Promise.resolve(sse({ type: 'status', content: 'Thinking…' }))
+      : Promise.resolve(ok({ items: [] })))
+
+    draw(); openPalette(); type('why are my sales down')
+    await act(async () => { fireEvent.click(askRow()) })
+    await waitFor(() => expect(document.querySelector('.usearch-ask-error')?.textContent)
+      .toMatch(/ended before an answer/i))
+  })
+
+  it('retires the answer when the question is edited', async () => {
+    mockSettings = PRO
+    authFetch.mockImplementation((path) => path.includes('/ask/stream')
+      ? Promise.resolve(sse({ type: 'replace', content: 'An answer.' }, { type: 'done' }))
+      : Promise.resolve(ok({ items: [] })))
+
+    draw(); openPalette(); type('why are my sales down')
+    await act(async () => { fireEvent.click(askRow()) })
+    await waitFor(() => expect(document.querySelector('.usearch-ask-body')).toBeTruthy())
+
+    // Leaving it on screen under new text reads as a reply to the new question.
+    type('why are my sales down in august')
+    expect(document.querySelector('.usearch-ask')).toBeNull()
   })
 })

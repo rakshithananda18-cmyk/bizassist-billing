@@ -6793,3 +6793,64 @@ body.is-col-resizing * {
   color: var(--text-muted);
   line-height: 1.4;
 }
+
+/* ── Ask AI answer pane (components/UniversalSearch.jsx) ─────────────────── */
+.usearch-ask {
+  flex-shrink: 0;                      /* the results list scrolls, this does not */
+  max-height: 42vh;
+  overflow-y: auto;
+  padding: 10px 14px 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent, #6366f1) 5%, transparent);
+}
+
+.usearch-ask-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 7px;
+}
+
+.usearch-ask-head span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usearch-ask-head button {
+  flex-shrink: 0;
+  display: flex;
+  padding: 2px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.usearch-ask-head button:hover { color: var(--text-primary); }
+
+.usearch-ask-body {
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: var(--text-primary);
+  white-space: pre-wrap;               /* the model emits newlines, not markup */
+  overflow-wrap: anywhere;
+}
+
+.usearch-ask-status {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.usearch-ask-error {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--danger, #ef4444);
+}
