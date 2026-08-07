@@ -2,6 +2,7 @@ import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
+import { backupOverdue } from '../utils/backupReminder'
 import { BellIcon, CheckIcon, CloseIcon } from './Icons'
 
 /**
@@ -34,12 +35,37 @@ const SEVERITY = {
 const POLL_MS = 5 * 60 * 1000
 
 export default function NotificationBell() {
-  const { authFetch } = useAuth()
+  const { authFetch, settings } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = React.useState(false)
   const [data, setData] = React.useState({ items: [], count: 0, severity: null })
   const [loading, setLoading] = React.useState(false)
   const boxRef = React.useRef(null)
+
+  // ── The one item the SERVER cannot answer ────────────────────────────────
+  // The offline backup file lands on this device's disk, so "when did you last
+  // back up" is a per-device question and the timestamp lives in localStorage.
+  // A server-side answer would average across devices and hide exactly the risk
+  // this guards: the single machine that never backs up is the one whose disk
+  // dies. Computed here and merged with the server's list.
+  const backup = React.useMemo(() => {
+    let lastBackupIso = null
+    try { lastBackupIso = localStorage.getItem('bizassist_last_file_backup') } catch { /* ignore */ }
+    const g = settings?.general || {}
+    const due = backupOverdue({
+      autoBackup: g.auto_backup === true,
+      reminderDays: g.backup_reminder_days,
+      lastBackupIso,
+    })
+    if (!due) return null
+    return {
+      kind: 'backup',
+      severity: 'warning',
+      title: due.never ? 'No backup taken on this device' : `Backup is ${due.days} days old`,
+      detail: 'Download a backup file so a dead disk cannot take the books with it.',
+      route: '/settings?tab=advanced',
+    }
+  }, [settings])
 
   const load = React.useCallback(async () => {
     setLoading(true)
@@ -76,8 +102,16 @@ export default function NotificationBell() {
     }
   }, [open])
 
-  const tone = SEVERITY[data.severity] || SEVERITY.info
-  const count = data.count || 0
+  // Merged, then re-sorted — the bell's colour has to follow the most urgent
+  // item overall, not whichever source it came from.
+  const items = React.useMemo(() => {
+    const merged = [...(data.items || []), ...(backup ? [backup] : [])]
+    const order = { danger: 0, warning: 1, info: 2 }
+    return merged.sort((a, b) => (order[a.severity] ?? 3) - (order[b.severity] ?? 3))
+  }, [data, backup])
+
+  const count = items.length
+  const tone = SEVERITY[items[0]?.severity] || SEVERITY.info
 
   return (
     <div ref={boxRef} style={{ position: 'relative' }}>
@@ -132,7 +166,7 @@ export default function NotificationBell() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {data.items.map(item => {
+              {items.map(item => {
                 const t = SEVERITY[item.severity] || SEVERITY.info
                 return (
                   <button

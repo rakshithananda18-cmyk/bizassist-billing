@@ -11,8 +11,9 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 const authFetch = vi.fn()
+let mockSettings = null
 vi.mock('../contexts/AuthContext', () => ({
-  useAuth: () => ({ authFetch }),
+  useAuth: () => ({ authFetch, settings: mockSettings }),
 }))
 
 import NotificationBell from '../components/NotificationBell'
@@ -30,7 +31,11 @@ const TWO = {
 
 const draw = () => render(<MemoryRouter><NotificationBell /></MemoryRouter>)
 
-beforeEach(() => { authFetch.mockReset() })
+beforeEach(() => {
+  authFetch.mockReset()
+  mockSettings = null
+  try { localStorage.removeItem('bizassist_last_file_backup') } catch { /* ignore */ }
+})
 afterEach(() => { vi.clearAllTimers() })
 
 describe('NotificationBell', () => {
@@ -58,6 +63,42 @@ describe('NotificationBell', () => {
     fireEvent.click(screen.getByLabelText('2 notifications'))
     expect(screen.getByText('3 batches past expiry')).toBeTruthy()
     expect(screen.getByText('2 overdue invoices')).toBeTruthy()
+  })
+
+  it('adds the backup reminder the server cannot know about', async () => {
+    // The backup file lands on THIS device's disk, so the timestamp is local
+    // and the server has no way to answer. It has to merge in client-side or
+    // the toggle goes on doing nothing.
+    authFetch.mockResolvedValue(ok(EMPTY))
+    mockSettings = { general: { auto_backup: true, backup_reminder_days: 7 } }
+    localStorage.setItem('bizassist_last_file_backup',
+                         new Date(Date.now() - 40 * 86400000).toISOString())
+
+    draw()
+    await waitFor(() => expect(screen.getByText('1')).toBeTruthy())
+    fireEvent.click(screen.getByLabelText('1 notification'))
+    expect(screen.getByText(/Backup is 40 days old/i)).toBeTruthy()
+  })
+
+  it('stays silent about backups when the owner turned the toggle off', async () => {
+    authFetch.mockResolvedValue(ok(EMPTY))
+    mockSettings = { general: { auto_backup: false } }
+    draw()
+    await waitFor(() => expect(authFetch).toHaveBeenCalled())
+    expect(screen.queryByText('1')).toBeNull()
+  })
+
+  it('lets a server danger item outrank the backup warning', async () => {
+    // Two sources, one bell. The colour must follow the most urgent item
+    // overall, not whichever list it arrived in.
+    authFetch.mockResolvedValue(ok(TWO))
+    mockSettings = { general: { auto_backup: true, backup_reminder_days: 1 } }
+    draw()
+    await waitFor(() => expect(screen.getByText('3')).toBeTruthy())
+    fireEvent.click(screen.getByLabelText('3 notifications'))
+    // Expired batches (danger) render above the backup reminder (warning).
+    const rendered = screen.getByText('3 batches past expiry')
+    expect(rendered).toBeTruthy()
   })
 
   it('keeps the last known list when a refresh fails', async () => {
