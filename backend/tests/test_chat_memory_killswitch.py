@@ -105,3 +105,34 @@ def test_writes_are_serialised_within_the_process():
     assert hasattr(E, "_chroma_lock")
     assert E._chroma_lock.acquire(blocking=False)
     E._chroma_lock.release()
+
+
+def test_injected_memories_are_capped():
+    """The one uncapped context path in the pipeline, now bounded.
+
+    A stored AI_COMPLEX answer runs to max_tokens=1800, and three of them were
+    prepended verbatim to every AI_SIMPLE prompt — roughly 5000 tokens of old
+    conversation competing with the question being asked, and a plausible source
+    of the `413 / request too large` branch in ai_router.handle_stream.
+    Everything else in the pipeline is bounded: history 6 turns x 400 chars,
+    tool results 4000 chars. This was the exception."""
+    import services.embeddings as E
+    importlib.reload(E)
+
+    clipped = E._clip("x" * 5000, E._MEMORY_ANSWER_CHARS)
+    assert len(clipped) <= E._MEMORY_ANSWER_CHARS + 1        # +1 for the ellipsis
+    assert clipped.endswith("…")
+
+    # Under the limit is passed through untouched — a short answer must not be
+    # decorated with an ellipsis suggesting something was cut.
+    assert E._clip("brief answer", E._MEMORY_ANSWER_CHARS) == "brief answer"
+
+    # A missing metadata field must not raise inside prompt assembly.
+    assert E._clip(None, 600) == ""
+
+
+def test_the_answer_cap_is_larger_than_the_question_cap():
+    """Recall value is in what was ANSWERED; the question is context for it."""
+    import services.embeddings as E
+    importlib.reload(E)
+    assert E._MEMORY_ANSWER_CHARS > E._MEMORY_QUERY_CHARS

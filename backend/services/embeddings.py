@@ -56,6 +56,17 @@ _chroma_client = None
 # processes (note `uvicorn --reload` alone runs two).
 CHAT_MEMORY_ENABLED = os.getenv("CHAT_MEMORY_ENABLED", "0") == "1"
 
+# How much of a remembered turn is worth re-reading to the model. Sized against
+# the pipeline's other caps — `_fetch_history` keeps 400 chars per turn, tool
+# results 4000 — so recall stops crowding out the question being asked.
+_MEMORY_QUERY_CHARS = 200
+_MEMORY_ANSWER_CHARS = 600
+
+
+def _clip(text, limit: int) -> str:
+    text = str(text or "")
+    return text if len(text) <= limit else text[:limit].rstrip() + "…"
+
 # Serialises Chroma access WITHIN this process. It cannot help across processes
 # (that needs the kill switch above, or a single-writer design), but it removes
 # the case we can actually control: request threads, the scheduler and the sync
@@ -292,8 +303,21 @@ def search_chat_memories(business_id: int, query: str, limit: int = 3) -> str:
             # Cosine distance in Chroma: lower is more similar.
             # A distance <= 0.8 is typical for relevance threshold.
             if dist <= 0.8:
+                # TRUNCATED. This was the one uncapped context path in the whole
+                # pipeline — everything else is bounded (history 6 turns × 400
+                # chars, tool results 4000 chars), but a stored AI_COMPLEX answer
+                # runs to max_tokens=1800, and three of them were prepended
+                # verbatim to every AI_SIMPLE prompt. That is ~5000 tokens of
+                # history competing with the actual question, and a plausible
+                # cause of the `413 / request too large / tokens per minute`
+                # branch in ai_router.handle_stream.
+                #
+                # A memory is a REMINDER of what was discussed, not a transcript.
+                # The recall value is in the first paragraph; the rest is what
+                # pushed the real question out of the window.
                 memories.append(
-                    f"User asked: '{meta['user_query']}'\nAssistant responded: '{meta['assistant_response']}'"
+                    f"User asked: '{_clip(meta.get('user_query'), _MEMORY_QUERY_CHARS)}'\n"
+                    f"Assistant responded: '{_clip(meta.get('assistant_response'), _MEMORY_ANSWER_CHARS)}'"
                 )
                 
         if memories:

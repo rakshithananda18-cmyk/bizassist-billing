@@ -18,6 +18,25 @@ ENV PATH="/home/user/.local/bin:$PATH" \
     TZ=Asia/Kolkata \
     BIZ_TIMEZONE=Asia/Kolkata
 
+# Semantic recall of past conversations, injected into AI_SIMPLE prompts.
+#
+# OFF by default in code, ON here, and the difference is process count. The
+# freeze that forced the kill switch — a native, GIL-holding block inside
+# Chroma's persisted HNSW index — needs two processes touching one index.
+# Development does exactly that: `uvicorn --reload` runs a reloader and a worker,
+# and both import the app. THIS image does not: the CMD at the bottom is a single
+# uvicorn process, no --reload and no --workers, and within it every Chroma call
+# is serialised by _LockedCollection.
+#
+# So the safe default protects the multi-process case, and production opts in
+# because it can prove it is single-process. If --workers is ever added to that
+# CMD, remove this line in the same commit.
+#
+# (Its own instruction, not appended to the block above: a `\` continuation makes
+# following `#` lines part of the ENV rather than comments, which is a build
+# error — and there is no Docker on the dev machine to catch it.)
+ENV CHAT_MEMORY_ENABLED=1
+
 WORKDIR /app
 
 # Install system build tools (needed for some packages) + weasyprint system deps
