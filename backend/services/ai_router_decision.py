@@ -15,6 +15,7 @@ working exactly as before the split.
 import os
 import re
 import logging
+import threading
 
 from services.query_router import _WRITING_ACTIONS
 
@@ -262,19 +263,36 @@ def _maybe_shadow_route(user_query: str, route: str, handler_key, topic: str) ->
     mode = os.getenv("INTENT_ROUTER", "off").lower()
     if mode not in ("shadow", "on"):
         return
-    try:
-        s_tier, s_intent, s_conf = _facade_dep("_semantic_classify")(user_query)
-    except Exception as e:
-        logger.warning(f"[ROUTER][shadow] semantic classify failed: {e}")
-        return
-    # The regex system's effective "intent" is the detected topic (used for cache
-    # + intent-first). Compare on intent when the semantic router named one, else
-    # on tier.
-    match = (s_intent == topic) if s_intent is not None else (s_tier == route)
-    verdict = "AGREE" if match else "DISAGREE"
-    logger.info(
-        f"[ROUTER][shadow] {verdict} | regex=({route}, handler={handler_key}, topic={topic}) "
-        f"semantic=({s_tier}, {s_intent}, {s_conf:.2f}) | q='{user_query}'"
-    )
+
+    def _compare() -> None:
+        try:
+            s_tier, s_intent, s_conf = _facade_dep("_semantic_classify")(user_query)
+        except Exception as e:
+            logger.warning(f"[ROUTER][shadow] semantic classify failed: {e}")
+            return
+        # The regex system's effective "intent" is the detected topic (used for
+        # cache + intent-first). Compare on intent when the semantic router named
+        # one, else on tier.
+        match = (s_intent == topic) if s_intent is not None else (s_tier == route)
+        verdict = "AGREE" if match else "DISAGREE"
+        logger.info(
+            f"[ROUTER][shadow] {verdict} | regex=({route}, handler={handler_key}, topic={topic}) "
+            f"semantic=({s_tier}, {s_intent}, {s_conf:.2f}) | q='{user_query}'"
+        )
+
+    # OFF the request path. This function decides nothing — it returns None, and
+    # the route was already chosen before it is called. But it was running
+    # synchronously, and `_semantic_classify` lazily encodes 220 seed phrases on
+    # first use, so the owner waited for it:
+    #
+    #   18:21:58  route decided: DIRECT (revenue_month_detail)
+    #   18:22:04  Semantic router warm — 220 seed examples
+    #   18:22:04  [shadow] DISAGREE
+    #   18:22:04  [DIRECT] handler=revenue_month_detail
+    #
+    # Six seconds of a customer's time to produce one log line, on a decision
+    # that had already been made. Every later request paid a smaller version of
+    # the same bill. It is telemetry, so it runs like telemetry.
+    threading.Thread(target=_compare, name="shadow-route", daemon=True).start()
 
 

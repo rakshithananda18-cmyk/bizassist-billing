@@ -448,5 +448,37 @@ def generate_insights(user_id: int, client=None) -> dict:
             return {"insights": insights, "snapshot": snap, "source": "deterministic"}
         return {"insights": insights, "snapshot": snap, "source": "ai"}
     except Exception as e:
+        # `response_format={"type": "json_object"}` makes the SERVER validate the
+        # generation, so a reply that runs past max_tokens comes back as a hard
+        # 400 — "Failed to validate JSON. Please adjust your prompt." — and the
+        # partial answer is discarded. Seen in production 17:31:31, which is why
+        # the advisor was reporting "0 insight(s) (source=deterministic)".
+        #
+        # One retry without strict mode, parsed leniently: a truncated object is
+        # usually recoverable, and half the advice beats none. Only for that
+        # specific failure — anything else keeps going straight to the
+        # deterministic fallback rather than spending a second call to fail again.
+        if "validate json" in str(e).lower() or "failed_generation" in str(e).lower():
+            try:
+                logger.warning("[ADVISOR] strict JSON mode rejected the generation — "
+                               "retrying leniently")
+                from services.purchase_ocr import _parse_json_loose
+                resp = client.chat.completions.create(
+                    model=MODEL_COMPLEX,
+                    temperature=0.3,
+                    max_tokens=1600,          # the likely cause: 900 truncated it
+                    messages=[
+                        {"role": "system", "content": _ADVISOR_SYSTEM},
+                        {"role": "user", "content": "BUSINESS DATA (JSON):\n"
+                                                    + json.dumps(snap, ensure_ascii=False)},
+                    ],
+                )
+                data = _parse_json_loose(resp.choices[0].message.content or "{}")
+                insights = data.get("insights") or []
+                if insights:
+                    return {"insights": insights, "snapshot": snap, "source": "ai"}
+            except Exception as retry_err:
+                logger.warning("[ADVISOR] lenient retry also failed: %s", retry_err)
+
         logger.error("[ADVISOR] generate_insights failed: %s", e, exc_info=True)
         return {"insights": _deterministic_headline(snap), "snapshot": snap, "source": "deterministic"}
