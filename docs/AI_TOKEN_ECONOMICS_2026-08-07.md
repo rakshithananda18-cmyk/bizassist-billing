@@ -1,6 +1,8 @@
 # AI token economics & deferred work — 2026-08-07
 
-Written after a session that repaired the AI chat pipeline. It records what was
+Written after the session that repaired the AI chat pipeline; **extended 2026-08-08**
+with the AI_COMPLEX model measurement (§3b), AI in the search palette (§6), and a
+correction to §5 where the advice recorded here turned out not to work. It records what was
 measured, one proposal that the measurements **refuted**, and the levers left
 untried — so the next person picks up evidence rather than re-deriving it.
 
@@ -110,6 +112,7 @@ single observation. The reproduce script above gives the per-handler evidence.
 | `SNAPSHOT_CONTEXT=false` | unknown — **never measured** | AI_SIMPLE loses the deterministic business snapshot | The honest next thing to size |
 | `CHAT_MEMORY_ENABLED=0` | ~600 tokens / AI_SIMPLE call | loses semantic recall of past chats | Already capped; see §4 |
 | `LLM_ROUTER=off` | ~841 / query | **refuted above** — do not | Closed |
+| `GROQ_MODEL_COMPLEX` | **8,453 tokens / AI_COMPLEX** | a shorter, shallower answer | **Measured 2026-08-08 — taken; see §3b** |
 
 `INTENT_ROUTER=shadow` costs **zero Groq tokens** (local MiniLM) and, since
 2026-08-07, runs off the request path in a daemon thread. Leave it on: it is the
@@ -120,6 +123,46 @@ three production queries and was ambiguous on two the paid router got right.
 To size `SNAPSHOT_CONTEXT`, log `len(snap)` at
 `services/ai_router_execution.py` where `get_business_snapshot` is called, and
 compare AI_SIMPLE `input_tokens` in `token_usage` with it on and off.
+
+---
+
+## 3b. The AI_COMPLEX model — measured 2026-08-08
+
+The default was not merely expensive. **It could not complete a single question
+inside the account's rate limit.**
+
+Same question (`why are my sales down this month`), same business, same tools:
+
+| | `openai/gpt-oss-120b` (was) | `llama-3.3-70b-versatile` (now) |
+|---|---|---|
+| Wall time | 80.6 s | **1.6 s** (8 s end-to-end in the app, incl. the router) |
+| Tokens in + out | 12,617 + 1,220 = **13,837** | 5,204 + 180 = **5,384** |
+| Tool rounds | 5, serialised | 3, **all in `round=1`** (parallel) |
+| Answer | 3,308 chars, month-by-month table | 635 chars, summary |
+
+The Groq tier is `on_demand` with a **TPM ceiling of 8,000**. gpt-oss needs 13,837
+for one question, so it cannot fit — observed as
+`429 … Limit 8000, Used 5561, Requested 2514`. The 80.6 s run only completed
+because the spend straddled two minute-windows. That is luck, not health.
+
+`GROQ_MODEL_COMPLEX=llama-3.3-70b-versatile` is set in `backend/.env`.
+
+**What was given up, honestly.** gpt-oss ran two more tools
+(`list_invoices`, `dormant_customers`) and returned a far richer answer. Cost and
+latency were measured; **answer quality was not** — depth is inferred from length
+and tool coverage on one question, which is weak evidence. If the shallower
+answers prove inadequate on real questions, the fix is the **Groq tier**, not
+restoring a default that does not complete. Flipping the variable back is then
+the whole change.
+
+⚠ `.env` is gitignored, so this **does not travel to the Space**. Set
+`GROQ_MODEL_COMPLEX` there separately (a Variable, not a Secret) or the Space
+stays on gpt-oss and rate-limits.
+
+Reproduce: `scripts/`-free, out of process (MODEL is read at import) —
+set `GROQ_MODEL_COMPLEX`, then call
+`agent_loop.run_agent_loop_stream(q, business_id, [])` and read the `ag_done`
+event's `tokens`.
 
 ---
 
@@ -172,11 +215,37 @@ better path on photos. Resolution is an account/entitlement question, or set
   wrong invoice. Not scriptable: it needs the actual receipts
 - 5 open shifts on biz 42 — a closing cash figure is a **count**, not a calculation
 
-**Sync inbox, 9 B2B rows held on the local device.** Their stored payloads predate
-the BizID fix and the pull cursor has advanced past them, so retrying replays the
-old payload and fails identically. They need the cursor rewound to before
-`2026-08-03T14:50` now that the cloud sends BizIDs; `core/sync/inbox.py` refreshes
-a held row's payload when the cloud re-offers it.
+**Sync inbox, B2B rows held on the local device.**
+⚠ **CORRECTED 2026-08-08 — the advice previously written here was wrong twice.**
+It said: rewind the cursor to before `2026-08-03T14:50` and the rows will drain.
+They will not.
+
+1. **The attempts ceiling blocks retry regardless of the cursor.**
+   `due_rows` filters `attempts < MAX_AUTO_ATTEMPTS` and that constant is **7**;
+   every held row sat at exactly 7. No drain would ever pick them up again, and
+   `core/sync/inbox.py` *deliberately preserves* `attempts` on a re-offer so an
+   unrelated pull cannot reset backoff. `scripts/rewind_pull_cursor.py` now
+   resets both — a rewind alone is a no-op for the rows that most need it.
+2. **The cloud does not re-offer them.** Both halves were applied (biz 126 and
+   10001) and the cursor then advanced across the rewound window for ~19 minutes
+   of pull cycles. The stored `b2b_orders` payload was **unchanged** — still
+   `seller_business_id=7, buyer_business_id=114` with no `_bizid` keys. Since
+   `_serialize_orm_obj` demonstrably emits `seller_business_id_bizid` for a local
+   row, a re-offer would have refreshed it. It never came.
+
+So the payload refresh mechanism is real but unreachable here, and the rows will
+re-stick at 7 attempts. **The recoverable path was local, not sync**: the order's
+six lines were sitting in the inbox payloads all along and summed to exactly the
+invoice's stored subtotal, which is what made
+`scripts/repair_b2b_invoice_lines.py` safe rather than a guess.
+
+Root cause of the whole cascade, and it is fixed:
+`b2b_orders.seller_invoice_id` was declared `Column(Integer)` with **no
+ForeignKey**, and BOTH halves of the spine machinery iterate
+`__table__.foreign_keys`. With nothing to walk, the sender emitted no uid and the
+receiver never inspected the column, so the cloud's `841` — its own invoice id —
+was written through verbatim. Locally 841 belongs to business 9999. `740b11e`
+fixed the two party columns; this one was missed because it had no FK to walk.
 
 **Verification debts from that session** — neither rendered in a browser, because
 the tooling blocked localhost:
@@ -184,3 +253,109 @@ the tooling blocked localhost:
 - the universal search palette (`Ctrl+K`, and the `?field=` settings deep link,
   which is timing-based — it defers 120 ms for the tab to mount)
 - the collapsed-sidebar fix for the minimized-invoice card
+
+---
+
+## 6. AI in the search palette — 2026-08-08
+
+### The rule the design turns on
+
+**The AI is never invoked while typing.** `/search` is debounced at 250 ms and
+cheap; the router costs ~841 tokens per invocation *before* the model answers
+(§1). Per-keystroke would be ruinous. An "Ask AI" row appears **last** in the
+palette and only runs when explicitly chosen. There is a test asserting that a
+fully typed question produces `/search` calls and **zero** `/ask` calls; it is
+the most load-bearing assertion in the feature.
+
+Confirmed live: one router invocation for a whole typed question, `8 s`
+end-to-end, `tokens=5377`.
+
+### What ships (Phase 1 — read-only Q&A)
+
+| | |
+|---|---|
+| Endpoint | `/ask/stream` — the SAME one `frontend-ai` uses |
+| Gate | Pro **and** not a cashier, mirrored client-side so a free plan is never shown a control that would 402 |
+| Trigger | ≥ 2 words **and** ≥ 6 chars (see below) |
+| Placement | last group, so it never displaces a record |
+| Off switch | Settings → General → **Ask AI from Search** (`general.ai_search_enabled`, default on) |
+
+Reusing the endpoint rather than adding a second AI route keeps one router, one
+cache and one set of failure rules. A parallel path would drift the way two
+hosting-mode implementations already had to be merged this session.
+
+Three failure shapes are handled, not rediscovered: **503** (no `GROQ_API_KEY`)
+latches the row off for the session; a stream that **ends with no terminal
+event** says so instead of spinning forever; a mid-stream **`error`** renders as
+an error rather than an empty answer.
+
+### The Pro gate had to be made real first
+
+`/ask` and `/ask/stream` carried `require_plan("pro")` that **enforced nothing** —
+it is a no-op unless `SUBSCRIPTION_ENFORCED=1`, which is unset in production. The
+AI had been free to every plan. `force_enforcement=True` makes the existing
+declaration true without flipping the site-wide paywall (which would also gate
+`/api/sync/push` and the data-transfer import — a separate, deliberate decision).
+
+Enabling it **broke 51 tests across 9 files**, all of which signed up a fresh
+free account and called `/ask`. That is the proof the gate had never bitten. They
+now provision a plan via `tests/planhelpers.py::grant_pro`. One test —
+`test_subscription_dormant_by_default` — was **repointed, not patched**: its
+intent (the site-wide paywall blocks nothing) is still valid, but `/ask` stopped
+being a valid probe for it, so it now probes `/api/sync/push`.
+
+⚠ Live behaviour change: a free-plan business using the AI chat now gets 402 with
+no grace period. Every business with chat history on the dev machine resolves to
+Pro, so measured impact is nobody — **but that machine is not production, and the
+production check has not been run.**
+
+### Phase 2 was deliberately NOT built
+
+The plan called for actions behind a confirm step. On reading the machinery, that
+was the wrong build:
+
+- The server **already refuses to auto-execute**. `ai_router.py` returns a
+  confirm chip and *"Nothing is sent or changed until you confirm"*, and
+  `/action/execute` has two write rails — it **recomputes the preview and
+  compares fingerprints**, refusing with 428 if the data drifted since the user
+  confirmed, plus a replay wall.
+- Of the five actions, `send_payment_reminders` and `email_reminder_digest`
+  **email customers** and `mark_invoice_paid` **mutates money**.
+- A money-and-email confirmation implemented in two surfaces is two places to
+  drift — the exact defect fixed twice this session (POSLiveCounter re-deriving
+  hosting mode; `create_sale_invoice`'s idempotency wall).
+- `Ctrl+Space → type → Enter` is the wrong ceremony for "email 20 customers".
+
+Instead, `source: 'action'` **hands off** to the AI Advisor, which owns
+confirmation. A test asserts the palette's only controls are *Dismiss answer* and
+*Open AI Advisor*, and that nothing reaches `/action`.
+
+### Open
+
+**The local matchers only handle prefix-style typing.** `matchPages` substring-
+matches the *whole* query against a label, so:
+
+```
+"setting"              → pages: ["Settings"]
+"where are my setting" → pages: [],  settings: []      ← nothing
+```
+
+A natural-language question therefore finds nothing locally and falls through to
+the assistant — which has database tools and no knowledge of the app's UI, so it
+invents an answer. Observed: `setting` (7 chars, one word) cleared the original
+length-only bar and produced a reply about invoice totals citing a "Send
+Reminder" button that does not exist.
+
+The word-count rule fixes the one-word case and **not** the phrase case. The real
+fix is token matching in `config/searchIndex.js`: split the query, drop stopwords
+and very short words, match if any remaining token hits the label or keywords.
+The trade is more local noise (`sales down` starts matching anything containing
+"sales"), bounded by `MAX_STATIC = 4` and by pages ranking below records.
+
+Deliberately **not** a question-word whitelist: *"sales down vs last month"* is a
+fair question with no question word in it, and a whitelist trains owners to
+phrase things for the parser.
+
+**Phase 3 (memory in the palette) is not started** and should not be until Phase 1
+has answered real questions. §4's constraint applies: chat memory is Chroma-backed
+and carries the single-process freeze hazard.
