@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
 import { backupOverdue } from '../utils/backupReminder'
+import { HALT_COPY } from '../utils/syncHalt'
 import { BellIcon, CheckIcon, CloseIcon } from './Icons'
 
 /**
@@ -67,6 +68,15 @@ export default function NotificationBell() {
     }
   }, [settings])
 
+  // ── Is sync even running? ────────────────────────────────────────────────
+  // Read from the SERVER's halt flags only — the client-side "free plan" guess
+  // that AppLayout also applies is deliberately not repeated here. That case
+  // already has two loud surfaces (the sidebar pill and the Pro prompts), while
+  // the faults this adds — a dead cloud token, a JWT_SECRET mismatch — had
+  // none at all outside the sync popover. Copy and severity come from
+  // utils/syncHalt so the bell can never word it differently from the panel.
+  const [haltReason, setHaltReason] = React.useState(null)
+
   const load = React.useCallback(async () => {
     setLoading(true)
     try {
@@ -78,6 +88,12 @@ export default function NotificationBell() {
       logger.error('[NOTIFY] could not load notifications:', err)
     } finally {
       setLoading(false)
+    }
+    try {
+      const r = await authFetch('/api/sync/queue-depth')
+      if (r.ok) setHaltReason((await r.json())?.halt?.reason || null)
+    } catch {
+      // Same rule: a failed probe leaves the last known answer standing.
     }
   }, [authFetch])
 
@@ -104,11 +120,29 @@ export default function NotificationBell() {
 
   // Merged, then re-sorted — the bell's colour has to follow the most urgent
   // item overall, not whichever source it came from.
+  const halt = React.useMemo(() => {
+    const copy = haltReason ? HALT_COPY[haltReason] : null
+    if (!copy) return null
+    return {
+      kind: `halt:${haltReason}`,
+      severity: copy.severity,
+      title: copy.title,
+      detail: copy.detail,
+      // The sync popover holds the matching recovery action, so send them there
+      // rather than growing a second set of buttons that must stay in step.
+      route: '/settings?tab=advanced',
+    }
+  }, [haltReason])
+
   const items = React.useMemo(() => {
-    const merged = [...(data.items || []), ...(backup ? [backup] : [])]
+    const merged = [
+      ...(data.items || []),
+      ...(halt ? [halt] : []),
+      ...(backup ? [backup] : []),
+    ]
     const order = { danger: 0, warning: 1, info: 2 }
     return merged.sort((a, b) => (order[a.severity] ?? 3) - (order[b.severity] ?? 3))
-  }, [data, backup])
+  }, [data, halt, backup])
 
   const count = items.length
   const tone = SEVERITY[items[0]?.severity] || SEVERITY.info

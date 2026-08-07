@@ -19,6 +19,7 @@ import SidebarContextMenu from '../components/layout/SidebarContextMenu'
 import ToastContainer from '../components/layout/ToastContainer'
 import SessionExpiredModal from '../components/layout/SessionExpiredModal'
 import { useDocLabels } from '../hooks/useDocLabels'
+import { HALT_COPY, resolveHaltReason } from '../utils/syncHalt'
 // HostingOnboardingModal removed: hosting is now chosen once, in Register.
 // The post-login onboarding pop-up duplicated that choice and was intrusive.
 import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon, DownloadIcon, PlusIcon } from '../components/Icons'
@@ -227,41 +228,13 @@ export default function AppLayout({ children, title }) {
   // fine" while nothing synced. Two of those never recover without the owner
   // acting, and nothing told them to.
   //
-  // An older backend sends no `halt` at all, so this must degrade to the local
-  // inference rather than assume healthy.
-  const serverHalt = queueDepth?.halt?.reason || null
-
-  // The client can see one halt the worker cannot: a free plan that has not yet
-  // been REFUSED by the cloud. `_PLAN_BLOCKED` is only set by a 402 response, so
-  // before the first attempt of a process there is no flag to report.
-  const planHalt = isSyncOn && isFreePlan ? 'plan_required' : null
-
-  // Precedence mirrors routes/sync.py::_HALT_ORDER, which ranks the plan ABOVE
-  // an outage. It has to: the health probe runs before the plan gate, so a
-  // free-plan business whose flag is not set yet reports `offline` during any
-  // outage — and "sync resumes automatically" is false when the plan is what is
-  // actually blocking. Everything above `offline` still wins outright.
-  const haltReason = (serverHalt && serverHalt !== 'offline' ? serverHalt : null)
-                     || planHalt
-                     || serverHalt
-
-  // What the owner must do, if anything. Drives the single sync control.
-  //
-  // `auth_expired` is PULL-ONLY. `_PULL_AUTH_BLOCKED` is checked after the push
-  // leg has already run (sync_worker.py:3161), so uploads keep working via the
-  // self-signed fallback; only cloud→local downloads stop. Saying "sync stopped"
-  // there would send an owner hunting for data loss that is not happening.
-  // A secret mismatch halts both legs, hence the separate copy.
-  const HALT_COPY = {
-    plan_required:   { title: 'Sync paused — Pro required',
-                       detail: 'Cloud sync needs the Pro plan. Nothing is lost — changes wait here.' },
-    auth_expired:    { title: 'Cloud downloads paused',
-                       detail: 'This device’s cloud sign-in expired. Your changes still upload, but edits from your other devices stop arriving until you sign in again.' },
-    secret_mismatch: { title: 'Sign-in expired',
-                       detail: 'This device could not authenticate with the cloud. Sign out and back in to reconnect.' },
-    offline:         { title: 'Offline',
-                       detail: 'The cloud is unreachable. Sync resumes automatically.' },
-  }
+  // Reason, precedence and wording all come from utils/syncHalt — SHARED with
+  // the notification bell, which shows the same conditions. Two components
+  // keeping their own copy of these strings is how one surface ends up saying
+  // "Sync paused" while the other says "Cloud downloads paused" about the same
+  // flag, with nothing in either file to reveal it.
+  const haltReason = resolveHaltReason(queueDepth?.halt?.reason || null,
+                                       { isSyncOn, isFreePlan })
   const haltCopy = haltReason ? HALT_COPY[haltReason] : null
 
   // One tone for every halt surface. The text was made halt-aware and the colour

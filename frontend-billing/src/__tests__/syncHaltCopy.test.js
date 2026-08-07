@@ -5,10 +5,12 @@
 // them — a reason the UI does not know renders as nothing at all, which is the
 // silent-failure mode this whole change exists to remove.
 //
-// Kept as a data test rather than a full AppLayout render: AppLayout pulls in
-// the lock, nav, auth and business contexts, and none of that is what could
-// break here. What can break is the two vocabularies drifting apart.
+// No longer a MIRROR. It used to hand-copy AppLayout's HALT_COPY and precedence
+// into this file, which meant it could only ever prove the copy agreed with
+// itself — the source could change and this would stay green. Both now live in
+// utils/syncHalt, shared with the notification bell, and this imports them.
 import { describe, it, expect } from 'vitest'
+import { HALT_COPY as SOURCE_COPY, resolveHaltReason } from '../utils/syncHalt'
 
 // Mirrors backend/routes/sync.py::_HALT_ORDER — reason, and how it is fixed.
 const BACKEND_REASONS = {
@@ -23,21 +25,13 @@ const BACKEND_REASONS = {
 // PULL only — `_PULL_AUTH_BLOCKED` is checked after the push leg has already run
 // (sync_worker.py:3161), so uploads keep going and calling the outbox "held" is
 // a false alarm about data loss that is not happening.
-const HALT_COPY = {
-  plan_required: { title: 'Sync paused — Pro required', action: 'check_plan', holdsOutbox: true },
-  auth_expired: { title: 'Cloud downloads paused', action: 'logout', holdsOutbox: false },
-  secret_mismatch: { title: 'Sign-in expired', action: 'logout', holdsOutbox: true },
-  offline: { title: 'Offline', action: 'retry', holdsOutbox: true },
+const ACTIONS = {
+  plan_required: 'check_plan', auth_expired: 'logout',
+  secret_mismatch: 'logout', offline: 'retry',
 }
+const HALT_COPY = Object.fromEntries(Object.entries(SOURCE_COPY).map(
+  ([k, v]) => [k, { ...v, action: ACTIONS[k] }]))
 
-// Mirrors the haltReason precedence in layouts/AppLayout.jsx.
-const resolveHalt = (serverReason, { isSyncOn, isFreePlan }) => {
-  const planHalt = isSyncOn && isFreePlan ? 'plan_required' : null
-  return (serverReason && serverReason !== 'offline' ? serverReason : null)
-    || planHalt
-    || serverReason
-    || null
-}
 
 describe('sync halt vocabulary', () => {
   it('the UI knows every reason the backend can send', () => {
@@ -95,27 +89,27 @@ describe('halt precedence', () => {
     // a free-plan business reports `offline` — and "resumes automatically" is
     // false when the plan is the real blocker. Matches _HALT_ORDER, which ranks
     // plan above offline.
-    expect(resolveHalt('offline', FREE)).toBe('plan_required')
-    expect(resolveHalt('offline', PRO)).toBe('offline')
+    expect(resolveHaltReason('offline', FREE)).toBe('plan_required')
+    expect(resolveHaltReason('offline', PRO)).toBe('offline')
   })
 
   it('an auth fault outranks the local plan guess', () => {
     // Both of these need the owner to sign in again; neither is fixed by the
     // plan. Telling a lapsed-token user to check their subscription is the
     // wrong-fix bug this whole feature exists to remove.
-    expect(resolveHalt('secret_mismatch', FREE)).toBe('secret_mismatch')
-    expect(resolveHalt('auth_expired', FREE)).toBe('auth_expired')
+    expect(resolveHaltReason('secret_mismatch', FREE)).toBe('secret_mismatch')
+    expect(resolveHaltReason('auth_expired', FREE)).toBe('auth_expired')
   })
 
   it('covers a free plan the worker has not refused yet', () => {
     // `_PLAN_BLOCKED` is only set by a cloud 402, so a fresh process reports no
     // halt at all until the first push attempt.
-    expect(resolveHalt(null, FREE)).toBe('plan_required')
+    expect(resolveHaltReason(null, FREE)).toBe('plan_required')
   })
 
   it('reports nothing when nothing is wrong', () => {
-    expect(resolveHalt(null, PRO)).toBe(null)
-    expect(resolveHalt(null, { isSyncOn: false, isFreePlan: true })).toBe(null)
+    expect(resolveHaltReason(null, PRO)).toBe(null)
+    expect(resolveHaltReason(null, { isSyncOn: false, isFreePlan: true })).toBe(null)
   })
 
   it('only a plan halt counts as "paused"', () => {
