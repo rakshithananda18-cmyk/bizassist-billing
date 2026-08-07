@@ -134,30 +134,22 @@ def test_extract_structured_purchase_invoice_groq_success():
         mock_factory.assert_called_once_with("mock_key")
 
 @patch.dict(os.environ, {"GROQ_API_KEY": "mock_key", "CLAUDE_API_KEY": "claude_key"})
-def test_extract_structured_purchase_invoice_groq_fail_claude_success():
-    # Groq fails, falls back to Claude
+def test_extract_structured_purchase_invoice_groq_failure_propagates():
+    """Replaces a test of the Claude fallback, which is gone — Groq is the only
+    provider. The old code logged "attempting fallback to Claude" and then fell
+    through to a ValueError about missing API keys, so a Groq outage was reported
+    as a configuration problem naming a provider that was never involved."""
     mock_groq_client = MagicMock()
     mock_groq_client.chat.completions.create.side_effect = Exception("Groq API rate limit")
-    
-    mock_claude_msg = MagicMock()
-    mock_content = MagicMock()
-    mock_content.text = '{"supplier_name": "Claude Supplier", "invoice_number": "C-200", "items": []}'
-    mock_claude_msg.content = [mock_content]
-    
-    mock_claude_client = MagicMock()
-    mock_claude_client.messages.create.return_value = mock_claude_msg
-    
-    with patch("services.groq_client.make_groq_client", return_value=mock_groq_client), \
-         patch("services.purchase_ocr.anthropic.Anthropic", return_value=mock_claude_client) as mock_claude_cls:
-        
-        res = extract_structured_purchase_invoice("Raw Text")
-        assert res["supplier_name"] == "Claude Supplier"
-        assert res["invoice_number"] == "C-200"
-        mock_claude_cls.assert_called_once_with(api_key="claude_key")
+
+    with patch("services.groq_client.make_groq_client", return_value=mock_groq_client):
+        with pytest.raises(Exception, match="Groq API rate limit"):
+            extract_structured_purchase_invoice("Raw Text")
+
 
 @patch.dict(os.environ, {}, clear=True)
 def test_extract_structured_purchase_invoice_no_keys_raises():
-    with pytest.raises(ValueError, match="No configured LLM API keys"):
+    with pytest.raises(ValueError, match="GROQ_API_KEY"):
         extract_structured_purchase_invoice("Raw Text")
 
 

@@ -5,7 +5,6 @@ import base64
 import logging
 import pypdf
 from groq import Groq
-import anthropic
 from PIL import Image
 
 logger = logging.getLogger("bizassist.purchase_ocr")
@@ -316,69 +315,15 @@ def extract_purchase_from_image(file_bytes: bytes, ext: str) -> dict:
             logger.warning(f"[Purchase Image] Groq vision failed: {e}")
             provider_errors.append(f"Groq: {e}")
 
-    # 2) Gemini vision via its OpenAI-compatible endpoint (httpx, no new dep)
-    gem_key = os.getenv("GEMINI_API_KEY")
-    if gem_key:
-        try:
-            import httpx
-            base = os.getenv(
-                "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai"
-            ).rstrip("/")
-            body = {
-                "model": os.getenv("GEMINI_VISION_MODEL", "gemini-2.0-flash"),
-                "messages": [
-                    {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user", "content": [
-                        {"type": "text", "text": user_text},
-                        {"type": "image_url", "image_url": {"url": data_uri}},
-                    ]},
-                ],
-                "temperature": 0.0,
-            }
-            with httpx.Client(timeout=float(os.getenv("VISION_TIMEOUT_SECS", "90"))) as hc:
-                r = hc.post(
-                    f"{base}/chat/completions",
-                    headers={"Authorization": f"Bearer {gem_key}", "Content-Type": "application/json"},
-                    json=body,
-                )
-                r.raise_for_status()
-                data = r.json()
-            logger.info("[Purchase Image] extracted via Gemini vision")
-            return _parse_json_loose(data["choices"][0]["message"]["content"])
-        except Exception as e:
-            logger.warning(f"[Purchase Image] Gemini vision failed: {e}")
-            provider_errors.append(f"Gemini: {e}")
-
-    # 3) Claude vision
-    claude_key = os.getenv("CLAUDE_API_KEY")
-    if claude_key:
-        try:
-            client = anthropic.Anthropic(api_key=claude_key)
-            message = client.messages.create(
-                model=os.getenv("CLAUDE_VISION_MODEL", "claude-3-5-sonnet-20241022"),
-                max_tokens=4000,
-                temperature=0.0,
-                system=_SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": [
-                    {"type": "text", "text": user_text},
-                    {"type": "image", "source": {
-                        "type": "base64", "media_type": mime,
-                        "data": base64.b64encode(file_bytes).decode(),
-                    }},
-                ]}],
-            )
-            logger.info("[Purchase Image] extracted via Claude vision")
-            return _parse_json_loose(message.content[0].text)
-        except Exception as e:
-            logger.warning(f"[Purchase Image] Claude vision failed: {e}")
-            provider_errors.append(f"Claude: {e}")
-
     if provider_errors:
         raise ValueError(
-            "The AI vision model could not read this image: "
-            + "; ".join(provider_errors)
+            "The AI vision model could not read this image: " + "; ".join(provider_errors)
         )
-    raise ValueError("No vision-capable LLM key available (GROQ/GEMINI/CLAUDE).")
+    raise ValueError(
+        "Bill scanning needs GROQ_API_KEY, and a key with access to a "
+        "vision-capable model."
+    )
+
 
 
 def extract_structured_purchase_invoice(raw_text: str) -> dict:
@@ -402,26 +347,14 @@ def extract_structured_purchase_invoice(raw_text: str) -> dict:
             )
             return _parse_json_loose(completion.choices[0].message.content)
         except Exception as e:
-            logger.warning(f"Groq extraction failed: {str(e)}. Attempting fallback to Claude...")
+            # Groq is the only provider. Re-raise rather than logging "attempting
+            # fallback to Claude" and then falling through to a bare ValueError —
+            # that message described a path that no longer exists and buried the
+            # real cause.
+            logger.error(f"Groq extraction failed: {e}")
+            raise
 
-    claude_key = os.getenv("CLAUDE_API_KEY")
-    if claude_key:
-        try:
-            logger.info("Extracting purchase invoice using Anthropic (claude-3-5-sonnet-20241022)...")
-            client = anthropic.Anthropic(api_key=claude_key)
-            message = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=4000,
-                system=_SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": user_content}],
-                temperature=0.0,
-            )
-            return _parse_json_loose(message.content[0].text)
-        except Exception as e:
-            logger.error(f"Anthropic extraction failed: {str(e)}")
-            raise e
-
-    raise ValueError("No configured LLM API keys (GROQ_API_KEY or CLAUDE_API_KEY) found for extraction.")
+    raise ValueError("Bill scanning needs GROQ_API_KEY to be configured.")
 
 
 def parse_purchase_file(file_bytes: bytes, filename: str) -> dict:

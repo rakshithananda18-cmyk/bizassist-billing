@@ -57,11 +57,12 @@ def make_groq_client(api_key: str = None):
     """Groq client with timeout + bounded retries. Falls back to a plain
     client if an old SDK doesn't accept the kwargs (never blocks boot).
 
-    When `LLM_FALLBACK_ENABLED=1`, the client is transparently wrapped with a
-    provider-fallback chain (Groq → Gemini/OpenAI) so a Groq outage can't kill
-    the AI features (AI Phase 0 / REVIEW_2 §1). Default off = plain Groq client,
-    identical to previous behaviour. The wrapper mirrors the same
-    `.chat.completions.create()` surface, so no call site changes."""
+    Groq is the ONLY provider. A `LLM_FALLBACK_ENABLED=1` hook used to wrap this
+    in a Groq → Gemini/OpenAI chain; it was opt-in, the flag was never set in any
+    environment, and it contradicted the stated architecture — so 334 lines of
+    provider-shim plus its test are gone. If a second provider is ever wanted,
+    that is a decision to make deliberately, not a dormant switch nobody has
+    exercised."""
     key = api_key if api_key is not None else os.getenv("GROQ_API_KEY")
     try:
         base = Groq(api_key=key, timeout=GROQ_TIMEOUT_SECS, max_retries=GROQ_MAX_RETRIES)
@@ -69,10 +70,4 @@ def make_groq_client(api_key: str = None):
         logger.warning("[GROQ] SDK too old for timeout/max_retries kwargs — using defaults")
         base = Groq(api_key=key)
 
-    if os.getenv("LLM_FALLBACK_ENABLED", "0") == "1":
-        try:
-            from services.llm_provider import wrap_with_fallback
-            return wrap_with_fallback(base)
-        except Exception as e:                            # never break client construction
-            logger.warning("[GROQ] fallback wrap failed (%s) — using plain Groq client", e)
     return base

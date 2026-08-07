@@ -4,7 +4,6 @@ import logging
 import pypdf
 import io
 from groq import Groq
-import anthropic
 from database.db import SessionLocal
 from database.models import UploadedFile, Invoice, Inventory, LegacyPayment
 from services.embeddings import index_new_file_records
@@ -150,40 +149,14 @@ def extract_structured_invoice(raw_text: str) -> dict:
             )
             return json.loads(completion.choices[0].message.content)
         except Exception as e:
-            logger.warning(f"Groq extraction failed: {str(e)}. Attempting fallback to Claude...")
+            # Groq is the only provider. The old branch logged "attempting
+            # fallback to Claude" and then fell through to a bare ValueError
+            # about missing keys, which named a provider that was not the
+            # problem and hid the one that was.
+            logger.error(f"Groq extraction failed: {e}")
+            raise
 
-    # 2. Fallback: Anthropic/Claude
-    claude_key = os.getenv("CLAUDE_API_KEY")
-    if claude_key:
-        try:
-            logger.info("Extracting invoice structure using Anthropic (claude-3-5-sonnet-20241022)...")
-            client = anthropic.Anthropic(api_key=claude_key)
-            
-            # Construct message
-            message = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=4000,
-                system=system_prompt,
-                messages=[
-                    {"role": "user", "content": user_content}
-                ],
-                temperature=0.0
-            )
-            response_text = message.content[0].text.strip()
-            
-            # Strip markdown block indicators if Claude returned them despite instructions
-            if response_text.startswith("```"):
-                lines = response_text.splitlines()
-                if lines[0].startswith("```json") or lines[0].startswith("```"):
-                    lines = lines[1:-1]
-                response_text = "\n".join(lines).strip()
-                
-            return json.loads(response_text)
-        except Exception as e:
-            logger.error(f"Anthropic extraction failed: {str(e)}")
-            raise e
-
-    raise ValueError("No configured LLM API keys (GROQ_API_KEY or CLAUDE_API_KEY) found for PDF extraction.")
+    raise ValueError("PDF invoice extraction needs GROQ_API_KEY to be configured.")
 
 def save_pdf_invoice_to_db(data: dict, business_id: int, filename: str, file_hash: str = None) -> dict:
     """Saves parsed JSON invoice structured details into the standard BIZASSIST tables."""
