@@ -13,6 +13,7 @@ import { IS_DESKTOP_APP, openDownloadPage } from '../config/downloadApp'
 import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
 import PageHelp from '../components/PageHelp'
+import UniversalSearch from '../components/UniversalSearch'
 import SyncNudgeModal from '../components/hosting/SyncNudgeModal'
 import WebLocalOnlyNotice from '../components/hosting/WebLocalOnlyNotice'
 import SidebarContextMenu from '../components/layout/SidebarContextMenu'
@@ -2530,6 +2531,10 @@ export default function AppLayout({ children, title }) {
         <main className="page-content" style={{ position: 'relative' }}>
           {/* ⓘ page help — one mount point, per-route content (config/helpContent.js) */}
           <PageHelp />
+          {/* Beside PageHelp deliberately: this mount point is NOT gated on
+              `!isSalesPage`, so search survives on /sales where the sidebar,
+              bottom bar and mobile header are all hidden. */}
+          <UniversalSearch />
           {children}
         </main>
       </div>

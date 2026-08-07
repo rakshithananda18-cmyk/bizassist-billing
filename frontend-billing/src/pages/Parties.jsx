@@ -69,7 +69,10 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
   const [loading, setLoading]       = useState(true)
   const [activeTab, setActiveTab]   = useState('Customers')
   const [isFullScreen, setIsFullScreen] = useState(false)
-  const [search, setSearch]         = useState('')
+  // Seeded from ?q= — see Stock.jsx. Two customers with the same name show as
+  // two rows in the palette; the owner picks, and this list shows both.
+  const [search, setSearch]         = useState(
+    () => new URLSearchParams(window.location.search).get('q') || '')
   const [showModal, setShowModal]   = useState(false)
   const [form, setForm]             = useState(defaultForm)
   const [submitting, setSubmitting] = useState(false)

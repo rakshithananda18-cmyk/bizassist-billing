@@ -136,7 +136,11 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   const [godowns, setGodowns]               = useState([])
   const [transfers, setTransfers]           = useState([])
   const [loading, setLoading]               = useState(true)
-  const [search, setSearch]                 = useState('')
+  // Seeded from ?q= so universal search can land on a filtered list. Products
+  // have no record route, so the palette hands the term to this box — same
+  // pattern Purchases.jsx uses for ?vendor=.
+  const [search, setSearch]                 = useState(
+    () => new URLSearchParams(window.location.search).get('q') || '')
   const [catFilter, setCatFilter]           = useState('')
   const [activeTab, setActiveTab]           = useState('catalogue') // 'catalogue' | 'intake' | 'godowns'
   // Track the last prefill seed we already consumed so re-clicking the same

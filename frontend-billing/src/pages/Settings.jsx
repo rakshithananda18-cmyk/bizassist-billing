@@ -81,6 +81,30 @@ export default function Settings() {
       setActiveTab(tabParam)
     }
   }, [searchParams])
+
+  // ── ?field= — the URL entry point jumpToSetting never had ─────────────────
+  // Universal search deep-links straight to a control: /settings?tab=print&
+  // field=print_logo. The jump mechanism already existed (jumpToSetting below:
+  // getElementById → scrollIntoView → .setting-flash); it simply could only be
+  // triggered by clicking inside the page.
+  //
+  // Deferred a frame because the tab effect above sets state, so on a cold load
+  // the target row is not mounted yet and getElementById would find nothing.
+  // The param is then stripped one-shot, so a refresh does not re-scroll —
+  // same teardown as ?switch= further down.
+  useEffect(() => {
+    const field = searchParams.get('field')
+    if (!field) return
+    const t = setTimeout(() => {
+      jumpToSetting(field)
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev)
+        next.delete('field')
+        return next
+      }, { replace: true })
+    }, 120)
+    return () => clearTimeout(t)
+  }, [searchParams, activeTab])
   // Which format the print preview shows (independent of the saved thermal_printer_mode).
   const [previewMode, setPreviewMode] = useState('thermal')
   const [dragKey, setDragKey] = useState(null)   // header line being dragged in the preview
