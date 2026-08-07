@@ -12,6 +12,8 @@ import os
 import sys
 import uuid
 
+import pytest
+
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 os.environ.setdefault("GROQ_API_KEY", "mock_groq_api_key")
 
@@ -22,6 +24,15 @@ from fastapi.testclient import TestClient
 from main_groq import app
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def clear_rate_limit_windows():
+    """Reset the IP sliding window before every test so login calls never
+    accumulate across tests and trigger the 10/min brute-force guard."""
+    from services.rate_limiter import _ip_window, _upload_window
+    _ip_window.clear()
+    _upload_window.clear()
 
 
 def _signup(uname, public_id=None):
