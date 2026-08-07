@@ -18,24 +18,31 @@ ENV PATH="/home/user/.local/bin:$PATH" \
     TZ=Asia/Kolkata \
     BIZ_TIMEZONE=Asia/Kolkata
 
-# Semantic recall of past conversations, injected into AI_SIMPLE prompts.
+# ── CHAT_MEMORY_ENABLED — set this as a SPACE VARIABLE, not here ─────────────
 #
-# OFF by default in code, ON here, and the difference is process count. The
-# freeze that forced the kill switch — a native, GIL-holding block inside
-# Chroma's persisted HNSW index — needs two processes touching one index.
-# Development does exactly that: `uvicorn --reload` runs a reloader and a worker,
-# and both import the app. THIS image does not: the CMD at the bottom is a single
-# uvicorn process, no --reload and no --workers, and within it every Chroma call
-# is serialised by _LockedCollection.
+# Semantic recall of past conversations, injected into AI_SIMPLE prompts. It
+# defaults OFF in code (services/embeddings.py) and production turns it on:
 #
-# So the safe default protects the multi-process case, and production opts in
-# because it can prove it is single-process. If --workers is ever added to that
-# CMD, remove this line in the same commit.
+#     Space → Settings → Variables → CHAT_MEMORY_ENABLED = 1
 #
-# (Its own instruction, not appended to the block above: a `\` continuation makes
-# following `#` lines part of the ENV rather than comments, which is a build
-# error — and there is no Docker on the dev machine to catch it.)
-ENV CHAT_MEMORY_ENABLED=1
+# A variable, not a secret — it is a policy flag, not a credential, and it should
+# be readable by anyone looking at why the Space behaves as it does.
+#
+# WHY IT IS SAFE HERE, AND ONLY HERE. The freeze that forced this switch is a
+# native, GIL-holding block inside Chroma's persisted HNSW index, and it needs
+# two processes touching one index. Development creates exactly that:
+# `uvicorn --reload` runs a reloader AND a worker, and both import the app. The
+# CMD at the bottom of this file does not — one uvicorn process, no --reload, no
+# --workers — and within it every Chroma call is serialised by
+# `_LockedCollection`. **If --workers is ever added to that CMD, clear the Space
+# variable in the same change.**
+#
+# WHY NOT `ENV` ON THIS LINE. It is an incident switch, and its whole value is
+# how fast it can be flipped. Baked into the image, turning it off costs a
+# commit, a push and a full rebuild — and this image apt-installs tesseract and
+# poppler, so that is minutes with the backend frozen. A Space variable is a
+# toggle and a restart. Space variables also override image ENV, so setting it
+# both places would leave two sources of truth for one flag.
 
 WORKDIR /app
 
