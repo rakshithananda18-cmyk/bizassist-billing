@@ -24,6 +24,7 @@ from main_groq import app
 from services.query_router import classify
 from services.auth import hash_password, verify_password
 
+from tests.planhelpers import grant_pro
 client = TestClient(app)
 
 @pytest.fixture(scope="session", autouse=True)
@@ -188,6 +189,9 @@ def test_ask_ai_flow(mock_chat_create):
     })
     token = login_response.json()["token"]
     headers = {"Authorization": f"Bearer {token}"}
+    # /ask is Pro-only and now enforces it (routes/ask.py). These tests exercise
+    # the AI pipeline, so the account has to carry a plan.
+    grant_pro("pharmacy")
 
     # DIRECT path ask
     response = client.post("/ask", json={"message": "how many invoices"}, headers=headers)
@@ -238,6 +242,9 @@ def test_ask_ai_tool_calling_flow(mock_chat_create):
     })
     token = login_response.json()["token"]
     headers = {"Authorization": f"Bearer {token}"}
+    # /ask is Pro-only and now enforces it (routes/ask.py). These tests exercise
+    # the AI pipeline, so the account has to carry a plan.
+    grant_pro("pharmacy")
 
     response = client.post("/ask", json={"message": "who is my most reliable supplier?"}, headers=headers)
     assert response.status_code == 200
@@ -319,6 +326,11 @@ def test_chat_history_endpoints():
     })
     token = login_response.json()["token"]
     headers = {"Authorization": f"Bearer {token}"}
+
+    # This test drives chat history THROUGH /ask, which is Pro-only and now
+    # enforces it (routes/ask.py). Without a plan the POST 402s and there is no
+    # history to assert on.
+    grant_pro("pharmacy")
 
     # Clear history to start with clean state
     client.delete("/chat/history", headers=headers)

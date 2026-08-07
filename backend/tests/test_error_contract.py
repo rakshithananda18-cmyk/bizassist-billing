@@ -18,6 +18,7 @@ import pytest
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 from main_groq import app
+from tests.planhelpers import grant_pro
 from services.context_cache import invalidate
 
 client = TestClient(app)
@@ -40,6 +41,9 @@ def auth():
         "username": username, "password": "TestPass123!", "business_name": "Err Biz",
     })
     assert resp.status_code == 200, f"Signup failed: {resp.text}"
+    # The AI endpoints are Pro-only and now enforce it; this suite tests the
+    # ROUTER, so it must provision a plan (tests/planhelpers.py).
+    grant_pro(username)
     return {"Authorization": f"Bearer {resp.json()['token']}"}
 
 

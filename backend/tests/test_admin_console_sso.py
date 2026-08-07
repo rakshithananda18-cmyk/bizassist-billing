@@ -280,9 +280,20 @@ def test_subscription_enforcement_gates_ask_and_hybrid():
 
 
 def test_subscription_dormant_by_default():
-    """With SUBSCRIPTION_ENFORCED unset/0 nothing is blocked (testing phase)."""
+    """With SUBSCRIPTION_ENFORCED unset/0 the SITE-WIDE paywall blocks nothing.
+
+    Probed against /api/sync/push, which carries a plain `require_plan("pro")`
+    and is therefore governed by the global flag alone.
+
+    This used to probe /ask, and that stopped being a valid measurement of this
+    property: /ask now passes `force_enforcement=True`, so it refuses a free
+    plan whatever the global flag says. Keeping the old probe would have made
+    this test assert the opposite of the intended behaviour — the endpoint
+    changed, not the rule this test exists to protect.
+    """
     owner = _signup_or_login(OWNER)
     h = _headers(owner["token"])
     assert os.environ.get("SUBSCRIPTION_ENFORCED", "0") != "1"
-    r = client.post("/ask", json={"message": "how many invoices"}, headers=h)
-    assert r.status_code == 200
+    # Empty batch: the plan gate runs before any body processing.
+    r = client.post("/api/sync/push", json={"changes": []}, headers=h)
+    assert r.status_code != 402, "the dormant site-wide paywall blocked a free plan"

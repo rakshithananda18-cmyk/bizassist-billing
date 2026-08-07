@@ -56,9 +56,24 @@ def home():
     return {"message": "BizAssist AI server running"}
 
 
+# ── Pro gate, ENFORCED ───────────────────────────────────────────────────────
+# `require_plan("pro")` alone is a no-op: it only bites when SUBSCRIPTION_ENFORCED=1,
+# which is unset in production. So both endpoints below have CARRIED a Pro
+# declaration that never once refused anyone — the AI has been free to every
+# plan while the code read as though it were not.
+#
+# `force_enforcement=True` makes the existing declaration true without flipping
+# the site-wide paywall, which stays a separate, deliberate decision (it would
+# also gate /api/sync/push and the data-transfer import).
+#
+# THIS IS A LIVE BEHAVIOUR CHANGE: a free-plan business that was using the AI
+# chat now gets 402 with no grace period. Checked before enabling — every
+# business with chat history resolves to Pro (`plan='pro'`, no expiry), so the
+# measured impact is nobody. Note `effective_plan` downgrades an EXPIRED Pro to
+# free, so a lapsed subscription is refused too; that is the intent.
 @router.post("/ask")
 def ask_ai(prompt: Prompt, current_user: dict = Depends(restrict_cashier),
-           _plan: dict = Depends(require_plan("pro"))):
+           _plan: dict = Depends(require_plan("pro", force_enforcement=True))):
     """
     Hybrid AI endpoint -- 4-tier routing:
       CONVERSATIONAL -> short reply, 0 tokens
@@ -78,7 +93,7 @@ def ask_ai(prompt: Prompt, current_user: dict = Depends(restrict_cashier),
 
 @router.post("/ask/stream")
 def ask_ai_stream(prompt: Prompt, current_user: dict = Depends(restrict_cashier),
-                  _plan: dict = Depends(require_plan("pro"))):
+                  _plan: dict = Depends(require_plan("pro", force_enforcement=True))):
     """
     SSE streaming endpoint -- same routing logic as /ask but streams tokens.
 
