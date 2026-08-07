@@ -36,7 +36,7 @@ import pytest                                    # noqa: E402
 
 @pytest.fixture
 def embeddings_off(monkeypatch):
-    monkeypatch.setenv("CHAT_MEMORY_ENABLED", "0")
+    monkeypatch.setenv("CHAT_MEMORY_ENABLED", "0")   # explicit, though it is the default
     import services.embeddings as E
     importlib.reload(E)
     yield E
@@ -65,19 +65,30 @@ def test_disabled_memory_reads_return_empty_context(embeddings_off, monkeypatch)
     assert called == []
 
 
-def test_memory_is_on_by_default():
-    """Off-by-default would silently degrade AI answers for everyone. The switch
-    is for an incident, not the normal state."""
+def test_memory_is_off_by_default():
+    """This assertion is the reverse of the one it replaces.
+
+    The switch first shipped defaulting ON, arguing that off-by-default would
+    silently weaken AI answers. Then the freeze reproduced on demand — with the
+    server worker holding the index, an independent process blocks on that
+    collection every time, verified against the raw chromadb collection so it is
+    not our wrapper.
+
+    Weighed honestly: ON risks a total silent outage (port open, requests
+    accepted, nothing ever answered, no error logged); OFF costs semantic recall
+    of past chats in AI_SIMPLE prompts, and nothing else. A nice-to-have that can
+    hang the application is not a default."""
     import services.embeddings as E
     importlib.reload(E)
-    assert E.CHAT_MEMORY_ENABLED is True
+    assert E.CHAT_MEMORY_ENABLED is False
 
 
-def test_only_an_explicit_zero_disables_it():
-    """A typo in an env var must not quietly turn a feature off."""
+def test_only_an_explicit_one_enables_it():
+    """Opting in to a feature that can freeze the process must be deliberate —
+    a typo or a leftover value must not switch it on."""
     import services.embeddings as E
-    for value, expected in (("1", True), ("0", False), ("", True),
-                            ("true", True), ("no", True)):
+    for value, expected in (("1", True), ("0", False), ("", False),
+                            ("true", False), ("yes", False)):
         os.environ["CHAT_MEMORY_ENABLED"] = value
         importlib.reload(E)
         assert E.CHAT_MEMORY_ENABLED is expected, f"CHAT_MEMORY_ENABLED={value!r}"

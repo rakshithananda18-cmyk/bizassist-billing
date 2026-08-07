@@ -36,17 +36,65 @@ _chroma_client = None
 # access to one persisted HNSW index — and `--reload` runs two processes that
 # both import this module.
 #
-# So: chat memory is a NICE-TO-HAVE (semantic recall of past conversations to
-# enrich AI_SIMPLE prompts) that can take the whole product down. It gets a kill
-# switch that needs no code change or redeploy, and a lock that at least stops
-# this process contending with itself.
-CHAT_MEMORY_ENABLED = os.getenv("CHAT_MEMORY_ENABLED", "1") != "0"
+# DEFAULT OFF, and that reverses this file's first version of this switch.
+#
+# It shipped defaulting ON, reasoning that off-by-default would silently weaken
+# AI answers for everyone. Then the freeze reproduced on demand: with the server
+# worker alive and holding the index, an independent process blocks on that
+# collection indefinitely, every time, while a sibling collection on the same
+# client answers in 0.17 s. Verified against the RAW chromadb collection, not
+# just the wrapper below, so it is Chroma and not our code.
+#
+# Weigh the two outcomes honestly. ON costs a total, silent outage — the port
+# stays open, requests are accepted, nothing is ever answered, and no error
+# appears anywhere. OFF costs semantic recall of past conversations in
+# AI_SIMPLE prompts. Everything else — DIRECT handlers, tools, the agent loop,
+# the whole billing product — is unaffected either way.
+#
+# A nice-to-have that can hang the application is not a default. Set
+# CHAT_MEMORY_ENABLED=1 to opt in, once the index is no longer shared between
+# processes (note `uvicorn --reload` alone runs two).
+CHAT_MEMORY_ENABLED = os.getenv("CHAT_MEMORY_ENABLED", "0") == "1"
 
 # Serialises Chroma access WITHIN this process. It cannot help across processes
 # (that needs the kill switch above, or a single-writer design), but it removes
 # the case we can actually control: request threads, the scheduler and the sync
 # worker all reaching the same index at once.
-_chroma_lock = threading.Lock()
+#
+# RLock, not Lock: some paths call one guarded helper from inside another on the
+# same thread, and a plain Lock would turn that into a self-deadlock — trading
+# an occasional freeze for a guaranteed one.
+_chroma_lock = threading.RLock()
+
+
+class _LockedCollection:
+    """A Chroma collection that takes `_chroma_lock` for every call.
+
+    The lock lives HERE rather than at the call sites because there are eight
+    operations across this module — add, query, count, four deletes, another add
+    — and the first version of this fix guarded exactly one of them. Wrapping
+    call sites is a rule you have to remember every time; wrapping the object is
+    a rule you cannot forget. Anything obtained from
+    `get_chat_memory_collection()` is serialised whether or not its author knew
+    about this.
+
+    Attribute access is proxied unchanged; only callables are wrapped.
+    """
+
+    __slots__ = ("_inner",)
+
+    def __init__(self, inner):
+        object.__setattr__(self, "_inner", inner)
+
+    def __getattr__(self, name):
+        attr = getattr(object.__getattribute__(self, "_inner"), name)
+        if not callable(attr):
+            return attr
+
+        def _locked(*args, **kwargs):
+            with _chroma_lock:
+                return attr(*args, **kwargs)
+        return _locked
 
 # ── Local embedding model (free, no API key needed) ──────────────────
 # all-MiniLM-L6-v2: 22MB, 384-dim, fast on CPU, good semantic quality.
@@ -134,11 +182,11 @@ def get_chroma_client():
 def get_chat_memory_collection():
     client = get_chroma_client()
     # v2 suffix: new 384-dim collection (MiniLM), avoids conflict with old 1536-dim OpenAI data
-    return client.get_or_create_collection(name="chat_history_memory_v2")
+    return _LockedCollection(client.get_or_create_collection(name="chat_history_memory_v2"))
 
 def get_document_embeddings_collection():
     client = get_chroma_client()
-    return client.get_or_create_collection(name="document_embeddings_v2")
+    return _LockedCollection(client.get_or_create_collection(name="document_embeddings_v2"))
 
 # ==========================================
 # TEXT SERIALIZATION HELPERS
@@ -194,20 +242,19 @@ def save_chat_memory(business_id: int, session_id: str, session_title: str, user
         logger.debug("[CHROMA] writing chat turn for business %s", business_id)
         doc_id = f"chat_{business_id}_{session_id}_{int(time.time())}_{np.random.randint(1000, 9999)}"
         
-        with _chroma_lock:
-            collection.add(
-                ids=[doc_id],
-                embeddings=[embedding],
-                metadatas=[{
-                    "business_id": int(business_id),
-                    "session_id": str(session_id),
-                    "session_title": str(session_title or "Untitled Conversation"),
-                    "user_query": str(user_query),
-                    "assistant_response": str(assistant_response),
-                    "timestamp": utc_now().isoformat()
-                }],
-                documents=[user_query]
-            )
+        collection.add(
+            ids=[doc_id],
+            embeddings=[embedding],
+            metadatas=[{
+                "business_id": int(business_id),
+                "session_id": str(session_id),
+                "session_title": str(session_title or "Untitled Conversation"),
+                "user_query": str(user_query),
+                "assistant_response": str(assistant_response),
+                "timestamp": utc_now().isoformat()
+            }],
+            documents=[user_query]
+        )
         logger.info(f"[CHROMA] Saved chat turn for user {business_id}, session {session_id}")
     except Exception as e:
         logger.error(f"[CHROMA] Failed to save chat memory: {e}", exc_info=True)
