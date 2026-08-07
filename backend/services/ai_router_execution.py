@@ -18,10 +18,11 @@ from services.recommendations import get_business_snapshot
 from services.ai_router_cache import _safe_int
 from database.db import SessionLocal
 from database.models import ChatMessage
+from services.groq_client import DEFAULT_TEXT_MODEL
 
 logger = logging.getLogger("bizassist.ai_router")
 
-MODEL_SIMPLE  = os.getenv("GROQ_MODEL_SIMPLE",  "meta-llama/llama-4-scout-17b-16e-instruct")
+MODEL_SIMPLE  = os.getenv("GROQ_MODEL_SIMPLE",  DEFAULT_TEXT_MODEL)
 MODEL_COMPLEX = os.getenv("GROQ_MODEL_COMPLEX", "openai/gpt-oss-120b")
 
 # Max characters of a single tool result fed back to the model. A "draft a

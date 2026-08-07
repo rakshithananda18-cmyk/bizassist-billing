@@ -29,13 +29,13 @@ import logging
 import os
 from typing import TypedDict, Optional
 
-from services.groq_client import make_groq_client
+from services.groq_client import DEFAULT_TEXT_MODEL, make_groq_client
 from services.tools import execute_tool
 
 logger = logging.getLogger("bizassist.agent_graph")
 
 client        = make_groq_client()
-MODEL_PLANNER = os.getenv("GROQ_MODEL_SIMPLE",  "meta-llama/llama-4-scout-17b-16e-instruct")    # planner only needs JSON routing
+MODEL_PLANNER = os.getenv("GROQ_MODEL_SIMPLE",  DEFAULT_TEXT_MODEL)    # planner only needs JSON routing
 MODEL_SYNTH   = os.getenv("GROQ_MODEL_COMPLEX", "openai/gpt-oss-120b") # synthesizer needs reasoning
 
 

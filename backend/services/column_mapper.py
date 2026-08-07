@@ -201,9 +201,15 @@ class ColumnMapper:
     Followed by optional Groq AI fallback for remaining unmapped columns.
     """
 
-    def __init__(self, groq_client=None, model: str = "meta-llama/llama-4-scout-17b-16e-instruct"):
+    # `model=None` resolves at call time, not at import: a default ARGUMENT is
+    # bound once when the class is defined, so this was the one copy of the model
+    # name that GROQ_MODEL_SIMPLE could never override. Setting the env var fixed
+    # the whole app except CSV column mapping, silently.
+    def __init__(self, groq_client=None, model: str = None):
+        import os
+        from services.groq_client import DEFAULT_TEXT_MODEL
         self._groq   = groq_client   # injected; None = skip AI layer
-        self._model  = model
+        self._model  = model or os.getenv("GROQ_MODEL_SIMPLE", DEFAULT_TEXT_MODEL)
 
     # ── Public API ───────────────────────────────────────────────────────────
 

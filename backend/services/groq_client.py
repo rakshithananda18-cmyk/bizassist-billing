@@ -24,6 +24,35 @@ GROQ_TIMEOUT_SECS = float(os.getenv("GROQ_TIMEOUT_SECS", "60"))
 GROQ_MAX_RETRIES = int(os.getenv("GROQ_MAX_RETRIES", "1"))
 
 
+# ── Model defaults ───────────────────────────────────────────────────────────
+# One definition, because the previous one was SEVEN copies of the same literal
+# across six modules (ai_router_execution, agent_graph, llm_router,
+# memory_service, column_mapper, purchase_ocr ×2). When a key lost access to
+# that model the router, AI_SIMPLE, memory distillation, CSV column mapping and
+# OCR all broke at once, and there was no single place to repair it — every fix
+# was a six-file search-and-replace waiting to miss one.
+#
+# Observed 2026-08-07: `meta-llama/llama-4-scout-17b-16e-instruct` returns
+#
+#   404 — "The model does not exist or you do not have access to it"
+#
+# for a key that authenticates fine and serves `openai/gpt-oss-120b`,
+# `llama-3.3-70b-versatile` and `llama-3.1-8b-instant` without complaint. It is
+# listed in the Groq console, so this is the "or you do not have access" half —
+# a tier/entitlement gate, not a decommission. A default nobody can be sure of
+# is the wrong default: this one is verified reachable and tool-calling capable,
+# which AI_SIMPLE requires.
+#
+# Override per environment with GROQ_MODEL_SIMPLE / GROQ_MODEL_COMPLEX.
+DEFAULT_TEXT_MODEL = "llama-3.3-70b-versatile"
+
+# Vision is a SEPARATE capability — a text model cannot read an invoice image,
+# and pointing this at one would turn a clear 404 into a confusing wrong answer.
+# Left as the vision-capable model even though the key above cannot reach it:
+# purchase_ocr collects and reports provider errors, so it fails legibly.
+DEFAULT_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+
+
 def make_groq_client(api_key: str = None):
     """Groq client with timeout + bounded retries. Falls back to a plain
     client if an old SDK doesn't accept the kwargs (never blocks boot).

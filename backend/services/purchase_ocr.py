@@ -193,9 +193,9 @@ def _repair_json_with_llm(broken_json: str) -> str:
     if not groq_key:
         return ""
     try:
-        from services.groq_client import make_groq_client
+        from services.groq_client import DEFAULT_TEXT_MODEL, make_groq_client
         client = make_groq_client(groq_key)
-        model = os.getenv("GROQ_MODEL_SIMPLE", "meta-llama/llama-4-scout-17b-16e-instruct")
+        model = os.getenv("GROQ_MODEL_SIMPLE", DEFAULT_TEXT_MODEL)
         logger.info(f"[Purchase Image] Attempting JSON repair using model {model}...")
 
         system_content = (
@@ -297,10 +297,10 @@ def extract_purchase_from_image(file_bytes: bytes, ext: str) -> dict:
     groq_key = os.getenv("GROQ_API_KEY")
     if groq_key:
         try:
-            from services.groq_client import make_groq_client
+            from services.groq_client import DEFAULT_VISION_MODEL, make_groq_client
             client = make_groq_client(groq_key)
             completion = client.chat.completions.create(
-                model=os.getenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"),
+                model=os.getenv("GROQ_VISION_MODEL", DEFAULT_VISION_MODEL),
                 messages=[
                     {"role": "system", "content": _SYSTEM_PROMPT},
                     {"role": "user", "content": [

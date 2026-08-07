@@ -44,9 +44,18 @@ def test_friendly_error_quota_message():
     assert "error" not in msg.lower() or "limit" in msg.lower()
 
 
-def test_friendly_error_generic_message():
-    msg = al._friendly_error(ValueError("boom"))
-    assert "error" in msg.lower()
+def test_a_non_quota_failure_is_not_turned_into_an_answer():
+    """This test used to assert the opposite — that `_friendly_error(ValueError)`
+    returned "*The advisor hit an error — please try again.*". That string was
+    the bug: it was returned as the ANSWER, cached for 10 minutes and written to
+    chat history, so 51% of fresh AI turns in the live logs were fabricated
+    replies to failures the user could do nothing about. "Please try again" was
+    also false — the retry was served from cache without reaching the model.
+
+    Only a spent budget is describable as an answer now; everything else
+    propagates so the stream reports a real error."""
+    assert al._is_quota(ValueError("boom")) is False
+    assert al._is_quota(Exception("429 tokens per day")) is True
 
 
 def test_run_agent_loop_quota_returns_friendly_text():
