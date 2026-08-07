@@ -140,3 +140,34 @@ export function shouldPersistMode(resolved, savedMode, ctx = {}) {
 
   return true
 }
+
+
+/**
+ * canShowLiveCounters — may this session render the Live Counters view?
+ *
+ * Lives here, beside `resolveHostingMode`, because it is a decision ABOUT the
+ * resolved mode and the page that used to own it got it wrong by re-deriving
+ * that mode itself. POSLiveCounter read `localStorage.bizassist_hosting_mode`
+ * first — the one input `resolveHostingMode` deliberately discards (a device
+ * flag counts only when it says 'cloud'; a Pro account otherwise defaults to
+ * hybrid). A stale 'local' therefore refused the view while Settings, reading
+ * the resolved value, showed "Local + Cloud — Active", and the refusal told the
+ * owner to change a setting that was already changed.
+ *
+ * @param {string|null} hostingMode  RESOLVED mode (settings.general.hosting_mode,
+ *                                   which AuthContext sets to realMode). Null
+ *                                   until /settings answers.
+ * @param {boolean} sseConnected     live SSE probe — a connected stream proves
+ *                                   the capability regardless of the stored mode.
+ * @returns {{allowed: boolean, known: boolean}}
+ *   `known` is false while the mode is still unresolved. Callers must not render
+ *   a refusal then: unknown means "say nothing yet", not "assume the restrictive
+ *   answer", which is what flashed a wrong banner on every cold load.
+ */
+export function canShowLiveCounters({ hostingMode = null, sseConnected = false } = {}) {
+  const known = Boolean(hostingMode)
+  return {
+    known,
+    allowed: known ? (hostingMode !== HOSTING_LOCAL || sseConnected) : sseConnected,
+  }
+}

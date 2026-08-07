@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useReadinessProbe } from '../hooks/useReadinessProbe'
 import { logger } from '../utils/logger'
 import { IS_LOCAL_APP } from '../config'
+import { canShowLiveCounters } from '../utils/resolveHostingMode'
 
 const STALE_MS = 45000   // no heartbeat for this long → mark the counter idle
 
@@ -281,23 +282,31 @@ export default function POSLiveCounter() {
   const [, tick] = useState(0)
   const navigate = useNavigate()
 
-  // Resolve hosting mode —————————————————————————————————————————————————————
-  // Source of truth priority:
-  //   1. If cloud URL (IS_LOCAL_APP=false) → always 'cloud'
-  //   2. Stored localStorage key (set by MigrationModal on mode change)
-  //   3. Settings from backend (general.hosting_mode)
-  //   4. Fallback: if SSE is connected, treat as capable ('hybrid')
-  //   5. Last resort: 'local'
-  const clientMode = (typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_hosting_mode')) || null
-  const settingsMode = settings?.general?.hosting_mode || null
+  // Hosting mode — READ, do not re-derive ———————————————————————————————————
+  // The mode is resolved ONCE per session by utils/resolveHostingMode.js and
+  // written onto settings.general.hosting_mode by AuthContext ("How does THIS
+  // SESSION behave? — always realMode"). Settings renders that same value as
+  // the Active badge.
+  //
+  // This page used to re-derive it and read `localStorage.bizassist_hosting_mode`
+  // FIRST — which reintroduced the one input the resolver deliberately discards.
+  // There, a device flag is honoured ONLY when it says 'cloud'; a stale 'local'
+  // is ignored on purpose, because a Pro account defaults to hybrid:
+  //
+  //     if (deviceMode === HOSTING_CLOUD) return HOSTING_CLOUD
+  //     return isPro ? HOSTING_HYBRID : HOSTING_LOCAL
+  //
+  // So one screen said "Local + Cloud — Active" while this one refused to show
+  // counters and told the owner to go and change it in Settings, which already
+  // said it was changed. Same decision, two implementations, opposite answers.
   const sseConnected = sseProbe?.sse?.status === 'online'
-  const hostingMode = !IS_LOCAL_APP
-    ? 'cloud'
-    : (clientMode || settingsMode || (sseConnected ? 'hybrid' : 'local'))
+  const hostingMode = settings?.general?.hosting_mode || null
 
-  // Whether we can show the live counter view
-  // True for cloud, hybrid, OR local app with active SSE (user just hasn't set the mode yet)
-  const canShowCounters = hostingMode !== 'local' || sseConnected
+  // The gate itself lives beside the resolver (utils/resolveHostingMode.js), so
+  // it is unit-testable without mounting this page and cannot drift from the
+  // mode logic it depends on. `known` is false until /settings answers.
+  const { allowed: canShowCounters, known: modeKnown } =
+    canShowLiveCounters({ hostingMode, sseConnected })
 
   const [staffList, setStaffList] = useState([])
 
@@ -488,8 +497,9 @@ export default function POSLiveCounter() {
               <div className="alert alert-warning">Only the business owner can view live counters.</div>
             )}
 
-            {/* Local-only mode: cloud upgrade needed */}
-            {isOwner && !canShowCounters && (
+            {/* Local-only mode: cloud upgrade needed. Gated on modeKnown so a
+                cold load cannot flash a refusal before /settings has answered. */}
+            {isOwner && modeKnown && !canShowCounters && (
               <div className="card" style={{
                 padding: '48px 32px', textAlign: 'center',
                 maxWidth: 560, margin: '48px auto',

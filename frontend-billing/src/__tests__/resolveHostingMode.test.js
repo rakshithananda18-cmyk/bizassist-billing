@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveHostingMode, shouldPersistMode } from '../utils/resolveHostingMode'
+import { resolveHostingMode, shouldPersistMode, canShowLiveCounters } from '../utils/resolveHostingMode'
 
 describe('resolveHostingMode — URL lock', () => {
   it('forces cloud on a non-local origin regardless of plan', () => {
@@ -220,5 +220,47 @@ describe('resolveHostingMode — an unknown plan is optimistic for display only'
     const c = { isLocalApp: true, planKnown: false, savedMode: 'cloud' }
     const once = resolveHostingMode(c)
     expect(resolveHostingMode({ ...c, savedMode: once })).toBe(once)
+  })
+})
+
+// ── Live Counters gate ───────────────────────────────────────────────────────
+// POSLiveCounter used to re-derive the hosting mode and read
+// `localStorage.bizassist_hosting_mode` FIRST — the one input resolveHostingMode
+// deliberately discards (a device flag counts only when it says 'cloud'; a Pro
+// account otherwise defaults to hybrid). A stale 'local' refused the view while
+// Settings, reading the resolved value, showed "Local + Cloud — Active", and the
+// refusal told the owner to change a setting that was already changed.
+describe('canShowLiveCounters', () => {
+  it('allows the view when the resolved mode is hybrid', () => {
+    // The reported state. No localStorage input exists here at all — that is
+    // the point: the gate takes the RESOLVED mode and nothing else.
+    expect(canShowLiveCounters({ hostingMode: 'hybrid' })).toEqual(
+      { allowed: true, known: true })
+  })
+
+  it('allows the view on cloud', () => {
+    expect(canShowLiveCounters({ hostingMode: 'cloud' }).allowed).toBe(true)
+  })
+
+  it('refuses when the resolved mode really is local', () => {
+    expect(canShowLiveCounters({ hostingMode: 'local' })).toEqual(
+      { allowed: false, known: true })
+  })
+
+  it('allows local when SSE is actually connected', () => {
+    // A live stream proves the capability whatever the stored mode says.
+    expect(canShowLiveCounters({ hostingMode: 'local', sseConnected: true }).allowed).toBe(true)
+  })
+
+  it('reports the mode as UNKNOWN before /settings answers', () => {
+    // known:false is what stops the page rendering a refusal on a cold load.
+    // Unknown must not collapse to the restrictive answer.
+    expect(canShowLiveCounters({ hostingMode: null })).toEqual(
+      { allowed: false, known: false })
+    expect(canShowLiveCounters({}).known).toBe(false)
+  })
+
+  it('still allows an unknown mode when SSE is up', () => {
+    expect(canShowLiveCounters({ hostingMode: null, sseConnected: true }).allowed).toBe(true)
   })
 })
