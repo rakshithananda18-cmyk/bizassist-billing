@@ -263,6 +263,83 @@ def test_the_email_alert_counts_the_same_products_as_the_app(monkeypatch):
     assert _kinds(headers)[0]["low_stock"]["count"] == 1
 
 
+def test_the_expiry_email_reports_stock_that_has_already_gone_off(monkeypatch):
+    """The job's window was `0 <= days_left <= threshold`. A batch that had
+    already expired scored negative, fell out, and was never mentioned again —
+    so the only alert about spoiled stock on the shelf was silence. It is now
+    its own section, and it drives the subject line, because "remove from sale"
+    is a different instruction from "discount before it turns"."""
+    import services.alert_jobs as jobs
+
+    bid, _headers = _signup()
+    email = f"{uuid.uuid4().hex[:8]}@example.test"
+    db = SessionLocal()
+    try:
+        db.add(AlertConfig(business_id=bid, active=True, email=email,
+                           alert_expiry=True, expiry_days_threshold=30))
+        db.commit()
+    finally:
+        db.close()
+
+    today = biz_now().date()
+    _batch(bid, "Gone off", 5, (today - timedelta(days=4)).isoformat())
+    _batch(bid, "Going off", 5, (today + timedelta(days=6)).isoformat())
+
+    sent = []
+    monkeypatch.setattr(jobs, "notify",
+                        lambda to, wa, subject, body: sent.append((to, subject, body)))
+    jobs.run_expiry_alerts()
+
+    mine = [s for s in sent if s[0] == email]
+    assert len(mine) == 1
+    _to, subject, body = mine[0]
+    assert "Expired" in subject, f"expired stock must lead the subject: {subject}"
+    assert "Gone off" in body and "4 day(s) ago" in body
+    assert "Going off" in body, "the upcoming batch is still reported too"
+
+
+def test_the_expiry_email_ignores_sold_out_batches(monkeypatch):
+    """A lot with no stock cannot spoil. Counting it makes the warning permanent,
+    and a permanent warning is furniture."""
+    import services.alert_jobs as jobs
+
+    bid, _headers = _signup()
+    email = f"{uuid.uuid4().hex[:8]}@example.test"
+    db = SessionLocal()
+    try:
+        db.add(AlertConfig(business_id=bid, active=True, email=email,
+                           alert_expiry=True, expiry_days_threshold=30))
+        db.commit()
+    finally:
+        db.close()
+
+    _batch(bid, "Sold out", 0, (biz_now().date() - timedelta(days=90)).isoformat())
+
+    sent = []
+    monkeypatch.setattr(jobs, "notify",
+                        lambda to, wa, subject, body: sent.append((to, subject, body)))
+    jobs.run_expiry_alerts()
+    assert [s for s in sent if s[0] == email] == [], "nothing to warn about"
+
+
+def test_expiry_uses_the_merchant_clock_not_the_server(monkeypatch):
+    """A batch expiring today in Kolkata is not expiring today on a UTC host.
+    The job read `datetime.today()`; the shared helper reads `biz_now()`."""
+    from services.insights_service import expiring_batches
+
+    bid, _headers = _signup()
+    _batch(bid, "Today", 5, biz_now().date().isoformat())
+
+    db = SessionLocal()
+    try:
+        expired, expiring = expiring_batches(db, bid, 30)
+    finally:
+        db.close()
+    # Zero days left is expiring, NOT expired — it is still sellable today.
+    assert [r[0] for r in expiring] == ["Today"]
+    assert expired == []
+
+
 def test_cashiers_are_refused():
     """Overdue totals are financial. The endpoint sits behind the same guard as
     the rest of the alerts module."""

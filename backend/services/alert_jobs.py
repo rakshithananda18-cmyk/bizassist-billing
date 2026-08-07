@@ -21,7 +21,7 @@ from sqlalchemy import func
 from database.db import SessionLocal
 from database.models import Invoice, Inventory, AlertConfig, User
 from services.notifier import notify
-from services.dates import parse_date
+from services.dates import biz_now
 
 logger = logging.getLogger("bizassist.alerts")
 
@@ -231,62 +231,68 @@ def run_low_stock_alerts():
 # ── Job 3: Expiry Warnings ────────────────────────────────────
 
 def run_expiry_alerts():
+    """Email what has gone off, and what is about to.
+
+    Was three bugs deep: it read the SERVER clock rather than the merchant's,
+    its window excluded anything already expired, and it counted sold-out
+    batches. `expiring_batches` owns all of that now, shared with the dashboard
+    and the notification bell. See services/insights_service.py.
+    """
     logger.info("[SCHED] Running expiry alerts...")
     configs = [c for c in _load_active_configs() if c["alert_expiry"]]
     if not configs:
         logger.info("[SCHED] No businesses opted into expiry alerts.")
         return
 
-    db = SessionLocal()
-    today = datetime.today()
+    from services.insights_service import expiring_batches
 
+    db = SessionLocal()
     try:
         for cfg in configs:
             bid  = cfg["business_id"]
             days = cfg["expiry_days_threshold"]
+            expired, expiring = expiring_batches(db, bid, days)
 
-            all_items = (
-                db.query(Inventory)
-                .filter(Inventory.business_id == bid, Inventory.expiry_date != None)
-                .all()
-            )
-
-            expiring = []
-            for item in all_items:
-                exp = parse_date(item.expiry_date)
-                if exp is None:
-                    continue
-                days_left = (exp - today).days
-                if 0 <= days_left <= days:
-                    expiring.append((item, days_left))
-
-            if not expiring:
+            if not expired and not expiring:
                 logger.info(f"[ALERT] No expiring items for business_id={bid}. Skipping.")
                 continue
-
-            expiring.sort(key=lambda x: x[1])
 
             lines = [
                 f"🗓️ BizAssist: Expiry Alert",
                 f"Business: {cfg['business_name']}",
                 f"",
-                f"{len(expiring)} product(s) expiring within {days} days:",
-                f"",
             ]
-            for item, days_left in expiring[:10]:
-                lines.append(
-                    f"  • {item.product_name}: expires {item.expiry_date} ({days_left} day(s) left)"
-                )
-            if len(expiring) > 10:
-                lines.append(f"  … and {len(expiring) - 10} more.")
-            lines += [
-                f"",
-                f"Consider discounting or bundling these products to clear them before expiry.",
-                f"– BizAssist AI"
-            ]
+            # Already-expired first, and stated as stock to pull rather than
+            # stock to discount — it is not a clearance problem any more.
+            if expired:
+                lines += [
+                    f"⚠️ {len(expired)} batch(es) have ALREADY EXPIRED and are still in stock:",
+                    f"",
+                ]
+                for name, exp_date, left in expired[:10]:
+                    lines.append(f"  • {name}: expired {exp_date} ({abs(left)} day(s) ago)")
+                if len(expired) > 10:
+                    lines.append(f"  … and {len(expired) - 10} more.")
+                lines.append("")
+            if expiring:
+                lines += [
+                    f"{len(expiring)} product(s) expiring within {days} days:",
+                    f"",
+                ]
+                for name, exp_date, left in expiring[:10]:
+                    lines.append(f"  • {name}: expires {exp_date} ({left} day(s) left)")
+                if len(expiring) > 10:
+                    lines.append(f"  … and {len(expiring) - 10} more.")
+                lines += [
+                    f"",
+                    f"Consider discounting or bundling these products to clear them before expiry.",
+                ]
+            lines += [f"", f"– BizAssist AI"]
 
-            body    = "\n".join(lines)
-            subject = f"🗓️ {len(expiring)} Product(s) Expiring Within {days} Days"
+            body = "\n".join(lines)
+            subject = (f"🗓️ {len(expired)} Batch(es) Expired — Remove From Sale"
+                       if expired else
+                       f"🗓️ {len(expiring)} Product(s) Expiring Within {days} Days")
             notify(cfg["email"], cfg["whatsapp_number"], subject, body)
             logger.info(f"[ALERT] Expiry alert dispatched for business_id={bid}")
     finally:
@@ -303,7 +309,10 @@ def run_daily_summary():
         return
 
     db    = SessionLocal()
-    today = datetime.today()
+    # Only ever used for the date on the email. Still the merchant's clock, not
+    # the server's: this job fires early morning, so on a UTC host it was still
+    # the previous day and the summary went out datestamped yesterday.
+    today = biz_now()
 
     try:
         for cfg in configs:
@@ -325,19 +334,11 @@ def run_daily_summary():
             # definition, the same one the dashboard KPI and the bell use; this
             # line used to count batches and so reported a different number from
             # everything else in the product.
-            from services.insights_service import low_stock_products
+            from services.insights_service import low_stock_products, expiring_batches
             inv_total      = db.query(Inventory).filter(Inventory.business_id == bid).count()
             low_stock_cnt  = len(low_stock_products(db, bid))
-
-            all_items = db.query(Inventory).filter(Inventory.business_id == bid).all()
-            expiring_cnt = 0
-            for item in all_items:
-                exp = parse_date(item.expiry_date)
-                if exp is None:
-                    continue
-                days_left = (exp - today).days
-                if 0 <= days_left <= exp_days:
-                    expiring_cnt += 1
+            _expired, _expiring = expiring_batches(db, bid, exp_days)
+            expired_cnt, expiring_cnt = len(_expired), len(_expiring)
 
             lines = [
                 f"☀️ Good morning! BizAssist Daily Summary",
@@ -356,7 +357,10 @@ def run_daily_summary():
                 # figure and the only thing this ever counted.
                 f"  Stock Batches    : {inv_total}",
                 f"  Low Stock        : {low_stock_cnt} product(s) at/below reorder level",
-                f"  Expiring Soon    : {expiring_cnt} item(s) within {exp_days} days",
+                f"  Expiring Soon    : {expiring_cnt} batch(es) within {exp_days} days",
+                # Reported even at zero — an expired batch on the shelf is the
+                # one number a daily summary should never quietly omit.
+                f"  Already Expired  : {expired_cnt} batch(es) still in stock",
                 f"",
             ]
 

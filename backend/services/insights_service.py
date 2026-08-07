@@ -76,6 +76,59 @@ def low_stock_products(db: Session, business_id: int) -> list[tuple]:
     return rows
 
 
+def expiring_batches(db: Session, business_id: int, days: int = None):
+    """Batches gone off, and batches about to. ONE definition, three callers.
+
+    Unlike stock levels, this IS per batch: expiry belongs to the lot, not to
+    the product, so `inventory` is the right table here and summing it would
+    destroy the very thing being asked about.
+
+    Three things the scheduled email got wrong and this fixes:
+
+      1. `datetime.today()` is the SERVER's wall clock. Expiry is a merchant
+         question — a batch expiring "today" in Kolkata is not expiring today on
+         a UTC host, and the alert fired on the wrong side of midnight. Uses
+         `biz_now()`, which is what that helper exists for.
+      2. The window was `0 <= days_left <= days`, so a batch that had ALREADY
+         expired fell out of it and was never mentioned again. The one state
+         where the owner most needs telling was the one state that was silent.
+      3. Sold-out batches counted. A lot with zero stock cannot spoil; including
+         it makes the warning permanent, and a permanent warning is furniture.
+
+    `days` defaults to the business's configured `expiry_days_threshold` (30).
+    Returns (expired, expiring), each [(name, expiry_date, days_left)] soonest
+    first — `days_left` is negative for the expired.
+    """
+    from database.models import AlertConfig
+    from services.dates import parse_date_only, biz_now
+
+    if days is None:
+        cfg = db.query(AlertConfig).filter(AlertConfig.business_id == business_id).first()
+        days = int((cfg.expiry_days_threshold if cfg else None) or 30)
+
+    today = biz_now().date()
+    expired, expiring = [], []
+    rows = (
+        db.query(Inventory)
+        .filter(Inventory.business_id == business_id,
+                Inventory.expiry_date != None)          # noqa: E711 — SQL NULL
+        .all()
+    )
+    for item in rows:
+        exp = parse_date_only(item.expiry_date)
+        if exp is None or (item.stock or 0) <= 0:
+            continue
+        left = (exp - today).days
+        if left < 0:
+            expired.append((item.product_name, item.expiry_date, left))
+        elif left <= days:
+            expiring.append((item.product_name, item.expiry_date, left))
+
+    expired.sort(key=lambda r: r[2])          # longest expired first
+    expiring.sort(key=lambda r: r[2])         # soonest first
+    return expired, expiring
+
+
 def business_insights(user_id: int, db: Session) -> dict:
     insights = []
     overdue = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").all()

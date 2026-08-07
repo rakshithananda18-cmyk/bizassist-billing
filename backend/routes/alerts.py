@@ -221,10 +221,9 @@ def list_notifications(
     Same findings as the scheduled email alerts, from the same queries, minus
     the delivery channel that silently discards them.
     """
-    from database.models import Invoice, Inventory
-    from services.dates import parse_date_only, biz_now
+    from database.models import Invoice
     from services.auth import resolve_business_id_in_db
-    from services.insights_service import low_stock_products
+    from services.insights_service import low_stock_products, expiring_batches
 
     # The canonical resolver, not `current_user["id"]`. A token's integer id
     # means nothing outside the database that issued it, and for a manager's
@@ -277,45 +276,27 @@ def list_notifications(
 
     if prefs.get("alert_expiry"):
         days = prefs["expiry_days_threshold"]
-        # `biz_now()`, not `datetime.today()`: expiry is a merchant wall-clock
-        # question and the server may not be in their timezone. The scheduled
-        # job still uses today() — worth aligning, but not from here.
-        today = biz_now().date()
-        batches = (
-            db.query(Inventory)
-            .filter(Inventory.business_id == bid, Inventory.expiry_date != None)  # noqa: E711
-            .all()
-        )
-        expiring, expired = [], []
-        for item in batches:
-            exp = parse_date_only(item.expiry_date)
-            if exp is None or (item.stock or 0) <= 0:
-                continue          # nothing on the shelf to lose
-            left = (exp - today).days
-            if left < 0:
-                expired.append(item)
-            elif left <= days:
-                expiring.append((item, left))
+        # Shared with the scheduled email and the daily summary. Expiry stays
+        # per BATCH — unlike stock levels, the lot is the thing that goes off.
+        expired, expiring = expiring_batches(db, bid, days)
 
-        # Already-expired stock is reported SEPARATELY, and first. The email job
-        # only ever looked at `0 <= days_left <= days`, so stock that had already
-        # gone off fell out of the window and was never mentioned again — the one
-        # state where the owner most needs telling, silently skipped.
+        # Already-expired is its own item, and it sorts above "expiring soon".
+        # It is not an early warning, it is stock on the shelf that must come
+        # off — a different instruction, so a different line.
         if expired:
             items.append({
                 "kind": "expired", "severity": "danger",
                 "title": f"{len(expired)} batch{'' if len(expired) == 1 else 'es'} past expiry",
-                "detail": f"Still counted in stock. Oldest: {expired[0].product_name}.",
+                "detail": f"Still counted in stock. Oldest: {expired[0][0]}.",
                 "count": len(expired),
                 "route": "/stock",
             })
         if expiring:
-            expiring.sort(key=lambda x: x[1])
-            soonest, left = expiring[0]
+            name, _date, left = expiring[0]
             items.append({
                 "kind": "expiring", "severity": "warning",
                 "title": f"{len(expiring)} batch{'' if len(expiring) == 1 else 'es'} expiring soon",
-                "detail": f"Within {days} days. Soonest: {soonest.product_name} "
+                "detail": f"Within {days} days. Soonest: {name} "
                           f"({left} day{'' if left == 1 else 's'}).",
                 "count": len(expiring),
                 "route": "/stock",
