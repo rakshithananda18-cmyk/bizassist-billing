@@ -404,6 +404,30 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
             logger.warning("[BILLING] invoice number %s already taken for biz %s — reassigned to %s",
                            number, business_id, new_number)
             number = new_number
+        elif not existing.line_items:
+            # An invoice with NO LINES is not a completed bill, so returning it
+            # is not idempotency — it silently drops every line the caller
+            # passed AND the stock deduction that goes with them. That is the
+            # partial bilateral posting sync_completed_order explicitly refuses
+            # to make (core/order/service.py:337): better a retriable failure.
+            #
+            # Seen in the wild on B2B-ORD-20260805-0001: the invoice HEADER
+            # synced down ahead of its line items, the seller then completed the
+            # order, and this branch handed that empty header back. The buyer
+            # got a full purchase bill and six stock-in movements; the seller
+            # got a lineless invoice and no stock movement at all. Re-running
+            # completion hit this same branch every time, so it could never
+            # heal itself.
+            logger.error("[BILLING] invoice %s exists for biz %s with no line items — "
+                         "refusing to post %d line(s) onto an incomplete record",
+                         number, business_id, len(lines))
+            raise ValueError(
+                f"Invoice {number} already exists for this business but has no line "
+                f"items, so it is an incomplete record — most likely a header that "
+                f"synced ahead of its lines. Repair or remove it before posting this "
+                f"sale; returning it would silently discard {len(lines)} line(s) and "
+                f"skip the stock deduction."
+            )
         else:
             logger.info("[BILLING] idempotent hit — invoice %s already exists for biz %s",
                         number, business_id)

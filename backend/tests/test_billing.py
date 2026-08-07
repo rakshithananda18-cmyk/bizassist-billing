@@ -239,6 +239,41 @@ def test_idempotent_same_invoice_number():
         db.close()
 
 
+def test_lineless_header_is_not_an_idempotent_hit():
+    """A header with no lines is an incomplete record, not a completed bill.
+
+    Live case B2B-ORD-20260805-0001: the invoice header synced down ahead of its
+    line items, the seller then completed the B2B order, and the idempotency
+    wall handed that empty header straight back. The buyer got a full purchase
+    bill and six stock-in movements; the seller got a lineless invoice and NO
+    stock deduction, and re-running completion repeated the same branch forever.
+    Failing loudly is the behaviour sync_completed_order already assumes it can
+    rely on (core/order/service.py:337 — a partial bilateral posting is worse
+    than a retriable failure).
+    """
+    pid = _product("Rice", stock=100)
+    db = SessionLocal()
+    try:
+        # A header that exists with no lines — what sync leaves behind.
+        db.add(Invoice(business_id=BID, invoice_id="INV-EMPTY", total_amount=500.0))
+        db.commit()
+
+        with pytest.raises(ValueError, match="no line items"):
+            billing.create_sale_invoice(
+                db, business_id=BID, invoice_no="INV-EMPTY", place_of_supply="29",
+                lines=[{"product_id": pid, "quantity": 5, "unit_price": 100}])
+
+        db.rollback()
+        # The refusal must not have half-posted: stock untouched, still no lines.
+        assert SL.current_stock(db, BID, product_id=pid) == 100.0
+        inv = db.query(Invoice).filter(Invoice.business_id == BID,
+                                       Invoice.invoice_id == "INV-EMPTY").one()
+        assert db.query(InvoiceLineItem).filter(
+            InvoiceLineItem.invoice_id == inv.id).count() == 0
+    finally:
+        db.close()
+
+
 def test_status_from_paid_amount():
     pid = _product("Rice")
     db = SessionLocal()
