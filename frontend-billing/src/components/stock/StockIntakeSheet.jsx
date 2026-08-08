@@ -31,6 +31,7 @@ import {
   EditIcon, PrinterIcon
 } from '../Icons'
 import ScanSearchField from '../common/ScanSearchField'
+import { SkeletonTable } from '../common/Skeleton'
 import ContextMenu from '../common/ContextMenu'
 import IntakeConfirmSheet from './IntakeConfirmSheet'
 
@@ -975,7 +976,15 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
 
       {/* ── Table ────────────────────────────────────────────────────────── */}
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {rows.length === 0 ? (
+        {/* Parsing a bill is a vision-model round trip — measured 4-5 s, and
+            slower on a photographed multi-page bill. The button already said
+            "Parsing…", but the table underneath stayed on the empty state
+            ("Scan a barcode or upload a bill to start"), which reads as
+            "nothing happened" at exactly the moment something is. A skeleton
+            of the grid it is about to fill says WAIT rather than NOTHING. */}
+        {uploading && rows.length === 0 ? (
+          <SkeletonTable rows={6} cols={7} testId="intake-skeleton" />
+        ) : rows.length === 0 ? (
           <div style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             height: '100%', gap: 12, color: 'var(--text-muted)',

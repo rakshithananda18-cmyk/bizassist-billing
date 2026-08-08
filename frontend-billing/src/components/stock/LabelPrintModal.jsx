@@ -54,45 +54,79 @@ export function loadLabelFields() {
   } catch { return { ...DEFAULT_FIELDS } }
 }
 
-function Label({ product, size, businessName, fields }) {
+// Exported for tests: jsdom cannot measure millimetres, but it CAN prove which
+// rows render for a given field combination and that the price survives when
+// the item name is switched off — the case space-between got wrong.
+export function Label({ product, size, businessName, fields }) {
   const s = SIZES[size]
   const value = barcodeValueFor(product)
   const svg = code128Svg(value, { height: 40 })
   const priceBits = []
   if (fields.mrp && product.mrp) priceBits.push(`MRP ${fmt(product.mrp)}`)
   if (fields.price) priceBits.push(fmt(product.selling_price))
+  const hasHeadRow = fields.name || priceBits.length > 0
   return (
+    // FIXED ROWS, not space-between.
+    //
+    // `justify-content: space-between` on conditionally-rendered children means
+    // the layout changes SHAPE with every field toggle: turn the business name
+    // off and the item row jumps to the top edge; turn the barcode off and the
+    // price row is flung to the bottom. Rows now sit in order from the top and
+    // the barcode absorbs whatever is left, so a label looks like itself
+    // whatever is switched on.
     <div style={{
       width: `${s.w}mm`, height: `${s.h}mm`, boxSizing: 'border-box',
-      display: 'inline-flex', flexDirection: 'column', justifyContent: 'space-between',
+      display: 'inline-flex', flexDirection: 'column',
+      // With no barcode there is nothing to absorb the slack, so centre the
+      // few remaining rows instead of stranding them against the top edge.
+      justifyContent: fields.barcode ? 'flex-start' : 'center',
       padding: '1.5mm 2mm', border: '1px dotted #bbb', overflow: 'hidden',
       background: '#fff', color: '#000', verticalAlign: 'top',
       fontFamily: "'DM Sans', Arial, sans-serif", pageBreakInside: 'avoid',
     }}>
       {fields.business && (
-        <div style={{ fontSize: '2.2mm', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ flex: '0 0 auto', fontSize: '2.2mm', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {businessName || ' '}
         </div>
       )}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '2mm' }}>
-        {fields.name && (
-          <span style={{ fontSize: '2.8mm', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {product.name}
-            {fields.sku && product.sku ? <span style={{ fontWeight: 400, fontSize: '2.2mm' }}> · {product.sku}</span> : null}
-          </span>
-        )}
-        {priceBits.length > 0 && (
-          <span style={{ fontSize: '3mm', fontWeight: 800, whiteSpace: 'nowrap' }}>{priceBits.join(' | ')}</span>
-        )}
-      </div>
+
+      {hasHeadRow && (
+        <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'baseline', gap: '2mm', minWidth: 0 }}>
+          {fields.name && (
+            // `min-width: 0` is what makes the ellipsis work at all: a flex item
+            // defaults to min-width:auto and refuses to shrink below its content,
+            // so a long product name pushed the PRICE off the label instead of
+            // truncating itself.
+            <span style={{ flex: '1 1 auto', minWidth: 0, fontSize: '2.8mm', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {product.name}
+              {fields.sku && product.sku ? <span style={{ fontWeight: 400, fontSize: '2.2mm' }}> · {product.sku}</span> : null}
+            </span>
+          )}
+          {priceBits.length > 0 && (
+            // Never truncated, and `margin-left:auto` keeps it hard right even
+            // when the name is switched off — space-between put a lone price on
+            // the LEFT, which is the one number the counter reads at a glance.
+            <span style={{ flex: '0 0 auto', marginLeft: 'auto', fontSize: '3mm', fontWeight: 800, whiteSpace: 'nowrap' }}>
+              {priceBits.join(' | ')}
+            </span>
+          )}
+        </div>
+      )}
+
       {fields.barcode && (
-        <>
-          <div style={{ height: `${Math.max(s.h - 14, 8)}mm`, marginTop: '0.5mm' }}
+        // `flex: 1` + `min-height: 0` instead of the old
+        // `height: max(s.h - 14, 8)mm`. That arithmetic was tuned for the 25 mm
+        // sizes and simply over-reserved on 65×35 (21 mm of bars plus padding,
+        // name and code text), and it did not shrink when fields were toggled
+        // ON. The SVG already scales (preserveAspectRatio="none", 100%×100%),
+        // so letting flex size it is both correct and size-independent.
+        <div style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column', marginTop: '0.5mm' }}>
+          <div style={{ flex: '1 1 auto', minHeight: 0 }}
             dangerouslySetInnerHTML={{ __html: svg || '<div style="font-size:2.5mm;text-align:center">no code</div>' }} />
-          <div style={{ fontSize: '2.2mm', textAlign: 'center', letterSpacing: '0.12em', fontFamily: "'Geist Mono', monospace" }}>
+          <div style={{ flex: '0 0 auto', fontSize: '2.2mm', lineHeight: 1.1, textAlign: 'center', letterSpacing: '0.12em', fontFamily: "'Geist Mono', monospace", whiteSpace: 'nowrap', overflow: 'hidden' }}>
             {value}
           </div>
-        </>
+        </div>
       )}
     </div>
   )
