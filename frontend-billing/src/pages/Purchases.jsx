@@ -30,6 +30,12 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
   // See Stock.jsx — same trial flag, same removal condition. Purchase Bills
   // already had showMinimize={false}, so only the close button differs here.
   const { authFetch, settings } = useAuth()
+  // Bill scanning spends a vision-model call per upload, so it is Pro-only and
+  // ENFORCED server-side (core/api/purchases.py, force_enforcement=True).
+  // Mirrored here only so the owner can SEE it is a Pro feature before clicking
+  // — the server is what decides. `!== 'pro'` rather than a truthy check so an
+  // expired plan (which effective_plan downgrades to free) reads as free too.
+  const isPro = ((settings?.subscription?.plan || '').toLowerCase() === 'pro')
   const confirm = useConfirm()
 
   const settingsRef = useRef(settings)
@@ -298,7 +304,14 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
         setExtracted(data)
         setStep('review')
       } else {
-        setAlert({ type: 'danger', msg: 'Upload failed. Please try again.' })
+        // Read the server's reason. "Please try again" is wrong for a 402
+        // (plan) or 403 (role): retrying refuses identically, and the message
+        // the backend wrote is the one that tells the owner what to do.
+        const body = await res.json().catch(() => ({}))
+        setAlert({
+          type: 'danger',
+          msg: body.detail || `Upload failed (HTTP ${res.status}).`,
+        })
         setShowModal(false)
       }
     } catch {
@@ -493,6 +506,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
                 </button>
                 <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={openModal}>
                   <UploadIcon size={13} /> Upload Bill
+                  {!isPro && <span className="pro-chip">PRO</span>}
                 </button>
               </>
             }
@@ -547,6 +561,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
               </button>
               <button className="btn btn-primary" onClick={openModal}>
                 ⬆ Upload Bill
+                {!isPro && <span className="pro-chip">PRO</span>}
               </button>
             </div>
           </div>

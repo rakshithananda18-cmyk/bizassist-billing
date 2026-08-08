@@ -61,15 +61,28 @@ def test_transient_failures_do_not_latch(ocr, transient):
 
 
 def test_latching_is_reported_once_not_per_upload(ocr, caplog):
-    """The log line names the fix. Repeating it on every scan would bury it."""
+    """The log line names the fix. Repeating it on every scan would bury it.
+
+    It must also stay HONEST about what the latch means. It used to say
+    "Vision is DISABLED for this process; bill scanning continues via Tesseract
+    OCR" — true when Groq was the only vision provider, false the moment Gemini
+    was restored (2026-08-08). The latch is Groq-specific despite the global
+    name, and telling an owner to reach for Tesseract sends them installing
+    binaries they do not need.
+    """
     err = Exception("404 model_not_found: model does not exist or you do not "
                     "have access to it")
-    with caplog.at_level("ERROR"):
+    with caplog.at_level("WARNING"):
         for _ in range(5):
             ocr._note_vision_failure(err)
-    hits = [r for r in caplog.records if "vision model refused" in r.getMessage()]
+    hits = [r for r in caplog.records if "no vision model for this API key" in r.getMessage()]
     assert len(hits) == 1, f"logged {len(hits)} times"
-    assert "Tesseract" in hits[0].getMessage(), "must say scanning still works"
+    msg = hits[0].getMessage()
+    assert "GROQ" in msg, "must name WHICH provider was refused"
+    assert "next vision provider is tried" in msg, "must not imply vision is off"
+    assert "Tesseract" not in msg, (
+        "claims scanning falls back to Tesseract — untrue while another vision "
+        "provider is configured, and it sends the owner installing binaries")
 
 
 def test_a_restart_re_checks_entitlement(ocr):

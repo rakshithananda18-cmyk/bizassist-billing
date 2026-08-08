@@ -230,6 +230,13 @@ def api_auth():
     owner_data = resp.json()
     owner_token = owner_data["token"]
     owner_bid = owner_data["id"]
+
+    # Bill scanning is Pro-only and now enforces it (core/api/purchases.py).
+    # This fixture exists to test ROLE restriction, so it has to get past the
+    # PLAN gate first — a free owner 402s before the cashier check is reached.
+    # Staff inherit the owner's plan, so granting it here covers the cashier too.
+    from tests.planhelpers import grant_pro
+    grant_pro(owner_username)
     
     # Setup cashier in same business
     cashier_username = f"cashier_{uuid.uuid4().hex[:6]}"

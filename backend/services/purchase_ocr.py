@@ -42,11 +42,18 @@ def _note_vision_failure(e: Exception) -> None:
                  or "403" in msg)
     if permanent and not _VISION_UNAVAILABLE:
         _VISION_UNAVAILABLE = True
-        logger.error(
-            "[Purchase Image] vision model refused for this API key (%s). "
-            "Vision is DISABLED for this process; bill scanning continues via "
-            "Tesseract OCR. Grant the key access to a vision model, or set "
-            "GROQ_VISION_MODEL to one it has, then restart to re-enable.",
+        # GROQ-specific, despite the global name. Since Gemini vision was
+        # restored (2026-08-08) this latch no longer means "vision is off" — it
+        # means "stop paying a round trip to rediscover that GROQ has no vision
+        # model on this key". Gemini is tried next and normally answers. Saying
+        # "bill scanning continues via Tesseract" here was simply untrue once a
+        # second provider existed, and would send someone installing binaries
+        # they do not need.
+        logger.warning(
+            "[Purchase Image] GROQ has no vision model for this API key (%s). "
+            "Skipping Groq vision for the rest of this process; the next vision "
+            "provider is tried as normal. To use Groq for vision, grant the key "
+            "a vision model or set GROQ_VISION_MODEL, then restart.",
             str(e)[:160],
         )
 
@@ -221,9 +228,19 @@ def _extract_image_text(file_bytes: bytes) -> str:
 
 # ── Vision path (image → structured JSON, no system OCR binary needed) ────────
 
+# Pinned deliberately — see the measurement table in _extract_via_vision.
+DEFAULT_GEMINI_VISION_MODEL = "gemini-3.1-flash-lite"
+
+
 def _mime_for(ext: str) -> str:
     return {
         "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp",
+        # Gemini accepts a PDF on the same endpoint as an image, so a SCANNED
+        # pdf (no embedded text) can go straight to vision instead of needing
+        # poppler to rasterise it and Tesseract to read it. Measured 2026-08-08:
+        # an image-only PDF that pypdf read 0 characters from extracted
+        # completely in 4.9 s / 3,101 tokens.
+        "pdf": "application/pdf",
     }.get(ext.lstrip("."), "image/jpeg")
 
 
@@ -320,8 +337,10 @@ def extract_purchase_from_image(file_bytes: bytes, ext: str) -> dict:
     No pytesseract / Tesseract system binary required (fixes the "OCR
     dependencies not installed" error, incl. on the packaged Windows build),
     and far more accurate on angled phone photos than classic OCR.
-    Tries Groq-vision → Gemini-vision → Claude-vision; raises if none succeed
-    so the caller can fall back to Tesseract."""
+    Tries Groq-vision → Gemini-vision; raises if both fail so the caller can
+    fall back to Tesseract. (Claude was removed with the other providers and its
+    key has no credit; Groq has no vision model on this account at all, so in
+    practice Gemini is the one that answers.)"""
     # Why a provider failed, so the final error can say it. A swallowed
     # provider error plus a "no key available" message sent the owner
     # hunting for a key that was already set.
@@ -356,13 +375,75 @@ def extract_purchase_from_image(file_bytes: bytes, ext: str) -> dict:
             _note_vision_failure(e)
             logger.warning(f"[Purchase Image] Groq vision failed: {e}")
             provider_errors.append(f"Groq: {e}")
-    elif _VISION_UNAVAILABLE:
+    # 2) Gemini vision — RESTORED 2026-08-08.
+    #
+    # This block was deleted by 83f13b1 ("Groq is the only provider"). That was
+    # the right call for TEXT — Groq serves it fine — but it removed the only
+    # working vision path, because Groq has never had a vision model on this
+    # key: `models.list()` returns 15 entries and not one is vision-capable,
+    # which is why DEFAULT_VISION_MODEL 404s with "does not exist or you do not
+    # have access to it".
+    #
+    # Model choice is measured, not assumed (2026-08-08, one synthetic supplier
+    # invoice scored field-by-field against known ground truth):
+    #
+    #   gemini-3.1-flash-lite    4.1 s   3,635 tok   28/28   <- pinned
+    #   gemini-3.5-flash-lite    4.2 s   3,645 tok   28/28
+    #   gemini-3.6-flash        22.5 s   8,244 tok   28/28   (5.5x slower, same score)
+    #   gemini-3-flash-preview  53.8 s  18,117 tok   truncated at 16k
+    #   gemini-2.0-flash-lite      free-tier limit 0 — NOT free
+    #
+    # PINNED, not `gemini-flash-latest`. The only reason the July regression was
+    # diagnosable is that the old code pinned `gemini-2.0-flash` and we could
+    # see it had lost its free tier (429, `limit: 0`). An alias would have moved
+    # silently. This repo has already been bitten twice by model churn —
+    # d2f2ff3 and 9985ce1 are both "replace decommissioned model" commits.
+    gem_key = os.getenv("GEMINI_API_KEY")
+    if gem_key:
+        try:
+            import httpx
+            base = os.getenv("GEMINI_BASE_URL",
+                             "https://generativelanguage.googleapis.com/v1beta/openai")
+            payload = {
+                "model": os.getenv("GEMINI_VISION_MODEL", DEFAULT_GEMINI_VISION_MODEL),
+                "temperature": 0.0,
+                # Generous: the reasoning-heavy models blow past a small cap and
+                # return an UNTERMINATED string, which reads as a parse bug
+                # rather than truncation. finish_reason is checked below.
+                "max_tokens": int(os.getenv("VISION_MAX_TOKENS", "16000")),
+                "messages": [
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user", "content": [
+                        {"type": "text", "text": user_text},
+                        {"type": "image_url", "image_url": {"url": data_uri}},
+                    ]},
+                ],
+            }
+            with httpx.Client(timeout=float(os.getenv("VISION_TIMEOUT_SECS", "90"))) as hc:
+                r = hc.post(f"{base}/chat/completions", json=payload,
+                            headers={"Authorization": f"Bearer {gem_key}"})
+                r.raise_for_status()
+                body = r.json()
+            choice = body["choices"][0]
+            if choice.get("finish_reason") == "length":
+                # Say so rather than letting _parse_json_loose report a syntax
+                # error for what is really a budget stop.
+                raise ValueError(
+                    "Gemini hit the output token limit before finishing the JSON — "
+                    "raise VISION_MAX_TOKENS or use a less verbose model.")
+            logger.info("[Purchase Image] extracted via Gemini vision")
+            return _parse_json_loose(choice["message"]["content"])
+        except Exception as e:
+            logger.warning(f"[Purchase Image] Gemini vision failed: {e}")
+            provider_errors.append(f"Gemini: {e}")
+
+    if _VISION_UNAVAILABLE:
         # Skipped, not silent: the caller falls through to Tesseract, and the
         # reason is on the record so nobody hunts for a vision bug that is
         # actually an account entitlement.
         provider_errors.append(
-            "Groq vision: skipped — this key has no access to the vision model "
-            "(see the earlier log line). Using OCR instead."
+            "Groq vision: skipped — this key has no access to any vision model "
+            "(see the earlier log line)."
         )
 
     if provider_errors:
@@ -370,8 +451,8 @@ def extract_purchase_from_image(file_bytes: bytes, ext: str) -> dict:
             "The AI vision model could not read this image: " + "; ".join(provider_errors)
         )
     raise ValueError(
-        "Bill scanning needs GROQ_API_KEY, and a key with access to a "
-        "vision-capable model."
+        "Bill scanning needs a vision-capable provider: either GEMINI_API_KEY, "
+        "or a GROQ key with access to a vision model."
     )
 
 
@@ -411,8 +492,42 @@ def parse_purchase_file(file_bytes: bytes, filename: str) -> dict:
     """Parses a file (PDF or image) and extracts a structured purchase invoice JSON draft."""
     ext = os.path.splitext(filename.lower())[1]
     if ext == ".pdf":
-        raw_text = parse_pdf_text(file_bytes)
-        return extract_structured_purchase_invoice(raw_text)
+        # DIGITAL first: pypdf reads embedded text with no model call, no network
+        # and no system binary. Cheapest correct answer wins.
+        raw_text = _extract_digital_text(file_bytes)
+        if len(raw_text.strip()) >= _SCANNED_TEXT_THRESHOLD:
+            return extract_structured_purchase_invoice(raw_text)
+
+        # SCANNED (pypdf found nothing) — send the PDF to vision AS A PDF.
+        # Gemini accepts application/pdf on the same endpoint as an image, so
+        # this needs neither poppler (to rasterise) nor Tesseract (to read),
+        # neither of which is installed. Measured 2026-08-08 on an image-only
+        # PDF that pypdf read 0 chars from: complete extraction, 4.9 s.
+        logger.info(
+            "[Purchase PDF] only %d chars of embedded text — treating as scanned "
+            "and sending the PDF to vision.", len(raw_text.strip()))
+        vision_error = None
+        if os.getenv("PURCHASE_OCR_VISION", "1") != "0":
+            try:
+                return extract_purchase_from_image(file_bytes, ".pdf")
+            except Exception as e:
+                vision_error = e
+                logger.warning(
+                    "[Purchase PDF] vision path failed (%s); falling back to "
+                    "poppler+Tesseract OCR.", e)
+        try:
+            return extract_structured_purchase_invoice(_extract_ocr_text(file_bytes))
+        except Exception as ocr_error:
+            # Report the reason the PREFERRED path was abandoned, not just the
+            # last thing tried — the fallback's own message describes missing
+            # binaries and hides that vision is the actual cause.
+            if vision_error is not None:
+                raise ValueError(
+                    f"Could not read this PDF. It has no embedded text, the AI "
+                    f"vision model failed ({vision_error}), and the offline OCR "
+                    f"fallback is also unavailable ({ocr_error})."
+                ) from ocr_error
+            raise
 
     if ext in [".png", ".jpg", ".jpeg", ".webp"]:
         # Prefer the vision LLM (no system OCR binary, better on photos). Falls

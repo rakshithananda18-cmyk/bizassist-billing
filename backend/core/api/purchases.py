@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from database.db import get_db
 from database.models import PurchaseInvoice, PurchaseInvoiceLineItem, User
-from services.auth import get_active_user, restrict_cashier, restrict_cashier_only
+from services.auth import get_active_user, restrict_cashier, restrict_cashier_only, require_plan
 from services.purchase_ocr import parse_purchase_file
 from services.purchase_mapper import map_purchase_items_to_catalog
 from core.purchase import commands as purchase_commands
@@ -84,9 +84,17 @@ def _invoice_out(inv: PurchaseInvoice) -> dict:
 async def upload_purchase_bill(
     file: UploadFile = File(...),
     current_user: dict = Depends(restrict_cashier_only),
+    _plan: dict = Depends(require_plan("pro", force_enforcement=True)),
     db: Session = Depends(get_db)
 ):
-    """Upload a supplier invoice file (PDF/Image) and parse it into a structured JSON draft."""
+    """Upload a supplier invoice file (PDF/Image) and parse it into a structured JSON draft.
+
+    PRO ONLY, enforced. Every scan costs a vision-model call — the same class of
+    metered spend as /ask, which is gated the same way. `force_enforcement=True`
+    because a plain `require_plan("pro")` is a no-op unless SUBSCRIPTION_ENFORCED=1,
+    which is unset in production: it would read as a paywall and charge the
+    account for free-plan traffic.
+    """
     if current_user.get("role") == "cashier":
         raise HTTPException(status_code=403, detail="Permission denied: cashiers cannot upload supplier bills.")
 

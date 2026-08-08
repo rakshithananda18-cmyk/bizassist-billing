@@ -6880,3 +6880,19 @@ body.is-col-resizing * {
 }
 
 .usearch-ask-handoff button:hover { box-shadow: var(--shadow-premium); }
+
+/* Marks a control as Pro-only where the server enforces it (bill scanning,
+   Ask AI). Shown ONLY when the plan is not pro — a badge on a feature you
+   already have is noise. Same gradient as .btn-premium so "this costs money"
+   reads consistently across the app. */
+.pro-chip {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  background: var(--grad-premium);
+  color: #fff;
+  vertical-align: middle;
+}

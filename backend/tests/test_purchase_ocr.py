@@ -159,14 +159,55 @@ def test_parse_purchase_file_unsupported_ext():
     with pytest.raises(ValueError, match="Unsupported file type"):
         parse_purchase_file(b"text file content", "invoice.txt")
 
-@patch("services.purchase_ocr.parse_pdf_text", return_value="PDF Raw Text")
+@patch("services.purchase_ocr._extract_digital_text", return_value="X" * 200)
 @patch("services.purchase_ocr.extract_structured_purchase_invoice")
-def test_parse_purchase_file_pdf(mock_extract, mock_pdf_text):
+def test_parse_purchase_file_digital_pdf_uses_text_not_vision(mock_extract, mock_digital):
+    """A PDF with embedded text must never reach a model that charges per image.
+
+    pypdf reads it with no network call and no system binary, so the cheapest
+    correct answer wins. Vision is only for the scanned case below.
+    """
     mock_extract.return_value = {"supplier_name": "Test"}
-    res = parse_purchase_file(b"pdf bytes", "invoice.pdf")
+    with patch("services.purchase_ocr.extract_purchase_from_image") as vision:
+        res = parse_purchase_file(b"pdf bytes", "invoice.pdf")
     assert res == {"supplier_name": "Test"}
-    mock_pdf_text.assert_called_once_with(b"pdf bytes")
-    mock_extract.assert_called_once_with("PDF Raw Text")
+    mock_digital.assert_called_once_with(b"pdf bytes")
+    mock_extract.assert_called_once_with("X" * 200)
+    vision.assert_not_called()
+
+
+@patch("services.purchase_ocr._extract_digital_text", return_value="")
+def test_parse_purchase_file_scanned_pdf_goes_to_vision(mock_digital):
+    """A scanned PDF has no embedded text, and rasterising it needs poppler +
+    Tesseract — neither of which is installed on a normal machine.
+
+    Gemini accepts application/pdf on the same endpoint as an image, so the PDF
+    goes to vision AS A PDF. Measured 2026-08-08: an image-only PDF that pypdf
+    read 0 chars from extracted completely in 4.9 s, no binaries involved.
+    """
+    with patch("services.purchase_ocr.extract_purchase_from_image") as vision:
+        vision.return_value = {"supplier_name": "Scanned Co"}
+        res = parse_purchase_file(b"scanned pdf bytes", "invoice.pdf")
+    assert res == {"supplier_name": "Scanned Co"}
+    # AS A PDF — passing ".png" here would send the wrong mime and Gemini 400s.
+    vision.assert_called_once_with(b"scanned pdf bytes", ".pdf")
+
+
+@patch("services.purchase_ocr._extract_digital_text", return_value="")
+@patch("services.purchase_ocr._extract_ocr_text", side_effect=ValueError("no tesseract"))
+def test_scanned_pdf_reports_the_vision_failure_not_just_the_fallback(mock_ocr, mock_digital):
+    """When both paths fail the error must name the REAL cause.
+
+    The fallback's own message describes missing binaries, which sends the owner
+    installing poppler when the actual problem is the vision provider.
+    """
+    with patch("services.purchase_ocr.extract_purchase_from_image",
+               side_effect=ValueError("vision provider refused")):
+        with pytest.raises(ValueError) as exc:
+            parse_purchase_file(b"scanned pdf bytes", "invoice.pdf")
+    msg = str(exc.value)
+    assert "vision provider refused" in msg, "the preferred path's failure was buried"
+    assert "no tesseract" in msg
 
 @patch("services.purchase_ocr._extract_image_text", return_value="Image Raw Text")
 @patch("services.purchase_ocr.extract_structured_purchase_invoice")
