@@ -24,8 +24,11 @@ import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import ContextMenu from '../components/common/ContextMenu'
 import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
 import { useResizableColumns } from '../hooks/useResizableColumns'
+import { useRowSelection } from '../hooks/useRowSelection'
 import { useConfirm } from '../contexts/ConfirmContext'
 import ColumnResizer from '../components/common/ColumnResizer'
+import BulkActionBar from '../components/common/BulkActionBar'
+import BulkPreviewModal from '../components/common/BulkPreviewModal'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -149,10 +152,16 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   const [isFullScreen, setIsFullScreen] = useState(false)
 
   // Drag-resizable, per-user persisted widths for the in-stock grid.
+  // 'select' is registered even though its header carries no resize grip:
+  // useResizableColumns maps a column key to a body cell BY INDEX
+  // (useResizableColumns.js:107), so a leading checkbox column that the hook
+  // does not know about would shift every measurement one cell to the left and
+  // auto-fit would size the wrong column. Trailing extras are safe; leading
+  // ones are not.
   const invCols = useResizableColumns({
     tableId: 'stock.catalogue',
     userId: user?.id,
-    columns: INV_COLUMNS.map(c => c.key),
+    columns: ['select', ...INV_COLUMNS.map(c => c.key)],
   })
   const [showAddModal, setShowAddModal]     = useState(false)
   const [showLabelModal, setShowLabelModal] = useState(false)
@@ -161,14 +170,10 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   const [showBulkAdd, setShowBulkAdd]       = useState(false)
   const [editProduct, setEditProduct]       = useState(null)   // product row → edit mode
   const [prefillBarcode, setPrefillBarcode] = useState('')     // unknown scan → add flow
-  const [selectedIds, setSelectedIds]       = useState(new Set())  // row selection → label printing
   const [exporting, setExporting]           = useState(false)
-
-  const toggleSelected = (id) => setSelectedIds(prev => {
-    const next = new Set(prev)
-    if (next.has(id)) next.delete(id); else next.add(id)
-    return next
-  })
+  // The bulk action awaiting approval: { action, params, label } or null.
+  // BulkPreviewModal turns it into a preview and, if confirmed, an execute.
+  const [bulkRequest, setBulkRequest]       = useState(null)
 
   const handleExport = async () => {
     setExporting(true)
@@ -358,6 +363,17 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   }
 
   const filtered = getFilteredProducts()
+
+  // Selection is over the VISIBLE rows only — ticking the header box must never
+  // quietly include products hidden by the search box or the active/inactive
+  // filter. Feeds both the bulk bar and LabelPrintModal's `preselectIds`.
+  const rowSel = useRowSelection(filtered.map(p => p.id))
+
+  // Every selected row is already deactivated → the only sensible offer is to
+  // reactivate. Mixed or all-active → deactivate. The backend re-decides this
+  // for itself; this only picks the button's wording.
+  const selectedProducts = filtered.filter(p => rowSel.selected.has(p.id))
+  const allSelectedInactive = selectedProducts.length > 0 && selectedProducts.every(p => p.is_active === false)
 
   const totalProducts = products.length
   const lowStock  = products.filter(p => getStatus(p) === 'Low').length
@@ -842,6 +858,26 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                   </button>
                 </div>
               )}
+              {/* While rows are ticked these are the actions that matter, so
+                  they sit ahead of the page's own toolbar buttons and are NOT
+                  `ws-bar-action` — see the note in BulkActionBar.jsx. */}
+              {activeView === 'catalogue' && (
+                <BulkActionBar
+                  count={rowSel.count}
+                  onClear={rowSel.clear}
+                  actions={[
+                    { label: 'Labels', action: () => setShowLabelModal(true) },
+                    {
+                      label: allSelectedInactive ? 'Reactivate' : 'Deactivate',
+                      action: () => setBulkRequest({
+                        action: 'bulk_set_product_active',
+                        params: { ids: rowSel.selectedIds, active: allSelectedInactive },
+                        label: allSelectedInactive ? 'Reactivate products' : 'Deactivate products',
+                      }),
+                    },
+                  ]}
+                />
+              )}
               {/* Folded by a container query on `.stock-body` — see index.css.
                   A measured "show as many as fit" version was attempted and
                   reverted: this toolbar's sibling tabs are flex items that
@@ -1017,6 +1053,15 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                   ) : (
                     <table ref={invCols.tableRef} className={`data-table inv-dense ${invCols.tableClassName}`.trim()}>
                       <thead><tr>
+                        <th data-col="select" style={{ width: 30, textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            aria-label="Select all products"
+                            checked={rowSel.isAllSelected}
+                            ref={el => { if (el) el.indeterminate = rowSel.isSomeSelected }}
+                            onChange={rowSel.toggleAll}
+                          />
+                        </th>
                         {INV_COLUMNS.map(c => (
                           <th
                             key={c.key}
@@ -1032,7 +1077,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                       </tr></thead>
                       <tbody>
                         {filtered.length === 0 ? (
-                          <tr><td colSpan={16}>
+                          <tr><td colSpan={INV_COLUMNS.length + 1}>
                             <div className="empty-state"><div className="empty-icon"><InventoryIcon size={22} /></div><h3>No products found</h3></div>
                           </td></tr>
                         ) : filtered.map(p => {
@@ -1098,6 +1143,16 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                                 })
                               }}
                             >
+                              {/* stopPropagation so ticking a row never opens
+                                  the row's own click/context handling. */}
+                              <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Select ${p.name}`}
+                                  checked={rowSel.selected.has(p.id)}
+                                  onChange={() => rowSel.toggle(p.id)}
+                                />
+                              </td>
                               <td className="td-mono" style={{ textAlign: 'left' }}>{p.sku || '—'}</td>
                               <td className="td-primary" style={{ textAlign: 'left' }}>
                                 {p.name}
@@ -1434,7 +1489,17 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
       </div>
 
       {/* ── Modals ──────────────────────────────────────────────────────────── */}
-      <LabelPrintModal open={showLabelModal} onClose={() => setShowLabelModal(false)} products={products} preselectIds={[...selectedIds]} />
+      <LabelPrintModal open={showLabelModal} onClose={() => setShowLabelModal(false)} products={products} preselectIds={rowSel.selectedIds} />
+      <BulkPreviewModal
+        request={bulkRequest}
+        authFetch={authFetch}
+        onClose={() => setBulkRequest(null)}
+        onDone={(res) => {
+          setAlert({ type: 'success', msg: res?.answer?.markdown?.replace(/[*✅]/g, '').trim() || 'Done.' })
+          rowSel.clear()
+          load()
+        }}
+      />
       <BulkAddProductsModal open={showBulkAdd} existingProducts={products} onClose={() => setShowBulkAdd(false)} onSaved={(n) => { setAlert({ type: 'success', msg: `${n} product(s) added!` }); load() }} />
       <ProductFormModal
         open={showAddModal || !!editProduct} product={editProduct} prefillBarcode={prefillBarcode}

@@ -1,7 +1,7 @@
 # Bulk table actions — select, preview, approve, all-or-nothing
 
-**Status 2026-08-08:** approved; Phase 1 partially built (`ca84c93`). See
-*Progress* at the foot of this file for what exists versus what is planned.
+**Status 2026-08-09:** approved; **Phase 1 complete** (`ca84c93` + this change).
+See *Progress* at the foot of this file for what exists versus what is planned.
 
 ## Context
 
@@ -167,8 +167,37 @@ There is **no shared `DataTable`** — every table is a hand-rolled
 `<table className="data-table">`. So extract, do not duplicate:
 
 - **`hooks/useRowSelection.js`** — `{selected, toggle, toggleAll, clear, isAllSelected}` over a `Set`. Model on `Stock.jsx:167`.
-- **`components/common/BulkActionBar.jsx`** — renders into the existing `WorkspaceTopBar` `actions` slot (`WorkspaceTopBar.jsx:37`), beside `FilterDropdown`/`SortDropdown`, which is where the user asked for it. Shows "N selected" + that table's actions + Clear. Buttons tagged `ws-bar-action` fold into the existing `⋯` overflow automatically.
-- **`components/common/BulkPreviewModal.jsx`** — the approve step. Calls `/action/preview`, lists what changes and what is **blocked with reasons**, enables Confirm only when nothing is blocked. Confirm posts `/action/execute` with `X-Client-Request-Id`.
+- **`components/common/BulkActionBar.jsx`** — renders into the existing `WorkspaceTopBar` `actions` slot (`WorkspaceTopBar.jsx:37`), beside `FilterDropdown`/`SortDropdown`, which is where the user asked for it. Shows "N selected" + that table's actions + Clear.
+- **`components/common/BulkPreviewModal.jsx`** — the approve step. Calls `/action/preview`, lists what changes and what is **blocked with reasons**, enables Confirm only when the preview says `executable`. Confirm posts `/action/execute`.
+
+**Correction — bulk buttons must NOT carry `ws-bar-action`.** An earlier draft of
+this file said they fold into the `⋯` overflow automatically. They do not. The
+overflow menus are built from each page's own `toolbarActions` array
+(`Stock.jsx:869`), not by scanning the DOM, so a button carrying that class is
+merely *hidden* below the container breakpoint with no menu entry to reach it —
+the exact trap `index.css:6432` already records for `New Invoice` and `Add
+Party`. While rows are selected these are the primary actions, so they stay put.
+
+### The `/action/execute` contract has three load-bearing parts
+
+Only one of them was in the original plan. `frontend-ai`'s `Chat.jsx`
+`runAction`/`confirmAction` is the proven caller; `BulkPreviewModal` mirrors it.
+
+1. **`confirm_token`** — `/action/preview` mints an HMAC over (business, action,
+   exact params, preview content, expiry) and `/action/execute` refuses without
+   it (`routes/actions.py:71-81`). Not optional; omitting it is a 428.
+2. **Execute sends the params that were PREVIEWED**, not `preview.params`. The
+   preview envelope narrows `params.ids` to the rows that would actually change
+   (`services/actions.py:609`), but the token is signed over what the client
+   posted to *preview* (`routes/actions.py:56`). Echoing the narrowed set back
+   changes the params hash and the token stops verifying.
+3. **`X-Client-Request-Id`** — the ReplayGuard wall. One id per confirm intent,
+   held across retries of that confirm; a fresh id on retry defeats the wall.
+
+A 428 means the rows drifted under the preview, so the modal **re-previews**
+rather than leaving a Confirm button that can only fail again. And a 200 is not
+by itself success: `execute` never raises, so a refusal arrives as
+`ok: false` with `blocked` attached.
 - **`utils/exportRows.js`** — Tier A CSV from in-memory rows. No backend.
 - **Checkbox column** — copy the one existing precedent, `components/ImportReviewModal.jsx:107,118`.
 
@@ -238,13 +267,30 @@ producing the right CSV rows.
 - `frontend-billing/src/hooks/useRowSelection.js` + 9 tests. Replaces the dead
   `selectedIds`/`toggleSelected` pair in `pages/Stock.jsx:164-171`.
 
+### Done — Phase 1 complete
+
+- `components/common/BulkActionBar.jsx` — "N selected" + actions + Clear, into
+  the `WorkspaceTopBar` `actions` slot. Action shape matches `ContextMenu` and
+  `toolbarActions`, so one array can feed a bar or a menu unchanged.
+- `components/common/BulkPreviewModal.jsx` — owns the whole preview → confirm →
+  execute round trip, so a table only says `{ action, params, label }`. Honours
+  the three-part contract above and re-previews on 428.
+- Checkbox column in the `pages/Stock.jsx` catalogue, wired to `useRowSelection`,
+  the bar, and the existing `LabelPrintModal preselectIds` (which was reading
+  the dead Set).
+- `__tests__/BulkActions.test.jsx` — 7 tests: the wire contract (previewed
+  params echoed, token sent, request id sent, 428 re-previews, blocked disables
+  Confirm, `ok:false` surfaces) plus the Stock wiring (no bar until ticked,
+  exact ids sent, select-all, Clear). 561 frontend tests green, `vite build` clean.
+
+`'select'` had to be registered with `useResizableColumns` even though its
+header carries no grip: the hook maps a column key to a body cell **by index**
+(`useResizableColumns.js:107`), so an unregistered *leading* column shifts every
+measurement one cell left and auto-fit sizes the wrong column. Trailing extras
+are safe — leading ones are not.
+
 ### Next, in order
 
-1. `components/common/BulkActionBar.jsx` → `WorkspaceTopBar` `actions` slot.
-2. `components/common/BulkPreviewModal.jsx` — calls `/action/preview`, lists
-   `blocked` with reasons, Confirm disabled unless `executable`, posts
-   `/action/execute` with `X-Client-Request-Id`.
-3. Checkbox column in `pages/Stock.jsx` catalogue (copy
-   `components/ImportReviewModal.jsx:107,118`), wired to the hook, the bar, and
-   the existing `LabelPrintModal preselectIds`.
-4. Then phases 2-6 as listed above.
+1. Phase 2 — Tier A (`utils/exportRows.js` + checkbox column) on the remaining
+   tables. The two components are now shared, so each table is a wiring job.
+2. Then phases 3-6 as listed above.
