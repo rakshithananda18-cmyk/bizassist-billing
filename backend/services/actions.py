@@ -526,7 +526,157 @@ def _reorder_execute(user_id: int, params: dict) -> dict:
 
 
 # ── Registry ────────────────────────────────────────────────────────
+# ── bulk_set_product_active (catalogue: deactivate / reactivate many) ────────
+#
+# ALL-OR-NOTHING. Either every selected product flips or none does. That is the
+# owner's chosen semantic, and it is the honest one for a table: after the
+# action, what you see is what happened. A partial apply would leave the
+# selection half-done with no way to tell which half without re-reading 40 rows.
+#
+# Deliberately SEPARATE from a delete action rather than one action with a
+# `mode` flag. Separate registry keys mean separate previews, separate confirm
+# wording, and separate daily caps in services/action_rails.py — an accidental
+# mass-deactivate cannot eat the delete budget, and neither preview can be
+# mistaken for the other.
+#
+# Deactivating is always legal: `is_active` is a visibility flag, so there are
+# no history blockers the way there are for delete. The only things that stop a
+# batch are ids that do not belong to this business (reported, never mutated)
+# and ids that do not exist.
+
+def _bulk_products_lookup(db, user_id: int, ids: list):
+    """Products for these ids, scoped to this business — and what was missing.
+
+    The tenant filter is in the SAME query that selects the ids, not a check
+    afterwards. core/sync/tenant_scope.py is a CI-enforced AST gate that fails
+    the build on a tenant-owned read with no owner predicate, and the B2B mirror
+    means the local database legitimately holds more than one business's rows.
+    """
+    from database.models import Product
+    clean = []
+    for raw in (ids or []):
+        try:
+            clean.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    if not clean:
+        return [], []
+    rows = (db.query(Product)
+            .filter(Product.business_id == user_id, Product.id.in_(clean))
+            .all())
+    found = {p.id for p in rows}
+    # A row belonging to another business is indistinguishable from one that
+    # does not exist — same as every other route here, which 404s rather than
+    # 403s so cross-tenant probing tells you nothing.
+    missing = [i for i in clean if i not in found]
+    return rows, missing
+
+
+def _bulk_active_preview(user_id: int, params: dict) -> dict:
+    ids = (params or {}).get("ids") or []
+    active = bool((params or {}).get("active", False))
+    verb = "Reactivate" if active else "Deactivate"
+    db = SessionLocal()
+    try:
+        rows, missing = _bulk_products_lookup(db, user_id, ids)
+        blocked = [{"id": i, "name": f"#{i}", "reason": "not found in your catalogue"}
+                   for i in missing]
+        # Already in the target state: not an error, just nothing to do. Listed
+        # so the count the owner confirms matches the count that changes.
+        changing = [p for p in rows if bool(p.is_active) != active]
+        noop = [p for p in rows if bool(p.is_active) == active]
+        items = [{"id": p.id, "name": p.name, "sku": p.sku,
+                  "was_active": bool(p.is_active), "will_be_active": active}
+                 for p in changing]
+        if blocked:
+            summary = (f"{len(blocked)} of {len(ids)} selected items could not be "
+                       f"read, so nothing will change.")
+        elif not changing:
+            summary = f"All {len(rows)} selected items are already {'active' if active else 'inactive'}."
+        else:
+            summary = (f"{verb} {len(changing)} item{'s' if len(changing) != 1 else ''}"
+                       + (f" ({len(noop)} already {'active' if active else 'inactive'})" if noop else "")
+                       + ". Nothing changes until you confirm.")
+        return {
+            "action": "bulk_set_product_active",
+            "title": f"{verb} {len(changing)} product{'s' if len(changing) != 1 else ''}",
+            "summary": summary,
+            "items": items,
+            "blocked": blocked,
+            "confirm_label": verb,
+            # All-or-nothing: one unreadable id stops the batch.
+            "executable": (not blocked) and bool(changing),
+            "params": {"ids": [p.id for p in changing], "active": active},
+        }
+    finally:
+        db.close()
+
+
+def _bulk_active_execute(user_id: int, params: dict) -> dict:
+    """Flip is_active on every selected product, in ONE transaction.
+
+    RETURNS a structured result rather than raising. `actions.execute` wraps the
+    dispatch in a bare `except -> return None`, so an exception here would reach
+    the caller as a silent None with no reason attached — the opposite of
+    "failures must show up".
+    """
+    ids = (params or {}).get("ids") or []
+    active = bool((params or {}).get("active", False))
+    verb = "reactivated" if active else "deactivated"
+    if not ids:
+        return {"ok": False, "executed": 0, "blocked": [],
+                "markdown": "❌ Nothing selected."}
+    db = SessionLocal()
+    try:
+        rows, missing = _bulk_products_lookup(db, user_id, ids)
+        if missing:
+            # Re-validated at execute time, not trusted from the preview: rows
+            # can be deleted between preview and confirm.
+            blocked = [{"id": i, "name": f"#{i}", "reason": "not found in your catalogue"}
+                       for i in missing]
+            logger.warning("[PRODUCTS] bulk_set_product_active refused biz=%s — "
+                           "%d of %d ids unreadable", user_id, len(missing), len(ids))
+            return {"ok": False, "executed": 0, "blocked": blocked,
+                    "markdown": (f"❌ Nothing was changed. {len(missing)} of {len(ids)} "
+                                 f"selected items could not be read.")}
+
+        changed = 0
+        for p in rows:
+            if bool(p.is_active) != active:
+                p.is_active = active
+                changed += 1
+        db.add(ActionLog(business_id=user_id, action="bulk_set_product_active",
+                         target=f"{changed} product(s)",
+                         detail=f"is_active → {active} for ids {[p.id for p in rows]}",
+                         status="done"))
+        # ONE commit for the whole batch. No per-row savepoint: the owner chose
+        # all-or-nothing, so a failure anywhere must leave the catalogue exactly
+        # as it was.
+        db.commit()
+        logger.info("[PRODUCTS] bulk_set_product_active biz=%s %s=%d of %d selected",
+                    user_id, verb, changed, len(rows))
+        try:
+            from services.context_cache import invalidate_user_cache
+            invalidate_user_cache(user_id)
+        except Exception:
+            pass
+        return {"ok": True, "executed": changed, "blocked": [],
+                "markdown": f"✅ **{changed}** product(s) {verb}."}
+    except Exception as e:
+        db.rollback()
+        logger.error("[PRODUCTS] bulk_set_product_active failed biz=%s: %s",
+                     user_id, e, exc_info=True)
+        return {"ok": False, "executed": 0, "blocked": [],
+                "markdown": "❌ Nothing was changed — the update failed. Please try again."}
+    finally:
+        db.close()
+
+
 ACTIONS = {
+    "bulk_set_product_active": {
+        "preview": _bulk_active_preview,
+        "execute": _bulk_active_execute,
+    },
     "send_payment_reminders": {
         "preview": _reminders_preview,
         "execute": _reminders_execute,

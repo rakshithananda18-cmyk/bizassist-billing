@@ -114,6 +114,12 @@ _DEFAULT_CAPS = {
     "mark_invoice_paid":      500,
     "email_reminder_digest":  5,     # owner digest — a few sends a day is plenty
     "draft_reorder_po":       200,
+    # BULK actions log ONE row per BATCH, not per row touched, so this number is
+    # "batches per day" — a different unit from the emailing actions above. 200
+    # catalogue sweeps in a day is already far past normal use; the point is to
+    # stop a loop, not to ration the owner. Listed explicitly rather than
+    # inheriting ACTION_DAILY_CAP_DEFAULT so the unit is on the record.
+    "bulk_set_product_active": 200,
 }
 
 
