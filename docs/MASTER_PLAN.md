@@ -8,7 +8,7 @@
 
 | Requirement (owner's words) | Built as | Code |
 |---|---|---|
-| Owner login | Same username/password as BizAssist Billing (same `users` row). Signup from this app creates a billing-compatible account. SSO: a billing owner token can be exchanged (`POST /api/auth/exchange`, or open the app with `#sso=<token>`). | `routers/auth.py` |
+| Owner login | Same username/password as BizAssist Billing (same `users` row). Signup from this app creates a billing-compatible account. SSO: the **Field Team** link in billing's sidebar opens this app with `?sso=<ticket>` — billing's 30-second single-use `/handoff-ticket`, the same hand-off as its AI dashboard — exchanged at `POST /api/auth/exchange`. | `routers/auth.py`, `security.redeem_billing_ticket`, `lib/auth.jsx` |
 | Staff login, multiple people, owner sets password | Owner creates staff (`ft_staff`) and sets/resets passwords; staff sign in with **BizID + login name + password**. Billing's password policy. | `routers/staff.py` |
 | Device-specific login or one device at a time | Owner setting: `single_session` (new login signs the old device out) or `bound` (locked to the first phone; owner releases it). Enforced on every request. | `security.py`, `routers/auth.py` |
 | Attendance with server time and location | Check-in/out stamped with **server UTC**; phone clock kept only as evidence (skew shown to owner). Late = after `workday_start + grace` in business timezone. | `routers/attendance.py` |
@@ -55,8 +55,9 @@ When to merge into one process: never needed for correctness; reconsider only if
 ## 3. Identity and security
 
 - Owner token: `typ=owner`, `bid`, `uid`, `public_id`, `tv` (= billing `users.token_version`, checked every request).
-- Staff token: `typ=staff`, `bid`, `sid`, `ses` (session id), `dev` (device id), `tv`. All must match the `ft_staff` row; a new login rotates `ses`.
+- Staff token: `typ=staff`, `bid`, `sid`, `ses` (session id), `dev` (device id), `tv`, plus `public_id` (the business's BizID, read only for `[BizId=…]` log lines). All must match the `ft_staff` row; a new login rotates `ses`.
 - Signing key `HMAC-SHA256(JWT_SECRET, "bizassist-task:v1")` + `aud=bizassist-task` → rejected by billing's decoder (tested both ways).
+- SSO from billing: a **30-second, single-use** ticket (billing `POST /handoff-ticket`, signed `HMAC-SHA256(JWT_SECRET, "sse|…")`), verified here with the shared secret — no call to the billing Space — then the same owner checks as a login (owner role, BizID match, `token_version`). Spent tickets are remembered in-process (one worker); tickets valid for more than 60 s are refused. A full billing session token never travels in a URL.
 - Every query filters `business_id` from the token; cross-tenant ids return 404 (tested). Postgres RLS on every `ft_*` table as defence in depth (verified with a non-bypass role: unscoped → 0 rows, scoped → own rows only).
 - Login throttle: 10 failures / 15 min per IP + account (in-process; one worker).
 - "Device" = a random id stored in the browser. Clearing site data = a new device → owner releases the old one. A native app can use a hardware-backed id (Phase 2).
@@ -115,7 +116,8 @@ Ledger is append-only (`ft_points_ledger`); completed tasks cannot be edited (40
 |---|---|
 | Same owner login, BizID, `token_version` | Done |
 | Shops ← billing customers (`customer_id` link) | Done |
-| SSO endpoint (`/api/auth/exchange`, `#sso=` on the PWA) | Done here; billing needs an "Open Field Team" link that passes its owner token in the URL fragment |
+| SSO: **Field Team** link in billing's sidebar (owner-only, like Dashboard BIZASSIST) → `?sso=<30 s ticket>` → `/api/auth/exchange` | Done in both: here, and billing branch `feat/field-team-link` (`frontend-billing/src/config/fieldTeam.js`; shown once billing's Vercel project has `VITE_FIELD_TEAM_URL`) |
+| Pro plan gate on Field Team | **Decide** (D7) — billing's link has the switch (`EXTERNAL_APPS.fieldTeam.proOnly`); a real gate must also be checked here, at owner sign-in |
 | Billing autogenerate guard for `ft_*` | Done (billing `alembic/env.py`) |
 | Deliveries from billing invoices / B2B orders (pick invoices per shop → boxes, refs) | Next |
 | Shop request → billing B2B order / sale draft (catalogue picker) | Next |
@@ -125,16 +127,18 @@ Ledger is append-only (`ft_points_ledger`); completed tasks cannot be edited (40
 
 ---
 
-## 8. Deployment (Hugging Face)
+## 8. Deployment (Hugging Face API + Vercel screens, like billing)
 
 | Item | Value |
 |---|---|
-| Space | Docker SDK, `app_port: 7860`, root `Dockerfile` (Node build → Python 3.11 slim, non-root uid 1000, one uvicorn process) |
+| Space (API) | Docker SDK, `app_port: 7860`, root `Dockerfile` (Node build → Python 3.11 slim, non-root uid 1000, one uvicorn process). It also serves a copy of the screens at its own URL. |
+| Vercel (screens) | Own project, Root Directory `frontend`, Vite, production branch `main`, env `VITE_API_URL` = the Space URL (`frontend/vercel.json` = SPA rewrite). Same arrangement as billing's `frontend-billing` / `frontend-ai`. |
 | Secrets | `DATABASE_URL` (billing's Supabase URL), `JWT_SECRET` (billing's value) |
+| Variables | `ALLOWED_ORIGINS` = the Vercel URL (replaces the localhost defaults; LAN/localhost stay allowed by pattern) |
 | Migrations | Automatic on start, `ft_*` only (`TASK_AUTO_MIGRATE=1`) |
 | Free hardware | cpu-basic: 2 vCPU, 16 GB RAM, free; **sleeps after 48 h without traffic** (not configurable on cpu-basic); disk not persistent → all data in Supabase |
 | Supabase free | 500 MB database shared with billing; project pauses after 7 days idle (secondary sources) |
-| URL to give staff | `https://<owner>-<space>.hf.space` (add to home screen → installs as an app) |
+| URL to give staff | **The Vercel URL** (add to home screen → installs as an app). Not the `hf.space` one: a phone's device id is stored per web address, so the address staff install must never change — the API can later move off HF by changing `VITE_API_URL` only. |
 
 ### 8.1 Go-live order (do not reorder)
 
@@ -144,13 +148,16 @@ Billing is mirrored to its own Hugging Face Space, and **every push there rebuil
 |---|---|---|
 | 1 | Merge billing PR #3 (`claude/amazing-euler-fa3c6t` → `main`): Alembic `ft_*` guard + SQLAlchemy `<2.1` pin | PR CI green, including "Financial Invariants on Postgres" |
 | 2 | Push billing `main` to the billing Space | Space log ends with `Application startup complete`; billing login works |
-| 3 | Merge `bizassist-task` `claude/amazing-euler-fa3c6t` → `main` | — |
-| 4 | Create a **second** Space (Docker, blank) for Field Team. **Before the first push**, Settings → Secrets: `DATABASE_URL`, `JWT_SECRET` = **same values** as the billing Space (without `DATABASE_URL` the app would start on a throw-away SQLite file inside the container) | Both secrets listed |
+| 3 | Merge `bizassist-task` → `main` (MVP + `feat/vercel-ticket-sso`) | Task CI green (SQLite + Postgres + frontend build) |
+| 4 | Create a **second** Space (Docker, blank, **Public**) for Field Team. **Before the first push**, Settings → Secrets: `DATABASE_URL`, `JWT_SECRET` = **same values** as the billing Space (without `DATABASE_URL` the app would start on a throw-away SQLite file inside the container) | Both secrets listed |
 | 5 | Push `bizassist-task` `main` to that Space | Container log: `Running upgrade  -> 0001_ft_initial` (first start only), then `[BOOT] BizAssist Task ready db=postgresql`; `GET /api/health` returns `ok: true` |
-| 6 | Owner opens `https://<owner>-<space>.hf.space` (not the huggingface.co page), signs in with the billing account, adds one staff member, shares the BizID | Staff phone: sign in → Check in → location accepted |
-| 7 | Pilot one distributor for 1–2 weeks (Phase 1.1, §10) | Dashboard shows real deliveries / boxes / points |
+| 6 | Vercel → Add New → Project → import `bizassist-task`. Root Directory `frontend`, Framework Vite, env `VITE_API_URL=https://<owner>-<space>.hf.space` → Deploy | The Vercel URL shows the Field Team sign-in page |
+| 7 | Field Team Space → Settings → Variables: `ALLOWED_ORIGINS=https://<vercel-url>` (the Space restarts) | Owner signs in on the Vercel URL; no CORS error in the browser console |
+| 8 | Billing: merge `feat/field-team-link`; billing's `frontend-billing` Vercel project → env `VITE_FIELD_TEAM_URL=https://<vercel-url>` → Redeploy (Vite reads it at build time). Frontend only — no billing Space push | Billing sidebar shows **Field Team** to owners; it opens the Vercel URL already signed in |
+| 9 | Owner adds one staff member, shares the BizID **and the Vercel URL** | Staff phone: sign in → Check in → location accepted |
+| 10 | Pilot one distributor for 1–2 weeks (Phase 1.1, §10) | Dashboard shows real deliveries / boxes / points |
 
-Field Team stays in its own Space: the two apps restart, sleep and fail independently, and a Field Team deploy never rebuilds billing.
+Field Team stays in its own Space and its own Vercel project: the two apps restart, sleep and fail independently, and a Field Team deploy never rebuilds billing.
 
 ---
 
@@ -164,7 +171,7 @@ Field Team stays in its own Space: the two apps restart, sleep and fail independ
 
 ## 10. Next phases and open decisions
 
-**Phase 1.1 (owner pilot, 1–2 weeks):** deploy Space; billing "Open Field Team" link (SSO); pilot with one distributor; tune accuracy/geofence from real data.
+**Phase 1.1 (owner pilot, 1–2 weeks):** deploy Space + Vercel; billing "Field Team" link (SSO, built — §7); pilot with one distributor; tune accuracy/geofence from real data.
 **Phase 2:** Android wrapper (background GPS + mock-location flag); deliveries from billing invoices; shop request → B2B order draft; collections → payments; notifications (new run, overdue task).
 **Phase 3:** incentive slabs and payout report; route optimisation; retailer self-ordering feeding runs; AI advisor over field data.
 
