@@ -11,23 +11,26 @@ billing's (WEB_CONCURRENCY=1). Do not add --workers without moving them out.
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect
 
 from app import config
-from app.billing_models import BillingBase
-from app.db import SessionLocal, engine, utc_now
-from app.routers import attendance, auth, dashboard, requests, runs, shops, staff, tasks, tracking
+from app.logging_config import TAG, configure_logging, current_bizid_var, get_logger
 
-logging.basicConfig(level=config.LOG_LEVEL, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-logger = logging.getLogger("bizassist.task")
+configure_logging(config.LOG_LEVEL)
+
+from app.billing_models import BillingBase  # noqa: E402
+from app.db import SessionLocal, engine, utc_now  # noqa: E402
+from app.routers import attendance, auth, dashboard, requests, runs, shops, staff, tasks, tracking  # noqa: E402
+from app.security import bizid_from_authorization  # noqa: E402
+
+logger = get_logger("task")
 
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -92,6 +95,26 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+
+@app.middleware("http")
+async def _bizid_log_context(request: Request, call_next):
+    """[BizId=…] on every log line of this request (app/logging_config.py).
+    Set here, in async middleware, for the same reason as billing's main_groq.py:
+    a contextvar set in a sync dependency never reaches the route's log lines."""
+    token = current_bizid_var.set(bizid_from_authorization(request.headers.get("Authorization")) or "-")
+    try:
+        return await call_next(request)
+    finally:
+        current_bizid_var.reset(token)
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception(request: Request, exc: Exception):
+    """Log every unhandled error with its route, so no crash goes silent."""
+    logger.error("%s unhandled %s %s", TAG.HTTP, request.method, request.url.path, exc_info=exc)
+    return JSONResponse({"detail": "Internal server error"}, status_code=500)
+
 
 for r in (auth, staff, attendance, shops, runs, tasks, requests, tracking, dashboard):
     app.include_router(r.router)

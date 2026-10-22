@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import { useAuth, lastBizId } from '../lib/auth'
 import { Logo } from '../components/Logo'
 
 export default function Login() {
-  const { ownerLogin, ownerSignup, staffLogin, exchange, notice } = useAuth()
+  const { ownerLogin, ownerSignup, staffLogin, notice } = useAuth()
   // Staff sign in daily on phones; owners rarely. Remember the last tab used.
   const [mode, setModeState] = useState(() => { try { return localStorage.getItem('task_login_mode') || 'staff' } catch { return 'staff' } })
   const setMode = (m) => { setModeState(m); try { localStorage.setItem('task_login_mode', m) } catch { /* ignore */ } }
@@ -13,14 +13,8 @@ export default function Login() {
   const [error, setError] = useState(null)
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
 
-  // Single sign-on from BizAssist Billing: …/#sso=<billing token>
-  useEffect(() => {
-    const m = /#sso=([^&]+)/.exec(window.location.hash)
-    if (!m) return
-    history.replaceState(null, '', window.location.pathname)
-    setBusy(true)
-    exchange(decodeURIComponent(m[1])).catch(e => setError(e.message)).finally(() => setBusy(false))
-  }, [exchange])
+  // Sign-in from BizAssist Billing (?sso=<ticket>) is handled in lib/auth.jsx
+  // before this page renders.
 
   const submit = async (e) => {
     e.preventDefault()

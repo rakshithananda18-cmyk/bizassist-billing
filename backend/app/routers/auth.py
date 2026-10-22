@@ -21,8 +21,8 @@ from app.security import (
     NON_OWNER_ROLES, Principal, burn_password_check, check_login_throttle,
     clear_login_failures, current_principal, decode_billing_token,
     generate_bizid, get_settings, hash_password, new_session_id, owner_token,
-    record_login_failure, staff_token, validate_password_policy,
-    verify_password,
+    record_login_failure, redeem_billing_ticket, staff_token,
+    validate_password_policy, verify_password,
 )
 from app.services import settings_out, staff_out
 
@@ -92,14 +92,23 @@ def owner_login(req: OwnerLogin, request: Request, db: Session = Depends(get_db)
 
 
 class ExchangeRequest(BaseModel):
-    billing_token: str
+    # Exactly one: `ticket` is billing's 30-second hand-off ticket (what the
+    # Field Team link in billing's sidebar sends as ?sso=); `billing_token` is a
+    # billing owner session token.
+    ticket: Optional[str] = None
+    billing_token: Optional[str] = None
 
 
 @router.post("/exchange")
 def exchange_billing_token(req: ExchangeRequest, db: Session = Depends(get_db)):
     """Single sign-on: a BizAssist Billing OWNER session → a task owner session.
     Billing staff (cashier / supply adder) sessions are refused."""
-    claims = decode_billing_token(req.billing_token)
+    if req.ticket:
+        claims = redeem_billing_ticket(req.ticket)
+    elif req.billing_token:
+        claims = decode_billing_token(req.billing_token)
+    else:
+        raise HTTPException(status_code=422, detail="ticket or billing_token is required")
     try:
         bid, uid = int(claims.get("id")), int(claims.get("user_id"))
     except (TypeError, ValueError):
@@ -232,7 +241,7 @@ def staff_login(req: StaffLogin, request: Request, db: Session = Depends(get_db)
     logger.info("[AUTH] staff login biz=%s staff=%s device_changed=%s",
                 owner.id, staff.id, bool(previous_device and previous_device != req.device_id))
     return {
-        "token": staff_token(staff),
+        "token": staff_token(staff, owner.public_id),
         "kind": "staff",
         "business_id": owner.id,
         "public_id": owner.public_id,

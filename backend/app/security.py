@@ -15,13 +15,18 @@ expected). That matters: billing's role guard is a deny-list, so a field token
 that billing accepted would be treated as an owner. Verified in
 tests/test_auth.py::test_task_token_is_rejected_by_billing_style_decode.
 
-The reverse direction is deliberate: a BILLING owner token can be exchanged for
-a task owner token (`POST /auth/exchange`) — single sign-on from billing.
+The reverse direction is deliberate: a BILLING owner session can be exchanged
+for a task owner token (`POST /auth/exchange`) — single sign-on from billing,
+either as billing's 30-second hand-off ticket (what billing's sidebar link
+sends) or as a billing owner token.
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import hmac
+import json
 import logging
 import secrets
 import time
@@ -107,15 +112,28 @@ def owner_token(user: BillingUser) -> str:
     })
 
 
-def staff_token(staff: FieldStaff) -> str:
+def staff_token(staff: FieldStaff, public_id: Optional[str]) -> str:
     return _encode({
         "typ": "staff",
         "bid": int(staff.business_id),
+        "public_id": public_id,  # the business's BizID — for [BizId=…] log lines only
         "sid": int(staff.id),
         "ses": staff.active_session_id,
         "dev": staff.active_device_id,
         "tv": int(staff.token_version or 0),
     })
+
+
+def bizid_from_authorization(header: Optional[str]) -> Optional[str]:
+    """The caller's BizID for log lines. Not an auth check: no database, no
+    session/device checks, never raises — routes still authenticate."""
+    if not header or not header.startswith("Bearer "):
+        return None
+    try:
+        claims = jwt.decode(header[7:], _TASK_KEY, algorithms=[ALGORITHM], audience=AUDIENCE)
+    except jwt.InvalidTokenError:
+        return None
+    return claims.get("public_id")
 
 
 def decode_task_token(token: str) -> dict:
@@ -135,6 +153,49 @@ def decode_billing_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Billing session expired — sign in again")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Not a valid BizAssist session")
+
+
+# ── Billing hand-off tickets (the "Field Team" link in billing's sidebar) ────
+# Billing's POST /handoff-ticket mints `<exp>.<b64url json>.<hex sig>` with
+# sig = HMAC-SHA256(JWT_SECRET, "sse|<b64>|<exp>"), valid 30 s, payload = the
+# owner's session claims (billing services/auth.py create_sse_ticket). It is
+# the same ticket billing's AI dashboard redeems. The secret is shared, so it is
+# verified here — no call to the billing Space, which may be asleep. Single use
+# is enforced in-process (this service runs ONE worker).
+
+_TICKET_MAX_LIFETIME_S = 60
+_USED_TICKETS: dict[str, int] = {}
+
+
+def redeem_billing_ticket(ticket: str) -> dict:
+    """Verify a billing hand-off ticket, spend it, and return its claims."""
+    refused = HTTPException(status_code=401, detail="Sign-in link expired — open Field Team from BizAssist Billing again")
+    try:
+        exp_s, b64, sig = ticket.split(".", 2)
+        exp = int(exp_s)
+    except (ValueError, AttributeError):
+        raise refused
+    now = int(time.time())
+    # Billing mints for 30 s; a ticket valid far longer did not come from
+    # /handoff-ticket.
+    if now > exp or exp - now > _TICKET_MAX_LIFETIME_S:
+        raise refused
+    expected = hmac.new(config.JWT_SECRET.encode(), f"sse|{b64}|{exp}".encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        raise refused
+    for spent, spent_exp in list(_USED_TICKETS.items()):
+        if spent_exp < now:
+            del _USED_TICKETS[spent]
+    if ticket in _USED_TICKETS:
+        raise refused
+    try:
+        claims = json.loads(base64.urlsafe_b64decode(b64 + "=" * (-len(b64) % 4)))
+    except (ValueError, binascii.Error):
+        raise refused
+    if not isinstance(claims, dict):
+        raise refused
+    _USED_TICKETS[ticket] = exp
+    return claims
 
 
 # ── Login throttling (in-process; this service runs ONE worker) ─────────────

@@ -34,9 +34,30 @@ export function lastBizId() {
   try { return localStorage.getItem(LAST_BIZ_KEY) || '' } catch { return '' }
 }
 
+// Single sign-on from BizAssist Billing, the same hand-off as its AI dashboard:
+// the Field Team link in billing's sidebar opens …/?sso=<30-second single-use
+// ticket>. Taken once per page load and removed from the address bar before
+// anything awaits, so StrictMode's second mount, a reload or a bookmark can
+// never try to spend it again.
+function takeSsoTicket() {
+  try {
+    const url = new URL(window.location.href)
+    const ticket = url.searchParams.get('sso')
+    if (!ticket) return null
+    url.searchParams.delete('sso')
+    window.history.replaceState(window.history.state, '', url)
+    return ticket
+  } catch {
+    return null
+  }
+}
+
+let ssoTicket = takeSsoTicket()
+let ssoExchange = null
+
 export function AuthProvider({ children }) {
   const [me, setMe] = useState(null)
-  const [loading, setLoading] = useState(!!tokenStore.get())
+  const [loading, setLoading] = useState(() => !!tokenStore.get() || !!ssoTicket)
   const [notice, setNotice] = useState(null)
 
   const refresh = useCallback(async () => {
@@ -52,8 +73,6 @@ export function AuthProvider({ children }) {
       setLoading(false)
     }
   }, [])
-
-  useEffect(() => { refresh() }, [refresh])
 
   useEffect(() => {
     const onUnauthorized = (ev) => {
@@ -72,6 +91,20 @@ export function AuthProvider({ children }) {
     return refresh()
   }, [refresh])
 
+  // On start: a billing hand-off ticket wins over a stored session (the owner
+  // just chose to open Field Team from billing); otherwise restore the session.
+  useEffect(() => {
+    if (ssoTicket) {
+      const ticket = ssoTicket
+      ssoTicket = null
+      ssoExchange = api.post('/api/auth/exchange', { ticket }).then(accept).catch((e) => {
+        setNotice(e.message || 'Could not sign you in from BizAssist Billing — sign in below.')
+        return refresh()
+      })
+    }
+    if (!ssoExchange) refresh()
+  }, [refresh, accept])
+
   const ownerLogin = (username, password) =>
     api.post('/api/auth/owner/login', { username, password }).then(accept)
 
@@ -82,8 +115,6 @@ export function AuthProvider({ children }) {
       business, login_name, password, device_id: deviceId(), device_label: deviceLabel(),
     }).then(accept)
 
-  const exchange = (billing_token) => api.post('/api/auth/exchange', { billing_token }).then(accept)
-
   const logout = async () => {
     try { await api.post('/api/auth/logout') } catch { /* already gone */ }
     tokenStore.clear()
@@ -91,7 +122,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ me, loading, notice, setNotice, refresh, ownerLogin, ownerSignup, staffLogin, exchange, logout }}>
+    <AuthContext.Provider value={{ me, loading, notice, setNotice, refresh, ownerLogin, ownerSignup, staffLogin, logout }}>
       {children}
     </AuthContext.Provider>
   )
