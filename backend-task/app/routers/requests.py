@@ -4,7 +4,7 @@ requirement list, captured at the shop (with location) by the field agent.
 
 Manual item names today. The planned bridge to BizAssist Billing: pick items
 from the owner's catalogue and convert an acknowledged request into a B2B
-order / sale draft there (docs/MASTER_PLAN.md §Ecosystem).
+order / sale draft there (docs/FIELD_TEAM_MASTER_PLAN.md §Ecosystem).
 """
 from __future__ import annotations
 

@@ -31,7 +31,7 @@ Verified: 50 backend tests pass on SQLite, on Postgres 16, and on Postgres with 
 
 **Decision:** do **not** add this to the billing backend process; do **not** build a separate identity or database either. One Supabase Postgres, one owner account (BizID), two services.
 
-**Repo (2026-10-22):** one repo, two services. The code moved into `bizassist-billing/field-team/` (history kept) because the two apps share a contract — billing's `users` / `customers` columns, the hand-off ticket, the `ft_*` autogenerate guard, `JWT_SECRET` — and one PR + one CI run (`.github/workflows/field-team.yml`, contract job) now covers both sides. Deployment stays separate: its own Space (`field-team/deploy_space.ps1`, a subtree push) and its own Vercel project (Root Directory `field-team/frontend`), next to billing's `frontend-billing` / `frontend-ai` / `frontend-admin`.
+**Repo (2026-10-22):** one repo, two services. The code moved into bizassist-billing (history kept) as **`backend-task/`** and **`frontend-task/`**, named like billing's `backend/` and `frontend-billing/` / `frontend-ai/` / `frontend-admin/`, because the two apps share a contract — billing's `users` / `customers` columns, the hand-off ticket, the `ft_*` autogenerate guard, `JWT_SECRET` — and one PR + one CI run (`.github/workflows/field-team.yml`, contract job) now covers both sides. It also shares billing's `venv`, `start_dev.bat`, `run_tests.bat` (scope `task`) and test dashboard. Deployment stays separate, the same way billing deploys: the API to its own Space (`backend-task/deploy_space.ps1`, a subtree push), the screens to their own Vercel project (Root Directory `frontend-task`).
 
 | Fact (checked in the repos) | Consequence |
 |---|---|
@@ -76,7 +76,7 @@ Limits of a PWA (browser):
 |---|---|---|
 | GPS stops when the screen locks / app is backgrounded (Android Chrome and iOS Safari; see sources) | Trail recorded while app is open; "Keep screen on during route" (Screen Wake Lock API); every action has its own fix; offline points buffered and replayed | Android app wrapper with a foreground location service (e.g. Capacitor + background-geolocation plugin). A TWA is still Chrome → same limit. |
 | Cannot detect mock-location apps | Accuracy, distance-to-pin, server time and the trail are visible to the owner | Native: `Location.isMock()` (Android 12+) / `isFromMockProvider()` |
-| GPS needs HTTPS | HF Spaces are HTTPS; open the `*.hf.space` URL directly | — |
+| GPS needs HTTPS | The screens are served by Vercel over HTTPS (and `localhost` counts as secure in dev) | — |
 
 Storage (measured on Postgres 16, 100,000 rows): **203 bytes per ping** (heap 126 + indexes 77). 10 staff × 8 h × 1 ping/60 s = 4,800/day ≈ **0.97 MB/day**; 60-day retention ≈ **58 MB**. At 30 s, double. Server keeps at most one ping per half-interval per person and only while checked in.
 
@@ -133,14 +133,14 @@ Ledger is append-only (`ft_points_ledger`); completed tasks cannot be edited (40
 
 | Item | Value |
 |---|---|
-| Space (API) | Docker SDK, `app_port: 7860`, `field-team/Dockerfile` (Node build → Python 3.11 slim, non-root uid 1000, one uvicorn process). It also serves a copy of the screens at its own URL. Deployed with `field-team/deploy_space.ps1`: a Space builds from its repo root, so `field-team/` is split out of bizassist-billing's history (`git subtree split`) and pushed as the Space's `main`. |
-| Vercel (screens) | Own project importing **bizassist-billing**, Root Directory `field-team/frontend`, Vite, production branch `main`, env `VITE_API_URL` = the Space URL (`frontend/vercel.json` = SPA rewrite). Same arrangement as billing's `frontend-billing` / `frontend-ai` / `frontend-admin`. |
+| Space (API only) | Docker SDK, `app_port: 7860`, `backend-task/Dockerfile` (Python 3.11 slim, non-root uid 1000, one uvicorn process; no Node stage). Deployed with `backend-task/deploy_space.ps1`: a Space builds from its repo root, so `backend-task/` is split out of bizassist-billing's history (`git subtree split`) and pushed as the Space's `main`. The Space URL serves the API (`/api/...`), not the screens — same as billing's Space. |
+| Vercel (screens) | Own project importing **bizassist-billing**, Root Directory `frontend-task`, Vite, production branch `main`, env `VITE_API_URL` = the Space URL (`frontend-task/vercel.json` = SPA rewrite). Same arrangement as billing's `frontend-billing` / `frontend-ai` / `frontend-admin`. |
 | Secrets | `DATABASE_URL` (billing's Supabase URL), `JWT_SECRET` (billing's value) |
 | Variables | `ALLOWED_ORIGINS` = the Vercel URL (replaces the localhost defaults; LAN/localhost stay allowed by pattern) |
 | Migrations | Automatic on start, `ft_*` only (`TASK_AUTO_MIGRATE=1`) |
 | Free hardware | cpu-basic: 2 vCPU, 16 GB RAM, free; **sleeps after 48 h without traffic** (not configurable on cpu-basic); disk not persistent → all data in Supabase |
 | Supabase free | 500 MB database shared with billing; project pauses after 7 days idle (secondary sources) |
-| URL to give staff | **The Vercel URL** (add to home screen → installs as an app). Not the `hf.space` one: a phone's device id is stored per web address, so the address staff install must never change — the API can later move off HF by changing `VITE_API_URL` only. |
+| URL to give staff | **The Vercel URL** (add to home screen → installs as an app). A phone's device id is stored per web address, so the address staff install must never change — the API can later move off HF by changing `VITE_API_URL` only. |
 
 ### 8.1 Go-live order (do not reorder)
 
@@ -150,10 +150,10 @@ Billing is mirrored to its own Hugging Face Space, and **every push there rebuil
 |---|---|---|
 | 1 | ✅ Merge billing PR #3: Alembic `ft_*` guard + SQLAlchemy `<2.1` pin (2026-10-22, `e89f107`) | PR CI green, including "Financial Invariants on Postgres" |
 | 2 | ✅ Push billing `main` to the billing Space (2026-10-22; first build failed — §9 #4 — fixed by `79685a5`, live 23:14) | `/health`: `status ok, db connected, postgresql` |
-| 3 | Merge billing branch `feat/field-team` → `main`: `field-team/` (with its history), the sidebar link, `.github/workflows/field-team.yml`. No billing Space push needed — billing's image copies only `backend/` | Field Team workflow green, including the contract job |
+| 3 | Merge billing branch `feat/field-team` → `main`: `backend-task/` + `frontend-task/` (with history), the sidebar link, `.github/workflows/field-team.yml`. No billing Space push needed — billing's image copies only `backend/` | Field Team workflow green, including the contract job |
 | 4 | Create a **second** Space (Docker, blank, **Public**) for Field Team. **Before the first push**, Settings → Secrets: `DATABASE_URL`, `JWT_SECRET` = **same values** as the billing Space (without `DATABASE_URL` the app would start on a throw-away SQLite file inside the container) | Both secrets listed |
-| 5 | From billing `main`: `.\field-team\deploy_space.ps1 -FirstPush` | Container log: `Running upgrade  -> 0001_ft_initial` (first start only), then `[BOOT] BizAssist Task ready db=postgresql`; `GET /api/health` returns `ok: true` |
-| 6 | Vercel → Add New → Project → import **bizassist-billing**. Root Directory `field-team/frontend`, Framework Vite, env `VITE_API_URL=https://<owner>-<space>.hf.space` → Deploy | The Vercel URL shows the Field Team sign-in page |
+| 5 | From billing `main`: `.\backend-task\deploy_space.ps1 -FirstPush` | Container log: `Running upgrade  -> 0001_ft_initial` (first start only), then `[BOOT] BizAssist Task ready db=postgresql`; `GET /api/health` returns `ok: true` |
+| 6 | Vercel → Add New → Project → import **bizassist-billing**. Root Directory `frontend-task`, Framework Vite, env `VITE_API_URL=https://<owner>-<space>.hf.space` → Deploy | The Vercel URL shows the Field Team sign-in page |
 | 7 | Field Team Space → Settings → Variables: `ALLOWED_ORIGINS=https://<vercel-url>` (the Space restarts) | Owner signs in on the Vercel URL; no CORS error in the browser console |
 | 8 | Billing's `frontend-billing` Vercel project → env `VITE_FIELD_TEAM_URL=https://<vercel-url>` → Redeploy (Vite reads it at build time). Frontend only — no billing Space push | Billing sidebar shows **Field Team** to owners; it opens the Vercel URL already signed in |
 | 9 | Owner adds one staff member, shares the BizID **and the Vercel URL** | Staff phone: sign in → Check in → location accepted |

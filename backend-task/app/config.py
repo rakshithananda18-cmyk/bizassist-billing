@@ -95,7 +95,8 @@ ALLOWED_ORIGINS = [
     o.strip() for o in os.environ.get("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()
 ]
 
-# Built PWA to serve at "/" (the Docker image copies frontend/dist here).
+# Optional built PWA to serve at "/" (TASK_STATIC_DIR). The HF image is API-only:
+# the screens are frontend-task/ on their own Vercel project.
 STATIC_DIR = os.environ.get("TASK_STATIC_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "static"))
 
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()

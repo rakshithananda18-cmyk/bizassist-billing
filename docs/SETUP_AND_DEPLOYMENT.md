@@ -214,7 +214,7 @@ graph TD
 > [!IMPORTANT]
 > The backend acts as the central API. Both Vercel frontends communicate with it via the `VITE_API_URL` environment variable.
 >
-> **Field Team** (`field-team/`) is the exception: a separate service with its own Space and its own Vercel project, sharing the database and owner accounts. It is deployed with `.\field-team\deploy_space.ps1` (a subtree push — a Space builds from its repo root) and a Vercel project with Root Directory `field-team/frontend`. Steps and checks: [field-team/docs/MASTER_PLAN.md §8.1](../field-team/docs/MASTER_PLAN.md).
+> **Field Team** (`backend-task/` + `frontend-task/`) is the exception: a separate service with its own Space and its own Vercel project, sharing the database and owner accounts. The API deploys with `.\backend-task\deploy_space.ps1` (a subtree push — a Space builds from its repo root); the screens are one more Vercel project, Root Directory `frontend-task`. Steps and checks: [FIELD_TEAM_MASTER_PLAN.md §8.1](FIELD_TEAM_MASTER_PLAN.md).
 
 ---
 

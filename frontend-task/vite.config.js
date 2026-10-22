@@ -1,9 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Dev: the API runs on :8002 (uvicorn app.main:app --port 8002); /api is proxied
-// so the PWA talks to the same origin, exactly as it does when the backend
-// serves the built files on Hugging Face.
+// Dev: the API (backend-task/) runs on :8002; /api is proxied so the PWA needs
+// no VITE_API_URL locally. Deployed on Vercel, VITE_API_URL points at the
+// Field Team Space instead.
 export default defineConfig({
   plugins: [react()],
   server: {

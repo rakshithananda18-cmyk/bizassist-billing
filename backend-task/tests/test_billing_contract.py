@@ -6,7 +6,7 @@ the columns, a copy of the ticket format); here they are imported from
 billing itself, so a billing change that would break Field Team fails CI.
 
 Runs when BILLING_BACKEND_DIR points at bizassist-billing/backend (the
-field-team workflow's contract job sets it); skipped otherwise.
+Field Team workflow's contract job sets it); skipped otherwise.
 """
 import os
 import sys

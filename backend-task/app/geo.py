@@ -11,7 +11,7 @@ log a shop's request) carries a `GeoFix`. The server refuses the action when:
 
 What the browser CANNOT tell us: whether the phone is faking its location
 (Android "mock location" apps). Detecting that needs a native app; see
-docs/MASTER_PLAN.md §Location. What we do instead: keep the reported accuracy,
+docs/FIELD_TEAM_MASTER_PLAN.md §Location. What we do instead: keep the reported accuracy,
 the distance from the shop's pin, and the server timestamp on every row, so an
 impossible trail is visible to the owner.
 """

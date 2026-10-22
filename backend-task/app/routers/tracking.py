@@ -4,7 +4,7 @@ routers/tracking.py — the GPS trail and the owner's live view.
 The PWA sends a ping every `ping_interval_s` while it is OPEN on screen.
 Browsers suspend GPS for a backgrounded / screen-locked web app, so the trail
 has gaps when the phone is pocketed; every field action still carries its own
-fix (docs/MASTER_PLAN.md §Location explains the native-wrapper path for true
+fix (docs/FIELD_TEAM_MASTER_PLAN.md §Location explains the native-wrapper path for true
 background tracking).
 
 Pings arrive one at a time or batched (the app buffers while offline). The

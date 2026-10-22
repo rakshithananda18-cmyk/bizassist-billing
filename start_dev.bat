@@ -4,6 +4,9 @@ REM  BizAssist — Dev Launcher (All-in-One)
 REM  Backend:          http://127.0.0.1:8001
 REM  AI Dashboard:     http://127.0.0.1:5173
 REM  Billing Frontend: http://127.0.0.1:5174
+REM  Admin Console:    http://127.0.0.1:5175
+REM  Field Team API:   http://127.0.0.1:8002  (backend-task, SQLite, standalone)
+REM  Field Team PWA:   http://localhost:5176  (frontend-task; /api proxied to :8002)
 REM
 REM  Kills any stale process on each port first so you never
 REM  end up with a zombie backend that ignores code changes.
@@ -13,7 +16,13 @@ setlocal
 set ROOT=%~dp0
 
 REM --- Kill any stale process already using our ports ---
-echo Cleaning up stale processes on ports 8001, 5173, 5174, 5175...
+echo Cleaning up stale processes on ports 8001, 8002, 5173, 5174, 5175, 5176...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8002 " ^| findstr "LISTENING" 2^>nul') do (
+    taskkill /PID %%a /F >nul 2>&1
+)
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5176 " ^| findstr "LISTENING" 2^>nul') do (
+    taskkill /PID %%a /F >nul 2>&1
+)
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8001 " ^| findstr "LISTENING" 2^>nul') do (
     taskkill /PID %%a /F >nul 2>&1
 )
@@ -47,11 +56,25 @@ REM --- Admin Dashboard Frontend ---
 start "BizAssist Admin Console" powershell -ExecutionPolicy Bypass -NoExit -Command ^
   "cd '%ROOT%frontend-admin'; if (-not (Test-Path 'node_modules')) { npm install }; Write-Host 'Admin Console → http://127.0.0.1:5175' -ForegroundColor Magenta; npm run dev -- --port 5175"
 
+REM --- Field Team API (backend-task; same venv - billing's requirements cover it) ---
+if not exist "%ROOT%backend-task\.env" (
+    echo No backend-task\.env - copying backend-task\.env.example for local dev.
+    copy "%ROOT%backend-task\.env.example" "%ROOT%backend-task\.env" >nul
+)
+start "BizAssist Field Team API" powershell -ExecutionPolicy Bypass -NoExit -Command ^
+  "cd '%ROOT%backend-task'; & '%ROOT%venv\Scripts\Activate.ps1'; $env:LOG_FILE='logs/bizassist_task.log'; Write-Host 'Field Team API → http://127.0.0.1:8002' -ForegroundColor Green; uvicorn app.main:app --reload --port 8002"
+
+REM --- Field Team PWA (frontend-task) ---
+start "BizAssist Field Team PWA" powershell -ExecutionPolicy Bypass -NoExit -Command ^
+  "cd '%ROOT%frontend-task'; if (-not (Test-Path 'node_modules')) { npm install }; Write-Host 'Field Team PWA → http://localhost:5176' -ForegroundColor Cyan; npm run dev -- --port 5176"
+
 echo.
 echo  Started:
 echo   - Backend on :8001  (with --reload)
 echo   - AI Dashboard on :5173
 echo   - Billing App on :5174
 echo   - Admin Console on :5175
+echo   - Field Team API on :8002  (with --reload, log backend-task\logs\bizassist_task.log)
+echo   - Field Team PWA on :5176  (http://localhost:5176)
 echo  Close the opened windows to stop.
 echo.

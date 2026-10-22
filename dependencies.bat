@@ -74,6 +74,12 @@ if exist "frontend-billing\package.json" (
     popd
 )
 
+if exist "frontend-task\package.json" (
+    pushd frontend-task
+    call npm install
+    popd
+)
+
 echo.
 echo ==================================
 echo  SETUP COMPLETE

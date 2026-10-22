@@ -4,10 +4,12 @@ REM
 REM Limit which suite:
 REM     run_tests.bat backend        (backend only)
 REM     run_tests.bat frontend       (frontend only)
+REM     run_tests.bat task           (Field Team: backend-task + frontend-task)
 REM
 REM Go parallel (faster backend, needs: pip install pytest-xdist):
 REM     run_tests.bat fast           (both suites, backend parallel)
 REM     run_tests.bat backend fast   (backend only, parallel)
+REM     run_tests.bat task fast      (Field Team, backend-task parallel)
 
 set "SCOPE=%~1"
 set "SPEED=%~2"

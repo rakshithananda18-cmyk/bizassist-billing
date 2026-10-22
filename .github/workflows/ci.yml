@@ -3,11 +3,13 @@ name: CI Pipeline
 on:
   push:
     branches: [ main ]
-    # field-team/ has its own workflow (field-team.yml); a push that touches
-    # only it does not need billing's suites. Pull requests stay unfiltered for
-    # the reason in sonar.yml: a skipped required check never reports.
+    # backend-task/ + frontend-task/ (Field Team) have their own workflow
+    # (field-team.yml); a push that touches only them does not need billing's
+    # suites. Pull requests stay unfiltered for the reason in sonar.yml: a
+    # skipped required check never reports.
     paths-ignore:
-      - 'field-team/**'
+      - 'backend-task/**'
+      - 'frontend-task/**'
   pull_request:
     branches: [ main ]
 

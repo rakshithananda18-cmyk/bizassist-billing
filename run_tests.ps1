@@ -7,9 +7,14 @@
     .\run_tests.ps1 frontend        # frontend only
     .\run_tests.ps1 all -Fast       # parallel backend (pytest-xdist, all CPU cores)
     .\run_tests.ps1 backend -Fast   # parallel backend only
+    .\run_tests.ps1 task -Fast      # Field Team: backend-task (parallel) + frontend-task
 
   Or double-click run_tests.bat  (append 'fast' to go parallel:
-    run_tests.bat backend fast).
+    run_tests.bat backend fast, run_tests.bat task fast).
+
+  `task` runs the same steps on the Field Team folders. It is its own scope,
+  not part of `all`: each backend suite writes the one test_results.json the
+  dashboard follows, and the dashboard stops polling at "completed".
 
   -Fast runs the backend suite across all CPU cores with pytest-xdist. Each
   worker gets its own test DB (conftest.py keys the SQLite file on the xdist
@@ -21,12 +26,15 @@
   removed again at the end, so they never leak into your shell / the dev server.
 #>
 param(
-    [ValidateSet("all", "backend", "frontend")]
+    [ValidateSet("all", "backend", "frontend", "task")]
     [string]$Only = "all",
     [switch]$Fast
 )
 
 $root = $PSScriptRoot
+$isTask       = $Only -eq "task"
+$backendDir   = if ($isTask) { "backend-task" } else { "backend" }
+$frontendDirs = if ($isTask) { @("frontend-task") } else { @("frontend-billing", "frontend-ai") }
 $backendExit = 0
 $frontendExit = 0
 $srvProcess = $null
@@ -77,15 +85,15 @@ if (-not $env:GROQ_API_KEY) { $env:GROQ_API_KEY = "mock_groq_api_key";          
 
 try {
     # --- Backend ------------------------------------------------------------
-    if ($Only -eq "all" -or $Only -eq "backend") {
+    if ($Only -eq "all" -or $Only -eq "backend" -or $isTask) {
         Write-Host ""
-        Write-Host "=== Backend tests (pytest) ===" -ForegroundColor Cyan
+        Write-Host "=== Backend tests (pytest) - $backendDir ===" -ForegroundColor Cyan
         $python = Join-Path $root "venv\Scripts\python.exe"
         if (-not (Test-Path $python)) {
             Write-Host "venv python not found, using 'python' on PATH" -ForegroundColor Yellow
             $python = "python"
         }
-        Push-Location (Join-Path $root "backend")
+        Push-Location (Join-Path $root $backendDir)
 
         # Base args. -Fast adds pytest-xdist parallelism across all cores.
         # --dist loadscope keeps a whole test FILE on one worker, so the app
@@ -113,9 +121,9 @@ try {
         Pop-Location
     }
 
-    # --- Frontend (both apps: billing = canonical, ai = the AI dashboard) ----
-    if ($Only -eq "all" -or $Only -eq "frontend") {
-        foreach ($fe in @("frontend-billing", "frontend-ai")) {
+    # --- Frontend (billing = canonical, ai = the AI dashboard; task = Field Team)
+    if ($Only -eq "all" -or $Only -eq "frontend" -or $isTask) {
+        foreach ($fe in $frontendDirs) {
             $fePath = Join-Path $root $fe
             if (-not (Test-Path $fePath)) { continue }
             Write-Host ""
@@ -157,8 +165,8 @@ finally {
 Write-Host ""
 Write-Host "---------------- Summary ----------------" -ForegroundColor Cyan
 if ($Only -ne "frontend") {
-    if ($backendExit -eq 0) { Write-Host "backend : PASS" -ForegroundColor Green }
-    else                    { Write-Host "backend : FAIL ($backendExit)" -ForegroundColor Red }
+    if ($backendExit -eq 0) { Write-Host "$backendDir : PASS" -ForegroundColor Green }
+    else                    { Write-Host "$backendDir : FAIL ($backendExit)" -ForegroundColor Red }
 }
 if ($Only -ne "backend") {
     if ($frontendExit -eq 0) { Write-Host "frontend: PASS" -ForegroundColor Green }

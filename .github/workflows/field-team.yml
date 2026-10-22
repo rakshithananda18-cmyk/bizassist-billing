@@ -1,15 +1,17 @@
 name: Field Team
 
-# field-team/ is BizAssist Task: its own service (HF Space + Vercel project)
-# that shares billing's database and owner accounts. It runs on its own
-# changes AND on the billing files it depends on — the users / customers
-# models, the hand-off ticket, and the Alembic autogenerate guard — so a
-# billing change that would break Field Team fails here, before deploy.
+# backend-task/ + frontend-task/ are BizAssist Task (Field Team): its own
+# service (HF Space + Vercel project) sharing billing's database and owner
+# accounts. This runs on its own changes AND on the billing files it depends
+# on — the users / customers models, the hand-off ticket, the Alembic
+# autogenerate guard — so a billing change that would break Field Team fails
+# here, before deploy.
 on:
   push:
     branches: [ main ]
     paths:
-      - 'field-team/**'
+      - 'backend-task/**'
+      - 'frontend-task/**'
       - 'backend/database/models.py'
       - 'backend/database/db.py'
       - 'backend/services/auth.py'
@@ -18,7 +20,8 @@ on:
   pull_request:
     branches: [ main ]
     paths:   # same list as push
-      - 'field-team/**'
+      - 'backend-task/**'
+      - 'frontend-task/**'
       - 'backend/database/models.py'
       - 'backend/database/db.py'
       - 'backend/services/auth.py'
@@ -42,16 +45,16 @@ jobs:
           --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     defaults:
       run:
-        working-directory: field-team/backend
+        working-directory: backend-task
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-          cache-dependency-path: field-team/backend/requirements-dev.txt
+          cache-dependency-path: backend-task/requirements-dev.txt
       - run: pip install -r requirements-dev.txt
-      - name: Tests on SQLite (parallel, like run_tests.bat fast)
+      - name: Tests on SQLite (parallel, like run_tests.bat task fast)
         run: python -m pytest -n auto --dist loadscope
       - name: Tests on Postgres (Supabase dialect, RLS migration)
         env:
@@ -78,10 +81,10 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-          cache-dependency-path: field-team/backend/requirements-dev.txt
+          cache-dependency-path: backend-task/requirements-dev.txt
       # Field Team's own requirements are enough to import billing's models
       # and services.auth — no torch / AI stack needed for this job.
-      - run: pip install -r field-team/backend/requirements-dev.txt
+      - run: pip install -r backend-task/requirements-dev.txt
       - name: Billing creates its schema with its own models
         working-directory: backend
         env:
@@ -90,7 +93,7 @@ jobs:
         run: |
           python -c "from database.db import Base, engine; import database.models, core.models; Base.metadata.create_all(bind=engine); print(len(Base.metadata.tables), 'billing tables')"
       - name: Field Team suite on that schema, plus billing-minted tickets
-        working-directory: field-team/backend
+        working-directory: backend-task
         env:
           TASK_TEST_DATABASE_URL: ${{ env.CONTRACT_DB }}
           TASK_TEST_BILLING_SCHEMA: external
@@ -102,14 +105,14 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: field-team/frontend
+        working-directory: frontend-task
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: field-team/frontend/package-lock.json
+          cache-dependency-path: frontend-task/package-lock.json
       - run: npm ci
       - run: npm test
       - run: npm run build

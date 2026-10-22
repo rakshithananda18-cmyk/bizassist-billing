@@ -3,7 +3,7 @@ app/main.py — BizAssist Task API (field team: attendance, routes, deliveries,
 tasks, points, live location) + the built PWA at "/".
 
 Run:  uvicorn app.main:app --port 8002            (dev)
-HF :  see ../Dockerfile (one process, port 7860)
+HF :  see Dockerfile in this folder (API only, one process, port 7860)
 
 ONE PROCESS ONLY. Login throttling and the purge loop are in-memory, like
 billing's (WEB_CONCURRENCY=1). Do not add --workers without moving them out.

@@ -1,7 +1,7 @@
 // components/MapView.jsx — Leaflet + OpenStreetMap tiles (no API key, no bill).
 // OSM's public tile server is for light use with attribution; set
 // VITE_MAP_TILE_URL to a commercial/self-hosted tile URL if usage grows
-// (docs/MASTER_PLAN.md §Maps).
+// (docs/FIELD_TEAM_MASTER_PLAN.md §Maps).
 import React, { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
