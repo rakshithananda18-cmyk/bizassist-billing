@@ -31,6 +31,20 @@ config.set_main_option("sqlalchemy.url", DATABASE_URL.replace("%", "%%"))
 target_metadata = Base.metadata
 
 
+def include_object(obj, name, type_, reflected, compare_to):
+    """Keep autogenerate inside billing's own tables.
+
+    The cloud database is shared with BizAssist Task, whose tables are all
+    `ft_*` and are migrated by that repo's own chain (version table
+    `ft_alembic_version`). Billing's models do not declare them, so without
+    this filter `alembic revision --autogenerate` against the cloud DB would
+    emit `op.drop_table(...)` for every one of them.
+    """
+    if type_ == "table" and name and name.startswith("ft_"):
+        return False
+    return True
+
+
 def run_migrations_offline() -> None:
     """Emit SQL without a live DB connection."""
     context.configure(
@@ -39,6 +53,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         render_as_batch=DATABASE_URL.startswith("sqlite"),  # SQLite ALTER support
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -58,6 +73,7 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             render_as_batch=DATABASE_URL.startswith("sqlite"),
+            include_object=include_object,
         )
         with context.begin_transaction():
             context.run_migrations()
