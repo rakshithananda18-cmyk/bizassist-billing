@@ -1,3 +1,7 @@
+// @vitest-environment jsdom
+// ^ Uses window.open. vite.config.js sends *.test.js to the `node`
+//   environment unless the file asks for a DOM like this.
+//
 // fieldTeam.js — the sidebar's "Field Team" link. Hidden until configured; the
 // sign-in hand-off must survive pop-up blockers and a failed ticket.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
