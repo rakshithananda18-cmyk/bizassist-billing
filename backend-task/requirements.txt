@@ -1,7 +1,10 @@
 # BizAssist Task backend. Versions follow billing's floors (bizassist-billing/backend/requirements_hf.txt).
 fastapi>=0.110.0
 uvicorn>=0.22.0
-sqlalchemy>=2.0.0
+# <2.1, same as billing: the CI contract job imports billing's database/db.py,
+# which hands SQLAlchemy a bare postgresql:// URL — 2.1 maps that to psycopg v3,
+# which is not installed. (This app rewrites its own URL to psycopg2.)
+sqlalchemy>=2.0.0,<2.1
 alembic>=1.13.0
 psycopg2-binary>=2.9.0
 bcrypt>=4.0.0
