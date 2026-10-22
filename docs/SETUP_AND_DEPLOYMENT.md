@@ -207,10 +207,14 @@ graph TD
     Client1[POS Billing Frontend - Vercel] -->|API Requests| HF[FastAPI Backend - HF Spaces]
     Client2[AI Assistant Frontend - Vercel] -->|API Requests| HF
     HF --> DB[(Supabase Postgres or SQLite)]
+    Client3[Field Team PWA - Vercel] -->|API Requests| HF2[Field Team API - its own HF Space]
+    HF2 --> DB
 ```
 
 > [!IMPORTANT]
 > The backend acts as the central API. Both Vercel frontends communicate with it via the `VITE_API_URL` environment variable.
+>
+> **Field Team** (`field-team/`) is the exception: a separate service with its own Space and its own Vercel project, sharing the database and owner accounts. It is deployed with `.\field-team\deploy_space.ps1` (a subtree push — a Space builds from its repo root) and a Vercel project with Root Directory `field-team/frontend`. Steps and checks: [field-team/docs/MASTER_PLAN.md §8.1](../field-team/docs/MASTER_PLAN.md).
 
 ---
 

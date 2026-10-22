@@ -177,6 +177,7 @@ bizassist-billing/
 â”‚   â”œâ”€â”€ src/hooks/            # useDocLabels, useConfirm, usePageLifecycle...
 â”‚   â””â”€â”€ src/__tests__/        # 300+ Vitest component & unit tests
 â”œâ”€â”€ frontend-ai/              # AI Assistant & Analytics Dashboard
+â”œâ”€â”€ field-team/               # BizAssist Field Team: own API (HF Space) + PWA (Vercel), shared DB — see field-team/README.md
 â”œâ”€â”€ desktop/                  # Electron desktop wrapper & build scripts
 â”œâ”€â”€ docs/                     # Architecture, user guides & technical decision logs
 â”œâ”€â”€ run_tests.bat             # Fast test runner script
@@ -195,6 +196,7 @@ bizassist-billing/
 | ðŸ§ª **[TESTING.md](docs/TESTING.md)** | Testing strategy, RLS tenant isolation & benchmark instructions. |
 | ðŸ“˜ **[USER_GUIDE.md](docs/USER_GUIDE.md)** | User manual for POS operations, custom labels, and AI queries. |
 | ðŸ›ï¸ **[FOUNDATION.md](backend/FOUNDATION.md)** | Backend conventions, tenant isolation, and transaction safety. |
+| 🚚 **[Field Team plan](field-team/docs/MASTER_PLAN.md)** | Field staff app (attendance, routes, deliveries): why a separate service on the shared database, security, go-live order. |
 
 ---
 

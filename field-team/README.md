@@ -8,7 +8,9 @@ pinned: false
 app_port: 7860
 ---
 
-# BizAssist Field Team (`bizassist-task`)
+# BizAssist Field Team (`field-team/`)
+
+> Lives in the **bizassist-billing** repo as `field-team/` (moved from the `bizassist-task` repo on 2026-10-22, history kept). Same ecosystem and database as billing, but its **own service**: own Hugging Face Space, own Vercel project. All commands below run from this folder.
 
 Staff attendance, delivery routes, on-site tasks, shop orders and incentive points — for the owner and the field team of a business already on **BizAssist**.
 
@@ -26,18 +28,22 @@ First vertical: **medical / pharma wholesale distribution** (daily beats to reta
 Same identity and same database as BizAssist Billing, separate lightweight service: owners sign in with their **billing account**, shops can be **imported from billing customers**, all field tables are `ft_*` in the shared Supabase Postgres. Why, and what was verified: **[docs/MASTER_PLAN.md](docs/MASTER_PLAN.md)**.
 
 ```
-backend/    FastAPI + SQLAlchemy 2 + Alembic (ft_* tables, version table ft_alembic_version)
-frontend/   React 18 + Vite PWA, billing's design tokens and icon set, Leaflet map → its own Vercel project
-Dockerfile  HF Spaces (Docker SDK, port 7860): the API (also serves a copy of the PWA)
+field-team/backend/     FastAPI + SQLAlchemy 2 + Alembic (ft_* tables, version table ft_alembic_version)
+field-team/frontend/    React 18 + Vite PWA, billing's design tokens and icon set, Leaflet map → its own Vercel project
+field-team/Dockerfile   HF Spaces (Docker SDK, port 7860): the API (also serves a copy of the PWA)
 ```
+
+CI: `.github/workflows/field-team.yml` (repo root) — runs on `field-team/**` and on the billing files Field Team depends on (`backend/database/models.py`, `database/db.py`, `services/auth.py`, `alembic/env.py`), including a contract job that runs this suite on billing's real schema and redeems tickets minted by billing's own code (`backend/tests/test_billing_contract.py`).
 
 Opened from billing like Dashboard BIZASSIST: the owner-only **Field Team** link in billing's sidebar opens this app's Vercel URL with `?sso=<ticket>` (billing's 30-second single-use hand-off ticket), and the owner lands signed in.
 
 ## Run locally (same as billing: `start_dev.bat`)
 
 ```bat
-start_dev.bat
+field-team\start_dev.bat
 ```
+
+Runs next to billing's own `start_dev.bat` (billing uses 8001 / 5173–5175).
 
 - **API** `http://127.0.0.1:8002` (uvicorn `--reload`, SQLite `backend/bizassist_task.db`, standalone).
 - **PWA** `http://localhost:5176` (Vite; `/api` is proxied to `:8002`).
@@ -49,7 +55,7 @@ GPS in the browser needs `https://` or `localhost`. To test on a phone, use the 
 ## Tests (same as billing: `run_tests.bat`)
 
 ```bat
-run_tests.bat fast
+field-team\run_tests.bat fast
 ```
 
 | Command | Runs |
@@ -71,8 +77,8 @@ Time · level · component (logger name without `bizassist.`) · `[BizId=…]` o
 
 ## Deploy (Hugging Face API + Vercel screens, like billing)
 
-1. **Space:** create one → **Docker** → blank, **Public**. Settings → **Secrets** *before the first push*: `DATABASE_URL` = the billing Space's Supabase URL, `JWT_SECRET` = the billing Space's value. Push this repo (the front-matter above configures the Space).
-2. **Vercel:** import this repo → Root Directory `frontend` → Vite → env `VITE_API_URL=https://<owner>-<space>.hf.space` → Deploy.
+1. **Space:** create one → **Docker** → blank, **Public**. Settings → **Secrets** *before the first push*: `DATABASE_URL` = the billing Space's Supabase URL, `JWT_SECRET` = the billing Space's value. Then `.\field-team\deploy_space.ps1 -FirstPush` (later deploys: without `-FirstPush`; `-DryRun` to preview). A Space builds from its repo root, so the script pushes `field-team/` split out of the repo history (`git subtree split`); the front-matter above configures the Space. Billing's own `git push space main` is unaffected.
+2. **Vercel:** import **bizassist-billing** again (like `frontend-billing` / `frontend-ai`) → Root Directory `field-team/frontend` → Vite → env `VITE_API_URL=https://<owner>-<space>.hf.space` → Deploy.
 3. **Space → Variables:** `ALLOWED_ORIGINS=https://<vercel-url>`.
 4. **Billing:** set `VITE_FIELD_TEAM_URL=https://<vercel-url>` on billing's `frontend-billing` Vercel project and redeploy → owners get the **Field Team** link.
 5. Owner signs in (or uses the link) → Staff → add people → give staff the BizID and **the Vercel URL** (device ids are per address, so it must not change later).

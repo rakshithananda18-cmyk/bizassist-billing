@@ -31,6 +31,8 @@ Verified: 50 backend tests pass on SQLite, on Postgres 16, and on Postgres with 
 
 **Decision:** do **not** add this to the billing backend process; do **not** build a separate identity or database either. One Supabase Postgres, one owner account (BizID), two services.
 
+**Repo (2026-10-22):** one repo, two services. The code moved into `bizassist-billing/field-team/` (history kept) because the two apps share a contract — billing's `users` / `customers` columns, the hand-off ticket, the `ft_*` autogenerate guard, `JWT_SECRET` — and one PR + one CI run (`.github/workflows/field-team.yml`, contract job) now covers both sides. Deployment stays separate: its own Space (`field-team/deploy_space.ps1`, a subtree push) and its own Vercel project (Root Directory `field-team/frontend`), next to billing's `frontend-billing` / `frontend-ai` / `frontend-admin`.
+
 | Fact (checked in the repos) | Consequence |
 |---|---|
 | Billing's own docs: a Chroma/HNSW stall "freezes the WHOLE backend" (single process, `.env.example`, `Dockerfile` comments). | GPS pings and check-ins must not share a process with the AI stack. |
@@ -116,7 +118,7 @@ Ledger is append-only (`ft_points_ledger`); completed tasks cannot be edited (40
 |---|---|
 | Same owner login, BizID, `token_version` | Done |
 | Shops ← billing customers (`customer_id` link) | Done |
-| SSO: **Field Team** link in billing's sidebar (owner-only, like Dashboard BIZASSIST) → `?sso=<30 s ticket>` → `/api/auth/exchange` | Done in both: here, and billing branch `feat/field-team-link` (`frontend-billing/src/config/fieldTeam.js`; shown once billing's Vercel project has `VITE_FIELD_TEAM_URL`) |
+| SSO: **Field Team** link in billing's sidebar (owner-only, like Dashboard BIZASSIST) → `?sso=<30 s ticket>` → `/api/auth/exchange` | Done in both, same repo: `frontend-billing/src/config/fieldTeam.js` (shown once billing's Vercel project has `VITE_FIELD_TEAM_URL`); the ticket format is checked against billing's own code in CI (`test_billing_contract.py`) |
 | Pro plan gate on Field Team | **Decide** (D7) — billing's link has the switch (`EXTERNAL_APPS.fieldTeam.proOnly`); a real gate must also be checked here, at owner sign-in |
 | Billing autogenerate guard for `ft_*` | Done (billing `alembic/env.py`) |
 | Deliveries from billing invoices / B2B orders (pick invoices per shop → boxes, refs) | Next |
@@ -131,8 +133,8 @@ Ledger is append-only (`ft_points_ledger`); completed tasks cannot be edited (40
 
 | Item | Value |
 |---|---|
-| Space (API) | Docker SDK, `app_port: 7860`, root `Dockerfile` (Node build → Python 3.11 slim, non-root uid 1000, one uvicorn process). It also serves a copy of the screens at its own URL. |
-| Vercel (screens) | Own project, Root Directory `frontend`, Vite, production branch `main`, env `VITE_API_URL` = the Space URL (`frontend/vercel.json` = SPA rewrite). Same arrangement as billing's `frontend-billing` / `frontend-ai`. |
+| Space (API) | Docker SDK, `app_port: 7860`, `field-team/Dockerfile` (Node build → Python 3.11 slim, non-root uid 1000, one uvicorn process). It also serves a copy of the screens at its own URL. Deployed with `field-team/deploy_space.ps1`: a Space builds from its repo root, so `field-team/` is split out of bizassist-billing's history (`git subtree split`) and pushed as the Space's `main`. |
+| Vercel (screens) | Own project importing **bizassist-billing**, Root Directory `field-team/frontend`, Vite, production branch `main`, env `VITE_API_URL` = the Space URL (`frontend/vercel.json` = SPA rewrite). Same arrangement as billing's `frontend-billing` / `frontend-ai` / `frontend-admin`. |
 | Secrets | `DATABASE_URL` (billing's Supabase URL), `JWT_SECRET` (billing's value) |
 | Variables | `ALLOWED_ORIGINS` = the Vercel URL (replaces the localhost defaults; LAN/localhost stay allowed by pattern) |
 | Migrations | Automatic on start, `ft_*` only (`TASK_AUTO_MIGRATE=1`) |
@@ -146,14 +148,14 @@ Billing is mirrored to its own Hugging Face Space, and **every push there rebuil
 
 | # | Step | Check that it worked |
 |---|---|---|
-| 1 | Merge billing PR #3 (`claude/amazing-euler-fa3c6t` → `main`): Alembic `ft_*` guard + SQLAlchemy `<2.1` pin | PR CI green, including "Financial Invariants on Postgres" |
-| 2 | Push billing `main` to the billing Space | Space log ends with `Application startup complete`; billing login works |
-| 3 | Merge `bizassist-task` → `main` (MVP + `feat/vercel-ticket-sso`) | Task CI green (SQLite + Postgres + frontend build) |
+| 1 | ✅ Merge billing PR #3: Alembic `ft_*` guard + SQLAlchemy `<2.1` pin (2026-10-22, `e89f107`) | PR CI green, including "Financial Invariants on Postgres" |
+| 2 | ✅ Push billing `main` to the billing Space (2026-10-22; first build failed — §9 #4 — fixed by `79685a5`, live 23:14) | `/health`: `status ok, db connected, postgresql` |
+| 3 | Merge billing branch `feat/field-team` → `main`: `field-team/` (with its history), the sidebar link, `.github/workflows/field-team.yml`. No billing Space push needed — billing's image copies only `backend/` | Field Team workflow green, including the contract job |
 | 4 | Create a **second** Space (Docker, blank, **Public**) for Field Team. **Before the first push**, Settings → Secrets: `DATABASE_URL`, `JWT_SECRET` = **same values** as the billing Space (without `DATABASE_URL` the app would start on a throw-away SQLite file inside the container) | Both secrets listed |
-| 5 | Push `bizassist-task` `main` to that Space | Container log: `Running upgrade  -> 0001_ft_initial` (first start only), then `[BOOT] BizAssist Task ready db=postgresql`; `GET /api/health` returns `ok: true` |
-| 6 | Vercel → Add New → Project → import `bizassist-task`. Root Directory `frontend`, Framework Vite, env `VITE_API_URL=https://<owner>-<space>.hf.space` → Deploy | The Vercel URL shows the Field Team sign-in page |
+| 5 | From billing `main`: `.\field-team\deploy_space.ps1 -FirstPush` | Container log: `Running upgrade  -> 0001_ft_initial` (first start only), then `[BOOT] BizAssist Task ready db=postgresql`; `GET /api/health` returns `ok: true` |
+| 6 | Vercel → Add New → Project → import **bizassist-billing**. Root Directory `field-team/frontend`, Framework Vite, env `VITE_API_URL=https://<owner>-<space>.hf.space` → Deploy | The Vercel URL shows the Field Team sign-in page |
 | 7 | Field Team Space → Settings → Variables: `ALLOWED_ORIGINS=https://<vercel-url>` (the Space restarts) | Owner signs in on the Vercel URL; no CORS error in the browser console |
-| 8 | Billing: merge `feat/field-team-link`; billing's `frontend-billing` Vercel project → env `VITE_FIELD_TEAM_URL=https://<vercel-url>` → Redeploy (Vite reads it at build time). Frontend only — no billing Space push | Billing sidebar shows **Field Team** to owners; it opens the Vercel URL already signed in |
+| 8 | Billing's `frontend-billing` Vercel project → env `VITE_FIELD_TEAM_URL=https://<vercel-url>` → Redeploy (Vite reads it at build time). Frontend only — no billing Space push | Billing sidebar shows **Field Team** to owners; it opens the Vercel URL already signed in |
 | 9 | Owner adds one staff member, shares the BizID **and the Vercel URL** | Staff phone: sign in → Check in → location accepted |
 | 10 | Pilot one distributor for 1–2 weeks (Phase 1.1, §10) | Dashboard shows real deliveries / boxes / points |
 
@@ -166,6 +168,7 @@ Field Team stays in its own Space and its own Vercel project: the two apps resta
 1. **SQLAlchemy 2.1 driver default.** Billing pins `sqlalchemy>=2.0.0` + `psycopg2-binary` only. SQLAlchemy 2.1 (2.1.6 is what pip installs today) resolves `postgresql://` to **psycopg v3**, which is not installed → a fresh billing image build fails to connect to Supabase (`ModuleNotFoundError: No module named 'psycopg'`, reproduced). **Fixed in billing PR #3** (commit `e89f107`: `sqlalchemy>=2.0.0,<2.1` in `requirements.txt`, `backend/requirements_hf.txt`, `backend/Pipfile`). Confirmed in billing CI on 2026-10-22: the commit before the pin installed `sqlalchemy-2.1.6` and the "Financial Invariants on Postgres" step failed at `database/db.py:75` with exactly this error. This service rewrites the URL to `postgresql+psycopg2://` instead.
 2. **Billing's Alembic chain cannot build an empty Postgres** (`ALTER TABLE public.expenses FORCE ROW LEVEL SECURITY` fails — no migration creates `expenses`; reproduced on Postgres 16 with Supabase's `anon`/`authenticated` roles created). Production works because tables come from `create_all` at startup. Matters for disaster recovery and CI — open.
 3. **Role deny-list** (§2) — open. Any future billing role must be added to `restrict_cashier`, or the guard flipped to an allow-list.
+4. **Billing's HF image drifts on every requirements change** (2026-10-22 outage, ~20 min). The SQLAlchemy pin changed `requirements_hf.txt`, so the pip layer was rebuilt for the first time in months and pulled transformers 5.20 + sentence-transformers 6.2 next to the pinned `torch==2.5.1`; transformers 5 disables PyTorch below 2.6 and the MiniLM pre-bake step failed. **Fixed** by `79685a5` (`transformers<5`, `sentence-transformers<6`). Open: nothing builds the billing image before it reaches the Space — CI installs `requirements.txt` (no torch pin), not `requirements_hf.txt`. A CI `docker build` of the root `Dockerfile` (or a lock file) would have caught it.
 
 ---
 
