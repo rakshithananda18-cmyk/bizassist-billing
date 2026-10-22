@@ -10,7 +10,10 @@ httpx>=0.27.0                  # async HTTP client (sync worker cloud calls, dis
 
 
 # ── Database ───────────────────────────────────────────────────
-sqlalchemy>=2.0.0
+# <2.1: SQLAlchemy 2.1 maps a bare postgresql:// URL (what Supabase gives)
+# to the psycopg v3 driver, which is not installed here (psycopg2 is), so a
+# fresh build connects to nothing. Lift only together with a driver change.
+sqlalchemy>=2.0.0,<2.1
 alembic>=1.13.0                # schema migrations
 psycopg2-binary>=2.9.0         # PostgreSQL driver for Supabase
 
