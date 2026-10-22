@@ -40,7 +40,12 @@ langgraph>=0.2.0               # pulls langchain-core in automatically
 
 # ── Embeddings / vector store ──────────────────────────────────
 torch==2.5.1                   # pin PyTorch to v2.5.1 to avoid Dynamo polyfills tupleloader SystemError in v2.6.0
-sentence-transformers>=3.0.0   # local MiniLM (free, no API cost); pulls torch (~240 MB)
+sentence-transformers>=3.0.0,<6   # local MiniLM (free, no API cost); pulls torch (~240 MB)
+# Held to the line that still runs on torch 2.5.1: transformers 5.x switches
+# PyTorch off below 2.6 ("Disabling PyTorch because PyTorch >= 2.6 is required"),
+# and sentence-transformers 6.x requires transformers 5. Uncapped, a fresh build
+# fails at the MiniLM pre-bake step. Lift both together with the torch pin.
+transformers>=4.41.0,<5
 chromadb>=0.4.0
 
 # ── Scheduler ──────────────────────────────────────────────────
