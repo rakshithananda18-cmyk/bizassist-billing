@@ -136,13 +136,29 @@ Ledger is append-only (`ft_points_ledger`); completed tasks cannot be edited (40
 | Supabase free | 500 MB database shared with billing; project pauses after 7 days idle (secondary sources) |
 | URL to give staff | `https://<owner>-<space>.hf.space` (add to home screen → installs as an app) |
 
+### 8.1 Go-live order (do not reorder)
+
+Billing is mirrored to its own Hugging Face Space, and **every push there rebuilds the image**. A rebuild without the SQLAlchemy pin cannot reach Supabase (§9 #1), so billing is fixed and redeployed *before* the Field Team Space is created.
+
+| # | Step | Check that it worked |
+|---|---|---|
+| 1 | Merge billing PR #3 (`claude/amazing-euler-fa3c6t` → `main`): Alembic `ft_*` guard + SQLAlchemy `<2.1` pin | PR CI green, including "Financial Invariants on Postgres" |
+| 2 | Push billing `main` to the billing Space | Space log ends with `Application startup complete`; billing login works |
+| 3 | Merge `bizassist-task` `claude/amazing-euler-fa3c6t` → `main` | — |
+| 4 | Create a **second** Space (Docker, blank) for Field Team. **Before the first push**, Settings → Secrets: `DATABASE_URL`, `JWT_SECRET` = **same values** as the billing Space (without `DATABASE_URL` the app would start on a throw-away SQLite file inside the container) | Both secrets listed |
+| 5 | Push `bizassist-task` `main` to that Space | Container log: `Running upgrade  -> 0001_ft_initial` (first start only), then `[BOOT] BizAssist Task ready db=postgresql`; `GET /api/health` returns `ok: true` |
+| 6 | Owner opens `https://<owner>-<space>.hf.space` (not the huggingface.co page), signs in with the billing account, adds one staff member, shares the BizID | Staff phone: sign in → Check in → location accepted |
+| 7 | Pilot one distributor for 1–2 weeks (Phase 1.1, §10) | Dashboard shows real deliveries / boxes / points |
+
+Field Team stays in its own Space: the two apps restart, sleep and fail independently, and a Field Team deploy never rebuilds billing.
+
 ---
 
-## 9. Billing findings from this review (not changed, need a decision)
+## 9. Billing findings from this review
 
-1. **SQLAlchemy 2.1 driver default.** Billing pins `sqlalchemy>=2.0.0` + `psycopg2-binary` only. SQLAlchemy 2.1 (2.1.6 is what pip installs today) resolves `postgresql://` to **psycopg v3**, which is not installed → a fresh billing image build fails to connect to Supabase (`ModuleNotFoundError: No module named 'psycopg'`, reproduced). Fix: pin `sqlalchemy<2.1` or rewrite the URL to `postgresql+psycopg2://` (this service does the latter).
-2. **Billing's Alembic chain cannot build an empty Postgres** (`ALTER TABLE public.expenses FORCE ROW LEVEL SECURITY` fails — no migration creates `expenses`; reproduced on Postgres 16 with Supabase's `anon`/`authenticated` roles created). Production works because tables come from `create_all` at startup. Matters for disaster recovery and CI.
-3. **Role deny-list** (§2). Any future billing role must be added to `restrict_cashier`, or the guard flipped to an allow-list.
+1. **SQLAlchemy 2.1 driver default.** Billing pins `sqlalchemy>=2.0.0` + `psycopg2-binary` only. SQLAlchemy 2.1 (2.1.6 is what pip installs today) resolves `postgresql://` to **psycopg v3**, which is not installed → a fresh billing image build fails to connect to Supabase (`ModuleNotFoundError: No module named 'psycopg'`, reproduced). **Fixed in billing PR #3** (commit `e89f107`: `sqlalchemy>=2.0.0,<2.1` in `requirements.txt`, `backend/requirements_hf.txt`, `backend/Pipfile`). Confirmed in billing CI on 2026-10-22: the commit before the pin installed `sqlalchemy-2.1.6` and the "Financial Invariants on Postgres" step failed at `database/db.py:75` with exactly this error. This service rewrites the URL to `postgresql+psycopg2://` instead.
+2. **Billing's Alembic chain cannot build an empty Postgres** (`ALTER TABLE public.expenses FORCE ROW LEVEL SECURITY` fails — no migration creates `expenses`; reproduced on Postgres 16 with Supabase's `anon`/`authenticated` roles created). Production works because tables come from `create_all` at startup. Matters for disaster recovery and CI — open.
+3. **Role deny-list** (§2) — open. Any future billing role must be added to `restrict_cashier`, or the guard flipped to an allow-list.
 
 ---
 
@@ -161,7 +177,7 @@ Decisions for the owner:
 | D3 | Incentive formula (₹ per point? slabs? monthly cap?) | points only |
 | D4 | Ping interval vs battery (30 s / 60 s / 120 s) | 60 s |
 | D5 | Native Android app for background tracking — when | Phase 2 |
-| D6 | Fix billing finding #1 now | not changed in billing |
+| D6 | Fix billing finding #1 now | **done** — billing PR #3 |
 
 ---
 
