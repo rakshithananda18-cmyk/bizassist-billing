@@ -274,6 +274,7 @@ You do **not** need to create separate repositories for the frontends. Vercel su
 3. Under **Environment Variables**, add:
    - Key: `VITE_API_URL`
    - Value: `https://YOUR_HF_USERNAME-YOUR_SPACE_NAME.hf.space` (Your HF Space public API URL).
+   - Optional — Key: `VITE_FIELD_TEAM_URL`, Value: the Field Team (`bizassist-task`) Vercel URL, e.g. `https://bizassist-task.vercel.app`. Shows the owner-only **Field Team** sidebar link, which signs the owner in with a 30-second handoff ticket (same as Dashboard BIZASSIST). Vite reads it at build time, so redeploy after setting it.
 4. Click **Deploy**.
 
 #### Project 2: AI Assistant (`frontend-ai`)

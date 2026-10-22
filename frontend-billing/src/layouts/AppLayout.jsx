@@ -9,6 +9,7 @@ import { logger } from '../utils/logger'
 import { formatIST } from '../utils/format'
 import { resolveHostingMode } from '../utils/resolveHostingMode'
 import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
+import { getFieldTeamUrl, openFieldTeam } from '../config/fieldTeam'
 import { IS_DESKTOP_APP, openDownloadPage } from '../config/downloadApp'
 import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
@@ -23,8 +24,16 @@ import { useDocLabels } from '../hooks/useDocLabels'
 import { HALT_COPY, resolveHaltReason } from '../utils/syncHalt'
 // HostingOnboardingModal removed: hosting is now chosen once, in Register.
 // The post-login onboarding pop-up duplicated that choice and was intrusive.
-import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon, DownloadIcon, PlusIcon } from '../components/Icons'
+import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, TruckIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon, DownloadIcon, PlusIcon } from '../components/Icons'
 
+
+// Separate apps opened from the sidebar — a NAV item's `external` names one.
+// Each runs on its own origin; its opener hands the owner's session over with
+// a 30-second /handoff-ticket. `proOnly` applies the plan gate below.
+const EXTERNAL_APPS = {
+  ai:        { getUrl: getAiDashboardUrl, open: openAiDashboard, proOnly: true },
+  fieldTeam: { getUrl: getFieldTeamUrl,   open: openFieldTeam,   proOnly: false },
+}
 
 const NAV = [
   {
@@ -41,8 +50,11 @@ const NAV = [
       { to: '/',          icon: <HomeIcon size={16} className="nav-anim-home" />, label: 'Home'      },
       { to: '/dashboard', icon: <DashboardIcon size={16} className="nav-anim-dash" />, label: 'Dashboard' },
       // External: the bundled frontend-ai app (opens in its own window in the
-      // desktop app). Gated behind subscription in future — see aiDashboard.js.
-      { external: true, ownerOnly: true, icon: <ZapIcon size={16} />, label: 'Dashboard BIZASSIST' },
+      // desktop app). Pro plan only — see EXTERNAL_APPS.
+      { external: 'ai', ownerOnly: true, icon: <ZapIcon size={16} />, label: 'Dashboard BIZASSIST' },
+      // External: BizAssist Task (field staff, routes, deliveries) on its own
+      // Vercel project — see fieldTeam.js. Hidden until VITE_FIELD_TEAM_URL is set.
+      { external: 'fieldTeam', ownerOnly: true, icon: <TruckIcon size={16} />, label: 'Field Team' },
     ]
   },
   {
@@ -2071,26 +2083,29 @@ export default function AppLayout({ children, title }) {
                         setSidebarCtxMenu({ x: e.clientX, y: e.clientY, to, label, flatIndex })
                       }
                       if (external) {
-                        if (!getAiDashboardUrl()) return null
+                        const app = EXTERNAL_APPS[external]
+                        const href = app?.getUrl()
+                        if (!href) return null
+                        const gated = app.proOnly && aiGated
                         return (
                           <a
                             key={label}
-                            href={getAiDashboardUrl()}
+                            href={href}
                             className="nav-link"
                             data-label={label}
                             onContextMenu={handleCtxMenu}
                             onClick={(e) => {
                               e.preventDefault()
                               setMobileMenuOpen(false)
-                              if (aiGated) {
+                              if (gated) {
                                 confirm({
                                   mode: 'alert',
                                   title: 'Pro plan feature',
-                                  message: 'Dashboard BIZASSIST is part of the Pro plan. Contact your provider to upgrade.',
+                                  message: `${label} is part of the Pro plan. Contact your provider to upgrade.`,
                                 })
                                 return
                               }
-                              openAiDashboard()
+                              app.open()
                             }}
                           >
                             <span className="nav-icon">{icon}</span>
@@ -2099,7 +2114,7 @@ export default function AppLayout({ children, title }) {
                                 could not hide, so "Dashboard BIZASSIST" spilled
                                 out of the 56px rail. */}
                             <span className="nav-label">{label}</span>
-                            {aiGated && !sidebarCollapsed && (
+                            {gated && !sidebarCollapsed && (
                               <span style={{
                                 marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 800,
                                 letterSpacing: '0.08em', padding: '2px 6px', borderRadius: 6,
