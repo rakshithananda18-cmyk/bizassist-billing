@@ -13,6 +13,7 @@ on:
     # `paths-ignore` skips the run only when EVERY changed file matches, so a
     # commit that touches code and docs together still gets scanned.
     paths-ignore:
+      - 'field-team/**'   # not in sonar.sources; tested by field-team.yml
       - 'docs/**'
       - '**/*.md'
   # DELIBERATELY NOT filtered on pull_request. If the SonarCloud gate is ever a

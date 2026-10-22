@@ -1,0 +1,115 @@
+name: Field Team
+
+# field-team/ is BizAssist Task: its own service (HF Space + Vercel project)
+# that shares billing's database and owner accounts. It runs on its own
+# changes AND on the billing files it depends on — the users / customers
+# models, the hand-off ticket, and the Alembic autogenerate guard — so a
+# billing change that would break Field Team fails here, before deploy.
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'field-team/**'
+      - 'backend/database/models.py'
+      - 'backend/database/db.py'
+      - 'backend/services/auth.py'
+      - 'backend/alembic/env.py'
+      - '.github/workflows/field-team.yml'
+  pull_request:
+    branches: [ main ]
+    paths:   # same list as push
+      - 'field-team/**'
+      - 'backend/database/models.py'
+      - 'backend/database/db.py'
+      - 'backend/services/auth.py'
+      - 'backend/alembic/env.py'
+      - '.github/workflows/field-team.yml'
+
+env:
+  JWT_SECRET: ci-secret-0123456789abcdef0123456789abcdef
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: pass
+          POSTGRES_DB: task_test
+        ports: [ "5432:5432" ]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    defaults:
+      run:
+        working-directory: field-team/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: field-team/backend/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Tests on SQLite (parallel, like run_tests.bat fast)
+        run: python -m pytest -n auto --dist loadscope
+      - name: Tests on Postgres (Supabase dialect, RLS migration)
+        env:
+          TASK_TEST_DATABASE_URL: postgresql://postgres:pass@localhost:5432/task_test
+        run: python -m pytest
+
+  contract:
+    name: On billing's real schema and ticket
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: pass
+          POSTGRES_DB: contract_test
+        ports: [ "5432:5432" ]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      CONTRACT_DB: postgresql://postgres:pass@localhost:5432/contract_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: field-team/backend/requirements-dev.txt
+      # Field Team's own requirements are enough to import billing's models
+      # and services.auth — no torch / AI stack needed for this job.
+      - run: pip install -r field-team/backend/requirements-dev.txt
+      - name: Billing creates its schema with its own models
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ env.CONTRACT_DB }}
+          GROQ_API_KEY: mock_groq_api_key
+        run: |
+          python -c "from database.db import Base, engine; import database.models, core.models; Base.metadata.create_all(bind=engine); print(len(Base.metadata.tables), 'billing tables')"
+      - name: Field Team suite on that schema, plus billing-minted tickets
+        working-directory: field-team/backend
+        env:
+          TASK_TEST_DATABASE_URL: ${{ env.CONTRACT_DB }}
+          TASK_TEST_BILLING_SCHEMA: external
+          BILLING_BACKEND_DIR: ${{ github.workspace }}/backend
+          GROQ_API_KEY: mock_groq_api_key
+        run: python -m pytest -rs
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: field-team/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: field-team/frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
