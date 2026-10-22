@@ -1,0 +1,16 @@
+{
+  "name": "BizAssist Field Team",
+  "short_name": "BizAssist Field",
+  "description": "Attendance, delivery routes, tasks and points for your staff",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fdfdfc",
+  "theme_color": "#c15f3c",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
