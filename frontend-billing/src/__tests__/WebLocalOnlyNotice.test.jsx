@@ -8,12 +8,22 @@ import React from 'react'
 vi.mock('../config', () => ({ IS_LOCAL_APP: false }))
 
 let mockProfile = null
-vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ profile: mockProfile }) }))
+let mockSettings = undefined
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ profile: mockProfile, settings: mockSettings }) }))
 
 import WebLocalOnlyNotice from '../components/hosting/WebLocalOnlyNotice'
 
-beforeEach(() => { sessionStorage.clear(); mockProfile = null })
+beforeEach(() => { sessionStorage.clear(); mockProfile = null; mockSettings = undefined })
 afterEach(cleanup)
+
+describe('WebLocalOnlyNotice — signup trial', () => {
+  it('stays away from a lapsed trial: that data is on the cloud, not a desktop', () => {
+    mockProfile = { is_premium: false }
+    mockSettings = { subscription: { plan: 'free', status: 'trial', trial: true } }
+    const { container } = render(<WebLocalOnlyNotice />)
+    expect(container).toBeEmptyDOMElement()
+  })
+})
 
 describe('WebLocalOnlyNotice (T7)', () => {
   it('shows the local-device note for a free account on the web', () => {

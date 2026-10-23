@@ -41,6 +41,7 @@ import NetworkDiscoverySection from '../components/settings/NetworkDiscoverySect
 import PasscodeModal from '../components/settings/PasscodeModal'
 import HostingModeSection from '../components/settings/HostingModeSection'
 import OpsHealthPanel from '../components/settings/OpsHealthPanel'
+import { trialState, daysLeftText } from '../utils/trialStatus'
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 const TABS = [
@@ -539,6 +540,18 @@ export default function Settings() {
   const g   = gen
   const t   = tx
   const subscription = settings.subscription || null   // { plan: 'pro'|'free', ... }
+  // A signup trial is Pro with an end date, not a plan that "renews"; and a
+  // lapsed plan shows when it ended rather than a renewal date in the past.
+  const trial = trialState(subscription)
+  const planName = subscription?.plan === 'pro' ? (trial?.active ? 'Pro trial' : 'Pro') : 'Free'
+  const planEnd = subscription?.expires_at
+    ? new Date(subscription.expires_at).toLocaleDateString('en-IN')
+    : null
+  const planNote = !planEnd ? null
+    : trial?.active ? `ends ${planEnd} (${daysLeftText(trial.daysLeft)})`
+    : trial ? `trial ended ${planEnd}`
+    : subscription?.plan === 'pro' ? `renews ${planEnd}`
+    : `ended ${planEnd}`
 
   // ── Customisable receipt header: drag to reorder, click L/C/R to align ──────
   const headerLayout = getHeaderLayout(pr)
@@ -715,16 +728,16 @@ export default function Settings() {
               <div className="inv-group">
                 <div className="inv-group-header">
                   <span className="inv-group-title">Subscription</span>
-                  <span className="inv-group-badge">{subscription?.plan === 'pro' ? 'Pro' : 'Free'}</span>
+                  <span className="inv-group-badge">{planName}</span>
                   <span className="inv-group-desc">Managed by your provider</span>
                 </div>
                 <div className="inv-row">
                   <div className="inv-row-body">
                     <div className="inv-row-label">
-                      Current plan: {subscription?.plan === 'pro' ? 'Pro' : 'Free'}
-                      {subscription?.expires_at && (
+                      Current plan: {planName}
+                      {planNote && (
                         <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
-                          {' '}· renews {new Date(subscription.expires_at).toLocaleDateString('en-IN')}
+                          {' '}· {planNote}
                         </span>
                       )}
                     </div>
@@ -732,8 +745,10 @@ export default function Settings() {
                       {checkingPlan
                         ? 'Checking with the cloud…'
                         : planChecked
-                          ? `Checked just now — you're on the ${subscription?.plan === 'pro' ? 'Pro' : 'Free'} plan.`
-                          : 'This device re-checks periodically. If your plan was just changed, check now rather than waiting.'}
+                          ? `Checked just now — you're on the ${planName} plan.`
+                          : trial?.active
+                            ? 'Every new business starts with a free Pro trial. Ask your provider to activate Pro to keep cloud sync, AI and Field Team after it ends.'
+                            : 'This device re-checks periodically. If your plan was just changed, check now rather than waiting.'}
                     </div>
                   </div>
                   <button

@@ -419,6 +419,77 @@ def staff_login(req: StaffLoginRequest, request: Request, db: Session = Depends(
         raise HTTPException(status_code=500, detail="Internal server login error")
 
 
+# ---------------------------------------------------------------------------
+# PRO TRIAL FOR NEW BUSINESSES
+# ---------------------------------------------------------------------------
+# Every business registered on the CLOUD starts on Pro for PRO_TRIAL_DAYS
+# (default 14), so a new owner can work on the web straight away, then install
+# the desktop app and bring their data down while sync is still Pro. The grant
+# is the ordinary `settings.subscription` shape with status "trial", so
+# effective_plan() — and every gate built on it, Field Team included — turns it
+# on now and off at the end date with no extra plumbing.
+#
+# Cloud only, and never for a local mirror (a signup carrying the cloud's
+# public_id): the cloud is the plan authority, and the desktop copies the plan
+# down through _sync_subscription_from_cloud like any admin grant.
+
+def _trial_days() -> int:
+    import os
+    try:
+        return max(0, int(os.environ.get("PRO_TRIAL_DAYS", "14")))
+    except ValueError:
+        return 14
+
+
+def _phone_key(phone: Optional[str]) -> Optional[str]:
+    """Last 10 digits of a phone number, or None when it has fewer. The signup
+    field is free text, so '+91 94947 47419' and '9494747419' must match."""
+    digits = "".join(c for c in (phone or "") if c.isdigit())
+    return digits[-10:] if len(digits) >= 10 else None
+
+
+def _start_trial(user: User, phone: Optional[str], db: Session) -> Optional[dict]:
+    """Put a brand-new business on the Pro trial. Returns the subscription it
+    wrote, or None when no trial was given."""
+    import json
+    from datetime import timedelta
+    from services.dates import utc_now
+
+    days = _trial_days()
+    if days <= 0:
+        return None
+    key = _phone_key(phone)
+    if key:
+        # One trial per phone number. The field is optional and unverified, so
+        # this only stops the easy case: a second username on the same number.
+        others = db.query(User.phone).filter(
+            User.id != user.id,
+            User.parent_business_id.is_(None),
+            User.phone.isnot(None),
+        ).all()
+        if any(_phone_key(p) == key for (p,) in others):
+            logger.info(f"[TRIAL] No trial for '{user.username}': phone already registered to another business.")
+            return None
+
+    now = utc_now()
+    sub = {
+        "plan":       "pro",
+        "status":     "trial",
+        # A date means access THROUGH that day (expiry_moment), so this is the
+        # rest of today plus `days` full days.
+        "expires_at": (now.date() + timedelta(days=days)).isoformat(),
+        "granted_by": "trial",
+        "granted_at": now.isoformat(),
+        "note":       f"{days}-day Pro trial at signup",
+    }
+    s = json.loads(user.settings) if user.settings else {}
+    s["subscription"] = sub
+    user.settings = json.dumps(s)
+    db.commit()
+    logger.info(f"[TRIAL] '{user.username}' (BizID {user.public_id}) started a {days}-day Pro trial, ends {sub['expires_at']}.")
+    return sub
+
+
 @router.post("/signup")
 def signup(req: SignupRequest, db: Session = Depends(get_db)):
     logger.info(f"[AUTH] Signup attempt for username '{req.username}'...")
@@ -501,7 +572,17 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             else:
                 raise
         db.refresh(user)
-        
+
+        # A brand-new cloud business starts on the Pro trial. A local mirror
+        # (public_id given) takes its plan from the cloud instead. The account
+        # already exists, so a failed grant must not fail the signup.
+        if _DB_MODE == "cloud" and not (req.public_id or "").strip():
+            try:
+                _start_trial(user, req.phone, db)
+            except Exception as e:
+                db.rollback()
+                logger.error(f"[TRIAL] Could not start the trial for '{req.username}': {e}", exc_info=True)
+
         token = create_access_token({
             "id": user.id,
             "user_id": user.id,
@@ -1044,18 +1125,29 @@ def _subscription_view(user: User, db: Session = None, force: bool = False) -> d
             _sync_subscription_from_cloud(user, db, force=force)
         except Exception:
             pass
-    from services.admin_service import effective_plan, _settings_dict
+    from services.admin_service import effective_plan, expiry_moment, _settings_dict
     from services.auth import subscription_enforced
+    from services.dates import utc_now
     plan_holder = user
     if user.parent_business_id and db:
         owner = db.query(User).filter(User.id == user.parent_business_id).first()
         if owner:
             plan_holder = owner
     sub = _settings_dict(plan_holder).get("subscription") or {}
+    status = sub.get("status", "none")
+    ends = expiry_moment(sub.get("expires_at"))
     return {
         "plan":       effective_plan(plan_holder),
-        "status":     sub.get("status", "none"),
+        "status":     status,
         "expires_at": sub.get("expires_at"),
+        # The exact moment access ends (a date runs to the end of that day) and
+        # the whole days left before it, so every screen counts down alike.
+        # 0 = it ends within the next 24 hours, or already has.
+        "ends_at":    (ends.isoformat() + "Z") if ends else None,
+        "days_remaining": max(0, int((ends - utc_now()).total_seconds() // 86400)) if ends else None,
+        # Still true after the trial lapses (plan "free"), so the client can say
+        # "your trial ended" rather than treat it like any free account.
+        "trial":      status == "trial",
         # Whether the backend actually gates Pro features right now — the client
         # shows PRO badges / blocks only when this is true.
         "enforced":   subscription_enforced(),
