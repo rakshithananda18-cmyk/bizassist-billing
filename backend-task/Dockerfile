@@ -29,6 +29,7 @@ COPY --chown=user . /app/
 USER user
 EXPOSE 7860
 
-# ONE process: login throttling and the GPS-purge loop are in-memory (same rule
-# as billing's WEB_CONCURRENCY=1). Never add --workers or --reload here.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# Same start file as the Gradio Space: ONE uvicorn process (login throttling
+# and the GPS-purge loop are in-memory — never add workers or reload), on
+# $PORT when the host sets one (Render does), else 7860.
+CMD ["python", "space_app.py"]

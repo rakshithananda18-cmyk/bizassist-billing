@@ -1,11 +1,12 @@
 """
-space_app.py — start the Field Team API on its Hugging Face Space.
+space_app.py — the one way the Field Team API is started when deployed.
 
-New Docker Spaces need a paid plan, so the Space uses the Gradio SDK (README
-front-matter: `sdk: gradio`, `app_file: space_app.py`). HF installs
-requirements.txt, runs `python space_app.py` and routes the Space's traffic to
-port 7860. Gradio itself is not used: this starts the same FastAPI app as the
-Dockerfile's CMD, which stays for local runs and other hosts.
+- HF Space: new Docker Spaces need a paid plan, so the Space uses the Gradio
+  SDK (README front-matter: `sdk: gradio`, `app_file: space_app.py`). HF
+  installs requirements.txt, runs `python space_app.py` and routes traffic to
+  port 7860. Gradio itself is not used.
+- Container hosts (Dockerfile CMD, e.g. Render's free web service): the same
+  file, on the port the host sets in $PORT.
 
 ONE process — no workers, no reload: login throttling and the GPS purge loop
 are in-memory (same rule as the Dockerfile and billing's WEB_CONCURRENCY=1).
