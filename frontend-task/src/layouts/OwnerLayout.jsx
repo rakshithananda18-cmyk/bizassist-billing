@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+import { planBanner } from '../lib/plan'
 import { cycleTheme, getTheme } from '../lib/theme'
 import { BuildingMark } from '../components/Logo'
 import { useToast } from '../components/ui'
@@ -86,7 +87,10 @@ export default function OwnerLayout() {
           <NavLink key={it.to} to={it.to} end={it.end} className={({ isActive }) => (isActive ? 'active' : '')}>{it.label}</NavLink>
         ))}
       </nav>
-      <main className="main"><Outlet /></main>
+      <main className="main">
+        {planBanner(me.plan) && <div className="alert alert-warning" role="status" style={{ marginBottom: 16 }}>{planBanner(me.plan)}</div>}
+        <Outlet />
+      </main>
     </div>
   )
 }

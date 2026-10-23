@@ -67,7 +67,7 @@ export function AuthProvider({ children }) {
       setMe(data)
       return data
     } catch (e) {
-      if (e.status === 401) { tokenStore.clear(); setMe(null) }
+      if (e.status === 401 || e.status === 402) { tokenStore.clear(); setMe(null) }
       return null
     } finally {
       setLoading(false)

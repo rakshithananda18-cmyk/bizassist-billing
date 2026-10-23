@@ -1,7 +1,7 @@
 """The contract with BizAssist Billing, checked against billing's REAL code.
 
 Field Team reads billing's `users` / `customers` / `invoices` /
-`invoice_line_items` rows and accepts billing's
+`invoice_line_items` rows, applies billing's Pro plan rule, and accepts billing's
 hand-off ticket. Elsewhere in this suite those sides are mirrored (a copy of
 the columns, a copy of the ticket format); here they are imported from
 billing itself, so a billing change that would break Field Team fails CI.
@@ -9,8 +9,10 @@ billing itself, so a billing change that would break Field Team fails CI.
 Runs when BILLING_BACKEND_DIR points at bizassist-billing/backend (the
 Field Team workflow's contract job sets it); skipped otherwise.
 """
+import json
 import os
 import sys
+from datetime import timedelta
 
 import pytest
 
@@ -55,3 +57,23 @@ def test_ticket_minted_by_billing_signs_the_owner_in(client, biz):
     assert r.status_code == 200, r.text
     assert client.get("/api/staff", headers=auth(r.json()["token"])).status_code == 200
     assert client.post("/api/auth/exchange", json={"ticket": ticket}).status_code == 401
+
+
+def test_pro_plan_rule_matches_billings():
+    """Field Team must call a business Pro exactly when billing does (plus its
+    own grace period, which only applies after billing says "free")."""
+    admin = _billing("services.admin_service")
+    models = _billing("database.models")
+    from app.billing_models import BillingUser
+    from app.db import utc_now
+    from app.plan import expiry_moment, plan_state
+
+    today = utc_now().date()
+    for raw in (None, "", "not a date", today.isoformat(), (today - timedelta(days=1)).isoformat(),
+                "2026-10-23T20:00:00+05:30", "2026-10-23T10:00:00Z", "2026-10-23 10:00:00"):
+        assert expiry_moment(raw) == admin.expiry_moment(raw), raw
+    for sub in (None, {"plan": "free"}, {"plan": "pro"}, {"plan": "PRO"},
+                {"plan": "pro", "expires_at": today.isoformat()},
+                {"plan": "pro", "expires_at": (today - timedelta(days=2)).isoformat()}):
+        settings = json.dumps({"subscription": sub} if sub else {})
+        assert plan_state(BillingUser(settings=settings)).plan == admin.effective_plan(models.User(settings=settings)), sub

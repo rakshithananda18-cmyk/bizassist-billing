@@ -33,7 +33,9 @@ import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, Contac
 // a 30-second /handoff-ticket. `proOnly` applies the plan gate below.
 const EXTERNAL_APPS = {
   ai:        { getUrl: getAiDashboardUrl, open: openAiDashboard, proOnly: true },
-  fieldTeam: { getUrl: getFieldTeamUrl,   open: openFieldTeam,   proOnly: false },
+  // Pro, like the AI dashboard. Field Team's own server enforces it too
+  // (backend-task/app/plan.py); this only shows the badge and the upgrade note.
+  fieldTeam: { getUrl: getFieldTeamUrl,   open: openFieldTeam,   proOnly: true },
 }
 
 const NAV = [

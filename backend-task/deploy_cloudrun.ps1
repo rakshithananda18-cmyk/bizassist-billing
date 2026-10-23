@@ -17,6 +17,11 @@
     # once the Vercel URL exists (kept on later deploys until changed)
     .\backend-task\deploy_cloudrun.ps1 -Project <id> -AllowedOrigins https://<vercel-url>
 
+    # Field Team is part of BizAssist Pro: turn the plan gate on (or off).
+    # Kept on later deploys until changed. Grant Pro to your own business in
+    # billing's admin console FIRST, or you are refused too.
+    .\backend-task\deploy_cloudrun.ps1 -Project <id> -ProGate on
+
   Service shape (docs/FIELD_TEAM_MASTER_PLAN.md section 8):
     - max 1 instance: login throttling is in-memory (one process, like billing)
     - min 0 instances: free tier; wakes in seconds (-MinInstances 1 = always
@@ -32,6 +37,7 @@ param(
     [string]$Service = "bizassist-task",
     [string]$AllowedOrigins = "",
     [int]$MinInstances = 0,
+    [ValidateSet("", "on", "off")][string]$ProGate = "",
     [switch]$Setup,
     [switch]$ResetSecrets
 )
@@ -132,6 +138,8 @@ try {
         $origins = ($AllowedOrigins -split "," | ForEach-Object { $_.Trim().TrimEnd("/") } | Where-Object { $_ }) -join ","
         $envVars += ";ALLOWED_ORIGINS=$origins"
     }
+    # Same switch name as billing's (SUBSCRIPTION_ENFORCED); see app/plan.py.
+    if ($ProGate) { $envVars += ";SUBSCRIPTION_ENFORCED=$(if ($ProGate -eq 'on') { '1' } else { '0' })" }
     # New IAM grants can take a minute or two to apply, so a first-time build may
     # still be refused: try up to 3 times, a minute apart.
     for ($attempt = 1; ; $attempt++) {

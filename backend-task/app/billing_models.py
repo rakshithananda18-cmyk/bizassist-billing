@@ -37,6 +37,9 @@ class BillingUser(BillingBase):
     public_id = Column(String, unique=True, index=True, nullable=True)  # BizID BA-XXXXXX
     phone = Column(String, nullable=True)
     token_version = Column(Integer, default=0, nullable=False, server_default="0")
+    # JSON. Read for one key only: `subscription` (the owner's plan, written by
+    # billing's admin console) — see app/plan.py. Never written here.
+    settings = Column(Text, nullable=True)
     last_login = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utc_now, nullable=True)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=True)

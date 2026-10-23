@@ -56,7 +56,8 @@ export async function request(method, path, { body, query } = {}) {
   let data = null
   if (text) { try { data = JSON.parse(text) } catch { data = text } }
   if (!res.ok) {
-    if (res.status === 401 && token) window.dispatchEvent(new CustomEvent('task:unauthorized', { detail: detailText(data?.detail) }))
+    // 401: session gone. 402: the business is not on BizAssist Pro (any more).
+    if ((res.status === 401 || res.status === 402) && token) window.dispatchEvent(new CustomEvent('task:unauthorized', { detail: detailText(data?.detail) }))
     throw new ApiError(detailText(data?.detail) || `Request failed (${res.status})`, res.status, data)
   }
   return data

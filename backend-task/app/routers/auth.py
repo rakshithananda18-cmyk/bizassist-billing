@@ -19,11 +19,12 @@ from app.db import get_db, set_rls_business, utc_now
 from app.models import FieldStaff
 from app.security import (
     NON_OWNER_ROLES, Principal, burn_password_check, check_login_throttle,
-    clear_login_failures, current_principal, decode_billing_token,
+    clear_login_failures, current_principal, decode_billing_token, signed_in_principal,
     generate_bizid, get_settings, hash_password, new_session_id, owner_token,
     record_login_failure, redeem_billing_ticket, staff_token,
     validate_password_policy, verify_password,
 )
+from app.plan import ensure_pro, plan_out, plan_state
 from app.services import settings_out, staff_out
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -87,6 +88,7 @@ def owner_login(req: OwnerLogin, request: Request, db: Session = Depends(get_db)
         record_login_failure(key)
         raise HTTPException(status_code=401, detail="Invalid owner credentials")
     clear_login_failures(key)
+    ensure_pro(user, "owner")
     logger.info("[AUTH] owner login biz=%s BizID=%s", user.id, user.public_id)
     return _owner_payload(user)
 
@@ -124,6 +126,7 @@ def exchange_billing_token(req: ExchangeRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Session belongs to a different database")
     if int(claims.get("tv", 0) or 0) != int(user.token_version or 0):
         raise HTTPException(status_code=401, detail="Billing session revoked — sign in again")
+    ensure_pro(user, "owner")
     return _owner_payload(user)
 
 
@@ -138,7 +141,9 @@ class SignupRequest(BaseModel):
 def owner_signup(req: SignupRequest, db: Session = Depends(get_db)):
     """Create a BizAssist account (works in Billing too). Same row shape and
     password policy as billing's /signup."""
-    if not config.ALLOW_SIGNUP:
+    if not config.ALLOW_SIGNUP or config.REQUIRE_PRO:
+        # With the Pro gate on, a new account is on the free plan and could not
+        # use Field Team anyway: it starts in billing, where plans are managed.
         raise HTTPException(status_code=403, detail="Sign up in BizAssist Billing, then sign in here")
     username = req.username.strip()
     validate_password_policy(req.password)
@@ -213,6 +218,7 @@ def staff_login(req: StaffLogin, request: Request, db: Session = Depends(get_db)
         raise HTTPException(status_code=401, detail="Invalid business, name or password")
     if not staff.is_active:
         raise HTTPException(status_code=403, detail="Your account is disabled. Contact the owner.")
+    ensure_pro(owner, "staff")
 
     settings = get_settings(db, owner.id)
     label = (req.device_label or "").strip()[:160] or None
@@ -272,11 +278,12 @@ def me(p: Principal = Depends(current_principal), db: Session = Depends(get_db))
         base["staff"] = staff_out(p.staff)
     else:
         base["name"] = owner.username if owner else None
+        base["plan"] = plan_out(plan_state(owner))
     return base
 
 
 @router.post("/logout")
-def logout(p: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+def logout(p: Principal = Depends(signed_in_principal), db: Session = Depends(get_db)):
     if p.kind == "staff":
         p.staff.active_session_id = None
         db.commit()

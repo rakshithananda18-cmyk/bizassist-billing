@@ -82,6 +82,13 @@ CREATE_BILLING_MIRROR = _bool("TASK_CREATE_BILLING_MIRROR", IS_SQLITE)
 # the same login works in billing too.
 ALLOW_SIGNUP = _bool("TASK_ALLOW_SIGNUP", True)
 
+# Field Team is part of BizAssist Pro (app/plan.py). Same switch and name as
+# billing's: the gate only bites where SUBSCRIPTION_ENFORCED=1 (the cloud), so
+# local dev and the test suite run without plans unless they turn it on.
+REQUIRE_PRO = _bool("SUBSCRIPTION_ENFORCED", False)
+# Days Field Team keeps working after a Pro plan EXPIRES (not when revoked).
+PRO_GRACE_DAYS = _int("TASK_PRO_GRACE_DAYS", 7)
+
 # Raw GPS pings older than this are purged daily. Event locations (check-in,
 # arrival, task completion) live on their own rows and are kept.
 PING_RETENTION_DAYS = _int("TASK_PING_RETENTION_DAYS", 60)

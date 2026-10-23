@@ -43,6 +43,7 @@ from app import config
 from app.billing_models import BillingUser
 from app.db import get_db, set_rls_business, utc_now
 from app.models import FieldSettings, FieldStaff
+from app.plan import ensure_pro
 
 logger = logging.getLogger("bizassist.task.auth")
 
@@ -241,6 +242,7 @@ class Principal:
     owner_user_id: Optional[int] = None
     staff: Optional[FieldStaff] = None
     public_id: Optional[str] = None
+    owner: Optional[BillingUser] = None  # the business's billing account (its plan)
 
     @property
     def actor(self) -> str:
@@ -253,10 +255,11 @@ def _bearer(authorization: Optional[str]) -> str:
     return authorization.split(" ", 1)[1].strip()
 
 
-def current_principal(
+def signed_in_principal(
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db),
 ) -> Principal:
+    """Who is calling, without the plan check — only for signing out."""
     claims = decode_task_token(_bearer(authorization))
     kind = claims.get("typ")
     try:
@@ -273,7 +276,8 @@ def current_principal(
         if int(claims.get("tv", 0)) != int(user.token_version or 0):
             raise HTTPException(status_code=401, detail="Session revoked — please sign in again")
         set_rls_business(db, bid)
-        return Principal(kind="owner", business_id=bid, owner_user_id=int(user.id), public_id=user.public_id)
+        return Principal(kind="owner", business_id=bid, owner_user_id=int(user.id), public_id=user.public_id,
+                         owner=user)
 
     if kind == "staff":
         staff = db.query(FieldStaff).filter(
@@ -292,6 +296,15 @@ def current_principal(
         return Principal(kind="staff", business_id=bid, staff=staff)
 
     raise HTTPException(status_code=401, detail="Invalid session — please sign in again")
+
+
+def current_principal(p: Principal = Depends(signed_in_principal), db: Session = Depends(get_db)) -> Principal:
+    """Every signed-in request: the caller, and their business still on Pro
+    (or its grace period) when the plan gate is on. Staff use the owner's plan."""
+    if p.owner is None:
+        p.owner = db.query(BillingUser).filter(BillingUser.id == p.business_id).first()
+    ensure_pro(p.owner, p.kind)
+    return p
 
 
 def require_owner(p: Principal = Depends(current_principal)) -> Principal:
