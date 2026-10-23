@@ -1,1 +1,4 @@
 ﻿* text=auto eol=lf
+# Windows batch files need CRLF: with LF-only lines cmd can miss `goto` labels.
+*.bat text eol=crlf
+*.cmd text eol=crlf
