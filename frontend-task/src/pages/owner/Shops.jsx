@@ -12,6 +12,9 @@ function ShopForm({ shop, onClose, onSaved }) {
     name: shop?.name || '', contact_name: shop?.contact_name || '', phone: shop?.phone || '', address: shop?.address || '',
     area: shop?.area || '', notes: shop?.notes || '', lat: shop?.lat ?? '', lng: shop?.lng ?? '', is_active: shop?.is_active ?? true,
   })
+  const [customerId, setCustomerId] = useState(shop?.customer_id ? String(shop.customer_id) : '')
+  // Linking is offered when editing: new shops come from "Import from billing".
+  const { data: customers } = useLoad(() => (shop ? api.get('/api/billing/customers') : Promise.resolve([])), [shop?.id])
   const [paste, setPaste] = useState('')
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
   const fromPaste = (text) => {
@@ -25,7 +28,7 @@ function ShopForm({ shop, onClose, onSaved }) {
   const save = async () => {
     const body = { ...f, lat: f.lat === '' ? null : Number(f.lat), lng: f.lng === '' ? null : Number(f.lng) }
     try {
-      if (shop) await api.patch(`/api/shops/${shop.id}`, body)
+      if (shop) await api.patch(`/api/shops/${shop.id}`, { ...body, customer_id: customerId ? Number(customerId) : null })
       else await api.post('/api/shops', body)
       onSaved()
     } catch (e) { toast(e.message, 'error') }
@@ -50,6 +53,14 @@ function ShopForm({ shop, onClose, onSaved }) {
           </div>
           <span className="form-hint">Leave empty and the first delivery visit pins it automatically.</span></div>
         <div className="form-group span-2"><label className="form-label">Notes for the agent</label><textarea className="form-textarea" value={f.notes} onChange={set('notes')} /></div>
+        {shop && (
+          <div className="form-group span-2"><label className="form-label">BizAssist Billing customer</label>
+            <select className="form-select" value={customerId} onChange={e => setCustomerId(e.target.value)}>
+              <option value="">— not linked —</option>
+              {(customers || []).filter(c => !c.linked || c.id === shop.customer_id).map(c => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` · ${c.phone}` : ''}</option>)}
+            </select>
+            <span className="form-hint">A linked shop can plan deliveries and collections from that customer’s invoices.</span></div>
+        )}
       </div>
     </Modal>
   )

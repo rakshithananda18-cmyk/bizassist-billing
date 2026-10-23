@@ -1,18 +1,20 @@
 """
 routers/shops.py — delivery points (retail / medical shops) and route templates.
-Shops can be imported from the owner's BizAssist Billing customers and stay
-linked by `customer_id`.
+Shops can be imported from the owner's BizAssist Billing customers, or linked
+to one later, by `customer_id`; a linked shop lists that customer's billing
+invoices for planning deliveries and collections (app/invoices.py).
 """
 from __future__ import annotations
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.billing_models import BillingCustomer
 from app.db import get_db
+from app.invoices import shop_invoices
 from app.models import FieldRoute, FieldRouteStop, FieldShop, FieldStaff
 from app.security import Principal, current_principal, require_owner
 from app.services import get_scoped, log_activity, route_out, shop_out
@@ -37,10 +39,11 @@ class ShopIn(BaseModel):
 
 class ShopPatch(ShopIn):
     name: Optional[str] = Field(None, min_length=1, max_length=120)
+    customer_id: Optional[int] = Field(None, description="Billing customer to link; null unlinks")
 
 
 def _apply_shop(shop: FieldShop, req: ShopIn, *, partial: bool) -> None:
-    data = req.model_dump(exclude_unset=partial)
+    data = req.model_dump(exclude_unset=partial, exclude={"customer_id"})
     for k, v in data.items():
         if k in ("is_active", "name") and v is None:
             continue
@@ -72,10 +75,28 @@ def create_shop(req: ShopIn, p: Principal = Depends(require_owner), db: Session 
     return shop_out(shop)
 
 
+def _link_customer(db: Session, p: Principal, shop: FieldShop, customer_id: Optional[int]) -> None:
+    if customer_id is None:
+        shop.customer_id = None
+        return
+    customer = (db.query(BillingCustomer)
+                .filter(BillingCustomer.business_id == p.business_id, BillingCustomer.id == customer_id).first())
+    if customer is None:
+        raise HTTPException(status_code=404, detail="Billing customer not found")
+    other = (db.query(FieldShop.name)
+             .filter(FieldShop.business_id == p.business_id, FieldShop.customer_id == customer_id,
+                     FieldShop.id != shop.id).first())
+    if other:
+        raise HTTPException(status_code=409, detail=f"{customer.name} is already linked to {other.name}")
+    shop.customer_id = customer_id
+
+
 @router.patch("/shops/{shop_id}")
 def update_shop(shop_id: int, req: ShopPatch, p: Principal = Depends(require_owner), db: Session = Depends(get_db)):
     shop = get_scoped(db, FieldShop, p.business_id, shop_id, "Shop")
     _apply_shop(shop, req, partial=True)
+    if "customer_id" in req.model_fields_set:
+        _link_customer(db, p, shop, req.customer_id)
     log_activity(db, p, "shop.update", entity="shop", entity_id=shop.id, summary=shop.name)
     db.commit()
     return shop_out(shop)
@@ -93,6 +114,16 @@ def billing_customers(p: Principal = Depends(require_owner), db: Session = Depen
         "id": c.id, "name": c.name, "phone": c.phone, "address": c.address,
         "gstin": c.gstin, "is_active": c.is_active is not False, "linked": c.id in linked,
     } for c in rows]
+
+
+@router.get("/shops/{shop_id}/billing-invoices")
+def billing_invoices(shop_id: int, days: int = Query(30, ge=1, le=365),
+                     p: Principal = Depends(require_owner), db: Session = Depends(get_db)):
+    """The linked billing customer's invoices: the last `days` days plus any
+    older one still unpaid. Each lists the live tasks that already carry it."""
+    shop = get_scoped(db, FieldShop, p.business_id, shop_id, "Shop")
+    return {"shop_id": shop.id, "customer_id": shop.customer_id, "days": days,
+            "invoices": shop_invoices(db, p.business_id, shop, days)}
 
 
 class ImportCustomers(BaseModel):

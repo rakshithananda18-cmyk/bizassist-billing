@@ -1,14 +1,26 @@
 import React, { useMemo, useState } from 'react'
 import { api } from '../../lib/api'
-import { fmtDay, fmtTime, TASK_TYPES, telHref, todayIST } from '../../lib/format'
+import { fmtDay, fmtTime, rupees, TASK_TYPES, telHref, todayIST } from '../../lib/format'
+import { summarizeInvoices } from '../../lib/invoices'
+import InvoicePicker from '../../components/InvoicePicker'
 import { Empty, ErrorNote, Loader, Modal, PageHeader, StatusBadge, useLoad, useToast } from '../../components/ui'
 
 const EXTRA_TYPES = Object.entries(TASK_TYPES).filter(([k]) => k !== 'delivery')
 
 function StopEditor({ shops, stops, setStops }) {
   const [pick, setPick] = useState('')
+  const [picking, setPicking] = useState(null) // index of the stop choosing invoices
   const used = new Set(stops.map(s => s.shop_id))
   const upd = (i, patch) => setStops(stops.map((s, j) => (j === i ? { ...s, ...patch } : s)))
+  // Picked bills fill the numbers and orders, and boxes when the bills count them.
+  const applyInvoices = (i, invoices) => {
+    const sum = summarizeInvoices(invoices)
+    upd(i, {
+      invoices, invoice_ids: sum.invoice_ids, reference: sum.reference, orders_count: sum.orders_count,
+      boxes: sum.boxes ?? stops[i].boxes, collect_due: sum.balance_due > 0 && !!stops[i].collect_due,
+    })
+    setPicking(null)
+  }
   const move = (i, d) => {
     const j = i + d
     if (j < 0 || j >= stops.length) return
@@ -20,6 +32,7 @@ function StopEditor({ shops, stops, setStops }) {
     <div className="stack">
       {stops.map((s, i) => {
         const shop = shops.find(x => x.id === s.shop_id)
+        const due = summarizeInvoices(s.invoices).balance_due
         return (
           <div key={s.shop_id} className="card plain" style={{ padding: 12 }}>
             <div className="row-between">
@@ -38,6 +51,23 @@ function StopEditor({ shops, stops, setStops }) {
               <div className="form-group span-2"><label className="form-label">Invoice / order numbers</label>
                 <input className="form-input" value={s.reference || ''} onChange={e => upd(i, { reference: e.target.value })} placeholder="INV-101, INV-102" /></div>
             </div>
+            {shop?.customer_id && (
+              <div className="row wrap" style={{ marginTop: 8 }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPicking(i)}>
+                  {s.invoices?.length ? `Billing invoices (${s.invoices.length})` : 'Pick billing invoices'}
+                </button>
+                {s.invoices?.length > 0 && (
+                  <button type="button" className="btn btn-ghost btn-sm"
+                    onClick={() => upd(i, { invoices: [], invoice_ids: [], collect_due: false })}>Clear</button>
+                )}
+                {due > 0 && (
+                  <label className="checkbox small">
+                    <input type="checkbox" checked={!!s.collect_due} onChange={e => upd(i, { collect_due: e.target.checked })} />
+                    Also collect {rupees(due)} due
+                  </label>
+                )}
+              </div>
+            )}
             {(s.tasks || []).map((t, k) => (
               <div key={k} className="row wrap" style={{ marginTop: 8 }}>
                 <select className="form-select" style={{ width: 180 }} value={t.task_type}
@@ -68,6 +98,11 @@ function StopEditor({ shops, stops, setStops }) {
         <button type="button" className="btn btn-secondary" disabled={!pick}
           onClick={() => { setStops([...stops, { shop_id: Number(pick), boxes: null, orders_count: null, tasks: [] }]); setPick('') }}>Add</button>
       </div>
+      {picking != null && (
+        <InvoicePicker shop={shops.find(x => x.id === stops[picking].shop_id)} taskType="delivery"
+          initial={stops[picking].invoice_ids || []} onClose={() => setPicking(null)}
+          onPick={(invoices) => applyInvoices(picking, invoices)} />
+      )}
     </div>
   )
 }
@@ -90,7 +125,8 @@ function PlanModal({ day, onClose, onSaved }) {
       await api.post('/api/runs', {
         run_date: day, staff_id: Number(f.staff_id), route_id: f.route_id ? Number(f.route_id) : null,
         name: f.name || null, due_time: f.due_time, notes: f.notes || null,
-        stops: stops.map(s => ({ ...s, tasks: (s.tasks || []).filter(t => t.title?.trim()) })),
+        // `invoices` is display-only; the server reads invoice_ids.
+        stops: stops.map(({ invoices, ...s }) => ({ ...s, tasks: (s.tasks || []).filter(t => t.title?.trim()) })),
       })
       toast('Run planned', 'success')
       onSaved()
@@ -115,7 +151,7 @@ function PlanModal({ day, onClose, onSaved }) {
           <input className="form-input" type="time" value={f.due_time} onChange={e => setF({ ...f, due_time: e.target.value })} /></div>
       </div>
       <StopEditor shops={shops} stops={stops} setStops={setStops} />
-      <div className="form-hint">Each shop with boxes or orders gets a delivery task. Points are earned when each task is completed by the deliver-by time.</div>
+      <div className="form-hint">Each shop with boxes, orders or billing invoices gets a delivery task. Points are earned when each task is completed by the deliver-by time.</div>
     </Modal>
   )
 }
@@ -180,7 +216,8 @@ export default function Plan() {
                         <td className="num">{st.boxes_delivered}/{st.boxes_planned}</td>
                         <td className="num">{st.orders_count}</td>
                         <td className="small">{st.tasks.map(t => (
-                          <div key={t.id}>{t.status === 'done' ? '✓' : '○'} {TASK_TYPES[t.task_type]}{t.points_awarded ? ` · +${t.points_awarded}` : ''}{t.on_time === false ? ' · late' : ''}</div>
+                          <div key={t.id}>{t.status === 'done' ? '✓' : '○'} {TASK_TYPES[t.task_type]}{t.points_awarded ? ` · +${t.points_awarded}` : ''}{t.on_time === false ? ' · late' : ''}
+                            {t.invoices?.length > 0 && <div className="xs muted">{t.invoices.map(x => x.number).join(', ')}</div>}</div>
                         ))}</td>
                         <td>
                           <StatusBadge status={st.status} />

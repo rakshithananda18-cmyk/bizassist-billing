@@ -196,6 +196,8 @@ def task_out(t: FieldTask) -> dict:
         "reference": t.reference,
         "amount_expected": t.amount_expected,
         "amount_collected": t.amount_collected,
+        "invoices": [{"id": ln.invoice_id, "number": ln.invoice_number, "date": ln.invoice_date,
+                      "total": ln.total, "balance_due": ln.balance_due} for ln in t.invoices],
         "completed_at": iso_utc(t.completed_at),
         "completion_note": t.completion_note,
         "completion_distance_m": t.completion_distance_m,

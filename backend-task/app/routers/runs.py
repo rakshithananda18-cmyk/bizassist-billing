@@ -3,7 +3,9 @@ routers/runs.py — the day's route: plan it (owner), work it (staff).
 
 Owner: plan a run (route × date × staff) with boxes/orders per shop and extra
 tasks (return pickup, payment collection…), or generate today's runs from the
-route templates.
+route templates. A stop can carry the shop's billing invoices: they fill the
+delivery's boxes/orders/numbers, and `collect_due` adds a collection task for
+what is still unpaid on them (app/invoices.py).
 Staff: start the run, arrive at each shop (geofenced), complete its tasks,
 skip a closed shop with a reason. Every staff action needs a fresh GPS fix and
 an open attendance (checked in, not out).
@@ -19,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db, utc_now
 from app.geo import GeoFix, distance_to, validate_fix
+from app.invoices import MAX_PER_TASK, attach_invoices, balance_due, ensure_not_planned, resolve_invoices
 from app.models import TASK_TYPES, FieldRoute, FieldRun, FieldRunStop, FieldShop, FieldStaff, FieldTask
 from app.routers.attendance import require_checked_in
 from app.security import Principal, current_principal, get_settings, require_owner, require_staff
@@ -44,6 +47,8 @@ class StopPlanIn(BaseModel):
     orders_count: Optional[int] = Field(None, ge=0, le=1000)
     reference: Optional[str] = Field(None, max_length=200)
     delivery_points: Optional[int] = Field(None, ge=0, le=1000)
+    invoice_ids: List[int] = Field(default_factory=list, max_length=MAX_PER_TASK)
+    collect_due: bool = Field(False, description="Also collect what is unpaid on invoice_ids")
     tasks: List[ExtraTaskIn] = Field(default_factory=list)
 
 
@@ -74,19 +79,38 @@ def _check_task_type(t: str) -> str:
 def _add_stop(db: Session, p: Principal, run: FieldRun, plan: StopPlanIn, seq: int,
               due_at, default_points: int) -> FieldRunStop:
     shop = get_scoped(db, FieldShop, p.business_id, plan.shop_id, "Shop")
+    invoices = resolve_invoices(db, p.business_id, shop, plan.invoice_ids)
+    if plan.collect_due and not invoices:
+        raise HTTPException(status_code=422, detail=f"Pick {shop.name}'s invoices to collect what is due on them")
     stop = FieldRunStop(business_id=p.business_id, run_id=run.id, shop_id=shop.id, seq=seq)
     db.add(stop)
     db.flush()
-    if (plan.boxes or 0) > 0 or (plan.orders_count or 0) > 0:
-        db.add(FieldTask(
-            business_id=p.business_id, task_type="delivery",
-            title=f"Deliver {plan.boxes or 0} box(es) to {shop.name}",
+    if invoices or (plan.boxes or 0) > 0 or (plan.orders_count or 0) > 0:
+        ensure_not_planned(db, p.business_id, "delivery", invoices)
+        task = FieldTask(
+            business_id=p.business_id, task_type="delivery", title="",
             staff_id=run.staff_id, shop_id=shop.id, run_id=run.id, run_stop_id=stop.id,
             due_at=due_at,
             points=plan.delivery_points if plan.delivery_points is not None else default_points,
-            boxes_planned=plan.boxes or 0, orders_count=plan.orders_count or 0,
+            boxes_planned=plan.boxes, orders_count=plan.orders_count,
             reference=plan.reference, created_by=p.actor,
-        ))
+        )
+        attach_invoices(db, task, invoices)
+        task.boxes_planned, task.orders_count = task.boxes_planned or 0, task.orders_count or 0
+        task.title = (f"Deliver {len(invoices)} invoice(s) to {shop.name}" if invoices and not task.boxes_planned
+                      else f"Deliver {task.boxes_planned} box(es) to {shop.name}")
+        db.add(task)
+    due = [i for i in invoices if balance_due(i) > 0] if plan.collect_due else []
+    if due:
+        ensure_not_planned(db, p.business_id, "payment_collect", due)
+        collect = FieldTask(
+            business_id=p.business_id, task_type="payment_collect",
+            title=f"Collect payment due on {len(due)} invoice(s)",
+            staff_id=run.staff_id, shop_id=shop.id, run_id=run.id, run_stop_id=stop.id,
+            due_at=due_at, points=default_points, created_by=p.actor,
+        )
+        attach_invoices(db, collect, due)
+        db.add(collect)
     for t in plan.tasks:
         db.add(FieldTask(
             business_id=p.business_id, task_type=_check_task_type(t.task_type),
@@ -95,6 +119,7 @@ def _add_stop(db: Session, p: Principal, run: FieldRun, plan: StopPlanIn, seq: i
             due_at=due_at, points=t.points if t.points is not None else default_points,
             amount_expected=t.amount_expected, created_by=p.actor,
         ))
+    db.flush()  # the next stop's ensure_not_planned must see this stop's invoices
     return stop
 
 

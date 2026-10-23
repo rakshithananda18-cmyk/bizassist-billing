@@ -3,6 +3,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import inspect
 
+from app.billing_models import BillingBase
 from app.db import Base, engine
 from app.migration_scope import VERSION_TABLE, include_object
 from tests.conftest import EXTERNAL_BILLING_SCHEMA
@@ -21,7 +22,8 @@ def test_own_version_table_and_billing_tables_untouched(client):
     assert VERSION_TABLE in tables
     if not EXTERNAL_BILLING_SCHEMA:
         assert "alembic_version" not in tables  # billing's chain is not ours to create
-        assert all(t.startswith("ft_") or t in ("users", "customers") for t in tables)
+        mirrored = set(BillingBase.metadata.tables)  # billing tables a dev/test DB copies
+        assert all(t.startswith("ft_") or t in mirrored for t in tables)
 
 
 def test_include_object_ignores_billing_tables():

@@ -1,6 +1,7 @@
 """The contract with BizAssist Billing, checked against billing's REAL code.
 
-Field Team reads billing's `users` / `customers` rows and accepts billing's
+Field Team reads billing's `users` / `customers` / `invoices` /
+`invoice_line_items` rows and accepts billing's
 hand-off ticket. Elsewhere in this suite those sides are mirrored (a copy of
 the columns, a copy of the ticket format); here they are imported from
 billing itself, so a billing change that would break Field Team fails CI.
@@ -29,9 +30,10 @@ def _billing(module):
 
 def test_columns_field_team_reads_exist_in_billing_models():
     billing = _billing("database.models")
-    from app.billing_models import BillingCustomer, BillingUser
+    from app.billing_models import BillingCustomer, BillingInvoice, BillingInvoiceLine, BillingUser
 
-    for mirror, real in ((BillingUser, billing.User), (BillingCustomer, billing.Customer)):
+    for mirror, real in ((BillingUser, billing.User), (BillingCustomer, billing.Customer),
+                         (BillingInvoice, billing.Invoice), (BillingInvoiceLine, billing.InvoiceLineItem)):
         assert mirror.__tablename__ == real.__tablename__
         real_cols = {c.name: c for c in real.__table__.columns}
         missing = [c.name for c in mirror.__table__.columns if c.name not in real_cols]

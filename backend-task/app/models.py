@@ -15,6 +15,10 @@ Shape of a working day:
                                                  └──< FieldTask (delivery,
                                                       return pickup, payment
                                                       collection, order taking…)
+                                                        │
+                                                        └──< FieldTaskInvoice
+                                                             (billing invoices
+                                                             it delivers / collects)
 
 Points are append-only (`FieldPointsEntry`) — a correction is a new negative
 row, never an UPDATE — the same discipline billing applies to money and stock.
@@ -284,7 +288,7 @@ class FieldTask(Base, TimestampMixin):
     boxes_planned = Column(Integer, nullable=True)
     boxes_delivered = Column(Integer, nullable=True)
     orders_count = Column(Integer, nullable=True)  # orders sent for delivery to this shop
-    reference = Column(String, nullable=True)  # invoice / order numbers, free text
+    reference = Column(String, nullable=True)  # invoice / order numbers (filled from picked invoices)
     amount_expected = Column(Float, nullable=True)  # payment_collect
     amount_collected = Column(Float, nullable=True)
     # Completion evidence.
@@ -300,6 +304,31 @@ class FieldTask(Base, TimestampMixin):
 
     staff = relationship("FieldStaff", lazy="joined")
     shop = relationship("FieldShop", lazy="joined")
+    invoices = relationship("FieldTaskInvoice", order_by="FieldTaskInvoice.id", lazy="selectin",
+                            cascade="all, delete-orphan")
+
+
+class FieldTaskInvoice(Base, TimestampMixin):
+    """A billing invoice this task delivers or collects for.
+
+    `invoice_id` is billing's `invoices.id` — no foreign key, because that table
+    belongs to billing's migrations (same as `ft_shops.customer_id`). The number
+    and amounts are copied when the owner picks the invoice, so the task still
+    reads right if billing later changes or deletes the bill."""
+    __tablename__ = "ft_task_invoices"
+    __table_args__ = (
+        UniqueConstraint("task_id", "invoice_id", name="uq_ft_task_invoices_task_invoice"),
+        Index("ix_ft_task_invoices_business_invoice", "business_id", "invoice_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    business_id = Column(Integer, nullable=False)
+    task_id = Column(Integer, ForeignKey("ft_tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    invoice_id = Column(Integer, nullable=False)
+    invoice_number = Column(String, nullable=True)
+    invoice_date = Column(String, nullable=True)  # YYYY-MM-DD, as billing stores it
+    total = Column(Float, nullable=True)
+    balance_due = Column(Float, nullable=True)  # what was still unpaid when picked
 
 
 class FieldItemRequest(Base, TimestampMixin):

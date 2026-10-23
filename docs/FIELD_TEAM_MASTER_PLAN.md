@@ -121,7 +121,7 @@ Ledger is append-only (`ft_points_ledger`); completed tasks cannot be edited (40
 | SSO: **Field Team** link in billing's sidebar (owner-only, like Dashboard BIZASSIST) → `?sso=<30 s ticket>` → `/api/auth/exchange` | Done in both, same repo: `frontend-billing/src/config/fieldTeam.js` (shown once billing's Vercel project has `VITE_FIELD_TEAM_URL`); the ticket format is checked against billing's own code in CI (`test_billing_contract.py`) |
 | Pro plan gate on Field Team | **Decide** (D7) — billing's link has the switch (`EXTERNAL_APPS.fieldTeam.proOnly`); a real gate must also be checked here, at owner sign-in |
 | Billing autogenerate guard for `ft_*` | Done (billing `alembic/env.py`) |
-| Deliveries from billing invoices / B2B orders (pick invoices per shop → boxes, refs) | Next |
+| Deliveries from billing invoices (pick invoices per shop → boxes, refs; optional collection of the amount due) | Done — `GET /api/shops/{id}/billing-invoices` reads the linked customer's `invoices` / `invoice_line_items`; tasks keep them in `ft_task_invoices` (one live delivery and one live collection per bill). Boxes come from box/carton/case lines. Shops added by hand link to a customer from Shops → Edit. Read-only: billing's tables are never written. B2B orders follow with retailer ordering (below), since a B2B order needs the shop to have its own BizAssist account |
 | Shop request → billing B2B order / sale draft (catalogue picker) | Next |
 | Collections (`payment_collect`) → billing payment (owner confirms; AI never moves money) | Next |
 | Retailers ordering via BizID connections (billing D10) feeding the next day's run | Later |
@@ -178,7 +178,7 @@ Field Team runs on its own Cloud Run service and its own Vercel project: the two
 ## 10. Next phases and open decisions
 
 **Phase 1.1 (owner pilot, 1–2 weeks):** deploy Cloud Run + Vercel; billing "Field Team" link (SSO, built — §7); pilot with one distributor; tune accuracy/geofence from real data.
-**Phase 2:** Android wrapper (background GPS + mock-location flag); deliveries from billing invoices; shop request → B2B order draft; collections → payments; notifications (new run, overdue task).
+**Phase 2:** Android wrapper (background GPS + mock-location flag); ~~deliveries from billing invoices~~ (done); shop request → B2B order draft; collections → payments; notifications (new run, overdue task).
 **Phase 3:** incentive slabs and payout report; route optimisation; retailer self-ordering feeding runs; AI advisor over field data.
 
 Decisions for the owner:

@@ -11,13 +11,14 @@ RULES (do not relax):
     billing's, and this file is not a migration.
   * The ONLY write is creating an owner account (`/auth/signup`, same shape as
     billing's own signup). Field staff are NOT `users` rows — see
-    app/models.FieldStaff for why.
+    app/models.FieldStaff for why. Invoices are read, never written: money and
+    bills change only through billing's own code.
 """
 from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 
 from app.db import BillingBase, utc_now
 
@@ -57,3 +58,37 @@ class BillingCustomer(BillingBase):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=utc_now, nullable=True)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=True)
+
+
+class BillingInvoice(BillingBase):
+    """`invoices` — the owner's sales bills, read to plan deliveries and
+    collections per shop. Credit notes share the table (`invoice_type` =
+    "credit_note"); the amount due is `total_amount - paid_amount`, the same
+    formula billing's outstanding reports use."""
+    __tablename__ = "invoices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    business_id = Column(Integer, index=True, nullable=True)
+    invoice_id = Column(String, index=True, nullable=True)  # the printed number, e.g. INV-0042
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    invoice_date = Column(String, nullable=True)  # YYYY-MM-DD
+    status = Column(String, index=True, nullable=True)  # Pending | Partial | Paid
+    invoice_type = Column(String, nullable=True)  # B2B | B2C | … | credit_note
+    amount = Column(Float, nullable=True)  # legacy total (CSV imports set only this)
+    total_amount = Column(Float, nullable=True, default=0.0)
+    paid_amount = Column(Float, nullable=True, default=0.0)
+
+
+class BillingInvoiceLine(BillingBase):
+    """`invoice_line_items` — what was billed, to suggest the boxes to deliver."""
+    __tablename__ = "invoice_line_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
+    product_name = Column(String, nullable=False)
+    unit = Column(String, nullable=True, default="Nos")
+    quantity = Column(Float, nullable=False, default=1.0)
+    returned_qty = Column(Float, nullable=True, default=0.0)
+    # Not read; declared because billing's column is NOT NULL without a server
+    # default, so a row inserted through this mirror (tests) must set it.
+    unit_price = Column(Float, nullable=False, default=0.0)

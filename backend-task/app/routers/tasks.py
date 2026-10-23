@@ -7,11 +7,14 @@ Completion rules (server-enforced):
     is tied to being at the shop;
   * on-time vs late is decided by SERVER completion time vs `due_at`;
   * points go to the append-only ledger (app/services.award_task_points).
+
+A task can carry billing invoices (`invoice_ids`, app/invoices.py): their
+numbers, boxes and amount due fill whatever the owner left blank.
 """
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -19,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db, utc_now
 from app.geo import GeoFix, distance_to, validate_fix
+from app.invoices import MAX_PER_TASK, attach_invoices, ensure_not_planned, resolve_invoices
 from app.models import FieldRun, FieldRunStop, FieldShop, FieldTask
 from app.routers.attendance import require_checked_in
 from app.routers.runs import _check_task_type, maybe_complete_run, maybe_complete_stop
@@ -42,6 +46,8 @@ class TaskIn(BaseModel):
     orders_count: Optional[int] = Field(None, ge=0, le=1000)
     reference: Optional[str] = Field(None, max_length=200)
     amount_expected: Optional[float] = Field(None, ge=0)
+    invoice_ids: List[int] = Field(default_factory=list, max_length=MAX_PER_TASK,
+                                   description="Billing invoices of the shop's linked customer")
 
 
 def _due(due_date: Optional[str], due_time: Optional[str]) -> Optional[datetime]:
@@ -56,12 +62,14 @@ def _due(due_date: Optional[str], due_time: Optional[str]) -> Optional[datetime]
 @router.post("/tasks", status_code=201)
 def create_task(req: TaskIn, p: Principal = Depends(require_owner), db: Session = Depends(get_db)):
     staff = optional_staff(db, p.business_id, req.staff_id)
-    if req.shop_id is not None:
-        get_scoped(db, FieldShop, p.business_id, req.shop_id, "Shop")
+    shop = get_scoped(db, FieldShop, p.business_id, req.shop_id, "Shop") if req.shop_id is not None else None
+    task_type = _check_task_type(req.task_type)
+    invoices = resolve_invoices(db, p.business_id, shop, req.invoice_ids)
+    ensure_not_planned(db, p.business_id, task_type, invoices)
     settings = get_settings(db, p.business_id)
     task = FieldTask(
         business_id=p.business_id,
-        task_type=_check_task_type(req.task_type),
+        task_type=task_type,
         title=req.title.strip(),
         description=req.description,
         staff_id=staff.id,
@@ -74,6 +82,7 @@ def create_task(req: TaskIn, p: Principal = Depends(require_owner), db: Session 
         amount_expected=req.amount_expected,
         created_by=p.actor,
     )
+    attach_invoices(db, task, invoices)
     db.add(task)
     db.flush()
     log_activity(db, p, "task.create", entity="task", entity_id=task.id, summary=f"{task.title} → {staff.name}")

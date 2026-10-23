@@ -1,5 +1,5 @@
 // components/ui.jsx — small shared pieces (page header, stat, modal, toasts).
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CloseIcon } from './Icons'
 import { SkylineLoader } from './Logo'
@@ -48,13 +48,19 @@ export function ErrorNote({ error }) {
 }
 
 export function Modal({ title, onClose, children, footer, wide }) {
+  const overlay = useRef(null)
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.() }
+    // Escape closes only the top dialog (a picker opened over a form).
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return
+      const open = document.querySelectorAll('.modal-overlay')
+      if (open[open.length - 1] === overlay.current) onClose?.()
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
   return createPortal(
-    <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.() }}>
+    <div ref={overlay} className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.() }}>
       <div className="modal" style={wide ? { maxWidth: 820 } : undefined} role="dialog" aria-modal="true">
         <div className="modal-header">
           <div className="modal-title">{title}</div>
