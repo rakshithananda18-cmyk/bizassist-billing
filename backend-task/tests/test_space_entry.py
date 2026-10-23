@@ -11,4 +11,5 @@ def test_root_answers_when_the_screens_live_elsewhere(client):
     r = client.get("/")
     assert r.status_code == 200
     assert r.json() == {"service": "bizassist-task", "ok": True, "health": "/api/health"}
-    assert client.get("/api/health").json()["ok"] is True
+    health = client.get("/api/health").json()
+    assert health["ok"] is True and health["db"] in ("sqlite", "postgresql")

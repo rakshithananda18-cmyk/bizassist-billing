@@ -123,7 +123,10 @@ for r in (auth, staff, attendance, shops, runs, tasks, requests, tracking, dashb
 @app.get("/api/health")
 def health():
     from app.timeutil import biz_today, iso_utc
-    return {"ok": True, "server_time": iso_utc(utc_now()), "business_date": biz_today(), "tz": config.BIZ_TIMEZONE}
+    # `db` (like billing's /health db_type): a Space that lost its DATABASE_URL
+    # secret still boots — on a throw-away SQLite file — and this shows it.
+    return {"ok": True, "server_time": iso_utc(utc_now()), "business_date": biz_today(),
+            "tz": config.BIZ_TIMEZONE, "db": engine.dialect.name}
 
 
 # ── Built PWA (same origin → no CORS, and HTTPS on HF for geolocation) ───────

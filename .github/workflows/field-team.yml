@@ -71,7 +71,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.10'   # HF's default for Gradio Spaces (no python_version pin: ZeroGPU picks its own)
       # What the HF Space installs: our requirements + the gradio pinned by the
       # README front-matter's sdk_version, so a dependency clash shows up here.
       - name: Install what the Space installs

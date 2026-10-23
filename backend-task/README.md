@@ -5,7 +5,6 @@ colorFrom: red
 colorTo: yellow
 sdk: gradio
 sdk_version: 6.30.0
-python_version: "3.11"
 app_file: space_app.py
 pinned: false
 ---
