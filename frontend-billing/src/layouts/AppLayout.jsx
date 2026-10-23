@@ -21,6 +21,8 @@ import WebLocalOnlyNotice from '../components/hosting/WebLocalOnlyNotice'
 import SidebarContextMenu from '../components/layout/SidebarContextMenu'
 import ToastContainer from '../components/layout/ToastContainer'
 import SessionExpiredModal from '../components/layout/SessionExpiredModal'
+import TrialEndedModal from '../components/layout/TrialEndedModal'
+import { trialState } from '../utils/trialStatus'
 import { useDocLabels } from '../hooks/useDocLabels'
 import { HALT_COPY, resolveHaltReason } from '../utils/syncHalt'
 // HostingOnboardingModal removed: hosting is now chosen once, in Register.
@@ -181,6 +183,14 @@ export default function AppLayout({ children, title }) {
 
   const isFreePlan = !subscription?.plan || subscription?.plan !== 'pro'
 
+  // A lapsed signup trial on the WEB gets its own screen, shown at once (with a
+  // way to look around first) and again in place of the 5-minute lock. Their
+  // data is in the cloud, so the generic "upgrade or sign out" would strand it.
+  const trialEnded = !IS_LOCAL_APP && user?.role !== 'admin'
+    && trialState(subscription)?.active === false
+  const [trialNoticeDismissed, setTrialNoticeDismissed] = React.useState(() => {
+    try { return sessionStorage.getItem('bizassist_trial_ended_dismissed') === '1' } catch { return false }
+  })
 
   const [sessionExpired, setSessionExpired] = React.useState(false)
   const [checkingPlan, setCheckingPlan] = React.useState(false)
@@ -2561,7 +2571,26 @@ export default function AppLayout({ children, title }) {
         toasts={toasts}
         onDismiss={(id) => setToasts(prev => prev.filter(t => t.id !== id))}
       />
-      {sessionExpired && (
+      {trialEnded && (sessionExpired || !trialNoticeDismissed) ? (
+        <TrialEndedModal
+          isOwner={!isCashier && !isSupplyAdder}
+          token={token}
+          bizId={profile?.public_id || user?.public_id || ''}
+          onCheckPlan={handleCheckPlan}
+          checkingPlan={checkingPlan}
+          // Once the preview is used up there is nothing behind it to look at.
+          onDismiss={sessionExpired ? null : () => {
+            try { sessionStorage.setItem('bizassist_trial_ended_dismissed', '1') } catch { /* ignore */ }
+            setTrialNoticeDismissed(true)
+          }}
+          onSignOut={() => {
+            sessionStorage.removeItem('bizassist_session_start_time')
+            sessionStorage.removeItem('bizassist_trial_ended_dismissed')
+            logout()
+            navigate('/login')
+          }}
+        />
+      ) : sessionExpired && !trialEnded && (
         <SessionExpiredModal
           onSignOut={() => {
             sessionStorage.removeItem('bizassist_session_start_time')

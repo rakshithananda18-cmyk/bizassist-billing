@@ -12,6 +12,7 @@
 import React, { useState, useRef } from 'react'
 import { API_BASE } from '../../config'
 import { logger } from '../../utils/logger'
+import { downloadBackupFile } from '../../utils/backupFile'
 import { ShieldIcon } from '../Icons'
 import { useConfirm } from '../../contexts/ConfirmContext'
 
@@ -26,18 +27,7 @@ export default function FileBackupCard({ token, bizId = '' }) {
   async function downloadBackup() {
     setBusy('backup'); setMsg(null)
     try {
-      const res = await fetch(`${API_BASE}/api/data-transfer/export`, { headers })
-      if (!res.ok) throw new Error(`Export failed: HTTP ${res.status}`)
-      const data = await res.json()
-      const stamp = new Date().toISOString().slice(0, 10)
-      const name = `bizassist-backup-${(bizId || 'business').toLowerCase()}-${stamp}.json`
-      const blob = new Blob([JSON.stringify(data)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = name
-      document.body.appendChild(a); a.click(); a.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 5000)
-      try { localStorage.setItem('bizassist_last_file_backup', new Date().toISOString()) } catch { /* ignore */ }
+      const name = await downloadBackupFile({ token, bizId })
       setMsg({ ok: true, text: `Backup saved as ${name}. Keep a copy somewhere safe (pen drive / Google Drive).` })
     } catch (err) {
       logger.error('[BACKUP] file backup failed:', err)

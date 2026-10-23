@@ -4,6 +4,9 @@ import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
 import { backupOverdue } from '../utils/backupReminder'
 import { HALT_COPY } from '../utils/syncHalt'
+import { trialState, trialReminders } from '../utils/trialStatus'
+import { IS_LOCAL_APP } from '../config'
+import { DESKTOP_DOWNLOAD_URL } from '../config/downloadApp'
 import { BellIcon, CheckIcon, CloseIcon } from './Icons'
 
 /**
@@ -36,7 +39,7 @@ const SEVERITY = {
 const POLL_MS = 5 * 60 * 1000
 
 export default function NotificationBell() {
-  const { authFetch, settings } = useAuth()
+  const { authFetch, settings, user } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = React.useState(false)
   const [data, setData] = React.useState({ items: [], count: 0, severity: null })
@@ -134,15 +137,28 @@ export default function NotificationBell() {
     }
   }, [haltReason])
 
+  // ── The signup Pro trial ─────────────────────────────────────────────────
+  // Read straight off settings.subscription, so it needs no request of its own.
+  // Not shown to cashiers: activating the plan and installing the desktop app
+  // are the owner's to do.
+  const trial = React.useMemo(() => {
+    if ((user?.role || '').toLowerCase() === 'cashier') return []
+    return trialReminders(trialState(settings?.subscription), {
+      isLocalApp: IS_LOCAL_APP,
+      downloadUrl: DESKTOP_DOWNLOAD_URL,
+    })
+  }, [settings, user])
+
   const items = React.useMemo(() => {
     const merged = [
       ...(data.items || []),
       ...(halt ? [halt] : []),
       ...(backup ? [backup] : []),
+      ...trial,
     ]
     const order = { danger: 0, warning: 1, info: 2 }
     return merged.sort((a, b) => (order[a.severity] ?? 3) - (order[b.severity] ?? 3))
-  }, [data, halt, backup])
+  }, [data, halt, backup, trial])
 
   const count = items.length
   const tone = SEVERITY[items[0]?.severity] || SEVERITY.info
@@ -206,11 +222,16 @@ export default function NotificationBell() {
                   <button
                     key={item.kind}
                     type="button"
-                    onClick={() => { setOpen(false); if (item.route) navigate(item.route) }}
+                    onClick={() => {
+                      setOpen(false)
+                      // `href` leaves the app (the desktop download page); `route` stays in it.
+                      if (item.href) window.open(item.href, '_blank', 'noopener')
+                      else if (item.route) navigate(item.route)
+                    }}
                     style={{
                       textAlign: 'left', width: '100%', padding: '9px 10px',
                       borderRadius: 8, background: t.tint, border: `1px solid ${t.edge}`,
-                      cursor: item.route ? 'pointer' : 'default', color: 'inherit',
+                      cursor: item.route || item.href ? 'pointer' : 'default', color: 'inherit',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>

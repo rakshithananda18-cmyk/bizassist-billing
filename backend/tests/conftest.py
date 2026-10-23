@@ -108,6 +108,9 @@ os.environ["LLM_ROUTER"] = "off"
 os.environ["ADMIN_API_ENABLED"] = "1"
 # Keep the paywall dormant for the suite (free users can call /ask etc.);
 # subscription tests flip it on explicitly.
+# No signup trial either. The Postgres CI runs make every backend "cloud", which
+# would quietly put each test account on Pro; test_pro_trial.py opts back in.
+os.environ["PRO_TRIAL_DAYS"] = "0"
 # Dynamic mocking of ChromaDB and SentenceTransformer to prevent thread-safety
 # access violations/crashes on Windows while preserving real behavior for RAG/router tests.
 from unittest.mock import MagicMock
