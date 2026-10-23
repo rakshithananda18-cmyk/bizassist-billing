@@ -1,10 +1,11 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# BizAssist Task (Field Team) API — Hugging Face Spaces, Docker SDK, port 7860.
+# BizAssist Task (Field Team) API — container image, port 7860.
 #
-# Built from backend-task/ as the Space's root (deploy_space.ps1 pushes this
-# folder, split out of bizassist-billing). API only, like the billing Space:
-# the screens are frontend-task/ on their own Vercel project, which staff
-# install — so this image has no Node build stage.
+# The HF Space does NOT use this file: new Docker Spaces need a paid plan, so
+# the Space runs on the Gradio SDK via space_app.py (README front-matter). This
+# image is for local container runs and other hosts (Render, a paid Docker
+# Space). API only, like the billing Space: the screens are frontend-task/ on
+# their own Vercel project, which staff install — so no Node build stage.
 #
 # Same base image and non-root user as the billing Space (../Dockerfile).
 # Deliberately LIGHT: no OCR, no PDF, no ML model — so a cold start after the

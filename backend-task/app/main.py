@@ -141,3 +141,9 @@ if os.path.isfile(_index):
         if path and candidate.startswith(os.path.realpath(config.STATIC_DIR)) and os.path.isfile(candidate):
             return FileResponse(candidate)
         return FileResponse(_index, headers={"Cache-Control": "no-cache"})
+else:
+    # API-only (the HF Space): the screens are frontend-task/ on Vercel. Answer
+    # "/" so the Space's start-up probe and its page get a 200, not a 404.
+    @app.get("/", include_in_schema=False)
+    def root():
+        return {"service": "bizassist-task", "ok": True, "health": "/api/health"}

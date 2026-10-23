@@ -3,9 +3,11 @@ title: BizAssist Field Team
 emoji: 🚚
 colorFrom: red
 colorTo: yellow
-sdk: docker
+sdk: gradio
+sdk_version: 6.30.0
+python_version: "3.11"
+app_file: space_app.py
 pinned: false
-app_port: 7860
 ---
 
 # BizAssist Field Team — API (`backend-task/`)
@@ -16,7 +18,7 @@ Part of the **bizassist-billing** repo, named like billing's own folders:
 
 ```
 backend/          billing API                       → HF Space BizAssist (git push space main)
-backend-task/     Field Team API  (this folder)     → HF Space bizassist-task (deploy_space.ps1)
+backend-task/     Field Team API  (this folder)     → HF Space bizassist-task, Gradio SDK (deploy_space.ps1)
 frontend-billing/ frontend-ai/ frontend-admin/      → Vercel
 frontend-task/    Field Team PWA                    → Vercel (Root Directory frontend-task)
 docs/FIELD_TEAM_MASTER_PLAN.md                      → why, security, go-live order
@@ -59,7 +61,7 @@ Time · level · component · `[BizId=…]` of the caller (set per request in `a
 
 ## Deploy — API to its Space, screens to Vercel (like billing)
 
-1. **Space:** create one → **Docker** → blank, **Public**. Settings → **Secrets** *before the first push*: `DATABASE_URL` = the billing Space's Supabase URL, `JWT_SECRET` = the billing Space's value. Then from the repo root `.\backend-task\deploy_space.ps1 -FirstPush` (later: without `-FirstPush`; `-DryRun` to preview). The Space gets this folder as its root (`git subtree split`); the front-matter above configures it. Billing's own `git push space main` is unaffected.
+1. **Space:** create one → **Gradio** → Blank, CPU basic, **Public** (new Docker Spaces need a paid plan; this API is pure Python, so the Gradio SDK runs it: HF installs `requirements.txt` and runs `space_app.py`, which starts the FastAPI app on port 7860 — Gradio itself is not used). Settings → **Secrets** *before the first push*: `DATABASE_URL` = the billing Space's Supabase URL, `JWT_SECRET` = the billing Space's value. Then from the repo root `.\backend-task\deploy_space.ps1 -FirstPush` (later: without `-FirstPush`; `-DryRun` to preview). The Space gets this folder as its root (`git subtree split`); the front-matter above configures it. Billing's own `git push space main` is unaffected. The `Dockerfile` stays for local runs and other hosts (Render, a paid Docker Space).
 2. **Vercel:** import **bizassist-billing** again → Root Directory `frontend-task` → Vite → env `VITE_API_URL=https://<owner>-<space>.hf.space` → Deploy.
 3. **Space → Variables:** `ALLOWED_ORIGINS=https://<vercel-url>`.
 4. **Billing:** `VITE_FIELD_TEAM_URL=https://<vercel-url>` on billing's `frontend-billing` Vercel project → redeploy → owners get the **Field Team** link.

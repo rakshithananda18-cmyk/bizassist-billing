@@ -2,8 +2,9 @@
   deploy_space.ps1 - push backend-task/ (the Field Team API) to its own
   Hugging Face Space.
 
-  A Space builds from the ROOT of its git repo (README front-matter +
-  Dockerfile), so the Space must receive this folder as its root.
+  A Space builds from the ROOT of its git repo (README front-matter, and for
+  this Gradio-SDK Space requirements.txt + space_app.py), so the Space must
+  receive this folder as its root.
   `git subtree split` turns backend-task/'s committed history into a
   standalone commit chain, and that is what gets pushed. Billing's own Space
   push (`git push space main`) is unchanged and unaffected. The screens
