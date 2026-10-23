@@ -17,8 +17,9 @@ from tests.conftest import PASSWORD, auth
 from tests.test_auth import _billing_ticket, _owner_claims
 
 
-def _set_plan(business_id, plan=None, expires_at=None):
-    """What billing's admin console does: grant (plan="pro") or revoke (None)."""
+def _set_plan(business_id, plan=None, expires_at=None, status="active"):
+    """What billing writes: an admin grant (plan="pro"), a revoke (None), or —
+    on cloud sign-up — a free trial (status="trial")."""
     db = SessionLocal()
     try:
         user = db.query(BillingUser).filter(BillingUser.id == business_id).first()
@@ -26,7 +27,7 @@ def _set_plan(business_id, plan=None, expires_at=None):
         if plan is None:
             s.pop("subscription", None)
         else:
-            s["subscription"] = {"plan": plan, "status": "active", "expires_at": expires_at}
+            s["subscription"] = {"plan": plan, "status": status, "expires_at": expires_at}
         user.settings = json.dumps(s)
         db.commit()
     finally:
@@ -57,10 +58,21 @@ NOW = datetime(2026, 10, 23, 15, 0)  # naive UTC
     ({"plan": "pro", "expires_at": "2026-10-15"}, "free", False, datetime(2026, 10, 23)),  # grace over at midnight
     ({"plan": "free"}, "free", False, None),
     (None, "free", False, None),                                            # revoked: no grace
+    # Billing's free trial (status "trial"): Pro until its last day, then no grace.
+    ({"plan": "pro", "status": "trial", "expires_at": "2026-10-23"}, "pro", True, None),
+    ({"plan": "pro", "status": "trial", "expires_at": "2026-10-22"}, "free", False, None),
+    ({"plan": "pro", "status": "TRIAL", "expires_at": "2026-10-20"}, "free", False, None),
 ])
 def test_plan_rule(sub, plan, allowed, grace):
     st = plan_state(_owner(sub), now=NOW)
     assert (st.plan, st.allowed, st.grace_until) == (plan, allowed, grace)
+
+
+def test_a_trial_is_flagged_and_warned_like_a_plan(gate):
+    ending = plan_out(plan_state(_owner({"plan": "pro", "status": "trial", "expires_at": "2026-10-27"}), now=NOW), now=NOW)
+    assert ending["trial"] and ending["warn"] and not ending["in_grace"]
+    paid = plan_out(plan_state(_owner({"plan": "pro", "status": "active", "expires_at": "2026-10-27"}), now=NOW), now=NOW)
+    assert paid["trial"] is False
 
 
 def test_unreadable_settings_count_as_free():
@@ -131,3 +143,21 @@ def test_expired_plan_keeps_working_through_the_grace_period(client, biz, monkey
     _set_plan(biz.business_id, "pro", _days_ago(-30))  # renewed: everything is back
     assert client.get("/api/shops", headers=biz.h).status_code == 200
     assert client.get("/api/my/tasks", headers=h).status_code == 200
+
+
+def test_an_ended_trial_stops_at_once(client, biz, monkeypatch):
+    _, h = biz.staff_session()
+    monkeypatch.setattr(config, "REQUIRE_PRO", True)
+    _set_plan(biz.business_id, "pro", _days_ago(-3), status="trial")  # trial still running
+    me = client.get("/api/auth/me", headers=biz.h).json()["plan"]
+    assert me["trial"] and me["plan"] == "pro" and me["warn"]
+    assert client.get("/api/my/tasks", headers=h).status_code == 200
+
+    _set_plan(biz.business_id, "pro", _days_ago(1), status="trial")  # ended yesterday: no grace
+    r = client.get("/api/shops", headers=biz.h)
+    assert r.status_code == 402 and "trial has ended" in r.json()["detail"]
+    r = client.get("/api/my/tasks", headers=h)
+    assert r.status_code == 402 and "Ask your owner" in r.json()["detail"]
+
+    _set_plan(biz.business_id, "pro", _days_ago(1))  # the same date on a PAID plan is in grace
+    assert client.get("/api/shops", headers=biz.h).status_code == 200

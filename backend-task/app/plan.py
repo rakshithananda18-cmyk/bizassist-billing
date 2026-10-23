@@ -13,9 +13,11 @@ tests/test_billing_contract.py):
     sets it; config.REQUIRE_PRO here).
 
 Field Team adds one thing: a grace period (config.PRO_GRACE_DAYS, default 7)
-after a plan EXPIRES, so a delivery day is not cut off mid-route while the
-renewal is processed; the owner is warned throughout. A plan the admin
-REVOKES (no subscription left) has no grace.
+after a PAID plan expires, so a delivery day is not cut off mid-route while the
+renewal is processed; the owner is warned throughout. No grace when the admin
+REVOKES a plan (no subscription left), nor when a TRIAL ends (billing writes a
+trial as plan "pro" with status "trial"): a trial is a taste of Pro, and it
+stops on its last day like billing's own Pro features do.
 """
 from __future__ import annotations
 
@@ -68,8 +70,9 @@ def _subscription(owner: Optional[BillingUser]) -> dict:
 class PlanState:
     plan: str  # billing's effective plan: "pro" | "free"
     ends_at: Optional[datetime]  # when billing stops counting it as Pro
-    grace_until: Optional[datetime]  # when Field Team stops (ends_at + grace)
+    grace_until: Optional[datetime]  # when Field Team stops (ends_at + grace); None = no grace
     allowed: bool
+    trial: bool = False  # billing's free trial of Pro (status "trial")
 
     @property
     def in_grace(self) -> bool:
@@ -81,9 +84,12 @@ def plan_state(owner: Optional[BillingUser], now: Optional[datetime] = None) -> 
     sub = _subscription(owner)
     if (sub.get("plan") or "free").lower() != "pro":
         return PlanState("free", None, None, allowed=False)
+    trial = (sub.get("status") or "").lower() == "trial"
     ends = expiry_moment(sub.get("expires_at"))
     if ends is None or ends > now:
-        return PlanState("pro", ends, None, allowed=True)
+        return PlanState("pro", ends, None, allowed=True, trial=trial)
+    if trial:
+        return PlanState("free", ends, None, allowed=False, trial=True)
     grace = ends + timedelta(days=config.PRO_GRACE_DAYS)
     return PlanState("free", ends, grace, allowed=now < grace)
 
@@ -99,6 +105,7 @@ def plan_out(state: PlanState, now: Optional[datetime] = None) -> dict:
         "ends_at": iso_utc(state.ends_at),
         "grace_until": iso_utc(state.grace_until),
         "in_grace": state.in_grace,
+        "trial": state.trial,
         "warn": bool(config.REQUIRE_PRO and stop is not None and state.allowed
                      and (state.in_grace or stop - now <= timedelta(days=WARN_DAYS))),
     }
@@ -107,9 +114,13 @@ def plan_out(state: PlanState, now: Optional[datetime] = None) -> dict:
 def ensure_pro(owner: Optional[BillingUser], kind: str) -> None:
     """402, like billing's `require_plan`, when the gate is on and the
     business is past its plan (and grace)."""
-    if not config.REQUIRE_PRO or plan_state(owner).allowed:
+    state = plan_state(owner)
+    if not config.REQUIRE_PRO or state.allowed:
         return
-    logger.info("[AUTH] refused %s: biz=%s is not on Pro", kind, owner.id if owner is not None else "?")
+    logger.info("[AUTH] refused %s: biz=%s is not on Pro%s", kind,
+                owner.id if owner is not None else "?", " (trial ended)" if state.trial else "")
     if kind == "staff":
         raise HTTPException(status_code=402, detail="Field Team is not active for this business. Ask your owner to renew BizAssist Pro.")
+    if state.trial:
+        raise HTTPException(status_code=402, detail="Your BizAssist Pro trial has ended. Upgrade in BizAssist Billing to keep using Field Team, then sign in again.")
     raise HTTPException(status_code=402, detail="Field Team is part of BizAssist Pro. Upgrade or renew the plan in BizAssist Billing, then sign in again.")
