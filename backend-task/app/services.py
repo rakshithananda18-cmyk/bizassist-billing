@@ -175,7 +175,9 @@ def route_out(r: FieldRoute) -> dict:
     }
 
 
-def task_out(t: FieldTask) -> dict:
+def task_out(t: FieldTask, *, confirmed: Optional[dict] = None) -> dict:
+    """`confirmed` (task uid → amount, app/collections.confirmed_in_billing) adds
+    how much of a collection the owner has confirmed in billing."""
     return {
         "id": t.id,
         "task_type": t.task_type,
@@ -196,6 +198,10 @@ def task_out(t: FieldTask) -> dict:
         "reference": t.reference,
         "amount_expected": t.amount_expected,
         "amount_collected": t.amount_collected,
+        "payment_mode": t.payment_mode,
+        "payment_ref": t.payment_ref,
+        "billing_confirmed": (confirmed.get(t.uid, 0.0) if confirmed is not None
+                              and t.task_type == "payment_collect" and (t.amount_collected or 0) > 0 else None),
         "invoices": [{"id": ln.invoice_id, "number": ln.invoice_number, "date": ln.invoice_date,
                       "total": ln.total, "balance_due": ln.balance_due} for ln in t.invoices],
         "completed_at": iso_utc(t.completed_at),

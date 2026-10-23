@@ -123,7 +123,7 @@ Ledger is append-only (`ft_points_ledger`); completed tasks cannot be edited (40
 | Billing autogenerate guard for `ft_*` | Done (billing `alembic/env.py`) |
 | Deliveries from billing invoices (pick invoices per shop → boxes, refs; optional collection of the amount due) | Done — `GET /api/shops/{id}/billing-invoices` reads the linked customer's `invoices` / `invoice_line_items`; tasks keep them in `ft_task_invoices` (one live delivery and one live collection per bill). Boxes come from box/carton/case lines. Shops added by hand link to a customer from Shops → Edit. Read-only: billing's tables are never written. B2B orders follow with retailer ordering (below), since a B2B order needs the shop to have its own BizAssist account |
 | Shop request → billing B2B order / sale draft (catalogue picker) | Next |
-| Collections (`payment_collect`) → billing payment (owner confirms; AI never moves money) | Next |
+| Collections (`payment_collect`) → billing payment (owner confirms; AI never moves money) | Done — staff record the amount, mode (Cash / UPI / Cheque / NEFT / Card) and reference; billing's **Contacts & Payments → Field collections** (owner only, cloud only) lists them with an oldest-bill-first split the owner can change, and Confirm records one payment per bill through billing's own `record_payment` (journal, paid status, desktop sync), keyed `ft-collect:<task uid>:<invoice id>` so it is never recorded twice. A collection can be confirmed in parts; more than the bills owe stays listed. Field Team only reads those payments back ("Recorded in billing"). Billing: `core/field_team.py`, `core/api/field_collections.py`; Field Team: `app/collections.py`, migration 0003. Both sides' table and key contracts are checked in CI |
 | Retailers ordering via BizID connections (billing D10) feeding the next day's run | Later |
 | AI advisor reads `ft_*` ("which agent misses Tuesday shops") | Later |
 
@@ -178,7 +178,7 @@ Field Team runs on its own Cloud Run service and its own Vercel project: the two
 ## 10. Next phases and open decisions
 
 **Phase 1.1 (owner pilot, 1–2 weeks):** deploy Cloud Run + Vercel; billing "Field Team" link (SSO, built — §7); pilot with one distributor; tune accuracy/geofence from real data.
-**Phase 2:** Android wrapper (background GPS + mock-location flag); ~~deliveries from billing invoices~~ (done); shop request → B2B order draft; collections → payments; notifications (new run, overdue task).
+**Phase 2:** Android wrapper (background GPS + mock-location flag); ~~deliveries from billing invoices~~ (done); shop request → B2B order draft; ~~collections → payments~~ (done); notifications (new run, overdue task).
 **Phase 3:** incentive slabs and payout report; route optimisation; retailer self-ordering feeding runs; AI advisor over field data.
 
 Decisions for the owner:

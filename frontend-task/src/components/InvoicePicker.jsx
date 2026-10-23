@@ -68,7 +68,7 @@ export default function InvoicePicker({ shop, taskType = 'delivery', initial = [
               })}
             </div>
           )}
-          <div className="form-hint">Boxes come from box, carton and case lines; type them yourself if the bill counts strips or pieces. Older bills stay listed while money is still due on them.</div>
+          <div className="form-hint">Boxes come from box, carton and case lines; type them yourself if the bill counts strips or pieces. Older bills stay listed while money is still due on them. Bills made in the BizAssist desktop app appear here after it syncs.</div>
         </>
       )}
     </Modal>

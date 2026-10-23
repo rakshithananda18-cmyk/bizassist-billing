@@ -32,10 +32,13 @@ def _billing(module):
 
 def test_columns_field_team_reads_exist_in_billing_models():
     billing = _billing("database.models")
-    from app.billing_models import BillingCustomer, BillingInvoice, BillingInvoiceLine, BillingUser
+    from app.billing_models import (
+        BillingCustomer, BillingInvoice, BillingInvoiceLine, BillingInvoicePayment, BillingUser,
+    )
 
     for mirror, real in ((BillingUser, billing.User), (BillingCustomer, billing.Customer),
-                         (BillingInvoice, billing.Invoice), (BillingInvoiceLine, billing.InvoiceLineItem)):
+                         (BillingInvoice, billing.Invoice), (BillingInvoiceLine, billing.InvoiceLineItem),
+                         (BillingInvoicePayment, billing.InvoicePayment)):
         assert mirror.__tablename__ == real.__tablename__
         real_cols = {c.name: c for c in real.__table__.columns}
         missing = [c.name for c in mirror.__table__.columns if c.name not in real_cols]
@@ -77,3 +80,20 @@ def test_pro_plan_rule_matches_billings():
                 {"plan": "pro", "expires_at": (today - timedelta(days=2)).isoformat()}):
         settings = json.dumps({"subscription": sub} if sub else {})
         assert plan_state(BillingUser(settings=settings)).plan == admin.effective_plan(models.User(settings=settings)), sub
+
+
+def test_billings_view_of_field_team_tables_matches_ours():
+    """Billing reads ft_* (core/field_team.py) to confirm collections into
+    payments. Every column it declares must exist here with the same type,
+    and both sides must build the payment key the same way."""
+    billing_ft = _billing("core.field_team")
+    from app import models
+    from app.collections import KEY_PREFIX
+
+    ours = {m.__tablename__: m for m in (models.FieldTask, models.FieldShop, models.FieldStaff, models.FieldTaskInvoice)}
+    for theirs in (billing_ft.FtTask, billing_ft.FtShop, billing_ft.FtStaff, billing_ft.FtTaskInvoice):
+        real_cols = {c.name: c for c in ours[theirs.__tablename__].__table__.columns}
+        for col in theirs.__table__.columns:
+            assert col.name in real_cols, f"billing reads {theirs.__tablename__}.{col.name}, which Field Team does not have"
+            assert real_cols[col.name].type.python_type is col.type.python_type, f"{theirs.__tablename__}.{col.name}"
+    assert billing_ft.KEY_PREFIX == KEY_PREFIX

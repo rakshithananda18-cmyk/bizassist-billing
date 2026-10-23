@@ -82,6 +82,20 @@ class BillingInvoice(BillingBase):
     paid_amount = Column(Float, nullable=True, default=0.0)
 
 
+class BillingInvoicePayment(BillingBase):
+    """`invoice_payments` — billing's append-only receipts. Read to show which
+    field collections the owner has confirmed in billing (app/collections.py)."""
+    __tablename__ = "invoice_payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    business_id = Column(Integer, index=True, nullable=False)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
+    amount_paid = Column(Float, nullable=False)
+    payment_mode = Column(String, nullable=True)
+    payment_date = Column(String, nullable=True)
+    idempotency_key = Column(String, nullable=True, index=True)
+
+
 class BillingInvoiceLine(BillingBase):
     """`invoice_line_items` — what was billed, to suggest the boxes to deliver."""
     __tablename__ = "invoice_line_items"

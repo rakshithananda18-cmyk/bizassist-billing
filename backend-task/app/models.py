@@ -291,6 +291,11 @@ class FieldTask(Base, TimestampMixin):
     reference = Column(String, nullable=True)  # invoice / order numbers (filled from picked invoices)
     amount_expected = Column(Float, nullable=True)  # payment_collect
     amount_collected = Column(Float, nullable=True)
+    # How it was paid, in billing's words (Cash | UPI | Cheque | NEFT | Card), and
+    # the cheque / UPI reference. Billing records the payment with them when the
+    # owner confirms the collection there (app/collections.py).
+    payment_mode = Column(String, nullable=True)
+    payment_ref = Column(String, nullable=True)
     # Completion evidence.
     completed_at = Column(DateTime, nullable=True)
     completed_lat = Column(Float, nullable=True)

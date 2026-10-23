@@ -16,6 +16,7 @@ from core.api.business import router as business_router
 from core.api.products import router as products_router
 from core.api.parties import router as parties_router
 from core.api.payments import router as payments_router
+from core.api.field_collections import router as field_collections_router
 from core.api.reports import router as reports_router
 from core.api.import_route import router as import_router
 from core.api.purchases import router as purchases_router
@@ -37,6 +38,7 @@ core_router.include_router(business_router)
 core_router.include_router(products_router)
 core_router.include_router(parties_router)
 core_router.include_router(payments_router)
+core_router.include_router(field_collections_router)
 core_router.include_router(reports_router)
 core_router.include_router(import_router)
 core_router.include_router(purchases_router)

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useDay } from '../../layouts/StaffLayout'
 import { mapsDirectionsUrl } from '../../lib/geo'
 import { fmtDateTime, fmtDay, fmtTime, rupees, TASK_TYPES, telHref } from '../../lib/format'
+import { PAYMENT_MODE_LABELS, PAYMENT_MODES } from '../../lib/collections'
 import { CheckIcon, NavigationIcon, PhoneIcon } from '../../components/Icons'
 import { ErrorNote, Loader, Modal, StatusBadge } from '../../components/ui'
 
@@ -67,13 +68,16 @@ function DutyCard() {
 
 function CompleteModal({ task, onClose }) {
   const { act } = useDay()
-  const [f, setF] = useState({ boxes: task.boxes_planned ?? '', amount: task.amount_expected ?? '', note: '' })
+  const [f, setF] = useState({ boxes: task.boxes_planned ?? '', amount: task.amount_expected ?? '', note: '', mode: 'Cash', ref: '' })
   const [busy, setBusy] = useState(false)
   const submit = async () => {
     setBusy(true)
     const body = { note: f.note || null }
     if (task.task_type === 'delivery') body.boxes_delivered = Number(f.boxes)
-    if (task.task_type === 'payment_collect') body.amount_collected = Number(f.amount)
+    if (task.task_type === 'payment_collect') {
+      body.amount_collected = Number(f.amount)
+      if (body.amount_collected > 0) { body.payment_mode = f.mode; body.payment_ref = f.ref.trim() || null }
+    }
     try {
       await act(`/api/tasks/${task.id}/complete`, body, r => (r.on_time ? `Done on time · +${r.points_awarded} pts` : `Done (late) · +${r.points_awarded} pts`))
       onClose()
@@ -91,6 +95,18 @@ function CompleteModal({ task, onClose }) {
       {task.task_type === 'payment_collect' && (
         <div className="form-group"><label className="form-label">Amount collected ₹ {task.amount_expected != null && `(due ${rupees(task.amount_expected)})`}</label>
           <input className="form-input" type="number" min="0" inputMode="decimal" value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })} /></div>
+      )}
+      {task.task_type === 'payment_collect' && Number(f.amount) > 0 && (
+        <div className="form-grid">
+          <div className="form-group"><label className="form-label">Paid by</label>
+            <select className="form-select" value={f.mode} onChange={e => setF({ ...f, mode: e.target.value })}>
+              {PAYMENT_MODES.map(m => <option key={m} value={m}>{PAYMENT_MODE_LABELS[m]}</option>)}
+            </select></div>
+          {f.mode !== 'Cash' && (
+            <div className="form-group"><label className="form-label">{f.mode === 'Cheque' ? 'Cheque number' : 'Reference (UTR / UPI id)'}</label>
+              <input className="form-input" maxLength={60} value={f.ref} onChange={e => setF({ ...f, ref: e.target.value })} /></div>
+          )}
+        </div>
       )}
       {task.reference && <div className="small muted">Ref: {task.reference}</div>}
       {task.description && <div className="small">{task.description}</div>}

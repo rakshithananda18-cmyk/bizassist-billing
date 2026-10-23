@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { api } from '../../lib/api'
 import { fmtDateTime, rupees, TASK_TYPES, todayIST } from '../../lib/format'
 import { INVOICE_TASK_TYPES, summarizeInvoices } from '../../lib/invoices'
+import { billingStatus } from '../../lib/collections'
 import InvoicePicker from '../../components/InvoicePicker'
 import { Empty, ErrorNote, Loader, Modal, PageHeader, StatusBadge, useLoad, useToast } from '../../components/ui'
 
@@ -109,6 +110,8 @@ export default function Tasks() {
                     {t.boxes_planned != null && ` · ${t.boxes_delivered ?? 0}/${t.boxes_planned} boxes`}
                     {t.amount_expected != null && ` · ${rupees(t.amount_collected ?? 0)} of ${rupees(t.amount_expected)}`}</div>
                     {t.invoices?.length > 0 && <div className="xs muted">Bills: {t.invoices.map(x => x.number).join(', ')}</div>}
+                    {t.payment_mode && <div className="xs muted">{t.payment_mode}{t.payment_ref ? ` · ${t.payment_ref}` : ''}</div>}
+                    {billingStatus(t) && <div><span className={`badge badge-${billingStatus(t).tone}`}>{billingStatus(t).text}</span></div>}
                     {t.completion_note && <div className="xs">“{t.completion_note}”</div>}</td>
                   <td>{t.staff_name || '—'}</td>
                   <td>{t.shop_name || '—'}</td>

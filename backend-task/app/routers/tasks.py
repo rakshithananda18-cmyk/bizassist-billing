@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import get_db, utc_now
+from app.collections import PAYMENT_MODES, confirmed_in_billing
 from app.geo import GeoFix, distance_to, validate_fix
 from app.invoices import MAX_PER_TASK, attach_invoices, ensure_not_planned, resolve_invoices
 from app.models import FieldRun, FieldRunStop, FieldShop, FieldTask
@@ -113,7 +114,8 @@ def list_tasks(
             raise HTTPException(status_code=422, detail="day must be YYYY-MM-DD")
         q = q.filter(FieldTask.due_at >= start, FieldTask.due_at < end)
     rows = q.order_by(FieldTask.due_at.is_(None), FieldTask.due_at.asc(), FieldTask.id.desc()).limit(500).all()
-    return [task_out(t) for t in rows]
+    confirmed = confirmed_in_billing(db, p.business_id, (t.uid for t in rows if t.task_type == "payment_collect"))
+    return [task_out(t, confirmed=confirmed) for t in rows]
 
 
 class TaskPatch(BaseModel):
@@ -173,6 +175,8 @@ class CompleteBody(BaseModel):
     note: Optional[str] = Field(None, max_length=1000)
     boxes_delivered: Optional[int] = Field(None, ge=0, le=10000)
     amount_collected: Optional[float] = Field(None, ge=0)
+    payment_mode: Optional[Literal[PAYMENT_MODES]] = None  # default Cash when money was collected
+    payment_ref: Optional[str] = Field(None, max_length=60)
 
 
 @router.post("/tasks/{task_id}/complete")
@@ -204,6 +208,9 @@ def complete_task(task_id: int, body: CompleteBody, p: Principal = Depends(requi
         if body.amount_collected is None:
             raise HTTPException(status_code=422, detail="Enter the amount collected (0 if nothing)")
         task.amount_collected = body.amount_collected
+        if body.amount_collected > 0:
+            task.payment_mode = body.payment_mode or "Cash"
+            task.payment_ref = (body.payment_ref or "").strip() or None
 
     shop = task.shop
     task.status = "done"
