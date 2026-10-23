@@ -30,6 +30,39 @@ jobs:
     name: SonarCloud Scan
     runs-on: ubuntu-latest
     steps:
+      # Runs FIRST so a bad token fails the job in seconds, not after ~9 minutes
+      # of tests, and says why where it can be read. The scanner's own ERROR
+      # lines only reach the job log, which GitHub hides from anyone not signed
+      # in; an ::error:: here becomes a run annotation instead. PRs #4-#9 all
+      # failed with nothing but "Process completed with exit code 1": the scan
+      # step died 3 s in, after the last successful analysis on 2026-08-08.
+      #
+      # api/authentication/validate answers {"valid":true} to an ANONYMOUS
+      # request, so an empty secret is caught before the call, not by it. An
+      # expired or revoked token gets {"valid":false} with HTTP 200 (both
+      # checked against sonarcloud.io). Anything else — SonarCloud down, a
+      # network error — is left for the scan step to report, not blamed on
+      # the token.
+      - name: Check SONAR_TOKEN
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::error title=SONAR_TOKEN missing::The SONAR_TOKEN secret is empty or not set. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          resp=$(curl -sS --max-time 30 -H "Authorization: Bearer $SONAR_TOKEN" \
+            https://sonarcloud.io/api/authentication/validate) || resp="curl failed"
+          case "$resp" in
+            *'"valid":true'*)
+              echo "SonarCloud accepts SONAR_TOKEN." ;;
+            *'"valid":false'*)
+              echo "::error title=SONAR_TOKEN rejected::SonarCloud rejects SONAR_TOKEN: it has expired or been revoked. Generate a new token at https://sonarcloud.io/account/security and replace the SONAR_TOKEN repository secret."
+              exit 1 ;;
+            *)
+              echo "::warning title=SonarCloud token check inconclusive::authentication/validate answered: $resp" ;;
+          esac
+
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
@@ -106,14 +139,20 @@ jobs:
       # description now reads "Deprecated. Use
       # https://github.com/SonarSource/sonarqube-scan-action instead." Since
       # v4.1.0 `sonarqube-scan-action` is the single entrypoint for both
-      # SonarQube Server and Cloud, and it is a drop-in replacement. It does
-      # require SONAR_HOST_URL, which the old action inferred.
+      # SonarQube Server and Cloud, and it is a drop-in replacement.
       #
       # Pinned to a major version rather than @master: a scanner that can change
       # under you between runs makes "the gate went red" unattributable.
+      #
+      # v6, not v4: v4 is unsupported and has a command-injection hole in how
+      # expands `args` — SonarSource re-pointed the v4 tag at v4.2.2, whose only
+      # change is a step printing that warning. v6 is the rewrite that fixed it. Its
+      # inputs are the same as v4's and this job sets none of them, so only the
+      # env changes: GITHUB_TOKEN is dropped because v6 never reads it (PR
+      # decoration comes from the SonarCloud GitHub App), and SONAR_HOST_URL
+      # stays explicit although the v6 scanner would default to SonarCloud.
       - name: SonarQube Cloud Scan
-        uses: SonarSource/sonarqube-scan-action@v4
+        uses: SonarSource/sonarqube-scan-action@v6
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
