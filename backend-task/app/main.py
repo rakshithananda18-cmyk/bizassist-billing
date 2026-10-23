@@ -20,7 +20,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 from app import config
 from app.logging_config import TAG, configure_logging, current_bizid_var, get_logger
@@ -83,9 +83,39 @@ def run_migrations(bind=None) -> bool:
     return True
 
 
+def add_missing_mirror_columns(bind=None) -> list:
+    """Standalone dev databases only (TASK_CREATE_BILLING_MIRROR). `create_all`
+    creates a missing mirror table but never adds a column to one that exists,
+    so a local database made before the mirror gained a column (users.settings,
+    for the Pro gate) failed every query on that table. Add those columns —
+    nullable ones, which is all the mirror ever adds. Billing's real tables are
+    never touched: the mirror is off wherever billing owns the database."""
+    bind = bind or engine
+    insp = inspect(bind)
+    added = []
+    with bind.begin() as conn:
+        for table in BillingBase.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            have = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in have:
+                    continue
+                if not col.nullable and col.server_default is None:
+                    logger.warning("%s local %s has no %s and it cannot be added (NOT NULL) — recreate the dev database",
+                                   TAG.BOOT, table.name, col.name)
+                    continue
+                conn.execute(text(f"ALTER TABLE {table.name} ADD COLUMN {col.name} {col.type.compile(dialect=bind.dialect)}"))
+                added.append(f"{table.name}.{col.name}")
+    if added:
+        logger.info("%s added %s to the local billing mirror", TAG.BOOT, ", ".join(added))
+    return added
+
+
 def prepare_database() -> None:
     if config.CREATE_BILLING_MIRROR:
         BillingBase.metadata.create_all(bind=engine)
+        add_missing_mirror_columns()
     tables = set(inspect(engine).get_table_names())
     if "users" not in tables:
         raise RuntimeError(

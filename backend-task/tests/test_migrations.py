@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, inspect, text
 from app.billing_models import BillingBase
 from app.db import Base, engine
 from app.migration_scope import VERSION_TABLE, include_object
-from app.main import run_migrations
+from app.main import add_missing_mirror_columns, run_migrations
 from tests.conftest import EXTERNAL_BILLING_SCHEMA
 
 
@@ -57,5 +57,25 @@ def test_fresh_database_still_migrates_to_head(tmp_path):
         assert run_migrations(bind=eng) is True
         assert {t for t in inspect(eng).get_table_names() if t.startswith("ft_")} == set(Base.metadata.tables) | {VERSION_TABLE}
         assert run_migrations(bind=eng) is True  # at head already: a no-op, not a skip
+    finally:
+        eng.dispose()
+
+
+def test_old_local_mirror_gets_new_columns(tmp_path):
+    """A dev database made before users.settings existed: start-up adds the
+    column instead of every sign-in failing with "no such column"."""
+    eng = create_engine(f"sqlite:///{tmp_path / 'old_dev.db'}")
+    try:
+        with eng.begin() as conn:
+            conn.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY, username VARCHAR, password VARCHAR, "
+                              "business_name VARCHAR, role VARCHAR, parent_business_id INTEGER, public_id VARCHAR, "
+                              "phone VARCHAR, token_version INTEGER NOT NULL DEFAULT 0, last_login DATETIME, "
+                              "created_at DATETIME, updated_at DATETIME)"))
+            conn.execute(text("INSERT INTO users (id, username, token_version) VALUES (1, 'old_owner', 0)"))
+        assert add_missing_mirror_columns(bind=eng) == ["users.settings"]
+        assert "settings" in {c["name"] for c in inspect(eng).get_columns("users")}
+        with eng.connect() as conn:  # existing rows kept, new column empty
+            assert conn.execute(text("SELECT username, settings FROM users")).one() == ("old_owner", None)
+        assert add_missing_mirror_columns(bind=eng) == []  # second start: nothing to do
     finally:
         eng.dispose()
