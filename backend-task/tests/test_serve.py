@@ -15,6 +15,13 @@ def test_serve_starts_the_same_app():
     assert serve.APP == "app.main:app"
 
 
+def test_allowed_origins_match_what_browsers_send():
+    # Pasted from the address bar with a trailing slash, the Vercel URL never
+    # matched the browser's Origin header and CORS refused the app (2026-10-23).
+    assert config.parse_origins("https://bizassist-task.vercel.app/, http://localhost:5176 ,") == [
+        "https://bizassist-task.vercel.app", "http://localhost:5176"]
+
+
 def test_root_and_health_answer_for_the_hosts_probe(client):
     r = client.get("/")
     assert r.status_code == 200

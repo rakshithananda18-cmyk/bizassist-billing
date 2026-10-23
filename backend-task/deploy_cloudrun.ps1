@@ -127,7 +127,11 @@ try {
 
     Write-Host "== Deploying $Service to Cloud Run ($Region) - Cloud Build builds backend-task/Dockerfile..." -ForegroundColor Cyan
     $envVars = "^;^TASK_PURGE_LOOP=0;BIZ_TIMEZONE=Asia/Kolkata"
-    if ($AllowedOrigins) { $envVars += ";ALLOWED_ORIGINS=$AllowedOrigins" }
+    if ($AllowedOrigins) {
+        # Browsers send the origin without a trailing slash; CORS matches exactly.
+        $origins = ($AllowedOrigins -split "," | ForEach-Object { $_.Trim().TrimEnd("/") } | Where-Object { $_ }) -join ","
+        $envVars += ";ALLOWED_ORIGINS=$origins"
+    }
     # New IAM grants can take a minute or two to apply, so a first-time build may
     # still be refused: try up to 3 times, a minute apart.
     for ($attempt = 1; ; $attempt++) {

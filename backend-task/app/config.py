@@ -97,11 +97,16 @@ _default_origins = (
     "http://localhost:5176,http://127.0.0.1:5176,"
     "http://localhost:4173,http://127.0.0.1:4173"
 )
-ALLOWED_ORIGINS = [
-    o.strip() for o in os.environ.get("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()
-]
+def parse_origins(raw: str) -> list:
+    """Browsers send an Origin with no path and no trailing slash, and CORS
+    matches it exactly, so `https://x.vercel.app/` (as copied from the address
+    bar) is stored as `https://x.vercel.app`."""
+    return [o.strip().rstrip("/") for o in raw.split(",") if o.strip().rstrip("/")]
 
-# Optional built PWA to serve at "/" (TASK_STATIC_DIR). The HF image is API-only:
+
+ALLOWED_ORIGINS = parse_origins(os.environ.get("ALLOWED_ORIGINS", _default_origins))
+
+# Optional built PWA to serve at "/" (TASK_STATIC_DIR). The image is API-only:
 # the screens are frontend-task/ on their own Vercel project.
 STATIC_DIR = os.environ.get("TASK_STATIC_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "static"))
 
