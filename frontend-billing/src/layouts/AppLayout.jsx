@@ -10,6 +10,7 @@ import { formatIST } from '../utils/format'
 import { resolveHostingMode } from '../utils/resolveHostingMode'
 import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
 import { getFieldTeamUrl, openFieldTeam } from '../config/fieldTeam'
+import { applyNavOrder, navOrderKeys } from './navOrder'
 import { IS_DESKTOP_APP, openDownloadPage } from '../config/downloadApp'
 import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
@@ -609,7 +610,7 @@ export default function AppLayout({ children, title }) {
   // { x, y, item: { to, label }, flatIndex: number } | null
   const [sidebarCtxMenu, setSidebarCtxMenu] = React.useState(null)
 
-  // Flat ordered list of nav item `to` keys — user can reorder via ctx menu.
+  // Flat ordered list of nav item keys (navOrder.js) — user can reorder via ctx menu.
   // Derived from visibleNav on first load; persisted to localStorage.
   const [navOrder, setNavOrder] = React.useState(() => {
     try {
@@ -623,18 +624,11 @@ export default function AppLayout({ children, title }) {
   const orderedVisibleNav = React.useMemo(() => {
     // Collect all items from visibleNav into a flat list
     const flat = visibleNav.flatMap(s => s.items.map(item => ({ ...item, section: s.section })))
-    if (!navOrder) return flat
-    // Sort by the saved order; items not in the saved list go at the end
-    const orderMap = Object.fromEntries(navOrder.map((key, i) => [key, i]))
-    return [...flat].sort((a, b) => {
-      const ai = orderMap[a.to] ?? 9999
-      const bi = orderMap[b.to] ?? 9999
-      return ai - bi
-    })
+    return applyNavOrder(flat, navOrder)
   }, [visibleNav, navOrder])
 
   const saveNavOrder = (flat) => {
-    const keys = flat.map(i => i.to).filter(Boolean)
+    const keys = navOrderKeys(flat)
     setNavOrder(keys)
     try { localStorage.setItem('sidebar_nav_order', JSON.stringify(keys)) } catch { /* ignore */ }
   }
