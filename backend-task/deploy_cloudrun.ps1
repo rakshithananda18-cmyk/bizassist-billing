@@ -6,7 +6,9 @@
   Run from the repo root, normally on an up-to-date main.
 
     # first time: enable APIs, store secrets (you type them; nothing is
-    # printed), grant access, deploy, and schedule the daily GPS purge
+    # printed), grant access, deploy, and schedule the daily GPS purge.
+    # Safe to re-run: secrets already stored are kept (-ResetSecrets to
+    # replace DATABASE_URL / JWT_SECRET).
     .\backend-task\deploy_cloudrun.ps1 -Project <your-project-id> -Setup
 
     # every later deploy (Cloud Build builds backend-task/Dockerfile)
@@ -30,7 +32,8 @@ param(
     [string]$Service = "bizassist-task",
     [string]$AllowedOrigins = "",
     [int]$MinInstances = 0,
-    [switch]$Setup
+    [switch]$Setup,
+    [switch]$ResetSecrets
 )
 
 # No global ErrorActionPreference=Stop: on Windows PowerShell 5.1 it turns a
@@ -60,6 +63,10 @@ function Set-SecretValue([string]$Name, [string]$Value) {
     finally { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
 }
 
+function Test-Secret([string]$Name) {
+    return [bool](& gcloud secrets describe $Name --project $Project --format "value(name)" 2>$null)
+}
+
 function Read-SecretValue([string]$Prompt) {
     $secure = Read-Host -AsSecureString -Prompt $Prompt
     $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
@@ -86,14 +93,30 @@ try {
             Invoke-Gcloud iam service-accounts create "$Service-run" --project $Project --display-name "Field Team API (Cloud Run)"
         }
 
+        # Source deploys build as the project's default compute account. New
+        # projects no longer give it any role, so the build cannot even read
+        # the uploaded source ("storage.objects.get denied"). Cloud Run Builder
+        # is Google's role for exactly this: read sources, push the image, logs.
+        $number = (& gcloud projects describe $Project --format "value(projectNumber)").Trim()
+        $buildSa = "$number-compute@developer.gserviceaccount.com"
+        Invoke-Gcloud projects add-iam-policy-binding $Project --member "serviceAccount:$buildSa" `
+            --role roles/run.builder --condition None --quiet | Out-Null
+        Write-Host "   $buildSa can build source deploys (Cloud Run Builder)." -ForegroundColor Green
+
         Write-Host "== Secrets (typed values are hidden and never printed)" -ForegroundColor Cyan
-        Write-Host "   DATABASE_URL: the SAME Supabase string billing uses (use the pooler URI, host *.pooler.supabase.com)."
-        Set-SecretValue "DATABASE_URL" (Read-SecretValue "DATABASE_URL")
-        Write-Host "   JWT_SECRET: exactly billing's value."
-        Set-SecretValue "JWT_SECRET" (Read-SecretValue "JWT_SECRET")
-        $cron = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ })
-        Set-SecretValue "TASK_CRON_SECRET" $cron
-        Write-Host "   TASK_CRON_SECRET generated." -ForegroundColor Green
+        if ($ResetSecrets -or -not (Test-Secret "DATABASE_URL")) {
+            Write-Host "   DATABASE_URL: the SAME Supabase string billing uses (use the pooler URI, host *.pooler.supabase.com)."
+            Set-SecretValue "DATABASE_URL" (Read-SecretValue "DATABASE_URL")
+        } else { Write-Host "   DATABASE_URL already stored - kept (-ResetSecrets to replace)." }
+        if ($ResetSecrets -or -not (Test-Secret "JWT_SECRET")) {
+            Write-Host "   JWT_SECRET: exactly billing's value."
+            Set-SecretValue "JWT_SECRET" (Read-SecretValue "JWT_SECRET")
+        } else { Write-Host "   JWT_SECRET already stored - kept (-ResetSecrets to replace)." }
+        if (-not (Test-Secret "TASK_CRON_SECRET")) {
+            $cron = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 48 | ForEach-Object { [char]$_ })
+            Set-SecretValue "TASK_CRON_SECRET" $cron
+            Write-Host "   TASK_CRON_SECRET generated." -ForegroundColor Green
+        } else { Write-Host "   TASK_CRON_SECRET already stored - kept." }
 
         foreach ($s in @("DATABASE_URL", "JWT_SECRET", "TASK_CRON_SECRET")) {
             Invoke-Gcloud secrets add-iam-policy-binding $s --project $Project `
@@ -105,13 +128,21 @@ try {
     Write-Host "== Deploying $Service to Cloud Run ($Region) - Cloud Build builds backend-task/Dockerfile..." -ForegroundColor Cyan
     $envVars = "^;^TASK_PURGE_LOOP=0;BIZ_TIMEZONE=Asia/Kolkata"
     if ($AllowedOrigins) { $envVars += ";ALLOWED_ORIGINS=$AllowedOrigins" }
-    Invoke-Gcloud run deploy $Service --project $Project --region $Region --source backend-task `
-        --service-account $runSa `
-        --allow-unauthenticated --min-instances $MinInstances --max-instances 1 --cpu 1 --memory 512Mi `
-        --cpu-boost --concurrency 80 --timeout 60 `
-        --update-env-vars $envVars `
-        --set-secrets "DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,TASK_CRON_SECRET=TASK_CRON_SECRET:latest" `
-        --quiet
+    # New IAM grants can take a minute or two to apply, so a first-time build may
+    # still be refused: try up to 3 times, a minute apart.
+    for ($attempt = 1; ; $attempt++) {
+        & gcloud run deploy $Service --project $Project --region $Region --source backend-task `
+            --service-account $runSa `
+            --allow-unauthenticated --min-instances $MinInstances --max-instances 1 --cpu 1 --memory 512Mi `
+            --cpu-boost --concurrency 80 --timeout 60 `
+            --update-env-vars $envVars `
+            --set-secrets "DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,TASK_CRON_SECRET=TASK_CRON_SECRET:latest" `
+            --quiet
+        if ($LASTEXITCODE -eq 0) { break }
+        if ($attempt -ge 3) { throw "gcloud run deploy failed $attempt times - see the error above." }
+        Write-Host "Deploy attempt $attempt failed; permissions may still be applying - retrying in 60 s..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 60
+    }
 
     $url = (& gcloud run services describe $Service --project $Project --region $Region --format "value(status.url)").Trim()
     Write-Host "Service URL: $url" -ForegroundColor Green
