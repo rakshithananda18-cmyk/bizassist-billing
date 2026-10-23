@@ -1,15 +1,15 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# BizAssist Task (Field Team) API — container image, port 7860.
+# BizAssist Task (Field Team) API — container image.
 #
-# The HF Space does NOT use this file: new Docker Spaces need a paid plan, so
-# the Space runs on the Gradio SDK via space_app.py (README front-matter). This
-# image is for local container runs and other hosts (Render, a paid Docker
-# Space). API only, like the billing Space: the screens are frontend-task/ on
-# their own Vercel project, which staff install — so no Node build stage.
+# Production: Google Cloud Run, Mumbai (asia-south1), built from this folder by
+# deploy_cloudrun.ps1 (`gcloud run deploy --source backend-task`). API only,
+# like billing: the screens are frontend-task/ on their own Vercel project,
+# which staff install — so no Node build stage. CI builds this image and checks
+# it serves /api/health on $PORT before anything reaches Cloud Run.
 #
-# Same base image and non-root user as the billing Space (../Dockerfile).
-# Deliberately LIGHT: no OCR, no PDF, no ML model — so a cold start after the
-# free tier's 48 h sleep takes seconds.
+# Same base image and non-root user as billing's image (../Dockerfile).
+# Deliberately LIGHT (no OCR, no PDF, no ML model): about 110 MB in memory, and
+# a Cloud Run cold start takes seconds.
 # ──────────────────────────────────────────────────────────────────────────────
 FROM python:3.11-slim
 
@@ -27,9 +27,8 @@ RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r re
 COPY --chown=user . /app/
 
 USER user
-EXPOSE 7860
+EXPOSE 8080
 
-# Same start file as the Gradio Space: ONE uvicorn process (login throttling
-# and the GPS-purge loop are in-memory — never add workers or reload), on
-# $PORT when the host sets one (Render does), else 7860.
-CMD ["python", "space_app.py"]
+# serve.py: ONE uvicorn process (login throttling is in-memory — never add
+# workers or reload), on $PORT (Cloud Run sets 8080), else 7860.
+CMD ["python", "serve.py"]

@@ -8,4 +8,4 @@
 tests
 logs
 static
-deploy_space.ps1
+deploy_cloudrun.ps1

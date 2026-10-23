@@ -85,6 +85,12 @@ ALLOW_SIGNUP = _bool("TASK_ALLOW_SIGNUP", True)
 # Raw GPS pings older than this are purged daily. Event locations (check-in,
 # arrival, task completion) live on their own rows and are kept.
 PING_RETENTION_DAYS = _int("TASK_PING_RETENTION_DAYS", 60)
+# The in-process purge loop (every 6 h). Turn OFF on Cloud Run, where the CPU
+# only runs during requests: Cloud Scheduler calls the purge endpoint instead.
+PURGE_LOOP = _bool("TASK_PURGE_LOOP", True)
+# Shared secret for POST /api/internal/purge-pings (header X-Cron-Secret).
+# Unset = the endpoint does not exist (404).
+CRON_SECRET = os.environ.get("TASK_CRON_SECRET", "")
 
 # Comma-separated extra CORS origins (the Vercel URL, if the PWA is hosted there).
 _default_origins = (

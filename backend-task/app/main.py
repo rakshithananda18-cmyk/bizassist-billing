@@ -11,10 +11,12 @@ billing's (WEB_CONCURRENCY=1). Do not add --workers without moving them out.
 from __future__ import annotations
 
 import asyncio
+import hmac
 import os
 from contextlib import asynccontextmanager
+from typing import Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -79,10 +81,12 @@ async def _purge_loop() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     prepare_database()
-    task = asyncio.create_task(_purge_loop())
-    logger.info("[BOOT] BizAssist Task ready db=%s tz=%s", engine.dialect.name, config.BIZ_TIMEZONE)
+    task = asyncio.create_task(_purge_loop()) if config.PURGE_LOOP else None
+    logger.info("[BOOT] BizAssist Task ready db=%s tz=%s purge=%s", engine.dialect.name, config.BIZ_TIMEZONE,
+                "loop" if task else ("scheduled" if config.CRON_SECRET else "off"))
     yield
-    task.cancel()
+    if task:
+        task.cancel()
 
 
 app = FastAPI(title="BizAssist Task API", version="0.1.0", lifespan=lifespan)
@@ -123,10 +127,28 @@ for r in (auth, staff, attendance, shops, runs, tasks, requests, tracking, dashb
 @app.get("/api/health")
 def health():
     from app.timeutil import biz_today, iso_utc
-    # `db` (like billing's /health db_type): a Space that lost its DATABASE_URL
+    # `db` (like billing's /health db_type): a deploy that lost its DATABASE_URL
     # secret still boots — on a throw-away SQLite file — and this shows it.
     return {"ok": True, "server_time": iso_utc(utc_now()), "business_date": biz_today(),
             "tz": config.BIZ_TIMEZONE, "db": engine.dialect.name}
+
+
+@app.post("/api/internal/purge-pings", include_in_schema=False)
+def purge_pings_now(x_cron_secret: Optional[str] = Header(None)):
+    """GPS retention where no CPU runs between requests (Cloud Run): Cloud
+    Scheduler calls this daily with the shared secret. 404 unless configured."""
+    if not config.CRON_SECRET:
+        raise HTTPException(status_code=404, detail="Not Found")
+    if not x_cron_secret or not hmac.compare_digest(x_cron_secret.encode(), config.CRON_SECRET.encode()):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    from app.routers.tracking import purge_old_pings
+    db = SessionLocal()
+    try:
+        n = purge_old_pings(db, config.PING_RETENTION_DAYS)
+    finally:
+        db.close()
+    logger.info("%s purged %s ping(s) older than %s days (scheduled)", TAG.TRACK, n, config.PING_RETENTION_DAYS)
+    return {"ok": True, "purged": n, "retention_days": config.PING_RETENTION_DAYS}
 
 
 # ── Built PWA (same origin → no CORS, and HTTPS on HF for geolocation) ───────

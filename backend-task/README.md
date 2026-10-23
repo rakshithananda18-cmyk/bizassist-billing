@@ -1,14 +1,3 @@
----
-title: BizAssist Field Team
-emoji: 🚚
-colorFrom: red
-colorTo: yellow
-sdk: gradio
-sdk_version: 6.30.0
-app_file: space_app.py
-pinned: false
----
-
 # BizAssist Field Team — API (`backend-task/`)
 
 Staff attendance, delivery routes, on-site tasks, shop orders and incentive points — for the owner and the field team of a business already on **BizAssist**. First vertical: **medical / pharma wholesale distribution** (daily beats to retail medical shops: boxes, orders, returns, collections).
@@ -17,10 +6,10 @@ Part of the **bizassist-billing** repo, named like billing's own folders:
 
 ```
 backend/          billing API                       → HF Space BizAssist (git push space main)
-backend-task/     Field Team API  (this folder)     → HF Space bizassist-task, Gradio SDK (deploy_space.ps1)
+backend-task/     Field Team API  (this folder)     → Google Cloud Run, Mumbai (deploy_cloudrun.ps1)
 frontend-billing/ frontend-ai/ frontend-admin/      → Vercel
 frontend-task/    Field Team PWA                    → Vercel (Root Directory frontend-task)
-docs/FIELD_TEAM_MASTER_PLAN.md                      → why, security, go-live order
+docs/FIELD_TEAM_MASTER_PLAN.md                      → why, security, hosting, go-live order
 ```
 
 Same identity and database as billing, separate service: owners sign in with their **billing account** (or open **Field Team** from billing's sidebar — a 30-second hand-off ticket, `?sso=`), shops can be **imported from billing customers**, and every Field Team table is `ft_*` in the shared Supabase Postgres, migrated by this folder's own Alembic chain (version table `ft_alembic_version`) at start-up. Why a separate service: [docs/FIELD_TEAM_MASTER_PLAN.md §2](../docs/FIELD_TEAM_MASTER_PLAN.md).
@@ -48,7 +37,7 @@ GPS in the browser needs `https://` or `localhost`; to test on a phone, use the 
 run_tests.bat task fast
 ```
 
-`task` runs `backend-task` (pytest; `fast` = all cores, pytest-xdist) and `frontend-task` (vitest). Results stream into the root `test_results.json`, so billing's live test dashboard shows them. In CI: `.github/workflows/field-team.yml`, which also runs on the billing files Field Team depends on and has a **contract** job — this suite on billing's real schema, plus tickets minted by billing's own code (`tests/test_billing_contract.py`). Postgres locally: `TASK_TEST_DATABASE_URL=postgresql://…/task_test`, serial.
+`task` runs `backend-task` (pytest; `fast` = all cores, pytest-xdist) and `frontend-task` (vitest). Results stream into the root `test_results.json`, so billing's live test dashboard shows them. In CI: `.github/workflows/field-team.yml`, which also runs on the billing files Field Team depends on, builds the Cloud Run image and checks it serves `/api/health` on `$PORT`, and has a **contract** job — this suite on billing's real schema, plus tickets minted by billing's own code (`tests/test_billing_contract.py`). Postgres locally: `TASK_TEST_DATABASE_URL=postgresql://…/task_test`, serial.
 
 ## Logging — billing's format
 
@@ -56,14 +45,21 @@ run_tests.bat task fast
 22:47:23 INFO  task                   [BizId=BA-D686P8] [FIELD] biz=1 actor=staff:1 action=attendance.check_in attendance#1
 ```
 
-Time · level · component · `[BizId=…]` of the caller (set per request in `app/main.py` middleware, `-` when signed out) · `[TAG]` (`app/logging_config.py`: BOOT, AUTH, FIELD, TRACK, HTTP). `LOG_LEVEL`, `LOG_FILE` (rotating, 5 MB × 3), `LOG_FORMAT=json` (ECS fields, `service.name=bizassist-task`), `NO_COLOR`.
+Time · level · component · `[BizId=…]` of the caller (set per request in `app/main.py` middleware, `-` when signed out) · `[TAG]` (`app/logging_config.py`: BOOT, AUTH, FIELD, TRACK, HTTP). `LOG_LEVEL`, `LOG_FILE` (rotating, 5 MB × 3), `LOG_FORMAT=json` (ECS fields, `service.name=bizassist-task`), `NO_COLOR`. On Cloud Run, logs go to Cloud Logging.
 
-## Deploy — API to its Space, screens to Vercel (like billing)
+## Deploy — API to Cloud Run (Mumbai), screens to Vercel
 
-1. **Space:** create one → **Gradio** → Blank, CPU basic, **Public** (new Docker Spaces need a paid plan; this API is pure Python, so the Gradio SDK runs it: HF installs `requirements.txt` and runs `space_app.py`, which starts the FastAPI app on port 7860 — Gradio itself is not used). Settings → **Secrets** *before the first push*: `DATABASE_URL` = the billing Space's Supabase URL, `JWT_SECRET` = the billing Space's value. Then from the repo root `.\backend-task\deploy_space.ps1 -FirstPush` (later: without `-FirstPush`; `-DryRun` to preview). The Space gets this folder as its root (`git subtree split`); the front-matter above configures it. Billing's own `git push space main` is unaffected. The `Dockerfile` stays for local runs and other hosts (Render, a paid Docker Space).
-2. **Vercel:** import **bizassist-billing** again → Root Directory `frontend-task` → Vite → env `VITE_API_URL=https://<owner>-<space>.hf.space` → Deploy.
-3. **Space → Variables:** `ALLOWED_ORIGINS=https://<vercel-url>`.
-4. **Billing:** `VITE_FIELD_TEAM_URL=https://<vercel-url>` on billing's `frontend-billing` Vercel project → redeploy → owners get the **Field Team** link.
-5. Give staff the BizID and **the Vercel URL** (device ids are per address, so it must not change later).
+One-time, in Google Cloud (project with billing enabled; the free trial works, but **upgrade to a full account before it ends** or Google stops the service):
 
-Full order with checks: [docs/FIELD_TEAM_MASTER_PLAN.md §8.1](../docs/FIELD_TEAM_MASTER_PLAN.md).
+1. Install the Google Cloud CLI and sign in: `gcloud auth login`.
+2. From the repo root: `.\backend-task\deploy_cloudrun.ps1 -Project <project-id> -Setup` — enables the APIs, asks for `DATABASE_URL` (billing's Supabase **pooler** URI) and `JWT_SECRET` (billing's value) and stores them in Secret Manager (typed values are hidden), generates `TASK_CRON_SECRET`, creates the `bizassist-task-run` service account that can read only those, deploys, schedules the daily GPS purge (Cloud Scheduler, 03:30 IST) and checks `/api/health` reports `db: postgresql`.
+3. Later deploys: the same script without `-Setup`.
+
+Service shape: **max 1 instance** (login throttling is in-memory, one process like billing), **min 0** (free tier; wakes in a few seconds — `-MinInstances 1` keeps it warm, billed for idle time), CPU only during requests, so the in-process purge loop is off (`TASK_PURGE_LOOP=0`) and Cloud Scheduler calls `POST /api/internal/purge-pings` with `X-Cron-Secret`. The purge works business by business under the `ft_*` row-level security.
+
+Then, as in [docs/FIELD_TEAM_MASTER_PLAN.md §8.1](../docs/FIELD_TEAM_MASTER_PLAN.md):
+
+4. **Vercel:** import **bizassist-billing** again → Root Directory `frontend-task` → Vite → env `VITE_API_URL=<Cloud Run service URL>` → Deploy.
+5. **CORS:** `.\backend-task\deploy_cloudrun.ps1 -Project <id> -AllowedOrigins https://<vercel-url>` (kept on later deploys).
+6. **Billing:** `VITE_FIELD_TEAM_URL=https://<vercel-url>` on billing's `frontend-billing` Vercel project → redeploy → owners get the **Field Team** link.
+7. Give staff the BizID and **the Vercel URL** (device ids are per address, so it must not change later; the API behind it can move freely).

@@ -31,7 +31,7 @@ Verified: 50 backend tests pass on SQLite, on Postgres 16, and on Postgres with 
 
 **Decision:** do **not** add this to the billing backend process; do **not** build a separate identity or database either. One Supabase Postgres, one owner account (BizID), two services.
 
-**Repo (2026-10-22):** one repo, two services. The code moved into bizassist-billing (history kept) as **`backend-task/`** and **`frontend-task/`**, named like billing's `backend/` and `frontend-billing/` / `frontend-ai/` / `frontend-admin/`, because the two apps share a contract — billing's `users` / `customers` columns, the hand-off ticket, the `ft_*` autogenerate guard, `JWT_SECRET` — and one PR + one CI run (`.github/workflows/field-team.yml`, contract job) now covers both sides. It also shares billing's `venv`, `start_dev.bat`, `run_tests.bat` (scope `task`) and test dashboard. Deployment stays separate, the same way billing deploys: the API to its own Space (`backend-task/deploy_space.ps1`, a subtree push), the screens to their own Vercel project (Root Directory `frontend-task`).
+**Repo (2026-10-22):** one repo, two services. The code moved into bizassist-billing (history kept) as **`backend-task/`** and **`frontend-task/`**, named like billing's `backend/` and `frontend-billing/` / `frontend-ai/` / `frontend-admin/`, because the two apps share a contract — billing's `users` / `customers` columns, the hand-off ticket, the `ft_*` autogenerate guard, `JWT_SECRET` — and one PR + one CI run (`.github/workflows/field-team.yml`, contract job) now covers both sides. It also shares billing's `venv`, `start_dev.bat`, `run_tests.bat` (scope `task`) and test dashboard. Deployment stays separate, the same way billing deploys: the API to its own Cloud Run service in Mumbai (`backend-task/deploy_cloudrun.ps1`), the screens to their own Vercel project (Root Directory `frontend-task`).
 
 | Fact (checked in the repos) | Consequence |
 |---|---|
@@ -50,7 +50,7 @@ What is shared vs owned:
 
 Guard added to billing (`bizassist-billing/backend/alembic/env.py`, `include_object`): without it, `alembic revision --autogenerate` in billing against the shared DB **would drop all 14 `ft_*` tables** (measured: 14 tables before the filter, 0 after).
 
-When to merge into one process: never needed for correctness; reconsider only if both Spaces move to paid hardware and the AI stack is split out of billing.
+When to merge into one process: never needed for correctness; reconsider only if both services move to paid hardware and the AI stack is split out of billing.
 
 ---
 
@@ -129,37 +129,40 @@ Ledger is append-only (`ft_points_ledger`); completed tasks cannot be edited (40
 
 ---
 
-## 8. Deployment (Hugging Face API + Vercel screens, like billing)
+## 8. Deployment (Cloud Run API in Mumbai + Vercel screens)
+
+**Why Cloud Run (decided 2026-10-23).** Hugging Face no longer lets free accounts create Docker or CPU-basic Gradio Spaces (July 2026), and a free ZeroGPU Space refuses an app with no `@spaces.GPU` function (tried: `RUNTIME_ERROR`). Render's free web service sleeps after 15 min and takes ~1 min to wake, shares a 5 GB/month workspace bandwidth pool since 2026-08-01 (free services suspended when exceeded without a card), and may suspend free services with heavy traffic to external databases — every request here goes to Supabase. Oracle Always Free reclaims instances idle (<20% CPU/network/memory) for 7 days. Cloud Run in `asia-south1` is free at this load (request-based free tier), wakes in seconds, keeps data near India, and is where billing can follow before a public launch.
 
 | Item | Value |
 |---|---|
-| Space (API only) | **Gradio SDK** (new Docker Spaces need a paid plan, 2026-10-23): README front-matter `sdk: gradio`, `app_file: space_app.py` (no `python_version` pin: free accounts get **ZeroGPU** hardware for new Gradio Spaces, which picks its own Python; the code runs on 3.9+) — HF installs `requirements.txt` and runs `space_app.py`, which starts the FastAPI app on port 7860 as one uvicorn process; Gradio itself is not used. Pure Python, no system packages, so no Dockerfile is needed there (`backend-task/Dockerfile` stays for local runs and other hosts: Render, a paid Docker Space). `/` answers 200 for the Space's probe. Deployed with `backend-task/deploy_space.ps1`: a Space builds from its repo root, so `backend-task/` is split out of bizassist-billing's history (`git subtree split`) and pushed as the Space's `main`. The Space URL serves the API (`/api/...`), not the screens — same as billing's Space. |
-| Vercel (screens) | Own project importing **bizassist-billing**, Root Directory `frontend-task`, Vite, production branch `main`, env `VITE_API_URL` = the Space URL (`frontend-task/vercel.json` = SPA rewrite). Same arrangement as billing's `frontend-billing` / `frontend-ai` / `frontend-admin`. |
-| Secrets | `DATABASE_URL` (billing's Supabase URL), `JWT_SECRET` (billing's value) |
-| Variables | `ALLOWED_ORIGINS` = the Vercel URL (replaces the localhost defaults; LAN/localhost stay allowed by pattern) |
-| Migrations | Automatic on start, `ft_*` only (`TASK_AUTO_MIGRATE=1`) |
-| Free hardware | cpu-basic: 2 vCPU, 16 GB RAM, free; **sleeps after 48 h without traffic** (not configurable on cpu-basic); disk not persistent → all data in Supabase |
-| Supabase free | 500 MB database shared with billing; project pauses after 7 days idle (secondary sources) |
-| URL to give staff | **The Vercel URL** (add to home screen → installs as an app). A phone's device id is stored per web address, so the address staff install must never change — the API can later move off HF by changing `VITE_API_URL` only. |
+| Cloud Run service (API only) | `bizassist-task`, region `asia-south1` (Mumbai), built by Cloud Build from `backend-task/Dockerfile` (`deploy_cloudrun.ps1` → `gcloud run deploy --source backend-task`). Container runs `serve.py`: one uvicorn process on `$PORT` (8080). **max 1 instance** (login throttling is in-memory), **min 0** (free; wakes in seconds — `-MinInstances 1` keeps it warm, billed while idle), 1 vCPU / 512 MiB (uses ~110 MB), CPU only during requests, startup CPU boost. Runs as service account `bizassist-task-run`, which can read only its three secrets. CI builds the same image and checks `/api/health` on `$PORT`. |
+| GPS retention | CPU is off between requests, so the in-process 6-hour purge loop is disabled (`TASK_PURGE_LOOP=0`). Cloud Scheduler job `bizassist-task-purge-pings` calls `POST /api/internal/purge-pings` daily at 03:30 IST with header `X-Cron-Secret` (= `TASK_CRON_SECRET`; endpoint 404s when unset). The purge runs business by business under the `ft_*` row-level security, so it also works for a database role without `BYPASSRLS`. |
+| Secrets (Secret Manager) | `DATABASE_URL` (billing's Supabase **pooler** URI), `JWT_SECRET` (billing's value), `TASK_CRON_SECRET` (generated by the setup run) |
+| Env vars | `TASK_PURGE_LOOP=0`, `BIZ_TIMEZONE=Asia/Kolkata`, `ALLOWED_ORIGINS` = the Vercel URL (replaces the localhost defaults; LAN/localhost stay allowed by pattern) |
+| Vercel (screens) | Own project importing **bizassist-billing**, Root Directory `frontend-task`, Vite, production branch `main`, env `VITE_API_URL` = the Cloud Run service URL (`frontend-task/vercel.json` = SPA rewrite). Same arrangement as billing's `frontend-billing` / `frontend-ai` / `frontend-admin`. |
+| Migrations | Automatic on start, `ft_*` only (`TASK_AUTO_MIGRATE=1`); one instance, so never concurrent |
+| Google account | Free trial ($300 / 90 days) covers set-up; **upgrade to a full account before it ends** or Google stops the service. At pilot load the request-based free tier means ₹0; set a budget alert. |
+| Supabase free | 500 MB database shared with billing; project pauses after 7 days idle (billing's traffic keeps it awake). At ~203 bytes per ping, 100 staff ≈ 10 MB/day → with 60-day retention ≈ 600 MB: plan **Supabase Pro** (≈$25/month, 8 GB, backups) at roughly 50–80 staff in total, or at public launch. |
+| URL to give staff | **The Vercel URL** (add to home screen → installs as an app). A phone's device id is stored per web address, so the address staff install must never change — the API behind it moves by changing `VITE_API_URL` only. |
 
 ### 8.1 Go-live order (do not reorder)
 
-Billing is mirrored to its own Hugging Face Space, and **every push there rebuilds the image**. A rebuild without the SQLAlchemy pin cannot reach Supabase (§9 #1), so billing is fixed and redeployed *before* the Field Team Space is created.
+Billing is mirrored to its own Hugging Face Space, and **every push there rebuilds the image**. A rebuild without the SQLAlchemy pin cannot reach Supabase (§9 #1), so billing was fixed and redeployed first.
 
 | # | Step | Check that it worked |
 |---|---|---|
 | 1 | ✅ Merge billing PR #3: Alembic `ft_*` guard + SQLAlchemy `<2.1` pin (2026-10-22, `e89f107`) | PR CI green, including "Financial Invariants on Postgres" |
 | 2 | ✅ Push billing `main` to the billing Space (2026-10-22; first build failed — §9 #4 — fixed by `79685a5`, live 23:14) | `/health`: `status ok, db connected, postgresql` |
-| 3 | Merge billing branch `feat/field-team` → `main`: `backend-task/` + `frontend-task/` (with history), the sidebar link, `.github/workflows/field-team.yml`. No billing Space push needed — billing's image copies only `backend/` | Field Team workflow green, including the contract job |
-| 4 | Create a **second** Space (**Gradio**, Blank, CPU basic, **Public** — Docker needs a paid plan) for Field Team. **Before the first push**, Settings → Secrets: `DATABASE_URL`, `JWT_SECRET` = **same values** as the billing Space (without `DATABASE_URL` the app would start on a throw-away SQLite file inside the container) | Both secrets listed |
-| 5 | From billing `main`: `.\backend-task\deploy_space.ps1 -FirstPush` | Container log: `Running upgrade  -> 0001_ft_initial` (first start only), then `[BOOT] BizAssist Task ready db=postgresql`; `GET /api/health` returns `ok: true` |
-| 6 | Vercel → Add New → Project → import **bizassist-billing**. Root Directory `frontend-task`, Framework Vite, env `VITE_API_URL=https://<owner>-<space>.hf.space` → Deploy | The Vercel URL shows the Field Team sign-in page |
-| 7 | Field Team Space → Settings → Variables: `ALLOWED_ORIGINS=https://<vercel-url>` (the Space restarts) | Owner signs in on the Vercel URL; no CORS error in the browser console |
+| 3 | ✅ Merge billing PR #4 (`feat/field-team`): `backend-task/` + `frontend-task/` (with history), the sidebar link, `.github/workflows/field-team.yml` (2026-10-22, `088bdf1`) | Field Team workflow green, including the contract job |
+| 4 | Merge the Cloud Run branch (`feat/task-cloud-run`): `serve.py`, scheduled purge endpoint, `deploy_cloudrun.ps1`, CI `image` job | Field Team workflow green, including `image` |
+| 5 | Google Cloud project with billing (trial is fine — upgrade before it ends). Install the Google Cloud CLI, `gcloud auth login`, then from `main`: `.\backend-task\deploy_cloudrun.ps1 -Project <id> -Setup` (asks for `DATABASE_URL` and `JWT_SECRET` — billing's values; typed input is hidden) | Script ends with `/api/health` → `db: postgresql`; Cloud Run log shows `Running upgrade  -> 0001_ft_initial` on the first start, then `[BOOT] BizAssist Task ready db=postgresql … purge=scheduled`; Cloud Scheduler lists `bizassist-task-purge-pings` |
+| 6 | Vercel → Add New → Project → import **bizassist-billing**. Root Directory `frontend-task`, Framework Vite, env `VITE_API_URL=<Cloud Run service URL>` → Deploy | The Vercel URL shows the Field Team sign-in page |
+| 7 | `.\backend-task\deploy_cloudrun.ps1 -Project <id> -AllowedOrigins https://<vercel-url>` | Owner signs in on the Vercel URL; no CORS error in the browser console |
 | 8 | Billing's `frontend-billing` Vercel project → env `VITE_FIELD_TEAM_URL=https://<vercel-url>` → Redeploy (Vite reads it at build time). Frontend only — no billing Space push | Billing sidebar shows **Field Team** to owners; it opens the Vercel URL already signed in |
 | 9 | Owner adds one staff member, shares the BizID **and the Vercel URL** | Staff phone: sign in → Check in → location accepted |
 | 10 | Pilot one distributor for 1–2 weeks (Phase 1.1, §10) | Dashboard shows real deliveries / boxes / points |
 
-Field Team stays in its own Space and its own Vercel project: the two apps restart, sleep and fail independently, and a Field Team deploy never rebuilds billing.
+Field Team runs on its own Cloud Run service and its own Vercel project: the two apps restart, sleep and fail independently, and a Field Team deploy never rebuilds billing. Before a public launch, billing should follow to Cloud Run in Mumbai (needs one always-on instance for its in-process scheduler and AI stack — paid; its HF URL is hard-coded in 15 files incl. the desktop app, so it needs a configurable URL and a desktop update first).
 
 ---
 
@@ -174,7 +177,7 @@ Field Team stays in its own Space and its own Vercel project: the two apps resta
 
 ## 10. Next phases and open decisions
 
-**Phase 1.1 (owner pilot, 1–2 weeks):** deploy Space + Vercel; billing "Field Team" link (SSO, built — §7); pilot with one distributor; tune accuracy/geofence from real data.
+**Phase 1.1 (owner pilot, 1–2 weeks):** deploy Cloud Run + Vercel; billing "Field Team" link (SSO, built — §7); pilot with one distributor; tune accuracy/geofence from real data.
 **Phase 2:** Android wrapper (background GPS + mock-location flag); deliveries from billing invoices; shop request → B2B order draft; collections → payments; notifications (new run, overdue task).
 **Phase 3:** incentive slabs and payout report; route optimisation; retailer self-ordering feeding runs; AI advisor over field data.
 
@@ -199,5 +202,9 @@ Decisions for the owner:
 - OSM tile usage policy — https://operations.osmfoundation.org/policies/tiles/
 - Ola Maps free tier announcement (Jul 2024) — https://tech.olakrutrim.com/ola-maps-made-for-india-priced-for-india/
 - HF Spaces hardware/sleep — https://huggingface.co/docs/hub/en/spaces-overview , https://huggingface.co/docs/huggingface_hub/main/guides/manage-spaces
+- HF free Docker / CPU-basic Spaces now paid (July 2026, forum) — https://discuss.huggingface.co/t/docker-sdk-now-marked-as-paid-when-creating-a-new-space/177580
+- Render free tier (spin-down, hours, outbound-traffic suspension) — https://render.com/docs/free
+- Oracle Always Free idle reclamation — https://docs.oracle.com/en-us/iaas/Content/FreeTier/resourceref.htm
+- Cloud Run pricing and free tier — https://cloud.google.com/run/pricing
 - Supabase free limits (secondary) — https://www.jetadmin.io/blog/supabase-pricing-2026-guide-to-plans-limits-and-real-world-costs/
 - Web geolocation in background (W3C discussion) — https://lists.w3.org/Archives/Public/public-geolocation/2016Feb/0016.html

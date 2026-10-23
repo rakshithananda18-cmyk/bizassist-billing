@@ -207,14 +207,14 @@ graph TD
     Client1[POS Billing Frontend - Vercel] -->|API Requests| HF[FastAPI Backend - HF Spaces]
     Client2[AI Assistant Frontend - Vercel] -->|API Requests| HF
     HF --> DB[(Supabase Postgres or SQLite)]
-    Client3[Field Team PWA - Vercel] -->|API Requests| HF2[Field Team API - its own HF Space]
-    HF2 --> DB
+    Client3[Field Team PWA - Vercel] -->|API Requests| CR[Field Team API - Cloud Run, Mumbai]
+    CR --> DB
 ```
 
 > [!IMPORTANT]
 > The backend acts as the central API. Both Vercel frontends communicate with it via the `VITE_API_URL` environment variable.
 >
-> **Field Team** (`backend-task/` + `frontend-task/`) is the exception: a separate service with its own Space and its own Vercel project, sharing the database and owner accounts. The API deploys with `.\backend-task\deploy_space.ps1` (a subtree push — a Space builds from its repo root); the screens are one more Vercel project, Root Directory `frontend-task`. Steps and checks: [FIELD_TEAM_MASTER_PLAN.md §8.1](FIELD_TEAM_MASTER_PLAN.md).
+> **Field Team** (`backend-task/` + `frontend-task/`) is the exception: a separate service on Google Cloud Run (Mumbai) with its own Vercel project, sharing the database and owner accounts. The API deploys with `.\backend-task\deploy_cloudrun.ps1` (Cloud Build builds `backend-task/Dockerfile`); the screens are one more Vercel project, Root Directory `frontend-task`. Steps and checks: [FIELD_TEAM_MASTER_PLAN.md §8.1](FIELD_TEAM_MASTER_PLAN.md).
 
 ---
 

@@ -18,10 +18,11 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from app.db import get_db, utc_now
+from app.billing_models import BillingUser
+from app.db import engine, get_db, set_rls_business, utc_now
 from app.geo import GeoFix
 from app.models import FieldAttendance, FieldLocationPing, FieldRun, FieldStaff
 from app.security import Principal, get_settings, require_owner, require_staff
@@ -151,6 +152,26 @@ def purge_old_pings(db: Session, retention_days: int) -> int:
     """Delete raw pings older than the retention window. Event fixes live on
     their own rows (attendance, stops, tasks), so nothing evidential is lost."""
     cutoff = utc_now() - timedelta(days=retention_days)
-    n = db.query(FieldLocationPing).filter(FieldLocationPing.recorded_at < cutoff).delete(synchronize_session=False)
-    db.commit()
-    return int(n or 0)
+    if engine.dialect.name != "postgresql":
+        n = db.query(FieldLocationPing).filter(FieldLocationPing.recorded_at < cutoff).delete(synchronize_session=False)
+        db.commit()
+        return int(n or 0)
+    # ft_location_pings FORCEs row-level security keyed on
+    # app.current_business_id. A role without BYPASSRLS sees no rows unscoped —
+    # one unscoped DELETE would quietly purge nothing — so go business by
+    # business, scoped the way every request is. Owners come from billing's
+    # users table, which login reads unscoped.
+    total = 0
+    try:
+        owners = [bid for (bid,) in db.query(BillingUser.id).filter(BillingUser.parent_business_id.is_(None))]
+        for bid in owners:
+            set_rls_business(db, bid)
+            total += db.query(FieldLocationPing).filter(
+                FieldLocationPing.business_id == bid, FieldLocationPing.recorded_at < cutoff,
+            ).delete(synchronize_session=False) or 0
+            db.commit()
+    finally:
+        db.rollback()
+        db.execute(text("SELECT set_config('app.current_business_id', '', false)"))
+        db.commit()
+    return int(total)
