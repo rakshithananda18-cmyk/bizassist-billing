@@ -28,8 +28,20 @@ From the repo root, `start_dev.bat` starts billing **and** Field Team:
 - **Field Team API** `http://127.0.0.1:8002` (`--reload`, SQLite `backend-task/bizassist_task.db`, standalone), log `backend-task/logs/bizassist_task.log`.
 - **Field Team PWA** `http://localhost:5176` (Vite; `/api` is proxied to `:8002`).
 - Uses billing's `venv` (billing's `requirements.txt` covers everything here). The first run copies `backend-task/.env.example` to `backend-task/.env`.
+- Field Team always gets **billing's `JWT_SECRET`** (read from `backend/.env` by `dev/dev_env.ps1`), as in the cloud.
 
 GPS in the browser needs `https://` or `localhost`; to test on a phone, use the deployed Vercel URL.
+
+### Field test mode — billing and Field Team together
+
+Normally the two run apart locally (billing on `backend/bizassist.db`, Field Team on its own file), so invoices, billing's Field Team link and field collections cannot be tried. `start_dev.bat fieldtest` runs them like the cloud: **one throwaway database** (`local_field_test.db` in the repo folder, git-ignored) and one secret.
+
+1. `start_dev.bat fieldtest` — billing (`:8001`, `:5174`) and Field Team (`:8002`, `:5176`); the AI dashboard and admin console are not started.
+2. The **Field Test Setup** window waits for both APIs, then creates (once) owner `fieldtest_owner` on Pro, customers, three unpaid bills, the shops and agent `kiran`, loosens GPS limits for a laptop, and prints the logins and steps (`dev/field_test_seed.py`; password `FieldTest#2026` — throwaway, local only).
+3. Billing `http://localhost:5174` as that owner → **Field Team** in the sidebar (or `http://localhost:5176` → Owner). Plan a collection from bills; as the agent (private window, BizID from the setup window) collect it; confirm it in billing's **Contacts & Payments → Field collections**.
+4. Back to normal: `start_dev.bat`, then sign in to billing again. Delete `local_field_test.db` to start over.
+
+Safety: your real `backend/bizassist.db` is not opened, and every cloud address billing uses (sign-up, sync, plan checks, realtime, telemetry) points at a closed local port, so nothing from the test reaches production. Sign up through the seed, not billing's Register screen (which registers on the cloud first and therefore fails here).
 
 ## Tests — billing's `run_tests.bat`
 
