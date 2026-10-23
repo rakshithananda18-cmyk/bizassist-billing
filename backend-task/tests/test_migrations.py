@@ -1,11 +1,14 @@
 """The ft_* migration matches the models, and never claims billing's tables."""
+import logging
+
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from sqlalchemy import inspect
+from sqlalchemy import create_engine, inspect, text
 
 from app.billing_models import BillingBase
 from app.db import Base, engine
 from app.migration_scope import VERSION_TABLE, include_object
+from app.main import run_migrations
 from tests.conftest import EXTERNAL_BILLING_SCHEMA
 
 
@@ -30,3 +33,29 @@ def test_include_object_ignores_billing_tables():
     assert include_object(None, "users", "table", True, None) is False
     assert include_object(None, "invoices", "table", True, None) is False
     assert include_object(None, "ft_tasks", "table", False, None) is True
+
+
+def test_newer_database_is_left_alone_instead_of_failing_start(tmp_path, caplog):
+    """A rollback (or a dev folder switched to an older branch) meets a database
+    that a newer build migrated: start, warn, and change nothing."""
+    eng = create_engine(f"sqlite:///{tmp_path / 'ahead.db'}")
+    with eng.begin() as conn:
+        conn.execute(text(f"CREATE TABLE {VERSION_TABLE} (version_num VARCHAR(32) NOT NULL PRIMARY KEY)"))
+        conn.execute(text(f"INSERT INTO {VERSION_TABLE} VALUES ('9999_from_a_newer_build')"))
+    try:
+        with caplog.at_level(logging.WARNING, logger="task"):
+            assert run_migrations(bind=eng) is False
+        assert "9999_from_a_newer_build" in caplog.text and "skipping migrations" in caplog.text
+        assert inspect(eng).get_table_names() == [VERSION_TABLE]
+    finally:
+        eng.dispose()
+
+
+def test_fresh_database_still_migrates_to_head(tmp_path):
+    eng = create_engine(f"sqlite:///{tmp_path / 'fresh.db'}")
+    try:
+        assert run_migrations(bind=eng) is True
+        assert {t for t in inspect(eng).get_table_names() if t.startswith("ft_")} == set(Base.metadata.tables) | {VERSION_TABLE}
+        assert run_migrations(bind=eng) is True  # at head already: a no-op, not a skip
+    finally:
+        eng.dispose()

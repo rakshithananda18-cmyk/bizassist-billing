@@ -37,16 +37,50 @@ logger = get_logger("task")
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def run_migrations() -> None:
+def _unknown_revisions(conn, script) -> list:
+    """Revisions the database is at that this build has no migration file for:
+    a newer build migrated it (a rollback, or a dev folder switched to an older
+    branch)."""
+    from alembic.migration import MigrationContext
+    from alembic.util import CommandError
+
+    from app.migration_scope import VERSION_TABLE
+
+    heads = MigrationContext.configure(conn, opts={"version_table": VERSION_TABLE}).get_current_heads()
+    unknown = []
+    for rev in heads:
+        try:
+            script.get_revision(rev)
+        except CommandError:
+            unknown.append(rev)
+    return unknown
+
+
+def run_migrations(bind=None) -> bool:
+    """Upgrade the ft_* tables to this build's head. Returns False, and leaves
+    the database alone, when it is already past what this build knows — the
+    ft_* migrations only add tables and columns, so an older build still runs
+    on the newer schema, and failing here would block every rollback."""
     from alembic import command
     from alembic.config import Config
+    from alembic.script import ScriptDirectory
 
     cfg = Config(os.path.join(BACKEND_DIR, "alembic.ini"))
     cfg.set_main_option("script_location", os.path.join(BACKEND_DIR, "alembic"))
     cfg.attributes["configure_logger"] = False
-    with engine.begin() as conn:
+    script = ScriptDirectory.from_config(cfg)
+    with (bind or engine).begin() as conn:
+        ahead = _unknown_revisions(conn, script)
+        if ahead:
+            logger.warning(
+                "%s database is at migration %s, newer than this build's head %s — skipping migrations. "
+                "Expected after a rollback; deploy the newer build to migrate again.",
+                TAG.BOOT, ", ".join(ahead), script.get_current_head(),
+            )
+            return False
         cfg.attributes["connection"] = conn
         command.upgrade(cfg, "head")
+    return True
 
 
 def prepare_database() -> None:
