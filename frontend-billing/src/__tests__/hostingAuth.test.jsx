@@ -81,6 +81,10 @@ let mockSettings = { general: { hosting_mode: 'local' } }
 let mockProfile = { is_premium: true }
 let mockTemplates = []
 let mockStaffCounters = { business_name: 'Store', staff: [] }
+// The cloud's Pro trial: GET /trial-offer (null = an older cloud without it),
+// and what its /signup says (undefined = an older cloud that says nothing).
+let mockTrialOffer = null
+let mockCloudTrial
 
 const globalMockFetch = vi.fn(async (url) => {
   const u = String(url)
@@ -93,6 +97,9 @@ const globalMockFetch = vi.fn(async (url) => {
     clone() { return this },
   })
 
+  if (u.includes('/trial-offer')) {
+    return mockTrialOffer ? jsonResponse(mockTrialOffer) : jsonResponse({ detail: 'Not Found' }, 404, false)
+  }
   if (u.includes('/business/templates')) {
     return jsonResponse({ templates: mockTemplates })
   }
@@ -137,7 +144,9 @@ const globalMockFetch = vi.fn(async (url) => {
     })
   }
   if (u.includes('/signup')) {
-    return jsonResponse({ public_id: 'BA-NEW', token: 'mock-local-token' })
+    const body = { public_id: 'BA-NEW', token: 'mock-local-token' }
+    if (u.startsWith('http://cloud-backend') && mockCloudTrial !== undefined) body.trial = mockCloudTrial
+    return jsonResponse(body)
   }
   if (u.includes('/login')) {
     if (localStorage.getItem('fail_all_login') === 'true') {
@@ -165,6 +174,8 @@ beforeEach(() => {
   mockProfile = { is_premium: true }
   mockTemplates = []
   mockStaffCounters = { business_name: 'Store', staff: [] }
+  mockTrialOffer = null
+  mockCloudTrial = undefined
   mockReadinessProbe = {
     localProbe: { status: 'online', ms: 10, error: null },
     cloudProbe: { status: 'online', ms: 120, error: null },
@@ -625,5 +636,75 @@ describe('Settings two-mode switch (T5)', () => {
     expect(toastSpy.mock.calls[0][0].detail.msg).toContain('offline/unreachable')
 
     window.removeEventListener('show_toast', toastSpy)
+  })
+})
+
+describe('Pro trial and Local + Cloud (T6)', () => {
+  const renderAuth = async () => {
+    const actionRef = React.createRef()
+    render(<AuthProvider><AuthTestConsumer actionRef={actionRef} /></AuthProvider>)
+    await waitFor(() => expect(actionRef.current).not.toBeNull())
+    return actionRef
+  }
+  const renderRegister = () => render(
+    <MemoryRouter><AuthProvider><Register /></AuthProvider></MemoryRouter>
+  )
+  const localBtn = () => screen.getByRole('button', { name: /^Local On this device/ })
+  const hybridBtn = () => screen.getByRole('button', { name: /^Local \+ Cloud/ })
+
+  it('signup: Local + Cloud without a Pro trial is set up as Local, and says so', async () => {
+    mockCloudTrial = null
+    const auth = await renderAuth()
+    const result = await auth.current.signup({ username: 'notrial', password: 'password123', business_name: 'Shop', hosting: 'hybrid', template_key: 'general' })
+    expect(result.fellBackToLocal).toBe(true)
+    expect(result.hosting).toBe('local')
+    expect(localStorage.getItem('bizassist_hosting_mode')).toBe('local')
+    expect(localStorage.getItem('bizassist_cloud_token')).toBeNull()
+  })
+
+  it('signup: Local + Cloud with the trial syncs as chosen', async () => {
+    mockCloudTrial = { days: 14, expires_at: '2026-11-07' }
+    const auth = await renderAuth()
+    const result = await auth.current.signup({ username: 'trialist', password: 'password123', business_name: 'Shop', hosting: 'hybrid', template_key: 'general' })
+    expect(result.fellBackToLocal).toBe(false)
+    expect(localStorage.getItem('bizassist_hosting_mode')).toBe('hybrid')
+    await waitFor(() => expect(localStorage.getItem('bizassist_cloud_token')).toBe('mock-cloud-token'))
+  })
+
+  it('Register preselects Local + Cloud during the trial and explains what happens after it', async () => {
+    mockTrialOffer = { days: 14 }
+    renderRegister()
+    await waitFor(() => expect(hybridBtn()).toHaveAttribute('aria-pressed', 'true'))
+    expect(screen.getByText('FREE IN TRIAL')).toBeInTheDocument()
+    expect(screen.getByText(/Included in your 14-day Pro trial/)).toBeInTheDocument()
+    expect(screen.getByText(/When the trial ends, cloud sync stops unless you upgrade to Pro/)).toBeInTheDocument()
+
+    fireEvent.click(localBtn())  // Local stays one click away
+    expect(localBtn()).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByText(/Included in your 14-day Pro trial/)).not.toBeInTheDocument()
+  })
+
+  it('Register keeps Local when the cloud offers no trial', async () => {
+    renderRegister()
+    await waitFor(() => expect(localBtn()).toHaveAttribute('aria-pressed', 'true'))
+    expect(screen.queryByText('FREE IN TRIAL')).not.toBeInTheDocument()
+  })
+
+  it('Register explains the switch to Local when no trial was given, then lets you in', async () => {
+    mockTrialOffer = { days: 14 }
+    mockCloudTrial = null
+    const { container } = renderRegister()
+    await waitFor(() => expect(hybridBtn()).toHaveAttribute('aria-pressed', 'true'))
+    fireEvent.change(screen.getByPlaceholderText('e.g. store'), { target: { value: 'repeatphone' } })
+    fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'Password123!' } })
+    fireEvent.change(container.querySelector('#confirmPassword'), { target: { value: 'Password123!' } })
+    fireEvent.click(screen.getByLabelText(/I agree to/i))
+    fireEvent.submit(container.querySelector('#register-form'))
+
+    const note = await screen.findByTestId('hosting-fallback')
+    expect(note).toHaveTextContent(/did not get a Pro trial/)
+    expect(note).toHaveTextContent(/your data stays on this computer \(Local\)/)
+    expect(screen.getByRole('button', { name: /Continue to BizAssist/ })).toBeInTheDocument()
+    expect(localStorage.getItem('bizassist_hosting_mode')).toBe('local')
   })
 })

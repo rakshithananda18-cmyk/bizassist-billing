@@ -448,6 +448,15 @@ def _phone_key(phone: Optional[str]) -> Optional[str]:
     return digits[-10:] if len(digits) >= 10 else None
 
 
+@router.get("/trial-offer")
+def trial_offer():
+    """Public: whether a business registered now starts on a Pro trial, and for
+    how long. The desktop app's Register screen asks the CLOUD before sign-up to
+    preselect "Local + Cloud". Only the cloud grants trials, so a local backend
+    answers 0. The final word is the signup response: one trial per phone."""
+    return {"days": _trial_days() if _DB_MODE == "cloud" else 0}
+
+
 def _start_trial(user: User, phone: Optional[str], db: Session) -> Optional[dict]:
     """Put a brand-new business on the Pro trial. Returns the subscription it
     wrote, or None when no trial was given."""
@@ -576,9 +585,10 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
         # A brand-new cloud business starts on the Pro trial. A local mirror
         # (public_id given) takes its plan from the cloud instead. The account
         # already exists, so a failed grant must not fail the signup.
+        trial = None
         if _DB_MODE == "cloud" and not (req.public_id or "").strip():
             try:
-                _start_trial(user, req.phone, db)
+                trial = _start_trial(user, req.phone, db)
             except Exception as e:
                 db.rollback()
                 logger.error(f"[TRIAL] Could not start the trial for '{req.username}': {e}", exc_info=True)
@@ -604,6 +614,9 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             "role": user.role,
             "counter_prefix": user.counter_prefix,   # POS counter series for this login (§9.3a)
             "db_mode": _DB_MODE,   # 'local' | 'cloud' — tells frontend which backend this account lives on
+            # The Pro trial this signup started, or None (none given). The desktop
+            # app sets up "Local + Cloud" only when it got one (Register.jsx).
+            "trial": ({"days": _trial_days(), "expires_at": trial["expires_at"]} if trial else None),
         }
     except HTTPException:
         raise

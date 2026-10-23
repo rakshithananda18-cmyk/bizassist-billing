@@ -535,6 +535,14 @@ export function AuthProvider({ children }) {
         throw err
       }
       const bizId = cloudData.public_id
+      // Local + Cloud is a Pro feature, so it needs the Pro trial the cloud just
+      // granted (or not: one trial per phone, or trials switched off). A cloud
+      // that reports `trial` decides; an older one sends nothing and the choice
+      // stands. Without the trial the business is set up Local instead, and the
+      // caller says so (Register.jsx).
+      const trialKnown = !!cloudData && Object.prototype.hasOwnProperty.call(cloudData, 'trial')
+      const fellBackToLocal = hosting === 'hybrid' && trialKnown && !cloudData.trial
+      const effectiveHosting = fellBackToLocal ? 'local' : hosting
 
       // 2. Mirror locally with the SAME BizID, then log in locally (local-first).
       //    Seed the template ONLY on local (the working copy); the cloud receives
@@ -585,7 +593,7 @@ export function AuthProvider({ children }) {
       //        still talks to the local backend), so there's nothing to re-login.
       try {
         const localTok = localData.token || localData.access_token
-        if (hosting === 'hybrid') {
+        if (effectiveHosting === 'hybrid') {
           updateApiBase('hybrid')
           await fetch(`${LOCAL_URL}/settings`, {
             method: 'PUT',
@@ -602,7 +610,8 @@ export function AuthProvider({ children }) {
       } catch (e) {
         logger.warn('[SIGNUP] Hosting auto-setup skipped (works, sync self-heals on next login):', e?.message)
       }
-      return
+      if (fellBackToLocal) logger.info('[SIGNUP] No Pro trial for this business - set up Local instead of Local + Cloud.')
+      return { hosting: effectiveHosting, fellBackToLocal, trial: cloudData.trial || null }
     }
 
     // Web: register on the cloud backend (API_BASE = cloud here).

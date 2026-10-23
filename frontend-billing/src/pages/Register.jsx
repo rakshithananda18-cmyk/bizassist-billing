@@ -3,7 +3,7 @@
 // Description: Merchant sign-up page. Handles creating new business owner accounts
 //              and configuring baseline settings.
 // ============================================================================
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { API_BASE, CLOUD_URL, IS_LOCAL_APP } from '../config'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -69,6 +69,28 @@ export default function Register() {
   // app (web always runs on cloud). 'local' just proceeds; 'cloud'/'hybrid'
   // route into the guarded switch flow after signup (never a silent switch).
   const [hostingChoice, setHostingChoice] = useState('local')
+  // The cloud's Pro trial offer, asked before sign-up. While new businesses get
+  // a trial, Local + Cloud (a Pro feature) is preselected; Local stays a click
+  // away. An older cloud without /trial-offer, or no connection: Local, as before.
+  const [trialDays, setTrialDays] = useState(0)
+  const hostingTouched = useRef(false)
+  // Set when Local + Cloud fell back to Local (no trial for this business):
+  // say so before going in, instead of letting the sync quietly not happen.
+  const [fallbackNote, setFallbackNote] = useState(null)
+  useEffect(() => {
+    if (!IS_LOCAL_APP) return undefined
+    let alive = true
+    fetch(`${CLOUD_URL}/trial-offer`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        const days = Number(d?.days) || 0
+        if (!alive || days <= 0) return
+        setTrialDays(days)
+        if (!hostingTouched.current) setHostingChoice('hybrid')
+      })
+      .catch(() => { /* keep Local */ })
+    return () => { alive = false }
+  }, [])
   // Multi-type business (Phase 2): optional secondary business types. The
   // primary drives defaults; secondaries add counter modes (e.g. a shop that
   // is Retail + Repair). Registered via POST /business/setup after signup.
@@ -167,7 +189,7 @@ export default function Register() {
     logger.info('Client validation passed. Calling signup API for username:', form.username)
     setLoading(true)
     try {
-      await signup({
+      const result = await signup({
         username: form.username,
         password: form.password,
         business_name: form.businessName,
@@ -189,6 +211,11 @@ export default function Register() {
         }
       }
       logger.info('Registration completed successfully!')
+      if (result?.fellBackToLocal) {
+        setFallbackNote('This business did not get a Pro trial (for example, the phone number already had one), '
+          + 'so your data stays on this computer (Local). You can turn on Local + Cloud in Settings once you have Pro.')
+        return
+      }
       // Hosting is auto-configured inside signup() from the choice above (Local, or
       // Local + Cloud which turns on background sync). There is no separate
       // onboarding, migration, or re-login — a brand-new account has no data to
@@ -281,6 +308,16 @@ export default function Register() {
             </button>
           </div>
 
+          {fallbackNote ? (
+            <div className="login-form" style={{ gap: 12 }} data-testid="hosting-fallback">
+              <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.5, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-2)' }}>
+                <strong style={{ color: 'var(--text-primary)' }}>Your account is ready.</strong> {fallbackNote}
+              </div>
+              <button className="login-submit-btn" type="button" style={{ padding: '10px' }} onClick={() => navigate('/', { replace: true })}>
+                Continue to BizAssist
+              </button>
+            </div>
+          ) : (
           <form className="login-form" id="register-form" onSubmit={handleSubmit} style={{ gap: 10 }}>
             <div className="form-group">
               <label htmlFor="businessName">Business / Organization Name</label>
@@ -355,7 +392,8 @@ export default function Register() {
                     <button
                       type="button"
                       key={opt.key}
-                      onClick={() => setHostingChoice(opt.key)}
+                      aria-pressed={hostingChoice === opt.key}
+                      onClick={() => { hostingTouched.current = true; setHostingChoice(opt.key) }}
                       style={{
                         textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
                         border: `1.5px solid ${hostingChoice === opt.key ? 'var(--accent)' : 'var(--border)'}`,
@@ -363,14 +401,23 @@ export default function Register() {
                         color: 'var(--text-primary)',
                       }}
                     >
-                      <div style={{ fontWeight: 700, fontSize: '0.86rem' }}>{opt.title}</div>
+                      <div style={{ fontWeight: 700, fontSize: '0.86rem' }}>
+                        {opt.title}
+                        {opt.key === 'hybrid' && trialDays > 0 && (
+                          <span style={{ marginLeft: 6, fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.04em', padding: '1px 6px', borderRadius: 6, background: 'var(--accent)', color: '#fff', verticalAlign: 'middle' }}>
+                            FREE IN TRIAL
+                          </span>
+                        )}
+                      </div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.3 }}>{opt.desc}</div>
                     </button>
                   ))}
                 </div>
                 {hostingChoice === 'hybrid' && (
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>
-                    Set up automatically — no extra steps. Billing stays fast and offline while your data syncs to the cloud in the background.
+                    {trialDays > 0
+                      ? `Included in your ${trialDays}-day Pro trial and set up automatically: billing stays fast and offline while your data syncs to the cloud. When the trial ends, cloud sync stops unless you upgrade to Pro. Everything stays on this computer and keeps working offline.`
+                      : 'Set up automatically — no extra steps. Billing stays fast and offline while your data syncs to the cloud in the background.'}
                   </div>
                 )}
               </div>
@@ -543,6 +590,7 @@ export default function Register() {
               {loading ? 'Registering…' : 'Get Started'}
             </button>
           </form>
+          )}
         </div>
       </div>
 

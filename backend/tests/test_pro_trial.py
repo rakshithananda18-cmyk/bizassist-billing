@@ -180,3 +180,43 @@ def test_lapsed_trial_blocks_sync_but_never_the_way_out(cloud, monkeypatch):
 
     assert client.post("/api/sync/push", headers=headers, json={"changes": []}).status_code == 402
     assert client.get("/api/data-transfer/export", headers=headers).status_code == 200
+
+
+# ── what the desktop Register screen is told (Local + Cloud during the trial) ──
+
+def _signup_response(phone=None):
+    body = {"username": f"own_{uuid.uuid4().hex[:8]}", "password": "TestPass123!", "business_name": "Trial Co"}
+    if phone is not None:
+        body["phone"] = phone
+    r = client.post("/signup", json=body)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_signup_reports_the_trial_it_started(cloud):
+    trial = _signup_response()["trial"]
+    assert trial == {"days": 14, "expires_at": (utc_now().date() + timedelta(days=14)).isoformat()}
+
+
+def test_signup_reports_no_trial_when_none_was_given(cloud, monkeypatch):
+    phone = _unique_phone()
+    assert _signup_response(phone)["trial"] is not None
+    assert _signup_response(phone)["trial"] is None  # same phone: no second trial
+    monkeypatch.setenv("PRO_TRIAL_DAYS", "0")
+    assert _signup_response()["trial"] is None
+
+
+def test_local_signup_reports_no_trial(monkeypatch):
+    monkeypatch.setattr(auth_routes, "_DB_MODE", "local")
+    monkeypatch.setenv("PRO_TRIAL_DAYS", "14")
+    assert _signup_response()["trial"] is None
+
+
+def test_trial_offer_is_public_and_follows_the_cloud_setting(cloud, monkeypatch):
+    assert client.get("/trial-offer").json() == {"days": 14}  # no sign-in needed
+    monkeypatch.setenv("PRO_TRIAL_DAYS", "0")
+    assert client.get("/trial-offer").json() == {"days": 0}
+    monkeypatch.setenv("PRO_TRIAL_DAYS", "14")
+    monkeypatch.setattr(auth_routes, "_DB_MODE", "local")  # only the cloud grants trials
+    assert client.get("/trial-offer").json() == {"days": 0}
+
