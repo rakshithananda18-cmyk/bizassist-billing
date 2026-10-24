@@ -66,9 +66,11 @@ export default function Register() {
   const [templates, setTemplates] = useState([])
   const [selectedTemplate, setSelectedTemplate] = useState('general')
   // Where should this business's data live? Chosen at signup in the desktop
-  // app (web always runs on cloud). 'local' just proceeds; 'cloud'/'hybrid'
-  // route into the guarded switch flow after signup (never a silent switch).
-  const [hostingChoice, setHostingChoice] = useState('local')
+  // app (web always runs on cloud). Starts on Local + Cloud: every new business
+  // begins on a Pro trial (routes/auth.py `_start_trial`), so its data reaches
+  // the cloud from day one, and the device drops back to Local by itself when
+  // the plan ends (utils/resolveHostingMode). 'local' is the owner's opt-out.
+  const [hostingChoice, setHostingChoice] = useState('hybrid')
   // Multi-type business (Phase 2): optional secondary business types. The
   // primary drives defaults; secondaries add counter modes (e.g. a shop that
   // is Retail + Repair). Registered via POST /business/setup after signup.
@@ -152,7 +154,7 @@ export default function Register() {
     }
     if (!form.agreeTerms) {
       logger.warn('Registration failed client validation: User did not agree to terms.')
-      setError('You must agree to the local data storage Terms of Service.')
+      setError('You must agree to the Terms of Service.')
       return
     }
     if (form.password !== form.confirmPassword) {
@@ -349,12 +351,13 @@ export default function Register() {
                 <label>Where should your data live?</label>
                 <div data-testid="hosting-choice" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 4 }}>
                   {[
-                    { key: 'local',  title: 'Local',          desc: 'On this device. Fast, fully offline.' },
+                    { key: 'local',  title: 'Local only',     desc: 'Nothing goes to the cloud. Fast, fully offline.' },
                     { key: 'hybrid', title: 'Local + Cloud',  desc: 'Local speed + automatic cloud sync, backup & multi-device.' },
                   ].map(opt => (
                     <button
                       type="button"
                       key={opt.key}
+                      aria-pressed={hostingChoice === opt.key}
                       onClick={() => setHostingChoice(opt.key)}
                       style={{
                         textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
@@ -369,8 +372,10 @@ export default function Register() {
                   ))}
                 </div>
                 {hostingChoice === 'hybrid' && (
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6, lineHeight: 1.4 }}>
                     Set up automatically — no extra steps. Billing stays fast and offline while your data syncs to the cloud in the background.
+                    {' '}<strong style={{ color: 'var(--text-secondary)' }}>Free for your first 14 days with the Pro trial.</strong>
+                    {' '}After that this computer switches to Local by itself, and your data stays here.
                   </div>
                 )}
               </div>
@@ -524,7 +529,7 @@ export default function Register() {
                 required
               />
               <label htmlFor="agreeTerms" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', cursor: 'pointer', lineHeight: 1.35 }}>
-                I agree to the local data storage Terms of Service.
+                I agree to the Terms of Service.
               </label>
             </div>
 

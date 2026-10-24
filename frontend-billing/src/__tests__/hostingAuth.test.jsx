@@ -384,7 +384,7 @@ describe('Signup hosting auto-config (T3)', () => {
     })
   })
 
-  it('signup({hosting:\'local\'}) stays local and navigates straight to the app', async () => {
+  it('signup({hosting:\'local\'}) stays local but still gets the cloud token, so the trial shows', async () => {
     const actionRef = React.createRef()
     render(
       <AuthProvider>
@@ -396,6 +396,7 @@ describe('Signup hosting auto-config (T3)', () => {
       expect(actionRef.current).not.toBeNull()
     })
 
+    const callsBefore = globalMockFetch.mock.calls.length
     await actionRef.current.signup({
       username: 'localowner',
       password: 'password123',
@@ -405,7 +406,15 @@ describe('Signup hosting auto-config (T3)', () => {
     })
 
     expect(localStorage.getItem('bizassist_hosting_mode')).toBe('local')
-    expect(localStorage.getItem('bizassist_cloud_token')).toBeNull()
+    // Every login mints one; signup has to as well, or the desktop cannot read
+    // the plan — the Pro trial the cloud just granted — until the next sign-in.
+    await waitFor(() => {
+      expect(localStorage.getItem('bizassist_cloud_token')).toBe('mock-cloud-token')
+    })
+    // …and a Local-only device never marks the account as Local + Cloud anywhere.
+    const markedHybrid = globalMockFetch.mock.calls.slice(callsBefore).some(([url, opts]) =>
+      String(url).includes('/settings') && opts?.method === 'PUT' && String(opts?.body).includes('hybrid'))
+    expect(markedHybrid).toBe(false)
   })
 
   it('setHostingMode("local") persists mode WITHOUT logging the user out', async () => {
@@ -443,7 +452,7 @@ describe('Signup hosting auto-config (T3)', () => {
 })
 
 describe('Register two options (T4)', () => {
-  it('renders exactly two hosting choices: Local and Local + Cloud (no pure Cloud)', () => {
+  it('renders exactly two hosting choices: Local only and Local + Cloud (no pure Cloud)', () => {
     render(
       <MemoryRouter>
         <AuthProvider>
@@ -459,9 +468,49 @@ describe('Register two options (T4)', () => {
     })
 
     expect(hostingButtons).toHaveLength(2)
-    expect(screen.getByText('Local')).toBeInTheDocument()
+    expect(screen.getByText('Local only')).toBeInTheDocument()
     expect(screen.getByText('Local + Cloud')).toBeInTheDocument()
     expect(screen.queryByText('Cloud Only')).not.toBeInTheDocument()
+  })
+
+  // Every new business starts on a Pro trial, so the default is the choice that
+  // actually uses it: Local only would leave the trial's cloud sync idle.
+  it('starts on Local + Cloud and says the trial covers it', () => {
+    render(
+      <MemoryRouter>
+        <AuthProvider>
+          <Register />
+        </AuthProvider>
+      </MemoryRouter>
+    )
+
+    expect(screen.getByRole('button', { name: /Local \+ Cloud/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /Local only/ })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByText(/Free for your first 14 days/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Local only'))
+    expect(screen.getByRole('button', { name: /Local only/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByText(/Free for your first 14 days/)).not.toBeInTheDocument()
+  })
+
+  it('registers on Local + Cloud when the owner leaves the choice alone', async () => {
+    const { container } = render(
+      <MemoryRouter>
+        <AuthProvider>
+          <Register />
+        </AuthProvider>
+      </MemoryRouter>
+    )
+
+    fireEvent.change(screen.getByPlaceholderText('e.g. store'), { target: { value: 'defaultshop' } })
+    fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'Password123!' } })
+    fireEvent.change(container.querySelector('#confirmPassword'), { target: { value: 'Password123!' } })
+    fireEvent.click(screen.getByLabelText(/I agree to the Terms of Service/i))
+    fireEvent.submit(container.querySelector('form'))
+
+    await waitFor(() => {
+      expect(localStorage.getItem('bizassist_hosting_mode')).toBe('hybrid')
+    })
   })
 
   it('forwards the chosen hosting to signup() and navigates to / (never /settings?switch=)', async () => {

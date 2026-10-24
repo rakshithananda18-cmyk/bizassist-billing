@@ -592,13 +592,17 @@ export function AuthProvider({ children }) {
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localTok}` },
             body: JSON.stringify({ general: { hosting_mode: 'hybrid' } }),
           }).catch(() => { /* self-heals on next settings fetch */ })
-          // Mint the cloud sync token (best-effort). _provisionCloudSyncToken also
-          // stamps hosting_mode=hybrid on the cloud record when the device is on
-          // Local + Cloud, so the Admin Console reflects it. Never blocks signup.
-          _provisionCloudSyncToken(username, password, localTok)
         } else {
           updateApiBase('local')
         }
+        // Mint the cloud sync token for BOTH choices (best-effort, never blocks
+        // signup). Every login already does. Without it here, a Local-only
+        // desktop cannot read the plan from the cloud, so the Pro trial the cloud
+        // just granted stayed invisible until the owner signed in again. The
+        // token alone moves no data — the sync worker runs only in Local + Cloud
+        // — and _provisionCloudSyncToken stamps hosting_mode=hybrid on the cloud
+        // record only when this device is on Local + Cloud.
+        _provisionCloudSyncToken(username, password, localTok)
       } catch (e) {
         logger.warn('[SIGNUP] Hosting auto-setup skipped (works, sync self-heals on next login):', e?.message)
       }
