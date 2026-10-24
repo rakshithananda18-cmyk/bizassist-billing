@@ -142,7 +142,7 @@ function AgingBars({ aging, sendChip }) {
   return aging.map((a, i) => {
     const pct = Math.max(2, (a.amount / maxVal) * 100)
     return (
-      <div key={i} className="bar-row" onClick={() => sendChip(`Tell me about overdue payments in range ${a.range}`)}
+      <div key={i} className="bar-row" role="button" tabIndex={0} onClick={() => sendChip(`Tell me about overdue payments in range ${a.range}`)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }}
         title={`${a.range} — ${fmtFull(a.amount)}`} style={{ cursor: 'pointer' }}>
         <div className="bar-label">{a.range}</div>
         <div className="bar-track">
@@ -166,7 +166,7 @@ function CustomersBarChart({ customers, sendChip }) {
     const pct = Math.max(4, (c.total / max) * 100)
     const label = c.customer.length > 14 ? c.customer.slice(0, 13) + '…' : c.customer
     return (
-      <div key={i} className="bar-row" onClick={() => sendChip(`Tell me about ${c.customer} payment status and invoices`)}
+      <div key={i} className="bar-row" role="button" tabIndex={0} onClick={() => sendChip(`Tell me about ${c.customer} payment status and invoices`)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }}
         title={`${c.customer} — ${fmtFull(c.total)}`} style={{ cursor: 'pointer' }}>
         <div className="bar-label">{label}</div>
         <div className="bar-track">
@@ -316,22 +316,22 @@ export default function Dashboard() {
 
       {/* STAT STRIP */}
       <div className="vsummary-strip" style={{ marginBottom: 12 }}>
-        <div className="vsummary-card" style={{ borderLeftColor: 'var(--accent-color)' }} onClick={() => sendChip('What is my total revenue?', 'total_revenue')}>
+        <div className="vsummary-card" role="button" tabIndex={0} style={{ borderLeftColor: 'var(--accent-color)' }} onClick={() => sendChip('What is my total revenue?', 'total_revenue')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }}>
           <div className="vsummary-label">Total Revenue</div>
           <div className="vsummary-value">{fmtAmount(summary.total_revenue)}</div>
           <div className="vsummary-sub">{summary.invoice_count} invoices</div>
         </div>
-        <div className="vsummary-card" style={{ borderLeftColor: '#c97c22' }} onClick={() => sendChip('List all pending invoices', 'pending_list')}>
+        <div className="vsummary-card" role="button" tabIndex={0} style={{ borderLeftColor: '#c97c22' }} onClick={() => sendChip('List all pending invoices', 'pending_list')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }}>
           <div className="vsummary-label">Pending</div>
           <div className="vsummary-value">{summary.pending_invoices}</div>
           <div className="vsummary-sub">invoices awaiting</div>
         </div>
-        <div className="vsummary-card" style={{ borderLeftColor: '#c02a2a' }} onClick={() => sendChip('Show me all overdue invoices with amounts', 'overdue_list')}>
+        <div className="vsummary-card" role="button" tabIndex={0} style={{ borderLeftColor: '#c02a2a' }} onClick={() => sendChip('Show me all overdue invoices with amounts', 'overdue_list')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }}>
           <div className="vsummary-label">Overdue</div>
           <div className="vsummary-value" style={{ color: '#c02a2a' }}>{fmtAmount(summary.overdue_amount)}</div>
           <div className="vsummary-sub">needs recovery</div>
         </div>
-        <div className="vsummary-card" style={{ borderLeftColor: '#3a9a5c' }} onClick={() => sendChip('How many products are in inventory?', 'inventory_count')}>
+        <div className="vsummary-card" role="button" tabIndex={0} style={{ borderLeftColor: '#3a9a5c' }} onClick={() => sendChip('How many products are in inventory?', 'inventory_count')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }}>
           <div className="vsummary-label">Inventory</div>
           <div className="vsummary-value">{summary.inventory_count}</div>
           <div className="vsummary-sub">products tracked</div>
@@ -371,17 +371,17 @@ export default function Dashboard() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 20, justifyContent: 'center', flex: 1 }}>
             <DonutChart paid={paidVal} pending={pendingVal} overdue={overdueVal} healthPct={healthPct} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => sendChip('Show my paid invoices summary', 'invoice_count')}>
+              <div role="button" tabIndex={0} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => sendChip('Show my paid invoices summary', 'invoice_count')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }}>
                 <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#3a9a5c' }}></span>
                 <span style={{ color: 'var(--secondary-text)' }}>Paid:</span>
                 <strong style={{ color: '#3a9a5c' }}>{paidVal} invoices</strong>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => sendChip('List all pending invoices', 'pending_list')}>
+              <div role="button" tabIndex={0} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => sendChip('List all pending invoices', 'pending_list')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }}>
                 <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#c97c22' }}></span>
                 <span style={{ color: 'var(--secondary-text)' }}>Pending:</span>
                 <strong style={{ color: '#c97c22' }}>{pendingVal} invoices</strong>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => sendChip('List all overdue invoices', 'overdue_list')}>
+              <div role="button" tabIndex={0} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }} onClick={() => sendChip('List all overdue invoices', 'overdue_list')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }}>
                 <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#c94242' }}></span>
                 <span style={{ color: 'var(--secondary-text)' }}>Overdue:</span>
                 <strong style={{ color: '#c94242' }}>{overdueVal} invoices</strong>

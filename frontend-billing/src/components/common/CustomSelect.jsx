@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
+import React, { useState, useRef, useEffect, useId, forwardRef, useImperativeHandle } from 'react'
 import { createPortal } from 'react-dom'
 
 const CustomSelect = forwardRef(function CustomSelect({
@@ -13,12 +13,15 @@ const CustomSelect = forwardRef(function CustomSelect({
 }, ref) {
   const [isOpen, setIsOpen] = useState(false)
   const buttonRef = useRef(null)
+  const optionRefs = useRef([])
   const [dropdownStyle, setDropdownStyle] = useState({})
+  const generatedId = useId().replace(/:/g, '')
+  const listboxId = `${id || `custom-select-${generatedId}`}-listbox`
 
   useImperativeHandle(ref, () => buttonRef.current)
 
   // Extract options from children (native <option> elements)
-  const options = React.Children.map(children, child => {
+  const options = React.Children.toArray(children).map(child => {
     if (child && child.type === 'option') {
       return {
         value: child.props.value !== undefined ? child.props.value : child.props.children,
@@ -29,7 +32,8 @@ const CustomSelect = forwardRef(function CustomSelect({
     return null
   }).filter(Boolean)
 
-  const selectedOption = options.find(o => String(o.value) === String(value))
+  const selectedIndex = options.findIndex(o => String(o.value) === String(value))
+  const selectedOption = options[selectedIndex]
   const displayLabel = selectedOption ? selectedOption.label : (options.length > 0 ? options[0].label : 'Select...')
 
   // Calculate position of the dropdown menu dynamically to handle viewport boundaries and screen height
@@ -59,29 +63,42 @@ const CustomSelect = forwardRef(function CustomSelect({
     }
   }
 
-  // Open/close handler
-  const handleToggle = (e) => {
-    e.preventDefault()
-    if (isOpen) {
-      setIsOpen(false)
-      return
-    }
+  const enabledOptionIndexes = options
+    .map((option, index) => (!option.disabled ? index : null))
+    .filter(index => index !== null)
+
+  const focusOption = (index) => {
+    const fallback = enabledOptionIndexes.find(optionIndex => optionIndex >= index) ?? enabledOptionIndexes[0]
+    if (fallback !== undefined) optionRefs.current[fallback]?.focus()
+  }
+
+  const openMenu = (preferredIndex = selectedIndex) => {
+    if (disabled) return
     setDropdownStyle(getDropdownPosition())
     setIsOpen(true)
+    const schedule = window.requestAnimationFrame || ((callback) => window.setTimeout(callback, 0))
+    schedule(() => focusOption(preferredIndex))
+  }
+
+  const closeMenu = ({ restoreFocus = false } = {}) => {
+    setIsOpen(false)
+    if (restoreFocus) {
+      buttonRef.current?.focus()
+    }
   }
 
   // Close on outside click
   useEffect(() => {
     function handleClickOutside(e) {
       // If clicking outside both the button and the dropdown list
-      const dropdownEl = document.getElementById(`custom-dropdown-${id || 'generic'}`)
+      const dropdownEl = document.getElementById(listboxId)
       if (
         (buttonRef.current && buttonRef.current.contains(e.target)) ||
         (dropdownEl && dropdownEl.contains(e.target))
       ) {
         return
       }
-      setIsOpen(false)
+      closeMenu()
     }
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside)
@@ -89,7 +106,7 @@ const CustomSelect = forwardRef(function CustomSelect({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [isOpen, id])
+  }, [isOpen, listboxId])
 
   // Update position on scroll/resize when open
   useEffect(() => {
@@ -113,7 +130,33 @@ const CustomSelect = forwardRef(function CustomSelect({
       // Simulate native event object for compatibility
       onChange({ target: { value: val } })
     }
-    setIsOpen(false)
+    closeMenu({ restoreFocus: true })
+  }
+
+  const moveFocus = (currentIndex, direction) => {
+    if (!enabledOptionIndexes.length) return
+    const currentPosition = enabledOptionIndexes.indexOf(currentIndex)
+    const nextPosition = currentPosition < 0
+      ? 0
+      : (currentPosition + direction + enabledOptionIndexes.length) % enabledOptionIndexes.length
+    focusOption(enabledOptionIndexes[nextPosition])
+  }
+
+  const handleTriggerKeyDown = (event) => {
+    onKeyDown?.(event)
+    if (event.defaultPrevented || disabled) return
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const first = enabledOptionIndexes[0]
+      const last = enabledOptionIndexes.at(-1)
+      openMenu(selectedIndex >= 0 ? selectedIndex : (event.key === 'ArrowDown' ? first : last))
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      isOpen ? closeMenu() : openMenu()
+    } else if (event.key === 'Escape' && isOpen) {
+      event.preventDefault()
+      closeMenu()
+    }
   }
 
   // Base style for the button to ensure it looks good if no styles are provided,
@@ -138,21 +181,26 @@ const CustomSelect = forwardRef(function CustomSelect({
         id={id}
         className={`custom-select-btn ${className}`}
         disabled={disabled}
-        onClick={handleToggle}
-        onKeyDown={onKeyDown}
+        onClick={() => (isOpen ? closeMenu() : openMenu())}
+        onKeyDown={handleTriggerKeyDown}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-controls={isOpen ? listboxId : undefined}
         style={buttonStyle}
       >
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {displayLabel}
         </span>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8, opacity: 0.6, flexShrink: 0 }}>
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 8, opacity: 0.6, flexShrink: 0 }}>
           <polyline points="6 9 12 15 18 9"></polyline>
         </svg>
       </button>
 
       {isOpen && !disabled && createPortal(
         <div
-          id={`custom-dropdown-${id || 'generic'}`}
+          id={listboxId}
+          role="listbox"
+          aria-labelledby={id || undefined}
           style={{
             position: 'absolute',
             top: dropdownStyle.top,
@@ -174,10 +222,22 @@ const CustomSelect = forwardRef(function CustomSelect({
             const isCurrent = String(opt.value) === String(value)
             return (
               <button
-                key={idx}
+                key={`${String(opt.value)}-${idx}`}
+                ref={node => { optionRefs.current[idx] = node }}
                 type="button"
+                role="option"
+                aria-selected={isCurrent}
                 disabled={opt.disabled}
-                onClick={(e) => { e.preventDefault(); handleSelect(opt.value); }}
+                onClick={() => handleSelect(opt.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowDown') { event.preventDefault(); moveFocus(idx, 1) }
+                  else if (event.key === 'ArrowUp') { event.preventDefault(); moveFocus(idx, -1) }
+                  else if (event.key === 'Home') { event.preventDefault(); focusOption(enabledOptionIndexes[0]) }
+                  else if (event.key === 'End') { event.preventDefault(); focusOption(enabledOptionIndexes.at(-1)) }
+                  else if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); handleSelect(opt.value) }
+                  else if (event.key === 'Escape') { event.preventDefault(); closeMenu({ restoreFocus: true }) }
+                  else if (event.key === 'Tab') closeMenu()
+                }}
                 style={{
                   background: isCurrent ? 'var(--bg-4, rgba(0,0,0,0.06))' : 'transparent',
                   border: 'none',
@@ -194,15 +254,9 @@ const CustomSelect = forwardRef(function CustomSelect({
                   width: '100%',
                   opacity: opt.disabled ? 0.6 : 1
                 }}
-                onMouseEnter={(e) => {
-                  if (!isCurrent && !opt.disabled) e.currentTarget.style.background = 'var(--bg-3, rgba(0,0,0,0.03))'
-                }}
-                onMouseLeave={(e) => {
-                  if (!isCurrent && !opt.disabled) e.currentTarget.style.background = 'transparent'
-                }}
               >
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{opt.label}</span>
-                {isCurrent && <span style={{ fontSize: '0.75rem', flexShrink: 0, marginLeft: 8 }}>✓</span>}
+                {isCurrent && <span aria-hidden="true" style={{ fontSize: '0.75rem', flexShrink: 0, marginLeft: 8 }}>✓</span>}
               </button>
             )
           })}

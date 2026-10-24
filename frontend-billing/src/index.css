@@ -6132,6 +6132,12 @@ body.is-col-resizing * {
 .mobile-bottombar { display: none; }
 
 @media (max-width: 768px) {
+  /* Sync warnings are actionable; keep them above the fixed thumb-bar rather
+     than covering the primary navigation on phones. */
+  .sync-prompt-banner {
+    bottom: calc(var(--bottombar-h) + env(safe-area-inset-bottom, 0px) + 12px) !important;
+  }
+
   .mobile-bottombar {
     display: flex;
     position: fixed;

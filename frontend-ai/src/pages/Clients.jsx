@@ -102,7 +102,10 @@ export default function Clients() {
             <div
               key={c.customer}
               className="vclient-card"
+              role="button"
+              tabIndex={0}
               onClick={() => sendChip(`Summary for ${c.customer}`, 'client_summary', { customer: c.customer })}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }}
               style={{ cursor: 'pointer' }}
             >
               <div className="vclient-top">

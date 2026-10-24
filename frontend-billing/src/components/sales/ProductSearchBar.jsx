@@ -6,7 +6,7 @@
 // The input is exposed via forwardRef so the parent keeps its `barcodeRef` —
 // the global POS keydown handler focuses it (F9, post-save, Escape-clear) exactly
 // as before. Presentational otherwise: query/results/handlers are passed in.
-import { forwardRef } from 'react'
+import { forwardRef, useId } from 'react'
 import { fmt } from '../../utils/format'
 
 const ProductSearchBar = forwardRef(function ProductSearchBar({
@@ -21,6 +21,8 @@ const ProductSearchBar = forwardRef(function ProductSearchBar({
   onPick,             // addProductToCart
   disabled = false,   // block keyboard/clicks in view-only mode
 }, ref) {
+  const resultsId = `product-search-results-${useId().replace(/:/g, '')}`
+  const hasResults = !disabled && filteredProducts.length > 0
   return (
     <div className="pos-search-container" style={{ position: 'relative' }}>
       <div style={{ display: 'flex', gap: 8 }}>
@@ -34,6 +36,11 @@ const ProductSearchBar = forwardRef(function ProductSearchBar({
             placeholder={placeholder}
             style={{ width: '100%', color: 'var(--text-primary)' }}
             disabled={disabled}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={hasResults}
+            aria-controls={hasResults ? resultsId : undefined}
+            aria-activedescendant={selectedIndex >= 0 && hasResults ? `${resultsId}-option-${filteredProducts[selectedIndex]?.id}` : undefined}
           />
         </div>
         <button type="button" className="btn btn-secondary" onClick={onAddCustom} disabled={disabled} style={{ whiteSpace: 'nowrap', fontSize: '0.8rem', padding: '0 16px' }}>
@@ -42,8 +49,8 @@ const ProductSearchBar = forwardRef(function ProductSearchBar({
       </div>
 
       {/* Autocomplete Overlay */}
-      {!disabled && filteredProducts.length > 0 && (
-        <div style={{
+      {hasResults && (
+        <div id={resultsId} role="listbox" style={{
           position: 'absolute',
           top: '100%',
           left: 0,
@@ -59,8 +66,12 @@ const ProductSearchBar = forwardRef(function ProductSearchBar({
           {filteredProducts.map((p, idx) => {
             const isSelected = idx === selectedIndex;
             return (
-              <div
+              <button
                 key={p.id}
+                id={`${resultsId}-option-${p.id}`}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
                 style={{
                   padding: '10px 14px',
                   background: isSelected ? 'var(--accent-glow)' : 'transparent',
@@ -69,7 +80,9 @@ const ProductSearchBar = forwardRef(function ProductSearchBar({
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  borderBottom: '1px solid var(--border)'
+                  borderBottom: '1px solid var(--border)',
+                  borderLeft: 'none', borderRight: 'none', borderTop: 'none',
+                  width: '100%', textAlign: 'left', font: 'inherit'
                 }}
                 onClick={() => onPick(p)}
                 onMouseEnter={() => onHoverIndex(idx)}
@@ -79,7 +92,7 @@ const ProductSearchBar = forwardRef(function ProductSearchBar({
                   <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>SKU: {p.sku || '—'} {p.barcode ? `| Barcode: ${p.barcode}` : ''}</span>
                 </div>
                 <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--success)' }}>{fmt(p.selling_price)}</span>
-              </div>
+              </button>
             );
           })}
         </div>

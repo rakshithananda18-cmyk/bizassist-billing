@@ -633,7 +633,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
               }}
             />
           ) : (
-            <div className="ah-biz-name" id="ai-biz-banner-name" onClick={() => setIsRenamingBanner(true)} title="Click to rename">
+            <div className="ah-biz-name" id="ai-biz-banner-name" role="button" tabIndex={0} onClick={() => setIsRenamingBanner(true)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsRenamingBanner(true) } }} title="Click to rename">
               {bizName}
             </div>
           )}

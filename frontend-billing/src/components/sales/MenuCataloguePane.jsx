@@ -39,10 +39,12 @@ export default function MenuCataloguePane({ groupedProducts, onSelectProduct }) 
             </h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px' }}>
               {items.map(p => (
-                <div
+                <button
                   key={p.id}
+                  type="button"
                   className="menu-product-card"
                   onClick={() => onSelectProduct(p)}
+                  aria-label={`Add ${p.name} to bill`}
                   style={{
                     background: 'var(--bg-2)',
                     border: '1.5px solid var(--border)',
@@ -54,7 +56,10 @@ export default function MenuCataloguePane({ groupedProducts, onSelectProduct }) 
                     flexDirection: 'column',
                     justifyContent: 'space-between',
                     minHeight: '85px',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                    color: 'inherit',
+                    textAlign: 'left',
+                    font: 'inherit'
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.borderColor = 'var(--accent)'
@@ -78,7 +83,7 @@ export default function MenuCataloguePane({ groupedProducts, onSelectProduct }) 
                       {fmt(p.selling_price)}
                     </span>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </div>

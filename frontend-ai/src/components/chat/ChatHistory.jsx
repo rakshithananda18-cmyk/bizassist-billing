@@ -47,10 +47,17 @@ export default function ChatHistory({
             <div
               key={s.session_id}
               className={`rp-chat-item ${s.session_id === activeId ? 'active' : ''}`}
+              role="button"
+              tabIndex={renamingId === s.session_id ? -1 : 0}
+              aria-label={`Open conversation: ${s.session_title || 'Untitled'}`}
               onClick={() => {
                 if (renamingId === s.session_id) return
                 onSelectSession(s.session_id)
                 onClose()
+              }}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget || renamingId === s.session_id) return
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectSession(s.session_id); onClose() }
               }}
             >
               <div className="rp-chat-title-wrapper">
