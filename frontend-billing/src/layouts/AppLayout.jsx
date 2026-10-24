@@ -9,7 +9,7 @@ import { logger } from '../utils/logger'
 import { formatIST } from '../utils/format'
 import { resolveHostingMode } from '../utils/resolveHostingMode'
 import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
-import { getFieldTeamUrl, openFieldTeam } from '../config/fieldTeam'
+import { fieldTeamNeedsCloudData, getFieldTeamUrl, openFieldTeam } from '../config/fieldTeam'
 import { applyNavOrder, navOrderKeys } from './navOrder'
 import { IS_DESKTOP_APP, openDownloadPage } from '../config/downloadApp'
 import { BuildingMark } from '../components/Logo'
@@ -32,12 +32,13 @@ import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, Contac
 
 // Separate apps opened from the sidebar — a NAV item's `external` names one.
 // Each runs on its own origin; its opener hands the owner's session over with
-// a 30-second /handoff-ticket. `proOnly` applies the plan gate below.
+// a 30-second /handoff-ticket. `proOnly` applies the plan gate below;
+// `needsCloudData` stops a desktop on Local only opening a cloud app empty.
 const EXTERNAL_APPS = {
   ai:        { getUrl: getAiDashboardUrl, open: openAiDashboard, proOnly: true },
   // Pro, like the AI dashboard. Field Team's own server enforces it too
   // (backend-task/app/plan.py); this only shows the badge and the upgrade note.
-  fieldTeam: { getUrl: getFieldTeamUrl,   open: openFieldTeam,   proOnly: true },
+  fieldTeam: { getUrl: getFieldTeamUrl,   open: openFieldTeam,   proOnly: true, needsCloudData: fieldTeamNeedsCloudData },
 }
 
 const NAV = [
@@ -2100,7 +2101,7 @@ export default function AppLayout({ children, title }) {
                             className="nav-link"
                             data-label={label}
                             onContextMenu={handleCtxMenu}
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.preventDefault()
                               setMobileMenuOpen(false)
                               if (gated) {
@@ -2109,6 +2110,18 @@ export default function AppLayout({ children, title }) {
                                   title: 'Pro plan feature',
                                   message: `${label} is part of the Pro plan. Contact your provider to upgrade.`,
                                 })
+                                return
+                              }
+                              if (app.needsCloudData?.({ isLocalApp: IS_LOCAL_APP, effectiveMode })) {
+                                const go = await confirm({
+                                  mode: 'update',
+                                  title: `${label} needs Local + Cloud`,
+                                  message: `${label} runs in the cloud and works from your customers and bills there. This business is set to Local only, so nothing has reached the cloud and ${label} would open empty. Switch to Local + Cloud: your data stays on this computer too.`,
+                                  confirmText: 'Switch to Local + Cloud',
+                                  cancelText: 'Not now',
+                                })
+                                // The same guarded switch flow as the sync popover's button.
+                                if (go) navigate('/settings?tab=advanced&switch=hybrid')
                                 return
                               }
                               app.open()

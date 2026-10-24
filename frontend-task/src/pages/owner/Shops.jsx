@@ -86,7 +86,9 @@ function ImportBilling({ onClose, onSaved }) {
       <ErrorNote error={error} />
       <input className="form-input" placeholder="Search customers" value={q} onChange={e => setQ(e.target.value)} />
       <div className="row"><button className="btn btn-ghost btn-sm" onClick={() => setPicked(new Set(rows.map(r => r.id)))}>Select all shown</button></div>
-      {loading ? <Loader /> : rows.length === 0 ? <Empty>No unlinked billing customers.</Empty> : (
+      {loading ? <Loader /> : data && data.length === 0 && !error ? (
+        <Empty>No billing customers here yet. Billing in the BizAssist desktop app? Set it to Local + Cloud (Settings → Advanced) so your customers and bills reach Field Team.</Empty>
+      ) : rows.length === 0 ? <Empty>No unlinked billing customers.</Empty> : (
         <div className="list" style={{ maxHeight: 360, overflowY: 'auto' }}>
           {rows.map(c => (
             <label key={c.id} className="list-item checkbox">
