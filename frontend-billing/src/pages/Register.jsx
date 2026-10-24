@@ -33,36 +33,11 @@ export default function Register() {
     agreeTerms: false
   })
   const [error, setError] = useState('')
+  const errorRef = useRef(null)
   const [loading, setLoading] = useState(false)
   const [showPasswordCriteria, setShowPasswordCriteria] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [existing, setExisting] = useState(false)   // username already taken on the cloud (the registry)
-
-  // Pre-check a username against the CLOUD (the identity authority) so we can
-  // branch to "log in" instead of failing the whole registration on submit.
-  const checkUsername = async (u) => {
-    u = (u ?? form.username ?? '').trim()
-    if (!u) { setExisting(false); return }
-    try {
-      const r = await fetch(`${CLOUD_URL}/api/biz_id/check`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: u }),
-      })
-      if (r.ok) setExisting((await r.json())?.exists === true)
-    } catch { /* offline / cloud unreachable → skip; signup will surface it on submit */ }
-  }
-
-  // Live (debounced) check as the user types the username.
-  useEffect(() => {
-    const u = (form.username || '').trim()
-    if (!u) { setExisting(false); return }
-    const t = setTimeout(() => checkUsername(u), 450)
-    return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.username])
-
   const [templates, setTemplates] = useState([])
   const [selectedTemplate, setSelectedTemplate] = useState('general')
   // Where should this business's data live? Chosen at signup in the desktop
@@ -156,6 +131,10 @@ export default function Register() {
   }
   const isPasswordValid = checks.length && checks.upper && checks.lower && checks.digit
 
+  useEffect(() => {
+    if (error) errorRef.current?.focus()
+  }, [error])
+
   const handleSubmit = async e => {
     e.preventDefault()
     setError('')
@@ -181,11 +160,6 @@ export default function Register() {
       setError('Passwords do not match.')
       return
     }
-    if (existing) {
-      setError('An account with this username already exists. Please log in instead.')
-      return
-    }
-
     logger.info('Client validation passed. Calling signup API for username:', form.username)
     setLoading(true)
     try {
@@ -433,21 +407,6 @@ export default function Register() {
                 onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
                 required
               />
-              {existing && (
-                <div style={{
-                  marginTop: 6, fontSize: '0.78rem', color: 'var(--text-muted)',
-                  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-                }}>
-                  <span>An account with this username already exists.</span>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/login')}
-                    style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontWeight: 700, padding: 0, textDecoration: 'underline' }}
-                  >
-                    Log in instead
-                  </button>
-                </div>
-              )}
             </div>
 
             <div className="form-group" style={{ marginTop: '4px' }}>
@@ -460,20 +419,23 @@ export default function Register() {
                   value={form.password}
                   onFocus={() => setShowPasswordCriteria(true)}
                   onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  aria-describedby="password-requirements"
+                  aria-invalid={form.password.length > 0 && !isPasswordValid}
                   required
                   style={{ width: '100%', paddingRight: '40px' }}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
                   style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}
-                  tabIndex="-1"
                 >
                   {showPassword ? <EyeOffIcon size={16} /> : <EyeIcon size={16} />}
                 </button>
               </div>
               {showPasswordCriteria && (
-                <div className="password-criteria" style={{ marginTop: 6, padding: '8px 12px' }}>
+                <div id="password-requirements" className="password-criteria" aria-live="polite" style={{ marginTop: 6, padding: '8px 12px' }}>
                   <div className={`criteria-item ${checks.length ? 'met' : ''}`} style={{ display: 'flex', gap: 6, fontSize: '0.75rem', color: checks.length ? 'var(--success)' : 'var(--text-muted)' }}>
                     <span>{checks.length ? '✓' : '○'}</span> At least 8 characters
                   </div>
@@ -500,6 +462,8 @@ export default function Register() {
                     placeholder="••••••••"
                     value={form.confirmPassword}
                     onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                    aria-describedby={form.confirmPassword && form.password !== form.confirmPassword ? 'confirm-password-error' : undefined}
+                    aria-invalid={form.confirmPassword.length > 0 && form.password !== form.confirmPassword}
                     required
                     style={{ 
                       width: '100%', 
@@ -510,14 +474,15 @@ export default function Register() {
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                  aria-pressed={showConfirmPassword}
                     style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}
-                    tabIndex="-1"
                   >
                     {showConfirmPassword ? <EyeOffIcon size={16} /> : <EyeIcon size={16} />}
                   </button>
                 </div>
                 {form.confirmPassword && form.password !== form.confirmPassword && (
-                  <div style={{ fontSize: '0.75rem', color: 'var(--error)', marginTop: 4 }}>Passwords do not match</div>
+                  <div id="confirm-password-error" role="alert" style={{ fontSize: '0.75rem', color: 'var(--error)', marginTop: 4 }}>Passwords do not match</div>
                 )}
               </div>
             )}
@@ -561,22 +526,29 @@ export default function Register() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, margin: '8px 0 6px 0' }}>
-              <input
-                id="agreeTerms"
-                type="checkbox"
-                checked={form.agreeTerms}
-                onChange={e => setForm(f => ({ ...f, agreeTerms: e.target.checked }))}
-                style={{ cursor: 'pointer', accentColor: 'var(--accent)', marginTop: 2, flexShrink: 0 }}
-                required
-              />
-              <label htmlFor="agreeTerms" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', cursor: 'pointer', lineHeight: 1.35 }}>
-                I agree to the Terms of Service.
-              </label>
-            </div>
+            <fieldset style={{ border: 0, padding: 0, margin: '8px 0 6px 0', minWidth: 0 }}>
+              <legend style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>Terms agreement</legend>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <input
+                  id="agreeTerms"
+                  type="checkbox"
+                  checked={form.agreeTerms}
+                  onChange={e => setForm(f => ({ ...f, agreeTerms: e.target.checked }))}
+                  aria-describedby="terms-help"
+                  style={{ cursor: 'pointer', accentColor: 'var(--accent)', marginTop: 2, flexShrink: 0 }}
+                  required
+                />
+                <label htmlFor="agreeTerms" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', cursor: 'pointer', lineHeight: 1.35 }}>
+                  I agree to the Terms of Service and acknowledge the Privacy Notice.
+                </label>
+              </div>
+              <div id="terms-help" style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 24, marginTop: 3 }}>
+                We use these details to create and secure your business account.
+              </div>
+            </fieldset>
 
             {error && (
-              <div className="login-error" style={{ margin: '4px 0', padding: '8px' }}>
+              <div ref={errorRef} className="login-error" role="alert" aria-live="assertive" tabIndex="-1" style={{ margin: '4px 0', padding: '8px' }}>
                 {error}
               </div>
             )}

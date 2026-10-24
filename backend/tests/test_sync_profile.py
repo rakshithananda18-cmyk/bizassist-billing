@@ -98,19 +98,29 @@ def test_sync_profile_push_patch_semantics():
 
 
 def test_sync_profile_push_non_owner_forbidden():
-    # 1. Create a cashier token
-    token = create_access_token({
-        "id": 999,  # Non-existent owner id
-        "user_id": 999,
-        "username": "cashier_1",
-        "public_id": "BA-UNKNOWN",
-        "role": "cashier"  # Gated by restrict_cashier/get_active_user check
-    })
-    headers = {"Authorization": f"Bearer {token}"}
+    # A real cashier of a real business is signed in, but is not the owner.
+    owner = _signup("Profile Guard Shop")
+    cashier = f"own_{uuid.uuid4().hex[:8]}"
+    r = client.post("/staff", headers=owner["headers"],
+                    json={"username": cashier, "password": "Password123!", "role": "cashier"})
+    assert r.status_code == 201, r.text
+    login = client.post("/login", json={"username": cashier, "password": "Password123!"})
+    headers = {"Authorization": f"Bearer {login.json()['token']}"}
 
     resp = client.post("/api/sync/profile-push", json={"business_name": "Hack"}, headers=headers)
-    # The route resolves the owner id 999 from cloud DB; since it's not found:
     assert resp.status_code == 403
+
+
+def test_sync_profile_push_unknown_user_is_not_signed_in():
+    # A token for a user that does not exist is rejected before any owner
+    # check: get_active_user fails closed on a missing subject.
+    token = create_access_token({
+        "id": 999, "user_id": 999, "username": "cashier_1",
+        "public_id": "BA-UNKNOWN", "role": "cashier",
+    })
+    resp = client.post("/api/sync/profile-push", json={"business_name": "Hack"},
+                       headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 401
 
 
 @patch("httpx.post")

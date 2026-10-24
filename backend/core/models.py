@@ -624,6 +624,13 @@ class JournalEntry(Base, BusinessOwnedMixin):
     )
 
     __table_args__ = (
+        # This is the database backstop for post_entry's idempotency probe.
+        # NULL source ids (legacy/manual rows) remain permitted by SQL's normal
+        # NULL semantics; every source-backed posting has a concrete id.
+        UniqueConstraint(
+            "business_id", "source_type", "source_id",
+            name="uq_journal_entries_biz_source",
+        ),
         Index("ix_journal_entries_source", "business_id", "source_type", "source_id"),
         Index("ix_journal_entries_biz_date", "business_id", "entry_date"),
     )

@@ -74,12 +74,15 @@ def _device_marker() -> str:
         return "local-unknown"
 
 
-def _post_import(records: list) -> bool:
+def _post_import(records: list, cloud_token: str) -> bool:
     body = json.dumps({"records": records, "relay_device": _device_marker()}).encode()
     req = urllib.request.Request(
         f"{CLOUD_URL}/api/telemetry/import",
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {cloud_token}",
+        },
         method="POST",
     )
     try:
@@ -88,6 +91,29 @@ def _post_import(records: list) -> bool:
     except Exception as e:
         logger.warning(f"[RELAY] Cloud unreachable ({e.__class__.__name__}) — will retry next tick")
         return False
+
+
+def _cloud_token_for_bizid(bizid: object):
+    """Return the provisioned cloud token for exactly this local business."""
+    if not isinstance(bizid, str) or not bizid:
+        return None
+    try:
+        from database.db import SessionLocal
+        from database.models import User
+        from services.sync_worker import ensure_fresh_cloud_token
+
+        db = SessionLocal()
+        try:
+            owner = db.query(User).filter(
+                User.public_id == bizid,
+                User.parent_business_id == None,  # noqa: E711
+            ).first()
+            return ensure_fresh_cloud_token(owner.id) if owner else None
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("[RELAY] Could not resolve cloud token for telemetry: %s", exc)
+        return None
 
 
 def run_telemetry_relay():
@@ -138,15 +164,34 @@ def run_telemetry_relay():
         _write_offset(new_offset)
         return
 
+    # The cloud binds a telemetry import to the bearer token's business.  Group
+    # the local stream before posting so an installation can never attribute one
+    # business's events to another merely by changing a JSONL field.
+    grouped = {}
+    unattributed = 0
+    for record in records:
+        bizid = record.get("bizid")
+        if not isinstance(bizid, str) or not bizid:
+            unattributed += 1
+            continue
+        grouped.setdefault(bizid, []).append(record)
+
     shipped = 0
-    for i in range(0, len(records), _BATCH):
-        if not _post_import(records[i:i + _BATCH]):
-            # Partial failure: advance the offset only past what was shipped.
+    for bizid, business_records in grouped.items():
+        token = _cloud_token_for_bizid(bizid)
+        if not token:
+            logger.info("[RELAY] No cloud identity for telemetry biz %s; will retry", bizid)
             return
-        shipped += len(records[i:i + _BATCH])
+        for i in range(0, len(business_records), _BATCH):
+            batch = business_records[i:i + _BATCH]
+            if not _post_import(batch, token):
+                # Do not advance the shared offset until every business batch is
+                # accepted; idempotent telemetry can safely retry.
+                return
+            shipped += len(batch)
 
     _write_offset(new_offset)
-    logger.info(f"[RELAY] Shipped {shipped} telemetry records to cloud")
+    logger.info(f"[RELAY] Shipped {shipped} telemetry records to cloud; dropped {unattributed} unattributed local record(s)")
 
 
 def _trim_jsonl(path: Path, cutoff_iso: str) -> int:

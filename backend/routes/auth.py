@@ -44,24 +44,6 @@ class LoginRequest(BaseModel):
     otp: Optional[str] = None   # TOTP code — required only for admins with 2FA enabled (§4.1)
 
 
-class IdentityCheckRequest(BaseModel):
-    username: str
-
-
-@router.post("/api/biz_id/check")
-def biz_id_check(req: IdentityCheckRequest, db: Session = Depends(get_db)):
-    """
-    Lightweight, PUBLIC existence check for the registration UX.
-
-    Returns ONLY {"exists": bool} — no business name or any other field — so it
-    can't be used to enumerate account details. Lets the signup form branch to
-    "log in & link" vs "create new" before the user fills the whole form.
-    """
-    uname = (req.username or "").strip()
-    exists = bool(uname) and db.query(User).filter(User.username == uname).first() is not None
-    return {"exists": exists}
-
-
 class ReconcilePasswordRequest(BaseModel):
     username: str
     password: str        # the new password that just succeeded on the cloud
@@ -362,49 +344,6 @@ class StaffLoginRequest(BaseModel):
     owner_username: str
     staff_login_name: str
     password: str
-
-
-@router.get("/staff-counters")
-def staff_counters(owner: str, db: Session = Depends(get_db)):
-    """(§9.5) Public lookup for the owner-gated staff-login dropdown: resolve an
-    OWNER username or public_id (BizID) → that business's name + its staff counters.
-    Returns an empty `staff` list if the owner has none; 404 if no such owner."""
-    owner_str = (owner or "").strip()
-    if not owner_str:
-        raise HTTPException(status_code=400, detail="Owner parameter is required")
-
-    # Match owner by public_id (BizID) or username
-    owner_row = db.query(User).filter(
-        (User.public_id == owner_str) | (User.username == owner_str),
-        User.parent_business_id.is_(None)
-    ).first()
-
-    if not owner_row:
-        raise HTTPException(status_code=404, detail="No business found for that owner")
-
-    # Query staff rows strictly bound to the verified owner_row.id
-    staff = (
-        db.query(User)
-        .filter(
-            User.parent_business_id == owner_row.id,
-        )
-        .order_by(User.staff_login_name.asc())
-        .all()
-    )
-
-    return {
-        "business_name": owner_row.business_name,
-        "owner_username": owner_row.username,
-        "public_id": owner_row.public_id,
-        "staff": [
-            {
-                "login_name": s.staff_login_name or s.username,
-                "counter_prefix": s.counter_prefix,
-                "role": s.role,
-            }
-            for s in staff
-        ],
-    }
 
 
 @router.post("/login/staff")

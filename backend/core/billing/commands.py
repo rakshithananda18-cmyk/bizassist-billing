@@ -25,6 +25,7 @@ from services.dates import biz_today_str
 from typing import List, Optional
 
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 from database.models import Invoice, InvoiceLineItem, Product, User
 from core.models import InvoicePayment
@@ -584,6 +585,33 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
     from core.accounting import posting
     posting.post_sale(db, inv)
 
+    # Apply a banked advance before the sale commits. The receipt, reduction of
+    # the customer liability, and the new invoice must land together; committing
+    # the sale first left a crash window where a customer lost usable credit.
+    # Direct sales only (commit=True), as before: composite commands such as
+    # B2B order fulfilment build invoices with their own payment handling.
+    if commit and customer_id and inv.status != "Paid":
+        from database.models import Customer
+        cust = (db.query(Customer)
+                .filter(Customer.id == customer_id, Customer.business_id == business_id)
+                .with_for_update()
+                .first())
+        avail = _round2(cust.credit_balance or 0.0) if cust else 0.0
+        remaining = _round2(grand - (inv.paid_amount or 0.0))
+        apply = min(avail, remaining)
+        if apply > 0.005:
+            record_payment(
+                db, business_id=business_id, invoice_id=inv.id,
+                amount_paid=apply, payment_mode="Credit",
+                note="Applied advance credit",
+                idempotency_key=f"advance-credit::{inv.id}",
+                journal_debit_account=posting.ACC_ADVANCE,  # Dr Advances, Cr AR
+                commit=False,
+            )
+            cust.credit_balance = _round2(avail - apply)
+            logger.info("[BILLING] applied advance credit %.2f to %s (cust=%s, left=%.2f)",
+                        apply, number, customer_id, cust.credit_balance)
+
     if commit:
         db.commit()
     else:
@@ -595,32 +623,6 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
     if commit:
         db.refresh(inv)
 
-    # Auto-apply any customer ADVANCE (credit_balance) to this fresh bill, so a
-    # prior overpayment shows up as "already paid" on the next invoice — the
-    # owner's "next billing auto-changes the amount" ask. No-op unless the
-    # customer has banked credit, so existing flows are unchanged.
-    if commit and customer_id and inv.status != "Paid":
-        from database.models import Customer
-        cust = db.query(Customer).filter(
-            Customer.id == customer_id, Customer.business_id == business_id
-        ).first()
-        avail = _round2(cust.credit_balance or 0.0) if cust else 0.0
-        remaining = _round2(grand - (inv.paid_amount or 0.0))
-        apply = min(avail, remaining)
-        if apply > 0.005:
-            from core.accounting import posting
-            record_payment(
-                db, business_id=business_id, invoice_id=inv.id,
-                amount_paid=apply, payment_mode="Credit",
-                note="Applied advance credit",
-                idempotency_key=f"advance-credit::{inv.id}",
-                journal_debit_account=posting.ACC_ADVANCE,  # Dr Advances, Cr AR
-            )
-            cust.credit_balance = _round2(avail - apply)
-            db.commit()
-            db.refresh(inv)
-            logger.info("[BILLING] applied advance credit %.2f to %s (cust=%s, left=%.2f)",
-                        apply, number, customer_id, cust.credit_balance)
     return inv
 
 
@@ -636,10 +638,12 @@ def record_payment(db, *, business_id: int, invoice_id: int,
                    idempotency_key: Optional[str] = None,
                    allow_overpayment: bool = False,
                    journal_debit_account: Optional[str] = None,
-                   shift_id: Optional[int] = None) -> InvoicePayment:
+                   shift_id: Optional[int] = None,
+                   commit: bool = True) -> InvoicePayment:
     """
     COMMAND: record one payment receipt against an invoice (append-only).
-    Commits the transaction. Idempotent on (business_id, idempotency_key).
+    Commits by default; composite commands pass ``commit=False`` and own one
+    enclosing commit. Idempotent on (business_id, idempotency_key).
 
     Updates invoice.paid_amount and .status:
       paid_amount >= total_amount → 'Paid'
@@ -663,14 +667,30 @@ def record_payment(db, *, business_id: int, invoice_id: int,
                         idempotency_key, business_id)
             return existing
 
-    # ── Validate: invoice must belong to this business ────────────────────────
+    # Lock the invoice before calculating its remaining balance.  Otherwise two
+    # concurrent receipts can both read the same balance and overpay it.
     inv = (
         db.query(Invoice)
         .filter(Invoice.id == invoice_id, Invoice.business_id == business_id)
+        .with_for_update()
         .first()
     )
     if inv is None:
         raise ValueError(f"Invoice {invoice_id} not found for this business")
+
+    # A duplicate request may have committed while this transaction waited for
+    # the invoice lock.  Re-check under the lock before doing money arithmetic.
+    if idempotency_key:
+        existing = (
+            db.query(InvoicePayment)
+            .filter(
+                InvoicePayment.business_id == business_id,
+                InvoicePayment.idempotency_key == idempotency_key,
+            )
+            .first()
+        )
+        if existing is not None:
+            return existing
 
     if amount_paid <= 0:
         raise ValueError("amount_paid must be greater than 0")
@@ -701,23 +721,39 @@ def record_payment(db, *, business_id: int, invoice_id: int,
                     f"to record an advance/deposit."
                 )
 
-    # ── Append payment row ────────────────────────────────────────────────────
-    pay = InvoicePayment(
-        business_id=business_id,
-        invoice_id=invoice_id,
-        customer_id=inv.customer_id,
-        amount_paid=_round2(amount_paid),
-        payment_mode=payment_mode,
-        payment_date=payment_date or biz_today_str(),
-        note=note,
-        idempotency_key=idempotency_key,
-        shift_id=shift_id,
-    )
-    db.add(pay)
+    # A same idempotency key against a different invoice bypasses the invoice
+    # lock. Contain the unique-constraint race in a SAVEPOINT so the caller's
+    # wider transaction remains usable and can return the original receipt.
+    from core.accounting.posting import money_savepoint, savepoints_supported
+    try:
+        with money_savepoint(db):
+            pay = InvoicePayment(
+                business_id=business_id,
+                invoice_id=invoice_id,
+                customer_id=inv.customer_id,
+                amount_paid=_round2(amount_paid),
+                payment_mode=payment_mode,
+                payment_date=payment_date or biz_today_str(),
+                note=note,
+                idempotency_key=idempotency_key,
+                shift_id=shift_id,
+            )
+            db.add(pay)
+            db.flush()
+    except IntegrityError:
+        if idempotency_key and savepoints_supported(db):
+            existing = (
+                db.query(InvoicePayment)
+                .filter(InvoicePayment.business_id == business_id,
+                        InvoicePayment.idempotency_key == idempotency_key)
+                .first()
+            )
+            if existing is not None:
+                return existing
+        raise
 
     # ── Update invoice paid_amount + status ───────────────────────────────────
     # Recompute from DB to be consistent (accumulated payments, not just this one).
-    db.flush()  # make the new row visible in the SUM below
     total_paid = (
         db.query(func.coalesce(func.sum(InvoicePayment.amount_paid), 0.0))
         .filter(
@@ -744,16 +780,14 @@ def record_payment(db, *, business_id: int, invoice_id: int,
     posting.post_payment(db, pay,
                          debit_account=journal_debit_account or posting.ACC_CASH)
 
-    db.commit()
+    if commit:
+        db.commit()
     logger.info("[BILLING] payment biz=%s invoice=%s amount=%.2f status=%s",
                 business_id, invoice_id, amount_paid, inv.status)
-    db.refresh(pay)
+    if commit:
+        db.refresh(pay)
     return pay
 
-
-# ---------------------------------------------------------------------------
-# Customer dues settlement — FIFO lump-sum allocation
-# ---------------------------------------------------------------------------
 
 def settle_customer_dues(db, *, business_id: int, customer_id: int,
                          amount: float,
@@ -790,6 +824,18 @@ def settle_customer_dues(db, *, business_id: int, customer_id: int,
     amount = _round2(amount)
     if amount <= 0:
         raise ValueError("settlement amount must be greater than 0")
+
+    # Serialize all settlements/prepayments for a customer. This protects both
+    # FIFO allocation and credit_balance from two cashiers accepting money at
+    # the same time. The invoice rows are locked below as well.
+    cust = (
+        db.query(Customer)
+        .filter(Customer.id == customer_id, Customer.business_id == business_id)
+        .with_for_update()
+        .first()
+    )
+    if cust is None:
+        raise ValueError(f"customer {customer_id} not found for this business")
 
     def _remaining(inv):
         return _round2((inv.total_amount or inv.amount or 0.0) - (inv.paid_amount or 0.0))
@@ -828,9 +874,7 @@ def settle_customer_dues(db, *, business_id: int, customer_id: int,
                         "remaining_after": _remaining(inv), "status": inv.status,
                     })
             advance = _round2(amount - applied_total) if amount > applied_total + 0.005 else 0.0
-            _c = db.query(Customer).filter(
-                Customer.id == customer_id, Customer.business_id == business_id).first()
-            credit_balance = _round2(_c.credit_balance or 0.0) if _c else 0.0
+            credit_balance = _round2(cust.credit_balance or 0.0)
             logger.info("[BILLING] settle idempotent hit — key=%s biz=%s cust=%s",
                         idempotency_key, business_id, customer_id)
             return {
@@ -848,6 +892,7 @@ def settle_customer_dues(db, *, business_id: int, customer_id: int,
             Invoice.invoice_type != "credit_note",
         )
         .order_by(Invoice.invoice_date.asc(), Invoice.id.asc())
+        .with_for_update()
         .all()
     )
 
@@ -856,7 +901,6 @@ def settle_customer_dues(db, *, business_id: int, customer_id: int,
     allocations = []
     money_left = amount
     last_pay_id = None   # anchors an idempotent journal id for the advance receipt
-
     for inv in due:
         if money_left <= 0.005:
             break
@@ -865,13 +909,15 @@ def settle_customer_dues(db, *, business_id: int, customer_id: int,
         if apply <= 0.005:
             continue
         paid_before = _round2(inv.paid_amount or 0.0)
+        # Keep this key's shape: a settle replayed across an upgrade (offline
+        # desktop) must find the receipts it already wrote, or it pays twice.
         key = f"{idempotency_key}::{inv.id}" if idempotency_key else None
         billing_pay = record_payment(
             db, business_id=business_id, invoice_id=inv.id,
             amount_paid=apply, payment_mode=payment_mode,
             payment_date=payment_date,
             note=note or "Settlement (FIFO)",
-            idempotency_key=key, shift_id=shift_id,
+            idempotency_key=key, shift_id=shift_id, commit=False,
         )
         last_pay_id = billing_pay.id
         db.refresh(inv)
@@ -895,29 +941,28 @@ def settle_customer_dues(db, *, business_id: int, customer_id: int,
     # until the next sale (the application then draws the liability down).
     advance = _round2(money_left) if money_left > 0.005 else 0.0
     if advance > 0.005:
-        cust = db.query(Customer).filter(
-            Customer.id == customer_id, Customer.business_id == business_id
-        ).first()
-        if cust is not None:
-            cust.credit_balance = _round2((cust.credit_balance or 0.0) + advance)
-            # Journal the advance receipt (idempotent on the last per-invoice
-            # receipt id, so a retried settle can't post it twice). When there
-            # were NO dues to clear (pure prepayment), there's no anchor id and
-            # the customer-advance liability is carried via credit_balance only.
-            if last_pay_id is not None:
-                from core.accounting import posting
-                posting.post_advance_receipt(
-                    db, business_id=business_id,
-                    entry_date=payment_date or biz_today_str(),
-                    amount=advance, source_id=last_pay_id,
-                    ref_no=f"ADV-{last_pay_id}",
-                )
-            db.commit()
-    total_applied = _round2(amount - advance)
+        cust.credit_balance = _round2((cust.credit_balance or 0.0) + advance)
+        # Journal the advance receipt (idempotent on the last per-invoice
+        # receipt id, so a retried settle can't post it twice). When there
+        # were NO dues to clear (pure prepayment), there's no anchor id and
+        # the customer-advance liability is carried via credit_balance only.
+        if last_pay_id is not None:
+            from core.accounting import posting
+            posting.post_advance_receipt(
+                db, business_id=business_id,
+                entry_date=payment_date or biz_today_str(),
+                amount=advance, source_id=last_pay_id,
+                ref_no=f"ADV-{last_pay_id}",
+            )
+
+    # One commit makes a multi-invoice settlement and any remaining advance an
+    # all-or-nothing receipt. Before this, every allocation committed inside
+    # record_payment, so a later failure could leave a partially settled FIFO.
+    db.commit()
+    total_applied = _round2(sum(a["applied"] for a in allocations))
     # Report the customer's resulting banked credit (advance) after this settle.
-    _c = db.query(Customer).filter(
-        Customer.id == customer_id, Customer.business_id == business_id).first()
-    credit_balance = _round2(_c.credit_balance or 0.0) if _c else 0.0
+    db.refresh(cust)
+    credit_balance = _round2(cust.credit_balance or 0.0)
     logger.info("[BILLING] settle biz=%s cust=%s amount=%.2f applied=%.2f advance=%.2f invoices=%d",
                 business_id, customer_id, amount, total_applied, advance, len(allocations))
     return {

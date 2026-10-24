@@ -247,7 +247,7 @@ def save_cloud_token(
 
 @router.post("/api/sync/heal")
 def heal_sync_outbox(
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
     """(Local) Scan for syncable rows missing from the outbox and queue them.
@@ -835,7 +835,7 @@ def push_changes(
 def pull_changes(
     last_sync_at: Optional[str] = None,
     limit: Optional[int] = None,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     _plan: dict = Depends(require_plan("pro")),   # 402 for free plan when SUBSCRIPTION_ENFORCED=1
     db: Session = Depends(get_db),
 ):
@@ -1029,7 +1029,7 @@ def pull_changes(
 
 @router.get("/api/sync/queue-depth")
 def get_queue_depth(
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
     """
@@ -1153,7 +1153,7 @@ def _halt_state(business_id: int) -> dict:
 def list_sync_conflicts(
     include_resolved: bool = False,
     limit: int = 100,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
     """Surface sync conflicts for this business so the owner can review them —
@@ -1199,7 +1199,7 @@ def list_sync_conflicts(
 @router.post("/api/sync/conflicts/{conflict_id}/resolve")
 def resolve_sync_conflict(
     conflict_id: int,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
     """Mark a reviewed conflict as acknowledged (stamps ``resolved_at``). This
@@ -1222,7 +1222,7 @@ def resolve_sync_conflict(
 def flush_sync_queue(
     background_tasks: BackgroundTasks,
     pull: bool = False,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
     """
@@ -1245,7 +1245,7 @@ def flush_sync_queue(
 @router.get("/api/sync/outbox/details")
 def get_outbox_details(
     limit: int = 50,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
     """Owner-facing endpoint to inspect detailed outbox items and failure reasons."""
@@ -1285,7 +1285,7 @@ def get_outbox_details(
 @router.get("/api/sync/inbox/details")
 def get_inbox_details(
     limit: int = 50,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
     """Rows the cloud sent that this database has not been able to apply.
@@ -1343,7 +1343,7 @@ def get_inbox_details(
 def retry_inbox_item(
     inbox_id: int,
     background_tasks: BackgroundTasks,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
     """Clear one held row's backoff and re-attempt it now.
@@ -1367,7 +1367,7 @@ def retry_inbox_item(
 def retry_outbox_item(
     queue_id: int,
     background_tasks: BackgroundTasks,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
     """Clear the error on one outbox item and immediately re-attempt delivery.
@@ -1399,7 +1399,7 @@ def retry_outbox_item(
 @router.post("/api/sync/parity")
 def run_parity_check(
     background_tasks: BackgroundTasks,
-    current_user: dict = Depends(get_active_user),
+    current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
     """

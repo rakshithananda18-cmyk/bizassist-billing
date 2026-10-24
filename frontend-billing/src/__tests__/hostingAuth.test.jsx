@@ -330,6 +330,34 @@ describe('Login staff resolution (T2)', () => {
     })
   })
 
+  it('recent-login: preselects the counter this device last signed in to', async () => {
+    // Staff no longer get a public list of a business's counters, so the
+    // device remembers the one it used (Login.jsx lastStaff).
+    localStorage.setItem('bizassist_recent_logins', JSON.stringify([{
+      username: 'owner1',
+      businessName: 'Counter Store',
+      staffAccounts: [{ username: 'cashier1', role: 'cashier' }, { username: 'cashier2', role: 'cashier' }],
+      lastStaff: 'cashier2',
+    }]))
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}), clone() { return this } })))
+
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>
+    )
+    fireEvent.click(screen.getByText('Counter Store'))
+    await waitFor(() => expect(screen.getByText('Staff Login')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('Staff Login'))
+    // CustomSelect shows only the chosen option until it is opened.
+    await waitFor(() => expect(screen.getByText(/cashier2/)).toBeInTheDocument())
+    expect(screen.queryByText(/cashier1/)).toBeNull()
+  })
+
   it('navigates after a valid owner login without waiting for the optional staff refresh', async () => {
     const delayedStaffFetch = vi.fn(async (url, options) => {
       if (String(url).endsWith('/staff')) {
@@ -353,6 +381,7 @@ describe('Login staff resolution (T2)', () => {
 
     fireEvent.change(screen.getByLabelText('Business Owner Username'), { target: { value: 'owner1' } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Owner Login' }))
     await screen.findByLabelText('Owner Password')
     fireEvent.change(screen.getByLabelText('Owner Password'), { target: { value: 'password123' } })
     fireEvent.click(screen.getByRole('button', { name: 'Sign In as Owner' }))

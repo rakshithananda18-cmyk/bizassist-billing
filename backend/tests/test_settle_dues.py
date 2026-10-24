@@ -170,3 +170,60 @@ def test_zero_amount_rejected(db):
     with pytest.raises(ValueError, match="greater than 0"):
         billing.settle_customer_dues(db, business_id=BID, customer_id=BID, amount=0)
     db.rollback()
+
+def test_settlement_receipt_keys_keep_their_shape(db):
+    """An offline desktop may replay a settle recorded before an upgrade. Its
+    receipts are found by this key shape; changing it would pay twice."""
+    b1 = _bill(db, 500, "2026-01-01")
+    billing.settle_customer_dues(db, business_id=BID, customer_id=BID, amount=500, idempotency_key="shape")
+    keys = [p.idempotency_key for p in db.query(InvoicePayment).filter(InvoicePayment.business_id == BID)]
+    assert keys == [f"shape::{b1.id}"]
+
+
+def test_a_settle_replayed_after_an_upgrade_pays_nothing_twice(db):
+    b1 = _bill(db, 500, "2026-01-01")
+    # The receipt the previous release wrote for this settle.
+    billing.record_payment(db, business_id=BID, invoice_id=b1.id, amount_paid=500,
+                           payment_mode="Cash", idempotency_key=f"old::{b1.id}")
+    res = billing.settle_customer_dues(db, business_id=BID, customer_id=BID,
+                                       amount=500, idempotency_key="old")
+    assert res["total_applied"] == 500.0 and res["advance"] == 0.0
+    assert db.query(InvoicePayment).filter(InvoicePayment.business_id == BID).count() == 1
+    assert _credit(db) == 0.0
+
+
+def test_a_settlement_is_all_or_nothing(db, monkeypatch):
+    """One commit for the whole FIFO run: a failure on the second bill leaves
+    the first one unpaid too, never a half-settled customer."""
+    b1 = _bill(db, 500, "2026-01-01")
+    b2 = _bill(db, 600, "2026-01-05")
+    real, calls = billing.record_payment, []
+
+    def fails_on_second(*args, **kwargs):
+        calls.append(kwargs["invoice_id"])
+        if len(calls) == 2:
+            raise RuntimeError("database went away")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(billing, "record_payment", fails_on_second)
+    with pytest.raises(RuntimeError):
+        billing.settle_customer_dues(db, business_id=BID, customer_id=BID,
+                                     amount=1100, idempotency_key="atomic")
+    db.rollback()
+    assert _outstanding(db, b1.id)[0] == 500.0
+    assert _outstanding(db, b2.id)[0] == 600.0
+    assert db.query(InvoicePayment).filter(InvoicePayment.business_id == BID).count() == 0
+
+
+def test_banked_credit_is_applied_on_direct_sales_only(db):
+    """A composite command (B2B order fulfilment) builds its invoice with
+    commit=False and its own payment handling, so banked credit is left alone."""
+    _bill(db, 500, "2026-01-01")
+    billing.settle_customer_dues(db, business_id=BID, customer_id=BID, amount=600, idempotency_key="cr")
+    assert _credit(db) == 100.0
+    inv = billing.create_sale_invoice(
+        db, business_id=BID, customer_id=BID, invoice_date="2026-02-01",
+        lines=[{"product_id": _pid(db), "quantity": 300, "unit_price": 1.0}], commit=False)
+    db.commit()
+    assert _outstanding(db, inv.id)[0] == 300.0
+    assert _credit(db) == 100.0

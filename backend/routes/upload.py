@@ -524,14 +524,18 @@ async def _process_zip_upload(zip_bytes: bytes, business_id: int, zip_filename: 
 
     Rules:
       - Max 20 PDFs per ZIP (to cap processing time)
-      - Max 10 MB ZIP (generous for a batch of invoices)
+      - Max 10 MB ZIP, 5 MB per PDF and 25 MB expanded total
       - Each PDF follows the same duplicate-hash check as single-file upload
       - Partial success: failures are recorded per-file, not bubbled as 500
     """
     import zipfile
 
-    MAX_ZIP_SIZE  = 10 * 1024 * 1024   # 10 MB
+    MAX_ZIP_SIZE = 10 * 1024 * 1024   # compressed archive: 10 MB
     MAX_PDF_COUNT = 20
+    MAX_ARCHIVE_MEMBERS = 100
+    MAX_PDF_UNCOMPRESSED_BYTES = 5 * 1024 * 1024
+    MAX_TOTAL_UNCOMPRESSED_BYTES = 25 * 1024 * 1024
+    MAX_COMPRESSION_RATIO = 100
 
     if len(zip_bytes) > MAX_ZIP_SIZE:
         raise HTTPException(status_code=413, detail="ZIP file exceeds 10 MB limit.")
@@ -541,30 +545,56 @@ async def _process_zip_upload(zip_bytes: bytes, business_id: int, zip_filename: 
     except zipfile.BadZipFile:
         raise HTTPException(status_code=400, detail="Invalid or corrupted ZIP file.")
 
-    pdf_names = [
-        name for name in zf.namelist()
-        if name.lower().endswith(".pdf") and not name.startswith("__MACOSX")
+    infos = zf.infolist()
+    if len(infos) > MAX_ARCHIVE_MEMBERS:
+        zf.close()
+        raise HTTPException(status_code=400, detail="ZIP contains too many archive members.")
+
+    pdf_infos = [
+        info for info in infos
+        if not info.is_dir()
+        and info.filename.lower().endswith(".pdf")
+        and not info.filename.startswith("__MACOSX")
     ]
 
-    if not pdf_names:
+    if not pdf_infos:
+        zf.close()
         raise HTTPException(status_code=400, detail="ZIP contains no PDF files.")
 
-    if len(pdf_names) > MAX_PDF_COUNT:
+    if len(pdf_infos) > MAX_PDF_COUNT:
+        zf.close()
         raise HTTPException(
             status_code=400,
-            detail=f"ZIP contains {len(pdf_names)} PDFs — maximum is {MAX_PDF_COUNT} per batch."
+            detail=f"ZIP contains {len(pdf_infos)} PDFs — maximum is {MAX_PDF_COUNT} per batch."
         )
 
-    logger.info(f"[ZIP] Processing {len(pdf_names)} PDF(s) from '{zip_filename}' for user {business_id}.")
+    total_uncompressed = sum(info.file_size for info in pdf_infos)
+    if total_uncompressed > MAX_TOTAL_UNCOMPRESSED_BYTES:
+        zf.close()
+        raise HTTPException(status_code=413, detail="Expanded PDFs exceed the 25 MB archive limit.")
+    for info in pdf_infos:
+        ratio = info.file_size / max(1, info.compress_size)
+        if info.file_size > MAX_PDF_UNCOMPRESSED_BYTES or ratio > MAX_COMPRESSION_RATIO:
+            zf.close()
+            raise HTTPException(
+                status_code=413,
+                detail="ZIP contains an oversized or over-compressed PDF.",
+            )
+
+    logger.info(f"[ZIP] Processing {len(pdf_infos)} PDF(s) from '{zip_filename}' for user {business_id}.")
 
     results    = []
     total_rows = 0
     db         = SessionLocal()
 
-    for pdf_name in pdf_names:
-        short_name = pdf_name.split("/")[-1]   # strip folder prefix
+    for info in pdf_infos:
+        short_name = info.filename.split("/")[-1]   # strip folder prefix
         try:
-            pdf_bytes = zf.read(pdf_name)
+            # The size/ratio checks above ensure this allocation and later OCR
+            # cannot be amplified from a small compressed upload.
+            pdf_bytes = zf.read(info)
+            if not pdf_bytes.startswith(b"%PDF-"):
+                raise ValueError("archive member is not a valid PDF")
 
             # Duplicate check per PDF
             file_hash = hashlib.sha256(pdf_bytes).hexdigest()
