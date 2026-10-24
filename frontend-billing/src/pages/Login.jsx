@@ -347,7 +347,13 @@ export default function Login() {
 
   // Reusable show/hide password toggle (same SVGs as the other login views).
   const pwToggleBtn = (
-    <button type="button" className="password-toggle-btn" onClick={() => setShowPw(v => !v)} aria-label="Toggle password visibility">
+    <button
+      type="button"
+      className="password-toggle-btn"
+      onClick={() => setShowPw(v => !v)}
+      aria-label={showPw ? 'Hide password' : 'Show password'}
+      aria-pressed={showPw}
+    >
       {showPw ? (
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
@@ -977,26 +983,34 @@ export default function Login() {
         {/* ── View 4: Standard Form (First-time / Other Login) ── */}
         {view === 'standard' && (
           <div style={{ width: '100%', boxSizing: 'border-box' }}>
-            {/* Business header */}
-            <div style={{ display: 'flex', alignItems: 'center', padding: '12px 14px', borderRadius: 12, background: 'var(--bg-3)', border: '1px solid var(--border)', marginBottom: 20, gap: 12, width: '100%', boxSizing: 'border-box' }}>
-              <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', flexShrink: 0 }}>
+            {/* A compact, explicit progress cue makes the secure three-step sign-in flow predictable. */}
+            <div className="auth-flow-header">
+              <div className="auth-flow-icon" aria-hidden="true">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
                   <polyline points="9 22 9 12 15 12 15 22"></polyline>
                 </svg>
               </div>
-              <div style={{ textAlign: 'left', minWidth: 0 }}>
-                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {standardStep === 'username' ? 'Other Business Login' : 'Business Login'}
+              <div className="auth-flow-copy">
+                <div className="auth-flow-title">
+                  {standardStep === 'username' ? 'Sign in to your business' : 'Business sign-in'}
                 </div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 1 }}>
-                  {standardStep === 'username' && 'Enter the business owner username'}
+                <div className="auth-flow-description">
+                  {standardStep === 'username' && 'Start with the business owner username'}
                   {standardStep === 'choose' && 'Choose how to sign in'}
                   {standardStep === 'owner' && 'Owner Login'}
                   {standardStep === 'staff' && 'Staff Login'}
                 </div>
               </div>
+              <span className="auth-flow-count" aria-label={`Step ${standardStep === 'username' ? 1 : standardStep === 'choose' ? 2 : 3} of 3`}>
+                {standardStep === 'username' ? '1 of 3' : standardStep === 'choose' ? '2 of 3' : '3 of 3'}
+              </span>
             </div>
+            <ol className="auth-progress" aria-label="Sign-in progress">
+              <li className={standardStep === 'username' ? 'is-current' : 'is-complete'}><span>1</span><small>Business</small></li>
+              <li className={standardStep === 'choose' ? 'is-current' : ['owner', 'staff'].includes(standardStep) ? 'is-complete' : ''}><span>2</span><small>Role</small></li>
+              <li className={['owner', 'staff'].includes(standardStep) ? 'is-current' : ''}><span>3</span><small>Sign in</small></li>
+            </ol>
 
             {/* STEP 1 — owner username */}
             {standardStep === 'username' && (
@@ -1005,7 +1019,7 @@ export default function Login() {
                   <label htmlFor="owner-username">Business Owner Username</label>
                   <input type="text" id="owner-username" placeholder="e.g. store_owner" value={username} onChange={e => setUsername(e.target.value)} required autoFocus autoComplete="username" />
                 </div>
-                {error && <div className="login-error" style={{ marginTop: 14 }}>{error}</div>}
+                {error && <div className="login-error" role="alert" style={{ marginTop: 14 }}>{error}</div>}
                 <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 14 }}>
                   {loading ? 'Checking…' : 'Continue'}
                 </button>
@@ -1013,6 +1027,10 @@ export default function Login() {
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 6 }}>Don't have an account?</span>
                   <button type="button" onClick={() => navigate('/register')} style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}>Register</button>
                 </div>
+                <p className="login-reassurance">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  Your business data stays private until you sign in.
+                </p>
               </form>
             )}
 
