@@ -133,10 +133,10 @@ def extract_structured_invoice(raw_text: str) -> dict:
     groq_key = os.getenv("GROQ_API_KEY")
     if groq_key:
         try:
-            logger.info("Extracting invoice structure using Groq (qwen/qwen3-32b)...")
-            from services.groq_client import make_groq_client
+            from services.groq_client import DEFAULT_COMPLEX_MODEL, make_groq_client
             client = make_groq_client(groq_key)
-            model = os.getenv("GROQ_MODEL_COMPLEX", "openai/gpt-oss-120b")
+            model = os.getenv("GROQ_MODEL_COMPLEX", DEFAULT_COMPLEX_MODEL)
+            logger.info("Extracting invoice structure using Groq (%s)...", model)
             
             completion = client.chat.completions.create(
                 model=model,

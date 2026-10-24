@@ -35,6 +35,7 @@ import logging
 import os
 import threading
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Optional
 
 from services.groq_client import DEFAULT_TEXT_MODEL
@@ -155,6 +156,21 @@ def _build_system_prompt() -> str:
 _SYSTEM = _build_system_prompt()
 
 
+def _today_line() -> str:
+    """Today's date for the router, built on EVERY call.
+
+    Without it "this month" became whatever month the model guessed - May 2024
+    on 2026-10-24 - and the database refused the impossible month. _SYSTEM is
+    built once at import and the process runs for weeks, so the date cannot
+    live there. Appended last, so the fixed prompt above stays a cacheable
+    prefix."""
+    from services.dates import biz_now
+    now = biz_now()
+    last_month = (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+    return (f"\n\nTODAY is {now:%A %Y-%m-%d} (India time). Resolve relative dates "
+            f"against it: 'this month' → '{now:%Y-%m}', 'last month' → '{last_month}'.")
+
+
 # ── Core classify ────────────────────────────────────────────────────────────
 
 def _validated(raw: dict) -> Optional[RouteDecision]:
@@ -205,7 +221,7 @@ def classify(query: str, client=None, business_id: int = None) -> Optional[Route
             max_tokens=160,
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": _SYSTEM},
+                {"role": "system", "content": _SYSTEM + _today_line()},
                 {"role": "user", "content": q[:500]},
             ],
         )

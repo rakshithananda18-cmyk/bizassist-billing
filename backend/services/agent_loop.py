@@ -19,13 +19,13 @@ import os
 import json
 import logging
 
-from services.groq_client import make_groq_client
+from services.groq_client import DEFAULT_COMPLEX_MODEL, make_groq_client
 from services.tools import execute_tool, schemas as tool_schemas
 
 logger = logging.getLogger("bizassist.agent_loop")
 
 _client = make_groq_client()
-MODEL          = os.getenv("GROQ_MODEL_COMPLEX", "openai/gpt-oss-120b")
+MODEL          = os.getenv("GROQ_MODEL_COMPLEX", DEFAULT_COMPLEX_MODEL)
 MAX_ROUNDS     = int(os.getenv("AGENT_MAX_TOOL_ROUNDS", "5"))
 MAX_TOOL_CHARS = int(os.getenv("MAX_TOOL_CHARS", "4000"))
 
