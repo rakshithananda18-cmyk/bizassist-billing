@@ -63,6 +63,11 @@ def _push_staff_to_cloud(business_id: int, staff_records: list) -> None:
     _db_url = os.environ.get("DATABASE_URL", "sqlite")
     if not _db_url.startswith("sqlite"):
         return
+    # "Local only" keeps staff (and their password hashes) on this device.
+    from services.immediate_sync import syncs_to_cloud
+    if not syncs_to_cloud(business_id):
+        logger.info("[STAFF-SYNC] business %s is not on Local + Cloud - staff stay on this device", business_id)
+        return
 
     def _run():
         try:

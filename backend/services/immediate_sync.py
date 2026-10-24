@@ -17,6 +17,7 @@ Both are fire-and-forget (background thread). They never block the HTTP response
 and silently swallow errors (the regular sync cycle is the safety net).
 """
 from __future__ import annotations
+import json
 import logging
 import os
 import threading
@@ -28,12 +29,44 @@ logger = logging.getLogger("bizassist.immediate_sync")
 _IS_LOCAL = os.environ.get("DATABASE_URL", "sqlite").startswith("sqlite")
 
 
+def syncs_to_cloud(business_id: int) -> bool:
+    """
+    True only when this business (a staff account's owner, for staff) is on
+    Local + Cloud ('hybrid').
+
+    "Local only" promises that nothing goes to the cloud. Holding a cloud token
+    is not consent: the desktop mints one at sign-up and at every online
+    sign-in, whatever the mode. So every out-of-band push checks this, like the
+    sync queue does (database/models.py `_queue_change`). Data written while
+    Local only reaches the cloud through the one-time move when the owner
+    switches (routes/data_transfer.py carries the profile and staff too).
+    """
+    try:
+        from database.db import SessionLocal
+        from database.models import User
+        with SessionLocal() as s:
+            user = s.query(User).filter(User.id == business_id).first()
+            if user is not None and user.parent_business_id is not None:
+                user = s.query(User).filter(User.id == user.parent_business_id).first()
+            if user is None or not user.settings:
+                return False
+            general = (json.loads(user.settings) or {}).get("general") or {}
+            return general.get("hosting_mode") == "hybrid"
+    except Exception as e:
+        logger.warning("[SYNC] Could not read hosting_mode for biz %s (%s) - nothing sent", business_id, e)
+        return False
+
+
 def push_profile_to_cloud(business_id: int, fields: dict) -> None:
     """
     Fire-and-forget POST /api/sync/profile-push to the cloud with the given
-    profile field dict.  Only non-None values are sent.
+    profile field dict.  Only non-None values are sent, and only for a
+    Local + Cloud business.
     """
     if not _IS_LOCAL:
+        return
+    if not syncs_to_cloud(business_id):
+        logger.info("[PROFILE-SYNC] biz %s is not on Local + Cloud - profile stays on this device", business_id)
         return
 
     payload = {k: v for k, v in fields.items() if v is not None}

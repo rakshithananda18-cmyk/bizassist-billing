@@ -182,15 +182,25 @@ async def submit_merchant_feedback(
 
 
 @router.get("/diagnostics/logs")
-def download_diagnostics_logs(current_user: dict = Depends(get_active_user)):
+def download_diagnostics_logs(current_user: dict = Depends(restrict_cashier)):
     """Build and stream a .tar.gz of THIS backend's diagnostic logs so the user
     can download them (Settings → "Download logs") and share them for debugging.
 
     Collects, if present: the app log file (LOG_FILE env, else logs/bizassist.log)
-    and its rotations, plus the admin audit log. No business data — only app logs.
+    and its rotations, plus the admin audit log.
+
+    Owners only. On a desktop that is the owner's own computer's log. On the
+    cloud the log covers EVERY customer's requests (and every sign-in typed),
+    so there only the platform admin may download it.
     """
     import io, os, glob, tarfile
     from fastapi.responses import StreamingResponse
+    from database.db import engine
+
+    if engine.dialect.name == "postgresql" and (current_user.get("role") or "").lower() != "admin":
+        logger.warning("[DIAG] refused cloud log download for '%s' (role=%s)",
+                       current_user.get("username"), current_user.get("role"))
+        raise HTTPException(status_code=403, detail="The cloud server's logs cover every business; only the platform admin can download them.")
 
     candidates = []
     log_file = os.getenv("LOG_FILE") or os.path.join("logs", "bizassist.log")

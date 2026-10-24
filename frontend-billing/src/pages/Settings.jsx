@@ -2367,6 +2367,9 @@ export default function Settings() {
               </div>
 
               <SectionHeader title="Data & Backup" />
+              {/* Desktop only: on the web, "this device" is the shared cloud server,
+                  whose log covers every business (the server refuses it too). */}
+              {IS_LOCAL_APP && (
               <SettingRow label="Download Diagnostics Logs" description="Package this device's app logs as a .tar.gz you can download and share for debugging.">
                 <button
                   className="btn btn-secondary"
@@ -2389,6 +2392,7 @@ export default function Settings() {
                   Download logs
                 </button>
               </SettingRow>
+              )}
               <SettingRow label="Auto Backup" description="Periodically request backup files for storage.">
                 <Toggle id="auto_backup" checked={g.auto_backup === true} onChange={v => patch('general', 'auto_backup', v)} />
               </SettingRow>

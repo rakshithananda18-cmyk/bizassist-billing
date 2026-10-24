@@ -140,24 +140,22 @@ class TestUploadedArtefactsAreNamedByBizID:
             "name identifies a different business depending on who sent it"
         )
 
-    def test_the_retry_sweep_still_matches_pre_rename_archives(self):
-        """Renaming an artefact orphans every one already on disk. These upload
-        on success and are deleted on success, so a retry loop that cannot see
-        them means they are never sent and never cleaned up — a rename turning
-        into a slow disk leak."""
+    def test_pre_rename_archives_are_cleaned_up_not_orphaned(self):
+        """Renaming an artefact orphans every one already on disk — a rename
+        turning into a slow disk leak. The old `logs_biz_*` archives hold the
+        WHOLE log (every business on the computer), so they are not retried:
+        the sweep deletes them unsent (tests/test_local_only_stays_local.py)."""
         src = _src("services", "log_uploader.py")
-        assert "_prefixes" in src
-        assert "logs_biz_{p}_" in src
-        assert "f\"localid{business_id}\"" in src, (
-            "the fallback name used when a business has no BizID must also be "
-            "matched by the retry sweep"
-        )
+        assert '_LEGACY_PREFIX = "logs_biz_"' in src
+        assert "f.startswith(_LEGACY_PREFIX)" in src
 
-    def test_the_fallback_is_labelled_as_non_portable(self):
-        """When no BizID exists the integer is all there is — but it must not be
-        mistaken for a portable identifier by whoever reads the filename."""
+    def test_without_a_bizid_nothing_is_uploaded(self):
+        """The BizID is what picks this business's lines out of the log, so a
+        business without one has nothing safe to send — no integer-named
+        fallback archive any more."""
         src = _src("services", "log_uploader.py")
-        assert "localid" in src
+        assert "has no BizID - nothing to upload" in src
+        assert "localid" not in src
 
 
 # ═════════════════════════════════════════════════════════════════════════════

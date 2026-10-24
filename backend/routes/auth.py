@@ -211,7 +211,11 @@ class SignupRequest(BaseModel):
 
 @router.post("/login")
 def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
-    logger.info(f"[AUTH] Login attempt for username '{req.username}'...")
+    # The typed username is logged only once it is known to be an account's: a
+    # password typed into the username box is almost never a real username,
+    # and log files travel (support uploads, screenshots).
+    shown = "an unknown username"
+    logger.info("[AUTH] Login attempt...")
     try:
         # Check IP-based rate limiting
         ip = request.client.host if request.client else "unknown"
@@ -220,8 +224,10 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=429, detail=rl["reason"])
 
         user = db.query(User).filter(User.username == req.username).first()
+        if user:
+            shown = f"username '{req.username}'"
         if not user or not verify_password(req.password, user.password):
-            logger.warning(f"[AUTH] Failed login for username '{req.username}': invalid credentials")
+            logger.warning(f"[AUTH] Failed login for {shown}: invalid credentials")
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         # ── Admin 2FA gate (§4.1) ─────────────────────────────────────────────
@@ -308,7 +314,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[AUTH] Error during login for username '{req.username}': {str(e)}", exc_info=True)
+        logger.error(f"[AUTH] Error during login for {shown}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server login error")
 
 

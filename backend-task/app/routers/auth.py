@@ -82,7 +82,10 @@ def owner_login(req: OwnerLogin, request: Request, db: Session = Depends(get_db)
     if not _is_owner(user):
         burn_password_check(req.password)
         record_login_failure(key)
-        logger.info("[AUTH] owner login refused (not an owner account) user=%s", req.username)
+        # The name is logged only when it is an account's (a staff one): a
+        # password typed into the username box must not land in the logs.
+        logger.info("[AUTH] owner login refused (not an owner account) user=%s",
+                    req.username if user else "<unknown username>")
         raise HTTPException(status_code=401, detail="Invalid owner credentials")
     if not verify_password(req.password, user.password):
         record_login_failure(key)

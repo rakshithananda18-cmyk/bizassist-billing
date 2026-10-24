@@ -119,7 +119,8 @@ def test_immediate_sync_helper_push(mock_get_token, mock_post):
     mock_get_token.return_value = "mocked-token-123"
     mock_post.return_value = MagicMock(status_code=200, json=lambda: {"status": "ok", "updated_fields": ["business_name"]})
 
-    with patch("services.immediate_sync._IS_LOCAL", True):
+    with patch("services.immediate_sync._IS_LOCAL", True), \
+         patch("services.immediate_sync.syncs_to_cloud", return_value=True):   # Local + Cloud
         from services.immediate_sync import push_profile_to_cloud
         import time
 

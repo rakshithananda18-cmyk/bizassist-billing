@@ -62,6 +62,34 @@ def test_billing_cashier_cannot_sign_in_as_owner(client, biz):
     assert r.status_code == 401
 
 
+def test_refused_owner_login_names_only_real_accounts(client):
+    """A password typed into the username box must not land in the logs."""
+    import logging
+
+    class Lines(logging.Handler):
+        def __init__(self):
+            super().__init__(logging.DEBUG)
+            self.lines = []
+
+        def emit(self, record):
+            self.lines.append(record.getMessage())
+
+    typed = f"Pw{uniq('')}!"
+    log, cap = logging.getLogger("bizassist.task.auth"), Lines()
+    level = log.level
+    log.addHandler(cap)
+    log.setLevel(logging.DEBUG)
+    try:
+        r = client.post("/api/auth/owner/login", json={"username": typed, "password": PASSWORD})
+    finally:
+        log.removeHandler(cap)
+        log.setLevel(level)
+    assert r.status_code == 401
+    text = "\n".join(cap.lines)
+    assert typed not in text
+    assert "<unknown username>" in text
+
+
 def test_task_token_is_rejected_by_billing_style_decode(biz):
     # billing: jwt.decode(token, JWT_SECRET, algorithms=["HS256"]) — no audience.
     with pytest.raises(jwt.InvalidTokenError):
