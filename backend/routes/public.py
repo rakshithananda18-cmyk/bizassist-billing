@@ -7,12 +7,26 @@ from database.models import Invoice
 from core.billing import print_payload as PP
 
 import os
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+from services.pdf_safety import safe_invoice_logo
 
 router = APIRouter(tags=["public"])
 
 _TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "..", "core", "billing", "templates")
-_jinja_env = Environment(loader=FileSystemLoader(_TEMPLATE_DIR))
+_jinja_env = Environment(
+    loader=FileSystemLoader(_TEMPLATE_DIR),
+    autoescape=select_autoescape(["html", "xml"]),
+)
+
+
+def _safe_render_payload(payload: dict) -> dict:
+    """Remove renderer-dangerous logo sources before rendering public HTML/PDF."""
+    seller = payload.get("seller")
+    if isinstance(seller, dict):
+        # Work on the payload produced for this request only; never mutate ORM
+        # state or allow a legacy remote URL to reach WeasyPrint.
+        seller["logo_url"] = safe_invoice_logo(seller.get("logo_url"))
+    return payload
 
 @router.get("/public/invoice/{uid_token}")
 def get_public_invoice(
@@ -30,7 +44,9 @@ def get_public_invoice(
         raise HTTPException(status_code=404, detail="Invoice not found or link expired.")
 
     # Generate print payload (which excludes margins/cost prices inherently)
-    payload = PP.build_print_payload(db, business_id=inv.business_id, invoice_no=inv.invoice_id)
+    payload = _safe_render_payload(
+        PP.build_print_payload(db, business_id=inv.business_id, invoice_no=inv.invoice_id)
+    )
 
     if format == "html" or format == "pdf":
         template_name = "invoice_classic_a4.html" 

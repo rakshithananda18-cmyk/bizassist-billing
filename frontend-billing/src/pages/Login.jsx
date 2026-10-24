@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
 import { BuildingMark } from '../components/Logo'
-import { API_BASE, CLOUD_URL, IS_LOCAL_APP } from '../config'
+import { API_BASE } from '../config'
 import CustomSelect from '../components/common/CustomSelect'
 import BootHealthCheck from '../components/BootHealthCheck'
 
@@ -82,11 +82,10 @@ export default function Login() {
   const [selectedOwner, setSelectedOwner] = useState(null)
   const [selectedStaffUser, setSelectedStaffUser] = useState('')
 
-  // Other-Business (standard) flow is OWNER-GATED (§9.5): type the business owner
-  // username → choose Owner Login (password) or Staff Login (counter dropdown +
-  // password). Staff are never logged in by a global username directly.
+  // Other-Business flow: type the business owner username, then choose owner or
+  // staff sign-in. Staff enter their assigned login name; the server verifies
+  // it with the owner and password without exposing a public staff directory.
   const [standardStep, setStandardStep] = useState('username')  // username | choose | owner | staff
-  const [bizLookup, setBizLookup] = useState(null)              // { business_name, staff:[{login_name, counter_prefix, role}] }
 
   // A saved-login shortcut must never hold up a successful sign-in.  The staff
   // list is only convenience metadata; authentication and navigation do not
@@ -109,14 +108,45 @@ export default function Login() {
     }
   }
 
+  // The counter this device last signed in to for a business, if it still
+  // exists there; otherwise the first saved one.
+  const defaultStaffFor = (owner) => {
+    const accounts = owner?.staffAccounts || []
+    const last = owner?.lastStaff
+    if (last && accounts.some(s => s.username === last)) return last
+    return accounts[0]?.username || ''
+  }
+
+  // A counter signed in by typing is saved like the owner's list, so next time
+  // on this device it is a tap rather than typing the name again.
+  const rememberStaffLogin = (ownerUsername, staffName) => {
+    try {
+      const loggedUser = JSON.parse(localStorage.getItem('billing_user') || 'null')
+      const recent = readRecentLogins()
+      const entry = recent.find(item => item.username === ownerUsername) || {
+        username: ownerUsername,
+        businessName: loggedUser?.business_name || 'My Business',
+        staffAccounts: [],
+      }
+      if (!entry.staffAccounts.some(s => s.username === staffName)) {
+        entry.staffAccounts.push({ username: staffName, role: loggedUser?.role || 'cashier' })
+      }
+      entry.lastStaff = staffName
+      saveRecentLogins([entry, ...recent.filter(item => item.username !== ownerUsername)])
+    } catch { /* a saved shortcut must never hold up a sign-in */ }
+  }
+
   const rememberOwnerLogin = (loggedUser, token) => {
     const saveOwner = (staffAccounts) => {
       const recent = readRecentLogins()
+      const previous = recent.find(item => item.username === loggedUser.username)
       const updatedRecent = recent.filter(item => item.username !== loggedUser.username)
       updatedRecent.unshift({
         username: loggedUser.username,
         businessName: loggedUser.business_name || 'My Business',
-        staffAccounts: staffAccounts.map(s => ({ username: s.username, role: s.role }))
+        staffAccounts: staffAccounts.map(s => ({ username: s.username, role: s.role })),
+        // The counter last used here survives the owner signing in.
+        ...(previous?.lastStaff ? { lastStaff: previous.lastStaff } : {}),
       })
       saveRecentLogins(updatedRecent)
     }
@@ -243,69 +273,26 @@ export default function Login() {
     }
   }
 
-  // Other-Business: resolve the typed owner username → business + counters.
+  // Other-Business: never look up a business or its staff before credentials.
   async function handleOwnerContinue(e) {
     e.preventDefault()
     setError('')
     const owner = username.trim()
     if (!owner) { setError('Enter the business owner username.'); return }
-    setLoading(true)
-    try {
-      // Resolve owner → business + staff. On the desktop app the LOCAL backend is
-      // only an identity mirror on a fresh device (business/staff rows are gated),
-      // so a local lookup returns 404 or an empty staff list and the Staff button
-      // never appears — even though staff exist on the cloud. So: query local
-      // first, and if it can't tell us about staff, fall back to the CLOUD (which
-      // is the identity + staff authority). This makes the Owner/Staff picker work
-      // on Windows exactly like it does on the web.
-      const lookup = async (base) => {
-        const res = await fetch(`${base}/staff-counters?owner=${encodeURIComponent(owner)}`)
-        if (!res.ok) return null
-        return res.json()
-      }
-
-      let data = null
-      try { data = await lookup(API_BASE) } catch { data = null }
-
-      const localHasStaff = data && Array.isArray(data.staff) && data.staff.length > 0
-      if (IS_LOCAL_APP && CLOUD_URL !== API_BASE && !localHasStaff &&
-          (typeof navigator === 'undefined' || navigator.onLine !== false)) {
-        try {
-          const cloudData = await lookup(CLOUD_URL)
-          if (cloudData && Array.isArray(cloudData.staff) && cloudData.staff.length > 0) {
-            data = cloudData
-          } else if (!data && cloudData) {
-            data = cloudData
-          }
-        } catch { /* cloud unreachable — keep whatever local gave us */ }
-      }
-
-      if (data) {
-        setBizLookup(data)
-        // If the business has staff, offer the choice; else go straight to owner password.
-        setStandardStep((data.staff && data.staff.length > 0) ? 'choose' : 'owner')
-      } else {
-        // Owner not found on either backend (typo / brand-new account) — still allow
-        // an owner password attempt (login() will validate); no staff option.
-        setBizLookup(null)
-        setStandardStep('owner')
-      }
-    } catch {
-      setBizLookup(null)
-      setStandardStep('owner')
-    } finally {
-      setLoading(false)
-    }
+    setPassword('')
+    setSelectedStaffUser('')
+    setStandardStep('choose')
   }
 
   // Other-Business: staff sign-in (owner username + selected counter + password).
   async function handleStandardStaffLogin(e) {
     e.preventDefault()
-    if (!selectedStaffUser) { setError('Select a counter.'); return }
+    if (!selectedStaffUser.trim()) { setError('Enter your staff login name.'); return }
     setError('')
     setLoading(true)
     try {
       await staffLogin(username.trim(), selectedStaffUser, password)
+      rememberStaffLogin(username.trim(), selectedStaffUser.trim())
       navigate('/', { replace: true })
     } catch (err) {
       setError(err.message || 'Invalid password. Please try again.')
@@ -340,9 +327,12 @@ export default function Login() {
               username: loggedUser.username,
               role: loggedUser.role || 'cashier'
             })
-            recent[ownerIndex] = ownerEntry
-            localStorage.setItem('bizassist_recent_logins', JSON.stringify(recent))
           }
+          // Preselect this counter next time on this device: staff no longer
+          // get a public list of a business's counters to choose from.
+          ownerEntry.lastStaff = selectedStaffUser
+          recent[ownerIndex] = ownerEntry
+          localStorage.setItem('bizassist_recent_logins', JSON.stringify(recent))
         }
       }
 
@@ -480,53 +470,12 @@ export default function Login() {
                 <div key={idx} style={{ position: 'relative' }}>
                 <button
                   type="button"
-                  onClick={async () => {
+                  onClick={() => {
                     setSelectedOwner(item)
                     setPassword('')
                     setError('')
                     const hasCachedStaff = item.staffAccounts && item.staffAccounts.length > 0
                     setView(hasCachedStaff ? 'recent-choose' : 'password')
-                    try {
-                      // Resolve the owner's staff. On the desktop app the LOCAL
-                      // backend is only an identity mirror on a fresh device, so
-                      // /staff-counters returns an empty list there even when
-                      // staff exist on the cloud — which used to hide (and wipe)
-                      // the Owner/Staff choice. So query local first, then fall
-                      // back to the CLOUD (the staff authority) if local has none.
-                      const lookup = async (base) => {
-                        const r = await fetch(`${base}/staff-counters?owner=${encodeURIComponent(item.username)}`)
-                        if (!r.ok) return null
-                        return r.json()
-                      }
-                      const toStaff = (data) => (data?.staff || []).map(s => ({ username: s.login_name, role: s.role }))
-
-                      let liveStaff = toStaff(await lookup(API_BASE).catch(() => null))
-                      if (IS_LOCAL_APP && CLOUD_URL !== API_BASE && liveStaff.length === 0 &&
-                          (typeof navigator === 'undefined' || navigator.onLine !== false)) {
-                        const cloudStaff = toStaff(await lookup(CLOUD_URL).catch(() => null))
-                        if (cloudStaff.length > 0) liveStaff = cloudStaff
-                      }
-
-                      // IMPORTANT: never DOWNGRADE on an empty result — an offline
-                      // local lookup must not wipe cached staff or hide the choice.
-                      if (liveStaff.length > 0) {
-                        setSelectedOwner(prev =>
-                          (prev && prev.username === item.username) ? { ...prev, staffAccounts: liveStaff } : prev
-                        )
-                        const recent = JSON.parse(localStorage.getItem('bizassist_recent_logins') || '[]')
-                        const idx = recent.findIndex(r => r.username === item.username)
-                        if (idx !== -1) {
-                          recent[idx].staffAccounts = liveStaff
-                          localStorage.setItem('bizassist_recent_logins', JSON.stringify(recent))
-                        }
-                        setView(prev => (prev === 'recent' || prev === 'recent-choose') ? 'recent-choose' : prev)
-                      } else if (!hasCachedStaff) {
-                        // No staff anywhere and nothing cached → owner password.
-                        setView(prev => (prev === 'recent' || prev === 'recent-choose') ? 'password' : prev)
-                      }
-                    } catch (err) {
-                      logger.error('Failed to fetch live staff list for quick login:', err)
-                    }
                   }}
                   style={{
                     display: 'flex',
@@ -704,7 +653,7 @@ export default function Login() {
               onClick={() => {
                 setError('')
                 setPassword('')
-                setSelectedStaffUser(selectedOwner?.staffAccounts?.[0]?.username || '')
+                setSelectedStaffUser(defaultStaffFor(selectedOwner))
                 setView('staff')
               }}
               style={{
@@ -839,7 +788,7 @@ export default function Login() {
                   type="button"
                   className="btn btn-ghost"
                   onClick={() => {
-                    setSelectedStaffUser(selectedOwner.staffAccounts[0]?.username || '')
+                    setSelectedStaffUser(defaultStaffFor(selectedOwner))
                     setPassword('')
                     setError('')
                     setView('staff')
@@ -1038,7 +987,7 @@ export default function Login() {
               </div>
               <div style={{ textAlign: 'left', minWidth: 0 }}>
                 <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {standardStep === 'username' ? 'Other Business Login' : (bizLookup?.business_name || 'Business Login')}
+                  {standardStep === 'username' ? 'Other Business Login' : 'Business Login'}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 1 }}>
                   {standardStep === 'username' && 'Enter the business owner username'}
@@ -1071,7 +1020,7 @@ export default function Login() {
             {standardStep === 'choose' && (
               <div style={{ width: '100%' }}>
                 <button type="button" className="login-submit-btn" onClick={() => { setError(''); setPassword(''); setStandardStep('owner') }} style={{ width: '100%' }}>Owner Login</button>
-                <button type="button" className="login-submit-btn" disabled={!(bizLookup?.staff?.length)} onClick={() => { setError(''); setPassword(''); setSelectedStaffUser(bizLookup?.staff?.[0]?.login_name || ''); setStandardStep('staff') }} style={{ width: '100%', marginTop: 10, background: 'var(--bg-2)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Staff Login</button>
+                <button type="button" className="login-submit-btn" onClick={() => { setError(''); setPassword(''); setSelectedStaffUser(''); setStandardStep('staff') }} style={{ width: '100%', marginTop: 10, background: 'var(--bg-2)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Staff Login</button>
                 <button type="button" onClick={() => { setError(''); setStandardStep('username') }} style={{ width: '100%', marginTop: 14, fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer' }}>← Back</button>
               </div>
             )}
@@ -1092,22 +1041,16 @@ export default function Login() {
                 </div>
                 {error && <div className="login-error" style={{ marginTop: 14 }}>{error}</div>}
                 <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 14 }}>{loading ? 'Signing in…' : 'Sign In as Owner'}</button>
-                <button type="button" onClick={() => { setError(''); setStandardStep(bizLookup?.staff?.length ? 'choose' : 'username') }} style={{ width: '100%', marginTop: 12, fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer' }}>← Back</button>
+                <button type="button" onClick={() => { setError(''); setStandardStep('choose') }} style={{ width: '100%', marginTop: 12, fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer' }}>← Back</button>
               </form>
             )}
 
-            {/* STEP 4 — staff (counter dropdown) */}
+            {/* STEP 4 — staff (manual login name; no public staff directory) */}
             {standardStep === 'staff' && (
               <form onSubmit={handleStandardStaffLogin} style={{ width: '100%' }}>
                 <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
-                  <label htmlFor="std-staff-select">Select Counter</label>
-                  <CustomSelect id="std-staff-select" value={selectedStaffUser} onChange={e => setSelectedStaffUser(e.target.value)}>
-                    {(bizLookup?.staff || []).map((s, idx) => (
-                      <option key={idx} value={s.login_name}>
-                        {s.login_name}{s.counter_prefix ? ` · ${s.counter_prefix}` : ''} ({s.role || 'cashier'})
-                      </option>
-                    ))}
-                  </CustomSelect>
+                  <label htmlFor="std-staff-login">Staff Login Name</label>
+                  <input id="std-staff-login" type="text" placeholder="e.g. counter-1" value={selectedStaffUser} onChange={e => setSelectedStaffUser(e.target.value)} required autoFocus autoComplete="username" />
                 </div>
                 <div className="form-group" style={{ marginTop: 14, width: '100%', boxSizing: 'border-box' }}>
                   <label htmlFor="std-staff-password">Password</label>

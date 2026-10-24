@@ -193,7 +193,7 @@ async def lifespan(_app):
                         "SELECT id, public_id FROM users "
                         "WHERE parent_business_id IS NULL AND public_id IS NOT NULL"
                     )).fetchall()
-                    biz_ids = [str(r[1]).strip() for r in rows if r[1]]
+                    biz_records = [(int(r[0]), str(r[1]).strip()) for r in rows if r[1]]
                     missing = db.execute(text(
                         "SELECT COUNT(*) FROM users "
                         "WHERE parent_business_id IS NULL AND public_id IS NULL"
@@ -209,12 +209,21 @@ async def lifespan(_app):
                 finally:
                     db.close()
 
-                for biz_id in biz_ids:
+                from services.sync_worker import _get_cloud_token
+                for business_id, biz_id in biz_records:
                     try:
+                        # The cloud verifies this owner token and binds the
+                        # registry update to its public_id.  A public BizID by
+                        # itself must never authorize a discovery mutation.
+                        token = _get_cloud_token(business_id)
+                        if not token:
+                            logger.debug("[DISCOVER] No cloud token for biz %s; registration deferred", biz_id)
+                            continue
                         async with httpx.AsyncClient(timeout=5.0) as client:
                             resp = await client.post(
                                 f"{CLOUD_URL}/discover/register",
-                                json={"ip": local_ip, "port": 8001, "biz_id": biz_id}
+                                json={"ip": local_ip, "port": 8001, "biz_id": biz_id},
+                                headers={"Authorization": f"Bearer {token}"},
                             )
                         logger.info("[DISCOVER] Registered %s for biz %s → %s", local_ip, biz_id, resp.status_code)
                     except Exception as e:

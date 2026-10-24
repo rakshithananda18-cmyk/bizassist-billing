@@ -31,6 +31,21 @@ def make_app():
     return app
 
 
+def discovery_client(bizid: str):
+    """Unit-test client with an authenticated owner for one BizID."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient as TC
+    from routes.discovery import router as disc_router
+    from services.auth import require_business_owner
+
+    app = FastAPI()
+    app.include_router(disc_router)
+    app.dependency_overrides[require_business_owner] = lambda: {
+        "id": 1, "user_id": 1, "role": "owner", "public_id": bizid,
+    }
+    return TC(app)
+
+
 # ---------------------------------------------------------------------------
 # Discovery Registry Tests
 # ---------------------------------------------------------------------------
@@ -45,13 +60,7 @@ class TestDiscoveryRegister:
 
     def test_register_returns_ok(self):
         from routes.discovery import _REGISTRY
-        from routes.discovery import router as disc_router
-        from fastapi import FastAPI
-        from fastapi.testclient import TestClient as TC
-
-        app = FastAPI()
-        app.include_router(disc_router)
-        client = TC(app)
+        client = discovery_client("BA-TEST01")
 
         resp = client.post("/discover/register", json={
             "ip": "192.168.1.42",
@@ -64,13 +73,8 @@ class TestDiscoveryRegister:
         assert "BA-TEST01" in _REGISTRY
 
     def test_register_overwrites_existing_ip(self):
-        from routes.discovery import _REGISTRY, router as disc_router
-        from fastapi import FastAPI
-        from fastapi.testclient import TestClient as TC
-
-        app = FastAPI()
-        app.include_router(disc_router)
-        client = TC(app)
+        from routes.discovery import _REGISTRY
+        client = discovery_client("BA-DUP")
 
         client.post("/discover/register", json={"ip": "192.168.1.10", "port": 8001, "biz_id": "BA-DUP"})
         client.post("/discover/register", json={"ip": "192.168.1.10", "port": 8001, "biz_id": "BA-DUP"})
@@ -81,13 +85,7 @@ class TestDiscoveryRegister:
         assert ips.count("192.168.1.10") == 1
 
     def test_register_missing_fields_rejected(self):
-        from routes.discovery import router as disc_router
-        from fastapi import FastAPI
-        from fastapi.testclient import TestClient as TC
-
-        app = FastAPI()
-        app.include_router(disc_router)
-        client = TC(app)
+        client = discovery_client("BA-TEST01")
 
         resp = client.post("/discover/register", json={"ip": "192.168.1.1"})
         assert resp.status_code == 422   # Unprocessable entity — missing required fields
@@ -101,13 +99,8 @@ class TestDiscoveryList:
         _REGISTRY.clear()
 
     def test_list_returns_registered_backends(self):
-        from routes.discovery import _REGISTRY, router as disc_router
-        from fastapi import FastAPI
-        from fastapi.testclient import TestClient as TC
-
-        app = FastAPI()
-        app.include_router(disc_router)
-        client = TC(app)
+        from routes.discovery import _REGISTRY
+        client = discovery_client("BA-LIST")
 
         client.post("/discover/register", json={"ip": "10.0.0.5", "port": 8001, "biz_id": "BA-LIST"})
         resp = client.get("/discover/BA-LIST")
@@ -160,13 +153,8 @@ class TestDiscoveryDeregister:
         _REGISTRY.clear()
 
     def test_deregister_removes_entry(self):
-        from routes.discovery import _REGISTRY, router as disc_router
-        from fastapi import FastAPI
-        from fastapi.testclient import TestClient as TC
-
-        app = FastAPI()
-        app.include_router(disc_router)
-        client = TC(app)
+        from routes.discovery import _REGISTRY
+        client = discovery_client("BA-DEL")
 
         client.post("/discover/register", json={"ip": "192.168.5.5", "port": 8001, "biz_id": "BA-DEL"})
         resp = client.request("DELETE", "/discover/register", json={"ip": "192.168.5.5", "port": 8001, "biz_id": "BA-DEL"})
@@ -262,14 +250,10 @@ class TestDiscoveryLogging:
 
     def test_registration_logs_info(self, caplog):
         import logging
-        from routes.discovery import _REGISTRY, router as disc_router
-        from fastapi import FastAPI
-        from fastapi.testclient import TestClient as TC
+        from routes.discovery import _REGISTRY
 
         _REGISTRY.clear()
-        app = FastAPI()
-        app.include_router(disc_router)
-        client = TC(app)
+        client = discovery_client("BA-LOG")
 
         with caplog.at_level(logging.INFO, logger="bizassist.discovery"):
             client.post("/discover/register", json={"ip": "172.16.0.1", "port": 8001, "biz_id": "BA-LOG"})

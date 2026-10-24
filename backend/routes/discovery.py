@@ -20,8 +20,9 @@ from typing import Dict, List
 
 import ipaddress
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
+from services.auth import require_business_owner
 
 logger = logging.getLogger("bizassist.discovery")
 router = APIRouter(tags=["discovery"])
@@ -102,11 +103,25 @@ class DiscoverRegisterRequest(BaseModel):
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
+def _assert_registration_owner(req: DiscoverRegisterRequest, current_user: dict) -> str:
+    """Bind a registry mutation to the authenticated business's public BizID."""
+    claimed = str(req.biz_id).strip()
+    authenticated = str(current_user.get("public_id") or "").strip()
+    if not authenticated or claimed != authenticated:
+        raise HTTPException(status_code=403, detail="Discovery registrations must match the authenticated business.")
+    return authenticated
+
+
 @router.post("/discover/register")
-async def register_local_backend(req: DiscoverRegisterRequest, request: Request):
+async def register_local_backend(
+    req: DiscoverRegisterRequest,
+    request: Request,
+    current_user: dict = Depends(require_business_owner),
+):
     """
     Called by the local backend on startup (and periodically) to announce its
-    LAN IP + port. No auth — a local backend has no cloud session at boot.
+    LAN IP + port.  The local backend uses its provisioned cloud owner token;
+    a public BizID is an identifier, not authorization to mutate this registry.
 
     THREAT MODEL (review finding S-2)
     ---------------------------------
@@ -127,18 +142,10 @@ async def register_local_backend(req: DiscoverRegisterRequest, request: Request)
     i.e. credential harvesting off a public identifier — structurally the same
     defect as F-1, on a different surface.
 
-    MITIGATION: only PRIVATE addresses may be registered. A local backend's LAN
-    address is by definition RFC1918 / loopback / link-local, so rejecting public
-    IPs costs nothing legitimate and removes the remote attacker entirely — an
-    internet host cannot point a victim at itself using an address that is only
-    routable inside the victim's own network. The number of entries per BizID is
-    also capped so the list cannot be flooded.
-
-    RESIDUAL RISK, stated plainly: a device ALREADY on the same LAN can still
-    register a competing address. LAN discovery inherently trusts the LAN, and
-    closing that needs the registrant to prove it holds the BizID (a signed
-    token), which a backend does not have before login. Tracked as future work;
-    the remote attack is what mattered and is closed.
+    MITIGATION: only PRIVATE addresses may be registered *and* the caller must
+    present a cloud-issued owner token whose public_id equals ``biz_id``.  The
+    number of entries per BizID is also capped.  A public BizID is therefore no
+    longer enough to poison or delete a business's discovery record.
     """
     ip = req.ip
     # If the caller sent a non-routable placeholder, fall back to the connection IP.
@@ -159,7 +166,7 @@ async def register_local_backend(req: DiscoverRegisterRequest, request: Request)
     if not (0 < int(req.port) < 65536):
         raise HTTPException(status_code=422, detail="Invalid port.")
 
-    biz_id = str(req.biz_id)
+    biz_id = _assert_registration_owner(req, current_user)
     _prune(biz_id)
 
     entries = _REGISTRY.setdefault(biz_id, [])
@@ -193,9 +200,12 @@ async def register_local_backend(req: DiscoverRegisterRequest, request: Request)
 
 
 @router.delete("/discover/register")
-async def unregister_local_backend(req: DiscoverRegisterRequest):
+async def unregister_local_backend(
+    req: DiscoverRegisterRequest,
+    current_user: dict = Depends(require_business_owner),
+):
     """Called by the local backend on clean shutdown to remove its entry."""
-    biz_id = str(req.biz_id)
+    biz_id = _assert_registration_owner(req, current_user)
     entries = _REGISTRY.get(biz_id, [])
     before = len(entries)
     _REGISTRY[biz_id] = [e for e in entries if not (e["ip"] == req.ip and e["port"] == req.port)]

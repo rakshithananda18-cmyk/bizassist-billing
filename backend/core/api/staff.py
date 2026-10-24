@@ -21,7 +21,12 @@ import os
 
 from database.db import get_db
 from database.models import User
-from services.auth import restrict_cashier, hash_password, bump_token_version
+from services.auth import (
+    restrict_cashier,
+    hash_password,
+    bump_token_version,
+    clear_token_version_cache,
+)
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.staff")
@@ -284,6 +289,9 @@ def delete_staff(staff_id: int, current_user: dict = Depends(restrict_cashier), 
     if not staff:
         raise HTTPException(status_code=404, detail="Staff member not found")
     bare = staff.staff_login_name or staff.username
+    # Do not leave the deleted subject's token-version cache entry alive for up
+    # to its TTL. Once the row is gone, auth.py fails closed with a 401.
+    clear_token_version_cache(staff.id)
     db.delete(staff)
     db.commit()
     logger.info("[STAFF] deleted %s under business %s (BizID=%s)", staff_id, bid, owner.public_id)

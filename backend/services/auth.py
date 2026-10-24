@@ -51,7 +51,10 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
         try:
             cur_tv = _current_token_version(int(uid))
             to_encode["tv"] = cur_tv if cur_tv is not None else 0
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, HTTPException):
+            # ``create_access_token`` is also used by tests and offline tooling.
+            # Issuing a synthetic token is not authorization: get_active_user
+            # will still reject a missing/revoked subject on first use.
             to_encode["tv"] = 0
     if expires_delta:
         expire = utc_now() + expires_delta
@@ -104,10 +107,14 @@ def bump_token_version(db, user) -> int:
     return user.token_version
 
 
-def _current_token_version(user_id: int):
-    """DB-backed token_version with a short in-process cache. Returns None when
-    it cannot be determined (row missing / DB error) — caller skips the check
-    rather than 401-ing every request during a transient DB hiccup."""
+def _current_token_version(user_id: int) -> int:
+    """Return a user's current token version, failing closed on uncertainty.
+
+    JWTs are bearer credentials, so a missing subject must never be treated as
+    an authenticated account. In particular, deleting a staff row must revoke
+    its already-issued tokens immediately. A database outage also cannot become
+    an authorization bypass; callers receive a retryable 503 instead.
+    """
     now = _time.time()
     hit = _tv_cache.get(user_id)
     if hit and hit[1] > now:
@@ -117,30 +124,46 @@ def _current_token_version(user_id: int):
         from database.models import User as _User
         db = SessionLocal()
         try:
+            # This lookup opens its own session outside a request dependency.
+            # ``users`` is FORCE RLS on Postgres, so explicitly scope that
+            # session to the signed JWT subject before reading its row. Without
+            # this, Postgres hides the row and a fail-closed check would reject
+            # every valid cloud token.
+            if db.bind and db.bind.dialect.name == "postgresql":
+                from sqlalchemy import text
+                db.execute(
+                    # Transaction-local: pooled connections must not retain a
+                    # prior subject's tenant GUC after this lookup closes.
+                    text("SELECT set_config('app.current_business_id', :bid, true)"),
+                    {"bid": str(user_id)},
+                )
             row = db.query(_User.token_version).filter(_User.id == user_id).first()
         finally:
             db.close()
         if row is None:
-            return None
+            logger.info("[AUTH] 401 token subject no longer exists user_id=%s", user_id)
+            raise HTTPException(status_code=401, detail="Session revoked — please log in again")
         tv = row[0] if row[0] is not None else 0
     except Exception as e:
-        logger.debug("[AUTH] token_version lookup failed (skipping check): %s", e)
-        return None
+        if isinstance(e, HTTPException):
+            raise
+        logger.warning("[AUTH] token_version lookup failed; rejecting request: %s", e)
+        raise HTTPException(status_code=503, detail="Session validation is temporarily unavailable")
     _tv_cache[user_id] = (tv, now + _TV_CACHE_TTL)
     return tv
 
 
 def _validate_token_version(payload: dict) -> None:
-    """401 when the token's `tv` claim no longer matches the account row."""
+    """Fail closed unless the token names a live, matching account subject."""
     uid = payload.get("user_id") or payload.get("id")
     if uid is None:
-        return
+        logger.info("[AUTH] 401 token missing account subject")
+        raise HTTPException(status_code=401, detail="Invalid session subject")
     try:
         current = _current_token_version(int(uid))
     except (TypeError, ValueError):
-        return
-    if current is None:
-        return
+        logger.info("[AUTH] 401 token has invalid account subject user_id=%r", uid)
+        raise HTTPException(status_code=401, detail="Invalid session subject")
     if int(payload.get("tv", 0) or 0) != current:
         logger.info("[AUTH] 401 revoked token (tv mismatch) user_id=%s", uid)
         raise HTTPException(status_code=401, detail="Session revoked — please log in again")

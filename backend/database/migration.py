@@ -1504,9 +1504,11 @@ def _backfill_biz_ids(db):
 
 def _seed_users(db):
     is_test = "test" in os.environ.get("DATABASE_URL", "") or os.environ.get("BIZASSIST_TESTING") == "1"
-    _admin_pw = os.environ.get("ADMIN_SEED_PASSWORD", "admin123")
 
     if is_test:
+        # Test fixtures deliberately use predictable credentials. They are
+        # confined to test databases by conftest/db.py's test-only guards.
+        _admin_pw = os.environ.get("ADMIN_SEED_PASSWORD", "admin123")
         default_users = [
             {"id": 1, "username": "admin",       "password": _admin_pw,        "business_name": "Admin Central",          "role": "admin"},
             {"id": 2, "username": "pharmacy",    "password": "pharmacy123",    "business_name": "MediCare Pharmacy",       "role": "enterprise"},
@@ -1514,21 +1516,13 @@ def _seed_users(db):
             {"id": 4, "username": "store",       "password": "store123",       "business_name": "Apna Bazaar Store",       "role": "enterprise"},
         ]
     else:
-        default_users = [
-            {"id": 1, "username": "admin", "password": _admin_pw,
-             "business_name": "Admin Central", "role": "admin"}
-        ]
-        from services.admin_service import wipe_user_data
-        demo_usernames = ["pharmacy", "supermarket", "store"]
-        demo_users = db.query(User).filter(User.username.in_(demo_usernames)).all()
-        for du in demo_users:
-            logger.info(f"[Seed] Removing demo user '{du.username}'...")
-            try:
-                wipe_user_data(du.id, db)
-            except Exception as e:
-                logger.error(f"[Seed] Failed to wipe user data for {du.username}: {e}")
-                db.delete(du)
-                db.commit()
+        # Never manufacture a production administrator (and never delete
+        # accounts) at boot. A known default credential is an immediate remote
+        # takeover, while a boot-time cleanup risks deleting real businesses.
+        # Production admins must be provisioned through the controlled
+        # deployment/operations path before the admin API is enabled.
+        default_users = []
+        logger.info("[Seed] Built-in users are disabled outside test databases.")
 
     for u in default_users:
         existing = db.query(User).filter(User.username == u["username"]).first()
@@ -1538,7 +1532,7 @@ def _seed_users(db):
                 password=hash_password(u["password"]),
                 business_name=u["business_name"], role=u["role"],
             ))
-        elif u["username"] == "admin" and (is_test or os.environ.get("ADMIN_SEED_PASSWORD")):
+        elif u["username"] == "admin" and is_test:
             existing.password = hash_password(u["password"])
     db.commit()
 

@@ -268,28 +268,16 @@ export function AuthProvider({ children }) {
       return
     }
 
-    // 2. FRESH-DEVICE fallback (downloaded app, online): if there's simply no
-    //    local user yet, authenticate against the CLOUD and create the local
-    //    mirror (identity only — data stays gated, pulled later via "Back up
-    //    now"). We first confirm the local account truly doesn't exist, so a
-    //    wrong password on an existing local account is NEVER masked.
+    // 2. FRESH-DEVICE recovery (downloaded app, online).  Do not preflight a
+    // username: a public existence endpoint is an account-enumeration oracle.
+    // Instead, prove the password with Cloud first, then ask the local service
+    // to reconcile or create the mirror. Those mutations require the verified
+    // credentials and matching BizID, so they do not disclose local accounts.
     if (IS_LOCAL_APP) {
-      // The local identity check works offline (it's localhost).
-      let localExists = true
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        throw new Error('This account isn’t set up on this device yet. Connect to the internet once to set it up, then it works offline.')
+      }
       try {
-        const c = await fetch(`${LOCAL_URL}/api/biz_id/check`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username }),
-        })
-        if (c.ok) localExists = (await c.json())?.exists === true
-      } catch { /* treat as exists → no fallback */ }
-
-      if (!localExists) {
-        // Fresh device. We need the cloud to set it up — block clearly if offline.
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-          throw new Error('This account isn’t set up on this device yet. Connect to the internet once to set it up, then it works offline.')
-        }
         const cloudRes = await fetch(`${CLOUD_URL}/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -297,7 +285,54 @@ export function AuthProvider({ children }) {
         })
         if (cloudRes.ok) {
           const cloudData = await cloudRes.json()
-          // Create the local mirror with the SAME (cloud) BizID — identity only.
+          // If this device already holds the same business, update its local
+          // password and retry. A 404 merely means this is a fresh device.
+          const reconcileRes = await fetch(`${LOCAL_URL}/api/auth/reconcile_password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, public_id: cloudData.public_id }),
+          })
+          if (reconcileRes.ok) {
+            const retryRes = await fetch(`${API_BASE}/login`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ username, password }),
+            })
+            if (retryRes.ok) {
+              const retryData = await retryRes.json()
+              logger.info('[LOGIN] Local password reconciled with cloud and login successful.')
+              _saveSession(retryData)
+              _provisionCloudSyncToken(username, password, retryData.token || retryData.access_token, cloudData.token)
+                .then(cloudTok => reconcileBizIdOnLogin(retryData.token || retryData.access_token, cloudTok))
+              return
+            }
+          } else {
+            const recErr = await reconcileRes.json().catch(() => ({}))
+            if (recErr.detail && recErr.detail.includes('Identity mismatch')) {
+              const reclaimRes = await fetch(`${LOCAL_URL}/api/auth/reclaim_local`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  username,
+                  password,
+                  public_id: cloudData.public_id,
+                  business_name: cloudData.business_name,
+                }),
+              })
+              if (reclaimRes.ok) {
+                const reclaimData = await reclaimRes.json()
+                logger.info('[LOGIN] Orphan reclaimed onto new cloud BizID — logged in locally.')
+                _saveSession(reclaimData)
+                _provisionCloudSyncToken(username, password, reclaimData.token || reclaimData.access_token, cloudData.token)
+                  .then(cloudTok => reconcileBizIdOnLogin(reclaimData.token || reclaimData.access_token, cloudTok))
+                return
+              }
+              const reclaimErr = await reclaimRes.json().catch(() => ({}))
+              throw new Error(reclaimErr.detail || recErr.detail)
+            }
+          }
+
+          // No verified local owner exists, so create an identity-only mirror.
           const mirror = await fetch(`${LOCAL_URL}/signup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -321,88 +356,9 @@ export function AuthProvider({ children }) {
           logger.error(`[LOGIN] Cloud login ok but local mirror failed: HTTP ${mirror.status}`)
           throw new Error('Signed in, but could not set up this device. Please try again.')
         }
-        // Cloud login also failed → fall through to surface the credential error.
-      } else if (res.status === 401) {
-        // Local account exists but credentials failed locally. Check if cloud has updated credentials.
-        try {
-          if (typeof navigator === 'undefined' || navigator.onLine !== false) {
-            const cloudRes = await fetch(`${CLOUD_URL}/login`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ username, password }),
-            })
-            if (cloudRes.ok) {
-              const cloudData = await cloudRes.json()
-              // Credentials verified on Cloud. Request local backend to reconcile/sync the password.
-              const reconcileRes = await fetch(`${LOCAL_URL}/api/auth/reconcile_password`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  username,
-                  password,
-                  public_id: cloudData.public_id
-                })
-              })
-              if (reconcileRes.ok) {
-                // Retry local login now that local password hash is updated.
-                const retryRes = await fetch(`${API_BASE}/login`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ username, password }),
-                })
-                if (retryRes.ok) {
-                  const retryData = await retryRes.json()
-                  logger.info('[LOGIN] Local password reconciled with cloud and login successful.')
-                  _saveSession(retryData)
-                  _provisionCloudSyncToken(username, password, retryData.token || retryData.access_token, cloudData.token)
-                    .then(cloudTok => reconcileBizIdOnLogin(retryData.token || retryData.access_token, cloudTok))
-                  return
-                }
-              } else {
-                const recErr = await reconcileRes.json().catch(() => ({}))
-                // Identity mismatch = the local mirror still holds the OLD BizID
-                // (its cloud account was deleted and re-registered with a new one).
-                // reconcile_password refuses this on purpose. The correct recovery
-                // is to RE-KEY the orphaned local row onto the new cloud BizID —
-                // exactly what the signup flow does. Do it here too so a returning
-                // owner logging in isn't dead-ended (and the reclaim's staff-wipe
-                // clears any stale cashiers left under the old identity).
-                if (recErr.detail && recErr.detail.includes('Identity mismatch')) {
-                  logger.warn('[LOGIN] Local account is an orphan on a stale BizID — reclaiming onto the new cloud BizID.')
-                  const reclaimRes = await fetch(`${LOCAL_URL}/api/auth/reclaim_local`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      username,
-                      password,
-                      public_id: cloudData.public_id,
-                      business_name: cloudData.business_name,
-                    }),
-                  })
-                  if (reclaimRes.ok) {
-                    const reclaimData = await reclaimRes.json()
-                    logger.info('[LOGIN] Orphan reclaimed onto new cloud BizID — logged in locally.')
-                    _saveSession(reclaimData)
-                    _provisionCloudSyncToken(username, password, reclaimData.token || reclaimData.access_token, cloudData.token)
-                      .then(cloudTok => reconcileBizIdOnLogin(reclaimData.token || reclaimData.access_token, cloudTok))
-                    return
-                  }
-                  const rcErr = await reclaimRes.json().catch(() => ({}))
-                  throw new Error(rcErr.detail || recErr.detail)
-                }
-                if (recErr.detail) {
-                  throw new Error(recErr.detail)
-                }
-              }
-            }
-          }
-        } catch (err) {
-          if (err.message && err.message.includes('Identity mismatch')) {
-            logger.error('[LOGIN-RECONCILE] Reconcile mismatch:', err.message)
-            throw err
-          }
-          logger.warn('[LOGIN-RECONCILE] Swallowing non-mismatch reconcile error:', err.message)
-        }
+        // Cloud login also failed → fall through to surface the local error.
+      } catch (err) {
+        logger.warn('[LOGIN-RECOVERY] Cloud-verified device recovery failed:', err?.message)
       }
     }
 

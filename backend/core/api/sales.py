@@ -333,11 +333,15 @@ def post_print_event(ev: PrintEvent,
 
 
 import os
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+from services.pdf_safety import safe_invoice_logo
 
 # Set up Jinja2 environment pointing to backend/core/billing/templates
 _TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "..", "billing", "templates")
-_jinja_env = Environment(loader=FileSystemLoader(_TEMPLATE_DIR))
+_jinja_env = Environment(
+    loader=FileSystemLoader(_TEMPLATE_DIR),
+    autoescape=select_autoescape(["html", "xml"]),
+)
 
 @router.get("/sales/{invoice_no}/pdf")
 def get_invoice_pdf(
@@ -356,6 +360,11 @@ def get_invoice_pdf(
         raise HTTPException(status_code=404, detail=f"Invoice '{invoice_no}' not found")
         
     payload = PP.build_print_payload(db, business_id=bid, invoice_no=invoice_no, user_id=current_user.get("user_id") or bid)
+    seller = payload.get("seller")
+    if isinstance(seller, dict):
+        # Do not hand merchant-controlled remote URLs to WeasyPrint.  Inline,
+        # bounded raster data URLs retain logo support without server-side fetches.
+        seller["logo_url"] = safe_invoice_logo(seller.get("logo_url"))
     
     # Select template (fallback to classic A4)
     template_name = "invoice_classic_a4.html" 

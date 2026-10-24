@@ -236,7 +236,10 @@ class TestDiagnosticsLogDownload:
                 "id": u.id, "user_id": u.id, "username": u.username, "public_id": u.public_id,
                 "role": "admin", "tv": u.token_version or 0,
             })
-        with patch.object(engine.dialect, "name", "postgresql"):
+        # Only the route's own question "is this the cloud?" is answered yes:
+        # relabelling the whole engine as Postgres sends sign-in down
+        # Postgres-only paths on this SQLite test database.
+        with patch("routes.feedback._on_cloud_db", return_value=True):
             r = client.get("/diagnostics/logs", headers=owner["headers"])
             assert r.status_code == 403
             assert "only the platform admin" in r.json()["detail"]

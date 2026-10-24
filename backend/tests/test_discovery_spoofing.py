@@ -21,10 +21,10 @@ BizID is a *deliberately public* identifier — printed on invoices. So:
 Structurally the same defect as F-1: a public identifier being treated as if it
 conferred authority.
 
-THE FIX: only addresses that are NOT globally routable may be registered, and
-the number of entries per BizID is capped. A remote attacker cannot receive
-traffic at an address that is unreachable from outside the victim's network, so
-the remote attack is closed outright.
+THE FIX: mutations require a signed owner token whose public_id equals the
+target BizID, only private addresses may be registered, and the number of
+entries per BizID is capped. A public identifier alone can no longer poison or
+delete a victim registry entry.
 """
 import os
 import sys
@@ -43,6 +43,20 @@ from routes import discovery
 client = TestClient(app)
 
 VICTIM_BIZID = "BIZ-VICTIM-S2"
+
+
+def _owner_headers(bizid: str = VICTIM_BIZID) -> dict:
+    """A real signed owner JWT; the seed account has id/user_id 1 in tests."""
+    from services.auth import create_access_token
+    token = create_access_token({
+        "id": 1,
+        "user_id": 1,
+        "username": "discovery-owner",
+        "role": "owner",
+        "public_id": bizid,
+        "tv": 0,
+    })
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture(autouse=True)
@@ -80,12 +94,26 @@ def test_publicly_routable_and_unverifiable_addresses_are_refused(addr):
 
 # ── The attack, end to end ──────────────────────────────────────────────────
 
+def test_discovery_registration_requires_an_authenticated_business_owner():
+    payload = {"biz_id": VICTIM_BIZID, "ip": "192.168.1.50", "port": 8001}
+    assert client.post("/discover/register", json=payload).status_code == 401
+    assert client.post(
+        "/discover/register", json=payload, headers=_owner_headers("BIZ-OTHER-S2")
+    ).status_code == 403
+    assert client.post("/discover/register", json=payload, headers=_owner_headers()).status_code == 200
+    assert client.request("DELETE", "/discover/register", json=payload).status_code == 401
+    assert client.request(
+        "DELETE", "/discover/register", json=payload, headers=_owner_headers("BIZ-OTHER-S2")
+    ).status_code == 403
+    assert client.request("DELETE", "/discover/register", json=payload, headers=_owner_headers()).status_code == 200
+
+
 def test_a_remote_host_cannot_advertise_itself_as_a_businesss_backend():
     """THE S-2 attack. Knowing a public BizID must not let anyone put their own
     address in front of that business's cashier devices."""
     resp = client.post("/discover/register", json={
         "biz_id": VICTIM_BIZID, "ip": "51.15.99.4", "port": 8001,
-    })
+    }, headers=_owner_headers())
     assert resp.status_code == 422, "a public IP was accepted for a public BizID"
 
     listed = client.get(f"/discover/{VICTIM_BIZID}").json()["backends"]
@@ -96,7 +124,7 @@ def test_a_hostname_cannot_be_registered():
     """A hostname is an indirection we cannot check — it may resolve anywhere."""
     resp = client.post("/discover/register", json={
         "biz_id": VICTIM_BIZID, "ip": "attacker.example.com", "port": 8001,
-    })
+    }, headers=_owner_headers())
     assert resp.status_code == 422
 
 
@@ -104,7 +132,7 @@ def test_a_genuine_lan_backend_still_registers_and_is_discoverable():
     """The fix must not break the feature it protects."""
     resp = client.post("/discover/register", json={
         "biz_id": VICTIM_BIZID, "ip": "192.168.1.50", "port": 8001,
-    })
+    }, headers=_owner_headers())
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "registered"
 
@@ -117,7 +145,7 @@ def test_a_genuine_lan_backend_still_registers_and_is_discoverable():
 def test_re_registration_renews_rather_than_duplicating():
     for _ in range(3):
         client.post("/discover/register", json={
-            "biz_id": VICTIM_BIZID, "ip": "192.168.1.50", "port": 8001})
+            "biz_id": VICTIM_BIZID, "ip": "192.168.1.50", "port": 8001}, headers=_owner_headers())
     assert len(client.get(f"/discover/{VICTIM_BIZID}").json()["backends"]) == 1
 
 
@@ -127,7 +155,7 @@ def test_the_entry_list_cannot_be_flooded_with_decoys():
     accepted = 0
     for i in range(1, 40):
         r = client.post("/discover/register", json={
-            "biz_id": VICTIM_BIZID, "ip": f"192.168.1.{i}", "port": 8001})
+            "biz_id": VICTIM_BIZID, "ip": f"192.168.1.{i}", "port": 8001}, headers=_owner_headers())
         if r.status_code == 200:
             accepted += 1
         else:
@@ -140,7 +168,7 @@ def test_the_entry_list_cannot_be_flooded_with_decoys():
 def test_an_invalid_port_is_refused():
     for port in (0, -1, 70000):
         r = client.post("/discover/register", json={
-            "biz_id": VICTIM_BIZID, "ip": "192.168.1.50", "port": port})
+            "biz_id": VICTIM_BIZID, "ip": "192.168.1.50", "port": port}, headers=_owner_headers())
         assert r.status_code in (422, 429), f"port {port} accepted"
 
 

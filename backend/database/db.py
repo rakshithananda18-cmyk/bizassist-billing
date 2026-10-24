@@ -4,7 +4,7 @@ import sys
 import uuid
 from datetime import datetime
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, MetaData, Column, Integer, DateTime, String
+from sqlalchemy import create_engine, MetaData, Column, Integer, DateTime, String, event as sa_event
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -102,9 +102,8 @@ else:
 # the only hook that runs before the connection is handed to a session. Scoped to
 # sqlite3 connections so the Postgres path is untouched.
 if DATABASE_URL.startswith("sqlite"):
-    from sqlalchemy import event as _sa_event
 
-    @_sa_event.listens_for(engine, "connect")
+    @sa_event.listens_for(engine, "connect")
     def _sqlite_connection_pragmas(dbapi_connection, _connection_record):
         cur = dbapi_connection.cursor()
         try:
@@ -174,6 +173,39 @@ current_user_id_var = contextvars.ContextVar("current_user_id", default=None)
 current_username_var = contextvars.ContextVar("current_username", default=None)
 sync_disabled_var = contextvars.ContextVar("sync_disabled", default=False)
 
+
+# PostgreSQL connections are pooled.  A tenant GUC set at session scope can
+# therefore survive a request and become the next request's RLS identity.  That
+# is a cross-business data disclosure if an unauthenticated/public route gets
+# the connection next.  Always reset it when a connection is checked out, then
+# bind the request's business id with SET LOCAL at the beginning of *each*
+# transaction.  SET LOCAL is automatically cleared by commit/rollback, so a
+# route cannot leak its tenant id through a pooled connection.
+def _clear_postgres_tenant_guc(dbapi_connection, _connection_record, _connection_proxy):
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("RESET app.current_business_id")
+    finally:
+        cursor.close()
+
+
+def _set_postgres_tenant_guc(session, _transaction, connection):
+    # The id is captured on the Session by get_db.  Scheduler/background
+    # sessions intentionally have no tenant identity and remain fail-closed.
+    business_id = session.info.get("business_id")
+    value = "" if business_id is None else str(int(business_id))
+    connection.execute(
+        text("SELECT set_config('app.current_business_id', :bid, true)"),
+        {"bid": value},
+    )
+
+
+# Defined above unconditionally so tests can exercise them; wired only on
+# PostgreSQL, the one database with row-level security.
+if engine.dialect.name == "postgresql":
+    sa_event.listen(engine, "checkout", _clear_postgres_tenant_guc)
+    sa_event.listen(SessionLocal, "after_begin", _set_postgres_tenant_guc)
+
 def get_db():
     """
     FastAPI dependency that yields a DB session and always closes it — even on
@@ -188,23 +220,12 @@ def get_db():
     """
     db = SessionLocal()
     business_id = current_business_id_var.get()
-    
-    if business_id is not None and db.bind.dialect.name == "postgresql":
-        try:
-            # set_config() takes bound parameters (SET does not) — defense in
-            # depth even though business_id is already int()-cast upstream.
-            db.execute(text("SELECT set_config('app.current_business_id', :bid, false)"),
-                       {"bid": str(int(business_id))})
-        except Exception:
-            # We fail silently or log, but do not block request startup unless database is totally down
-            pass
+    if business_id is not None:
+        # `after_begin` applies this to every transaction, including a fresh
+        # transaction opened after a route calls commit().
+        db.info["business_id"] = int(business_id)
             
     try:
         yield db
     finally:
-        if business_id is not None and db.bind.dialect.name == "postgresql":
-            try:
-                db.execute(text("RESET app.current_business_id"))
-            except Exception:
-                pass
         db.close()
