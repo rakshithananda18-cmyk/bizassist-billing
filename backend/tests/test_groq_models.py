@@ -55,10 +55,10 @@ class FakeCompletions:
 
 class TestDefaults:
 
-    def test_the_checked_models(self):
-        assert gc.DEFAULT_TEXT_MODEL == "qwen/qwen3.8-27b"
-        assert gc.DEFAULT_VISION_MODEL == "qwen/qwen3.8-27b"
-        assert gc.DEFAULT_COMPLEX_MODEL == "openai/gpt-oss-120b"
+    def test_the_checked_models_each_with_the_other_as_backup(self):
+        assert gc.model_candidates(gc.DEFAULT_TEXT_MODEL) == ["qwen/qwen3.8-27b", "openai/gpt-oss-120b"]
+        assert gc.model_candidates(gc.DEFAULT_COMPLEX_MODEL) == ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"]
+        assert gc.model_candidates(gc.DEFAULT_VISION_MODEL) == ["qwen/qwen3.8-27b"], "the only one that reads images"
 
     def test_no_module_names_a_model_of_its_own(self):
         """A model id in code, outside groq_client.py, is a default nobody will
@@ -84,7 +84,7 @@ class TestDefaults:
         monkeypatch.delenv("GROQ_MODEL_COMPLEX", raising=False)
         monkeypatch.setattr(gc, "make_groq_client", lambda key=None: SimpleNamespace(chat=SimpleNamespace(completions=fake)))
         ocr.extract_structured_purchase_invoice("Invoice SGP-2026-0412 Grand Total Rs 1422.40")
-        assert fake.calls[0]["model"] == "openai/gpt-oss-120b"
+        assert gc.model_candidates(fake.calls[0]["model"])[0] == "openai/gpt-oss-120b"
 
     def test_an_override_still_wins(self, monkeypatch):
         import services.purchase_ocr as ocr
@@ -101,7 +101,7 @@ class TestReasoningModels:
 
     def _sent(self, **kwargs):
         fake = FakeCompletions()
-        gc._tuned_for_reasoning(fake.create)(**kwargs)
+        gc._wrap_create(fake.create)(**kwargs)
         return fake.calls[0]
 
     def test_a_small_budget_is_raised_and_thinking_set_low(self):

@@ -18,7 +18,7 @@ from services.recommendations import get_business_snapshot
 from services.ai_router_cache import _safe_int
 from database.db import SessionLocal
 from database.models import ChatMessage
-from services.groq_client import DEFAULT_COMPLEX_MODEL, DEFAULT_TEXT_MODEL
+from services.groq_client import DEFAULT_COMPLEX_MODEL, DEFAULT_TEXT_MODEL, model_in_use
 
 logger = logging.getLogger("bizassist.ai_router")
 
@@ -49,7 +49,7 @@ def _log_token_usage(business_id, model, tier, usage, acc) -> None:
         from database.models import TokenUsage
         db.add(TokenUsage(
             business_id   = business_id,
-            model         = model,
+            model         = model_in_use(model),   # the one that answered, not the list
             model_tier    = tier,
             input_tokens  = ti,
             output_tokens = to,

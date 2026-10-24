@@ -73,6 +73,7 @@ from services.ai_router_decision import (   # noqa: F401
 from services.ai_router_cache import (      # noqa: F401
     _safe_int, _cache_salt, _cache_disc,
 )
+from services.groq_client import model_in_use
 from services.ai_router_execution import (  # noqa: F401
     MODEL_SIMPLE, MODEL_COMPLEX, _MAX_TOOL_CHARS,
     _log_token_usage, _SESSION_PLACEHOLDER, _GREETING_RE,
@@ -246,7 +247,7 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
             "suggestions":   [],
             "session_id":    session_id,
             "session_title": session_title,
-            "meta": {"tokens": acc["in"] + acc["out"], "model": MODEL_SIMPLE,
+            "meta": {"tokens": acc["in"] + acc["out"], "model": model_in_use(MODEL_SIMPLE),
                      "model_tier": "CONVERSATIONAL", "cached": False},
         }}
         return
@@ -285,7 +286,7 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
             "chart":         None,
             "session_id":    session_id,
             "session_title": session_title,
-            "meta": {"tokens": acc["in"] + acc["out"], "model": MODEL_SIMPLE,
+            "meta": {"tokens": acc["in"] + acc["out"], "model": model_in_use(MODEL_SIMPLE),
                      "model_tier": "ACTION", "cached": False},
         }}
         return
@@ -374,7 +375,7 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
                 "chart":         None,
                 "session_id":    session_id,
                 "session_title": session_title,
-                "meta": {"tokens": acc["in"] + acc["out"], "model": MODEL_SIMPLE,
+                "meta": {"tokens": acc["in"] + acc["out"], "model": model_in_use(MODEL_SIMPLE),
                          "model_tier": "AI_ADVISE", "cached": False},
             }
             set_cached_query_response(active_user_id, user_query, envelope, history_salt)
@@ -416,7 +417,7 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
                     "chart":         None,
                     "session_id":    session_id,
                     "session_title": session_title,
-                    "meta": {"tokens": 0, "model": MODEL_SIMPLE,
+                    "meta": {"tokens": 0, "model": model_in_use(MODEL_SIMPLE),
                              "model_tier": "DIRECT", "cached": False},
                 }
                 _log_chat(active_user_id, user_query, answer, session_id, session_title,
@@ -457,7 +458,7 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
                 "insight":       ctx_insight,
                 "session_id":    session_id,
                 "session_title": session_title,
-                "meta": {"tokens": acc["in"] + acc["out"], "model": MODEL_SIMPLE,
+                "meta": {"tokens": acc["in"] + acc["out"], "model": model_in_use(MODEL_SIMPLE),
                          "model_tier": "DIRECT", "cached": False},
             }
             set_cached_query_response(active_user_id, user_query, envelope, history_salt)
@@ -488,7 +489,7 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
                     "chart":         chart,
                     "session_id":    session_id,
                     "session_title": session_title,
-                    "meta": {"tokens": acc["in"] + acc["out"], "model": MODEL_SIMPLE,
+                    "meta": {"tokens": acc["in"] + acc["out"], "model": model_in_use(MODEL_SIMPLE),
                              "model_tier": "INTENT", "cached": False},
                 }
                 set_cached_query_response(active_user_id, user_query, envelope, history_salt)
@@ -604,7 +605,7 @@ def process_query(prompt_message: str, session_id_in: Optional[str],
         "chart":         chart,
         "session_id":    session_id,
         "session_title": session_title,
-        "meta": {"tokens": acc["in"] + acc["out"], "model": selected_model,
+        "meta": {"tokens": acc["in"] + acc["out"], "model": model_in_use(selected_model),
                  "model_tier": route, "cached": False},
     }
     # An answer that generated NOTHING is not an answer. Caching it serves it

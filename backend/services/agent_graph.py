@@ -29,7 +29,7 @@ import logging
 import os
 from typing import TypedDict, Optional
 
-from services.groq_client import DEFAULT_COMPLEX_MODEL, DEFAULT_TEXT_MODEL, make_groq_client
+from services.groq_client import DEFAULT_COMPLEX_MODEL, DEFAULT_TEXT_MODEL, make_groq_client, model_in_use
 from services.tools import execute_tool
 
 logger = logging.getLogger("bizassist.agent_graph")
@@ -413,7 +413,7 @@ def run_agent_graph(user_query: str, business_id: int, history: list, detected_t
         try:
             db.add(TokenUsage(
                 business_id   = business_id,
-                model         = MODEL_SYNTH,
+                model         = model_in_use(MODEL_SYNTH),
                 model_tier    = "AI_COMPLEX",
                 input_tokens  = total_in,
                 output_tokens = total_out,
@@ -545,7 +545,7 @@ def run_agent_graph_stream(user_query: str, business_id: int, history: list, det
         _db = SessionLocal()
         try:
             _db.add(TokenUsage(
-                business_id=business_id, model=MODEL_SYNTH, model_tier="AI_COMPLEX",
+                business_id=business_id, model=model_in_use(MODEL_SYNTH), model_tier="AI_COMPLEX",
                 input_tokens=total_in, output_tokens=total_out,
                 total_tokens=total_in + total_out, endpoint="/ask/stream",
             ))

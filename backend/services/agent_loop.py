@@ -19,7 +19,7 @@ import os
 import json
 import logging
 
-from services.groq_client import DEFAULT_COMPLEX_MODEL, make_groq_client
+from services.groq_client import DEFAULT_COMPLEX_MODEL, make_groq_client, model_in_use
 from services.tools import execute_tool, schemas as tool_schemas
 
 logger = logging.getLogger("bizassist.agent_loop")
@@ -244,7 +244,7 @@ def _log_tokens(business_id: int, t_in: int, t_out: int, endpoint: str) -> None:
             # token_usage sequence to be in sync after a data migration; the
             # migrate_sqlite_to_postgres.py script resets all sequences for us.
             db.add(TokenUsage(
-                business_id=business_id, model=MODEL, model_tier="AI_COMPLEX",
+                business_id=business_id, model=model_in_use(MODEL), model_tier="AI_COMPLEX",
                 input_tokens=t_in, output_tokens=t_out,
                 total_tokens=t_in + t_out, cached_tokens=0, endpoint=endpoint,
             ))

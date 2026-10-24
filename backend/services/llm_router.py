@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Optional
 
-from services.groq_client import DEFAULT_TEXT_MODEL
+from services.groq_client import DEFAULT_TEXT_MODEL, model_in_use
 
 logger = logging.getLogger("bizassist.llm_router")
 
@@ -318,7 +318,7 @@ def _log_usage(business_id: int, usage) -> None:
         db = SessionLocal()
         try:
             db.add(TokenUsage(
-                business_id=business_id, model=MODEL, model_tier="LLM_ROUTER",
+                business_id=business_id, model=model_in_use(MODEL), model_tier="LLM_ROUTER",
                 input_tokens=ti, output_tokens=to, total_tokens=ti + to,
             ))
             db.commit()
