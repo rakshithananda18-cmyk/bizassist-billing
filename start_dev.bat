@@ -5,14 +5,16 @@ REM  Backend:          http://127.0.0.1:8001
 REM  AI Dashboard:     http://127.0.0.1:5173
 REM  Billing Frontend: http://127.0.0.1:5174
 REM  Admin Console:    http://127.0.0.1:5175
-REM  Field Team API:   http://127.0.0.1:8002  (backend-task, SQLite, standalone)
+REM  Field Team API:   http://127.0.0.1:8002  (backend-task, on billing's local database)
 REM  Field Team PWA:   http://localhost:5176  (frontend-task; /api proxied to :8002)
 REM
 REM  Kills any stale process on each port first so you never
 REM  end up with a zombie backend that ignores code changes.
 REM
-REM  Field Team always runs with billing's JWT_SECRET (read from
-REM  backend\.env by dev\dev_env.ps1), as in the cloud.
+REM  Field Team runs on billing's own local database with billing's
+REM  JWT_SECRET (both read from backend\.env by dev\dev_env.ps1), as in the
+REM  cloud: sign in to Field Team with your billing account. Field Team only
+REM  adds its ft_* tables; the database is backed up once first.
 REM
 REM  start_dev.bat fieldtest   FIELD TEST MODE: billing and Field Team share
 REM    one throwaway database (local_field_test.db) like the cloud's one
@@ -96,7 +98,7 @@ echo   - Backend on :8001  (with --reload)
 echo   - AI Dashboard on :5173
 echo   - Billing App on :5174
 echo   - Admin Console on :5175
-echo   - Field Team API on :8002  (with --reload, log backend-task\logs\bizassist_task.log)
+echo   - Field Team API on :8002  (with --reload, on billing's local database, log backend-task\logs\bizassist_task.log)
 echo   - Field Team PWA on :5176  (http://localhost:5176)
 echo  Close the opened windows to stop.
 echo.

@@ -25,16 +25,21 @@ Same identity and database as billing, separate service: owners sign in with the
 
 From the repo root, `start_dev.bat` starts billing **and** Field Team:
 
-- **Field Team API** `http://127.0.0.1:8002` (`--reload`, SQLite `backend-task/bizassist_task.db`, standalone), log `backend-task/logs/bizassist_task.log`.
+- **Field Team API** `http://127.0.0.1:8002` (`--reload`), log `backend-task/logs/bizassist_task.log`.
 - **Field Team PWA** `http://localhost:5176` (Vite; `/api` is proxied to `:8002`).
 - Uses billing's `venv` (billing's `requirements.txt` covers everything here). The first run copies `backend-task/.env.example` to `backend-task/.env`.
-- Field Team always gets **billing's `JWT_SECRET`** (read from `backend/.env` by `dev/dev_env.ps1`), as in the cloud.
+
+Locally it runs as in the cloud, where both services share one Supabase database and one secret (`dev/dev_env.ps1` sets this up from `backend/.env`):
+
+- **One database — billing's own** `backend/bizassist.db` (billing's `DATABASE_URL`). You sign in to Field Team with your billing username and password, shops come from your billing customers, and deliveries and collections use your real bills. Field Team only adds its `ft_*` tables there, and billing's sync never sends them. Before the first time, the file is copied to `backend/bizassist.before-field-team.db` (git-ignored); to undo, stop `start_dev` and copy it back. The old `backend-task/bizassist_task.db` is no longer used.
+- **One secret — billing's `JWT_SECRET`**, so billing's **Field Team** link in the sidebar signs you in.
+- If billing's `DATABASE_URL` is not a local SQLite file (say, a Postgres server), Field Team keeps the database in `backend-task/.env` and says so: a local Field Team never writes to a server.
 
 GPS in the browser needs `https://` or `localhost`; to test on a phone, use the deployed Vercel URL.
 
-### Field test mode — billing and Field Team together
+### Field test mode — sample data
 
-Normally the two run apart locally (billing on `backend/bizassist.db`, Field Team on its own file), so invoices, billing's Field Team link and field collections cannot be tried. `start_dev.bat fieldtest` runs them like the cloud: **one throwaway database** (`local_field_test.db` in the repo folder, git-ignored) and one secret.
+To try invoices, the Field Team link and field collections without touching your own data, `start_dev.bat fieldtest` runs both on **one throwaway database** (`local_field_test.db` in the repo folder, git-ignored) with sample data.
 
 1. `start_dev.bat fieldtest` — billing (`:8001`, `:5174`) and Field Team (`:8002`, `:5176`); the AI dashboard and admin console are not started.
 2. The **Field Test Setup** window waits for both APIs, then creates (once) owner `fieldtest_owner` on Pro, customers, three unpaid bills, the shops and agent `kiran`, loosens GPS limits for a laptop, and prints the logins and steps (`dev/field_test_seed.py`; password `FieldTest#2026` — throwaway, local only).
