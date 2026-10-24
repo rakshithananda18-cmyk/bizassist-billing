@@ -32,15 +32,30 @@ export default function Login() {
   }
 
   return (
-    <div className="login-page">
-      <form className="login-card" onSubmit={submit}>
+    <div className="login-page task-login-page">
+      <aside className="task-login-intro" aria-hidden="true">
+        <div className="task-login-brand"><Logo size={34} /></div>
+        <p className="task-login-eyebrow">BizAssist Field Team</p>
+        <h1>Keep every delivery day moving.</h1>
+        <p>Routes, shop tasks, attendance, and delivery updates in one focused workspace.</p>
+        <div className="task-login-benefits">
+          <span>Live route progress</span>
+          <span>Clear task hand-offs</span>
+          <span>Built for teams on the move</span>
+        </div>
+      </aside>
+      <form className="login-card task-login-card" onSubmit={submit}>
         <div className="stack" style={{ gap: 6 }}>
           <Logo size={30} />
           <div className="product">Field Team · Tasks · Deliveries</div>
         </div>
+        <div className="task-login-welcome">
+          <h1>{mode === 'staff' ? 'Start your shift' : signup ? 'Set up your field team' : 'Owner sign-in'}</h1>
+          <p>{mode === 'staff' ? 'Sign in with the credentials your owner shared with you.' : 'Use the same account you use for BizAssist Billing.'}</p>
+        </div>
         <div className="seg" role="tablist">
-          <button type="button" className={mode === 'staff' ? 'on' : ''} onClick={() => { setMode('staff'); setSignup(false) }}>Staff</button>
-          <button type="button" className={mode === 'owner' ? 'on' : ''} onClick={() => setMode('owner')}>Owner</button>
+          <button type="button" role="tab" aria-selected={mode === 'staff'} className={mode === 'staff' ? 'on' : ''} onClick={() => { setMode('staff'); setSignup(false) }}>Staff</button>
+          <button type="button" role="tab" aria-selected={mode === 'owner'} className={mode === 'owner' ? 'on' : ''} onClick={() => setMode('owner')}>Owner</button>
         </div>
         {notice && <div className="alert alert-warning">{notice}</div>}
         {error && <div className="alert alert-danger">{error}</div>}
@@ -91,7 +106,7 @@ export default function Login() {
             {signup ? 'I already have a BizAssist account' : 'New to BizAssist? Create an account'}
           </button>
         )}
-        {mode === 'staff' && <div className="form-hint">One phone at a time: signing in here signs your other device out.</div>}
+        {mode === 'staff' && <div className="task-login-note">One phone at a time: signing in here signs your other device out.</div>}
       </form>
     </div>
   )
