@@ -226,7 +226,11 @@ def handle(handler_key: str, user_query: str, user_id: int, params: dict = None)
             # authoritative; otherwise the handler parses it from the query.
             return fn(user_id, user_query, invoice_id=(params or {}).get("invoice_id"))
 
-        if handler_key in ("overdue_range_detail", "revenue_month_detail"):
+        if handler_key == "revenue_month_detail":
+            # The LLM router's `month` ('YYYY-MM') - used when the words name none.
+            return fn(user_id, user_query, month=(params or {}).get("month"))
+
+        if handler_key == "overdue_range_detail":
             return fn(user_id, user_query)
 
         if handler_key in ("client_summary", "customer_invoices"):

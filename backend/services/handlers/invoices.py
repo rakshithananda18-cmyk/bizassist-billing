@@ -10,13 +10,14 @@ To add a new handler:
   2. Register it in services/direct_query_handler.py HANDLERS dict
   3. Add intent mapping in services/intents.py INTENT_MAP
 """
+import calendar
 import logging
 import re
 from datetime import datetime, timedelta
 from sqlalchemy import func
 from database.db import SessionLocal
 from database.models import Invoice, Inventory
-from services.dates import parse_date
+from services.dates import biz_now, parse_date
 
 logger = logging.getLogger("bizassist.handlers.invoices")
 
@@ -288,52 +289,82 @@ def _overdue_range_detail(user_id: int, query: str) -> str:
     finally:
         db.close()
 
-def _revenue_month_detail(user_id: int, query: str) -> str:
+_MONTH_NUM = {m: i for i, m in enumerate(
+    ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
+_MONTH_IN_TEXT = re.compile(
+    r"(?:\b(in|for|of|during)\s+)?\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|"
+    r"aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\.?"
+    r"(?:\s*,?\s*'?(\d{4}|\d{2})\b)?", re.I)
+_YEAR_MONTH = re.compile(r"\b(20\d{2})-(0?[1-9]|1[0-2])\b")
+_MONTH_YEAR = re.compile(r"\b(0?[1-9]|1[0-2])/(20\d{2})\b")
+
+
+def _resolve_month(query: str, month: str = None, today=None):
+    """(year, month) a revenue question asks about, or None.
+
+    The question's own words decide: 'this month' / 'last month', a month name
+    with or without a year ('revenue in Oct 26', 'sales for January', 'income in
+    Feb 2025'), or '2026-10' / '10/2026'. Without a year, a month name means the
+    most recent such month that has started. When the words name no month, the
+    LLM router's `month` entity ('YYYY-MM') is used - llm_router documents its
+    entities as hints the database resolves.
+
+    This used to read only 'revenue in <Mon> <YY>', so every other phrasing the
+    routers send here - "sales this month", "sales for January", "how much did
+    we sell in December 2025" - answered "Invalid monthly revenue query."
+    """
+    today = today or biz_now()
+    q = (query or "").lower()
+    if re.search(r"\b(?:this|current)\s+month\b|\bmonth[\s-]+to[\s-]+date\b|\bmtd\b", q):
+        return today.year, today.month
+    if re.search(r"\b(?:last|previous|past|prior)\s+month\b", q):
+        prev = today.replace(day=1) - timedelta(days=1)
+        return prev.year, prev.month
+    for m in _MONTH_IN_TEXT.finditer(q):
+        prep, word, year = m.group(1), m.group(2), m.group(3)
+        if word == "may" and not (prep or year):
+            continue                      # "may I know ..." is not May
+        mon = _MONTH_NUM[word[:3]]
+        if year:
+            return int(year) + (2000 if len(year) == 2 else 0), mon
+        return (today.year if mon <= today.month else today.year - 1), mon
+    m = _YEAR_MONTH.search(q)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    m = _MONTH_YEAR.search(q)
+    if m:
+        return int(m.group(2)), int(m.group(1))
+    if month:
+        e = re.fullmatch(r"\s*(\d{4})-(\d{1,2})\s*", str(month))
+        if e and 1 <= int(e.group(2)) <= 12:
+            return int(e.group(1)), int(e.group(2))
+    return None
+
+
+def _revenue_month_detail(user_id: int, query: str, month: str = None) -> str:
+    """Revenue for one month. `month` is the LLM router's entity ('YYYY-MM'),
+    used when the question's words name no month (_resolve_month)."""
+    resolved = _resolve_month(query, month)
+    if not resolved:
+        return ("Which month? Ask like **revenue in Oct 2026**, **sales this month** "
+                "or **sales last month**.")
+    year, mon = resolved
+    year_str, month_num = str(year), f"{mon:02d}"
+    label = f"{calendar.month_abbr[mon]} {year}"
+
     db = SessionLocal()
-    import re
     try:
-        m = re.search(r"revenue in\s+([a-zA-Z]+)\s+(\d{2,4})", query, re.I)
-        if not m:
-            return "Invalid monthly revenue query."
-        month_str = m.group(1).lower()
-        year_str = m.group(2)
-        if len(year_str) == 2:
-            year_str = "20" + year_str
-
-        month_map = {
-            "jan": "01", "january": "01",
-            "feb": "02", "february": "02",
-            "mar": "03", "march": "03",
-            "apr": "04", "april": "04",
-            "may": "05",
-            "jun": "06", "june": "06",
-            "jul": "07", "july": "07",
-            "aug": "08", "august": "08",
-            "sep": "09", "september": "09",
-            "oct": "10", "october": "10",
-            "nov": "11", "november": "11",
-            "dec": "12", "december": "12"
-        }
-
-        month_num = month_map.get(month_str[:3])
-        if not month_num:
-            return "Invalid month specified."
-
         rows = db.query(Invoice).filter(Invoice.business_id == user_id).all()
         matched = []
         for r in rows:
             if not r.invoice_date:
                 continue
             date_str = str(r.invoice_date)
-            is_match = False
-            if date_str.startswith(f"{year_str}-{month_num}"):
-                is_match = True
-            elif f"/{month_num}/{year_str}" in date_str or f"-{month_num}-{year_str}" in date_str:
-                is_match = True
-            if is_match:
+            if date_str.startswith(f"{year_str}-{month_num}") \
+                    or f"/{month_num}/{year_str}" in date_str or f"-{month_num}-{year_str}" in date_str:
                 matched.append(r)
 
         total = sum(r.amount or 0 for r in matched)
-        return f"**Revenue in {m.group(1)} {year_str}**\n\nTotal revenue: **₹{total:,.0f}** across **{len(matched)} invoices**."
+        return f"**Revenue in {label}**\n\nTotal revenue: **₹{total:,.0f}** across **{len(matched)} invoices**."
     finally:
         db.close()
