@@ -39,10 +39,15 @@ def _cache_disc(route: str, user_query: str, topic: str, handler_key, is_writing
     if route == "AI_COMPLEX" or is_writing:
         return f"q:{(user_query or '').strip().lower()}"
     if route == "DIRECT" and handler_key:
-        # These are parameterised by the customer/ID named IN the query, so keying
-        # on the handler alone would make every customer (or invoice) share one
-        # entry. Key on the query so each distinct lookup runs its own handler.
-        if handler_key in ("client_summary", "customer_invoices", "invoice_detail"):
+        # These are parameterised by the customer/ID, month or overdue range named
+        # IN the query, so keying on the handler alone would make every customer
+        # (or invoice, month, range) share one entry. Key on the query so each
+        # distinct lookup runs its own handler. The month and range lookups were
+        # missing here: once the month lookup understood "this month" / "last
+        # month" (2026-10-24), "sales last month" was served this month's cached
+        # total for 10 minutes - as was every dashboard month or range click.
+        if handler_key in ("client_summary", "customer_invoices", "invoice_detail",
+                           "revenue_month_detail", "overdue_range_detail"):
             return f"q:{(user_query or '').strip().lower()}"
         return handler_key
     # AI_SIMPLE on the catch-all topic: `business_summary` is also `_detect_topic`'s

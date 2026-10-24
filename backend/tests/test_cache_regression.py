@@ -74,6 +74,25 @@ def test_invoice_count_and_total_revenue_do_not_share_cache(mock_create, auth):
 
 
 @patch("routes.ask._client.chat.completions.create")
+@pytest.mark.parametrize("first, second", [
+    ("Tell me about revenue in Oct 2025", "Tell me about revenue in Sep 2025"),
+    ("Show overdue payments in range 31-60 days", "Show overdue payments in range 90+ days"),
+])
+def test_one_month_or_range_is_not_served_anothers_cache(mock_create, auth, first, second):
+    """The dashboard's month and range clicks (and "sales last month" after
+    "sales this month") shared one cache entry per lookup on the live web app."""
+    invalidate()
+    mock_create.return_value = _mock_polish()
+
+    r1 = client.post("/ask", json={"message": first}, headers=auth)
+    r2 = client.post("/ask", json={"message": second}, headers=auth)
+    d1, d2 = r1.json(), r2.json()
+    assert d1["source"] == "db" and d2["source"] == "db"
+    assert d2.get("meta", {}).get("cached") is not True, f"{second!r} was served {first!r}'s cached answer"
+    assert d1["response"] != d2["response"]
+
+
+@patch("routes.ask._client.chat.completions.create")
 def test_top_debtors_not_served_overdue_list_cache(mock_create, auth):
     invalidate()
     mock_create.return_value = _mock_polish()
