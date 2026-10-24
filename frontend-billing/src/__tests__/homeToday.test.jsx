@@ -65,6 +65,8 @@ describe('Home', () => {
 
   it('writes the date the Indian way', () => {
     renderHome('enterprise')
-    expect(screen.getByText(/SUNDAY 25 OCTOBER, 2026/)).toBeInTheDocument()
+    // Day before month. Node's locale data moves the commas and spaces from one
+    // ICU release to the next, so only the order is pinned.
+    expect(screen.getByText(/SUNDAY\W+25\W+OCTOBER\W+2026/)).toBeInTheDocument()
   })
 })
