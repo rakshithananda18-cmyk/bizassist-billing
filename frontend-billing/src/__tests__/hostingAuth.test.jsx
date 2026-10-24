@@ -470,7 +470,7 @@ describe('Register two options (T4)', () => {
     })
 
     expect(hostingButtons).toHaveLength(2)
-    expect(screen.getByText('Local')).toBeInTheDocument()
+    expect(screen.getByText('Local only')).toBeInTheDocument()
     expect(screen.getByText('Local + Cloud')).toBeInTheDocument()
     expect(screen.queryByText('Cloud Only')).not.toBeInTheDocument()
   })
@@ -649,7 +649,7 @@ describe('Pro trial and Local + Cloud (T6)', () => {
   const renderRegister = () => render(
     <MemoryRouter><AuthProvider><Register /></AuthProvider></MemoryRouter>
   )
-  const localBtn = () => screen.getByRole('button', { name: /^Local On this device/ })
+  const localBtn = () => screen.getByRole('button', { name: /^Local only/ })
   const hybridBtn = () => screen.getByRole('button', { name: /^Local \+ Cloud/ })
 
   it('signup: Local + Cloud without a Pro trial is set up as Local, and says so', async () => {
