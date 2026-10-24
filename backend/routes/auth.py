@@ -77,6 +77,33 @@ def _require_loopback_local(request: Request) -> None:
         raise HTTPException(status_code=403, detail="This recovery operation is available only from this device.")
 
 
+def _confirm_with_cloud(username: str, password: str) -> dict:
+    """Sign in to the cloud with these credentials FROM THIS BACKEND and return
+    the cloud's answer (its `public_id` is the account's BizID).
+
+    The recovery routes below change a local owner's password (and reclaim also
+    wipes the business's local data) on the claim that the cloud just accepted
+    these credentials. Loopback-only is not enough to trust that claim: a shop
+    computer is shared, and every cashier knows the owner's username (staff sign
+    in with it) and can read the BizID off the screen. So the claim is checked
+    here, never taken from the request."""
+    import httpx
+    from services.sync_worker import CLOUD_URL
+    try:
+        r = httpx.post(f"{CLOUD_URL}/login", json={"username": username, "password": password}, timeout=15.0)
+    except Exception as e:
+        logger.warning("[AUTH] cloud confirmation unreachable for local recovery: %s", e)
+        raise HTTPException(status_code=503, detail="Could not reach BizAssist Cloud to confirm this password. "
+                                                    "Check the internet connection and try again. Nothing was changed.")
+    if r.status_code != 200:
+        logger.warning("[AUTH] cloud refused the credentials offered for local recovery (HTTP %s)", r.status_code)
+        raise HTTPException(status_code=401, detail="BizAssist Cloud did not accept this password. Nothing was changed.")
+    try:
+        return r.json() or {}
+    except ValueError:
+        raise HTTPException(status_code=502, detail="BizAssist Cloud gave an unreadable answer. Nothing was changed.")
+
+
 @router.post("/api/auth/reconcile_password")
 def reconcile_password(req: ReconcilePasswordRequest, request: Request, db: Session = Depends(get_db)):
     """
@@ -86,8 +113,9 @@ def reconcile_password(req: ReconcilePasswordRequest, request: Request, db: Sess
     Identity-safe: the update happens ONLY when the local account's BizID
     (public_id) matches the cloud's. A username that maps to a DIFFERENT
     business on this device is reported as a mismatch and never overwritten —
-    so we can't silently log someone into the wrong local business. Localhost
-    trust model, same as the fresh-device /signup mirror.
+    so we can't silently log someone into the wrong local business. The cloud
+    sign-in is repeated here (_confirm_with_cloud), and the BizID compared is
+    the cloud's own, not the request's.
     """
     _require_loopback_local(request)
     uname = (req.username or "").strip()
@@ -96,7 +124,8 @@ def reconcile_password(req: ReconcilePasswordRequest, request: Request, db: Sess
               .first())
     if not user:
         raise HTTPException(status_code=404, detail="No such local owner account")
-    if not req.public_id or user.public_id != req.public_id:
+    cloud_bizid = _confirm_with_cloud(uname, req.password).get("public_id")
+    if not cloud_bizid or user.public_id != cloud_bizid:
         raise HTTPException(
             status_code=409,
             detail=(f"Identity mismatch: on this device '{uname}' is the business "
@@ -129,8 +158,12 @@ def reclaim_local(req: ReclaimLocalRequest, request: Request, db: Session = Depe
     single device owner); (2) it is reached ONLY after the cloud accepted a NEW
     signup for this username, proving the old cloud identity is gone; (3) it
     re-keys identity (BizID) + password and does NOT create or merge across
-    businesses. It is non-destructive to any existing local data on the row —
-    the caller can start fresh separately if they want a clean slate.
+    businesses. When the BizID changes it purges the business's stale local data.
+
+    Point (2) is checked, not assumed: this backend signs in to the cloud with
+    the same credentials (_confirm_with_cloud) and requires the cloud to name
+    the BizID being adopted. Without that, anyone at this computer who knew the
+    owner's username could wipe the business and take over the owner account.
     """
     _require_loopback_local(request)
     if not (req.public_id or "").strip():
@@ -143,11 +176,18 @@ def reclaim_local(req: ReclaimLocalRequest, request: Request, db: Session = Depe
     if not user:
         raise HTTPException(status_code=404, detail="No local account to reclaim.")
 
+    cloud = _confirm_with_cloud(uname, req.password)
+    if cloud.get("public_id") != req.public_id:
+        logger.warning(f"[AUTH] Refused reclaim of '{uname}': the cloud account's BizID is "
+                       f"{cloud.get('public_id')!r}, not the requested {req.public_id!r}.")
+        raise HTTPException(status_code=409, detail="This BizID is not the cloud account's for these credentials. Nothing was changed.")
+
     old_bizid = user.public_id
     user.public_id = req.public_id
     user.password = hash_password(req.password)
-    if req.business_name:
-        user.business_name = req.business_name
+    business_name = cloud.get("business_name") or req.business_name
+    if business_name:
+        user.business_name = business_name
 
     # If the BizID changed, the cloud tenant was recreated from scratch. Purge ALL
     # stale local data for this business so we start fresh and never push old data
