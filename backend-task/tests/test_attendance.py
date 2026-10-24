@@ -1,6 +1,7 @@
 """Attendance: server time, mandatory location, lateness, points."""
 from datetime import datetime, timedelta, timezone
 
+from app.db import utc_now
 from tests.conftest import check_in, geo
 
 
@@ -19,10 +20,11 @@ def test_location_is_mandatory(client, biz):
 
 def test_check_in_uses_server_time_not_phone_time(client, biz):
     _, h = biz.staff_session()
-    fake = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
+    now = utc_now().replace(tzinfo=timezone.utc)
+    fake = (now - timedelta(hours=3)).isoformat()
     att = check_in(client, h, client_time=fake)
     server = datetime.fromisoformat(att["check_in_at"].replace("Z", "+00:00"))
-    assert abs((datetime.now(timezone.utc) - server).total_seconds()) < 60
+    assert abs((now - server).total_seconds()) < 60
     assert att["client_clock_skew_s"] < -3 * 3600 + 120  # phone was 3h behind; recorded as evidence
     assert att["check_in_location"]["lat"] == geo()["lat"]
 
@@ -38,19 +40,17 @@ def test_double_check_in_and_checkout_rules(client, biz):
 
 
 def test_late_check_in_and_on_time_points(client, biz):
-    # workday 00:00 with no grace → anyone checking in now is late (unless it is 00:00 exactly)
+    # The clock reads midday (conftest): a 00:00 workday with no grace is
+    # late, a 23:59 one is early.
     biz.settings(workday_start="00:00", late_grace_min=0, on_time_checkin_points=5)
     _, h = biz.staff_session("Late")
     att = check_in(client, h)
-    now_local = datetime.now(timezone(timedelta(hours=5, minutes=30)))
-    if now_local.hour or now_local.minute:
-        assert att["status"] == "late" and att["minutes_late"] > 0 and att["points_awarded"] == 0
+    assert att["status"] == "late" and att["minutes_late"] > 0 and att["points_awarded"] == 0
 
     biz.settings(workday_start="23:59", late_grace_min=0)
     _, h2 = biz.staff_session("Early")
     att2 = check_in(client, h2)
-    if not (now_local.hour == 23 and now_local.minute == 59):
-        assert att2["status"] == "present" and att2["points_awarded"] == 5
+    assert att2["status"] == "present" and att2["points_awarded"] == 5
 
 
 def test_register_lists_present_and_absent(client, biz):

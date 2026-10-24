@@ -1,21 +1,18 @@
 """The working day: plan a route → deliver at each shop → points → dashboard."""
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 
 from app.billing_models import BillingCustomer
 from app.db import SessionLocal
+from app.timeutil import biz_today
 from tests.conftest import SHOP_LAT, SHOP_LNG, check_in, geo
 
 FAR = SHOP_LAT + 0.01  # ≈ 1.1 km north
 
 
-def _today():
-    return datetime.now(timezone(timedelta(hours=5, minutes=30))).date().isoformat()
-
-
 def _plan(client, biz, staff_id, stops, **kw):
-    # Due at the end of today so "on time" holds whenever the suite runs.
+    # Due at the end of today: on time, as conftest pins the clock to midday.
     kw.setdefault("due_time", "23:59")
-    r = client.post("/api/runs", headers=biz.h, json={"run_date": _today(), "staff_id": staff_id,
+    r = client.post("/api/runs", headers=biz.h, json={"run_date": biz_today(), "staff_id": staff_id,
                                                       "name": "Jayanagar beat", "stops": stops, **kw})
     assert r.status_code == 201, r.text
     return r.json()
@@ -99,7 +96,7 @@ def test_skip_closed_shop(client, biz):
 def test_late_task_earns_late_percentage(client, biz):
     s, h = biz.staff_session()
     biz.settings(late_points_pct=50)
-    yesterday = (date.fromisoformat(_today()) - timedelta(days=1)).isoformat()
+    yesterday = (date.fromisoformat(biz_today()) - timedelta(days=1)).isoformat()
     t = client.post("/api/tasks", headers=biz.h, json={
         "title": "Collect cheque", "task_type": "payment_collect", "staff_id": s["id"],
         "due_date": yesterday, "due_time": "17:00", "points": 20, "amount_expected": 5000,
@@ -125,7 +122,7 @@ def test_cannot_complete_someone_elses_task(client, biz):
 def test_route_template_and_generate_today(client, biz):
     s = biz.staff()
     a, b = biz.shop("A"), biz.shop("B")
-    wd = date.fromisoformat(_today()).isoweekday()
+    wd = date.fromisoformat(biz_today()).isoweekday()
     r = client.post("/api/routes", headers=biz.h, json={
         "name": "Monday North", "weekdays": [wd], "default_staff_id": s["id"],
         "due_time": "17:30", "shop_ids": [b["id"], a["id"]]})
@@ -171,11 +168,11 @@ def test_tenant_isolation(client, biz, other_biz):
     shop = other_biz.shop()
     s_other = other_biz.staff()
     assert client.patch(f"/api/shops/{shop['id']}", headers=biz.h, json={"name": "x"}).status_code == 404
-    r = client.post("/api/runs", headers=biz.h, json={"run_date": _today(), "staff_id": s_other["id"],
+    r = client.post("/api/runs", headers=biz.h, json={"run_date": biz_today(), "staff_id": s_other["id"],
                                                       "stops": [{"shop_id": shop["id"]}]})
     assert r.status_code == 404
     my_staff = biz.staff()
-    r = client.post("/api/runs", headers=biz.h, json={"run_date": _today(), "staff_id": my_staff["id"],
+    r = client.post("/api/runs", headers=biz.h, json={"run_date": biz_today(), "staff_id": my_staff["id"],
                                                       "stops": [{"shop_id": shop["id"]}]})
     assert r.status_code == 404
     assert client.get("/api/shops", headers=biz.h).json() == []
@@ -208,7 +205,7 @@ def test_import_shops_from_billing_customers(client, biz, other_biz):
 def test_run_for_another_day_cannot_be_worked_today(client, biz):
     s, h = biz.staff_session()
     a = biz.shop()
-    tomorrow = (date.fromisoformat(_today()) + timedelta(days=1)).isoformat()
+    tomorrow = (date.fromisoformat(biz_today()) + timedelta(days=1)).isoformat()
     r = client.post("/api/runs", headers=biz.h, json={"run_date": tomorrow, "staff_id": s["id"],
                                                       "stops": [{"shop_id": a["id"], "boxes": 1}]})
     run = r.json()

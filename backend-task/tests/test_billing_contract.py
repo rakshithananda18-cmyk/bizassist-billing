@@ -62,7 +62,7 @@ def test_ticket_minted_by_billing_signs_the_owner_in(client, biz):
     assert client.post("/api/auth/exchange", json={"ticket": ticket}).status_code == 401
 
 
-def test_pro_plan_rule_matches_billings():
+def test_pro_plan_rule_matches_billings(monkeypatch):
     """Field Team must call a business Pro exactly when billing does (plus its
     own grace period, which only applies after billing says "free")."""
     admin = _billing("services.admin_service")
@@ -71,6 +71,8 @@ def test_pro_plan_rule_matches_billings():
     from app.db import utc_now
     from app.plan import expiry_moment, plan_state
 
+    # Both sides judge at the same instant: billing on the clock conftest pinned.
+    monkeypatch.setattr(admin, "utc_now", utc_now)
     today = utc_now().date()
     for raw in (None, "", "not a date", today.isoformat(), (today - timedelta(days=1)).isoformat(),
                 "2026-10-23T20:00:00+05:30", "2026-10-23T10:00:00Z", "2026-10-23 10:00:00"):

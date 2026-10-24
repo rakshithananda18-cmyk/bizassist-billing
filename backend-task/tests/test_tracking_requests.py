@@ -1,6 +1,7 @@
 """GPS trail (duty-only, throttled), live view, and shop requests."""
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, timezone
 
+from app.db import utc_now
 from tests.conftest import SHOP_LAT, check_in, geo
 
 
@@ -12,7 +13,7 @@ def test_pings_only_while_on_duty_and_throttled(client, biz):
     r = client.post("/api/track/pings", headers=h, json={"pings": [geo(lat=SHOP_LAT + 0.001)]}).json()
     assert r["stored"] == 0  # within half the interval of the check-in fix
 
-    base = datetime.now(timezone.utc)
+    base = utc_now().replace(tzinfo=timezone.utc)
     batch = [geo(lat=SHOP_LAT + i * 0.001, client_time=(base + timedelta(seconds=i * 60)).isoformat())
              for i in range(5)]
     batch.append(geo(accuracy=5000))  # junk fix dropped

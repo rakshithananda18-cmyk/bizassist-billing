@@ -3,21 +3,18 @@
 Billing rows are written straight into billing's tables (the mirror on SQLite,
 billing's real schema in the contract job), the way billing itself would have.
 """
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 
 import pytest
 
 from app.billing_models import BillingCustomer, BillingInvoice, BillingInvoiceLine
 from app.db import SessionLocal
+from app.timeutil import biz_today
 from tests.conftest import check_in, geo
 
 
-def _today():
-    return datetime.now(timezone(timedelta(hours=5, minutes=30))).date().isoformat()
-
-
 def _days_ago(n):
-    return (date.fromisoformat(_today()) - timedelta(days=n)).isoformat()
+    return (date.fromisoformat(biz_today()) - timedelta(days=n)).isoformat()
 
 
 def _customer(business_id, name="Sri Balaji Medicals"):
@@ -95,7 +92,7 @@ def test_run_stop_from_invoices_plans_delivery_and_collection(client, biz, linke
     s, h = biz.staff_session("Kiran")
     pick = [ids["boxes"], ids["strips"]]
     r = client.post("/api/runs", headers=biz.h, json={
-        "run_date": _today(), "staff_id": s["id"], "due_time": "23:59",
+        "run_date": biz_today(), "staff_id": s["id"], "due_time": "23:59",
         "stops": [{"shop_id": shop["id"], "invoice_ids": pick, "collect_due": True}],
     })
     assert r.status_code == 201, r.text
@@ -126,7 +123,7 @@ def test_run_stop_from_invoices_plans_delivery_and_collection(client, biz, linke
 def test_a_bill_is_delivered_once_until_its_task_is_cancelled(client, biz, linked):
     shop, _, ids = linked
     s = biz.staff()
-    plan = {"run_date": _today(), "staff_id": s["id"],
+    plan = {"run_date": biz_today(), "staff_id": s["id"],
             "stops": [{"shop_id": shop["id"], "invoice_ids": [ids["boxes"]]}]}
     run = client.post("/api/runs", headers=biz.h, json=plan).json()
     again = client.post("/api/runs", headers=biz.h, json=plan)
@@ -184,7 +181,7 @@ def test_invoices_need_a_linked_shop(client, biz, linked):
         "title": "Deliver", "task_type": "delivery", "staff_id": s["id"], "invoice_ids": [ids["boxes"]]})
     assert r.status_code == 422
     r = client.post("/api/runs", headers=biz.h, json={
-        "run_date": _today(), "staff_id": s["id"], "stops": [{"shop_id": manual["id"], "collect_due": True}]})
+        "run_date": biz_today(), "staff_id": s["id"], "stops": [{"shop_id": manual["id"], "collect_due": True}]})
     assert r.status_code == 422
 
 

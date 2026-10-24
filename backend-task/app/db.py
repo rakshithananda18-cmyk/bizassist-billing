@@ -17,7 +17,7 @@ Timestamps are stored NAIVE UTC, the same convention billing uses
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import MetaData, create_engine, event, text
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -36,9 +36,15 @@ Base = declarative_base(metadata=MetaData(naming_convention=_NAMING))
 BillingBase = declarative_base(metadata=MetaData(naming_convention=_NAMING))
 
 
+# Added to every utc_now(). Always zero in the service; the test suite sets it
+# to pin the business clock to midday IST (tests/conftest.py), so a run that
+# crosses midnight neither turns on-time work late nor moves "today".
+CLOCK_OFFSET = timedelta(0)
+
+
 def utc_now() -> datetime:
     """Naive UTC now — the storage convention shared with billing."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(timezone.utc).replace(tzinfo=None) + CLOCK_OFFSET
 
 
 if config.IS_SQLITE:
