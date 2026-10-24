@@ -1,0 +1,38 @@
+# The nightly cloud database backup job (ops/db-backup): its unit tests, and
+# its image builds with pg_dump working.
+name: Database backup
+
+on:
+  push:
+    branches: [main]
+    paths: ['ops/db-backup/**', '.github/workflows/db-backup.yml']
+  pull_request:
+    paths: ['ops/db-backup/**', '.github/workflows/db-backup.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ops/db-backup
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pytest==8.3.3
+      - run: python -m pytest -q
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the job image
+        run: docker build -t bizassist-db-backup ops/db-backup
+      - name: pg_dump 18 is installed and the script loads
+        run: |
+          docker run --rm --entrypoint pg_dump bizassist-db-backup --version | grep -q "pg_dump (PostgreSQL) 18"
+          docker run --rm --entrypoint python bizassist-db-backup -c "import backup, google.cloud.storage"
