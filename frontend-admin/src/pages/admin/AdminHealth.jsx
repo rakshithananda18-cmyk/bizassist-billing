@@ -259,7 +259,10 @@ export default function AdminHealth() {
                           <>
                             <tr
                               key={alt.id}
+                              tabIndex={0}
+                              aria-expanded={isExpanded}
                               onClick={() => setExpandedAlteration(isExpanded ? null : alt.id)}
+                              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedAlteration(isExpanded ? null : alt.id) } }}
                               style={{ cursor: 'pointer', hover: 'background: rgba(255,255,255,0.02)' }}
                             >
                               <td>{new Date(alt.created_at + 'Z').toLocaleString()}</td>

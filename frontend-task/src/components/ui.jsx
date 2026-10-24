@@ -1,5 +1,5 @@
 // components/ui.jsx — small shared pieces (page header, stat, modal, toasts).
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CloseIcon } from './Icons'
 import { SkylineLoader } from './Logo'
@@ -49,28 +49,76 @@ export function ErrorNote({ error }) {
 
 export function Modal({ title, onClose, children, footer, wide }) {
   const overlay = useRef(null)
+  const dialog = useRef(null)
+  const previousFocus = useRef(null)
+  const onCloseRef = useRef(onClose)
+  const titleId = useId()
+  onCloseRef.current = onClose
   useEffect(() => {
-    // Escape closes only the top dialog (a picker opened over a form).
+    previousFocus.current = document.activeElement
     const onKey = (e) => {
       if (e.key !== 'Escape') return
       const open = document.querySelectorAll('.modal-overlay')
-      if (open[open.length - 1] === overlay.current) onClose?.()
+      if (open[open.length - 1] === overlay.current) onCloseRef.current?.()
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const focusFirst = () => {
+      const focusables = dialog.current?.querySelectorAll(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+      ;(focusables?.[0] || dialog.current)?.focus()
+    }
+    const frame = window.requestAnimationFrame ? window.requestAnimationFrame(focusFirst) : window.setTimeout(focusFirst, 0)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = previousOverflow
+      if (window.cancelAnimationFrame) window.cancelAnimationFrame(frame)
+      else window.clearTimeout(frame)
+      previousFocus.current?.focus?.()
+    }
+  }, [])
+  const trapFocus = (event) => {
+    if (event.key !== 'Tab') return
+    const focusables = [...(dialog.current?.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    ) || [])]
+    if (!focusables.length) { event.preventDefault(); dialog.current?.focus(); return }
+    const first = focusables[0]
+    const last = focusables[focusables.length - 1]
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+  }
   return createPortal(
     <div ref={overlay} className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.() }}>
-      <div className="modal" style={wide ? { maxWidth: 820 } : undefined} role="dialog" aria-modal="true">
+      <div ref={dialog} className="modal" style={wide ? { maxWidth: 820 } : undefined} role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined} aria-label={title ? undefined : 'Dialog'} tabIndex="-1" onKeyDown={trapFocus}>
         <div className="modal-header">
-          <div className="modal-title">{title}</div>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close"><CloseIcon size={18} /></button>
+          <div id={titleId} className="modal-title">{title}</div>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close"><CloseIcon size={18} /></button>
         </div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}
       </div>
     </div>,
     document.body,
+  )
+}
+
+export function ConfirmDialog({ title, message, confirmLabel = 'Confirm', onConfirm, onCancel, danger = true }) {
+  return (
+    <Modal
+      title={title}
+      onClose={onCancel}
+      footer={(
+        <div className="row" style={{ justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+          <button type="button" className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      )}
+    >
+      <p style={{ margin: 0 }}>{message}</p>
+    </Modal>
   )
 }
 

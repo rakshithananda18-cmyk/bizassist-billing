@@ -215,8 +215,11 @@ export default function Payments() {
               <div className="vsummary-strip" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: 1, marginBottom: 12, marginTop: 12 }}>
                 <div
                   className="vsummary-card"
+                  role="button"
+                  tabIndex={0}
                   style={{ borderLeftColor: '#c02a2a' }}
                   onClick={() => sendChip('Show all overdue invoices with amounts', 'overdue_list')}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }}
                 >
                   <div className="vsummary-label">Overdue Amount</div>
                   <div className="vsummary-value" style={{ color: '#c02a2a' }}>{fmtAmount(paymentsData.total_overdue)}</div>
@@ -224,8 +227,11 @@ export default function Payments() {
                 </div>
                 <div
                   className="vsummary-card"
+                  role="button"
+                  tabIndex={0}
                   style={{ borderLeftColor: '#c97c22' }}
                   onClick={() => sendChip('List all pending payments', 'pending_list')}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }}
                 >
                   <div className="vsummary-label">Pending Amount</div>
                   <div className="vsummary-value" style={{ color: '#c97c22' }}>{fmtAmount(paymentsData.total_pending)}</div>

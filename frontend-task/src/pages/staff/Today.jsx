@@ -5,7 +5,7 @@ import { mapsDirectionsUrl } from '../../lib/geo'
 import { fmtDateTime, fmtDay, fmtTime, rupees, TASK_TYPES, telHref } from '../../lib/format'
 import { PAYMENT_MODE_LABELS, PAYMENT_MODES } from '../../lib/collections'
 import { CheckIcon, NavigationIcon, PhoneIcon } from '../../components/Icons'
-import { ErrorNote, Loader, Modal, StatusBadge } from '../../components/ui'
+import { ConfirmDialog, ErrorNote, Loader, Modal, StatusBadge } from '../../components/ui'
 
 function TrackLine({ track, awake, toggleAwake }) {
   const fix = track.fix
@@ -29,6 +29,7 @@ function TrackLine({ track, awake, toggleAwake }) {
 function DutyCard() {
   const { today, act, track, awake, toggleAwake } = useDay()
   const [busy, setBusy] = useState(false)
+  const [confirmCheckOut, setConfirmCheckOut] = useState(false)
   const att = today.attendance
   const go = async (path, msg) => { setBusy(true); try { await act(path, {}, msg) } catch { /* toast shown */ } finally { setBusy(false) } }
   if (!att) {
@@ -52,17 +53,26 @@ function DutyCard() {
     )
   }
   return (
+    <>
     <div className="card stack">
       <div className="row-between">
         <div className="duty-card">
           <span className={`duty-dot ${att.status === 'late' ? 'late' : 'on'}`} />
           <div><strong>On duty</strong><div className="xs muted">since {fmtTime(att.check_in_at)}{att.status === 'late' && ` · ${att.minutes_late} min late`}</div></div>
         </div>
-        <button className="btn btn-secondary btn-sm" disabled={busy}
-          onClick={() => { if (window.confirm('Check out for today? Field work stops after check-out.')) go('/api/attendance/check-out', 'Checked out') }}>Check out</button>
+        <button type="button" className="btn btn-secondary btn-sm" disabled={busy}
+          onClick={() => setConfirmCheckOut(true)}>Check out</button>
       </div>
       <TrackLine track={track} awake={awake} toggleAwake={toggleAwake} />
     </div>
+    {confirmCheckOut && <ConfirmDialog
+      title="Check out for today?"
+      message="Field work stops after you check out."
+      confirmLabel="Check out"
+      onCancel={() => setConfirmCheckOut(false)}
+      onConfirm={() => { setConfirmCheckOut(false); go('/api/attendance/check-out', 'Checked out') }}
+    />}
+    </>
   )
 }
 

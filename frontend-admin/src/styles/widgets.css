@@ -944,6 +944,11 @@ tr:last-child { border-bottom: none; }
 }
 
 .ip-alert-row {
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    background: transparent;
     border-radius: 11px;
     padding: 12px 14px;
     border: 1.5px solid transparent;
@@ -957,6 +962,7 @@ tr:last-child { border-bottom: none; }
     transform: translateX(4px) translateZ(0);
     box-shadow: var(--shadow-md);
 }
+.ip-alert-row:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
 
 /* ---- DELETE BUTTONS ---- */
 .delete-btn, .delete-btn-small {

@@ -164,18 +164,18 @@ function SyncPromptBanner() {
   const border    = isPending ? 'rgba(245,158,11,0.35)' : 'rgba(59,130,246,0.35)'
 
   return (
-    <div style={{
-      position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-      zIndex: 9999, maxWidth: 480, width: 'calc(100% - 40px)',
+    <div className="sync-prompt-banner" role="status" aria-live="polite" aria-atomic="true" style={{
+      position: 'fixed', bottom: 'max(12px, env(safe-area-inset-bottom, 0px))', left: '50%', transform: 'translateX(-50%)',
+      zIndex: 9999, maxWidth: 520, width: 'calc(100% - 24px)',
       background: 'var(--card-bg, #1a1a2e)',
       border: `1px solid ${border}`,
       borderLeft: `4px solid ${color}`,
       borderRadius: 12, padding: '14px 18px',
-      display: 'flex', alignItems: 'flex-start', gap: 14,
+      display: 'flex', alignItems: 'flex-start', gap: 12,
       boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
       animation: 'slideUpBanner 0.3s ease',
     }}>
-      <span style={{ fontSize: 22, marginTop: 1 }}>
+      <span aria-hidden="true" style={{ fontSize: 22, marginTop: 1, flexShrink: 0 }}>
         {isPending ? '⚡' : '📡'}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -189,8 +189,9 @@ function SyncPromptBanner() {
             ? 'Sync now to prevent data loss and keep cloud up to date.'
             : 'Bills may take longer to sync. Consider closing the other session.'}
         </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
           <button
+            type="button"
             onClick={handleSyncNow}
             disabled={syncing}
             style={{
@@ -203,6 +204,7 @@ function SyncPromptBanner() {
             {syncing ? '⏳ Syncing…' : '↑ Sync Now'}
           </button>
           <button
+            type="button"
             onClick={handleRemindLater}
             style={{
               padding: '6px 14px', borderRadius: 8,
@@ -216,6 +218,7 @@ function SyncPromptBanner() {
         </div>
       </div>
       <button
+        type="button"
         onClick={handleRemindLater}
         style={{ background: 'none', border: 'none', color: 'var(--text-muted, #888)',
           cursor: 'pointer', fontSize: 18, padding: '0 0 0 4px', lineHeight: 1 }}
