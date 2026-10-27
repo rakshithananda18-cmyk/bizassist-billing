@@ -378,7 +378,7 @@ export default function Register() {
                       <div style={{ fontWeight: 700, fontSize: '0.86rem' }}>
                         {opt.title}
                         {opt.key === 'hybrid' && trialDays > 0 && (
-                          <span style={{ marginLeft: 6, fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.04em', padding: '1px 6px', borderRadius: 6, background: 'var(--accent)', color: '#fff', verticalAlign: 'middle' }}>
+                          <span style={{ marginLeft: 6, fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.04em', padding: '1px 6px', borderRadius: 6, background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', verticalAlign: 'middle' }}>
                             FREE IN TRIAL
                           </span>
                         )}

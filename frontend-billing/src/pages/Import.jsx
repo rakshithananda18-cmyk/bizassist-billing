@@ -5,6 +5,7 @@
 // ============================================================================
 import React, { useRef, useState } from 'react'
 import AppLayout from '../layouts/AppLayout'
+import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
 import { useAuth } from '../contexts/AuthContext'
 import ImportReviewModal from '../components/ImportReviewModal'
 import {
@@ -336,6 +337,7 @@ export default function Import() {
             <h1 className="page-title">Data Migration</h1>
             <p className="page-subtitle">Bulk import data from CSV or export records for backup and analysis</p>
           </div>
+          <div className="page-actions"><HeaderSearchSlot /></div>
         </div>
 
         {commitResult && (

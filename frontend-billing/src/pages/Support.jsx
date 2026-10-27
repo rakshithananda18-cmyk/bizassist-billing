@@ -162,8 +162,8 @@ export default function Support() {
             style={{
               padding: '11px 20px',
               borderRadius: 8,
-              background: 'var(--accent, #6366f1)',
-              color: '#fff',
+              background: 'var(--accent-solid, var(--accent, #6366f1))',
+              color: 'var(--accent-foreground, #fff)',
               border: 'none',
               cursor: submitting ? 'not-allowed' : 'pointer',
               fontSize: '0.9rem',

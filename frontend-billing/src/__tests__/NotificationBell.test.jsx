@@ -72,6 +72,30 @@ describe('NotificationBell', () => {
     expect(screen.getByText('2 overdue invoices')).toBeTruthy()
   })
 
+  it('opens the sidebar panel outside the clipped footer and keeps its actions clickable', async () => {
+    authFetch.mockImplementation(route(TWO))
+    const onOpen = vi.fn()
+    const { container } = render(<MemoryRouter><NotificationBell placement="sidebar" onOpen={onOpen} /></MemoryRouter>)
+    const trigger = await screen.findByLabelText('2 notifications')
+    fireEvent.click(trigger)
+    const panel = screen.getByRole('dialog', { name: 'Smart notifications' })
+    expect(container.contains(panel)).toBe(false)
+    expect(onOpen).toHaveBeenCalledOnce()
+
+    const action = screen.getByRole('button', { name: /3 batches past expiry/ })
+    fireEvent.mouseDown(action)
+    expect(screen.getByRole('dialog', { name: 'Smart notifications' })).toBe(panel)
+    fireEvent.click(action)
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    fireEvent.click(trigger)
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(trigger)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
   it('adds the backup reminder the server cannot know about', async () => {
     // The backup file lands on THIS device's disk, so the timestamp is local
     // and the server has no way to answer. It has to merge in client-side or

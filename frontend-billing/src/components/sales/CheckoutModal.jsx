@@ -710,8 +710,8 @@ export default function CheckoutModal({
                       alignItems: 'center',
                       justifyContent: 'center',
                       fontWeight: 'bold',
-                      background: 'var(--accent)',
-                      color: '#ffffff',
+                      background: 'var(--accent-solid, var(--accent))',
+                      color: 'var(--accent-foreground, #fff)',
                       border: 'none',
                       borderRadius: 'var(--radius-md)',
                       cursor: 'pointer'
@@ -806,8 +806,8 @@ export default function CheckoutModal({
                                     key={c.id}
                                     className={`pos-customer-dropdown-item ${isSelected ? 'active' : ''}`}
                                     style={{
-                                      background: isSelected ? 'var(--accent)' : 'transparent',
-                                      color: isSelected ? '#ffffff' : 'var(--text-primary)',
+                                      background: isSelected ? 'var(--accent-solid, var(--accent))' : 'transparent',
+                                      color: isSelected ? 'var(--accent-foreground, #fff)' : 'var(--text-primary)',
                                       cursor: 'pointer',
                                       padding: '8px 12px'
                                     }}
@@ -837,8 +837,8 @@ export default function CheckoutModal({
                               style={{
                                 padding: '8px 12px',
                                 cursor: 'pointer',
-                                background: isAddActive ? 'var(--accent)' : 'var(--bg-3)',
-                                color: isAddActive ? '#ffffff' : 'var(--accent)',
+                                background: isAddActive ? 'var(--accent-solid, var(--accent))' : 'var(--bg-3)',
+                                color: isAddActive ? 'var(--accent-foreground, #fff)' : 'var(--accent)',
                                 fontWeight: 600,
                                 fontSize: '0.82rem',
                                 textAlign: 'center',
@@ -987,7 +987,7 @@ export default function CheckoutModal({
                         disabled={savingCustomer}
                         onClick={handleSaveCustomer}
                         onKeyDown={e => handleDrawerKeyDown(e, 'save')}
-                        style={{ background: 'var(--accent)', borderColor: 'var(--accent)', height: 30, padding: '0 12px', fontSize: '0.8rem' }}
+                        style={{ background: 'var(--accent-solid, var(--accent))', borderColor: 'var(--accent)', height: 30, padding: '0 12px', fontSize: '0.8rem' }}
                       >
                         {savingCustomer ? 'Saving...' : 'Save Customer'}
                       </button>
@@ -1256,11 +1256,11 @@ export default function CheckoutModal({
                       ref={isActive ? paymentModeRef : null}
                       onKeyDown={(e) => handlePaymentModeButtonKeyDown(e, mode)}
                       style={{
-                        background: isActive ? 'var(--accent)' : 'var(--bg-3)',
+                        background: isActive ? 'var(--accent-solid, var(--accent))' : 'var(--bg-3)',
                         border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
                         borderRadius: 'var(--radius-md)',
                         padding: '10px 0',
-                        color: isActive ? '#ffffff' : 'var(--text-primary)',
+                        color: isActive ? 'var(--accent-foreground, #fff)' : 'var(--text-primary)',
                         fontSize: '0.85rem',
                         fontWeight: '700',
                         textTransform: 'capitalize',
@@ -1354,11 +1354,11 @@ export default function CheckoutModal({
                   type="button"
                   disabled={submitting}
                   style={{
-                    background: 'var(--accent)',
+                    background: 'var(--accent-solid, var(--accent))',
                     border: 'none',
                     borderRadius: 'var(--radius-md)',
                     padding: '12px',
-                    color: '#ffffff',
+                    color: 'var(--accent-foreground, #fff)',
                     fontSize: '1rem',
                     fontWeight: 'bold',
                     cursor: 'pointer',

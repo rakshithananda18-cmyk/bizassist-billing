@@ -1,308 +1,166 @@
-// ============================================================================
-// Page: Profile.jsx
-// Description: User Account & Business Profile. Displays currently logged-in
-//              account properties, registration credentials, and allows editing
-//              business address, GSTIN details, and contact numbers.
-// ============================================================================
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
-import { ContactsIcon, CheckIcon } from '../components/Icons'
+import { BuildingMark } from '../components/Logo'
+import { CheckIcon, ContactsIcon } from '../components/Icons'
+import './settings-profile.css'
 
-export default function Profile() {
+const EMPTY_PROFILE = {
+  business_name: '', gstin: '', phone: '', email: '', address: '',
+  state_code: '', pan: '', logo: '', upi_vpa: '',
+}
+
+export default function Profile({ embedded = false }) {
   const { authFetch, profile, fetchProfile } = useAuth()
-  const [formData, setFormData] = useState({
-    business_name: '',
-    gstin: '',
-    phone: '',
-    email: '',
-    address: '',
-    state_code: '',
-    pan: '',
-    logo: '',
-    upi_vpa: ''
-  })
+  const [formData, setFormData] = useState(EMPTY_PROFILE)
   const [loading, setLoading] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
+  const successTimer = useRef(null)
 
   useEffect(() => {
     if (profile) {
-      setFormData({
-        business_name: profile.business_name || '',
-        gstin: profile.gstin || '',
-        phone: profile.phone || '',
-        email: profile.email || '',
-        address: profile.address || '',
-        state_code: profile.state_code || '',
-        pan: profile.pan || '',
-        logo: profile.logo || '',
-        upi_vpa: profile.upi_vpa || ''
-      })
+      setFormData(Object.fromEntries(Object.keys(EMPTY_PROFILE).map(key => [key, profile[key] || ''])))
     }
   }, [profile])
+  useEffect(() => () => clearTimeout(successTimer.current), [])
 
-  const handleChange = (e) => {
+  const handleChange = e => {
     const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
+    setFormData(previous => ({ ...previous, [name]: value }))
+    setSuccessMsg('')
   }
 
-  const handleLogoChange = (e) => {
-    const file = e.target.files[0]
+  const handleLogoChange = e => {
+    const file = e.target.files?.[0]
     if (!file) return
-
-    // Limit to 2MB logo size
     if (file.size > 2 * 1024 * 1024) {
       setErrorMsg('Logo file must be under 2MB')
       return
     }
-
+    if (!file.type.startsWith('image/')) {
+      setErrorMsg('Choose an image for your company logo')
+      return
+    }
     const reader = new FileReader()
     reader.onloadend = () => {
-      setFormData(prev => ({ ...prev, logo: reader.result }))
+      setFormData(previous => ({ ...previous, logo: reader.result }))
       setErrorMsg('')
+      setSuccessMsg('')
     }
     reader.readAsDataURL(file)
   }
 
-  const handleRemoveLogo = () => {
-    setFormData(prev => ({ ...prev, logo: '' }))
-  }
-
-  const handleSubmit = async (e) => {
+  const handleSubmit = async e => {
     e.preventDefault()
-    setLoading(true)
     setSuccessMsg('')
     setErrorMsg('')
-
     if (!formData.business_name.trim()) {
-      setErrorMsg('Business Name is required')
-      setLoading(false)
+      setErrorMsg('Business name is required')
       return
     }
-
+    setLoading(true)
     try {
-      const res = await authFetch('/profile', {
+      const response = await authFetch('/profile', {
         method: 'PUT',
-        body: JSON.stringify(formData)
+        body: JSON.stringify({ ...formData, business_name: formData.business_name.trim() }),
       })
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.detail || 'Failed to update profile')
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error.detail || 'Failed to update profile')
       }
-
       await fetchProfile()
-      setSuccessMsg('Business settings updated successfully!')
-      setTimeout(() => setSuccessMsg(''), 4000)
-    } catch (err) {
-      setErrorMsg(err.message || 'An error occurred during update')
+      setSuccessMsg('Business profile saved successfully.')
+      clearTimeout(successTimer.current)
+      successTimer.current = setTimeout(() => setSuccessMsg(''), 4000)
+    } catch (error) {
+      setErrorMsg(error.message || 'Could not save your business profile')
     } finally {
       setLoading(false)
     }
   }
 
-  return (
-    <AppLayout title="My Profile">
-      <div className="slide-up">
-        <div className="page-header">
-          <div className="page-header-left">
-            <h1 className="page-title">My Profile</h1>
-            <p className="page-subtitle">Manage your company branding, billing identity, and taxation details.</p>
-          </div>
-        </div>
-
-        {successMsg && (
-          <div style={{
-            background: 'var(--success-dim)',
-            color: 'var(--success)',
-            padding: '12px 16px',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--success)',
-            marginBottom: '20px',
-            fontSize: '0.9rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}>
-            <CheckIcon size={16} />
-            {successMsg}
-          </div>
-        )}
-
-        {errorMsg && (
-          <div style={{
-            background: 'var(--danger-dim)',
-            color: 'var(--danger)',
-            padding: '12px 16px',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--danger)',
-            marginBottom: '20px',
-            fontSize: '0.9rem'
-          }}>
-            {errorMsg}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="card" style={{ padding: '28px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
-          {/* Logo Section */}
-          <div style={{ display: 'flex', gap: '20px', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '20px' }}>
-            <div style={{
-              width: '80px',
-              height: '80px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px dashed var(--border)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'var(--bg-3)',
-              overflow: 'hidden',
-              flexShrink: 0
-            }}>
-              {formData.logo ? (
-                <img src={formData.logo} alt="Company logo preview" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-              ) : (
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', padding: '4px' }}>No Logo</span>
-              )}
-            </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>Company Logo</div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>JPG, PNG or SVG under 2MB. Square dimensions recommended.</div>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <label className="btn btn-secondary" style={{ cursor: 'pointer', fontSize: '0.8rem', padding: '6px 12px' }}>
-                  Upload Logo
-                  <input type="file" accept="image/*" onChange={handleLogoChange} style={{ display: 'none' }} />
-                </label>
-                {formData.logo && (
-                  <button type="button" className="btn btn-danger" onClick={handleRemoveLogo} style={{ fontSize: '0.8rem', padding: '6px 12px' }}>
-                    Remove
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Form Fields */}
-          <div className="grid grid-2">
-            <div className="form-group" style={{ gridColumn: 'span 2' }}>
-              <label className="form-label" style={{ fontWeight: '600' }}>Business Name *</label>
-              <input
-                type="text"
-                name="business_name"
-                className="form-input"
-                placeholder="e.g. Acme Retailers"
-                value={formData.business_name}
-                onChange={handleChange}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" style={{ fontWeight: '600' }}>GSTIN</label>
-              <input
-                type="text"
-                name="gstin"
-                className="form-input"
-                placeholder="15-digit GSTIN"
-                maxLength={15}
-                value={formData.gstin}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" style={{ fontWeight: '600' }}>PAN</label>
-              <input
-                type="text"
-                name="pan"
-                className="form-input"
-                placeholder="10-digit PAN"
-                maxLength={10}
-                value={formData.pan}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" style={{ fontWeight: '600' }}>Phone Number</label>
-              <input
-                type="tel"
-                name="phone"
-                className="form-input"
-                placeholder="10-digit phone"
-                maxLength={10}
-                value={formData.phone}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" style={{ fontWeight: '600' }}>UPI ID (VPA)</label>
-              <input
-                type="text"
-                name="upi_vpa"
-                className="form-input"
-                placeholder="e.g. yourname@okhdfcbank"
-                value={formData.upi_vpa}
-                onChange={handleChange}
-              />
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                Used for the POS payment QR and invoices. Leave blank to fall back to your phone number.
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" style={{ fontWeight: '600' }}>Email Address</label>
-              <input
-                type="email"
-                name="email"
-                className="form-input"
-                placeholder="billing@company.com"
-                value={formData.email}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div className="form-group" style={{ gridColumn: 'span 2' }}>
-              <label className="form-label" style={{ fontWeight: '600' }}>Billing Address</label>
-              <textarea
-                name="address"
-                className="form-textarea"
-                placeholder="Full business street address"
-                value={formData.address}
-                onChange={handleChange}
-              />
-            </div>
-
-            <div className="form-group" style={{ gridColumn: 'span 2' }}>
-              <label className="form-label" style={{ fontWeight: '600' }}>State Code (GST State Digit Prefix)</label>
-              <input
-                type="text"
-                name="state_code"
-                className="form-input"
-                placeholder="e.g. 29 for Karnataka, 27 for Maharashtra"
-                maxLength={2}
-                value={formData.state_code}
-                onChange={handleChange}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px', borderTop: '1px solid var(--border)', paddingTop: '20px' }}>
-            <button
-              type="submit"
-              className="btn btn-accent"
-              disabled={loading}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 24px' }}
-            >
-              {loading && <span className="spinner" style={{ width: '14px', height: '14px' }} />}
-              Save Profile Settings
-            </button>
-          </div>
-        </form>
-      </div>
-    </AppLayout>
+  const field = (name, label, { type = 'text', hint, full = false, ...props } = {}) => (
+    <div className={`profile-field${full ? ' profile-field-full' : ''}`}>
+      <label htmlFor={`profile-${name}`}>{label}</label>
+      <input id={`profile-${name}`} name={name} type={type} className="form-input"
+        value={formData[name]} onChange={handleChange} aria-describedby={hint ? `profile-${name}-hint` : undefined} {...props} />
+      {hint && <p id={`profile-${name}-hint`}>{hint}</p>}
+    </div>
   )
+
+  const content = (
+    <section className="profile-settings" aria-labelledby="profile-settings-title">
+      <div className="settings-section-heading">
+        <div>
+          <p className="settings-eyebrow">Business identity</p>
+          <h2 id="profile-settings-title">Business profile</h2>
+          <p>Your business details, contact information, and billing identity in one place.</p>
+        </div>
+        <span className="settings-section-icon" aria-hidden="true"><ContactsIcon size={22} /></span>
+      </div>
+
+      {successMsg && <div className="profile-notice profile-notice-success" role="status"><CheckIcon size={16} />{successMsg}</div>}
+      {errorMsg && <div className="profile-notice profile-notice-error" role="alert">{errorMsg}</div>}
+
+      <form onSubmit={handleSubmit} className="profile-form">
+        <fieldset className="profile-group">
+          <legend>Brand &amp; business name</legend>
+          <p className="profile-group-description">Recognisable details used throughout your workspace and on your bills.</p>
+          <div className="profile-brand-editor">
+            <div className="profile-logo-preview">
+              {formData.logo ? <img src={formData.logo} alt="Company logo preview" /> : <BuildingMark size={36} />}
+            </div>
+            <div className="profile-logo-actions">
+              <strong>Company logo</strong>
+              <p>JPG, PNG or SVG, up to 2 MB. A square image works best.</p>
+              <div>
+                <label className="btn btn-secondary profile-upload">
+                  Upload logo
+                  <input type="file" accept="image/*" aria-label="Upload company logo" onChange={handleLogoChange} />
+                </label>
+                {formData.logo && <button type="button" className="btn btn-ghost" onClick={() => setFormData(previous => ({ ...previous, logo: '' }))}>Remove logo</button>}
+              </div>
+            </div>
+          </div>
+          {field('business_name', 'Business name', { required: true, autoComplete: 'organization', placeholder: 'e.g. Sri Lakshmi Medicals' })}
+        </fieldset>
+
+        <fieldset className="profile-group">
+          <legend>Contact details</legend>
+          <p className="profile-group-description">Where customers and suppliers can reach your business.</p>
+          <div className="profile-fields-grid">
+            {field('phone', 'Phone number', { type: 'tel', maxLength: 10, autoComplete: 'tel', placeholder: '10-digit phone number' })}
+            {field('email', 'Email address', { type: 'email', autoComplete: 'email', placeholder: 'billing@company.com' })}
+            <div className="profile-field profile-field-full">
+              <label htmlFor="profile-address">Billing address</label>
+              <textarea id="profile-address" name="address" className="form-textarea" rows={3}
+                value={formData.address} onChange={handleChange} autoComplete="street-address" placeholder="Full business street address" />
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset className="profile-group">
+          <legend>Tax &amp; payment details</legend>
+          <p className="profile-group-description">Keep the identity on invoices and payment requests accurate.</p>
+          <div className="profile-fields-grid">
+            {field('gstin', 'GSTIN', { maxLength: 15, placeholder: '15-digit GSTIN' })}
+            {field('pan', 'PAN', { maxLength: 10, placeholder: '10-digit PAN' })}
+            {field('state_code', 'GST state code', { maxLength: 2, inputMode: 'numeric', placeholder: 'e.g. 29 for Karnataka' })}
+            {field('upi_vpa', 'UPI ID (VPA)', { placeholder: 'yourname@okhdfcbank', hint: 'Used for payment QR codes and invoices. Leave blank to use your phone number.' })}
+          </div>
+        </fieldset>
+
+        <div className="profile-save-row">
+          <p>Changes apply to your business across billing.</p>
+          <button type="submit" className="btn btn-primary" disabled={loading}>
+            {loading ? <span className="spinner" /> : <CheckIcon size={15} />}
+            {loading ? 'Saving profile…' : 'Save business profile'}
+          </button>
+        </div>
+      </form>
+    </section>
+  )
+
+  return embedded ? content : <AppLayout title="Business Profile">{content}</AppLayout>
 }

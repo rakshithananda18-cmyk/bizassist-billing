@@ -12,6 +12,7 @@
 // ============================================================================
 import { useNavigate } from 'react-router-dom'
 import { CloseIcon, SettingsIcon } from '../Icons'
+import './workspaceTopBar.css'
 
 export const WsDivider = ({ className = '' }) => (
   <div className={className} style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 4px' }} />
@@ -20,6 +21,7 @@ export const WsDivider = ({ className = '' }) => (
 export default function WorkspaceTopBar({
   children,
   actions = null,
+  wrap = false,
   settingsTab = null,
   windowControls = false,
   showMinimize = true,
@@ -29,7 +31,7 @@ export default function WorkspaceTopBar({
   const navigate = useNavigate()
   return (
     <>
-      <div className="ws-top-bar">
+      <div className={`ws-top-bar${wrap ? ' ws-top-bar--wrap' : ''}`}>
         {children}
 
         <div style={{ flex: 1 }} />

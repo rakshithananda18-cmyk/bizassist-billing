@@ -1,4 +1,5 @@
 import React from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
@@ -38,13 +39,50 @@ const SEVERITY = {
 
 const POLL_MS = 5 * 60 * 1000
 
-export default function NotificationBell() {
+export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
   const { authFetch, settings, user } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = React.useState(false)
   const [data, setData] = React.useState({ items: [], count: 0, severity: null })
   const [loading, setLoading] = React.useState(false)
   const boxRef = React.useRef(null)
+  const popoverRef = React.useRef(null)
+  const [popoverPosition, setPopoverPosition] = React.useState({})
+
+  // A footer bell cannot keep its panel inside the sidebar's clipped box.
+  // Position the body portal from the trigger, including the app's display zoom.
+  React.useLayoutEffect(() => {
+    if (!open) return undefined
+    const position = () => {
+      if (!boxRef.current || !popoverRef.current) return
+      const zoom = parseFloat(getComputedStyle(document.documentElement).zoom) || 1
+      const rect = boxRef.current.getBoundingClientRect()
+      const viewportWidth = window.innerWidth / zoom
+      const viewportHeight = window.innerHeight / zoom
+      const width = Math.min(320, viewportWidth - 24)
+      const height = popoverRef.current.getBoundingClientRect().height / zoom
+      const sidebar = placement === 'sidebar' ? boxRef.current.closest('.sidebar') : null
+      const desiredLeft = placement === 'sidebar'
+        ? (sidebar ? sidebar.getBoundingClientRect().right / zoom + 8 : rect.right / zoom + 12)
+        : rect.right / zoom - width
+      const left = Math.max(12, Math.min(desiredLeft, viewportWidth - width - 12))
+      const desiredTop = placement === 'sidebar' ? rect.bottom / zoom - height : rect.bottom / zoom + 8
+      const top = Math.max(12, Math.min(desiredTop, viewportHeight - height - 12))
+      const maxHeight = viewportHeight - 24
+      setPopoverPosition(previous => previous.left === left && previous.top === top && previous.width === width && previous.maxHeight === maxHeight
+        ? previous : { left, top, width, maxHeight })
+    }
+    position()
+    window.addEventListener('resize', position)
+    window.addEventListener('scroll', position, true)
+    const observer = new ResizeObserver(position)
+    observer.observe(popoverRef.current)
+    return () => {
+      window.removeEventListener('resize', position)
+      window.removeEventListener('scroll', position, true)
+      observer.disconnect()
+    }
+  }, [open, placement])
 
   // ── The one item the SERVER cannot answer ────────────────────────────────
   // The offline backup file lands on this device's disk, so "when did you last
@@ -110,7 +148,7 @@ export default function NotificationBell() {
   React.useEffect(() => {
     if (!open) return
     const onDown = (e) => {
-      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false)
+      if (!boxRef.current?.contains(e.target) && !popoverRef.current?.contains(e.target)) setOpen(false)
     }
     const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
     document.addEventListener('mousedown', onDown)
@@ -164,37 +202,39 @@ export default function NotificationBell() {
   const tone = SEVERITY[items[0]?.severity] || SEVERITY.info
 
   return (
-    <div ref={boxRef} style={{ position: 'relative' }}>
+    <div ref={boxRef} style={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
       <button
         type="button"
-        onClick={() => { setOpen(o => !o); if (!open) load() }}
+        onClick={() => {
+          setOpen(o => !o)
+          if (!open) { onOpen?.(); load() }
+        }}
         aria-label={count ? `${count} notification${count === 1 ? '' : 's'}` : 'Notifications'}
         aria-expanded={open}
         title={count ? `${count} thing${count === 1 ? '' : 's'} need attention` : 'Nothing needs attention'}
         style={{
           position: 'relative', display: 'inline-flex', alignItems: 'center',
-          justifyContent: 'center', width: 34, height: 34, borderRadius: 8,
-          background: count ? tone.tint : 'transparent',
-          border: `1px solid ${count ? tone.edge : 'var(--border)'}`,
-          color: count ? tone.dot : 'var(--text-secondary)',
+          justifyContent: 'center', width: 28, height: 28, padding: 0,
+          background: 'transparent', border: 'none',
+          color: count ? tone.dot : (placement === 'sidebar' ? 'var(--sidebar-muted, var(--text-secondary))' : 'var(--text-secondary)'),
           cursor: 'pointer',
         }}
       >
         <BellIcon size={16} />
         {count > 0 && (
           <span style={{
-            position: 'absolute', top: -5, right: -5, minWidth: 16, height: 16,
-            padding: '0 4px', borderRadius: 999, background: tone.dot, color: '#fff',
-            fontSize: '0.62rem', fontWeight: 800, lineHeight: '16px', textAlign: 'center',
+            position: 'absolute', top: -2, right: -2, minWidth: 13, height: 13,
+            padding: '0 3px', borderRadius: 999, background: tone.dot, color: '#fff',
+            fontSize: '0.56rem', fontWeight: 800, lineHeight: '13px', textAlign: 'center',
             fontVariantNumeric: 'tabular-nums',
           }}>{count > 9 ? '9+' : count}</span>
         )}
       </button>
 
-      {open && (
-        <div style={{
-          position: 'absolute', top: 42, right: 0, zIndex: 1200, width: 320,
-          maxHeight: '70vh', overflowY: 'auto',
+      {open && createPortal(
+        <div ref={popoverRef} role="dialog" aria-label="Smart notifications" style={{
+          position: 'fixed', zIndex: 12000, ...popoverPosition,
+          overflowY: 'auto',
           background: 'var(--bg-2, #1a1a1a)', border: '1px solid var(--border)',
           borderRadius: 12, boxShadow: '0 18px 48px rgba(0,0,0,0.45)', padding: 12,
         }}>
@@ -248,7 +288,7 @@ export default function NotificationBell() {
               })}
             </div>
           )}
-        </div>
+        </div>, document.body
       )}
     </div>
   )

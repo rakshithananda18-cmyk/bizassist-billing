@@ -11,7 +11,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
-import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
+import PageTabs from '../components/common/PageTabs'
+import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
 import { useAuth } from '../contexts/AuthContext'
 import { BillsIcon, CheckIcon, SearchIcon, SyncIcon, MessageIcon, ContactsIcon } from '../components/Icons'
 import InvoicesListView from '../components/payments/InvoicesListView'
@@ -64,26 +65,22 @@ export default function Money() {
     return customers.filter(c => (c.name || '').toLowerCase().includes(s) || (c.phone || '').includes(s))
   }, [customers, q])
 
-  const tab = (id, label) => (
-    <button className={`ws-tab ${view === id ? 'active' : ''}`} onClick={() => setView(id)}>{label}</button>
-  )
-
   return (
     <AppLayout title="Money">
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-        <WorkspaceTopBar
-          settingsTab="transactions"
-          windowControls={false}
-          actions={
+        <div className="page-header">
+          <div className="page-header-left">
+            <h1 className="page-title">Money</h1>
+            <p className="page-subtitle">Contacts, invoices, and cash movements in one place</p>
+          </div>
+          <div className="page-actions">
+            <HeaderSearchSlot />
+            <PageTabs inline label="Money pages" tabs={[{id:'parties',label:'Parties'}, {id:'invoices',label:'Invoices'}, {id:'cashbook',label:'Cashbook'}]} active={view} onChange={setView} />
             <button className="btn btn-ghost btn-sm" onClick={refreshAll} title="Refresh" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
               <SyncIcon size={14} /> Refresh
             </button>
-          }
-        >
-          {tab('parties', 'Parties')}
-          {tab('invoices', 'Invoices')}
-          {tab('cashbook', 'Cashbook')}
-        </WorkspaceTopBar>
+          </div>
+        </div>
 
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           {/* ── Parties ── */}

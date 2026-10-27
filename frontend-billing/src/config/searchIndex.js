@@ -46,6 +46,8 @@ export const PAGE_INDEX = [
   { label: 'B2B — Connections',   route: '/b2b?tab=connections',   keywords: 'partners network link' },
   { label: 'Data Migration',      route: '/import',                keywords: 'import csv excel upload', ownerOnly: true },
   { label: 'Settings',            route: '/settings',              keywords: 'preferences configuration options' },
+  { label: 'Business Profile',    route: '/settings?tab=profile',  keywords: 'company branding logo address gstin phone pan upi', ownerOnly: true },
+  { label: 'Appearance',          route: '/settings?tab=general&field=appearance', keywords: 'theme colour color accent palette dark light system' },
   { label: 'Hosting & Sync',      route: '/settings?tab=advanced', keywords: 'cloud backup local sync', ownerOnly: true },
   { label: 'Staff',               route: '/settings?tab=staff',    keywords: 'users roles cashier permissions', ownerOnly: true },
 ]

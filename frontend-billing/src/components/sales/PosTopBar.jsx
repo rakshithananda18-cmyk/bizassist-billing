@@ -7,6 +7,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { CloseIcon, PlusIcon, SettingsIcon, CounterIcon } from '../../components/Icons'
 import CounterMenu from './CounterMenu'
 import CounterModeSwitcher from './CounterModeSwitcher'
+import HeaderSearchSlot from '../common/HeaderSearchSlot'
 import { IS_LOCAL_APP } from '../../config'
 
 // ── Shared inline styles (mirrors inv-top-bar scoped CSS) ───────────────────
@@ -366,6 +367,8 @@ export default function PosTopBar({
           <PlusIcon size={13} /> New Bill
         </TabPill>
       </div>
+
+      <HeaderSearchSlot compact />
 
       {/* ── Shift details custom dropdown (accent colored pill) ── */}
       {shift && !shift.offline && (

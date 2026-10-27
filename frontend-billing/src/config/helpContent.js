@@ -139,7 +139,7 @@ export const HELP_CONTENT = {
 
   '/settings': {
     title: 'Settings',
-    intro: 'App behaviour, hosting mode, staff, printing and data safety.',
+    intro: 'Business profile, appearance, app behaviour, staff, printing and data safety.',
     steps: [
       { t: 'Hosting mode', d: 'Local (this device only), Hybrid (local + cloud sync) or Cloud. Switching runs a guided, merge-safe migration.' },
       { t: 'Staff management — two sectors', d: 'Create staff as CASHIER (sales sector: the billing counter, own counter prefix) or SUPPLY ADDER (stock sector: inventory, label printing, purchase bills). Each sector only sees its own pages; neither sees reports, margins or money settings.' },

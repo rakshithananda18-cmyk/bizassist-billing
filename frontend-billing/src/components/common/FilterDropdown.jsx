@@ -112,7 +112,7 @@ export default function FilterDropdown({ filters = [], className = '', style = {
           <span style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             width: 18, height: 18, borderRadius: '50%',
-            background: 'var(--accent, #f97316)', color: '#fff',
+            background: 'var(--accent-solid, var(--accent, #f97316))', color: 'var(--accent-foreground, #fff)',
             fontSize: '0.65rem', fontWeight: 800, lineHeight: 1,
           }}>{activeCount}</span>
         )}

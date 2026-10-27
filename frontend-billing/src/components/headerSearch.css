@@ -1,0 +1,143 @@
+/* The page header supplies the space calculation: search yields to its tabs. */
+.page-header {
+  container-name: search-header;
+  container-type: inline-size;
+}
+
+.header-search-slot {
+  container: header-search-control / inline-size;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 264px;
+  width: 264px;
+  min-width: 36px;
+  max-width: 100%;
+}
+
+.usearch-header-trigger {
+  --search-peach: #e6a490;
+  --search-lavender: #a27ab7;
+  --search-purple: #6755d8;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 36px;
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: linear-gradient(var(--bg-2), var(--bg-2)) padding-box,
+    linear-gradient(110deg, var(--search-peach), var(--search-lavender) 48%, var(--search-purple)) border-box;
+  background-size: 100% 100%, 110% 100%;
+  background-position: 0 0, 20% 50%;
+  color: var(--text-secondary);
+  box-shadow: -3px 0 12px rgba(230,164,144,.13), 3px 0 12px rgba(103,85,216,.12);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-align: left;
+  animation: search-gradient-drift 12s ease-in-out infinite alternate;
+  transition: box-shadow var(--dur-fast), color var(--dur-fast);
+}
+
+.usearch-header-trigger:hover,
+.usearch-header-trigger:focus-visible {
+  color: var(--text-primary);
+  box-shadow: -3px 0 16px rgba(230,164,144,.23), 3px 0 16px rgba(103,85,216,.21);
+}
+
+@keyframes search-gradient-drift {
+  from { background-position: 0 0, 20% 50%; }
+  to { background-position: 0 0, 80% 50%; }
+}
+
+.usearch-header-trigger > svg { flex-shrink: 0; }
+.usearch-header-hint {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.usearch-header-expand { color: var(--text-muted); }
+.usearch-header-sparkle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #7960c8;
+  animation: search-sparkle-rotate 7s linear infinite;
+  transform-origin: center;
+}
+.dark-mode .usearch-header-sparkle { color: #c5aff3; }
+@keyframes search-sparkle-rotate {
+  0% {
+    transform: rotate(0deg) scale(0.95);
+    opacity: 0.82;
+    filter: drop-shadow(0 0 1px rgba(183,132,204,0.4));
+  }
+  50% {
+    transform: rotate(180deg) scale(1.1);
+    opacity: 1;
+    filter: drop-shadow(0 0 4px rgba(183,132,204,0.8));
+  }
+  100% {
+    transform: rotate(360deg) scale(0.95);
+    opacity: 0.82;
+    filter: drop-shadow(0 0 1px rgba(183,132,204,0.4));
+  }
+}
+
+.usearch-clear-btn:hover {
+  color: var(--text-primary) !important;
+  background-color: var(--bg-3, rgba(255, 255, 255, 0.12)) !important;
+}
+
+/* A compact trigger keeps the same keyboard and screen-reader name. */
+.header-search-slot--compact { flex: 0 0 36px; width: 36px; }
+.header-search-slot--compact .usearch-header-trigger { justify-content: center; padding: 0; }
+.header-search-slot--compact .usearch-header-hint,
+.header-search-slot--compact .usearch-header-sparkle,
+.header-search-slot--compact .usearch-header-expand { display: none; }
+
+.usearch-header-fallback {
+  position: fixed;
+  top: 12px;
+  right: 18px;
+  width: 36px;
+  z-index: 910;
+}
+.usearch-header-fallback .usearch-header-trigger { justify-content: center; padding: 0; }
+.usearch-header-fallback .usearch-header-hint,
+.usearch-header-fallback .usearch-header-sparkle,
+.usearch-header-fallback .usearch-header-expand { display: none; }
+
+/* Also respond to the field's actual allocation when a tab-heavy header is
+   wider than the breakpoint but gives search only a narrow slice. */
+@container header-search-control (max-width: 160px) {
+  .usearch-header-trigger { justify-content: center; padding: 0; }
+  .usearch-header-hint,
+  .usearch-header-sparkle,
+  .usearch-header-expand { display: none; }
+}
+
+@container search-header (max-width: 900px) {
+  .header-search-slot { flex: 0 0 36px; width: 36px; }
+  .header-search-slot .usearch-header-trigger { justify-content: center; padding: 0; }
+  .header-search-slot .usearch-header-hint,
+  .header-search-slot .usearch-header-sparkle,
+  .header-search-slot .usearch-header-expand { display: none; }
+}
+
+@media (max-width: 768px) {
+  .header-search-slot { flex: 0 0 36px; width: 36px; }
+  .header-search-slot .usearch-header-trigger { justify-content: center; padding: 0; }
+  .header-search-slot .usearch-header-hint,
+  .header-search-slot .usearch-header-sparkle,
+  .header-search-slot .usearch-header-expand { display: none; }
+  .usearch-header-fallback { top: 64px; right: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .usearch-header-trigger,
+  .usearch-header-sparkle { animation: none; transition: none; }
+}

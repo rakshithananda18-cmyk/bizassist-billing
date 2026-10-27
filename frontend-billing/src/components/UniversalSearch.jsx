@@ -8,11 +8,9 @@ import {
   TruckIcon, BillsIcon, SettingsIcon, ChevronRightIcon, ExpandIcon, SparkleIcon,
 } from './Icons'
 
-/** Dismissing the floating trigger has to outlive a reload, or the close
- *  button is decoration. The sidebar row is the permanent way back. */
-const HIDE_KEY = 'usearch_fab_hidden'
 import { matchPages, matchSettings, settingsRoute } from '../config/searchIndex'
 import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
+import './headerSearch.css'
 
 /**
  * UniversalSearch — one place to find anything, from anywhere.
@@ -29,14 +27,14 @@ import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
  * out nicely: pages and settings match locally so they paint on the keystroke,
  * while records arrive ~250ms later and the list simply grows — no skeleton.
  *
- * MOUNTED BESIDE PageHelp, not in a top bar, because there is no top bar: the
- * sidebar, the mobile bottom bar and the mobile header are all gated on
- * `!isSalesPage`, so /sales — the page the counter spends its day on — has no
- * chrome at all. One fixed pill covers desktop, mobile and POS with one
- * implementation.
+ * Mounted once by AppLayout, with its trigger portaled into the current
+ * page's explicit HeaderSearchSlot. Pages without a header keep a compact
+ * top-right trigger, including the full-screen billing counter.
  */
 
 const DEBOUNCE_MS = 250
+const SEARCH_HINTS = ['Find anything', 'Find a bill, item or customer', 'Where are my print settings?']
+const QUESTION_HINTS = ['Find anything', 'How are sales doing today?', 'Which invoices need a follow-up?', 'What should I reorder?']
 
 /** Is this typed text a QUESTION, or is it a thing the owner is navigating to?
  *
@@ -89,15 +87,15 @@ function recordRoute(item) {
   }
 }
 
-export default function UniversalSearch() {
+export default function UniversalSearch({ hideTrigger = false }) {
   const { authFetch, user, settings } = useAuth()
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [open, setOpen] = React.useState(false)
-  const [hidden, setHidden] = React.useState(() => {
-    try { return localStorage.getItem(HIDE_KEY) === '1' } catch { return false }
-  })
   const [slot, setSlot] = React.useState(null)
+  const slotRef = React.useRef(null)
+  const [hintIndex, setHintIndex] = React.useState(0)
+  const triggerRef = React.useRef(null)
 
   // ── Ask AI (Phase 1: read-only Q&A) ───────────────────────────────────────
   // `ask` is null until the user explicitly chooses the Ask AI row. NOTHING
@@ -129,6 +127,15 @@ export default function UniversalSearch() {
   // that matters is server-side on /ask/stream.
   const aiSearchOn = settings?.general?.ai_search_enabled !== false
   const aiEligible = isPro && aiSearchOn && !isCashier && !aiUnavailable
+  const hints = aiEligible ? QUESTION_HINTS : SEARCH_HINTS
+  const hint = hints[hintIndex % hints.length]
+
+  React.useEffect(() => {
+    // Keep the prompt still when the user has requested less motion.
+    if (hideTrigger || open || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined
+    const timer = setInterval(() => setHintIndex(index => index + 1), 6500)
+    return () => clearInterval(timer)
+  }, [open, hideTrigger])
 
   // ── Results ───────────────────────────────────────────────────────────────
   const results = React.useMemo(() => {
@@ -341,6 +348,13 @@ export default function UniversalSearch() {
         close(); return
       }
       if (openCombo) { e.preventDefault(); close(); return }
+
+      // The input owns result navigation. A focused button (Clear, Close,
+      // a result or an AI action) keeps its native Enter/Space activation;
+      // preventing that default here would substitute the cursor's result.
+      // The capture shield above still keeps every key away from the POS.
+      if (e.target !== inputRef.current) return
+
       if (e.key === 'ArrowDown') {
         e.preventDefault()
         setCursor(c => Math.min(c + 1, Math.max(results.length - 1, 0)))
@@ -357,25 +371,28 @@ export default function UniversalSearch() {
   }, [open, results, cursor, close, go, ask])
 
   React.useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 0)
+    if (open) setTimeout(() => {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }, 0)
   }, [open])
 
-  // Re-resolved per route, not cached once: /sales renders no sidebar at all,
-  // so the slot node is destroyed and recreated on the way back. A stale
-  // reference would portal into a detached node and silently vanish.
+  // Header slots can mount after the page's initial loading state, or be
+  // replaced when a workspace changes its view. Observe those explicit mount
+  // points so search cannot disappear into a detached header after navigation.
   React.useEffect(() => {
-    setSlot(document.getElementById('usearch-slot'))
+    const resolveSlot = () => {
+      const next = [...document.querySelectorAll('[data-header-search-slot]')]
+        .find(el => !el.closest('[hidden], [aria-hidden="true"]') && getComputedStyle(el).display !== 'none') || null
+      if (slotRef.current === next) return
+      slotRef.current = next
+      setSlot(next)
+    }
+    resolveSlot()
+    const observer = new MutationObserver(resolveSlot)
+    observer.observe(document.body, { childList: true, subtree: true })
+    return () => observer.disconnect()
   }, [pathname])
-
-  const dismiss = React.useCallback(() => {
-    setHidden(true)
-    try { localStorage.setItem(HIDE_KEY, '1') } catch { /* ignore */ }
-  }, [])
-
-  const restore = React.useCallback(() => {
-    setHidden(false)
-    try { localStorage.removeItem(HIDE_KEY) } catch { /* ignore */ }
-  }, [])
 
   // Headers carry their own group's size, so the list states how much of each
   // kind it found without the reader counting rows.
@@ -389,67 +406,31 @@ export default function UniversalSearch() {
     grouped.push({ ...r, index: i })
   })
 
+  const trigger = (
+    <button
+      ref={triggerRef}
+      type="button"
+      className="usearch-header-trigger"
+      onClick={() => {
+        setOpen(true)
+        // Generic hints describe the search box; only an actual suggested
+        // question is useful as a starting query.
+        if (hint.endsWith('?')) setQuery(hint)
+      }}
+      aria-label="Search anything (Ctrl+Space)"
+      aria-haspopup="dialog"
+      aria-expanded={open}
+    >
+      <SearchIcon size={16} />
+      <span className="usearch-header-hint" aria-hidden="true">{hint}</span>
+      {aiEligible && <span className="usearch-header-sparkle" aria-hidden="true"><SparkleIcon size={13} /></span>}
+      <ExpandIcon size={14} className="usearch-header-expand" />
+    </button>
+  )
+
   return (
     <>
-      {/* Floating trigger, or — once dismissed — a row in the sidebar. Never
-          both, and never neither: on /sales there is no sidebar to fall back
-          to, so the trigger stays regardless of the stored preference. */}
-      {(!hidden || !slot) ? (
-        <div className="usearch-dock">
-          <button
-            type="button"
-            className="usearch-fab"
-            onClick={() => setOpen(true)}
-            // No `title`: the native tooltip is a black box that lands on top
-            // of the pill saying exactly what the pill already expanded to
-            // show. aria-label keeps the same text for screen readers, which
-            // cannot see the label animate open.
-            aria-label="Search anything (Ctrl+Space)"
-          >
-            <span className="usearch-search-icon" style={{ display: 'flex' }}><SearchIcon size={17} /></span>
-            <span className="usearch-label">
-              <span style={{ fontWeight: 600, fontSize: '0.78rem' }}>Search</span>
-              <kbd>Ctrl Space</kbd>
-            </span>
-          </button>
-          {slot && (
-            <button
-              type="button"
-              className="usearch-close"
-              onClick={dismiss}
-              aria-label="Hide the search button"
-              title="Hide — search stays in the sidebar"
-            >
-              <CloseIcon size={11} />
-            </button>
-          )}
-        </div>
-      ) : createPortal(
-        // A container, not one button: the row does two different things, and
-        // the expand glyph is the ONLY way back to the floating trigger once
-        // it has been dismissed.
-        <div className="usearch-slot-btn">
-          <button
-            type="button"
-            className="usearch-slot-main"
-            onClick={() => setOpen(true)}
-            title="Search anything (Ctrl+Space)"
-          >
-            <SearchIcon size={14} />
-            <span className="usearch-slot-text">Find anything</span>
-          </button>
-          <button
-            type="button"
-            className="usearch-slot-expand"
-            onClick={restore}
-            aria-label="Show the floating search button again"
-            title="Show the floating search button again"
-          >
-            <ExpandIcon size={13} />
-          </button>
-        </div>,
-        slot,
-      )}
+      {!hideTrigger && (slot ? createPortal(trigger, slot) : <div className="usearch-header-fallback">{trigger}</div>)}
 
       {open && createPortal(
         <div
@@ -487,8 +468,36 @@ export default function UniversalSearch() {
                   color: 'var(--text-primary)', fontSize: '0.92rem',
                 }}
               />
+              {query ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('')
+                    inputRef.current?.focus()
+                  }}
+                  aria-label="Clear search"
+                  title="Clear search"
+                  className="usearch-clear-btn"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 4,
+                    borderRadius: '50%',
+                    flexShrink: 0,
+                    transition: 'color var(--dur-fast), background var(--dur-fast)',
+                  }}
+                >
+                  <CloseIcon size={14} />
+                </button>
+              ) : null}
               <button type="button" onClick={close} aria-label="Close search"
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}>
+                title="Close search"
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 4, borderRadius: 6, flexShrink: 0 }}>
                 <CloseIcon size={15} />
               </button>
             </div>
@@ -581,30 +590,12 @@ export default function UniversalSearch() {
               ))}
             </div>
 
-            {/* The palette is keyboard-first; say so rather than leaving it to
-                be discovered. Hints appear once there is something to move
-                through; the restore whenever the trigger is put away. */}
-            {(results.length > 0 || (hidden && slot)) && (
+            {/* Keyboard hints appear once there are results to move through. */}
+            {results.length > 0 && (
               <div className="usearch-foot">
-                {results.length > 0 && (
-                  <>
-                    <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
-                    <span><kbd>↵</kbd> open</span>
-                    <span><kbd>esc</kbd> close</span>
-                  </>
-                )}
-                {/* The sidebar row's own glyph does this too, but it is
-                    display:none in the 56px rail — so without this there is
-                    no way back to the floating trigger while collapsed. */}
-                {hidden && slot && (
-                  <button
-                    type="button"
-                    className="usearch-restore"
-                    onClick={() => { restore(); close() }}
-                  >
-                    <ExpandIcon size={12} /> Show floating button
-                  </button>
-                )}
+                <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
+                <span><kbd>↵</kbd> open</span>
+                <span><kbd>esc</kbd> close</span>
               </div>
             )}
           </div>

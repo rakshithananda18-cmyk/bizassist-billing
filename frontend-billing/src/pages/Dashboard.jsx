@@ -6,8 +6,8 @@
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
+import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
 import ActivityFeed from '../components/ActivityFeed'
-import NotificationBell from '../components/NotificationBell'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { logger } from '../utils/logger'
@@ -175,13 +175,13 @@ export default function Dashboard() {
                 : 'Live business overview — transactions, stock & payments'}
             </p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="page-actions">
+            <HeaderSearchSlot />
             {isRefreshing && (
               <span className="toolbar-refresh-spinner">
                 <span className="spin" /> Refreshing…
               </span>
             )}
-            <NotificationBell />
           </div>
         </div>
 

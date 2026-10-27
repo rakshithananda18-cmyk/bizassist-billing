@@ -12,6 +12,7 @@ import { resolveTemplate, templateOptions, FALLBACK_TEMPLATE } from './registry'
 import PrintPortal, { triggerPrint } from './PrintPortal'
 import { shareInvoice, buildWhatsAppLink, buildPublicInvoiceLink } from './share'
 import PageLoader from '../components/PageLoader'
+import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
 import InvoiceAccountPanel from '../components/invoice/InvoiceAccountPanel'
 import { PhoneIcon, DownloadIcon } from '../components/Icons'
 import { useDocLabels } from '../hooks/useDocLabels'
@@ -234,6 +235,7 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
         <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
 
         {/* Template tabs */}
+        <HeaderSearchSlot compact />
         <div role="tablist" aria-label="Invoice template" style={{ display: 'flex', gap: 3, background: 'var(--bg-4, var(--bg-1))', borderRadius: 'var(--radius-sm)', padding: '3px' }}>
           {templateOptions().map((opt) => (
             <button

@@ -11,6 +11,7 @@ import { API_BASE } from './config'
 import { logger } from './utils/logger'
 import { useRealtimeLeader } from './hooks/useRealtimeLeader'
 import { IS_LOCAL_APP } from './config'
+import { useAppearance } from './hooks/useAppearance'
 
 // Pages
 import Login     from './pages/Login'
@@ -24,7 +25,6 @@ import Money     from './pages/Money'
 import Reports   from './pages/Reports'
 import Import    from './pages/Import'
 import B2B       from './pages/B2B'
-import Profile     from './pages/Profile'
 import Settings    from './pages/Settings'
 import POSLiveCounter from './pages/POSLiveCounter'
 import InvoiceViewer  from './invoice/InvoiceViewer'
@@ -33,6 +33,11 @@ import Support from './pages/Support'
 import AppLayout from './layouts/AppLayout'
 import StockWorkspace from './pages/StockWorkspace'
 
+
+function AppearanceSync() {
+  useAppearance()
+  return null
+}
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -69,7 +74,7 @@ function AppRoutes() {
       <Route path="/b2b"         element={<ProtectedRoute><B2B /></ProtectedRoute>} />
       <Route path="/b2b-network" element={<Navigate to="/b2b?tab=connections" replace />} />
       <Route path="/b2b-orders"  element={<Navigate to="/b2b?tab=outgoing" replace />} />
-      <Route path="/profile"     element={<ProtectedRoute><Profile     /></ProtectedRoute>} />
+      <Route path="/profile"     element={<ProtectedRoute><Navigate to="/settings?tab=profile" replace /></ProtectedRoute>} />
       <Route path="/settings"    element={<ProtectedRoute><Settings    /></ProtectedRoute>} />
       <Route path="/support"     element={<ProtectedRoute><Support     /></ProtectedRoute>} />
       <Route path="/pos-live-counter"    element={<ProtectedRoute><POSLiveCounter    /></ProtectedRoute>} />
@@ -301,6 +306,7 @@ export default function App() {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
+        <AppearanceSync />
         <LockProvider>
           <ConfirmProvider>
             {/* Lock screen intercepts entire UI when session is locked */}

@@ -52,7 +52,7 @@ export function Toggle({ checked, onChange, id, disabled = false }) {
         position: 'absolute',
         inset: 0,
         borderRadius: 24,
-        background: checked ? 'var(--accent)' : 'var(--border)',
+        background: checked ? 'var(--accent-solid, var(--accent))' : 'var(--border)',
         transition: 'background 0.2s',
         opacity: disabled ? 0.5 : 1,
       }} />

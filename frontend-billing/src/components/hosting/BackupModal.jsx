@@ -306,7 +306,7 @@ export default function BackupModal({ token, direction = 'both', onComplete, onE
 
         {/* Progress bar */}
         <div style={{ height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 99, overflow: 'hidden', marginBottom: 18 }}>
-          <div style={{ height: '100%', width: `${progress}%`, background: failed ? '#ef4444' : done ? '#22c55e' : 'var(--accent)', borderRadius: 99, transition: 'width 0.35s ease' }} />
+          <div style={{ height: '100%', width: `${progress}%`, background: failed ? '#ef4444' : done ? '#22c55e' : 'var(--accent-solid, var(--accent))', borderRadius: 99, transition: 'width 0.35s ease' }} />
         </div>
 
         {/* Step list */}
@@ -393,7 +393,7 @@ export default function BackupModal({ token, direction = 'both', onComplete, onE
                 setErrorMsg(null); setProgress(0); setResults({})
                 run()
               }}
-                style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <SyncIcon size={14} /> Retry
               </button>
             )}

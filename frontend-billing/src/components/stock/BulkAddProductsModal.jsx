@@ -58,8 +58,8 @@ function Tab({ active, onClick, children }) {
         cursor: 'pointer',
         fontWeight: 700,
         fontSize: '0.8rem',
-        background: active ? 'var(--accent)' : 'transparent',
-        color: active ? '#fff' : 'var(--text-muted)',
+        background: active ? 'var(--accent-solid, var(--accent))' : 'transparent',
+        color: active ? 'var(--accent-foreground, #fff)' : 'var(--text-muted)',
         transition: 'all 0.15s',
       }}
     >

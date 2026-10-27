@@ -1,5 +1,5 @@
 // ============================================================================
-// common/PageTabs.jsx — underline tab strip (same look as Settings' tabs).
+// common/PageTabs.jsx — shared segmented navigation for workspace pages.
 // ----------------------------------------------------------------------------
 // tabs: [{ id, label, icon? }] · active: id · onChange(id)
 // inline: render compactly inside a page's own toolbar row (no full-width
@@ -7,45 +7,45 @@
 //         sit where the page's stale title used to be, on ONE header row.
 // ============================================================================
 
-export default function PageTabs({ tabs, active, onChange, inline = false }) {
-  const containerStyle = inline
-    ? { display: 'flex', gap: 2, alignItems: 'center', flexShrink: 0 }
-    : {
-        display: 'flex',
-        gap: 4,
-        borderBottom: '1px solid var(--border)',
-        background: 'var(--bg-2)',
-        overflowX: 'auto',
-        padding: '0 24px',
-        flexShrink: 0,
-      }
+import React, { useLayoutEffect, useRef } from 'react'
+import './pageTabs.css'
+
+export default function PageTabs({ tabs, active, onChange, inline = false, label = 'Workspace pages' }) {
+  const containerRef = useRef(null)
+  useLayoutEffect(() => {
+    const list = containerRef.current
+    const selected = list?.querySelector('[aria-selected="true"]')
+    if (!selected) return
+    const bounds = list.getBoundingClientRect()
+    const item = selected.getBoundingClientRect()
+    // Reveal a deep-linked section without moving the page's vertical scroll.
+    if (item.left < bounds.left) list.scrollLeft += item.left - bounds.left - 5
+    else if (item.right > bounds.right) list.scrollLeft += item.right - bounds.right + 5
+  }, [active, tabs.length])
+  const moveFocus = (event, index) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+      : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length
+    containerRef.current?.querySelectorAll('[role="tab"]')[next]?.focus()
+    onChange(tabs[next].id)
+  }
   return (
-    <div style={containerStyle}>
-      {tabs.map(tab => (
+    <div ref={containerRef} className={`page-tabs${inline ? ' page-tabs--inline' : ''}`} role="tablist" aria-label={label}>
+      {tabs.map((tab, index) => (
         <button
+          type="button"
+          role="tab"
           key={tab.id}
+          className={`page-tab${active === tab.id ? ' is-active' : ''}`}
+          aria-selected={active === tab.id}
+          tabIndex={active === tab.id ? 0 : -1}
           onClick={() => onChange(tab.id)}
-          style={{
-            background: 'none',
-            border: 'none',
-            padding: inline ? '8px 12px' : '12px 18px',
-            cursor: 'pointer',
-            // Workspace tabs are the page HEADING — give them more presence
-            // than the filter pills beside them.
-            fontSize: inline ? '0.9rem' : '0.83rem',
-            fontWeight: active === tab.id ? 800 : 600,
-            letterSpacing: inline ? '0.01em' : undefined,
-            color: active === tab.id ? 'var(--accent)' : 'var(--text-muted)',
-            borderBottom: active === tab.id ? '2.5px solid var(--accent)' : '2.5px solid transparent',
-            marginBottom: -1,
-            whiteSpace: 'nowrap',
-            transition: 'all 0.15s',
-          }}
+          onKeyDown={event => moveFocus(event, index)}
         >
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {tab.icon}
-            <span>{tab.label}</span>
-          </span>
+          {tab.icon}
+          <span>{tab.label}</span>
+          {tab.badge > 0 && <span className="page-tab-count">{tab.badge}</span>}
         </button>
       ))}
     </div>

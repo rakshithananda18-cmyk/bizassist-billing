@@ -15,8 +15,17 @@ import { logger } from '../../utils/logger'
 import { downloadBackupFile } from '../../utils/backupFile'
 import { ShieldIcon } from '../Icons'
 import { useConfirm } from '../../contexts/ConfirmContext'
+import { Toggle } from '../settings/SettingsPrimitives'
+import CustomSelect from '../common/CustomSelect'
 
-export default function FileBackupCard({ token, bizId = '' }) {
+export default function FileBackupCard({
+  token,
+  bizId = '',
+  autoBackup = false,
+  onAutoBackupChange,
+  backupReminderDays = 7,
+  onReminderDaysChange,
+}) {
   const confirm = useConfirm()
   const [busy, setBusy] = useState(null)          // 'backup' | 'restore' | null
   const [msg, setMsg] = useState(null)            // { ok, text }
@@ -82,38 +91,87 @@ export default function FileBackupCard({ token, bizId = '' }) {
 
   const btnStyle = (primary) => ({
     flexShrink: 0, padding: '8px 14px', borderRadius: 8,
-    background: primary ? 'var(--accent)' : 'rgba(255,255,255,0.06)',
-    color: primary ? '#fff' : 'var(--text-primary)',
-    border: primary ? 'none' : '1px solid rgba(255,255,255,0.14)',
+    background: primary ? 'var(--accent-solid, var(--accent))' : 'var(--bg-3)',
+    color: primary ? 'var(--accent-foreground, #fff)' : 'var(--text-primary)',
+    border: primary ? 'none' : '1px solid var(--border)',
     cursor: busy ? 'wait' : 'pointer', fontSize: '0.8rem', fontWeight: 700,
     display: 'inline-flex', alignItems: 'center', gap: 6, opacity: busy ? 0.7 : 1,
   })
 
   return (
     <div style={{
-      marginTop: 14, padding: '12px 14px', borderRadius: 10,
-      background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)',
+      padding: '14px 16px', borderRadius: 10,
+      minWidth: 0,
+      background: 'var(--bg-2)', border: '1px solid var(--border)',
+      display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 12,
     }}>
-      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <ShieldIcon size={15} /> Backup to file
+      <div>
+        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+          <ShieldIcon size={15} /> Backup to file
+        </div>
+        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 10 }}>
+          Download a complete copy of your business data as one file — your insurance against a
+          dead hard disk or a lost laptop. Restoring merges the file back in (newer records win, nothing is deleted).
+          {lastBackup && <span> Last file backup: <b>{lastBackup}</b>.</span>}
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button onClick={downloadBackup} disabled={!!busy} style={btnStyle(true)}>
+            {busy === 'backup' ? 'Preparing…' : 'Download backup file'}
+          </button>
+          <button onClick={() => fileRef.current?.click()} disabled={!!busy} style={btnStyle(false)}>
+            {busy === 'restore' ? 'Restoring…' : 'Restore from file'}
+          </button>
+          <input ref={fileRef} type="file" accept=".json,application/json" onChange={restoreFromFile} style={{ display: 'none' }} />
+        </div>
+        {msg && (
+          <div style={{ marginTop: 8, fontSize: '0.74rem', fontWeight: 600, color: msg.ok ? '#22c55e' : '#ef4444' }}>
+            {msg.ok ? '✓ ' : ''}{msg.text}
+          </div>
+        )}
       </div>
-      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 10 }}>
-        Download a complete copy of your business data as one file — your insurance against a
-        dead hard disk or a lost laptop. Restoring merges the file back in (newer records win, nothing is deleted).
-        {lastBackup && <span> Last file backup: <b>{lastBackup}</b>.</span>}
-      </div>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button onClick={downloadBackup} disabled={!!busy} style={btnStyle(true)}>
-          {busy === 'backup' ? 'Preparing…' : 'Download backup file'}
-        </button>
-        <button onClick={() => fileRef.current?.click()} disabled={!!busy} style={btnStyle(false)}>
-          {busy === 'restore' ? 'Restoring…' : 'Restore from file'}
-        </button>
-        <input ref={fileRef} type="file" accept=".json,application/json" onChange={restoreFromFile} style={{ display: 'none' }} />
-      </div>
-      {msg && (
-        <div style={{ marginTop: 8, fontSize: '0.74rem', fontWeight: 600, color: msg.ok ? '#22c55e' : '#ef4444' }}>
-          {msg.ok ? '✓ ' : ''}{msg.text}
+
+      {typeof onAutoBackupChange === 'function' && (
+        <div style={{
+          marginTop: 6,
+          paddingTop: 12,
+          borderTop: '1px solid var(--border)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                Auto Backup
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                Periodically remind to export your backup files for storage.
+              </div>
+            </div>
+            <Toggle
+              id="card_auto_backup"
+              checked={!!autoBackup}
+              onChange={onAutoBackupChange}
+            />
+          </div>
+
+          {autoBackup && onReminderDaysChange && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                Reminder Interval:
+              </span>
+              <CustomSelect
+                className="form-input"
+                style={{ width: 160 }}
+                value={backupReminderDays ?? 7}
+                onChange={onReminderDaysChange}
+              >
+                <option value={7}>Every 7 Days</option>
+                <option value={15}>Every 15 Days</option>
+                <option value={30}>Every 30 Days</option>
+              </CustomSelect>
+            </div>
+          )}
         </div>
       )}
     </div>

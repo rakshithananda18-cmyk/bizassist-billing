@@ -482,10 +482,10 @@ export function PlugIcon({ size, strokeWidth, className }) {
   )
 }
 
-export function SparkleIcon({ size, strokeWidth, className }) {
+export function SparkleIcon({ size, strokeWidth, className, fill = "currentColor" }) {
   return (
-    <svg {...defaultSvgProps(size, strokeWidth, className)}>
-      <path d="M12 2L14 9L21 12L14 15L12 22L10 15L3 12L10 9L12 2Z" />
+    <svg {...defaultSvgProps(size, strokeWidth, className)} fill={fill}>
+      <path d="M12 2L14 9L21 12L14 15L12 22L10 15L3 12L10 9L12 2Z" fill={fill} stroke={fill} />
     </svg>
   )
 }

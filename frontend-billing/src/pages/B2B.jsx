@@ -27,7 +27,8 @@ import {
   AlertIcon, BellIcon, CartIcon, CheckIcon, CloseIcon, ConnectionIcon,
   DownloadIcon, ImportIcon, TruckIcon,
 } from '../components/Icons'
-import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
+import PageTabs from '../components/common/PageTabs'
+import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
 import { useForegroundRefresh } from '../hooks/useForegroundRefresh'
 // One import surface for the whole B2B module (src/b2b/index.js). Keeping the
 // page's knowledge of B2B down to this single line is what makes the module
@@ -337,31 +338,15 @@ export default function B2B() {
             <p className="page-subtitle">Connect with suppliers & customers, manage purchase orders, and track live order status</p>
           </div>
           <div className="page-actions">
+            <HeaderSearchSlot />
+            <PageTabs inline label="B2B pages" tabs={TABS.map(({ key, label, icon: Icon }) => ({ id: key, label, icon: <Icon size={15} />, badge: badges[key] }))} active={tab} onChange={goTab} />
+          </div>
+        </div>
+        <div className="workspace-context-row">
             <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>
               {myBizId ? <>BizID <span className="td-mono" style={{ color: 'var(--accent)', fontWeight: 700 }}>{myBizId}</span></> : null}
             </span>
-          </div>
         </div>
-
-        <WorkspaceTopBar
-          windowControls={false}
-        >
-          <span className="ws-workspace-title">
-            <ConnectionIcon size={16} /> B2B
-          </span>
-          <WsDivider />
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              className={`ws-tab ${tab === key ? 'active' : ''}`}
-              onClick={() => goTab(key)}
-            >
-              <Icon size={14} />
-              {label}
-              {badges[key] > 0 && <span className="b2b-tab-count is-alert">{badges[key]}</span>}
-            </button>
-          ))}
-        </WorkspaceTopBar>
 
         <div className="b2b-body">
         <OfflineNotice status={b2bStatus} />

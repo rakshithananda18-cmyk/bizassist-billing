@@ -16,6 +16,9 @@ import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
 import PageHelp from '../components/PageHelp'
 import UniversalSearch from '../components/UniversalSearch'
+import NotificationBell from '../components/NotificationBell'
+import BusinessName from '../components/BusinessName'
+import { useAppearance } from '../hooks/useAppearance'
 import SyncNudgeModal from '../components/hosting/SyncNudgeModal'
 import WebLocalOnlyNotice from '../components/hosting/WebLocalOnlyNotice'
 import SidebarContextMenu from '../components/layout/SidebarContextMenu'
@@ -120,6 +123,18 @@ export default function AppLayout({ children, title }) {
   const navigate = useNavigate()
   const location = useLocation()
   const label = useDocLabels()
+  const pageContentRef = React.useRef(null)
+
+  React.useLayoutEffect(() => {
+    const content = pageContentRef.current
+    const header = content?.querySelector('.page-header')
+    if (!header) return
+    const measure = () => content.style.setProperty('--page-header-h', `${header.offsetHeight}px`)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(header)
+    return () => { observer.disconnect(); content.style.removeProperty('--page-header-h') }
+  }, [location.pathname])
 
   // Quick actions surfaced in the sidebar right-click menu.
   // Each entry: { label, icon: <SvgComponent />, action(navigate) }
@@ -687,47 +702,7 @@ export default function AppLayout({ children, title }) {
   }, [location.pathname])
 
   // Theme support
-  const [theme, setTheme] = React.useState(() => {
-    // Default to 'system' so the app follows the OS light/dark setting out of the
-    // box (matches the boot script in index.html). Explicit choices still win.
-    return localStorage.getItem('billing_theme') || 'system'
-  })
-
-  React.useEffect(() => {
-    const root = document.documentElement
-    root.classList.remove('dark-mode')
-    
-    const applyTheme = (t) => {
-      if (t === 'dark') {
-        root.classList.add('dark-mode')
-      } else if (t === 'light') {
-        root.classList.remove('dark-mode')
-      } else if (t === 'system') {
-        const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-        if (isSystemDark) {
-          root.classList.add('dark-mode')
-        } else {
-          root.classList.remove('dark-mode')
-        }
-      }
-    }
-    
-    applyTheme(theme)
-    localStorage.setItem('billing_theme', theme)
-    
-    if (theme === 'system') {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-      const handler = (e) => {
-        if (e.matches) {
-          root.classList.add('dark-mode')
-        } else {
-          root.classList.remove('dark-mode')
-        }
-      }
-      mediaQuery.addEventListener('change', handler)
-      return () => mediaQuery.removeEventListener('change', handler)
-    }
-  }, [theme])
+  const { theme, setTheme } = useAppearance()
 
   // One-time notice the first time the app auto-adopts the OS theme (i.e. the
   // user never picked one). Captured before the theme effect persists 'system'.
@@ -764,6 +739,18 @@ export default function AppLayout({ children, title }) {
     try { return localStorage.getItem('billing_sidebar_collapsed') === 'true' }
     catch { return false }
   })
+  const [isMobileViewport, setIsMobileViewport] = React.useState(() =>
+    window.matchMedia('(max-width: 768px)').matches
+  )
+  React.useEffect(() => {
+    const media = window.matchMedia('(max-width: 768px)')
+    const update = () => setIsMobileViewport(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  // The mobile drawer always opens at full width, retaining the desktop choice.
+  const sidebarInRailMode = sidebarCollapsed && !isMobileViewport
 
   // Routes that want the width more than they want the nav. Entering one
   // collapses the rail; LEAVING restores whatever the owner's saved preference
@@ -1016,20 +1003,23 @@ export default function AppLayout({ children, title }) {
 
       {/* ── Sidebar ── */}
       {!isSalesPage && (
-        <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
+        <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''} ${sidebarInRailMode ? 'collapsed' : ''}`}>
           {/* Collapse to an icon rail — same affordance as frontend-ai's
               AppLayout. Hidden on mobile, where the drawer and the bottom bar
               already handle navigation and a rail would just be a third way to
               do the same thing. */}
           <button
             type="button"
-            className="sidebar-collapse-btn hide-on-mobile"
+            className="sidebar-collapse-btn"
             onClick={toggleSidebarCollapsed}
             aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             aria-expanded={!sidebarCollapsed}
             title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            {sidebarCollapsed ? '›' : '‹'}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+            </svg>
           </button>
           {/* Brand */}
           <div className="sidebar-brand">
@@ -1039,7 +1029,7 @@ export default function AppLayout({ children, title }) {
               <BuildingMark size={30} />
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="brand-name">{profile?.business_name || user?.business_name || 'BizAssist'}</div>
+              <div className="brand-name"><BusinessName>{profile?.business_name || user?.business_name || 'BizAssist'}</BusinessName></div>
               {isSyncOn && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <div
@@ -1073,7 +1063,7 @@ export default function AppLayout({ children, title }) {
                         || (effectiveMode === 'hybrid'
                             ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger, #ef4444)' :
                                queueDepth.pending_count > 0 ? 'var(--warning, #f59e0b)' :
-                               !syncHealth.isOnline ? 'var(--text-muted)' : 'var(--success, #22c55e)')
+                                !syncHealth.isOnline ? 'var(--sidebar-muted, var(--text-muted))' : 'var(--success, #22c55e)')
                             : (syncHealth.status === 'connected' ? 'var(--success, #22c55e)' :
                                syncHealth.status === 'connecting' ? 'var(--warning, #f59e0b)' :
                                'var(--danger, #ef4444)')),
@@ -1172,9 +1162,9 @@ export default function AppLayout({ children, title }) {
                     }}
                     style={{
                       background: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid var(--border)',
+                      border: '1px solid var(--sidebar-border, var(--border))',
                       padding: '3px',
-                      color: 'var(--text-muted, #718096)',
+                      color: 'var(--sidebar-muted, var(--text-muted, #718096))',
                       cursor: 'pointer',
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -1184,11 +1174,11 @@ export default function AppLayout({ children, title }) {
                       marginTop: '4px'
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.color = 'var(--text-primary)'
+                      e.currentTarget.style.color = 'var(--sidebar-text, var(--text-primary))'
                       e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)'
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.color = 'var(--text-muted)'
+                      e.currentTarget.style.color = 'var(--sidebar-muted, var(--text-muted))'
                       e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'
                     }}
                     title="Refresh Page Content"
@@ -1207,7 +1197,7 @@ export default function AppLayout({ children, title }) {
               style={{
                 background: 'none',
                 border: 'none',
-                color: 'var(--text-muted)',
+                color: 'var(--sidebar-muted, var(--text-muted))',
                 cursor: 'pointer',
                 padding: '4px',
                 display: 'none',
@@ -1990,8 +1980,8 @@ export default function AppLayout({ children, title }) {
                     style={{
                       width: '100%',
                       padding: '6px 12px',
-                      backgroundColor: 'var(--accent, #3b82f6)',
-                      color: '#fff',
+                      backgroundColor: 'var(--accent-solid, var(--accent, #3b82f6))',
+                      color: 'var(--accent-foreground, #fff)',
                       border: 'none',
                       borderRadius: 'var(--radius-sm, 4px)',
                       cursor: 'pointer',
@@ -2076,7 +2066,7 @@ export default function AppLayout({ children, title }) {
                       <span style={{
                         display: 'flex',
                         alignItems: 'center',
-                        color: 'var(--text-secondary)',
+                        color: 'var(--sidebar-muted, var(--text-secondary))',
                         transition: 'transform var(--dur) var(--ease)',
                         transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)'
                       }}>
@@ -2133,11 +2123,11 @@ export default function AppLayout({ children, title }) {
                                 could not hide, so "Dashboard BIZASSIST" spilled
                                 out of the 56px rail. */}
                             <span className="nav-label">{label}</span>
-                            {gated && !sidebarCollapsed && (
+                            {gated && !sidebarInRailMode && (
                               <span style={{
                                 marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 800,
                                 letterSpacing: '0.08em', padding: '2px 6px', borderRadius: 6,
-                                background: 'var(--accent)', color: '#fff'
+                                background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)'
                               }}>PRO</span>
                             )}
                           </a>
@@ -2190,14 +2180,14 @@ export default function AppLayout({ children, title }) {
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.02em' }}>
-                    <ZapIcon size={14} style={{ color: 'var(--accent)', marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Minimized Invoice
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--sidebar-text, var(--text-primary))', letterSpacing: '0.02em' }}>
+                    <ZapIcon size={14} style={{ color: 'inherit', marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Minimized Invoice
                   </span>
                   <button
                     style={{
                       background: 'none',
                       border: 'none',
-                      color: 'var(--text-muted)',
+                      color: 'var(--sidebar-muted, var(--text-muted))',
                       cursor: 'pointer',
                       fontSize: '0.75rem',
                       padding: '2px 4px',
@@ -2226,10 +2216,10 @@ export default function AppLayout({ children, title }) {
                     }}
                    aria-label="Close"><CloseIcon size={16} /></button>
                 </div>
-                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--sidebar-text, var(--text-primary))' }}>
                   {minimizedBill.name} {minimizedBill.tabsCount > 1 ? `(+${minimizedBill.tabsCount - 1} tabs)` : ''}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--sidebar-muted, var(--text-secondary))', marginTop: 2 }}>
                   <span>{minimizedBill.itemsCount} items</span>
                   <span style={{ fontWeight: 700, color: 'var(--success)' }}>
                     ₹{minimizedBill.totalAmt.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
@@ -2255,14 +2245,14 @@ export default function AppLayout({ children, title }) {
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.02em' }}>
-                    <ZapIcon size={14} style={{ color: 'var(--accent)', marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Live View: {minimizedLive.counter}
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--sidebar-text, var(--text-primary))', letterSpacing: '0.02em' }}>
+                    <ZapIcon size={14} style={{ color: 'inherit', marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Live View: {minimizedLive.counter}
                   </span>
                   <button
                     style={{
                       background: 'none',
                       border: 'none',
-                      color: 'var(--text-muted)',
+                      color: 'var(--sidebar-muted, var(--text-muted))',
                       cursor: 'pointer',
                       fontSize: '0.75rem',
                       padding: '2px 4px',
@@ -2293,10 +2283,10 @@ export default function AppLayout({ children, title }) {
                     }}
                    aria-label="Close"><CloseIcon size={16} /></button>
                 </div>
-                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--sidebar-text, var(--text-primary))' }}>
                   {minimizedLive.name}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--sidebar-muted, var(--text-secondary))', marginTop: 2 }}>
                   <span>{minimizedLive.itemsCount} items</span>
                   <span style={{ fontWeight: 700, color: 'var(--success)' }}>
                     ₹{minimizedLive.totalAmt.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
@@ -2305,12 +2295,6 @@ export default function AppLayout({ children, title }) {
               </div>
             )}
             
-            {/* Where UniversalSearch puts its sidebar row once the floating
-                trigger is dismissed — directly above the profile. Empty until
-                then; the component portals into it, so the search state stays
-                in one file. */}
-            <div id="usearch-slot" />
-
             {showProfileMenu && (
               <div className="profile-menu" ref={profileMenuRef} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                 <div className="profile-menu-header">
@@ -2318,8 +2302,8 @@ export default function AppLayout({ children, title }) {
                   <div className="profile-menu-sub">Enterprise Account</div>
                 </div>
                 <div className="profile-menu-sep" />
-                <Link className="profile-menu-item" to="/profile" onClick={() => setShowProfileMenu(false)}>
-                  <UserIcon size={14} /> My Profile
+                <Link className="profile-menu-item" to="/settings?tab=profile" onClick={() => setShowProfileMenu(false)}>
+                  <UserIcon size={14} /> Business Profile
                 </Link>
                 <Link className="profile-menu-item" to="/settings" onClick={() => setShowProfileMenu(false)}>
                   <SettingsIcon size={14} /> App Settings
@@ -2378,20 +2362,25 @@ export default function AppLayout({ children, title }) {
               </div>
             )}
 
-            <div className="user-chip" title="Settings & Profile" ref={userChipRef} onClick={() => setShowProfileMenu(!showProfileMenu)}>
-              <div className="user-avatar">
-                {profile?.logo ? (
-                  <img src={profile.logo} alt="Logo" />
-                ) : (
-                  initials
-                )}
-              </div>
-              <div className="user-info">
-                <div className="user-name">{profile?.business_name || user?.username || 'User'}</div>
-                <div className="user-role">
-                  Settings Menu
+            <div className="sidebar-profile-row">
+              <div className="user-chip" title="Settings & Profile" ref={userChipRef} onClick={() => setShowProfileMenu(!showProfileMenu)}>
+                <div className="user-avatar">
+                  {profile?.logo ? (
+                    <img src={profile.logo} alt="Logo" />
+                  ) : (
+                    initials
+                  )}
+                </div>
+                <div className="user-info">
+                  <div className="user-name"><BusinessName>{profile?.business_name || user?.username || 'User'}</BusinessName></div>
+                  <div className="user-role">
+                    Settings Menu
+                  </div>
                 </div>
               </div>
+              {!isCashier && !isSupplyAdder && !isMobileViewport && (
+                <NotificationBell placement="sidebar" onOpen={() => setShowProfileMenu(false)} />
+              )}
             </div>
           </div>
         </aside>
@@ -2470,10 +2459,14 @@ export default function AppLayout({ children, title }) {
               <BuildingMark size={22} />
             )}
             <span className="mobile-brand-name">
-              {profile?.business_name || user?.business_name || 'BizAssist'}
+              <BusinessName>{profile?.business_name || user?.business_name || 'BizAssist'}</BusinessName>
             </span>
           </div>
 
+          <div className="mobile-profile-actions">
+          {isMobileViewport && !isCashier && !isSupplyAdder && (
+            <NotificationBell onOpen={() => setShowProfileMenu(false)} />
+          )}
           <div className="mobile-user-avatar-wrapper" ref={userChipRef}>
             <div
               className="mobile-user-avatar"
@@ -2494,8 +2487,8 @@ export default function AppLayout({ children, title }) {
                   <div className="profile-menu-sub">Enterprise Account</div>
                 </div>
                 <div className="profile-menu-sep" />
-                <Link className="profile-menu-item" to="/profile" onClick={() => setShowProfileMenu(false)}>
-                  <UserIcon size={14} /> My Profile
+                <Link className="profile-menu-item" to="/settings?tab=profile" onClick={() => setShowProfileMenu(false)}>
+                  <UserIcon size={14} /> Business Profile
                 </Link>
                 <Link className="profile-menu-item" to="/settings" onClick={() => setShowProfileMenu(false)}>
                   <SettingsIcon size={14} /> App Settings
@@ -2553,6 +2546,7 @@ export default function AppLayout({ children, title }) {
               </div>
             )}
           </div>
+          </div>
         </header>
       )}
 
@@ -2568,13 +2562,13 @@ export default function AppLayout({ children, title }) {
       <div className="main-area">
 
         {/* ── Page content ── */}
-        <main className="page-content" style={{ position: 'relative' }}>
+        <main ref={pageContentRef} className="page-content" style={{ position: 'relative' }}>
           {/* ⓘ page help — one mount point, per-route content (config/helpContent.js) */}
           <PageHelp />
           {/* Beside PageHelp deliberately: this mount point is NOT gated on
               `!isSalesPage`, so search survives on /sales where the sidebar,
               bottom bar and mobile header are all hidden. */}
-          <UniversalSearch />
+          <UniversalSearch hideTrigger={location.pathname === '/'} />
           {children}
         </main>
       </div>

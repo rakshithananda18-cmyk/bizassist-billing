@@ -8,6 +8,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
+import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
 import { useAuth } from '../contexts/AuthContext'
 import { useReadinessProbe } from '../hooks/useReadinessProbe'
 import { logger } from '../utils/logger'
@@ -453,6 +454,7 @@ export default function POSLiveCounter() {
             <p className="page-subtitle">Watch each till in real time — active carts, cashier presence, and LAN/cloud network status</p>
           </div>
           <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <HeaderSearchSlot compact />
             {/* Stat chips */}
             {isOwner && tiles.length > 0 && (
               <>
@@ -520,7 +522,7 @@ export default function POSLiveCounter() {
                 <button
                   onClick={() => navigate('/settings?tab=network')}
                   style={{
-                    background: 'var(--accent)', color: '#fff', border: 'none',
+                    background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', border: 'none',
                     padding: '10px 24px', borderRadius: 8, fontWeight: 700,
                     cursor: 'pointer', fontSize: '0.88rem', transition: 'opacity 0.2s',
                   }}

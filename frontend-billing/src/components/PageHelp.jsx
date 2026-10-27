@@ -121,7 +121,7 @@ export default function PageHelp() {
                 <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                   <span style={{
                     flexShrink: 0, width: 22, height: 22, borderRadius: '50%', marginTop: 1,
-                    background: 'var(--accent)', color: '#fff',
+                    background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)',
                     fontSize: '0.72rem', fontWeight: 800,
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                   }}>{i + 1}</span>

@@ -116,6 +116,13 @@ const globalMockFetch = vi.fn(async (url) => {
   if (u.includes('/api/sync/conflicts')) {
     return jsonResponse({ unreviewed_count: 0, conflicts: [] })
   }
+  // The shared profile bell also checks alerts and sync status on mount.
+  if (u.includes('/alerts/notifications')) {
+    return jsonResponse({ items: [], count: 0, severity: null })
+  }
+  if (u.includes('/api/sync/queue-depth')) {
+    return jsonResponse({ pending_count: 0, halt: { reason: null } })
+  }
   if (u.includes('/settings')) {
     return jsonResponse(mockSettings)
   }

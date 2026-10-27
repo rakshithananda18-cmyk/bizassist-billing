@@ -42,10 +42,16 @@ import PasscodeModal from '../components/settings/PasscodeModal'
 import HostingModeSection from '../components/settings/HostingModeSection'
 import OpsHealthPanel from '../components/settings/OpsHealthPanel'
 import { trialState, daysLeftText } from '../utils/trialStatus'
+import PageTabs from '../components/common/PageTabs'
+import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
+import AppearanceSettings from '../components/settings/AppearanceSettings'
+import Profile from './Profile'
+import './settings-profile.css'
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 const TABS = [
   { id: 'general',      label: 'General',              icon: <SettingsIcon size={16} /> },
+  { id: 'profile',      label: 'Business Profile',      icon: <ContactsIcon size={16} /> },
   { id: 'transactions', label: 'Transactions',          icon: <BillsIcon size={16} /> },
   { id: 'inventory',    label: 'Items & Stock',         icon: <InventoryIcon size={16} /> },
   { id: 'print',        label: 'Print & PDF',           icon: <PrinterIcon size={16} /> },
@@ -72,16 +78,19 @@ export default function Settings() {
     let tabParam = new URLSearchParams(window.location.search).get('tab')
     // Redirect legacy 'hosting' deep-link to the new network tab
     if (tabParam === 'hosting') tabParam = 'network'
-    return (tabParam && TABS.some(t => t.id === tabParam)) ? tabParam : 'general'
+    return (tabParam && (!isCashier || tabParam === 'general') && TABS.some(t => t.id === tabParam)) ? tabParam : 'general'
   })
 
   useEffect(() => {
     let tabParam = searchParams.get('tab')
     if (tabParam === 'hosting') tabParam = 'network'
-    if (tabParam && TABS.some(t => t.id === tabParam) && tabParam !== activeTab) {
+    if (isCashier && tabParam && tabParam !== 'general') {
+      setActiveTab('general')
+      setSearchParams({ tab: 'general' }, { replace: true })
+    } else if (tabParam && TABS.some(t => t.id === tabParam) && tabParam !== activeTab) {
       setActiveTab(tabParam)
     }
-  }, [searchParams])
+  }, [searchParams, isCashier])
 
   // ── ?field= — the URL entry point jumpToSetting never had ─────────────────
   // Universal search deep-links straight to a control: /settings?tab=print&
@@ -566,7 +575,7 @@ export default function Settings() {
   // ============================================================================
   return (
     <AppLayout title="App Settings">
-      <div className="slide-up" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%', minHeight: 0 }}>
+      <div className="slide-up settings-shell" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%', minHeight: 0 }}>
 
         {/* ── Page header (sticky, title + subtitle + Save button) ── */}
         <div className="page-header" style={{ flexShrink: 0 }}>
@@ -574,15 +583,18 @@ export default function Settings() {
             <h1 className="page-title">App Settings</h1>
             <p className="page-subtitle">Configure how your billing system behaves — transactions, printing, stock, and more.</p>
           </div>
-          <button
-            className="btn btn-primary"
-            onClick={save}
-            disabled={saving}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}
-          >
-            {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <CheckIcon size={14} />}
-            Save Changes
-          </button>
+          <div className="page-actions">
+            <HeaderSearchSlot />
+            {activeTab !== 'profile' && <button
+              className="btn btn-primary"
+              onClick={save}
+              disabled={saving}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}
+            >
+              {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <CheckIcon size={14} />}
+              Save Changes
+            </button>}
+          </div>
         </div>
 
         {/* Toast */}
@@ -607,7 +619,7 @@ export default function Settings() {
         )}
 
         {/* ── Panel container (one big card) ── */}
-        <div className="card" style={{
+        <div className="card settings-panel" style={{
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -618,48 +630,14 @@ export default function Settings() {
           minHeight: 0,
         }}>
           {/* Tab strip inside the card */}
-          <div style={{
-            display: 'flex',
-            gap: 4,
-            borderBottom: '1px solid var(--border)',
-            background: 'var(--bg-2)',
-            overflowX: 'auto',
-            padding: '0 24px',
-            flexShrink: 0,
-          }}>
-            {visibleTabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => handleTabChange(tab.id)}
-                style={{
-                  background: activeTab === tab.id ? 'var(--accent-dim)' : 'none',
-                  border: 'none',
-                  padding: '10px 18px',
-                  borderRadius: 'var(--radius-md) var(--radius-md) 0 0',
-                  cursor: 'pointer',
-                  fontSize: '0.83rem',
-                  fontWeight: activeTab === tab.id ? 700 : 500,
-                  color: activeTab === tab.id ? 'var(--accent)' : 'var(--text-muted)',
-                  borderBottom: activeTab === tab.id ? '2.5px solid var(--accent)' : '2.5px solid transparent',
-                  boxShadow: activeTab === tab.id ? '0 2px 8px rgba(193,95,60,0.15)' : 'none',
-                  marginBottom: -1,
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  {tab.icon}
-                  <span>{tab.label}</span>
-                </span>
-              </button>
-            ))}
+          <div className="settings-section-tabs">
+            <PageTabs label="Settings sections" tabs={visibleTabs} active={activeTab} onChange={handleTabChange} />
           </div>
 
           {/* Scrollable contents inside the card */}
-          <div style={{
+          <div className="settings-panel-body" style={{
             flex: 1,
             overflowY: 'auto',
-            padding: '24px 28px 28px',
           }}>
 
           {/* ── Global card-group styles (shared by all tabs) ── */}
@@ -718,9 +696,12 @@ export default function Settings() {
             .inv-row-cs .inv-row-label { color: var(--text-muted); }
           `}</style>
 
+          {activeTab === 'profile' && !isCashier && <Profile embedded />}
+
           {/* ═══════════════════════════ GENERAL ══════════════════════════════ */}
           {activeTab === 'general' && (
             <>
+              <AppearanceSettings />
               {/* ── Group 0: Subscription ───────────────────────────
                   The plan had no display anywhere in the app — it only ever
                   gated features, so "am I on Pro?" was unanswerable and a grant
@@ -762,10 +743,10 @@ export default function Settings() {
                 </div>
               </div>
 
-              {/* ── Group 1: Appearance ─────────────────────────── */}
+              {/* ── Group 1: Display & privacy ─────────────────── */}
               <div className="inv-group">
                 <div className="inv-group-header">
-                  <span className="inv-group-title">Appearance</span>
+                  <span className="inv-group-title">Display & privacy</span>
                   <span className="inv-group-badge">Essential</span>
                   <span className="inv-group-desc">Applied instantly</span>
                 </div>
@@ -774,7 +755,7 @@ export default function Settings() {
                     <div className="inv-row-label">App Display Size</div>
                     <div className="inv-row-hint">Scale the entire application interface to suit your screen and preference.</div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div className="settings-zoom-options" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     {[80, 90, 100, 110, 120, 130].map(v => {
                       const active = (g.app_zoom ?? 100) === v
                       return (
@@ -962,8 +943,8 @@ export default function Settings() {
                                   display: 'inline-flex', alignItems: 'center', gap: 6,
                                   padding: '4px 10px', borderRadius: 999, fontSize: '0.78rem',
                                   fontWeight: 600,
-                                  background: i === 0 ? 'var(--accent)' : 'var(--bg-subtle, #f1f5f9)',
-                                  color: i === 0 ? '#fff' : 'var(--text-muted)',
+                                  background: i === 0 ? 'var(--accent-solid, var(--accent))' : 'var(--bg-3)',
+                                  color: i === 0 ? 'var(--accent-foreground, #fff)' : 'var(--text-muted)',
                                   border: '1px solid var(--border, #e2e8f0)',
                                 }}
                               >
@@ -1026,7 +1007,7 @@ export default function Settings() {
                           display: 'flex',
                           alignItems: 'center',
                           gap: 8,
-                          background: 'linear-gradient(135deg, var(--accent) 0%, #4f46e5 100%)',
+                          background: 'linear-gradient(135deg, var(--accent-solid, var(--accent)) 0%, var(--accent-solid-hover, var(--accent-solid, var(--accent))) 100%)',
                           border: 'none',
                           padding: '10px 18px',
                           borderRadius: 8,
@@ -1680,8 +1661,8 @@ export default function Settings() {
                         onClick={() => setPreviewMode(m)}
                         style={{
                           padding: '4px 12px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', border: 'none',
-                          background: previewMode === m ? 'var(--accent)' : 'transparent',
-                          color: previewMode === m ? '#fff' : 'var(--text-muted)',
+                          background: previewMode === m ? 'var(--accent-solid, var(--accent))' : 'transparent',
+                          color: previewMode === m ? 'var(--accent-foreground, #fff)' : 'var(--text-muted)',
                         }}
                       >
                         {label}
@@ -1743,8 +1724,8 @@ export default function Settings() {
                                   style={{
                                     fontSize: '0.75em', lineHeight: 1, padding: '2px 4px', cursor: 'pointer',
                                     border: 'none', borderRadius: 2, fontWeight: 700,
-                                    background: line.align === a ? 'var(--accent)' : 'transparent',
-                                    color: line.align === a ? '#fff' : '#94a3b8',
+                                    background: line.align === a ? 'var(--accent-solid, var(--accent))' : 'transparent',
+                                    color: line.align === a ? 'var(--accent-foreground, #fff)' : '#94a3b8',
                                   }}
                                 >
                                   {lbl}
@@ -2264,6 +2245,10 @@ export default function Settings() {
                     return next
                   }, { replace: true })
                 }}
+                autoBackup={g.auto_backup === true}
+                onAutoBackupChange={v => patch('general', 'auto_backup', v)}
+                backupReminderDays={g.backup_reminder_days ?? 7}
+                onReminderDaysChange={e => patch('general', 'backup_reminder_days', parseInt(e.target.value))}
               />
               {IS_LOCAL_APP && g.hosting_mode === 'hybrid' && (
                 <SettingRow label="Push Interval" description="How frequently local changes are pushed to the cloud.">
@@ -2392,23 +2377,6 @@ export default function Settings() {
                   Download logs
                 </button>
               </SettingRow>
-              )}
-              <SettingRow label="Auto Backup" description="Periodically request backup files for storage.">
-                <Toggle id="auto_backup" checked={g.auto_backup === true} onChange={v => patch('general', 'auto_backup', v)} />
-              </SettingRow>
-              {g.auto_backup && (
-                <SettingRow label="Backup Reminder Interval" description="How often to remind for data backups.">
-                  <CustomSelect
-                    className="form-input"
-                    style={{ width: 220 }}
-                    value={g.backup_reminder_days ?? 7}
-                    onChange={e => patch('general', 'backup_reminder_days', parseInt(e.target.value))}
-                  >
-                    <option value={7}>Every 7 Days</option>
-                    <option value={15}>Every 15 Days</option>
-                    <option value={30}>Every 30 Days</option>
-                  </CustomSelect>
-                </SettingRow>
               )}
             </>
           )}

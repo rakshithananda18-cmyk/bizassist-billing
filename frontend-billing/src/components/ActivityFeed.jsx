@@ -48,7 +48,7 @@ function ActorChip({ name }) {
     <span title={`Changed by ${n}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
       <span style={{
         width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
-        background: 'var(--accent)', color: '#fff', fontSize: '0.58rem', fontWeight: 800,
+        background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', fontSize: '0.58rem', fontWeight: 800,
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       }}>{initials}</span>
       <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-primary)', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

@@ -20,6 +20,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import AppLayout from '../layouts/AppLayout'
 import PageTabs from '../components/common/PageTabs'
+import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
 import { ContactsIcon, CashIcon, BillsIcon, TruckIcon } from '../components/Icons'
 
 import Parties from './Parties'
@@ -94,6 +95,7 @@ export default function ContactsPayments() {
             </p>
           </div>
           <div className="page-actions">
+            <HeaderSearchSlot />
             <PageTabs inline tabs={TABS} active={tab} onChange={handleTabChange} />
           </div>
         </div>

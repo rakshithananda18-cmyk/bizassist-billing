@@ -495,6 +495,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
             a second "Purchases" title under the workspace's own. */}
         {(headerTabs || inlinePage) && (
           <WorkspaceTopBar
+            wrap={inlinePage}
             settingsTab="transactions"
             windowControls={!inlinePage}
             showMinimize={false}

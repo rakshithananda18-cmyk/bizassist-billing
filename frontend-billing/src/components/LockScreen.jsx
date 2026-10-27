@@ -205,8 +205,8 @@ export default function LockScreen() {
             style={{
               padding: '11px 0',
               borderRadius: 'var(--radius-md, 10px)',
-              background: 'var(--accent, #C2714F)',
-              color: '#fff',
+              background: 'var(--accent-solid, var(--accent, #C2714F))',
+              color: 'var(--accent-foreground, #fff)',
               fontWeight: 700,
               fontSize: '0.9rem',
               border: 'none',

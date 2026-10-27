@@ -6,6 +6,7 @@
 // ============================================================================
 import React, { useState } from 'react'
 import AppLayout from '../layouts/AppLayout'
+import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
 import { useAuth } from '../contexts/AuthContext'
 import { AlertIcon, BillsIcon, CashIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, CounterIcon, DownloadIcon, InventoryIcon, SummaryIcon, TaxIcon, ExpandIcon } from '../components/Icons'
 import DayBookView from '../components/reports/DayBookView'
@@ -391,6 +392,7 @@ export default function Reports() {
             <h1 className="page-title">GST & Tax Reports</h1>
             <p className="page-subtitle">Generate financial statements and tax filings for your business</p>
           </div>
+          <div className="page-actions"><HeaderSearchSlot /></div>
         </div>
 
         {/* Container 1 — filters + report selector, pinned under the header. */}
@@ -485,20 +487,20 @@ export default function Reports() {
                         display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
                         borderRadius: 'var(--radius-md)', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem',
                         border: `1px solid ${isOpen ? 'var(--accent)' : 'var(--border)'}`,
-                        background: isOpen ? 'var(--accent)' : 'var(--bg-2)',
-                        color: isOpen ? '#fff' : 'var(--text-primary)',
+                        background: isOpen ? 'var(--accent-solid, var(--accent))' : 'var(--bg-2)',
+                        color: isOpen ? 'var(--accent-foreground, #fff)' : 'var(--text-primary)',
                       }}
                     >
                       <span>{group.label}</span>
                       <span style={{
                         fontSize: '0.66rem', fontWeight: 600, borderRadius: 10, padding: '1px 7px',
-                        color: isOpen ? '#fff' : 'var(--text-muted)',
+                        color: isOpen ? 'var(--accent-foreground, #fff)' : 'var(--text-muted)',
                         background: isOpen ? 'rgba(255,255,255,0.22)' : 'var(--bg-3)',
                       }}>{reports.length}</span>
                       {activeInGroup && !isOpen && (
                         <span title="Active report in this group" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)' }} />
                       )}
-                      <span style={{ display: 'inline-flex', color: isOpen ? '#fff' : 'var(--text-muted)', transition: 'transform .18s ease', transform: isOpen ? 'rotate(180deg)' : 'none' }}>
+                      <span style={{ display: 'inline-flex', color: isOpen ? 'var(--accent-foreground, #fff)' : 'var(--text-muted)', transition: 'transform .18s ease', transform: isOpen ? 'rotate(180deg)' : 'none' }}>
                         <ChevronDownIcon size={14} />
                       </span>
                     </button>

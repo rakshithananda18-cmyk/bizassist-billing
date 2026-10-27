@@ -582,7 +582,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
                 onClick={handleRetry}
                 style={{
                   flex: 2, padding: '9px', borderRadius: 8,
-                  background: 'var(--accent)', color: '#fff', border: 'none',
+                  background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', border: 'none',
                   cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700,
                   display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center',
                 }}
@@ -648,7 +648,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
                 onClick={handleRetry}
                 style={{
                   flex: 2, padding: '9px', borderRadius: 8,
-                  background: 'var(--accent)', color: '#fff', border: 'none',
+                  background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', border: 'none',
                   cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700,
                   display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center',
                 }}
