@@ -13,6 +13,7 @@ import { useRealtimeLeader } from './hooks/useRealtimeLeader'
 import { IS_LOCAL_APP } from './config'
 import { useAppearance } from './hooks/useAppearance'
 import RouteBoundary from './components/RouteBoundary'
+import BillingWorkspaceGuard from './components/BillingWorkspaceGuard'
 
 // Keep the landing/sign-in screens and the offline counter in the initial
 // download. The web counter must remain reachable if the connection drops
@@ -53,6 +54,7 @@ export function AppRoutes() {
   const { user } = useAuth()
   const location = useLocation()
   return (
+    <BillingWorkspaceGuard>
     <RouteBoundary resetKey={location.pathname}>
     <Routes>
       <Route path="/login"    element={user ? <Navigate to="/" replace /> : <Login />} />
@@ -92,6 +94,7 @@ export function AppRoutes() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </RouteBoundary>
+    </BillingWorkspaceGuard>
   )
 }
 

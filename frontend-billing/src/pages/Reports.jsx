@@ -17,6 +17,7 @@ import JournalView from '../components/reports/JournalView'
 import GeneralLedgerView from '../components/reports/GeneralLedgerView'
 import RegisterView from '../components/reports/RegisterView'
 import CustomSelect from '../components/common/CustomSelect'
+import { reportPeriod } from '../utils/reportPeriods'
 
 const REPORTS = [
   {
@@ -179,36 +180,11 @@ const reportIcons = {
   'audit-journal': <BillsIcon size={18} />
 }
 
-function getThisMonth() {
-  const now = new Date()
-  const from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
-  const to   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10)
-  return { from, to }
-}
-
-function getLastMonth() {
-  const now = new Date()
-  const from = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10)
-  const to   = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10)
-  return { from, to }
-}
-
-function getThisQuarter() {
-  const now = new Date()
-  const q = Math.floor(now.getMonth() / 3)
-  const from = new Date(now.getFullYear(), q * 3, 1).toISOString().slice(0, 10)
-  const to   = new Date(now.getFullYear(), q * 3 + 3, 0).toISOString().slice(0, 10)
-  return { from, to }
-}
-
-function getThisFY() {
-  const now = new Date()
-  const fyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1
-  return {
-    from: `${fyStart}-04-01`,
-    to: `${fyStart + 1}-03-31`,
-  }
-}
+const getThisMonth = () => reportPeriod('month')
+const getLastMonth = () => reportPeriod('lastMonth')
+const getThisQuarter = () => reportPeriod('quarter')
+const getThisFY = () => reportPeriod('financialYear')
+const getPreviousFY = () => reportPeriod('previousFinancialYear')
 
 function downloadCSV(data, filename) {
   if (!data?.length) return
@@ -412,11 +388,12 @@ export default function Reports() {
             <div className="divider filterbar-divider" style={{ width: 1, height: 32, margin: 0 }} />
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {[
-                { label: 'Today', fn: () => { const t = new Date().toISOString().slice(0, 10); return { from: t, to: t } } },
+                { label: 'Today', fn: () => reportPeriod('today') },
                 { label: 'This Month', fn: getThisMonth },
                 { label: 'Last Month', fn: getLastMonth },
                 { label: 'This Quarter', fn: getThisQuarter },
                 { label: 'This FY', fn: getThisFY },
+                { label: 'Previous FY', fn: getPreviousFY },
               ].map(({ label, fn }) => (
                 <button
                   key={label}

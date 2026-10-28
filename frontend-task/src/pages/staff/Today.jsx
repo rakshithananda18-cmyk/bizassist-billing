@@ -1,11 +1,14 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDay } from '../../layouts/StaffLayout'
 import { mapsDirectionsUrl } from '../../lib/geo'
-import { fmtDateTime, fmtDay, fmtTime, rupees, TASK_TYPES, telHref } from '../../lib/format'
+import { fmtDateTime, fmtDay, fmtTime, TASK_TYPES, telHref } from '../../lib/format'
 import { PAYMENT_MODE_LABELS, PAYMENT_MODES } from '../../lib/collections'
+import { api } from '../../lib/api'
+import { collectionAmounts } from '../../lib/invoices'
+import CollectionBalance from '../../components/CollectionBalance'
 import { CheckIcon, NavigationIcon, PhoneIcon } from '../../components/Icons'
-import { ConfirmDialog, ErrorNote, Loader, Modal, StatusBadge } from '../../components/ui'
+import { ConfirmDialog, ErrorNote, Loader, Modal, StatusBadge, useLoad } from '../../components/ui'
 
 function TrackLine({ track, awake, toggleAwake }) {
   const fix = track.fix
@@ -78,9 +81,22 @@ function DutyCard() {
 
 function CompleteModal({ task, onClose }) {
   const { act } = useDay()
-  const [f, setF] = useState({ boxes: task.boxes_planned ?? '', amount: task.amount_expected ?? '', note: '', mode: 'Cash', ref: '' })
+  const checkBilling = task.task_type === 'payment_collect' && collectionAmounts(task).linked
+  const { data: refreshedTask, error, loading, reload } = useLoad(
+    () => checkBilling ? api.get(`/api/tasks/${task.id}`) : Promise.resolve(task), [task.id, checkBilling],
+  )
+  const activeTask = checkBilling ? refreshedTask : task
+  const balance = collectionAmounts(activeTask)
+  const [f, setF] = useState({ boxes: task.boxes_planned ?? '', amount: checkBilling ? '' : collectionAmounts(task).suggested ?? '', note: '', mode: 'Cash', ref: '' })
   const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    if (checkBilling && refreshedTask) setF(previous => ({ ...previous, amount: collectionAmounts(refreshedTask).suggested ?? '' }))
+  }, [checkBilling, refreshedTask])
+  const billingBlocked = checkBilling && (loading || error || !activeTask || activeTask.status !== 'pending' || !balance.available)
+  const invalidAmount = task.task_type === 'payment_collect' && (f.amount === '' || !Number.isFinite(Number(f.amount)) || Number(f.amount) < 0
+    || (balance.linked && balance.available && Number(f.amount) > balance.currentDue + 0.005))
   const submit = async () => {
+    if (billingBlocked || invalidAmount) return
     setBusy(true)
     const body = { note: f.note || null }
     if (task.task_type === 'delivery') body.boxes_delivered = Number(f.boxes)
@@ -91,20 +107,32 @@ function CompleteModal({ task, onClose }) {
     try {
       await act(`/api/tasks/${task.id}/complete`, body, r => (r.on_time ? `Done on time · +${r.points_awarded} pts` : `Done (late) · +${r.points_awarded} pts`))
       onClose()
-    } catch { setBusy(false) }
+    } catch { setBusy(false); if (checkBilling) reload() }
   }
   const needsNumber = (task.task_type === 'delivery' && f.boxes === '') || (task.task_type === 'payment_collect' && f.amount === '')
   return (
     <Modal title={task.title} onClose={onClose}
       footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn btn-success btn-lg" disabled={busy || needsNumber} onClick={submit}>{busy ? 'Getting location…' : 'Mark done'}</button></>}>
+        <button className="btn btn-success btn-lg" disabled={busy || needsNumber || billingBlocked || invalidAmount} onClick={submit}>{busy ? 'Getting location…' : 'Mark done'}</button></>}>
       {task.task_type === 'delivery' && (
         <div className="form-group"><label className="form-label">Boxes delivered (planned {task.boxes_planned ?? 0})</label>
           <input className="form-input" type="number" min="0" inputMode="numeric" value={f.boxes} onChange={e => setF({ ...f, boxes: e.target.value })} /></div>
       )}
       {task.task_type === 'payment_collect' && (
-        <div className="form-group"><label className="form-label">Amount collected ₹ {task.amount_expected != null && `(due ${rupees(task.amount_expected)})`}</label>
-          <input className="form-input" type="number" min="0" inputMode="decimal" value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })} /></div>
+        <div className="form-group"><label className="form-label">Amount collected ₹</label>
+          {checkBilling && loading && <div className="xs muted" role="status">Checking current billing balance…</div>}
+          {checkBilling && !loading && <>
+            <ErrorNote error={error} />
+            {activeTask && <CollectionBalance task={activeTask} />}
+            {activeTask && activeTask.status !== 'pending' && <div className="alert alert-warning">This task is no longer pending. Close and refresh your day.</div>}
+            <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={reload}>Refresh billing balance</button>
+          </>}
+          {!checkBilling && <CollectionBalance task={task} />}
+          <input className="form-input" type="number" min="0" max={balance.linked && balance.available ? balance.currentDue : undefined}
+            disabled={!!billingBlocked} inputMode="decimal" value={f.amount} onChange={e => setF({ ...f, amount: e.target.value })} />
+          {balance.linked && balance.available && Number(f.amount) > balance.currentDue + 0.005 && <div className="xs" style={{ color: 'var(--warning)' }}>Amount exceeds the current billing balance.</div>}
+          {balance.linked && balance.available && balance.currentDue === 0 && <div className="xs muted">These bills are paid. Record 0 if no money was collected.</div>}
+        </div>
       )}
       {task.task_type === 'payment_collect' && Number(f.amount) > 0 && (
         <div className="form-grid">
@@ -198,7 +226,8 @@ function StopCard({ stop, current, onDuty }) {
               <div className="grow">
                 <div className="task-title small" style={{ fontWeight: 600 }}>{t.title}</div>
                 <div className="xs muted">{TASK_TYPES[t.task_type]} · {t.status === 'done' ? `+${t.points_awarded} pts${t.on_time === false ? ' (late)' : ''}` : `${t.points} pts by ${fmtTime(t.due_at)}`}
-                  {t.amount_expected != null && ` · ${rupees(t.amount_expected)}`}</div>
+                </div>
+                <CollectionBalance task={t} />
               </div>
               {t.status === 'pending' && (
                 <button className="btn btn-success btn-sm" disabled={stop.status !== 'arrived'} onClick={() => setCompleting(t)}
@@ -255,6 +284,7 @@ export default function Today() {
                 <div className="grow">
                   <div style={{ fontWeight: 600 }}>{t.title}</div>
                   <div className="xs muted">{TASK_TYPES[t.task_type]}{t.shop_name && ` · ${t.shop_name}`} · {t.points} pts{t.due_at && ` · by ${fmtDateTime(t.due_at)}`}</div>
+                  <CollectionBalance task={t} />
                   {t.overdue && <span className="badge badge-danger">overdue</span>}
                 </div>
                 <button className="btn btn-success btn-sm" disabled={!onDuty} onClick={() => setCompleting(t)}>Done</button>

@@ -15,6 +15,7 @@ export const useDay = () => useContext(DayContext)
 
 export default function StaffLayout() {
   const { me, logout } = useAuth()
+  const businessName = me.billing_business?.business_name || me.business_name
   const toast = useToast()
   const [today, setToday] = useState(null)
   const [error, setError] = useState(null)
@@ -71,8 +72,8 @@ export default function StaffLayout() {
         <header className="staff-top">
           <BuildingMark size={26} />
           <div className="grow" style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, lineHeight: 1.2 }} className="ellipsis">{me.name}</div>
-            <div className="xs muted ellipsis">{me.business_name}</div>
+            <div style={{ fontWeight: 700, lineHeight: 1.2 }} className="ellipsis" title={me.name}>{me.name}</div>
+            <div className="xs muted ellipsis" title={businessName}>{businessName} · Field Team</div>
           </div>
           {today && (
             <span className="points-pill" title="Points today / total">

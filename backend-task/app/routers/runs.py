@@ -25,7 +25,7 @@ from app.invoices import MAX_PER_TASK, attach_invoices, balance_due, ensure_not_
 from app.models import TASK_TYPES, FieldRoute, FieldRun, FieldRunStop, FieldShop, FieldStaff, FieldTask
 from app.routers.attendance import require_checked_in
 from app.security import Principal, current_principal, get_settings, require_owner, require_staff
-from app.services import get_scoped, log_activity, record_fix, run_out, run_stop_out
+from app.services import get_scoped, log_activity, prime_billing_reads, record_fix, run_out, run_stop_out
 from app.timeutil import biz_local_to_utc, biz_today, iso_weekday, parse_hhmm
 
 router = APIRouter(prefix="/api", tags=["runs"])
@@ -215,6 +215,8 @@ def list_runs(day: Optional[str] = Query(None), p: Principal = Depends(require_o
     rows = (db.query(FieldRun)
             .filter(FieldRun.business_id == p.business_id, FieldRun.run_date == day)
             .order_by(FieldRun.name.asc()).all())
+    prime_billing_reads(shops=[stop.shop for run in rows for stop in run.stops],
+                        tasks=[task for run in rows for stop in run.stops for task in stop.tasks])
     return [run_out(r) for r in rows]
 
 

@@ -57,3 +57,26 @@
   .page-tabs { flex: 1 1 auto; border-radius: 10px; }
   .page-tab { min-height: 36px; padding: 7px 10px; font-size: 0.77rem; }
 }
+
+/* ── Mobile-Only Header Tabs Container ──
+   Used on workspaces where sub-navigation is already visible in the desktop sidebar tree
+   (Contacts & Payments, B2B), removing redundant duplicate corner tabs on desktop
+   while preserving convenient touch-friendly tabs on mobile viewports. */
+.mobile-only-header-tabs {
+  display: contents;
+}
+
+@media (min-width: 769px) {
+  .mobile-only-header-tabs {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .mobile-only-header-tabs {
+    display: flex;
+    align-items: center;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}

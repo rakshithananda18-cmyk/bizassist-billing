@@ -10,6 +10,8 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.billing_context import billing_context, prime_billing_reads
+
 from app.db import utc_now
 from app.geo import GeoFix
 from app.models import (
@@ -146,17 +148,24 @@ def staff_out(s: FieldStaff, *, points: int | None = None) -> dict:
 
 
 def shop_out(s: FieldShop) -> dict:
+    context = billing_context(s)
+    customer = context.customer(s) if context is not None and s.customer_id is not None else None
     return {
         "id": s.id,
-        "name": s.name,
+        "name": (customer.name or f"Customer {customer.id}") if customer else s.name,
         "contact_name": s.contact_name,
-        "phone": s.phone,
-        "address": s.address,
+        "phone": customer.phone if customer else s.phone,
+        "address": customer.address if customer else s.address,
         "area": s.area,
         "lat": s.lat,
         "lng": s.lng,
         "location_source": s.location_source,
         "customer_id": s.customer_id,
+        "billing_linked": s.customer_id is not None,
+        "billing_customer_available": customer is not None if s.customer_id is not None else None,
+        "billing_customer": ({"id": customer.id, "name": customer.name, "phone": customer.phone,
+                              "address": customer.address, "gstin": customer.gstin,
+                              "is_active": customer.is_active is not False} if customer else None),
         "notes": s.notes,
         "is_active": bool(s.is_active),
     }
@@ -178,6 +187,9 @@ def route_out(r: FieldRoute) -> dict:
 def task_out(t: FieldTask, *, confirmed: Optional[dict] = None) -> dict:
     """`confirmed` (task uid → amount, app/collections.confirmed_in_billing) adds
     how much of a collection the owner has confirmed in billing."""
+    context = billing_context(t)
+    balances, live = context.task_balances(t) if context is not None else (
+        {"billing_balance_available": False if t.invoices else None, "current_amount_due": None}, {})
     return {
         "id": t.id,
         "task_type": t.task_type,
@@ -186,7 +198,7 @@ def task_out(t: FieldTask, *, confirmed: Optional[dict] = None) -> dict:
         "staff_id": t.staff_id,
         "staff_name": t.staff.name if t.staff else None,
         "shop_id": t.shop_id,
-        "shop_name": t.shop.name if t.shop else None,
+        "shop_name": shop_out(t.shop)["name"] if t.shop else None,
         "run_id": t.run_id,
         "run_stop_id": t.run_stop_id,
         "due_at": iso_utc(t.due_at),
@@ -197,13 +209,17 @@ def task_out(t: FieldTask, *, confirmed: Optional[dict] = None) -> dict:
         "orders_count": t.orders_count,
         "reference": t.reference,
         "amount_expected": t.amount_expected,
+        **balances,
         "amount_collected": t.amount_collected,
         "payment_mode": t.payment_mode,
         "payment_ref": t.payment_ref,
         "billing_confirmed": (confirmed.get(t.uid, 0.0) if confirmed is not None
                               and t.task_type == "payment_collect" and (t.amount_collected or 0) > 0 else None),
         "invoices": [{"id": ln.invoice_id, "number": ln.invoice_number, "date": ln.invoice_date,
-                      "total": ln.total, "balance_due": ln.balance_due} for ln in t.invoices],
+                      "total": ln.total, "balance_due": ln.balance_due,
+                      **live.get(ln.invoice_id, {"available": False, "current_total": None,
+                                               "current_paid": None, "current_balance_due": None,
+                                               "current_status": None})} for ln in t.invoices],
         "completed_at": iso_utc(t.completed_at),
         "completion_note": t.completion_note,
         "completion_distance_m": t.completion_distance_m,
@@ -234,6 +250,8 @@ def run_stop_out(st: FieldRunStop) -> dict:
 
 
 def run_out(r: FieldRun, *, with_stops: bool = True) -> dict:
+    if with_stops:
+        prime_billing_reads(shops=[s.shop for s in r.stops], tasks=[t for s in r.stops for t in s.tasks])
     stops = [run_stop_out(s) for s in r.stops] if with_stops else None
     total = len(r.stops)
     done = sum(1 for s in r.stops if s.status in ("done", "skipped"))
@@ -292,7 +310,7 @@ def item_request_out(r: FieldItemRequest) -> dict:
         "id": r.id,
         "kind": r.kind,
         "shop_id": r.shop_id,
-        "shop_name": r.shop.name if r.shop else None,
+        "shop_name": shop_out(r.shop)["name"] if r.shop else None,
         "staff_id": r.staff_id,
         "staff_name": r.staff.name if r.staff else None,
         "run_stop_id": r.run_stop_id,

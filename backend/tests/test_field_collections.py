@@ -110,6 +110,23 @@ def _payments(bid):
         db.close()
 
 
+def test_cancelled_invoice_cannot_receive_a_field_collection(owner):
+    bid, headers = owner
+    setup = _field_setup(bid, headers, amount=100)
+    db = SessionLocal()
+    try:
+        db.get(Invoice, setup['older'][0]).status = 'Cancelled'
+        db.commit()
+    finally:
+        db.close()
+    [collection] = client.get('/field-collections', headers=headers).json()['collections']
+    assert setup['older'][0] not in [bill['invoice_id'] for bill in collection['bills']]
+    result = client.post(f"/field-collections/{setup['task_uid']}/confirm", headers=headers,
+                         json={'expected_confirmed': 0, 'allocations': [{'invoice_id': setup['older'][0], 'amount': 100}]})
+    assert result.status_code == 422
+    assert _payments(bid) == []
+
+
 def test_owner_confirms_a_collection_oldest_bill_first(owner):
     bid, h = owner
     s = _field_setup(bid, h, amount=1300.0)
@@ -162,6 +179,118 @@ def test_part_now_rest_later(owner):
     assert [b["invoice_id"] for b in c["bills"]] == [s["older"][0]]  # the paid bill is not offered again
 
 
+def test_partial_confirmations_can_continue_against_the_same_bill(owner):
+    bid, h = owner
+    s = _field_setup(bid, h, amount=400.0)
+    path = f"/field-collections/{s['task_uid']}/confirm"
+    first = client.post(path, headers=h, json={
+        "expected_confirmed": 0, "allocations": [{"invoice_id": s["older"][0], "amount": 100.0}],
+    })
+    assert first.status_code == 200, first.text
+    assert first.json()["remaining"] == 300.0
+    [c] = client.get("/field-collections", headers=h).json()["collections"]
+    assert c["already_confirmed"] == 100.0
+    older = next(b for b in c["bills"] if b["invoice_id"] == s["older"][0])
+    assert older["balance_due"] == 1080.0
+
+    second = client.post(path, headers=h, json={
+        "expected_confirmed": c["already_confirmed"],
+        "allocations": [{"invoice_id": s["older"][0], "amount": 300.0}],
+    })
+    assert second.status_code == 200, second.text
+    assert second.json()["confirmed_total"] == 400.0 and second.json()["remaining"] == 0
+    pays = _payments(bid)
+    assert sorted(p.amount_paid for p in pays) == [100.0, 300.0]
+    assert {p.idempotency_key for p in pays} == {
+        f"ft-collect:{s['task_uid']}:{s['older'][0]}",
+        f"ft-collect:{s['task_uid']}:{s['older'][0]}:after:10000",
+    }
+    assert client.get("/field-collections", headers=h).json()["collections"] == []
+
+
+def test_stale_partial_confirmation_cannot_book_the_same_cash_again(owner):
+    bid, h = owner
+    s = _field_setup(bid, h, amount=400.0)
+    path = f"/field-collections/{s['task_uid']}/confirm"
+    payload = {"expected_confirmed": 0, "allocations": [{"invoice_id": s["older"][0], "amount": 100.0}]}
+    assert client.post(path, headers=h, json=payload).status_code == 200
+    repeat = client.post(path, headers=h, json=payload)
+    assert repeat.status_code == 409 and "Refresh" in repeat.json()["detail"]
+    assert len(_payments(bid)) == 1
+    # A second owner using the same old view cannot allocate different bills
+    # beyond the shared collection checkpoint either.
+    stale_other_bill = client.post(path, headers=h, json={
+        "expected_confirmed": 0, "allocations": [{"invoice_id": s["newer"][0], "amount": 100.0}],
+    })
+    assert stale_other_bill.status_code == 409
+    assert len(_payments(bid)) == 1
+
+
+def test_a_failed_multi_bill_confirmation_rolls_back_every_receipt_and_journal(owner, monkeypatch):
+    bid, h = owner
+    s = _field_setup(bid, h, amount=1300.0)
+    original = field_team.billing.record_payment
+    calls = []
+
+    def fail_second(*args, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 2:
+            raise ValueError("Second receipt could not be posted")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(field_team.billing, "record_payment", fail_second)
+    payload = {"expected_confirmed": 0, "allocations": [
+        {"invoice_id": s["older"][0], "amount": 1180.0},
+        {"invoice_id": s["newer"][0], "amount": 120.0},
+    ]}
+    path = f"/field-collections/{s['task_uid']}/confirm"
+    failed = client.post(path, headers=h, json=payload)
+    assert failed.status_code == 422
+    assert all(call["commit"] is False for call in calls)
+    assert _payments(bid) == []
+    from database.models import JournalEntry
+    db = SessionLocal()
+    try:
+        invoices = db.query(Invoice).filter(Invoice.business_id == bid).all()
+        assert all((inv.paid_amount or 0) == 0 and inv.status == "Pending" for inv in invoices)
+        assert db.query(JournalEntry).filter(JournalEntry.business_id == bid, JournalEntry.source_type == "payment").count() == 0
+    finally:
+        db.close()
+    monkeypatch.setattr(field_team.billing, "record_payment", original)
+    retried = client.post(path, headers=h, json=payload)
+    assert retried.status_code == 200, retried.text
+    assert len(_payments(bid)) == 2
+
+
+def test_legacy_partial_confirmation_retry_does_not_reuse_a_receipt(owner):
+    bid, h = owner
+    s = _field_setup(bid, h, amount=400.0)
+    payload = {"allocations": [{"invoice_id": s["older"][0], "amount": 100.0}]}
+    path = f"/field-collections/{s['task_uid']}/confirm"
+    assert client.post(path, headers=h, json=payload).status_code == 200
+    assert client.post(path, headers=h, json=payload).status_code == 422
+    assert len(_payments(bid)) == 1
+
+
+def test_collection_label_uses_the_linked_customers_current_billing_name(owner):
+    bid, h = owner
+    s = _field_setup(bid, h, amount=100.0)
+    db = SessionLocal()
+    try:
+        customer = db.query(Customer).filter(Customer.business_id == bid, Customer.id == s["customer_id"]).one()
+        customer.name = "Renamed Billing Customer"
+        db.commit()
+    finally:
+        db.close()
+    [collection] = client.get("/field-collections", headers=h).json()["collections"]
+    assert collection["shop"] == "Renamed Billing Customer"
+    confirmed = client.post(f"/field-collections/{s['task_uid']}/confirm", headers=h, json={
+        "expected_confirmed": 0, "allocations": [{"invoice_id": s["older"][0], "amount": 100.0}],
+    })
+    assert confirmed.status_code == 200, confirmed.text
+    assert "Renamed Billing Customer" in _payments(bid)[0].note
+
+
 @pytest.mark.parametrize("plan, detail", [
     (lambda s: [{"invoice_id": s["newer"][0], "amount": 300.0}], "is due"),          # more than the bill
     (lambda s: [{"invoice_id": s["older"][0], "amount": 1180.0}], "left to confirm"),  # more than collected
@@ -208,3 +337,16 @@ def test_owner_only_and_own_business_only(owner):
 def test_unavailable_where_field_team_tables_do_not_exist():
     with Session(bind=create_engine("sqlite://")) as db:  # the desktop app's database
         assert field_team.available(db) is False
+
+
+def test_existing_field_tables_cannot_enable_collections_on_a_live_local_database(monkeypatch):
+    db = SessionLocal()
+    try:
+        # The module fixture deliberately created every ft_* table. Only the
+        # explicit test flag permits this SQLite cloud simulation.
+        monkeypatch.setenv("BIZASSIST_TESTING", "1")
+        assert field_team.available(db) is True
+        monkeypatch.delenv("BIZASSIST_TESTING")
+        assert field_team.available(db) is False
+    finally:
+        db.close()

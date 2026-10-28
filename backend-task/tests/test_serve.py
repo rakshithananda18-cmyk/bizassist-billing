@@ -1,6 +1,7 @@
 """Deployment entry points: serve.py, "/" for the host's probe, and the
 scheduled GPS purge that replaces the in-process loop on Cloud Run."""
 from datetime import timedelta
+from types import SimpleNamespace
 
 from app import config
 from app.db import SessionLocal, utc_now
@@ -28,6 +29,25 @@ def test_root_and_health_answer_for_the_hosts_probe(client):
     assert r.json() == {"service": "bizassist-task", "ok": True, "health": "/api/health"}
     health = client.get("/api/health").json()
     assert health["ok"] is True and health["db"] in ("sqlite", "postgresql")
+    assert health["pro_required"] is config.REQUIRE_PRO
+    assert health["billing_mirror"] is config.CREATE_BILLING_MIRROR
+    assert health["cloud_only"] is True
+
+
+def test_health_fails_closed_without_exposing_database_errors(client, monkeypatch):
+    from app import main
+
+    def unavailable():
+        raise RuntimeError("private connection details must not reach the client")
+
+    monkeypatch.setattr(main, "engine", SimpleNamespace(
+        dialect=SimpleNamespace(name="postgresql"), connect=unavailable,
+    ))
+    response = client.get("/api/health")
+    assert response.status_code == 503
+    assert response.json()["ok"] is False
+    assert response.json()["reason"] == "database_unavailable"
+    assert "private connection details" not in response.text
 
 
 def _ping(business_id, staff_id, age_days):

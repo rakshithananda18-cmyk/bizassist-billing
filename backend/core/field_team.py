@@ -5,9 +5,9 @@ Field Team (`backend-task/`, its own service) shares the cloud database. Its
 staff complete `payment_collect` tasks with the amount, the mode (Cash / UPI /
 Cheque / NEFT / Card) and a reference. Nothing reaches billing's books until the
 owner confirms it here; then each bill gets a payment through billing's own
-`commands.record_payment` — journal, paid status, sync — keyed
-`ft-collect:<task uid>:<invoice id>`, so a double click or a second owner
-confirming the same collection never records it twice.
+`commands.record_payment` — journal, paid status, sync. Confirmation batches
+carry the already-confirmed total as a checkpoint, so a later partial approval
+can pay the same bill again while a repeated stale request cannot double-book.
 
 Read-only over Field Team's tables, declared on their OWN metadata (not
 `database.db.Base`): billing never creates, migrates or writes them, and its
@@ -19,13 +19,14 @@ unavailable. Column subsets are checked against Field Team's models in its CI
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
 from typing import Dict, List, Optional
 
 from sqlalchemy import Column, DateTime, Float, Integer, MetaData, String, func, inspect
 from sqlalchemy.orm import Session, declarative_base
 
 from core.billing import commands as billing
-from database.models import Invoice, InvoicePayment
+from database.models import Customer, Invoice, InvoicePayment
 from services.dates import _IST_OFFSET
 
 FieldTeamBase = declarative_base(metadata=MetaData())
@@ -81,12 +82,24 @@ def _r2(x) -> float:
 
 def available(db: Session) -> bool:
     """Field Team's tables are in this database (the cloud), not on the desktop."""
+    if db.get_bind().dialect.name == "sqlite" and os.environ.get("BIZASSIST_TESTING") != "1":
+        # Old development builds could leave ft_* tables locally. Their mere
+        # presence must not enable cloud collection bookkeeping on a local DB.
+        # Isolated regression suites explicitly opt into SQLite simulation.
+        return False
     insp = inspect(db.get_bind())
     return all(insp.has_table(t) for t in ("ft_tasks", "ft_shops", "ft_staff", "ft_task_invoices"))
 
 
-def collection_key(task_uid: str, invoice_id: int) -> str:
-    return f"{KEY_PREFIX}{task_uid}:{invoice_id}"
+def collection_key(task_uid: str, invoice_id: int, checkpoint: Optional[float] = None) -> str:
+    base = f"{KEY_PREFIX}{task_uid}:{invoice_id}"
+    # Keep first/legacy receipt keys and the fixed task-UID prefix compatible
+    # with Field Team's confirmed_in_billing reader.
+    return f"{base}:after:{int(round(checkpoint * 100))}" if checkpoint else base
+
+
+class CollectionChangedError(ValueError):
+    """A confirmation was submitted from an older collection snapshot."""
 
 
 def _balance(inv: Invoice) -> float:
@@ -117,10 +130,11 @@ def _recorded(db: Session, business_id: int, task_uids: List[str]) -> Dict[str, 
 
 
 def _candidates(db: Session, business_id: int, task: FtTask, shop: Optional[FtShop],
-                used: Dict[int, float]) -> List[Invoice]:
+                used: Dict[int, float], *, allow_continuation: bool = False) -> List[Invoice]:
     """The bills a collection can pay, oldest first: the task's own bills, or —
     for a collection planned without bills — the shop's customer's unpaid bills.
-    A bill this collection already paid is not offered again."""
+    Legacy callers cannot reuse a bill's original receipt key; checkpointed
+    approvals can add another portion against its remaining due."""
     linked = [i for (i,) in db.query(FtTaskInvoice.invoice_id).filter(
         FtTaskInvoice.business_id == business_id, FtTaskInvoice.task_id == task.id).all()]
     q = db.query(Invoice).filter(Invoice.business_id == business_id,
@@ -132,7 +146,8 @@ def _candidates(db: Session, business_id: int, task: FtTask, shop: Optional[FtSh
     else:
         return []
     rows = q.order_by(Invoice.invoice_date.is_(None), Invoice.invoice_date.asc(), Invoice.id.asc()).all()
-    return [inv for inv in rows if inv.id not in used and _balance(inv) > _CENT]
+    return [inv for inv in rows if (allow_continuation or inv.id not in used) and _balance(inv) > _CENT
+            and (inv.status or "").lower() not in {"cancelled", "canceled", "void", "draft"}]
 
 
 def suggest(amount: float, invoices: List[Invoice]) -> List[dict]:
@@ -155,6 +170,9 @@ def pending_collections(db: Session, business_id: int) -> List[dict]:
     recorded = _recorded(db, business_id, [t.uid for t in tasks])
     shops = {s.id: s for s in db.query(FtShop).filter(
         FtShop.business_id == business_id, FtShop.id.in_({t.shop_id for t in tasks if t.shop_id})).all()}
+    customer_names = {c.id: c.name for c in db.query(Customer).filter(
+        Customer.business_id == business_id,
+        Customer.id.in_({s.customer_id for s in shops.values() if s.customer_id})).all()}
     staff = {s.id: s.name for s in db.query(FtStaff).filter(
         FtStaff.business_id == business_id, FtStaff.id.in_({t.staff_id for t in tasks if t.staff_id})).all()}
     out = []
@@ -164,13 +182,13 @@ def pending_collections(db: Session, business_id: int) -> List[dict]:
         if remaining <= _CENT:
             continue
         shop = shops.get(t.shop_id)
-        bills = _candidates(db, business_id, t, shop, used)
+        bills = _candidates(db, business_id, t, shop, used, allow_continuation=True)
         plan = suggest(remaining, bills)
         out.append({
             "task_uid": t.uid,
             "task_id": t.id,
             "title": t.title,
-            "shop": shop.name if shop else None,
+            "shop": (customer_names.get(shop.customer_id) or shop.name) if shop else None,
             "shop_linked": bool(shop and shop.customer_id),
             "staff": staff.get(t.staff_id),
             "collected_on": _collected_on(t),
@@ -187,20 +205,28 @@ def pending_collections(db: Session, business_id: int) -> List[dict]:
     return out
 
 
-def confirm_collection(db: Session, business_id: int, task_uid: str, allocations: List[dict]) -> dict:
+def confirm_collection(db: Session, business_id: int, task_uid: str, allocations: List[dict],
+                       expected_confirmed: Optional[float] = None) -> dict:
     """Record the owner-approved split as billing payments. Raises ValueError
     with a message for the owner when the split does not fit."""
-    task = (db.query(FtTask).filter(FtTask.business_id == business_id, FtTask.uid == task_uid).first())
+    # All approvals for a collection share this lock, even when they allocate
+    # different bills. Invoice locks alone cannot cap the collected cash.
+    task = (db.query(FtTask).filter(FtTask.business_id == business_id, FtTask.uid == task_uid)
+            .with_for_update().first())
     if task is None or task.task_type != "payment_collect" or task.status != "done" \
             or (task.amount_collected or 0) <= _CENT:
         raise LookupError("Collection not found")
     used = _recorded(db, business_id, [task.uid]).get(task.uid, {})
-    remaining = _r2(task.amount_collected - sum(used.values()))
+    confirmed_before = _r2(sum(used.values()))
+    remaining = _r2(task.amount_collected - confirmed_before)
     if remaining <= _CENT:
         raise ValueError("This collection is already recorded in billing")
+    if expected_confirmed is not None and abs(_r2(expected_confirmed) - confirmed_before) > _CENT:
+        raise CollectionChangedError("Collection changed since this page loaded. Refresh field collections before confirming again.")
     shop = db.query(FtShop).filter(FtShop.business_id == business_id, FtShop.id == task.shop_id).first() \
         if task.shop_id else None
-    bills = {inv.id: inv for inv in _candidates(db, business_id, task, shop, used)}
+    bills = {inv.id: inv for inv in _candidates(
+        db, business_id, task, shop, used, allow_continuation=expected_confirmed is not None)}
 
     wanted = [(int(a["invoice_id"]), _r2(a["amount"])) for a in allocations if _r2(a["amount"]) > 0]
     if not wanted:
@@ -218,18 +244,28 @@ def confirm_collection(db: Session, business_id: int, task_uid: str, allocations
 
     staff = db.query(FtStaff.name).filter(FtStaff.business_id == business_id, FtStaff.id == task.staff_id).scalar() \
         if task.staff_id else None
+    customer_name = db.query(Customer.name).filter(
+        Customer.business_id == business_id, Customer.id == shop.customer_id).scalar() \
+        if shop and shop.customer_id else None
     note = " · ".join(x for x in (
-        f"Field Team collection by {staff or 'staff'}", shop.name if shop else None,
+        f"Field Team collection by {staff or 'staff'}", (customer_name or shop.name) if shop else None,
         f"ref {task.payment_ref}" if task.payment_ref else None) if x)
     recorded = []
-    for inv_id, amt in wanted:
-        # Commits per bill; the key makes a retry after a partial failure safe.
-        p = billing.record_payment(
-            db, business_id=business_id, invoice_id=inv_id, amount_paid=amt,
-            payment_mode=task.payment_mode or "Cash", payment_date=_collected_on(task),
-            note=note, idempotency_key=collection_key(task.uid, inv_id),
-        )
-        recorded.append({"invoice_id": inv_id, "payment_id": p.id, "amount": _r2(p.amount_paid)})
-    done = _r2(sum(used.values()) + sum(r["amount"] for r in recorded))
+    try:
+        for inv_id, amt in wanted:
+            p = billing.record_payment(
+                db, business_id=business_id, invoice_id=inv_id, amount_paid=amt,
+                payment_mode=task.payment_mode or "Cash", payment_date=_collected_on(task),
+                note=note, idempotency_key=collection_key(task.uid, inv_id, expected_confirmed),
+                commit=False,
+            )
+            recorded.append({"invoice_id": inv_id, "payment_id": p.id, "amount": _r2(p.amount_paid)})
+        db.commit()
+    except Exception:
+        # Receipts, invoice paid totals and journals either all persist or none
+        # do. Retrying a failed batch must not require guessing which bill saved.
+        db.rollback()
+        raise
+    done = _r2(confirmed_before + sum(r["amount"] for r in recorded))
     return {"task_uid": task.uid, "recorded": recorded, "confirmed_total": done,
             "remaining": _r2(task.amount_collected - done)}

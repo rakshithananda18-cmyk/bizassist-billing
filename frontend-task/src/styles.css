@@ -23,6 +23,9 @@
 
   /* Accent (Terracotta Orange) */
   --accent:        #c15f3c; /* Crail — signature terracotta */
+  --accent-solid:  #c15f3c;
+  --accent-solid-hover: #a84e2e;
+  --accent-foreground: #ffffff;
   --accent-light:  #a84e2e;
   --accent-hover:  #a84e2e;
   --accent-dim:    rgba(193, 95, 60, 0.10);
@@ -39,14 +42,14 @@
   --info-dim:      rgba(142, 142, 147, 0.08);
 
   /* Sidebar Tokens (Matches Billing) */
-  --sidebar-surface:    #ffffff;
+  --sidebar-surface:    #f4efeb;
   --sidebar-text:       #000000;
   --sidebar-muted:      #555555;
   --sidebar-hover:      #f4f4f1;
   --sidebar-hover-text: #c15f3c;
   --sidebar-border:     #c8c5be;
-  --sidebar-active-bg:  rgba(193, 95, 60, 0.10);
-  --sidebar-active-text:#c15f3c;
+  --sidebar-active-bg:  var(--accent-solid);
+  --sidebar-active-text:var(--accent-foreground);
 
   /* Layout */
   --sidebar-w:      240px;
@@ -123,6 +126,9 @@
   --text-inverse:     #000000;
 
   --accent:           #d4714a;
+  --accent-solid:     #c15f3c;
+  --accent-solid-hover: #e08660;
+  --accent-foreground: #ffffff;
   --accent-light:     #e08660;
   --accent-hover:     #e08660;
   --accent-dim:       rgba(212, 113, 74, 0.15);
@@ -143,8 +149,8 @@
   --sidebar-hover:      #262626;
   --sidebar-hover-text: #d4714a;
   --sidebar-border:     #333333;
-  --sidebar-active-bg:  rgba(212, 113, 74, 0.15);
-  --sidebar-active-text:#d4714a;
+  --sidebar-active-bg:  var(--accent-solid);
+  --sidebar-active-text:var(--accent-foreground);
 
   --shadow-sm:        0 2px 8px rgba(0, 0, 0, 0.34);
   --shadow-md:        0 8px 20px rgba(0, 0, 0, 0.42);
@@ -207,7 +213,7 @@ input, select, textarea { font-family: inherit; outline: none; color: inherit; }
   width: var(--sidebar-w);
   height: calc(100% - 12px);
   margin: 5px 0 7px 7px;
-  background: var(--sidebar-surface, var(--bg-2));
+  background: var(--sidebar-bg, var(--sidebar-surface, var(--bg-2)));
   border: 1px solid var(--sidebar-border, var(--border));
   border-radius: 12px;
   box-shadow: var(--shadow-sm);
@@ -274,9 +280,9 @@ input, select, textarea { font-family: inherit; outline: none; color: inherit; }
   font-family: 'Crimson Pro', Georgia, serif;
   font-weight: 700;
   font-size: 19px;
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
   line-height: 1.2;
-  text-transform: uppercase;
+  text-transform: none;
   color: var(--sidebar-text, var(--text-primary));
 }
 .brand-tag {
@@ -285,6 +291,21 @@ input, select, textarea { font-family: inherit; outline: none; color: inherit; }
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+.brand-name > span { color: var(--sidebar-hover-text, var(--accent)); }
+.business-profile-name { min-width: 0; font-weight: 700; font-size: 0.85rem; }
+.business-name-scroll { display: block; width: 100%; overflow: hidden; white-space: nowrap; }
+.business-name-track { display: block; width: max-content; min-width: 100%; }
+.business-name-scroll.is-overflowing:not(:hover):not(:focus-visible) .business-name-track {
+  width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.business-name-scroll.is-overflowing:hover .business-name-track,
+.business-name-scroll.is-overflowing:focus-visible .business-name-track {
+  animation: business-name-pan var(--name-duration) linear infinite alternate;
+}
+@keyframes business-name-pan {
+  0%, 8% { transform: translateX(0); }
+  92%, 100% { transform: translateX(var(--name-travel)); }
 }
 
 .sidebar-nav {
@@ -398,6 +419,43 @@ input, select, textarea { font-family: inherit; outline: none; color: inherit; }
   height: calc(100% - 12px);
   min-height: 0;
 }
+.workspace-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--theme-chrome, var(--bg));
+  color: var(--theme-chrome-text, var(--text-primary));
+}
+.workspace-business { min-width: 0; max-width: 420px; font-size: 0.85rem; font-weight: 600; }
+.workspace-switch { display: flex; align-items: center; flex-shrink: 0; gap: 3px; }
+.workspace-switch a {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 8px 12px; border-radius: 7px; font-size: 0.82rem; font-weight: 600;
+  color: inherit; transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.workspace-switch a:hover { background: var(--sidebar-hover, var(--bg-3)); color: var(--sidebar-hover-text, var(--accent)); }
+.workspace-switch a.active { background: var(--accent-solid); color: var(--accent-foreground); }
+.billing-account-card {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 20px;
+  padding: 20px; margin-bottom: 16px; background: var(--bg-2);
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+}
+.billing-account-card > .grow { flex-basis: 280px; }
+.billing-account-card h3 { margin: 4px 0 8px; overflow-wrap: anywhere; }
+.billing-account-card p { margin-top: 12px; max-width: 660px; line-height: 1.5; }
+.settings-section-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); font-weight: 700; }
+.theme-mode-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.theme-mode-option {
+  display: inline-flex; align-items: center; gap: 8px; min-width: 110px;
+  padding: 10px 14px; background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--radius-md); font-size: 0.85rem; font-weight: 600;
+}
+.theme-mode-option:hover { background: var(--bg-3); }
+.theme-mode-option.selected { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
 
 .main, .page-content {
   flex: 1;
@@ -409,6 +467,8 @@ input, select, textarea { font-family: inherit; outline: none; color: inherit; }
   padding: 0 16px 16px;
   background: var(--bg);
 }
+.page-content > .card { flex-shrink: 0; }
+.sidebar-brand .brand-name { color: var(--sidebar-text, var(--text-primary)); }
 
 /* === STICKY PAGE HEADER (Matching Billing Exact) === */
 .page-header {
@@ -680,15 +740,15 @@ input, select, textarea { font-family: inherit; outline: none; color: inherit; }
 }
 .btn:disabled { opacity: 0.45; pointer-events: none; }
 .btn-primary {
-  background: var(--accent);
-  color: var(--text-inverse);
-  border-color: var(--accent);
-  box-shadow: 0 1px 3px rgba(193, 95, 60, 0.2);
+  background: var(--accent-solid, var(--accent));
+  color: var(--accent-foreground, #ffffff);
+  border-color: var(--accent-solid, var(--accent));
+  box-shadow: var(--shadow-accent);
 }
 .btn-primary:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-  box-shadow: 0 2px 8px rgba(193, 95, 60, 0.3);
+  background: var(--accent-solid-hover, var(--accent-hover));
+  border-color: var(--accent-solid-hover, var(--accent-hover));
+  box-shadow: var(--shadow-accent);
   transform: translateY(-1px);
 }
 .btn-primary:active { transform: translateY(0); }
@@ -1277,6 +1337,9 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--fs-base);
   .mobile-topbar { display: flex; }
   .app-shell { flex-direction: column; }
   .main-area { margin: 0; height: auto; }
+  .workspace-context { justify-content: flex-end; padding: 5px 16px; }
+  .workspace-business { display: none; }
+  .workspace-switch a { padding: 7px 11px; }
   .main, .page-content { padding: 0 16px calc(var(--bottombar-h) + 24px); }
   .page-header {
     margin: 0 -16px 16px;
@@ -1329,3 +1392,4 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--fs-base);
 .ba-rise { animation: ba-rise 2.6s ease-out infinite, ba-cycle 2.6s linear infinite; animation-fill-mode: backwards, backwards; }
 .ba-rise-star { transform-box: fill-box; transform-origin: center; animation: ba-rise-star 2.6s ease-out infinite; animation-fill-mode: backwards; }
 @media (prefers-reduced-motion: reduce) { .ba-rise, .ba-rise-star { animation: none; transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .business-name-track { animation: none !important; } }

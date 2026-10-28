@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { planBanner } from '../lib/plan'
-import { cycleTheme, getTheme } from '../lib/theme'
+import { cycleTheme, getBillingUrl, getTheme } from '../lib/theme'
 import { BuildingMark } from '../components/Logo'
 import { useToast } from '../components/ui'
 import {
@@ -33,8 +33,31 @@ const NAV = [
 
 const THEME_ICON = { system: <MonitorIcon size={16} />, light: <SunIcon size={16} />, dark: <MoonIcon size={16} /> }
 
+function BusinessName({ children }) {
+  const ref = useRef(null)
+  const [distance, setDistance] = useState(0)
+  useEffect(() => {
+    const element = ref.current
+    const measure = () => setDistance(Math.max(0, element.firstElementChild.scrollWidth - element.clientWidth))
+    measure()
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    observer.observe(element.firstElementChild)
+    return () => observer.disconnect()
+  }, [children])
+  return (
+    <span ref={ref} className={`business-name-scroll${distance > 0 ? ' is-overflowing' : ''}`}
+      title={children} tabIndex={distance > 0 ? 0 : undefined}
+      style={{ '--name-travel': `-${distance}px`, '--name-duration': `${Math.min(18, Math.max(4, distance / 28 + 2))}s` }}>
+      <span className="business-name-track">{children}</span>
+    </span>
+  )
+}
+
 export default function OwnerLayout() {
   const { me, logout } = useAuth()
+  const businessName = me.billing_business?.business_name || me.business_name || 'Your business'
   const toast = useToast()
   const location = useLocation()
   const [theme, setThemeState] = useState(getTheme())
@@ -124,8 +147,6 @@ export default function OwnerLayout() {
     } catch { /* ignore */ }
   }
 
-  const navItems = NAV.flatMap(s => s.items)
-
   return (
     <div className="app-shell">
       {/* Mobile Drawer Overlay */}
@@ -151,7 +172,7 @@ export default function OwnerLayout() {
           <BuildingMark size={32} />
           {(!sidebarCollapsed || isMobileViewport) && (
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="brand-name">BizAssist</div>
+              <div className="brand-name"><BusinessName>{businessName}</BusinessName></div>
               <div className="brand-tag">Field Team</div>
             </div>
           )}
@@ -207,7 +228,7 @@ export default function OwnerLayout() {
         <div className="sidebar-footer">
           {(!sidebarCollapsed || isMobileViewport) ? (
             <>
-              <div className="ellipsis" style={{ fontWeight: 700, fontSize: '0.85rem' }}>{me.business_name}</div>
+              <div className="business-profile-name"><BusinessName>{businessName}</BusinessName></div>
               <div className="row" style={{ gap: 6 }}>
                 <button type="button" className="bizid-chip" onClick={copyBizId} title="Copy BizID">
                   {me.public_id}
@@ -267,7 +288,7 @@ export default function OwnerLayout() {
             <MenuIcon size={20} />
           </button>
           <BuildingMark size={24} />
-          <strong className="ellipsis" style={{ fontSize: '0.95rem' }}>{me.business_name}</strong>
+          <strong className="ellipsis" title={businessName} style={{ fontSize: '0.95rem' }}>{businessName}</strong>
         </div>
         <div className="row" style={{ gap: 6 }}>
           <button type="button" className="bizid-chip" onClick={copyBizId} title="Copy BizID">
@@ -287,6 +308,13 @@ export default function OwnerLayout() {
 
       {/* Main Content Area */}
       <div className="main-area">
+        <div className="workspace-context">
+          <div className="workspace-business"><BusinessName>{businessName}</BusinessName></div>
+          <nav className="workspace-switch" aria-label="BizAssist workspaces">
+            <a href={getBillingUrl()}><MonitorIcon size={15} /><span>Billing</span></a>
+            <Link to="/" className="active" aria-current="page"><TruckIcon size={15} /><span>Field Team</span></Link>
+          </nav>
+        </div>
         <main className="page-content">
           {planBanner(me.plan) && (
             <div className="alert alert-warning" role="status" style={{ margin: '14px 0 6px' }}>

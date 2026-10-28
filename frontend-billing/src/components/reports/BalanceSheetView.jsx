@@ -50,7 +50,7 @@ export default function BalanceSheetView({ reportData, fmt }) {
               </tr>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
                 <td style={{ padding: '10px 0', fontSize: '0.88rem', color: 'var(--text-secondary)' }}>Equity / Net Worth</td>
-                <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600, color: '#2e7d32' }}>{fmt(reportData.net_worth)}</td>
+                <td style={{ padding: '10px 0', textAlign: 'right', fontWeight: 600, color: 'var(--success)' }}>{fmt(reportData.net_worth)}</td>
               </tr>
               <tr style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
                 <td style={{ padding: '14px 0' }}>TOTAL LIABILITIES & EQUITY</td>
@@ -76,7 +76,7 @@ export default function BalanceSheetView({ reportData, fmt }) {
           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Net Asset Equity (Net Worth)</div>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>Assets minus liabilities represents the current net worth of the business.</div>
         </div>
-        <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#2e7d32' }}>
+        <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--success)' }}>
           {fmt(reportData.net_worth)}
         </div>
       </div>

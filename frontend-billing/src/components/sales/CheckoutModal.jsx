@@ -1338,14 +1338,39 @@ export default function CheckoutModal({
 
               <div style={{ borderTop: '1px dotted var(--border)', margin: '4px 0' }} />
 
-              {/* Change to return (positive) OR balance still due (negative → red) */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                  {balance < 0 ? 'Balance still due' : 'Change to return'}
-                </span>
-                <span style={{ fontSize: '1.25rem', fontWeight: 800, color: balance < 0 ? 'var(--danger)' : 'var(--success)' }}>
+              {/* Hero Change / Due Status Banner */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '12px 16px',
+                borderRadius: 'var(--radius-md)',
+                background: balance < 0 ? 'var(--danger-dim, rgba(239, 68, 68, 0.12))' : 'var(--success-dim, rgba(34, 197, 94, 0.14))',
+                border: `1.5px solid ${balance < 0 ? 'var(--danger)' : 'var(--success)'}`,
+                margin: '4px 0'
+              }}>
+                <div>
+                  <div style={{
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    color: balance < 0 ? 'var(--danger)' : 'var(--success)'
+                  }}>
+                    {balance < 0 ? 'Balance still due' : 'Change to return'}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    {balance < 0 ? 'Collect remaining from customer' : 'Hand exact change to customer'}
+                  </div>
+                </div>
+                <div style={{
+                  fontSize: '1.75rem',
+                  fontWeight: 900,
+                  letterSpacing: '-0.02em',
+                  color: balance < 0 ? 'var(--danger)' : 'var(--success)'
+                }}>
                   {balance < 0 ? `− ${fmt(Math.abs(balance))}` : fmt(balance)}
-                </span>
+                </div>
               </div>
 
               {/* Actions */}

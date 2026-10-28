@@ -3,6 +3,22 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        // Keep the framework runtime cacheable across app releases. Only group
+        // dependencies already needed at startup: optional route dependencies
+        // must not be pulled into this eagerly loaded chunk. Sales/checkout
+        // stay eager so an already opened counter keeps working offline.
+        manualChunks(id) {
+          const normalizedId = id.replace(/\\/g, '/')
+          if (/\/node_modules\/(?:react|react-dom|scheduler|react-router|react-router-dom|@remix-run\/router)\//.test(normalizedId)) {
+            return 'react-runtime'
+          }
+        },
+      },
+    },
+  },
   server: {
     port: 5174,
     strictPort: true,

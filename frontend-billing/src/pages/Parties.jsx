@@ -8,9 +8,10 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import { useAuth } from '../contexts/AuthContext'
-import { BillsIcon, CheckIcon, CopyIcon, CloseIcon, ContactsIcon, HandshakeIcon, InventoryIcon, MessageIcon, PlusIcon, PrinterIcon, SearchIcon, SyncIcon, UserIcon, WarehouseIcon, ExpandIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, CopyIcon, CloseIcon, ContactsIcon, HandshakeIcon, InventoryIcon, MessageIcon, PlusIcon, PrinterIcon, SearchIcon, SyncIcon, UserIcon, WarehouseIcon, ExpandIcon, ZapIcon } from '../components/Icons'
 import PartyFormModal from '../components/parties/PartyFormModal'
 import SaleReturnModal from '../components/parties/SaleReturnModal'
+import PartyCreditDrawer from '../components/parties/PartyCreditDrawer'
 import { logger } from '../utils/logger'
 import { formatApiError } from '../utils/apiError'
 import { buildUpiUri, buildWhatsAppShareUrl, normalizePhoneIN } from '../utils/share'
@@ -86,6 +87,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
   // settleParty removed — "Settle" now navigates to /parties/payments?customer=name.
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
   const [returningInvoice, setReturningInvoice] = useState(null)
+  const [creditDrawerParty, setCreditDrawerParty] = useState(null)
   const [returnLines, setReturnLines] = useState([])
   const [returnNote, setReturnNote] = useState('')
   const [savingReturn, setSavingReturn] = useState(false)
@@ -733,6 +735,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
                       onContextMenu={e => {
                         e.preventDefault()
                         setCtxMenu({ x: e.clientX, y: e.clientY, items: [
+                          { label: 'Credit Statement & Dues', icon: <ZapIcon size={13} />, action: () => setCreditDrawerParty(p) },
                           { label: 'View Invoices', icon: <BillsIcon size={13} />, action: () => navigate(`/parties/invoices?customer=${encodeURIComponent(p.name)}`) },
                           { label: 'Send Payment Reminder', icon: <MessageIcon size={13} />, action: () => handleWhatsAppReminder(p) },
                           { divider: true },
@@ -793,6 +796,15 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
                             in the row's right-click menu. */}
                         {activeTab === 'Customers' ? (
                           <>
+                            <button
+                              className="btn btn-secondary btn-sm row-act"
+                              onClick={() => setCreditDrawerParty(p)}
+                              title="Credit Statement & Running Ledger"
+                              aria-label="Credit Statement"
+                              style={{ color: 'var(--accent, #6366f1)', fontWeight: 700 }}
+                            >
+                              <ZapIcon size={14} />
+                            </button>
                             <button className="btn btn-secondary btn-sm row-act" onClick={() => handleViewInvoices(p)}
                               title="View invoices" aria-label="View invoices"><BillsIcon size={14} /></button>
                             {outstanding > 0 && !isCashier && (
@@ -812,8 +824,19 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
                             )}
                           </>
                         ) : (
-                          <button className="btn btn-secondary btn-sm row-act" onClick={() => handleViewPurchases(p)}
-                            title="View purchases" aria-label="View purchases"><InventoryIcon size={14} /></button>
+                          <>
+                            <button
+                              className="btn btn-secondary btn-sm row-act"
+                              onClick={() => setCreditDrawerParty(p)}
+                              title="Credit Statement & Running Ledger"
+                              aria-label="Credit Statement"
+                              style={{ color: 'var(--accent, #6366f1)', fontWeight: 700 }}
+                            >
+                              <ZapIcon size={14} />
+                            </button>
+                            <button className="btn btn-secondary btn-sm row-act" onClick={() => handleViewPurchases(p)}
+                              title="View purchases" aria-label="View purchases"><InventoryIcon size={14} /></button>
+                          </>
                         )}
                         </div>
                       </td>
@@ -870,6 +893,16 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
           (/parties/payments?customer=name) pre-filtered to that customer.
           The Transactions tab's workspace top bar has a Settle Dues button that handles
           the FIFO settlement flow from there. */}
+      {creditDrawerParty && (
+        <PartyCreditDrawer
+          party={creditDrawerParty}
+          partyType={activeTab === 'Customers' ? 'customer' : 'supplier'}
+          onClose={() => setCreditDrawerParty(null)}
+          onSettle={(p) => navigate(`/parties/payments?customer=${encodeURIComponent(p.name)}`)}
+          authFetch={authFetch}
+          user={user}
+        />
+      )}
       <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />
       <UnsavedChangesModal blocker={blocker} message={dirtyMessage} />
     </PageShell>

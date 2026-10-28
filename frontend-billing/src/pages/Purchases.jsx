@@ -9,7 +9,7 @@ import { useSearchParams } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import { useAuth } from '../contexts/AuthContext'
 import { useConfirm } from '../contexts/ConfirmContext'
-import { BillsIcon, CheckIcon, CopyIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIcon, ImportIcon, InfoIcon, SearchIcon, SyncIcon, UploadIcon, ExpandIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, CopyIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIcon, ImportIcon, InfoIcon, SearchIcon, SyncIcon, UploadIcon, ExpandIcon, PlusIcon } from '../components/Icons'
 import CustomSelect from '../components/common/CustomSelect'
 import PurchaseOcrModal from '../components/purchases/PurchaseOcrModal'
 import PurchaseReturnModal from '../components/purchases/PurchaseReturnModal'
@@ -368,7 +368,24 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
     setDragOver(false)
   }
 
-  const openModal = () => { resetModal(); setShowModal(true) }
+  const openModal = (manual = false) => {
+    resetModal()
+    if (manual) {
+      setExtracted({
+        supplier_name: '',
+        invoice_number: '',
+        invoice_date: new Date().toISOString().slice(0, 10),
+        due_date: '',
+        total_amount: 0,
+        tax_amount: 0,
+        lines: [
+          { product_name: '', quantity: 1, unit_price: 0, cgst_rate: 0, sgst_rate: 0, igst_rate: 0, total_amount: 0 }
+        ]
+      })
+      setStep('review')
+    }
+    setShowModal(true)
+  }
 
   // Returns logic
   const resetReturnForm = () => {
@@ -505,6 +522,15 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
                 <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={openReturnModal}>
                   <SyncIcon size={13} /> Record Return
                 </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                  onClick={() => openModal(true)}
+                  title="Create purchase bill manually without OCR"
+                >
+                  <PlusIcon size={13} /> + Manual Bill
+                </button>
                 <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={openModal}>
                   <UploadIcon size={13} /> Upload Bill
                   {!isPro && <span className="pro-chip">PRO</span>}
@@ -559,6 +585,9 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
             <div className="page-actions">
               <button className="btn btn-secondary" style={{ marginRight: 8 }} onClick={openReturnModal}>
                 <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Record Return
+              </button>
+              <button className="btn btn-secondary" style={{ marginRight: 8 }} onClick={() => openModal(true)}>
+                <PlusIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> + Manual Bill
               </button>
               <button className="btn btn-primary" onClick={openModal}>
                 ⬆ Upload Bill

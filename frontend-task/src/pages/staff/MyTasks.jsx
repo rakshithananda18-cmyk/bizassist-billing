@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { api } from '../../lib/api'
 import { fmtDateTime, TASK_TYPES } from '../../lib/format'
+import CollectionBalance from '../../components/CollectionBalance'
 import { Empty, ErrorNote, Loader, StatusBadge, useLoad } from '../../components/ui'
 
 export default function MyTasks() {
@@ -21,6 +22,7 @@ export default function MyTasks() {
                 <div style={{ fontWeight: 600 }}>{t.title}</div>
                 <div className="xs muted">{TASK_TYPES[t.task_type]}{t.shop_name && ` · ${t.shop_name}`}
                   {t.status === 'done' ? ` · ${fmtDateTime(t.completed_at)}` : t.due_at ? ` · by ${fmtDateTime(t.due_at)}` : ''}</div>
+                <CollectionBalance task={t} />
                 {t.overdue && <span className="badge badge-danger">overdue</span>}
               </div>
               {t.status === 'done'

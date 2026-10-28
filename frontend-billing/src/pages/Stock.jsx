@@ -252,6 +252,8 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   // is that it leaves the catalogue. The dropdown is what makes it findable
   // again — without it, deactivating would look like deletion.
   const [activeFilter, setActiveFilter] = useState('active')
+  const [godownFilter, setGodownFilter] = useState('')
+  const [viewPreset, setViewPreset] = useState('all')
   const [sortConfig, setSortConfig] = useState({ key: '', direction: '' })
 
   const handleSort = (key) => {
@@ -318,6 +320,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
       // so a stale cache never hides a live product.
       const isActive = p.is_active !== false
       if (activeFilter === 'active' && !isActive) return false
+      if (godownFilter && p.godown_id && String(p.godown_id) !== String(godownFilter)) return false
       if (activeFilter === 'inactive' && isActive) return false
 
       const status = getStatus(p)
@@ -1005,6 +1008,34 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                     <option value="inactive">Inactive</option>
                     <option value="">All</option>
                   </CustomSelect>
+                  {godowns?.length > 0 && (
+                    <CustomSelect
+                      className="form-select"
+                      style={{ height: 34, fontSize: '0.82rem', minWidth: 125, width: 'auto', flexShrink: 0 }}
+                      value={godownFilter}
+                      onChange={e => setGodownFilter(e.target.value)}
+                    >
+                      <option value="">All Godowns</option>
+                      {godowns.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </CustomSelect>
+                  )}
+                  <div style={{ display: 'inline-flex', background: 'var(--bg-3)', padding: 2, borderRadius: 'var(--radius-md)', height: 34 }}>
+                    {[
+                      { id: 'all', label: 'All Cols' },
+                      { id: 'operations', label: 'Operations' },
+                      { id: 'margins', label: 'Margins' }
+                    ].map(vp => (
+                      <button
+                        key={vp.id}
+                        type="button"
+                        className={`btn btn-xs ${viewPreset === vp.id ? 'btn-primary' : 'btn-ghost'}`}
+                        style={{ padding: '0 8px', fontSize: '0.72rem' }}
+                        onClick={() => setViewPreset(vp.id)}
+                      >
+                        {vp.label}
+                      </button>
+                    ))}
+                  </div>
                   <div style={{ flex: 1 }} />
                   {isRefreshing && (
                     <span className="toolbar-refresh-spinner">
@@ -1047,6 +1078,46 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                     .data-table.inv-dense td { padding: 4px 7px; font-size: 11.5px; }
                     .data-table.inv-dense .td-primary { font-size: 11.5px; line-height: 1.2; }
                     .data-table.inv-dense .td-mono { font-size: 10.5px; }
+                    /* Sticky freeze panes */
+                    .data-table.inv-dense th:first-child,
+                    .data-table.inv-dense td:first-child {
+                      position: sticky;
+                      left: 0;
+                      z-index: 4;
+                      background: var(--bg-1);
+                    }
+                    .data-table.inv-dense th:nth-child(2),
+                    .data-table.inv-dense td:nth-child(2) {
+                      position: sticky;
+                      left: 32px;
+                      z-index: 4;
+                      background: var(--bg-1);
+                    }
+                    .data-table.inv-dense th:nth-child(3),
+                    .data-table.inv-dense td:nth-child(3) {
+                      position: sticky;
+                      left: 98px;
+                      z-index: 4;
+                      background: var(--bg-1);
+                      box-shadow: 2px 0 6px -2px rgba(0,0,0,0.12);
+                    }
+                    .data-table.inv-dense th:last-child,
+                    .data-table.inv-dense td:last-child {
+                      position: sticky;
+                      right: 0;
+                      z-index: 4;
+                      background: var(--bg-1);
+                      box-shadow: -2px 0 6px -2px rgba(0,0,0,0.12);
+                    }
+                    .data-table.inv-dense thead tr th {
+                      z-index: 5 !important;
+                    }
+                    .data-table.inv-dense tr:hover td:first-child,
+                    .data-table.inv-dense tr:hover td:nth-child(2),
+                    .data-table.inv-dense tr:hover td:nth-child(3),
+                    .data-table.inv-dense tr:hover td:last-child {
+                      background: var(--bg-2);
+                    }
                   `}</style>
                   {loading ? (
                     <div className="page-loader"><span className="spinner" /> Loading…</div>
@@ -1089,7 +1160,11 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                             <tr
                               key={p.id}
                               className={p.is_active === false ? 'row-inactive' : undefined}
-                              style={{ background: isLow ? 'rgba(239,68,68,.03)' : undefined, cursor: 'context-menu' }}
+                              style={{
+                                background: status === 'Out' ? 'var(--danger-dim, rgba(239,68,68,0.06))' : status === 'Low' ? 'var(--warning-dim, rgba(245,158,11,0.06))' : undefined,
+                                borderLeft: status === 'Out' ? '3px solid var(--danger)' : status === 'Low' ? '3px solid var(--warning)' : undefined,
+                                cursor: 'context-menu'
+                              }}
                               onContextMenu={e => {
                                 e.preventDefault()
                                 setCtxMenu({
@@ -1160,8 +1235,13 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                                 {p.barcode && <div style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.66rem' }}>{p.barcode}</div>}
                               </td>
                               <td className="td-mono">{p.hsn_sac || '—'}</td>
-                              <td style={{ textAlign: 'right', fontWeight: 700, color: isLow ? 'var(--danger)' : 'inherit' }}>
-                                {p.stock_qty ?? p.quantity ?? 0}
+                              <td style={{ textAlign: 'right', fontWeight: 700, color: status === 'Out' ? 'var(--danger)' : status === 'Low' ? 'var(--warning)' : 'inherit' }}>
+                                <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+                                  <span>{p.stock_qty ?? p.quantity ?? 0}</span>
+                                  {p.min_stock > 0 && status !== 'In Stock' && (
+                                    <span style={{ fontSize: '0.62rem', fontWeight: 500, color: 'var(--text-muted)' }}>min {p.min_stock}</span>
+                                  )}
+                                </div>
                               </td>
                               <td style={{ color: 'var(--text-muted)' }}>{p.unit || 'pcs'}</td>
                               <td style={{ textAlign: 'right' }}>{num(d.mrp || null)}</td>
@@ -1182,7 +1262,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                               <td style={{ textAlign: 'right', color: d.profit == null ? 'var(--text-muted)' : d.profit >= 0 ? good : 'var(--danger)' }}>{pct(d.profit)}</td>
                               <td style={{ textAlign: 'right' }}>{num(d.netCost)}</td>
                               <td style={{ textAlign: 'right' }}>{num(d.netMrp)}</td>
-                              <td><span className={`badge ${status === 'In Stock' ? 'badge-success' : status === 'Low' ? 'badge-warning' : 'badge-danger'}`}>{status}</span></td>
+                              <td><span className={`badge ${status === 'In Stock' ? 'badge-success' : status === 'Low' ? 'badge-warning' : 'badge-danger'}`} style={{ fontWeight: 700 }}>{status === 'Out' ? 'Out of Stock' : status === 'Low' ? 'Low Stock' : 'In Stock'}</span></td>
                               <td>
                                 <div style={{ display: 'flex', gap: 4 }}>
                                   <button

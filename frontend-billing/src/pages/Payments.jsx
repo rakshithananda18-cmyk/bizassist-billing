@@ -1412,7 +1412,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
                           </span>
                         </td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600, color: (p.type === 'received' || p.type === 'settlement') ? 'var(--success)' : (p.type === 'pending_due' ? 'var(--warning)' : (p.type === 'credit_note' ? 'var(--info)' : 'var(--danger)')) }}>
-                          {(p.type === 'received' || p.type === 'settlement' || p.type === 'pending_due') ? '+' : '−'}{fmt(p.amount)}
+                          {(p.type === 'received' || p.type === 'settlement') ? '+' : p.type === 'pending_due' ? '' : '−'}{fmt(p.amount)}
                         </td>
                         <td style={{ whiteSpace: 'nowrap' }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><CashIcon size={14} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} /> {p.method || '—'}</span></td>
                         <td className="td-mono" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{p.reference || '—'}</td>

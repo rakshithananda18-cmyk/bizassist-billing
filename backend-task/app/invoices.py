@@ -20,6 +20,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.billing_models import BillingInvoice, BillingInvoiceLine
+from app.collections import confirmed_in_billing
 from app.models import FieldShop, FieldTask, FieldTaskInvoice
 from app.timeutil import biz_today
 
@@ -69,13 +70,23 @@ def _live_tasks(db: Session, business_id: int, ids: List[int]) -> dict:
     out: dict = {}
     if not ids:
         return out
-    rows = (db.query(FieldTaskInvoice.invoice_id, FieldTask.id, FieldTask.task_type, FieldTask.status)
+    rows = (db.query(FieldTaskInvoice.invoice_id, FieldTask.id, FieldTask.task_type, FieldTask.status,
+                     FieldTask.uid, FieldTask.amount_collected)
             .join(FieldTask, FieldTask.id == FieldTaskInvoice.task_id)
             .filter(FieldTaskInvoice.business_id == business_id,
                     FieldTaskInvoice.invoice_id.in_(ids),
                     FieldTask.status != "cancelled")
             .order_by(FieldTask.id.asc()).all())
-    for inv_id, task_id, task_type, status in rows:
+    confirmed = confirmed_in_billing(db, business_id,
+                                    (uid for _, _, kind, status, uid, _ in rows
+                                     if kind == "payment_collect" and status == "done"))
+    for inv_id, task_id, task_type, status, uid, collected in rows:
+        # A completed partial collection must not reserve the invoice forever.
+        # Wait until its reported cash is fully accounted for in Billing before
+        # scheduling another collection, so unconfirmed cash is not collected twice.
+        if task_type == "payment_collect" and status == "done" and (
+                float(collected or 0) - confirmed.get(uid, 0) <= 0.005):
+            continue
         out.setdefault(inv_id, []).append({"task_id": task_id, "task_type": task_type, "status": status})
     return out
 
@@ -144,6 +155,8 @@ def resolve_invoices(db: Session, business_id: int, shop: Optional[FieldShop],
             raise HTTPException(status_code=422, detail=f"{_number(inv)} is billed to a different customer than {shop.name}")
         if (inv.invoice_type or "") == CREDIT_NOTE:
             raise HTTPException(status_code=422, detail=f"{_number(inv)} is a credit note, not a bill")
+        if (inv.status or "").lower() in {"cancelled", "canceled", "void", "draft"}:
+            raise HTTPException(status_code=422, detail=f"{_number(inv)} is not an active bill")
     return [found[i] for i in ids]
 
 

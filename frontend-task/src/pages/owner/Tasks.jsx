@@ -4,6 +4,7 @@ import { fmtDateTime, rupees, TASK_TYPES, todayIST } from '../../lib/format'
 import { INVOICE_TASK_TYPES, summarizeInvoices } from '../../lib/invoices'
 import { billingStatus } from '../../lib/collections'
 import InvoicePicker from '../../components/InvoicePicker'
+import CollectionBalance from '../../components/CollectionBalance'
 import { Empty, ErrorNote, Loader, Modal, PageHeader, StatusBadge, useLoad, useToast } from '../../components/ui'
 
 function NewTask({ onClose, onSaved }) {
@@ -108,7 +109,9 @@ export default function Tasks() {
                 <tr key={t.id}>
                   <td><strong>{t.title}</strong><div className="xs muted">{TASK_TYPES[t.task_type]}
                     {t.boxes_planned != null && ` · ${t.boxes_delivered ?? 0}/${t.boxes_planned} boxes`}
-                    {t.amount_expected != null && ` · ${rupees(t.amount_collected ?? 0)} of ${rupees(t.amount_expected)}`}</div>
+                    {t.status === 'done' && t.amount_collected != null && ` · collected ${rupees(t.amount_collected)}`}
+                    {t.status === 'done' && t.amount_expected != null && ` · planned ${rupees(t.amount_expected)}`}</div>
+                    <CollectionBalance task={t} />
                     {t.invoices?.length > 0 && <div className="xs muted">Bills: {t.invoices.map(x => x.number).join(', ')}</div>}
                     {t.payment_mode && <div className="xs muted">{t.payment_mode}{t.payment_ref ? ` · ${t.payment_ref}` : ''}</div>}
                     {billingStatus(t) && <div><span className={`badge badge-${billingStatus(t).tone}`}>{billingStatus(t).text}</span></div>}

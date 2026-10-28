@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { logger } from '../utils/logger'
 import InvoiceViewerModal from '../components/invoice/InvoiceViewerModal'
+import DashboardCharts from '../components/dashboard/DashboardCharts'
 import {
   SummaryIcon,
   CounterIcon,
@@ -54,6 +55,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [stats, setStats]       = useState(null)
   const [payments, setPayments] = useState([])
+  const [chartsData, setChartsData] = useState(null)
   const [loading, setLoading]   = useState(true)
   const [viewingInvoiceNo, setViewingInvoiceNo] = useState(null)
   const [ctxMenu, setCtxMenu]   = useState(null)
@@ -69,10 +71,12 @@ export default function Dashboard() {
     Promise.all([
       authFetch('/dashboard-summary').then(r => r.ok ? r.json() : null).catch(() => null),
       // Dashboard only shows the 5 most recent — don't pull the whole history.
-      authFetch('/payments?limit=5').then(r => r.ok ? r.json() : []).catch(() => [])
-    ]).then(([summaryData, paymentsData]) => {
+      authFetch('/payments?limit=5').then(r => r.ok ? r.json() : []).catch(() => []),
+      authFetch('/dashboard-charts').then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([summaryData, paymentsData, chartData]) => {
       setStats(summaryData)
       setPayments(Array.isArray(paymentsData) ? paymentsData : (paymentsData?.items ?? []))
+      setChartsData(chartData)
     }).finally(() => { setLoading(false); loadingRef.current = false })
   }, [authFetch])
 
@@ -232,6 +236,9 @@ export default function Dashboard() {
                 </>
               )
             })()}
+
+            {/* Visual Analytics */}
+            {privacyMode ? <p className="muted">Charts hidden in Privacy Mode.</p> : <DashboardCharts chartData={chartsData} />}
 
             {/* Feed & Alerts grid */}
             <div className="dashboard-grid">

@@ -16,6 +16,14 @@ const cashier = { user_id: 2, public_id: 'SHOP-A' }
 const extras = { customColors: CUSTOM_THEME_DEFAULTS, windowGradient: false, darkerSidebar: false }
 
 describe('personal appearance preferences', () => {
+  it('keeps sub-page selections readable across every built-in palette and mode', () => {
+    for (const palette of APPEARANCE_PALETTES) {
+      for (const theme of ['light', 'dark']) {
+        const { tokens } = appearanceTokens({ theme, accent: palette.id }, theme === 'dark', owner, storage())
+        expect(contrastRatio(tokens['--sidebar-active-text-sub'], tokens['--sidebar-active-bg-sub'])).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
   it('validates saved colours and modes before applying them', () => {
     expect(normalizeAppearance({ theme: 'unknown', accent: 'bad-css' })).toEqual(DEFAULT_APPEARANCE)
     expect(normalizeAppearance({ theme: 'dark', accent: 'ocean' })).toEqual({ theme: 'dark', accent: 'ocean', ...extras })

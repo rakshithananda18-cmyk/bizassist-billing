@@ -23,6 +23,8 @@ import SyncNudgeModal from '../components/hosting/SyncNudgeModal'
 import WebLocalOnlyNotice from '../components/hosting/WebLocalOnlyNotice'
 import SidebarContextMenu from '../components/layout/SidebarContextMenu'
 import ToastContainer from '../components/layout/ToastContainer'
+import GlobalShortcutsModal from '../components/layout/GlobalShortcutsModal'
+import WorkspaceSwitcher from '../components/layout/WorkspaceSwitcher'
 import SessionExpiredModal from '../components/layout/SessionExpiredModal'
 import TrialEndedModal from '../components/layout/TrialEndedModal'
 import { trialState } from '../utils/trialStatus'
@@ -48,8 +50,26 @@ const NAV = [
   {
     section: 'Supply & Inflow',
     items: [
-      { to: '/stock',     icon: <InventoryIcon size={16} className="nav-anim-inventory" />, label: 'Stock & Purchases' },
-      { to: '/b2b', icon: <OrderIcon size={16} className="nav-anim-b2border" />, label: 'B2B' },
+      {
+        to: '/stock',
+        icon: <InventoryIcon size={16} className="nav-anim-inventory" />,
+        label: 'Stock & Purchases',
+        children: [
+          { to: '/stock/inventory', label: 'Stock & Items' },
+          { to: '/stock/purchase', label: 'Purchases', id: 'purchase', ownerOnly: true },
+        ],
+      },
+      {
+        to: '/b2b',
+        icon: <OrderIcon size={16} className="nav-anim-b2border" />,
+        label: 'B2B',
+        children: [
+          { to: '/b2b?tab=order', label: 'Order' },
+          { to: '/b2b?tab=outgoing', label: 'Outgoing Orders' },
+          { to: '/b2b?tab=incoming', label: 'Incoming Orders' },
+          { to: '/b2b?tab=connections', label: 'Connections' },
+        ],
+      },
       { to: '/import', icon: <ImportIcon size={16} className="nav-anim-import" />, label: 'Data Migration' },
     ]
   },
@@ -71,9 +91,17 @@ const NAV = [
     items: [
       { to: '/sales',    icon: <CounterIcon size={16} className="nav-anim-bill" />,   label: 'Billing Counter' },
       { to: '/pos-live-counter', icon: <MonitorIcon size={16} />,   label: 'POS Live Counter' },
-      // Contacts & Payments workspace: Contacts · Transactions · Invoices tabs
-      { to: '/parties',  icon: <ContactsIcon size={16} className="nav-anim-contact" />,  label: 'Contacts & Payments' },
-      // /money routes preserved for backward-compat but removed from nav
+      {
+        to: '/parties',
+        icon: <ContactsIcon size={16} className="nav-anim-contact" />,
+        label: 'Contacts & Payments',
+        children: [
+          { to: '/parties/contacts', label: 'Contacts' },
+          { to: '/parties/payments', label: 'Transactions' },
+          { to: '/parties/invoices', label: 'Invoices' },
+          { to: '/parties/field', label: 'Field Collections', ownerOnly: true },
+        ],
+      },
       { to: '/reports',  icon: <ReportsIcon size={16} className="nav-anim-report" />,   label: 'GST & Tax Reports' },
     ]
   }
@@ -112,7 +140,7 @@ const PAGE_TITLES = {
 // data grid built as a full-bleed POS surface; the nav costs it 240px it has a
 // real use for. Prefix match, so /stock/inventory, /stock/purchases and any
 // future tab inherit it.
-const AUTO_COLLAPSE_ROUTES = ['/stock', '/settings']
+const AUTO_COLLAPSE_ROUTES = ['/settings']
 
 const BOTTOM_BAR_ROUTES = ['/', '/sales', '/stock', '/parties', '/reports']
 
@@ -124,6 +152,7 @@ export default function AppLayout({ children, title }) {
   const location = useLocation()
   const label = useDocLabels()
   const pageContentRef = React.useRef(null)
+  const sidebarNavRef = React.useRef(null)
 
   React.useLayoutEffect(() => {
     const content = pageContentRef.current
@@ -196,6 +225,33 @@ export default function AppLayout({ children, title }) {
   // Replaces the old hardcoded AI_DASHBOARD_GATED const.
   const subscription = settings?.subscription
   const aiGated = !subscription?.plan || subscription?.plan !== 'pro'
+
+  const handleOpenExternal = async (external, navLabel) => {
+    if (['cashier', 'supply_adder'].includes(user?.role)) return
+    const app = EXTERNAL_APPS[external]
+    if (!app?.getUrl()) return
+    if (app.proOnly && aiGated) {
+      confirm({
+        mode: 'alert',
+        title: 'Pro plan feature',
+        message: `${navLabel} is part of the Pro plan. Contact your provider to upgrade.`,
+      })
+      return
+    }
+    if (app.needsCloudData?.({ isLocalApp: IS_LOCAL_APP, effectiveMode })) {
+      const go = await confirm({
+        mode: 'update',
+        title: `${navLabel} needs Local + Cloud`,
+        message: `${navLabel} runs in the cloud and works from your customers and bills there. This device is set to Local only, so local changes are not automatically available there. Switch to Local + Cloud: your data stays on this computer too.`,
+        confirmText: 'Switch to Local + Cloud',
+        cancelText: 'Not now',
+      })
+      // The same guarded switch flow as the sync popover's button.
+      if (go) navigate('/settings?tab=advanced&switch=hybrid')
+      return
+    }
+    app.open({ user })
+  }
 
   const isFreePlan = !subscription?.plan || subscription?.plan !== 'pro'
 
@@ -606,10 +662,71 @@ export default function AppLayout({ children, title }) {
   }, [isCashier, isSupplyAdder, location.pathname, navigate, OWNER_ONLY_PATHS, SUPPLY_ADDER_PATHS])
 
   const visibleNav = isCashier
-    ? NAV.map(s => ({ ...s, items: s.items.filter(i => !OWNER_ONLY_PATHS.has(i.to) && !i.ownerOnly) })).filter(s => s.items.length > 0)
+    ? NAV.map(s => ({
+        ...s,
+        items: s.items
+          .filter(i => !OWNER_ONLY_PATHS.has(i.to) && !i.ownerOnly)
+          .map(i => ({
+            ...i,
+            children: i.children
+              ? i.children.filter(c => !OWNER_ONLY_PATHS.has(c.to) && !c.ownerOnly)
+              : undefined
+          }))
+      })).filter(s => s.items.length > 0)
     : isSupplyAdder
-      ? NAV.map(s => ({ ...s, items: s.items.filter(i => SUPPLY_ADDER_PATHS.has(i.to)) })).filter(s => s.items.length > 0)
+      ? NAV.map(s => ({
+          ...s,
+          items: s.items
+            .filter(i => SUPPLY_ADDER_PATHS.has(i.to))
+            .map(i => ({
+              ...i,
+              children: i.children
+                ? i.children.filter(c => SUPPLY_ADDER_PATHS.has(c.to) || SUPPLY_ADDER_PATHS.has(i.to))
+                : undefined
+            }))
+        })).filter(s => s.items.length > 0)
       : NAV
+
+  const isItemActive = React.useCallback((to) => {
+    if (to === '/') return location.pathname === '/'
+    if (to === '/stock') return location.pathname.startsWith('/stock')
+    if (to === '/parties') return location.pathname.startsWith('/parties') || location.pathname.startsWith('/money')
+    if (to === '/b2b') return location.pathname.startsWith('/b2b')
+    return location.pathname.startsWith(to)
+  }, [location.pathname])
+
+  const isChildActive = React.useCallback((childTo) => {
+    const currentSearch = new URLSearchParams(location.search)
+    if (childTo.includes('?')) {
+      const [childPath, childQuery] = childTo.split('?')
+      if (location.pathname !== childPath) return false
+      const childParams = new URLSearchParams(childQuery)
+      for (const [key, val] of childParams.entries()) {
+        const cur = currentSearch.get(key)
+        if (key === 'tab' && !cur && val === 'order') continue
+        if (cur !== val) return false
+      }
+      return true
+    }
+
+    if (location.pathname === childTo) return true
+
+    if (location.pathname === '/stock') {
+      const activeTab = currentSearch.get('tab') || (() => {
+        try { return localStorage.getItem('last_stock_tab') } catch { return null }
+      })() || 'inventory'
+      return childTo === `/stock/${activeTab}`
+    }
+
+    if (location.pathname === '/parties') {
+      const activeTab = currentSearch.get('tab') || (() => {
+        try { return localStorage.getItem('last_parties_tab') } catch { return null }
+      })() || 'contacts'
+      return childTo === `/parties/${activeTab}`
+    }
+
+    return false
+  }, [location.pathname, location.search])
 
   const visibleSubnav = isCashier
     ? SUBNAV.filter(item => !OWNER_ONLY_PATHS.has(item.to))
@@ -752,6 +869,48 @@ export default function AppLayout({ children, title }) {
   }, [])
   // The mobile drawer always opens at full width, retaining the desktop choice.
   const sidebarInRailMode = sidebarCollapsed && !isMobileViewport
+
+// ── Auto-scroll active nav item / expanded sub-tree into view ─────────────
+  // When a user selects a main page lower in the panel (e.g. Contacts & Payments, B2B),
+  // this smoothly ensures the active parent and its newly expanded sub-tree
+  // are brought into view without manual scrolling.
+  React.useEffect(() => {
+    if (sidebarInRailMode) return
+
+    const timer = setTimeout(() => {
+      const nav = sidebarNavRef.current
+      if (!nav) return
+
+      const activeLink = nav.querySelector('.nav-link.active')
+      if (!activeLink) return
+
+      const subTree = activeLink.nextElementSibling?.classList.contains('nav-sub-tree')
+        ? activeLink.nextElementSibling
+        : null
+
+      const targetElem = subTree || activeLink
+
+      const navRect = nav.getBoundingClientRect()
+      const activeLinkRect = activeLink.getBoundingClientRect()
+      const targetRect = targetElem.getBoundingClientRect()
+
+      // If the entire group exceeds container height, align top of activeLink with top of nav
+      if (targetRect.bottom - activeLinkRect.top > navRect.height) {
+        if (activeLinkRect.top < navRect.top || activeLinkRect.top > navRect.top + 50) {
+          activeLink.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      } else {
+        // If bottom extends below visible nav area, smoothly scroll into view
+        if (targetRect.bottom > navRect.bottom - 10) {
+          targetElem.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        } else if (activeLinkRect.top < navRect.top + 10) {
+          activeLink.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        }
+      }
+    }, 120)
+
+    return () => clearTimeout(timer)
+  }, [location.pathname, location.search, sidebarInRailMode])
 
   React.useEffect(() => {
     if (!isMobileViewport || !mobileMenuOpen) return undefined
@@ -2085,7 +2244,7 @@ export default function AppLayout({ children, title }) {
           </div>
 
           {/* Nav — flat ordered list, regrouped by section label */}
-          <nav className="sidebar-nav">
+          <nav ref={sidebarNavRef} className="sidebar-nav">
             {(() => {
               // Group back into sections while preserving custom order
               const groups = []
@@ -2117,10 +2276,10 @@ export default function AppLayout({ children, title }) {
                       </span>
                     </div>
 
-                    {!isCollapsed && items.map(({ item: { to, icon, label, external }, flatIndex }) => {
+                    {!isCollapsed && items.map(({ item: { to, icon, label: navLabel, external, children }, flatIndex }) => {
                       const handleCtxMenu = (e) => {
                         e.preventDefault()
-                        setSidebarCtxMenu({ x: e.clientX, y: e.clientY, to, label, flatIndex })
+                        setSidebarCtxMenu({ x: e.clientX, y: e.clientY, to, label: navLabel, flatIndex })
                       }
                       if (external) {
                         const app = EXTERNAL_APPS[external]
@@ -2129,43 +2288,19 @@ export default function AppLayout({ children, title }) {
                         const gated = app.proOnly && aiGated
                         return (
                           <a
-                            key={label}
+                            key={navLabel}
                             href={href}
                             className="nav-link"
-                            data-label={label}
+                            data-label={navLabel}
                             onContextMenu={handleCtxMenu}
                             onClick={async (e) => {
                               e.preventDefault()
                               setMobileMenuOpen(false)
-                              if (gated) {
-                                confirm({
-                                  mode: 'alert',
-                                  title: 'Pro plan feature',
-                                  message: `${label} is part of the Pro plan. Contact your provider to upgrade.`,
-                                })
-                                return
-                              }
-                              if (app.needsCloudData?.({ isLocalApp: IS_LOCAL_APP, effectiveMode })) {
-                                const go = await confirm({
-                                  mode: 'update',
-                                  title: `${label} needs Local + Cloud`,
-                                  message: `${label} runs in the cloud and works from your customers and bills there. This business is set to Local only, so nothing has reached the cloud and ${label} would open empty. Switch to Local + Cloud: your data stays on this computer too.`,
-                                  confirmText: 'Switch to Local + Cloud',
-                                  cancelText: 'Not now',
-                                })
-                                // The same guarded switch flow as the sync popover's button.
-                                if (go) navigate('/settings?tab=advanced&switch=hybrid')
-                                return
-                              }
-                              app.open()
+                              await handleOpenExternal(external, navLabel)
                             }}
                           >
                             <span className="nav-icon">{icon}</span>
-                            {/* Wrapped like the NavLink below. As a bare text
-                                node this was the one label the collapsed rail
-                                could not hide, so "Dashboard BIZASSIST" spilled
-                                out of the 56px rail. */}
-                            <span className="nav-label">{label}</span>
+                            <span className="nav-label">{navLabel}</span>
                             {gated && !sidebarInRailMode && (
                               <span style={{
                                 marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 800,
@@ -2176,26 +2311,45 @@ export default function AppLayout({ children, title }) {
                           </a>
                         )
                       }
+
+                      const active = isItemActive(to)
+                      const hasChildren = Array.isArray(children) && children.length > 0
+
                       return (
-                        <NavLink
-                          key={to}
-                          to={to}
-                          end={to === '/'}
-                          onClick={() => setMobileMenuOpen(false)}
-                          onContextMenu={handleCtxMenu}
-                          className={({ isActive }) =>
-                            'nav-link' + (isActive ? ' active' : '')
-                          }
-                          // Read by the collapsed rail's hover tooltip. The
-                          // label text itself is hidden when collapsed, so
-                          // without this the rail is a row of unnamed icons.
-                          data-label={label}
-                        >
-                          <span className="nav-icon">{icon}</span>
-                          {/* Wrapped so the rail can hide the text without
-                              hiding the icon. It was a bare text node. */}
-                          <span className="nav-label">{label}</span>
-                        </NavLink>
+                        <React.Fragment key={to}>
+                          <NavLink
+                            to={to}
+                            end={to === '/'}
+                            onClick={() => setMobileMenuOpen(false)}
+                            onContextMenu={handleCtxMenu}
+                            className={({ isActive }) =>
+                              'nav-link' + (isActive || active ? ' active' : '')
+                            }
+                            data-label={navLabel}
+                          >
+                            <span className="nav-icon">{icon}</span>
+                            <span className="nav-label">{navLabel}</span>
+                          </NavLink>
+
+                          {hasChildren && active && !sidebarInRailMode && (
+                            <div className="nav-sub-tree" role="group" aria-label={`${navLabel} sub-pages`}>
+                              {children.map(child => {
+                                const childActive = isChildActive(child.to)
+                                const childText = child.id === 'purchase' ? (label('purchase') + 's') : child.label
+                                return (
+                                  <Link
+                                    key={child.to}
+                                    to={child.to}
+                                    onClick={() => setMobileMenuOpen(false)}
+                                    className={`nav-sub-link ${childActive ? 'active' : ''}`}
+                                  >
+                                    <span className="nav-sub-label">{childText}</span>
+                                  </Link>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </React.Fragment>
                       )
                     })}
                   </React.Fragment>
@@ -2344,6 +2498,8 @@ export default function AppLayout({ children, title }) {
                   <div className="profile-menu-biz">{profile?.business_name || user?.username || 'BizAssist User'}</div>
                   <div className="profile-menu-sub">Enterprise Account</div>
                 </div>
+                <div className="profile-menu-sep" />
+                <div style={{ padding: "8px 12px", display: "flex", justifyContent: "center" }}><WorkspaceSwitcher activeWorkspace="billing" user={user} onFieldTeam={() => handleOpenExternal('fieldTeam', 'Field Team')} /></div>
                 <div className="profile-menu-sep" />
                 <Link className="profile-menu-item" to="/settings?tab=profile" onClick={() => setShowProfileMenu(false)}>
                   <UserIcon size={14} /> Business Profile
@@ -2531,6 +2687,8 @@ export default function AppLayout({ children, title }) {
                   <div className="profile-menu-biz">{profile?.business_name || user?.username || 'BizAssist User'}</div>
                   <div className="profile-menu-sub">Enterprise Account</div>
                 </div>
+                <div className="profile-menu-sep" />
+                <div style={{ padding: "8px 12px", display: "flex", justifyContent: "center" }}><WorkspaceSwitcher activeWorkspace="billing" user={user} onFieldTeam={() => handleOpenExternal('fieldTeam', 'Field Team')} /></div>
                 <div className="profile-menu-sep" />
                 <Link className="profile-menu-item" to="/settings?tab=profile" onClick={() => setShowProfileMenu(false)}>
                   <UserIcon size={14} /> Business Profile

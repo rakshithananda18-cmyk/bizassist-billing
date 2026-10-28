@@ -55,6 +55,9 @@ export async function request(method, path, { body, query } = {}) {
   const text = await res.text()
   let data = null
   if (text) { try { data = JSON.parse(text) } catch { data = text } }
+  // A slow response from the previous business must neither populate the new
+  // workspace nor sign its owner out after a successful account switch.
+  if (token !== tokenStore.get()) throw new ApiError('Business session changed. Please try again.', 409)
   if (!res.ok) {
     // 401: session gone. 402: the business is not on BizAssist Pro (any more).
     if ((res.status === 401 || res.status === 402) && token) window.dispatchEvent(new CustomEvent('task:unauthorized', { detail: detailText(data?.detail) }))

@@ -18,7 +18,7 @@ from app.models import (
 )
 from app.routers.attendance import todays_attendance
 from app.security import Principal, get_settings, require_owner, require_staff
-from app.services import attendance_out, run_out, settings_out, staff_out, task_out
+from app.services import attendance_out, prime_billing_reads, run_out, settings_out, staff_out, task_out
 from app.timeutil import biz_today, day_bounds_utc, iso_utc
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
@@ -211,6 +211,8 @@ def my_today(p: Principal = Depends(require_staff), db: Session = Depends(get_db
         FieldPointsEntry.staff_id == staff.id, FieldPointsEntry.work_date == today).scalar() or 0
     pts_total = db.query(func.coalesce(func.sum(FieldPointsEntry.points), 0)).filter(
         FieldPointsEntry.staff_id == staff.id).scalar() or 0
+    prime_billing_reads(shops=[stop.shop for run in runs for stop in run.stops],
+                        tasks=other + [task for run in runs for stop in run.stops for task in stop.tasks])
     db.commit()
     return {
         "today": today,

@@ -191,10 +191,20 @@ for r in (auth, staff, attendance, shops, runs, tasks, requests, tracking, dashb
 @app.get("/api/health")
 def health():
     from app.timeutil import biz_today, iso_utc
-    # `db` (like billing's /health db_type): a deploy that lost its DATABASE_URL
-    # secret still boots — on a throw-away SQLite file — and this shows it.
-    return {"ok": True, "server_time": iso_utc(utc_now()), "business_date": biz_today(),
-            "tz": config.BIZ_TIMEZONE, "db": engine.dialect.name}
+    # A dialect name alone does not prove that the configured database is
+    # reachable. Probe without touching business rows, and expose only safe
+    # operational flags; never return driver errors or connection strings.
+    result = {"ok": True, "server_time": iso_utc(utc_now()), "business_date": biz_today(),
+              "tz": config.BIZ_TIMEZONE, "db": engine.dialect.name,
+              "pro_required": config.REQUIRE_PRO, "billing_mirror": config.CREATE_BILLING_MIRROR,
+              "cloud_only": True}
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception:
+        logger.warning("%s database health probe failed", TAG.BOOT)
+        return JSONResponse({**result, "ok": False, "reason": "database_unavailable"}, status_code=503)
+    return result
 
 
 @app.post("/api/internal/purge-pings", include_in_schema=False)

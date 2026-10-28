@@ -48,6 +48,7 @@ import ContextMenu from '../components/common/ContextMenu'
 import { DEFAULT_FUNC_KEYS as defaultFuncKeys, loadFuncKeys, matchesKey } from '../lib/posKeys'
 import { getPriceOptions as buildPriceOptions, withQty as withQtyFor } from '../lib/priceOptions'
 import { nextInvoiceNo, syncTabNames as syncTabNamesFor } from '../lib/posInvoiceNumbers'
+import { playScanBeep, playErrorTone } from '../utils/posAudio'
 
 // ============================================================================
 // ── 2. GLOBAL DEFAULTS & VALUE SCHEMAS ──

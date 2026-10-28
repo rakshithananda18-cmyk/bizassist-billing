@@ -48,6 +48,7 @@ import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
 import AppearanceSettings from '../components/settings/AppearanceSettings'
 import Profile from './Profile'
 import './settings-profile.css'
+import SettingsSearch from '../components/settings/SettingsSearch'
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 const TABS = [
@@ -96,6 +97,8 @@ export default function Settings() {
   })).filter(g => g.tabs.length > 0)
   const [showPasscodeModal, setShowPasscodeModal] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
+  const [settingsSearchQuery, setSettingsSearchQuery] = useState('')
+
   const [activeTab, setActiveTab] = useState(() => {
     let tabParam = new URLSearchParams(window.location.search).get('tab')
     // Redirect legacy 'hosting' deep-link to the new network tab

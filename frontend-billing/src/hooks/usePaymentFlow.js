@@ -5,6 +5,7 @@ import { newClientRequestId } from '../sync/uuid'
 import { IS_LOCAL_APP } from '../config'
 import { getFromDateStr } from '../utils/format'
 import { useConfirm } from '../contexts/ConfirmContext'
+import { playSuccessChime } from '../utils/posAudio'
 
 // Module-level save lock — shared across ALL instances of this hook.
 // Prevents duplicate POSTs when React StrictMode mounts two instances
@@ -51,7 +52,9 @@ export default function usePaymentFlow({
   }
 
   const handleSaveInvoice = useCallback(async (printAfterSave = false, skipConfirm = false) => {
-    if (form.items.length === 0 || form.items.some(it => !it.product || !it.price)) {
+    if (form.items.length === 0 || form.items.some(it => !it.product
+      || !Number.isFinite(parseFloat(it.price)) || parseFloat(it.price) < 0
+      || !Number.isFinite(parseFloat(it.qty)) || parseFloat(it.qty) <= 0)) {
       setAlert({ type: 'danger', msg: 'Please add items and complete all fields.' })
       return false
     }
@@ -63,9 +66,7 @@ export default function usePaymentFlow({
       logger.warn('[SALES] duplicate save blocked for', lockKey)
       return false
     }
-    _saveLock.set(lockKey, true)
-    // Safety net: auto-clear after 5s in case save throws before clearing
-    const lockTimer = setTimeout(() => _saveLock.delete(lockKey), 5000)
+    _saveLock.set(lockKey, 'saving')
     
     const pay = (payable ?? grandTotal)
     // Both may flip to credit if the cashier chooses "Add to credit" at the
@@ -79,7 +80,7 @@ export default function usePaymentFlow({
     // before we build the payload — carry the override explicitly.
     let formForSave = form
 
-    const releaseLock = () => { _saveLock.delete(lockKey); clearTimeout(lockTimer) }
+    const releaseLock = () => { _saveLock.delete(lockKey) }
 
     if (!skipConfirm) {
       // Wrap in try/finally: if confirm() throws (e.g. the ConfirmProvider is
@@ -132,14 +133,22 @@ export default function usePaymentFlow({
     logger.info('[SALES] saving invoice', activeTab.name, '· items', form.items.length, '· payable', pay, '· paid', paidNow, isCredit ? '(credit)' : '(paid)')
     const reqKey = activeTab.name
     const clientRequestId = reqIdFor(reqKey)
-    const payload = buildInvoicePayload({ invoiceNo: activeTab.name, form: formForSave, gstEnabled: gstAmt > 0, billDiscount: billDiscountAmt, cashDiscount: cashDiscountAmt, paidAmount: paidNow, markPaid: !isCredit })
+    let payload
+    try {
+      payload = buildInvoicePayload({ invoiceNo: activeTab.name, form: formForSave, gstEnabled: gstAmt > 0, billDiscount: billDiscountAmt, cashDiscount: cashDiscountAmt, paidAmount: paidNow, markPaid: !isCredit })
+    } catch (error) {
+      releaseLock()
+      setSubmitting(false)
+      setAlert({ type: 'danger', msg: 'Please check the bill details before saving.' })
+      return false
+    }
 
     // Local reset for the offline path — close the tab + refocus WITHOUT a server
     // refetch (which would fail offline). The next bill's number is still kept
     // unique because Sales feeds the queued (pending) invoice numbers back into
     // the number allocator.
     const offlineReset = () => {
-      closeTab(activeTabId, null, true)
+      try { closeTab(activeTabId, null, true) } finally { releaseLock() }
       setTimeout(() => barcodeRef.current?.focus(), 100)
     }
 
@@ -153,12 +162,16 @@ export default function usePaymentFlow({
         return false
       }
       await enqueueOffline({ method: 'POST', path: '/invoices', body: payload, clientRequestId })
+      _saveLock.set(lockKey, 'saved')
       reqIdRef.current.delete(reqKey) // safely persisted in the outbox now
       logger.info('[SALES] invoice queued offline', activeTab.name)
       const isThermal = settings?.print?.thermal_printer_mode === true
       if (printAfterSave && isThermal) {
         setAlert({ type: 'warning', msg: 'Saved offline — printing locally; will sync when back online.' })
-        setTimeout(() => { window.print(); offlineReset() }, 500)
+        setTimeout(() => {
+          try { window.print() } catch (error) { logger.warn('[SALES] offline print failed', error) }
+          finally { offlineReset() }
+        }, 500)
       } else {
         setAlert({ type: 'warning', msg: printAfterSave
           ? 'Saved offline — PDF printing needs a connection; the bill will sync automatically.'
@@ -168,6 +181,7 @@ export default function usePaymentFlow({
       return true
     }
 
+    let serverAccepted = false
     try {
       // Known-offline (only on the WEB/cloud app — the desktop app's backend is on localhost, so it is always online relative to the frontend)
       const isOfflineForBackend = !IS_LOCAL_APP && typeof navigator !== 'undefined' && navigator.onLine === false
@@ -181,6 +195,8 @@ export default function usePaymentFlow({
         body: JSON.stringify(payload),
       })
       if (res.ok) {
+        serverAccepted = true
+        _saveLock.set(lockKey, 'saved')
         reqIdRef.current.delete(reqKey)  // settled — next save is a fresh intent
         // The server may RE-NUMBER on a concurrent collision (§9.3b: a different
         // sale grabbed this number first). Always trust the number it returns for
@@ -192,6 +208,7 @@ export default function usePaymentFlow({
           setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, name: serverInvoiceNo } : t))
         }
         logger.info('[SALES] invoice saved', serverInvoiceNo, printAfterSave ? '(print)' : '')
+        try { playSuccessChime() } catch (error) { logger.warn('[SALES] success sound unavailable', error) }
         setAlert({ type: 'success', msg: printAfterSave ? 'Invoice created and print triggered!' : 'Invoice created successfully!' })
         
         const finishReset = () => {
@@ -200,7 +217,7 @@ export default function usePaymentFlow({
             // The list is stale by at most one entry and refreshes naturally when
             // the user navigates to /payments. Removing this round-trip makes POS
             // feel noticeably snappier (saves 100-400ms per bill on the hybrid path).
-            closeTab(activeTabId, null, true)
+            try { closeTab(activeTabId, null, true) } finally { releaseLock() }
           } else {
             // Cloud mode: refresh the 7-day invoice window only (not all invoices ever).
             const fromDate = getFromDateStr(7)
@@ -210,7 +227,7 @@ export default function usePaymentFlow({
                 setDbInvoices(invs)
                 setTabs(prev => syncTabNames(prev, invs))
                 closeTab(activeTabId, null, true)
-              }).catch(() => closeTab(activeTabId, null, true))
+              }).catch(() => closeTab(activeTabId, null, true)).finally(releaseLock)
           }
           setTimeout(() => barcodeRef.current?.focus(), 100)
         }
@@ -226,8 +243,8 @@ export default function usePaymentFlow({
             // DOM before window.print() fires. 500ms was occasionally too short on
             // slower machines / hybrid mode (more state updates before render).
             setTimeout(() => {
-              window.print()
-              finishReset()
+              try { window.print() } catch (error) { logger.warn('[SALES] print failed after saving', error) }
+              finally { finishReset() }
             }, 800)
           } else {
             setTimeout(async () => {
@@ -255,8 +272,8 @@ export default function usePaymentFlow({
                 finishReset()
               } catch (err) {
                 logger.error('[SALES] PDF print failed, falling back to window.print()', err)
-                window.print()
-                finishReset()
+                try { window.print() } catch (printError) { logger.warn('[SALES] print unavailable', printError) }
+                finally { finishReset() }
               }
             }, 300)
           }
@@ -267,13 +284,21 @@ export default function usePaymentFlow({
       } else {
         // Definitive server rejection (validation etc.) — won't fix itself on
         // retry, so drop the id; a corrected re-save is a new intent.
-        reqIdRef.current.delete(reqKey)
+        if (res.status >= 400 && res.status < 500) reqIdRef.current.delete(reqKey)
         const err = await res.json().catch(() => ({}))
         logger.error('[SALES] invoice save rejected — status', res.status, err.detail || '')
         setAlert({ type: 'danger', msg: err.detail || 'Failed to create invoice.' })
         return false
       }
     } catch (e) {
+      if (serverAccepted) {
+        // The sale is already committed. A UI, audio or print problem must
+        // never turn it into another queued POST with a new request id.
+        logger.error('[SALES] invoice saved but follow-up failed', e)
+        setAlert({ type: 'warning', msg: 'Invoice saved. Reopen it from Invoices if you need to print; do not save it again.' })
+        try { closeTab(activeTabId, null, true) } finally { releaseLock() }
+        return true
+      }
       if (e?.message === 'Session expired') {
         // authFetch already logged the user out — don't queue, surface it.
         setAlert({ type: 'danger', msg: 'Session expired. Please log in again.' })
@@ -290,8 +315,7 @@ export default function usePaymentFlow({
         return false
       }
     } finally {
-      clearTimeout(lockTimer)
-      _saveLock.delete(lockKey)
+      if (_saveLock.get(lockKey) === 'saving') releaseLock()
       setSubmitting(false)
     }
   }, [form, authFetch, activeTab.name, activeTabId, closeTab, gstAmt, settings, grandTotal, payable, cashDiscountAmt, billDiscountAmt, setAlert, setSubmitting, setDbInvoices, setTabs, syncTabNames, barcodeRef, enqueueOffline, confirm])

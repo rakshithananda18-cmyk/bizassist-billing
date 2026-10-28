@@ -29,11 +29,11 @@ From the repo root, `start_dev.bat` starts billing **and** Field Team:
 - **Field Team PWA** `http://localhost:5176` (Vite; `/api` is proxied to `:8002`).
 - Uses billing's `venv` (billing's `requirements.txt` covers everything here). The first run copies `backend-task/.env.example` to `backend-task/.env`.
 
-Locally it runs as in the cloud, where both services share one Supabase database and one secret (`dev/dev_env.ps1` sets this up from `backend/.env`):
+Operational Field Team is **Pro-only and cloud-only**. Online Billing and Field Team must use the **same PostgreSQL database and JWT secret**. Local Billing changes reach that workspace only after Local + Cloud sync; collection approvals belong in online Billing, not a second set of local books.
 
-- **One database — billing's own** `backend/bizassist.db` (billing's `DATABASE_URL`). You sign in to Field Team with your billing username and password, shops come from your billing customers, and deliveries and collections use your real bills. Field Team only adds its `ft_*` tables there, and billing's sync never sends them. Before the first time, the file is copied to `backend/bizassist.before-field-team.db` (git-ignored); to undo, stop `start_dev` and copy it back. The old `backend-task/bizassist_task.db` is no longer used.
-- **One secret — billing's `JWT_SECRET`**, so billing's **Field Team** link in the sidebar signs you in.
-- If billing's `DATABASE_URL` is not a local SQLite file (say, a Postgres server), Field Team keeps the database in `backend-task/.env` and says so: a local Field Team never writes to a server.
+Normal development preserves **two independent local databases**. `dev/dev_env.ps1` does not copy, merge, or repoint them. The local Field Team API/PWA is an explicitly opted-in development fixture, not an offline operational app; Billing's normal Field Team link opens the cloud workspace. Direct local fixtures need `TASK_CREATE_BILLING_MIRROR=1`. A cloud deployment refuses SQLite, including an explicit mirror flag, and always enforces the Pro gate.
+
+The separate `fieldtest` mode below deliberately shares one **throwaway test database**, with an explicit test-only override, so integration can be exercised without real local or cloud records. It does not change the normal two-database setup.
 
 GPS in the browser needs `https://` or `localhost`; to test on a phone, use the deployed Vercel URL.
 
@@ -79,5 +79,21 @@ Then, as in [docs/FIELD_TEAM_MASTER_PLAN.md §8.1](../docs/FIELD_TEAM_MASTER_PLA
 4. **Vercel:** import **bizassist-billing** again → Root Directory `frontend-task` → Vite → env `VITE_API_URL=<Cloud Run service URL>` → Deploy.
 5. **CORS:** `.\backend-task\deploy_cloudrun.ps1 -Project <id> -AllowedOrigins https://<vercel-url>` (kept on later deploys).
 6. **Billing:** `VITE_FIELD_TEAM_URL=https://<vercel-url>` on billing's `frontend-billing` Vercel project → redeploy → owners get the **Field Team** link.
-6a. **Pro plan:** Field Team is part of BizAssist Pro. Grant Pro to each business that uses it in billing's admin console (your own first), then `.\backend-task\deploy_cloudrun.ps1 -Project <id> -ProGate on` (kept on later deploys; `-ProGate off` turns it off). Businesses not on Pro are refused with a clear message; an expired paid plan keeps working for `TASK_PRO_GRACE_DAYS` (7) days while the owner sees a renewal warning; billing's free trial has no grace and stops on its last day. Same rule as billing's `effective_plan` (checked in CI).
+6a. **Pro plan:** Field Team is part of BizAssist Pro. Grant Pro to each business that uses it in billing's admin console (your own first), then `.\backend-task\deploy_cloudrun.ps1 -Project <id> -ProGate on` (kept on later deploys; deployed Field Team always enforces Pro (a disabled gate is only a development/test option)). Businesses not on Pro are refused with a clear message; an expired paid plan keeps working for `TASK_PRO_GRACE_DAYS` (7) days while the owner sees a renewal warning; billing's free trial has no grace and stops on its last day. Same rule as billing's `effective_plan` (checked in CI).
 7. Give staff the BizID and **the Vercel URL** (device ids are per address, so it must not change later; the API behind it can move freely).
+
+### Release preflight
+
+From the repository root, `python dev/check_cloud_release.py` performs public,
+read-only health, frontend and CORS checks. Add `--report scratch/cloud-release-check.json`
+for a sanitized local report, and use `--require-field-flags` after deploying the
+current API. Field health performs a real database round trip and reports the
+Pro/mirror/cloud-only flags; a database outage returns 503 without connection details.
+The deployment script requires PostgreSQL, Pro enforcement and a disabled mirror.
+`TASK_CREATE_BILLING_MIRROR=1` is refused on deployed services.
+
+A public preflight pass does **not** verify matching database/signing-secret
+values, a particular business's entitlement, or the authenticated collection
+cycle. Validate those with a dedicated cloud QA business. Never merge the two
+real local databases as a substitute. PostgreSQL CI additionally exercises
+tenant scope across commits and pool reuse using a temporary `NOBYPASSRLS` role.

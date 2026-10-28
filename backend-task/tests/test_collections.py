@@ -64,6 +64,8 @@ def test_owner_sees_what_billing_has_recorded(client, biz, other_biz):
         db.add_all([
             BillingInvoicePayment(business_id=biz.business_id, invoice_id=a.id, amount_paid=400, idempotency_key=f"ft-collect:{uid}:{a.id}"),
             BillingInvoicePayment(business_id=biz.business_id, invoice_id=b.id, amount_paid=50, idempotency_key=f"ft-collect:{uid}:{b.id}"),
+            BillingInvoicePayment(business_id=biz.business_id, invoice_id=b.id, amount_paid=25,
+                                  idempotency_key=f"ft-collect:{uid}:{b.id}:after:45000"),  # continued confirmation
             BillingInvoicePayment(business_id=biz.business_id, invoice_id=b.id, amount_paid=999, idempotency_key="pos-123"),  # not ours
             BillingInvoicePayment(business_id=other_biz.business_id, invoice_id=b.id, amount_paid=77,
                                   idempotency_key=f"ft-collect:{uid}:{b.id}x"),  # another business
@@ -71,4 +73,4 @@ def test_owner_sees_what_billing_has_recorded(client, biz, other_biz):
         db.commit()
     finally:
         db.close()
-    assert _done(client, biz)[t["id"]]["billing_confirmed"] == 450.0
+    assert _done(client, biz)[t["id"]]["billing_confirmed"] == 475.0

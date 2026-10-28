@@ -1,6 +1,8 @@
 // lib/auth.jsx — who is signed in (owner or field staff) and the device id.
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { api, tokenStore } from './api'
+import { setThemeBusiness } from './theme'
+import { startBillingBridge, takeBillingLaunch } from './billingBridge'
 
 const AuthContext = createContext(null)
 const DEVICE_KEY = 'task_device_id'
@@ -34,91 +36,135 @@ export function lastBizId() {
   try { return localStorage.getItem(LAST_BIZ_KEY) || '' } catch { return '' }
 }
 
-// Single sign-on from BizAssist Billing, the same hand-off as its AI dashboard:
-// the Field Team link in billing's sidebar opens …/?sso=<30-second single-use
-// ticket>. Taken once per page load and removed from the address bar before
-// anything awaits, so StrictMode's second mount, a reload or a bookmark can
-// never try to spend it again.
-function takeSsoTicket() {
-  try {
-    const url = new URL(window.location.href)
-    const ticket = url.searchParams.get('sso')
-    if (!ticket) return null
-    url.searchParams.delete('sso')
-    window.history.replaceState(window.history.state, '', url)
-    return ticket
-  } catch {
-    return null
-  }
-}
-
-let ssoTicket = takeSsoTicket()
+// A handoff takes precedence over every stored session. Only the exchange is
+// shared across StrictMode effects; a later provider mount restores the current
+// token instead of replaying an already consumed handoff.
+const billingLaunch = takeBillingLaunch()
 let ssoExchange = null
+let launchHandled = false
 
 export function AuthProvider({ children }) {
   const [me, setMe] = useState(null)
-  const [loading, setLoading] = useState(() => !!tokenStore.get() || !!ssoTicket)
+  const [loading, setLoading] = useState(() => !!tokenStore.get() || billingLaunch.requested)
   const [notice, setNotice] = useState(null)
+  const lastRefresh = useRef(0)
+
+  const clearSession = useCallback(() => {
+    tokenStore.clear()
+    setMe(null)
+    setThemeBusiness(null)
+  }, [])
 
   const refresh = useCallback(async () => {
-    if (!tokenStore.get()) { setMe(null); setLoading(false); return null }
+    const token = tokenStore.get()
+    if (!token) { setMe(null); setThemeBusiness(null); setLoading(false); return null }
     try {
       const data = await api.get('/api/auth/me')
+      if (tokenStore.get() !== token) return null
+      if (billingLaunch.expectedBusiness && data.public_id !== billingLaunch.expectedBusiness) {
+        clearSession()
+        setNotice('This is a different business from Billing. Open Field Team from the correct Billing account, or sign in with that account.')
+        return null
+      }
+      setThemeBusiness(data.public_id)
       setMe(data)
+      lastRefresh.current = Date.now()
       return data
     } catch (e) {
-      if (e.status === 401 || e.status === 402) { tokenStore.clear(); setMe(null) }
+      if (tokenStore.get() !== token) return null
+      if (e.status === 401 || e.status === 402) clearSession()
+      setNotice(e.message || 'Could not verify your business. Please retry.')
       return null
     } finally {
-      setLoading(false)
+      if (!tokenStore.get() || tokenStore.get() === token) setLoading(false)
     }
-  }, [])
+  }, [clearSession])
 
   useEffect(() => {
     const onUnauthorized = (ev) => {
-      tokenStore.clear()
-      setMe(null)
+      clearSession()
       setNotice(ev.detail || 'Signed out — please sign in again.')
     }
     window.addEventListener('task:unauthorized', onUnauthorized)
     return () => window.removeEventListener('task:unauthorized', onUnauthorized)
-  }, [])
+  }, [clearSession])
 
   const accept = useCallback(async (data) => {
     tokenStore.set(data.token)
     if (data.public_id) { try { localStorage.setItem(LAST_BIZ_KEY, data.public_id) } catch { /* ignore */ } }
     setNotice(data.signed_out_other_device ? 'You were signed out on your other device.' : null)
-    return refresh()
+    const verified = await refresh()
+    if (!verified) throw new Error('Could not confirm this business. Please check the connection and sign in again.')
+    return verified
   }, [refresh])
 
-  // On start: a billing hand-off ticket wins over a stored session (the owner
-  // just chose to open Field Team from billing); otherwise restore the session.
   useEffect(() => {
-    if (ssoTicket) {
-      const ticket = ssoTicket
-      ssoTicket = null
-      ssoExchange = api.post('/api/auth/exchange', { ticket }).then(accept).catch((e) => {
-        setNotice(e.message || 'Could not sign you in from BizAssist Billing — sign in below.')
-        return refresh()
-      })
+    let active = true
+    if (billingLaunch.requested && !launchHandled) {
+      if (!ssoExchange) {
+        clearSession()
+        ssoExchange = billingLaunch.ticket
+          ? api.post('/api/auth/exchange', { ticket: billingLaunch.ticket })
+          : Promise.resolve(null)
+      }
+      ssoExchange.then(async data => {
+        if (!active) return
+        launchHandled = true
+        if (data) await accept(data)
+        else setNotice('Billing could not hand over this session. Sign in with the same Billing account to continue.')
+      }).catch(e => {
+        if (!active) return
+        launchHandled = true
+        clearSession()
+        setNotice(e.message || 'Could not sign you in from Billing. Sign in with the same account below.')
+      }).finally(() => { if (active) setLoading(false) })
+    } else refresh()
+    return () => { active = false }
+  }, [refresh, accept, clearSession])
+
+  const kind = me?.kind
+  const businessId = me?.public_id
+  useEffect(() => startBillingBridge({ kind, public_id: businessId }, billingLaunch), [kind, businessId])
+
+  useEffect(() => {
+    let pending = false
+    const onFocus = () => {
+      if (pending || document.visibilityState === 'hidden' || !tokenStore.get()
+        || Date.now() - lastRefresh.current < 15000) return
+      pending = true
+      refresh().finally(() => { pending = false })
     }
-    if (!ssoExchange) refresh()
-  }, [refresh, accept])
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('online', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('online', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
+  }, [refresh])
+
+  const signIn = async (path, body) => {
+    clearSession()
+    setNotice(null)
+    return accept(await api.post(path, body))
+  }
 
   const ownerLogin = (username, password) =>
-    api.post('/api/auth/owner/login', { username, password }).then(accept)
+    signIn('/api/auth/owner/login', { username, password })
 
-  const ownerSignup = (payload) => api.post('/api/auth/owner/signup', payload).then(accept)
+  const ownerSignup = (payload) => signIn('/api/auth/owner/signup', payload)
 
   const staffLogin = (business, login_name, password) =>
-    api.post('/api/auth/staff/login', {
+    signIn('/api/auth/staff/login', {
       business, login_name, password, device_id: deviceId(), device_label: deviceLabel(),
-    }).then(accept)
+    })
 
   const logout = async () => {
     try { await api.post('/api/auth/logout') } catch { /* already gone */ }
-    tokenStore.clear()
-    setMe(null)
+    clearSession()
+    billingLaunch.expectedBusiness = null
+    billingLaunch.origin = null
   }
 
   return (

@@ -24,3 +24,27 @@ export function summarizeInvoices(invoices) {
 export function takenBy(invoice, taskType) {
   return (invoice.tasks || []).find(t => t.task_type === taskType) || null
 }
+
+const amount = value => {
+  if (value == null || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 100) / 100 : null
+}
+
+// A task's amount_expected and invoice balances are planning snapshots. Once
+// Billing records a payment, only its current balance can authorize collecting
+// that money again. Missing live data must never fall back to a stale snapshot.
+export function collectionAmounts(task) {
+  const planned = amount(task?.amount_expected)
+  const linked = Boolean(task?.invoices?.length) || typeof task?.billing_balance_available === 'boolean'
+  if (!linked) return { linked: false, available: true, planned, currentDue: null, suggested: planned }
+  const currentDue = amount(task?.current_amount_due)
+  const available = task?.billing_balance_available === true && currentDue !== null
+  return {
+    linked: true,
+    available,
+    planned,
+    currentDue: available ? currentDue : null,
+    suggested: available ? Math.min(planned ?? currentDue, currentDue) : null,
+  }
+}

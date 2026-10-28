@@ -3,6 +3,7 @@ import { api } from '../../lib/api'
 import { fmtDay, fmtTime, rupees, TASK_TYPES, telHref, todayIST } from '../../lib/format'
 import { summarizeInvoices } from '../../lib/invoices'
 import InvoicePicker from '../../components/InvoicePicker'
+import CollectionBalance from '../../components/CollectionBalance'
 import { ConfirmDialog, Empty, ErrorNote, Loader, Modal, PageHeader, StatusBadge, useLoad, useToast } from '../../components/ui'
 
 const EXTRA_TYPES = Object.entries(TASK_TYPES).filter(([k]) => k !== 'delivery')
@@ -217,6 +218,7 @@ export default function Plan() {
                         <td className="num">{st.orders_count}</td>
                         <td className="small">{st.tasks.map(t => (
                           <div key={t.id}>{t.status === 'done' ? '✓' : '○'} {TASK_TYPES[t.task_type]}{t.points_awarded ? ` · +${t.points_awarded}` : ''}{t.on_time === false ? ' · late' : ''}
+                            <CollectionBalance task={t} />
                             {t.invoices?.length > 0 && <div className="xs muted">{t.invoices.map(x => x.number).join(', ')}</div>}</div>
                         ))}</td>
                         <td>

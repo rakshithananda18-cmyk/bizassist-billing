@@ -483,6 +483,44 @@ export default function OrderDeskTab({
           )}
           <div className="b2b-cart-total-row is-grand"><span>Total</span><span>{fmt(cart.totals.total)}</span></div>
 
+          {Number(selectedSupplier?.credit_limit) > 0 && (() => {
+            const limit = Number(selectedSupplier.credit_limit)
+            const total = Number(cart.totals.total) || 0
+            const pct = Math.min(100, Math.round((total / limit) * 100))
+            const isExceeded = total > limit
+            return (
+              <div style={{
+                background: 'var(--bg-3)',
+                padding: '8px 10px',
+                borderRadius: 'var(--radius-sm)',
+                margin: '8px 0',
+                border: `1px solid ${isExceeded ? 'var(--danger)' : 'var(--border)'}`,
+                fontSize: '0.74rem'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Supplier Credit Limit</span>
+                  <span style={{ fontWeight: 700, color: isExceeded ? 'var(--danger)' : 'var(--text-primary)' }}>
+                    {fmt(total)} / {fmt(limit)}
+                  </span>
+                </div>
+                <div style={{ height: 5, background: 'var(--bg-1)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{
+                    width: `${pct}%`,
+                    height: '100%',
+                    background: isExceeded ? 'var(--danger)' : pct > 80 ? 'var(--warning)' : 'var(--accent)',
+                    borderRadius: 3,
+                    transition: 'width 0.2s'
+                  }} />
+                </div>
+                {isExceeded && (
+                  <div style={{ color: 'var(--danger)', fontSize: '0.68rem', marginTop: 4, fontWeight: 600 }}>
+                    ⚠️ Order exceeds credit limit by {fmt(total - limit)}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
           <button
             className="btn btn-primary"
             style={{ width: '100%', marginTop: 8 }}

@@ -358,43 +358,52 @@ def delete_upload(user_id: int, upload_id: int, db: Session) -> dict:
 
 
 def dashboard_charts(user_id: int, db: Session) -> dict:
-    invoices = db.query(Invoice).filter(Invoice.business_id == user_id).all()
+    """Current invoice totals and remaining receivables, including returns.
 
-    # Monthly revenue
-    monthly_rev = {}
+    Status labels are not balances: a partially paid overdue invoice contributes
+    only what is still owed. A credit note reduces sales and is never a bill due.
+    """
+    from database.models import InvoiceLineItem
+
+    invoices = [inv for inv in db.query(Invoice).filter(Invoice.business_id == user_id).all()
+                if (inv.status or "").lower() not in {"cancelled", "canceled", "void", "draft"}]
+    ids = [inv.id for inv in invoices]
+    lines_by_invoice = {}
+    if ids:
+        for line in db.query(InvoiceLineItem).filter(InvoiceLineItem.invoice_id.in_(ids)).all():
+            lines_by_invoice.setdefault(line.invoice_id, []).append(line)
+    monthly, product_totals = {}, {}
+    aging = {"0-30 days": 0.0, "31-60 days": 0.0, "61-90 days": 0.0, "90+ days": 0.0}
+    today = biz_now().date()
     for inv in invoices:
-        dt = parse_date(inv.invoice_date)
-        if dt:
-            key = dt.strftime("%Y-%m")
-            if key not in monthly_rev:
-                monthly_rev[key] = {"month": dt.strftime("%b %y"), "revenue": 0}
-            monthly_rev[key]["revenue"] += inv.amount or 0
-    sorted_monthly = [monthly_rev[k] for k in sorted(monthly_rev.keys())] or [
-        {"month": "Jan", "revenue": 0}, {"month": "Feb", "revenue": 0}, {"month": "Mar", "revenue": 0}
-    ]
-
-    # Invoice aging
-    now = datetime.now()
-    aging = {"0-30 days": 0, "31-60 days": 0, "61-90 days": 0, "90+ days": 0}
-    for inv in invoices:
-        if inv.status in ("Overdue", "Pending"):
-            due_dt = parse_date(inv.due_date)
-            if due_dt:
-                delta = (now - due_dt).days
-                if delta <= 0:    continue
-                elif delta <= 30: aging["0-30 days"]  += inv.amount or 0
-                elif delta <= 60: aging["31-60 days"] += inv.amount or 0
-                elif delta <= 90: aging["61-90 days"] += inv.amount or 0
-                else:             aging["90+ days"]   += inv.amount or 0
-    aging_list = [{"range": k, "amount": v} for k, v in aging.items()]
-
-    # Product breakdown
-    product_totals = {}
-    for inv in invoices:
-        p = inv.product or "Services"
-        product_totals[p] = (product_totals.get(p) or 0) + (inv.amount or 0)
-    top_products = [{"name": n, "value": v} for n, v in sorted(product_totals.items(), key=lambda x: x[1], reverse=True)[:5]]
-    if not top_products:
-        top_products = [{"name": "No data", "value": 0}]
-
-    return {"monthly_revenue": sorted_monthly, "aging_overview": aging_list, "top_products": top_products}
+        total = float(inv.total_amount if inv.total_amount is not None else (inv.amount or 0))
+        sign = -1 if inv.invoice_type == "credit_note" else 1
+        date = parse_date(inv.invoice_date)
+        if date:
+            key = date.strftime("%Y-%m")
+            period = monthly.setdefault(key, {"month": date.strftime("%b %y"), "revenue": 0.0})
+            period["revenue"] += sign * total
+        due_date = parse_date(inv.due_date)
+        paid = float(inv.paid_amount or 0)
+        legacy_paid = inv.paid_amount is None and (inv.status or "").lower() == "paid"
+        due = 0.0 if sign < 0 or legacy_paid else max(total - paid, 0.0)
+        if due_date and due > 0:
+            days = (today - due_date.date()).days
+            if days > 0:
+                bucket = "0-30 days" if days <= 30 else "31-60 days" if days <= 60 else "61-90 days" if days <= 90 else "90+ days"
+                aging[bucket] += due
+        lines = lines_by_invoice.get(inv.id, [])
+        line_sum = sum(float(line.line_total or 0) for line in lines)
+        if lines and line_sum > 0:
+            for line in lines:
+                name = line.product_name or "Other sales"
+                product_totals[name] = product_totals.get(name, 0.0) + sign * total * float(line.line_total or 0) / line_sum
+        else:
+            name = inv.product or "Other sales"
+            product_totals[name] = product_totals.get(name, 0.0) + sign * total
+    return {
+        "monthly_revenue": [{**monthly[key], "revenue": round(monthly[key]["revenue"], 2)} for key in sorted(monthly)],
+        "aging_overview": [{"range": key, "amount": round(value, 2)} for key, value in aging.items()],
+        "top_products": [{"name": name, "value": round(value, 2)}
+                         for name, value in sorted(product_totals.items(), key=lambda item: item[1], reverse=True)[:5]],
+    }

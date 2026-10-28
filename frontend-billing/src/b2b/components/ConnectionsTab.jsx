@@ -18,6 +18,8 @@ import {
   HandshakeIcon, SettingsIcon, ShieldIcon,
 } from '../../components/Icons'
 import CustomSelect from '../../components/common/CustomSelect'
+import { qrImageUrl, buildWhatsAppShareUrl } from '../../utils/share'
+import { MessageIcon } from '../../components/Icons'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -279,9 +281,23 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
           <div className="b2b-bizid-box" style={{ marginTop: 12 }}>
             <span className="td-mono b2b-bizid">{myBizId || 'Loading…'}</span>
             {myBizId && (
-              <button type="button" className="btn btn-secondary btn-sm" onClick={onCopyBizId} style={{ minWidth: 64, height: 32 }}>
-                {copied ? 'Copied' : 'Copy'}
-              </button>
+              <div style={{ display: 'inline-flex', gap: 6 }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={onCopyBizId} style={{ minWidth: 64, height: 32 }}>
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ height: 32, display: 'inline-flex', alignItems: 'center', gap: 5, color: '#16a34a' }}
+                  onClick={() => {
+                    const shareText = encodeURIComponent(`Connect with our business on the BizAssist B2B network! Our BizID is: ${myBizId}`)
+                    window.open(`https://wa.me/?text=${shareText}`, '_blank')
+                  }}
+                  title="Share your BizID on WhatsApp"
+                >
+                  <MessageIcon size={13} /> WhatsApp Invite
+                </button>
+              </div>
             )}
           </div>
           <div className="b2b-card-hint" style={{ marginTop: 8 }}>

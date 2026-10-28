@@ -72,10 +72,24 @@ BIZ_TIMEZONE = os.environ.get("BIZ_TIMEZONE", "Asia/Kolkata")
 # touches billing tables. Set 0 to migrate manually.
 AUTO_MIGRATE = _bool("TASK_AUTO_MIGRATE", True)
 
-# In dev/test on SQLite we also create the minimal billing tables (users,
-# customers) so the app runs standalone. On Postgres they belong to billing and
-# are NEVER created or altered from here.
-CREATE_BILLING_MIRROR = _bool("TASK_CREATE_BILLING_MIRROR", IS_SQLITE)
+# A standalone SQLite mirror is only an explicit development/test fixture.
+# Field operations use Billing's shared CLOUD database; a missing production
+# DATABASE_URL must never silently open an unrelated empty local business.
+CREATE_BILLING_MIRROR = _bool("TASK_CREATE_BILLING_MIRROR", False)
+_DEPLOYED = bool(os.getenv("SPACE_ID") or os.getenv("K_SERVICE")
+                 or os.getenv("ENVIRONMENT", "").lower() == "production")
+_SQLITE_TEST = _bool("TASK_ALLOW_SQLITE_TESTING", False) and "test" in DATABASE_URL.lower()
+if IS_SQLITE and (_DEPLOYED or not (CREATE_BILLING_MIRROR or _SQLITE_TEST)):
+    raise RuntimeError(
+        "Field Team requires the same cloud PostgreSQL DATABASE_URL as BizAssist Billing. "
+        "A local SQLite database is not a cloud data source. "
+        "For an isolated development/test fixture only, explicitly set TASK_CREATE_BILLING_MIRROR=1."
+    )
+if _DEPLOYED and CREATE_BILLING_MIRROR:
+    raise RuntimeError(
+        "TASK_CREATE_BILLING_MIRROR is development/test-only and must be disabled in a deployment. "
+        "Billing owns the shared cloud tables and their migrations."
+    )
 
 # Allow owners to create a BizAssist account from the task app. The row written
 # is identical in shape to billing's own /signup (role=enterprise + BizID), so
@@ -83,9 +97,9 @@ CREATE_BILLING_MIRROR = _bool("TASK_CREATE_BILLING_MIRROR", IS_SQLITE)
 ALLOW_SIGNUP = _bool("TASK_ALLOW_SIGNUP", True)
 
 # Field Team is part of BizAssist Pro (app/plan.py). Same switch and name as
-# billing's: the gate only bites where SUBSCRIPTION_ENFORCED=1 (the cloud), so
-# local dev and the test suite run without plans unless they turn it on.
-REQUIRE_PRO = _bool("SUBSCRIPTION_ENFORCED", False)
+# billing's. Cloud Field Team is Pro-gated by default; explicit standalone
+# development fixtures and tests can run without provisioning subscriptions.
+REQUIRE_PRO = _DEPLOYED or _bool("SUBSCRIPTION_ENFORCED", not IS_SQLITE)
 # Days Field Team keeps working after a Pro plan EXPIRES (not when revoked).
 PRO_GRACE_DAYS = _int("TASK_PRO_GRACE_DAYS", 7)
 

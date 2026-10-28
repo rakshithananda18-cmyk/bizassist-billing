@@ -9,7 +9,7 @@ export function PageHeader({ title, subtitle, children, badge }) {
     <div className="page-header">
       <div className="page-header-left">
         <div className="row" style={{ gap: 8 }}>
-          <div className="page-title">{title}</div>
+          <h1 className="page-title" style={{ margin: 0 }}>{title}</h1>
           {badge && <span className="badge badge-accent">{badge}</span>}
         </div>
         {subtitle && <div className="page-subtitle">{subtitle}</div>}
@@ -215,17 +215,19 @@ export const useToast = () => useContext(ToastContext)
 
 export function useLoad(fn, deps = []) {
   const [state, setState] = useState({ data: null, error: null, loading: true })
+  const request = useRef(0)
   const load = useCallback(async () => {
+    const current = ++request.current
     setState(s => ({ ...s, loading: true }))
     try {
       const data = await fn()
-      setState({ data, error: null, loading: false })
+      if (current === request.current) setState({ data, error: null, loading: false })
     } catch (error) {
-      setState(s => ({ ...s, error, loading: false }))
+      if (current === request.current) setState(s => ({ ...s, error, loading: false }))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(); return () => { request.current += 1 } }, [load])
   return { ...state, reload: load }
 }
 

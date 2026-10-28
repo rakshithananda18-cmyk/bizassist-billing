@@ -339,7 +339,9 @@ export default function B2B() {
           </div>
           <div className="page-actions">
             <HeaderSearchSlot />
-            <PageTabs inline label="B2B pages" tabs={TABS.map(({ key, label, icon: Icon }) => ({ id: key, label, icon: <Icon size={15} />, badge: badges[key] }))} active={tab} onChange={goTab} />
+            <div className="mobile-only-header-tabs">
+              <PageTabs inline label="B2B pages" tabs={TABS.map(({ key, label, icon: Icon }) => ({ id: key, label, icon: <Icon size={15} />, badge: badges[key] }))} active={tab} onChange={goTab} />
+            </div>
           </div>
         </div>
         <div className="workspace-context-row">

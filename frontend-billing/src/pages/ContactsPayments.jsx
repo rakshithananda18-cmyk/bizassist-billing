@@ -96,7 +96,9 @@ export default function ContactsPayments() {
           </div>
           <div className="page-actions">
             <HeaderSearchSlot />
-            <PageTabs inline tabs={TABS} active={tab} onChange={handleTabChange} />
+            <div className="mobile-only-header-tabs">
+              <PageTabs inline tabs={TABS} active={tab} onChange={handleTabChange} />
+            </div>
           </div>
         </div>
 

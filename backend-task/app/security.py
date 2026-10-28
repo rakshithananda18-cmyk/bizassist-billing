@@ -268,10 +268,16 @@ def signed_in_principal(
         raise HTTPException(status_code=401, detail="Invalid session — please sign in again")
 
     if kind == "owner":
-        user = db.query(BillingUser).filter(BillingUser.id == int(claims.get("uid", -1))).first()
+        try:
+            uid = int(claims.get("uid", -1))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=401, detail="Invalid session — please sign in again")
+        user = db.query(BillingUser).filter(BillingUser.id == uid).first()
         if (user is None or user.parent_business_id is not None or int(user.id) != bid
                 or (user.role or "").lower() in NON_OWNER_ROLES):
             raise HTTPException(status_code=401, detail="Account not found — please sign in again")
+        if claims.get("public_id") and claims["public_id"] != user.public_id:
+            raise HTTPException(status_code=401, detail="Session belongs to a different business — sign in again")
         # Billing's "force logout" bumps users.token_version — honour it here too.
         if int(claims.get("tv", 0)) != int(user.token_version or 0):
             raise HTTPException(status_code=401, detail="Session revoked — please sign in again")
@@ -280,6 +286,16 @@ def signed_in_principal(
                          owner=user)
 
     if kind == "staff":
+        owner = db.query(BillingUser).filter(BillingUser.id == bid).first()
+        if (owner is None or owner.parent_business_id is not None
+                or (owner.role or "").lower() in NON_OWNER_ROLES):
+            raise HTTPException(status_code=401, detail="Business account not found — sign in again")
+        if claims.get("public_id") and claims["public_id"] != owner.public_id:
+            raise HTTPException(status_code=401, detail="Session belongs to a different business — sign in again")
+        # The signature authenticates the tenant claim. Bind it BEFORE reading
+        # ft_staff: FORCE RLS otherwise hides the very row used to authenticate.
+        # Session, device and token-version checks below remain authoritative.
+        set_rls_business(db, bid)
         staff = db.query(FieldStaff).filter(
             FieldStaff.id == int(claims.get("sid", -1)), FieldStaff.business_id == bid,
         ).first()
@@ -289,11 +305,10 @@ def signed_in_principal(
             raise HTTPException(status_code=401, detail="Session revoked — please sign in again")
         if not staff.active_session_id or claims.get("ses") != staff.active_session_id:
             raise HTTPException(status_code=401, detail="Signed in on another device — this device was signed out")
-        set_rls_business(db, bid)
         settings = get_settings(db, bid)
         if settings.device_policy == "bound" and staff.bound_device_id and claims.get("dev") != staff.bound_device_id:
             raise HTTPException(status_code=401, detail="This account is locked to another device")
-        return Principal(kind="staff", business_id=bid, staff=staff)
+        return Principal(kind="staff", business_id=bid, staff=staff, owner=owner, public_id=owner.public_id)
 
     raise HTTPException(status_code=401, detail="Invalid session — please sign in again")
 

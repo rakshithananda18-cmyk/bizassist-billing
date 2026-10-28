@@ -34,6 +34,10 @@ env:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    env:
+      # Disposable CI databases create free fixture owners via /owner/signup.
+      # Cloud deployments always enforce Pro; only these fixtures opt out.
+      SUBSCRIPTION_ENFORCED: '0'
     services:
       postgres:
         image: postgres:16
@@ -59,6 +63,9 @@ jobs:
       - name: Tests on Postgres (Supabase dialect, RLS migration)
         env:
           TASK_TEST_DATABASE_URL: postgresql://postgres:pass@localhost:5432/task_test
+          # The isolation regression creates its own temporary NOBYPASSRLS
+          # role/schema, so this covers actual policies as well as GUC values.
+          TASK_RLS_ADMIN_TEST_URL: postgresql://postgres:pass@localhost:5432/task_test
         run: python -m pytest
 
   image:
@@ -71,11 +78,15 @@ jobs:
       # deploy does — billing's 2026-10-22 outage was an image nobody had built.
       - name: Build backend-task/Dockerfile
         run: docker build -t bizassist-task backend-task
-      - name: Runs like Cloud Run (PORT=8080, purge loop off) and answers /api/health
+      - name: Image starts on PORT=8080 with an explicit disposable database fixture
         run: |
+          # This proves image startup and routing, not the deployed database
+          # topology. The backend/contract jobs above/below cover Postgres.
+          # Production refuses SQLite even when the mirror flag is supplied.
           docker run -d --name api -p 8080:8080 \
             -e PORT=8080 -e TASK_PURGE_LOOP=0 -e JWT_SECRET="$JWT_SECRET" \
-            -e DATABASE_URL=sqlite:////tmp/ci.db bizassist-task
+            -e TASK_CREATE_BILLING_MIRROR=1 \
+            -e DATABASE_URL=sqlite:////tmp/ci_test.db bizassist-task
           for i in $(seq 1 60); do
             if curl -sf http://127.0.0.1:8080/api/health; then
               echo; curl -sf http://127.0.0.1:8080/; echo; exit 0
@@ -98,6 +109,9 @@ jobs:
           --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     env:
       CONTRACT_DB: postgresql://postgres:pass@localhost:5432/contract_test
+      # Exercise full workflows with disposable free owners; entitlement
+      # enforcement itself is covered by the plan/config regression tests.
+      SUBSCRIPTION_ENFORCED: '0'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -119,6 +133,7 @@ jobs:
         working-directory: backend-task
         env:
           TASK_TEST_DATABASE_URL: ${{ env.CONTRACT_DB }}
+          TASK_RLS_ADMIN_TEST_URL: ${{ env.CONTRACT_DB }}
           TASK_TEST_BILLING_SCHEMA: external
           BILLING_BACKEND_DIR: ${{ github.workspace }}/backend
           GROQ_API_KEY: mock_groq_api_key

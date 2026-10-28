@@ -17,7 +17,7 @@
     # once the Vercel URL exists (kept on later deploys until changed)
     .\backend-task\deploy_cloudrun.ps1 -Project <id> -AllowedOrigins https://<vercel-url>
 
-    # Field Team is part of BizAssist Pro: turn the plan gate on (or off).
+    # Field Team is part of BizAssist Pro: deployments always enforce the gate.
     # Kept on later deploys until changed. Grant Pro to your own business in
     # billing's admin console FIRST, or you are refused too.
     .\backend-task\deploy_cloudrun.ps1 -Project <id> -ProGate on
@@ -41,6 +41,10 @@ param(
     [switch]$Setup,
     [switch]$ResetSecrets
 )
+
+if ($ProGate -eq "off") {
+    throw "Deployed Field Team is Pro-only. A disabled gate is supported only by isolated development/test fixtures."
+}
 
 # No global ErrorActionPreference=Stop: on Windows PowerShell 5.1 it turns a
 # native command's ordinary stderr (gcloud's progress lines) into a failure.
@@ -176,8 +180,8 @@ try {
     try { $health = Invoke-RestMethod "$url/api/health" -TimeoutSec 60 -ErrorAction Stop }
     catch { Write-Host "Health check failed: $($_.Exception.Message) - see Cloud Run > $Service > Logs." -ForegroundColor Red; exit 1 }
     $health | ConvertTo-Json -Compress | Write-Host
-    if ($health.db -ne "postgresql") {
-        Write-Host "WARNING: db is '$($health.db)', not postgresql - check the DATABASE_URL secret." -ForegroundColor Red
+    if ($health.ok -ne $true -or $health.db -ne "postgresql" -or $health.pro_required -ne $true -or $health.billing_mirror -ne $false -or $health.cloud_only -ne $true) {
+        Write-Host "Field Team readiness failed: expected a reachable PostgreSQL database, enforced Pro, and no Billing mirror." -ForegroundColor Red
         exit 1
     }
     Write-Host "Field Team API is live on Supabase: $url" -ForegroundColor Green

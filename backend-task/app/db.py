@@ -66,6 +66,7 @@ else:
     # pool_size=3 + overflow 2. Keep this service's footprint at most the same.
     engine = create_engine(
         config.DATABASE_URL,
+        connect_args={"connect_timeout": 5},
         pool_size=3,
         max_overflow=2,
         pool_recycle=1800,
@@ -75,21 +76,42 @@ else:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+def _clear_postgres_tenant_guc(dbapi_connection, _connection_record, _connection_proxy):
+    """Clear any tenant left by an older build before a pooled connection is used."""
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("RESET app.current_business_id")
+    finally:
+        cursor.close()
+
+
+def _set_postgres_tenant_guc(session, _transaction, connection):
+    """Bind the Session's authenticated tenant to each new transaction.
+
+    A commit returns the connection to the pool. ORM serialization can then
+    start another transaction on a different connection, so setting the GUC
+    once per request is insufficient. SET LOCAL also disappears automatically
+    on commit/rollback instead of leaking into another request.
+    """
+    business_id = session.info.get("rls_bid")
+    value = "" if business_id is None else str(int(business_id))
+    connection.execute(
+        text("SELECT set_config('app.current_business_id', :bid, true)"),
+        {"bid": value},
+    )
+
+
+if engine.dialect.name == "postgresql":
+    event.listen(engine, "checkout", _clear_postgres_tenant_guc)
+    event.listen(SessionLocal, "after_begin", _set_postgres_tenant_guc)
+
+
 def get_db():
     """FastAPI dependency: one session per request, always closed."""
     db = SessionLocal()
     try:
         yield db
     finally:
-        if db.info.get("rls_bid") is not None:
-            # The setting is session-level on a pooled connection; clear it so
-            # the next request never starts inside another tenant's scope.
-            try:
-                db.rollback()
-                db.execute(text("SELECT set_config('app.current_business_id', '', false)"))
-                db.commit()
-            except Exception:
-                db.rollback()
         db.close()
 
 
@@ -103,8 +125,10 @@ def set_rls_business(db, business_id: int) -> None:
     """
     if engine.dialect.name != "postgresql":
         return
+    # Authentication may already have opened a transaction while resolving the
+    # owner. Bind that transaction now and retain the tenant for future ones.
+    db.info["rls_bid"] = int(business_id)
     db.execute(
-        text("SELECT set_config('app.current_business_id', :bid, false)"),
+        text("SELECT set_config('app.current_business_id', :bid, true)"),
         {"bid": str(int(business_id))},
     )
-    db.info["rls_bid"] = int(business_id)

@@ -35,6 +35,12 @@ function renderRow(props = {}) {
 }
 
 describe('CartItemRow', () => {
+  it('lets a custom item without a catalogue id receive a price', () => {
+    const setItem = vi.fn()
+    renderRow({ item: { ...item, product_id: '', product: 'Custom service', is_custom: true, price: '' }, columnOrder: ['rate'], colVisible: { rate: true }, setItem })
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Rate for Custom service' }), { target: { value: '125.50' } })
+    expect(setItem).toHaveBeenCalledWith(0, { selected_price: 125.5, selected_price_label: 'Custom Price' })
+  })
   it('shows the product name and the row number', () => {
     renderRow()
     expect(screen.getByText('Rice')).toBeInTheDocument()

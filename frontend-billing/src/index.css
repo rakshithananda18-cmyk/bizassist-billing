@@ -24,6 +24,7 @@
   --accent-light:  #a84e2e; /* Crail-dark */
   --accent-dim:    rgba(193, 95, 60, 0.10); /* Soft accent */
   --accent-glow:   rgba(193, 95, 60, 0.05); /* Softer accent */
+  --sidebar-active-bg-sub: rgba(193, 95, 60, 0.07);
 
   /* Status Colors */
   --success:       #1f6b3a; /* Darker green */
@@ -143,6 +144,7 @@
   --accent-light:  #e08660;
   --accent-dim:    rgba(212, 113, 74, 0.15);
   --accent-glow:   rgba(212, 113, 74, 0.08);
+  --sidebar-active-bg-sub: rgba(212, 113, 74, 0.09);
 
   --success:       #34a853;
   --success-dim:   rgba(52, 168, 83, 0.15);
@@ -868,6 +870,8 @@ body,
   gap: 6px;
   overflow-y: auto;
   min-height: 0;
+  scroll-behavior: smooth;
+  scroll-padding: 10px;
 }
 .nav-section-label {
   font-size: 0.72rem;
@@ -929,6 +933,102 @@ body,
   height: 18px;
   background: var(--sidebar-active-text, var(--accent));
   border-radius: 0 4px 4px 0;
+}
+
+/* ── Sidebar Sub-Nav Tree (Accordion Branch Navigation) ── */
+.nav-sub-tree {
+  position: relative;
+  margin: 3px 0 6px 17px;
+  padding-left: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: navTreeSlideDown 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes navTreeSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Continuous vertical tree guide line */
+.nav-sub-tree::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 14px; /* ends at the center of the last sub-item */
+  width: 1.5px;
+  background: var(--border-subtle, rgba(255, 255, 255, 0.14));
+}
+
+.nav-sub-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 6.5px 10px;
+  border-radius: 7px;
+  color: var(--sidebar-muted, var(--text-secondary));
+  font-size: 12.5px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  user-select: none;
+}
+
+/* Curved connector branch hook from vertical line into this child item */
+.nav-sub-link::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-left: 1.5px solid var(--border-subtle, rgba(255, 255, 255, 0.14));
+  border-bottom: 1.5px solid var(--border-subtle, rgba(255, 255, 255, 0.14));
+  border-bottom-left-radius: 6px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.nav-sub-link:hover,
+.nav-sub-link:focus-visible {
+  background: var(--sidebar-hover, var(--bg-3));
+  color: var(--sidebar-hover-text, var(--accent));
+}
+
+.nav-sub-link:hover::before,
+.nav-sub-link:focus-visible::before {
+  border-color: var(--sidebar-hover-text, var(--accent));
+}
+
+/* Sub-page active selection state:
+   Matches the main page selection accent tone, slightly lighter in background,
+   with the connector hook highlighted. */
+.nav-sub-link.active {
+  background: var(--sidebar-active-bg-sub, rgba(193, 95, 60, 0.07));
+  color: var(--sidebar-active-text-sub, var(--accent));
+  font-weight: 600;
+}
+
+.nav-sub-link.active::before {
+  border-color: var(--sidebar-active-text-sub, var(--accent));
+}
+
+/* Hide sub-tree when the sidebar is collapsed into the 56px icon rail */
+.sidebar.collapsed .nav-sub-tree {
+  display: none !important;
 }
 
 /* === SIDEBAR FOOTER === */
@@ -3816,22 +3916,68 @@ input[type="checkbox"] {
 
 /* ── POS Thermal Receipt Print Styles ─────────────────── */
 @media print {
-  /* Hide all dashboard/POS controls */
-  #root,
-  .app-container,
+  /* Hide dashboard/POS controls when printing thermal receipt */
+  body:has(#thermal-receipt) #root,
+  body:has(#thermal-receipt) .app-container,
   header,
   footer,
   aside,
   .no-print,
-  .btn,
+  .btn:not(.print-keep),
   .pos-left-pane,
   .pos-right-pane,
-  .pos-hotkeys-row {
+  .pos-hotkeys-row,
+  .reports-controls,
+  .reports-filterbar,
+  .report-nav-groups,
+  .reports-recent-strip,
+  .table-fullscreen-btn,
+  .universal-search-trigger {
     display: none !important;
+  }
+
+  /* Keep reports visible and crisp when printing reports */
+  body:not(:has(#thermal-receipt)) #root,
+  body:not(:has(#thermal-receipt)) .app-container,
+  body:not(:has(#thermal-receipt)) .main-content,
+  body:not(:has(#thermal-receipt)) .reports-workarea {
+    display: block !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  body:not(:has(#thermal-receipt)),
+  body:not(:has(#thermal-receipt)) .page-content,
+  body:not(:has(#thermal-receipt)) .data-table-wrap,
+  body:not(:has(#thermal-receipt)) .reports-shell {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  body:not(:has(#thermal-receipt)) .data-table {
+    border: 1px solid #ddd !important;
+    font-size: 9pt !important;
+    width: 100% !important;
+  }
+
+  body:not(:has(#thermal-receipt)) .data-table th,
+  body:not(:has(#thermal-receipt)) .data-table td {
+    border: 1px solid #ddd !important;
+    padding: 4px 6px !important;
+    color: #000 !important;
   }
 
   /* Show and format thermal receipt container */
   #thermal-receipt {
+    page: bizassist-receipt;
     display: block !important;
     width: 76mm; /* leaving small margins on 80mm roll */
     margin: 0 auto;
@@ -3844,7 +3990,11 @@ input[type="checkbox"] {
   }
 
   @page {
-    size: 80mm auto;
+    size: auto;
+    margin: 12mm;
+  }
+  @page bizassist-receipt {
+    size: auto;
     margin: 0;
   }
 

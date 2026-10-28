@@ -197,7 +197,10 @@ def test_link_an_existing_shop_to_a_billing_customer(client, biz, other_biz, lin
     # Editing other fields leaves the link alone; null unlinks.
     assert client.patch(f"/api/shops/{shop['id']}", headers=biz.h, json={"area": "Jayanagar"}).json()["customer_id"] == cid
     assert client.patch(f"/api/shops/{shop['id']}", headers=biz.h, json={"customer_id": None}).json()["customer_id"] is None
-    assert client.patch(f"/api/shops/{imported['id']}", headers=biz.h, json={"name": "Renamed"}).json()["customer_id"] == linked_cid
+    # The identity remains owned by Billing after linking; route-only details
+    # are editable here without creating a conflicting second customer name.
+    refused = client.patch(f"/api/shops/{imported['id']}", headers=biz.h, json={"name": "Renamed"})
+    assert refused.status_code == 422 and "managed in BizAssist Billing" in refused.json()["detail"]
 
 
 def test_other_business_cannot_see_or_use_the_bills(client, biz, other_biz, linked):

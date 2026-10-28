@@ -21,14 +21,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import get_db, utc_now
+from app.billing_context import billing_context
 from app.collections import PAYMENT_MODES, confirmed_in_billing
 from app.geo import GeoFix, distance_to, validate_fix
 from app.invoices import MAX_PER_TASK, attach_invoices, ensure_not_planned, resolve_invoices
 from app.models import FieldRun, FieldRunStop, FieldShop, FieldTask
 from app.routers.attendance import require_checked_in
 from app.routers.runs import _check_task_type, maybe_complete_run, maybe_complete_stop
-from app.security import Principal, get_settings, require_owner, require_staff
-from app.services import award_task_points, get_scoped, log_activity, optional_staff, record_fix, task_out
+from app.security import Principal, current_principal, get_settings, require_owner, require_staff
+from app.services import award_task_points, get_scoped, log_activity, optional_staff, prime_billing_reads, record_fix, task_out
 from app.timeutil import biz_local_to_utc, day_bounds_utc
 
 router = APIRouter(prefix="/api", tags=["tasks"])
@@ -115,7 +116,17 @@ def list_tasks(
         q = q.filter(FieldTask.due_at >= start, FieldTask.due_at < end)
     rows = q.order_by(FieldTask.due_at.is_(None), FieldTask.due_at.asc(), FieldTask.id.desc()).limit(500).all()
     confirmed = confirmed_in_billing(db, p.business_id, (t.uid for t in rows if t.task_type == "payment_collect"))
+    prime_billing_reads(tasks=rows)
     return [task_out(t, confirmed=confirmed) for t in rows]
+
+
+@router.get("/tasks/{task_id}")
+def get_task(task_id: int, p: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+    task = get_scoped(db, FieldTask, p.business_id, task_id, "Task")
+    if p.kind == "staff" and task.staff_id != p.staff.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+    confirmed = confirmed_in_billing(db, p.business_id, [task.uid]) if p.kind == "owner" else None
+    return task_out(task, confirmed=confirmed)
 
 
 class TaskPatch(BaseModel):
@@ -167,6 +178,7 @@ def my_tasks(
     if status:
         q = q.filter(FieldTask.status == status)
     rows = q.order_by(FieldTask.due_at.is_(None), FieldTask.due_at.asc(), FieldTask.id.asc()).limit(300).all()
+    prime_billing_reads(tasks=rows)
     return [task_out(t) for t in rows]
 
 
@@ -207,6 +219,12 @@ def complete_task(task_id: int, body: CompleteBody, p: Principal = Depends(requi
     if task.task_type == "payment_collect":
         if body.amount_collected is None:
             raise HTTPException(status_code=422, detail="Enter the amount collected (0 if nothing)")
+        if task.invoices:
+            balances, _ = billing_context(task).task_balances(task)
+            if not balances["billing_balance_available"]:
+                raise HTTPException(status_code=409, detail="A linked billing invoice is unavailable or belongs to another customer. Ask the owner to review this task.")
+            if body.amount_collected - balances["current_amount_due"] > 0.005:
+                raise HTTPException(status_code=409, detail="The billing balance has changed. Refresh the task and enter no more than the current amount due.")
         task.amount_collected = body.amount_collected
         if body.amount_collected > 0:
             task.payment_mode = body.payment_mode or "Cash"

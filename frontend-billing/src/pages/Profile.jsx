@@ -17,6 +17,7 @@ export default function Profile({ embedded = false }) {
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const successTimer = useRef(null)
+  const autoSaveTimeoutRef = useRef(null)
 
   useEffect(() => {
     if (profile) {
@@ -27,8 +28,24 @@ export default function Profile({ embedded = false }) {
 
   const handleChange = e => {
     const { name, value } = e.target
-    setFormData(previous => ({ ...previous, [name]: value }))
+    const nextForm = { ...formData, [name]: value }
+    setFormData(nextForm)
     setSuccessMsg('')
+    // Debounced background auto-save for edited fields
+    clearTimeout(autoSaveTimeoutRef.current)
+    if (nextForm.business_name && nextForm.business_name.trim().length > 1) {
+      autoSaveTimeoutRef.current = setTimeout(async () => {
+        try {
+          const res = await authFetch('/profile', {
+            method: 'PUT',
+            body: JSON.stringify({ ...nextForm, business_name: nextForm.business_name.trim() }),
+          })
+          if (res.ok) {
+            await fetchProfile()
+          }
+        } catch { /* background retry */ }
+      }, 2500)
+    }
   }
 
   const handleLogoChange = e => {
