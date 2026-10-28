@@ -45,6 +45,32 @@ beforeEach(() => { localStorage.setItem('billing_theme', 'light') })
 afterEach(cleanup)
 
 describe('profile notifications', () => {
+  it('keeps the closed mobile drawer out of focus and restores focus after Escape', async () => {
+    const media = vi.spyOn(window, 'matchMedia').mockImplementation(query => ({
+      matches: query === '(max-width: 768px)', media: query,
+      addEventListener: () => {}, removeEventListener: () => {},
+    }))
+    try {
+      renderLayout()
+      const user = userEvent.setup()
+      const open = screen.getByRole('button', { name: 'Open menu' })
+      const drawer = document.getElementById('mobile-navigation')
+      expect(drawer).toHaveAttribute('inert', '')
+      expect(drawer).toHaveAttribute('aria-hidden', 'true')
+      await user.click(open)
+      expect(screen.getByRole('dialog', { name: 'Navigation menu' })).toHaveAttribute('aria-modal', 'true')
+      expect(drawer).not.toHaveAttribute('inert')
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Close menu' })).toHaveFocus())
+      await user.keyboard('{Escape}')
+      expect(drawer).toHaveAttribute('inert', '')
+      expect(drawer).toHaveAttribute('aria-hidden', 'true')
+      expect(open).toHaveFocus()
+    } finally {
+      cleanup()
+      media.mockRestore()
+    }
+  })
+
   it('opens alerts beside the profile without opening settings, then follows the alert', async () => {
     const authFetch = renderLayout()
     const user = userEvent.setup()

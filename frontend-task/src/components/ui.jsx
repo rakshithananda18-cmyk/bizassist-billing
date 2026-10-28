@@ -1,14 +1,17 @@
-// components/ui.jsx — small shared pieces (page header, stat, modal, toasts).
+// components/ui.jsx — small shared pieces aligned with bizassist-billing
 import React, { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CloseIcon } from './Icons'
 import { SkylineLoader } from './Logo'
 
-export function PageHeader({ title, subtitle, children }) {
+export function PageHeader({ title, subtitle, children, badge }) {
   return (
     <div className="page-header">
-      <div>
-        <div className="page-title">{title}</div>
+      <div className="page-header-left">
+        <div className="row" style={{ gap: 8 }}>
+          <div className="page-title">{title}</div>
+          {badge && <span className="badge badge-accent">{badge}</span>}
+        </div>
         {subtitle && <div className="page-subtitle">{subtitle}</div>}
       </div>
       {children && <div className="row wrap">{children}</div>}
@@ -16,24 +19,91 @@ export function PageHeader({ title, subtitle, children }) {
   )
 }
 
-export function Stat({ label, value, sub, progress }) {
+export function Card({ title, subtitle, action, plain = false, glass = false, children, className = '', style }) {
+  const classes = ['card', plain && 'plain', glass && 'card-glass', className].filter(Boolean).join(' ')
+  return (
+    <div className={classes} style={style}>
+      {(title || subtitle || action) && (
+        <div className="row-between" style={{ marginBottom: 14 }}>
+          <div>
+            {title && <h3>{title}</h3>}
+            {subtitle && <div className="xs muted" style={{ marginTop: -10, marginBottom: 4 }}>{subtitle}</div>}
+          </div>
+          {action && <div className="row wrap">{action}</div>}
+        </div>
+      )}
+      {children}
+    </div>
+  )
+}
+
+export function Stat({ label, value, sub, progress, icon, badge, trend }) {
   return (
     <div className="stat-card">
-      <div className="stat-label">{label}</div>
+      <div className="row-between">
+        <div className="stat-label">{label}</div>
+        {icon && <div className="stat-icon accent">{icon}</div>}
+      </div>
       <div className="stat-value">{value}</div>
       {progress != null && (
-        <div className={`progress ${progress >= 100 ? 'ok' : ''}`}><span style={{ width: `${Math.min(100, progress)}%` }} /></div>
+        <div className={`progress ${progress >= 100 ? 'ok' : ''}`}>
+          <span style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
+        </div>
       )}
-      {sub && <div className="stat-sub">{sub}</div>}
+      {(sub || badge || trend != null) && (
+        <div className="row-between" style={{ marginTop: 2 }}>
+          {sub && <div className="stat-sub">{sub}</div>}
+          {badge && <span className="stat-badge">{badge}</span>}
+          {trend != null && (
+            <span className={`stat-badge ${trend >= 0 ? 'up' : 'down'}`}>
+              {trend >= 0 ? '↑' : '↓'} {Math.abs(trend)}%
+            </span>
+          )}
+        </div>
+      )}
     </div>
+  )
+}
+
+export function Badge({ kind = 'muted', children, className = '', style }) {
+  return (
+    <span className={`badge badge-${kind} ${className}`.trim()} style={style}>
+      {children}
+    </span>
+  )
+}
+
+export function PageTabs({ tabs = [], active, onChange }) {
+  return (
+    <nav className="page-tabs" role="tablist">
+      {tabs.map(t => {
+        const id = typeof t === 'string' ? t : t.id
+        const label = typeof t === 'string' ? t : t.label
+        const count = typeof t === 'object' ? t.count : undefined
+        const isSelected = active === id
+        return (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={isSelected}
+            className={`page-tab ${isSelected ? 'active' : ''}`}
+            onClick={() => onChange?.(id)}
+          >
+            <span>{label}</span>
+            {count != null && <span className="page-tab-count">{count}</span>}
+          </button>
+        )
+      })}
+    </nav>
   )
 }
 
 export function Loader({ label = 'Loading…' }) {
   return (
-    <div className="empty" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+    <div className="empty" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
       <SkylineLoader size={56} />
-      <span>{label}</span>
+      <span className="small muted">{label}</span>
     </div>
   )
 }
@@ -128,7 +198,7 @@ export function ToastProvider({ children }) {
   const [items, setItems] = useState([])
   const push = useCallback((message, kind = 'info') => {
     const id = Math.random().toString(36).slice(2)
-    setItems(xs => [...xs, { id, message, kind }].slice(-3))  // newest three; older ones are stale
+    setItems(xs => [...xs, { id, message, kind }].slice(-3))
     setTimeout(() => setItems(xs => xs.filter(x => x.id !== id)), kind === 'error' ? 6000 : 3500)
   }, [])
   return (
@@ -143,7 +213,6 @@ export function ToastProvider({ children }) {
 
 export const useToast = () => useContext(ToastContext)
 
-// Data loader hook: { data, error, loading, reload }.
 export function useLoad(fn, deps = []) {
   const [state, setState] = useState({ data: null, error: null, loading: true })
   const load = useCallback(async () => {

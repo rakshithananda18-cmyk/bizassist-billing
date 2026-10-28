@@ -108,3 +108,8 @@ fk_orphans_export_*.json
 quarantined_payments_*.json
 phantom_line_items_export_*.json
 
+
+# Codex & virtualenv worktrees
+.codex/
+.migration-venv/
+.vite/

@@ -1,20 +1,22 @@
 import React, { useState } from 'react'
 import { useAuth, lastBizId } from '../lib/auth'
-import { Logo } from '../components/Logo'
+import { BuildingMark } from '../components/Logo'
 
 export default function Login() {
   const { ownerLogin, ownerSignup, staffLogin, notice } = useAuth()
-  // Staff sign in daily on phones; owners rarely. Remember the last tab used.
-  const [mode, setModeState] = useState(() => { try { return localStorage.getItem('task_login_mode') || 'staff' } catch { return 'staff' } })
-  const setMode = (m) => { setModeState(m); try { localStorage.setItem('task_login_mode', m) } catch { /* ignore */ } }
+  const [mode, setModeState] = useState(() => {
+    try { return localStorage.getItem('task_login_mode') || 'staff' } catch { return 'staff' }
+  })
+  const setMode = (m) => {
+    setModeState(m)
+    try { localStorage.setItem('task_login_mode', m) } catch { /* ignore */ }
+  }
   const [signup, setSignup] = useState(false)
   const [f, setF] = useState({ username: '', password: '', business_name: '', phone: '', business: lastBizId(), login_name: '' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [showPw, setShowPw] = useState(false)
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
-
-  // Sign-in from BizAssist Billing (?sso=<ticket>) is handled in lib/auth.jsx
-  // before this page renders.
 
   const submit = async (e) => {
     e.preventDefault()
@@ -32,82 +34,225 @@ export default function Login() {
   }
 
   return (
-    <div className="login-page task-login-page">
-      <aside className="task-login-intro" aria-hidden="true">
-        <div className="task-login-brand"><Logo size={34} /></div>
-        <p className="task-login-eyebrow">BizAssist Field Team</p>
-        <h1>Keep every delivery day moving.</h1>
-        <p>Routes, shop tasks, attendance, and delivery updates in one focused workspace.</p>
-        <div className="task-login-benefits">
-          <span>Live route progress</span>
-          <span>Clear task hand-offs</span>
-          <span>Built for teams on the move</span>
-        </div>
-      </aside>
-      <form className="login-card task-login-card" onSubmit={submit}>
-        <div className="stack" style={{ gap: 6 }}>
-          <Logo size={30} />
-          <div className="product">Field Team · Tasks · Deliveries</div>
-        </div>
-        <div className="task-login-welcome">
-          <h1>{mode === 'staff' ? 'Start your shift' : signup ? 'Set up your field team' : 'Owner sign-in'}</h1>
-          <p>{mode === 'staff' ? 'Sign in with the credentials your owner shared with you.' : 'Use the same account you use for BizAssist Billing.'}</p>
-        </div>
-        <div className="seg" role="tablist">
-          <button type="button" role="tab" aria-selected={mode === 'staff'} className={mode === 'staff' ? 'on' : ''} onClick={() => { setMode('staff'); setSignup(false) }}>Staff</button>
-          <button type="button" role="tab" aria-selected={mode === 'owner'} className={mode === 'owner' ? 'on' : ''} onClick={() => setMode('owner')}>Owner</button>
-        </div>
-        {notice && <div className="alert alert-warning">{notice}</div>}
-        {error && <div className="alert alert-danger">{error}</div>}
+    <>
+      {/* Signature BizAssist blurred app backdrop behind modal */}
+      <div className="login-backdrop" aria-hidden="true">
+        <aside className="lb-sidebar">
+          <div className="lb-logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <BuildingMark size={18} /> BizAssist
+          </div>
+          <div className="lb-nav-section">Today</div>
+          <div className="lb-navitem active">Dashboard</div>
+          <div className="lb-navitem">Live Map</div>
+          <div className="lb-navitem">Day Plan</div>
+          <div className="lb-navitem">Tasks</div>
+          <div className="lb-navitem">Shop Requests</div>
+          <div className="lb-nav-section">Setup</div>
+          <div className="lb-navitem">Shops</div>
+          <div className="lb-navitem">Routes</div>
+          <div className="lb-navitem">Staff</div>
+          <div className="lb-nav-section">Records</div>
+          <div className="lb-navitem">Attendance</div>
+          <div className="lb-navitem">Scorecard</div>
+        </aside>
+        <main className="lb-main">
+          <div className="lb-h1">Dashboard</div>
+          <div className="lb-grid-4">
+            <div className="lb-card" />
+            <div className="lb-card" />
+            <div className="lb-card" />
+            <div className="lb-card" />
+          </div>
+          <div className="lb-bottom-split">
+            <div className="lb-card" style={{ height: 260 }} />
+            <div className="lb-card" style={{ height: 260 }} />
+          </div>
+        </main>
+      </div>
 
-        {mode === 'staff' ? (
-          <>
-            <div className="form-group">
-              <label className="form-label">Business ID</label>
-              <input className="form-input" value={f.business} onChange={set('business')} placeholder="BA-XXXXXX" autoCapitalize="characters" required />
-              <span className="form-hint">Ask your owner for the BizID (shown in their app).</span>
+      {/* Floating Centered Glass Modal */}
+      <div className="login-container" id="login-container">
+        <div className="login-card">
+          <div className="login-glow" />
+          <div className="login-symbol"><BuildingMark size={44} /></div>
+          <h1 className="login-title">BIZASSIST</h1>
+          <p className="login-subtitle">FIELD TEAM &amp; LOGISTICS</p>
+
+          {/* Staff vs Owner Tabs matching Billing */}
+          <div className="login-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'staff'}
+              className={`login-tab-btn ${mode === 'staff' ? 'active' : ''}`}
+              onClick={() => { setMode('staff'); setSignup(false); setError(null) }}
+            >
+              Staff Login
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'owner'}
+              className={`login-tab-btn ${mode === 'owner' ? 'active' : ''}`}
+              onClick={() => { setMode('owner'); setError(null) }}
+            >
+              Owner Login
+            </button>
+          </div>
+
+          {notice && (
+            <div className="alert alert-warning" style={{ width: '100%', marginBottom: 14 }}>
+              {notice}
             </div>
-            <div className="form-group">
-              <label className="form-label">Your login name</label>
-              <input className="form-input" value={f.login_name} onChange={set('login_name')} autoCapitalize="none" autoComplete="username" required />
+          )}
+          {error && (
+            <div className="login-error" role="alert" style={{ marginBottom: 14 }}>
+              {error}
             </div>
-          </>
-        ) : (
-          <>
-            <div className="form-group">
-              <label className="form-label">Username</label>
-              <input className="form-input" value={f.username} onChange={set('username')} autoCapitalize="none" autoComplete="username" required />
-              {!signup && <span className="form-hint">Same account as BizAssist Billing.</span>}
-            </div>
-            {signup && (
+          )}
+
+          <form onSubmit={submit} className="login-form">
+            {mode === 'staff' ? (
               <>
-                <div className="form-group">
-                  <label className="form-label">Business name</label>
-                  <input className="form-input" value={f.business_name} onChange={set('business_name')} required />
+                <div className="form-group" style={{ textAlign: 'left' }}>
+                  <label htmlFor="staff-bizid" className="form-label">Business ID</label>
+                  <input
+                    id="staff-bizid"
+                    className="form-input"
+                    value={f.business}
+                    onChange={set('business')}
+                    placeholder="e.g. BA-XXXXXX"
+                    autoCapitalize="characters"
+                    required
+                    autoFocus
+                  />
+                  <span className="form-hint">Ask your owner for the BizID (shown in their app).</span>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Phone (optional)</label>
-                  <input className="form-input" value={f.phone} onChange={set('phone')} inputMode="tel" />
+                <div className="form-group" style={{ textAlign: 'left', marginTop: 10 }}>
+                  <label htmlFor="staff-login-name" className="form-label">Your login name</label>
+                  <input
+                    id="staff-login-name"
+                    className="form-input"
+                    value={f.login_name}
+                    onChange={set('login_name')}
+                    placeholder="e.g. ravi"
+                    autoCapitalize="none"
+                    autoComplete="username"
+                    required
+                  />
                 </div>
               </>
+            ) : (
+              <>
+                <div className="form-group" style={{ textAlign: 'left' }}>
+                  <label htmlFor="owner-username" className="form-label">Username</label>
+                  <input
+                    id="owner-username"
+                    className="form-input"
+                    value={f.username}
+                    onChange={set('username')}
+                    placeholder="e.g. store_owner"
+                    autoCapitalize="none"
+                    autoComplete="username"
+                    required
+                    autoFocus
+                  />
+                  {!signup && <span className="form-hint">Same account as BizAssist Billing.</span>}
+                </div>
+                {signup && (
+                  <>
+                    <div className="form-group" style={{ textAlign: 'left', marginTop: 10 }}>
+                      <label htmlFor="owner-bizname" className="form-label">Business name</label>
+                      <input
+                        id="owner-bizname"
+                        className="form-input"
+                        value={f.business_name}
+                        onChange={set('business_name')}
+                        placeholder="My Store / Distribution"
+                        required
+                      />
+                    </div>
+                    <div className="form-group" style={{ textAlign: 'left', marginTop: 10 }}>
+                      <label htmlFor="owner-phone" className="form-label">Phone (optional)</label>
+                      <input
+                        id="owner-phone"
+                        className="form-input"
+                        value={f.phone}
+                        onChange={set('phone')}
+                        placeholder="10-digit mobile"
+                        inputMode="tel"
+                      />
+                    </div>
+                  </>
+                )}
+              </>
             )}
-          </>
-        )}
-        <div className="form-group">
-          <label className="form-label">Password</label>
-          <input className="form-input" type="password" value={f.password} onChange={set('password')} autoComplete={signup ? 'new-password' : 'current-password'} required />
-          {signup && <span className="form-hint">8+ characters with upper-case, lower-case and a number.</span>}
+
+            <div className="form-group" style={{ textAlign: 'left', marginTop: 10 }}>
+              <label htmlFor="login-password" className="form-label">Password</label>
+              <div className="password-wrapper">
+                <input
+                  id="login-password"
+                  className="form-input"
+                  type={showPw ? 'text' : 'password'}
+                  value={f.password}
+                  onChange={set('password')}
+                  placeholder="••••••••"
+                  autoComplete={signup ? 'new-password' : 'current-password'}
+                  required
+                />
+                <button
+                  type="button"
+                  className="password-toggle-btn"
+                  onClick={() => setShowPw(!showPw)}
+                  aria-label="Toggle password visibility"
+                >
+                  {showPw ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                      <line x1="1" y1="1" x2="23" y2="23" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              {signup && <span className="form-hint">8+ characters with upper, lower &amp; numbers.</span>}
+            </div>
+
+            <button type="submit" className="login-submit-btn" disabled={busy} style={{ marginTop: 16 }}>
+              {busy ? 'Signing in…' : mode === 'staff' ? 'Start Shift' : signup ? 'Create Account' : 'Sign In as Owner'}
+            </button>
+
+            {mode === 'owner' && (
+              <div style={{ textAlign: 'center', marginTop: 14 }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 6 }}>
+                  {signup ? 'Already have an owner account?' : "New business owner?"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { setSignup(!signup); setError(null) }}
+                  style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
+                >
+                  {signup ? 'Sign In' : 'Create Account'}
+                </button>
+              </div>
+            )}
+
+            <p className="login-reassurance">
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="10" rx="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              <span>Your business data stays private and encrypted.</span>
+            </p>
+          </form>
         </div>
-        <button className="btn btn-primary btn-lg btn-block" disabled={busy}>
-          {busy ? 'Please wait…' : mode === 'staff' ? 'Sign in' : signup ? 'Create BizAssist account' : 'Sign in as owner'}
-        </button>
-        {mode === 'owner' && (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSignup(!signup)}>
-            {signup ? 'I already have a BizAssist account' : 'New to BizAssist? Create an account'}
-          </button>
-        )}
-        {mode === 'staff' && <div className="task-login-note">One phone at a time: signing in here signs your other device out.</div>}
-      </form>
-    </div>
+      </div>
+    </>
   )
 }

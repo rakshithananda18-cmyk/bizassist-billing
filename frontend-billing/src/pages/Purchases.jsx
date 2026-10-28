@@ -596,6 +596,13 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
 
         {/* Table */}
         {(() => {
+          const emptyContent = filtered.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">{activeTab === 'Returns (Debit Notes)' ? <SyncIcon size={24} /> : <BillsIcon size={24} />}</div>
+              <h3>{activeTab === 'Returns (Debit Notes)' ? 'No returns found' : 'No bills found'}</h3>
+              <p>{search ? 'Try a different search term.' : (activeTab === 'Returns (Debit Notes)' ? 'Record a return to get started.' : 'Upload a bill to get started.')}</p>
+            </div>
+          ) : null
           const tableContent = (
             <table className="data-table">
               <thead><tr>
@@ -638,15 +645,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr></thead>
               <tbody>
-                {filtered.length === 0 ? (
-                  <tr><td colSpan={7}>
-                    <div className="empty-state">
-                      <div className="empty-icon">{activeTab === 'Returns (Debit Notes)' ? <SyncIcon size={24} /> : <BillsIcon size={24} />}</div>
-                      <h3>{activeTab === 'Returns (Debit Notes)' ? 'No returns found' : 'No bills found'}</h3>
-                      <p>{search ? 'Try a different search term.' : (activeTab === 'Returns (Debit Notes)' ? 'Record a return to get started.' : 'Upload a bill to get started.')}</p>
-                    </div>
-                  </td></tr>
-                ) : filtered.map(b => (
+                {filtered.map(b => (
                   <tr
                     key={b.id}
                     style={{ cursor: 'context-menu' }}
@@ -691,6 +690,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
                   <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(false)}>✕ Close</button>
                 </div>
                 <div className="data-table-wrap">{tableContent}</div>
+                {emptyContent}
               </div>
             </div>
           )
@@ -700,6 +700,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
                 <ExpandIcon size={14} />
               </button>
               <div className="data-table-wrap">{tableContent}</div>
+                {emptyContent}
             </div>
           )
         })()}

@@ -112,7 +112,7 @@ const PAGE_TITLES = {
 // data grid built as a full-bleed POS surface; the nav costs it 240px it has a
 // real use for. Prefix match, so /stock/inventory, /stock/purchases and any
 // future tab inherit it.
-const AUTO_COLLAPSE_ROUTES = ['/stock']
+const AUTO_COLLAPSE_ROUTES = ['/stock', '/settings']
 
 const BOTTOM_BAR_ROUTES = ['/', '/sales', '/stock', '/parties', '/reports']
 
@@ -728,6 +728,7 @@ export default function AppLayout({ children, title }) {
   // Profile popover menu
   const [showProfileMenu, setShowProfileMenu] = React.useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
+  const mobileSidebarRef = React.useRef(null)
 
   // Whole-sidebar collapse (icon rail) — see BOTTOM_BAR_ROUTES near the bottom
   // bar for the mobile half of the same navigation problem. Distinct from `collapsed` above, which
@@ -751,6 +752,40 @@ export default function AppLayout({ children, title }) {
   }, [])
   // The mobile drawer always opens at full width, retaining the desktop choice.
   const sidebarInRailMode = sidebarCollapsed && !isMobileViewport
+
+  React.useEffect(() => {
+    if (!isMobileViewport || !mobileMenuOpen) return undefined
+    const previousFocus = document.activeElement
+    const sidebar = mobileSidebarRef.current
+    const focusTimer = window.setTimeout(() => sidebar?.querySelector('[aria-label="Close menu"]')?.focus(), 0)
+    const onKeyDown = event => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setMobileMenuOpen(false)
+        return
+      }
+      if (event.key !== 'Tab' || !sidebar) return
+      const controls = [...sidebar.querySelectorAll('a[href], button:not([disabled]), [tabindex="0"]')]
+        .filter(control => control.getClientRects().length > 0)
+      if (!controls.length) { event.preventDefault(); sidebar.focus(); return }
+      const first = controls[0]
+      const last = controls[controls.length - 1]
+      if (!sidebar.contains(document.activeElement)) {
+        event.preventDefault()
+        ;(event.shiftKey ? last : first).focus()
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.clearTimeout(focusTimer)
+      document.removeEventListener('keydown', onKeyDown)
+      if (previousFocus?.isConnected) previousFocus.focus()
+    }
+  }, [isMobileViewport, mobileMenuOpen])
 
   // Routes that want the width more than they want the nav. Entering one
   // collapses the rail; LEAVING restores whatever the owner's saved preference
@@ -1003,7 +1038,14 @@ export default function AppLayout({ children, title }) {
 
       {/* ── Sidebar ── */}
       {!isSalesPage && (
-        <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''} ${sidebarInRailMode ? 'collapsed' : ''}`}>
+        <aside ref={mobileSidebarRef} id="mobile-navigation"
+          className={`sidebar ${mobileMenuOpen ? 'open' : ''} ${sidebarInRailMode ? 'collapsed' : ''}`}
+          role={isMobileViewport ? 'dialog' : undefined}
+          aria-label={isMobileViewport ? 'Navigation menu' : undefined}
+          aria-modal={isMobileViewport && mobileMenuOpen ? true : undefined}
+          aria-hidden={isMobileViewport && !mobileMenuOpen ? true : undefined}
+          inert={isMobileViewport && !mobileMenuOpen ? '' : undefined}
+          tabIndex={isMobileViewport ? -1 : undefined}>
           {/* Collapse to an icon rail — same affordance as frontend-ai's
               AppLayout. Hidden on mobile, where the drawer and the bottom bar
               already handle navigation and a rail would just be a third way to
@@ -1191,6 +1233,7 @@ export default function AppLayout({ children, title }) {
             
             {/* Close button for mobile drawer */}
             <button
+              type="button"
               className="mobile-drawer-close"
               onClick={() => setMobileMenuOpen(false)}
               aria-label="Close menu"
@@ -1200,7 +1243,7 @@ export default function AppLayout({ children, title }) {
                 color: 'var(--sidebar-muted, var(--text-muted))',
                 cursor: 'pointer',
                 padding: '4px',
-                display: 'none',
+                display: isMobileViewport ? 'inline-flex' : 'none',
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginLeft: '8px',
@@ -2444,6 +2487,8 @@ export default function AppLayout({ children, title }) {
             className="mobile-menu-toggle"
             onClick={() => setMobileMenuOpen(true)}
             aria-label="Open menu"
+            aria-controls="mobile-navigation"
+            aria-expanded={mobileMenuOpen}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="3" y1="12" x2="21" y2="12"></line>

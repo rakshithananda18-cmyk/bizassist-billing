@@ -16,6 +16,7 @@ import { logger } from '../utils/logger'
 import { SkylineLoader } from '../components/Logo'
 import { getHeaderLayout, isHeaderLineEnabled, moveItem } from '../utils/printLayout'
 import { useReadinessProbe } from '../hooks/useReadinessProbe'
+import { useSettingsAutosave } from '../hooks/useSettingsAutosave'
 import ReadinessPanel from '../components/hosting/ReadinessPanel'
 import PreflightModal from '../components/hosting/PreflightModal'
 import ConsequenceModal from '../components/hosting/ConsequenceModal'
@@ -50,15 +51,32 @@ import './settings-profile.css'
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: 'general',      label: 'General',              icon: <SettingsIcon size={16} /> },
-  { id: 'profile',      label: 'Business Profile',      icon: <ContactsIcon size={16} /> },
-  { id: 'transactions', label: 'Transactions',          icon: <BillsIcon size={16} /> },
-  { id: 'inventory',    label: 'Items & Stock',         icon: <InventoryIcon size={16} /> },
-  { id: 'print',        label: 'Print & PDF',           icon: <PrinterIcon size={16} /> },
-  { id: 'staff',        label: 'Staff Management',      icon: <ShieldIcon size={16} /> },
-  { id: 'network',      label: 'Network & Discovery',   icon: <ZapIcon size={16} /> },
-  { id: 'advanced',     label: 'Advanced',              icon: <ZapIcon size={16} /> },
-  { id: 'ops_health',   label: 'Ops & Health',          icon: <CheckIcon size={16} /> },
+  { id: 'general',      label: 'General',              icon: <SettingsIcon size={16} />, desc: 'Display, zoom & backup' },
+  { id: 'profile',      label: 'Business Profile',      icon: <ContactsIcon size={16} />, desc: 'Name, GSTIN & logo' },
+  { id: 'staff',        label: 'Staff Management',      icon: <ShieldIcon size={16} />,   desc: 'Cashiers & permissions' },
+
+  { id: 'transactions', label: 'Transactions',          icon: <BillsIcon size={16} />,    desc: 'Invoices, dues & counter' },
+  { id: 'inventory',    label: 'Items & Stock',         icon: <InventoryIcon size={16} />,desc: 'Barcodes & low-stock' },
+  { id: 'print',        label: 'Print & PDF',           icon: <PrinterIcon size={16} />,  desc: 'Thermal & A4 layouts' },
+
+  { id: 'network',      label: 'Network & Discovery',   icon: <ZapIcon size={16} />,      desc: 'LAN sync & hosting mode' },
+  { id: 'advanced',     label: 'Advanced',              icon: <ZapIcon size={16} />,      desc: 'Security & reset controls' },
+  { id: 'ops_health',   label: 'Ops & Health',          icon: <CheckIcon size={16} />,    desc: 'System health & diagnostics' },
+]
+
+const SETTINGS_CATEGORIES = [
+  {
+    title: 'Store & Identity',
+    ids: ['general', 'profile', 'staff']
+  },
+  {
+    title: 'Sales & Hardware',
+    ids: ['transactions', 'inventory', 'print']
+  },
+  {
+    title: 'System & Connectivity',
+    ids: ['network', 'advanced', 'ops_health']
+  }
 ]
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -72,6 +90,10 @@ export default function Settings() {
   const { hasLock, setupPasscode, clearPasscode } = useLock()
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
   const visibleTabs = isCashier ? TABS.filter(t => t.id === 'general') : TABS
+  const settingsGroups = SETTINGS_CATEGORIES.map(cat => ({
+    title: cat.title,
+    tabs: cat.ids.map(id => visibleTabs.find(t => t.id === id)).filter(Boolean)
+  })).filter(g => g.tabs.length > 0)
   const [showPasscodeModal, setShowPasscodeModal] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState(() => {
@@ -322,10 +344,19 @@ export default function Settings() {
       {children}
     </div>
   )
-  const [settings, setSettings] = useState(null)
-  const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState(null)   // { type: 'success'|'error', msg }
+  const [toast, setToast] = useState(null)
   const [templates, setTemplates] = useState([])
+  const toastTimerRef = useRef(null)
+  const { settings, setSettings, saveStatus, saving, save } = useSettingsAutosave({
+    authFetch,
+    onSaved: fetchSettings,
+    onManualResult: result => {
+      setToast(result)
+      clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = setTimeout(() => setToast(null), 3500)
+    },
+  })
+  useEffect(() => () => clearTimeout(toastTimerRef.current), [])
 
   useEffect(() => {
     fetch(`${API_BASE}/business/templates`)
@@ -408,31 +439,6 @@ export default function Settings() {
   // ============================================================================
   // ── 4. DATA LOADERS & SAVE ROUTINES ──
   // ============================================================================
-  // ── Load settings ──────────────────────────────────────────────────────────
-  const loadSettings = useCallback(async () => {
-    logger.debug('[Settings] Fetching app settings from backend…')
-    try {
-      const res = await authFetch('/settings')
-      logger.debug('[Settings] GET /settings response status:', res.status)
-      if (res.ok) {
-        const data = await res.json()
-        logger.info('[Settings] Loaded successfully. Sections:', Object.keys(data))
-        logger.debug('[Settings] Full settings payload:', data)
-        setSettings(data)
-      } else {
-        const err = await res.json().catch(() => ({}))
-        logger.warn('[Settings] GET /settings returned non-OK status:', res.status, err.detail)
-      }
-    } catch (err) {
-      logger.error('[Settings] Failed to fetch settings:', err)
-    }
-  }, [authFetch])
-
-  useEffect(() => {
-    logger.debug('[Settings] Component mounted — triggering loadSettings()')
-    loadSettings()
-  }, [loadSettings])
-
   useEffect(() => {
     const pageContent = document.querySelector('.page-content')
     if (pageContent) {
@@ -470,41 +476,9 @@ export default function Settings() {
   // ── Tab change ─────────────────────────────────────────────────────────────
   const handleTabChange = (tabId) => {
     logger.debug('[Settings] Tab changed to:', tabId)
+    if (saveStatus === 'unsaved') save(false)
     setActiveTab(tabId)
     setSearchParams({ tab: tabId })
-  }
-
-  // ── Save all settings to backend ───────────────────────────────────────────
-  const save = async () => {
-    logger.info('[Settings] Saving settings to backend…')
-    logger.debug('[Settings] Payload being sent:', settings)
-    setSaving(true)
-    try {
-      const res = await authFetch('/settings', {
-        method: 'PUT',
-        body: JSON.stringify(settings)
-      })
-      logger.debug('[Settings] PUT /settings response status:', res.status)
-      if (res.ok) {
-        const updated = await res.json()
-        logger.info('[Settings] Save successful. Updated sections:', Object.keys(updated))
-        setSettings(updated)
-        if (fetchSettings) {
-          await fetchSettings()
-        }
-        setToast({ type: 'success', msg: 'Settings saved successfully!' })
-      } else {
-        const err = await res.json().catch(() => ({}))
-        logger.warn('[Settings] PUT /settings failed:', res.status, err.detail)
-        throw new Error(err.detail || 'Save failed')
-      }
-    } catch (err) {
-      logger.error('[Settings] Exception while saving settings:', err)
-      setToast({ type: 'error', msg: err.message })
-    } finally {
-      setSaving(false)
-      setTimeout(() => setToast(null), 3500)
-    }
   }
 
   // Force a plan re-check against the cloud. `fetchSettings(true)` sends
@@ -583,17 +557,36 @@ export default function Settings() {
             <h1 className="page-title">App Settings</h1>
             <p className="page-subtitle">Configure how your billing system behaves — transactions, printing, stock, and more.</p>
           </div>
-          <div className="page-actions">
+          <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <HeaderSearchSlot />
-            {activeTab !== 'profile' && <button
-              className="btn btn-primary"
-              onClick={save}
-              disabled={saving}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}
-            >
-              {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <CheckIcon size={14} />}
-              Save Changes
-            </button>}
+            {activeTab !== 'profile' && (
+              <>
+                <div
+                  className={`save-status-badge ${saveStatus}`}
+                  title={saveStatus === 'error' ? 'Click to retry saving' : undefined}
+                  onClick={saveStatus === 'error' ? () => save(true) : undefined}
+                  role="status"
+                  aria-live="polite"
+                >
+                  <span className="save-status-dot" />
+                  <span>
+                    {saveStatus === 'saved' && 'Saved'}
+                    {saveStatus === 'saving' && 'Saving...'}
+                    {saveStatus === 'unsaved' && 'Unsaved changes'}
+                    {saveStatus === 'error' && 'Save failed · Retry'}
+                  </span>
+                </div>
+                <button
+                  className={`btn ${saveStatus === 'error' ? 'btn-danger' : 'btn-primary'}`}
+                  onClick={() => save(true)}
+                  disabled={saving}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}
+                >
+                  {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <CheckIcon size={14} />}
+                  {saveStatus === 'error' ? 'Retry Save' : 'Save Changes'}
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -618,10 +611,8 @@ export default function Settings() {
           </div>
         )}
 
-        {/* ── Panel container (one big card) ── */}
-        <div className="card settings-panel" style={{
-          display: 'flex',
-          flexDirection: 'column',
+        {/* ── Panel container (Split-pane layout: Left sub-sidebar, Right form body) ── */}
+        <div className="card settings-panel settings-split-layout" style={{
           overflow: 'hidden',
           flex: 1,
           padding: 0,
@@ -629,10 +620,46 @@ export default function Settings() {
           borderRadius: 'var(--radius-lg, 12px)',
           minHeight: 0,
         }}>
-          {/* Tab strip inside the card */}
-          <div className="settings-section-tabs">
+          {/* Mobile-only tab strip (horizontal swipeable pills) */}
+          <div className="settings-mobile-tabs">
             <PageTabs label="Settings sections" tabs={visibleTabs} active={activeTab} onChange={handleTabChange} />
           </div>
+
+          {/* Desktop & Tablet: Left Settings Sub-Sidebar */}
+          <aside className="settings-sub-sidebar" aria-label="Settings navigation">
+            <div className="settings-sub-sidebar-header">
+              <span className="settings-sub-sidebar-title">Preferences</span>
+            </div>
+
+            <nav className="settings-nav-groups" role="tablist" aria-label="Settings sections">
+              {settingsGroups.map(group => (
+                <div key={group.title} className="settings-nav-group">
+                  <div className="settings-nav-group-label">{group.title}</div>
+                  <div className="settings-nav-items">
+                    {group.tabs.map(tab => {
+                      const isSelected = activeTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={isSelected}
+                          className={'settings-nav-item' + (isSelected ? ' active' : '')}
+                          onClick={() => handleTabChange(tab.id)}
+                        >
+                          <span className="settings-nav-icon">{tab.icon}</span>
+                          <div className="settings-nav-text">
+                            <span className="settings-nav-label">{tab.label}</span>
+                            {tab.desc && <span className="settings-nav-desc">{tab.desc}</span>}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </nav>
+          </aside>
 
           {/* Scrollable contents inside the card */}
           <div className="settings-panel-body" style={{
@@ -768,19 +795,7 @@ export default function Settings() {
                             document.documentElement.style.setProperty('--zoom', v / 100)
                             document.documentElement.style.minHeight = ''
                             
-                            // Auto-save zoom level to backend
-                            try {
-                              const newSettings = {
-                                ...settings,
-                                general: { ...settings.general, app_zoom: v }
-                              }
-                              await authFetch('/settings', {
-                                method: 'PUT',
-                                body: JSON.stringify(newSettings)
-                              })
-                            } catch (err) {
-                              logger.error('[Settings] Auto-saving zoom failed:', err)
-                            }
+                            // Auto-saved via debounced hybrid model
                           }}
                           className={`btn ${active ? 'btn-primary' : 'btn-secondary'}`}
                           style={{ padding: '6px 12px', minWidth: 50 }}

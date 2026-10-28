@@ -69,20 +69,38 @@ export default function StaffLayout() {
     <DayContext.Provider value={{ today, error, reload, act, track, awake, toggleAwake, onDuty }}>
       <div className="staff-shell">
         <header className="staff-top">
-          <BuildingMark size={24} />
-          <div className="grow">
+          <BuildingMark size={26} />
+          <div className="grow" style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 700, lineHeight: 1.2 }} className="ellipsis">{me.name}</div>
             <div className="xs muted ellipsis">{me.business_name}</div>
           </div>
-          {today && <span className="points-pill" title="Points today / total">{today.points_today} · {today.points_total}</span>}
-          <button className="btn btn-ghost btn-sm" onClick={logout} aria-label="Sign out"><LogoutIcon size={18} /></button>
+          {today && (
+            <span className="points-pill" title="Points today / total">
+              ⭐ {today.points_today} · {today.points_total}
+            </span>
+          )}
+          <button className="btn btn-ghost btn-sm" onClick={logout} aria-label="Sign out" style={{ padding: 6 }}>
+            <LogoutIcon size={18} />
+          </button>
         </header>
         <main className="staff-main"><Outlet /></main>
-        <nav className="bottom-bar">
-          <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}><HomeIcon size={20} />Today</NavLink>
-          <NavLink to="/my-tasks" className={({ isActive }) => (isActive ? 'active' : '')}><ClipboardIcon size={20} />Tasks</NavLink>
-          <NavLink to="/request" className={({ isActive }) => (isActive ? 'active' : '')}><OrderIcon size={20} />Shop order</NavLink>
-          <NavLink to="/score" className={({ isActive }) => (isActive ? 'active' : '')}><AwardIcon size={20} />Score</NavLink>
+        <nav className="bottom-bar" aria-label="Bottom navigation">
+          <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>
+            <HomeIcon size={20} />
+            <span>Today</span>
+          </NavLink>
+          <NavLink to="/my-tasks" className={({ isActive }) => (isActive ? 'active' : '')}>
+            <ClipboardIcon size={20} />
+            <span>Tasks</span>
+          </NavLink>
+          <NavLink to="/request" className={({ isActive }) => (isActive ? 'active' : '')}>
+            <OrderIcon size={20} />
+            <span>Shop order</span>
+          </NavLink>
+          <NavLink to="/score" className={({ isActive }) => (isActive ? 'active' : '')}>
+            <AwardIcon size={20} />
+            <span>Score</span>
+          </NavLink>
         </nav>
       </div>
     </DayContext.Provider>

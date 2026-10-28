@@ -1007,9 +1007,9 @@ export default function Login() {
               </span>
             </div>
             <ol className="auth-progress" aria-label="Sign-in progress">
-              <li className={standardStep === 'username' ? 'is-current' : 'is-complete'}><span>1</span><small>Business</small></li>
-              <li className={standardStep === 'choose' ? 'is-current' : ['owner', 'staff'].includes(standardStep) ? 'is-complete' : ''}><span>2</span><small>Role</small></li>
-              <li className={['owner', 'staff'].includes(standardStep) ? 'is-current' : ''}><span>3</span><small>Sign in</small></li>
+              <li aria-label="1. Business" aria-current={standardStep === 'username' ? 'step' : undefined} className={standardStep === 'username' ? 'is-current' : 'is-complete'}><span>1</span><small>Business</small></li>
+              <li aria-label="2. Role" aria-current={standardStep === 'choose' ? 'step' : undefined} className={standardStep === 'choose' ? 'is-current' : ['owner', 'staff'].includes(standardStep) ? 'is-complete' : ''}><span>2</span><small>Role</small></li>
+              <li aria-label="3. Sign in" aria-current={['owner', 'staff'].includes(standardStep) ? 'step' : undefined} className={['owner', 'staff'].includes(standardStep) ? 'is-current' : ''}><span>3</span><small>Sign in</small></li>
             </ol>
 
             {/* STEP 1 — owner username */}

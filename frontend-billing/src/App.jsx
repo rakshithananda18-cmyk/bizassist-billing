@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import React, { lazy, useEffect, useState, useCallback } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { LockProvider } from './contexts/LockContext'
 import { ConfirmProvider } from './contexts/ConfirmContext'
@@ -12,26 +12,30 @@ import { logger } from './utils/logger'
 import { useRealtimeLeader } from './hooks/useRealtimeLeader'
 import { IS_LOCAL_APP } from './config'
 import { useAppearance } from './hooks/useAppearance'
+import RouteBoundary from './components/RouteBoundary'
 
-// Pages
+// Keep the landing/sign-in screens and the offline counter in the initial
+// download. The web counter must remain reachable if the connection drops
+// before another route has been opened; there is no service-worker precache.
 import Login     from './pages/Login'
-import Register  from './pages/Register'
 import Home      from './pages/Home'
-import Dashboard from './pages/Dashboard'
 import Sales     from './pages/Sales'
-import LiveView  from './pages/LiveView'
-import ContactsPayments from './pages/ContactsPayments'
-import Money     from './pages/Money'
-import Reports   from './pages/Reports'
-import Import    from './pages/Import'
-import B2B       from './pages/B2B'
-import Settings    from './pages/Settings'
-import POSLiveCounter from './pages/POSLiveCounter'
-import InvoiceViewer  from './invoice/InvoiceViewer'
-import PublicInvoiceViewer from './pages/PublicInvoiceViewer'
-import Support from './pages/Support'
 import AppLayout from './layouts/AppLayout'
-import StockWorkspace from './pages/StockWorkspace'
+
+const Register = lazy(() => import('./pages/Register'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const LiveView = lazy(() => import('./pages/LiveView'))
+const ContactsPayments = lazy(() => import('./pages/ContactsPayments'))
+const Money = lazy(() => import('./pages/Money'))
+const Reports = lazy(() => import('./pages/Reports'))
+const Import = lazy(() => import('./pages/Import'))
+const B2B = lazy(() => import('./pages/B2B'))
+const Settings = lazy(() => import('./pages/Settings'))
+const POSLiveCounter = lazy(() => import('./pages/POSLiveCounter'))
+const InvoiceViewer = lazy(() => import('./invoice/InvoiceViewer'))
+const PublicInvoiceViewer = lazy(() => import('./pages/PublicInvoiceViewer'))
+const Support = lazy(() => import('./pages/Support'))
+const StockWorkspace = lazy(() => import('./pages/StockWorkspace'))
 
 
 function AppearanceSync() {
@@ -45,9 +49,11 @@ function ProtectedRoute({ children }) {
   return user ? children : <Navigate to="/login" replace />
 }
 
-function AppRoutes() {
+export function AppRoutes() {
   const { user } = useAuth()
+  const location = useLocation()
   return (
+    <RouteBoundary resetKey={location.pathname}>
     <Routes>
       <Route path="/login"    element={user ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/register" element={user ? <Navigate to="/" replace /> : <Register />} />
@@ -85,6 +91,7 @@ function AppRoutes() {
       {/* Catch-all */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </RouteBoundary>
   )
 }
 

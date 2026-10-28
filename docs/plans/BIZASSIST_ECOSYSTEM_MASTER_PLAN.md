@@ -2,7 +2,7 @@
 
 *June 2026 · The single source of truth. Reconciles three independent AI reviews (this assistant, "Codex", "Antigravity") into one plan, makes the contested decisions explicitly, and maps everything to your four goals: **easy to use · secure & unbreakable · addictive · makes money**.*
 
-> **📍 Navigation:** This is the **full, authoritative** plan (large). For a quick map, use the lean **[`MASTER_PLAN_CORE.md`](MASTER_PLAN_CORE.md)** (one-line summaries + links back here). For the latest architecture/security/functionality assessment and open items, see **[`PRODUCT_REVIEW.md`](PRODUCT_REVIEW.md)** (reviewed 2026-06-26). Keep both aligned: edit decisions/status **here**, then refresh the matching one-liner in the core file.
+> **📍 Navigation:** This is the **full, authoritative** plan (large). For a quick map, use the lean **[`MASTER_PLAN.md`](../MASTER_PLAN.md)**. Current execution evidence is in the **[2026-10-28 verification record](../release/2026-10-28-verification.md)**. The **[`PRODUCT_REVIEW.md`](PRODUCT_REVIEW.md)** review (2026-06-26) and **[August platform ledger](../PLATFORM_STATE_AND_PENDING_WORK_2026-08-03.md)** are dated historical assessments. Keep both plan summaries aligned when a decision or current status changes.
 
 > How to read this: §1 is what all three agreed on (settled). §2 is where they disagreed and the decision we're taking + why (this is the most important section — read it first). §3–§9 are the design. §10 is the build. §11–§13 are pilot, risks, and what needs your sign-off.
 
@@ -310,12 +310,24 @@ Billing = acquisition (cheap/free). The money is in the **network plan + AI + (l
 
 ---
 
-### 10.0 — BUILD STATUS TRACKER  ·  *last updated 2026-06-26*
+### 10.0 — BUILD STATUS TRACKER  ·  *summary reconciled 2026-10-28*
 
-> 🔎 **2026-06-26 — Architecture/Security/Functionality review** (see [`PRODUCT_REVIEW.md`](PRODUCT_REVIEW.md)): Phases 1–4 confirmed built; accounting depth, RLS, and two-wall idempotency verified present in code. **Open items:** (1) **DoD Gate 1 not closed** — full suite not run this pass (env-blocked); code has **541 test functions** vs the "555/431" cited below — run `run_tests.ps1` and reconcile to one dated number. (2) **Security S-1:** Postgres RLS is *fail-open* when `app.current_business_id` is unset — harden to fail-closed for tenant tables. (3) Offline-sync + hosting-mode switching are built but need live `npm run dev` depth-QA. (4) Tech debt: `Sales.jsx` god-component + duplicated sync `_MODEL_MAP`. Quick map of the whole plan: [`MASTER_PLAN_CORE.md`](MASTER_PLAN_CORE.md).
+**Current evidence:** [2026-10-28 release checks](../release/2026-10-28-verification.md). Record test counts, skips, commands, build sizes and browser checks there rather than copying totals into this plan.
+
+| Area | Reconciled state |
+|---|---|
+| Billing, purchase/stock and B2B core | Implemented; named test suites and the current verification scope are recorded in the release checks |
+| S-1 fail-closed RLS | Implementation closed: migration `9c2f4b8a1d3e` and subsequent policy hardening; transaction-local tenant binding and pooled-connection reset are present. `test_rls_policies.py`, `test_rls_postgres.py` and the Postgres CI gate exist. A passing SQLite/mock suite does not prove a live Postgres deployment |
+| Offline client sync and hosting modes | Built with automated tests. Live offline/reconnect, two-server local/cloud switching and multi-terminal checks remain pending unless the dated record supplies that evidence |
+| UI and initial loading | Accepted UI fixes, responsive/theme results and route-loading measurements are tracked in the current verification record; the colour experiments were reverted |
+| Physical printing and deployed recovery | Require separate printer and deployment/restore evidence; do not infer completion from generated PDF or isolated database tests |
+
+The [August platform ledger](../PLATFORM_STATE_AND_PENDING_WORK_2026-08-03.md) and [data-repair state](../DATA_REPAIR_STATE_2026-08-03.md) supersede earlier operational snapshots where they explicitly correct them. Revalidate the remaining production-data findings on the correct live databases before classifying or repairing them.
 
 > Single source of truth for "where are we." Legend: ✅ done · 🟡 partial / needs depth-verification · ⬜ not started.
-> Canonical code lives in **`bizassist-billing/`** (the `bizassist/` copy is retired — fully subsumed). Status below reflects that repo: **555 backend tests green; 78 backend API routes across 13 modules; 16 frontend pages.** Items marked 🟡 exist in code (route/page present) but their *depth* (real print, live filing, security negative-tests) is not yet verified — don't trust a ✅/🟡 as "production-proven" until its test is named below.
+> Canonical code lives in **`bizassist-billing/`** (the `bizassist/` copy is retired — fully subsumed). The detailed entries below preserve the June implementation history and its then-current test counts, status labels and deferred work. They are not a fresh verification claim. The current summary and dated release record supersede stale statements such as "RLS deferred/fail-open"; future product scope remains unchanged.
+
+**Historical implementation ledger — June 2026**
 
 **Deployment & Migration**
 - ✅ **Postgres migration table coverage update (2026-06-21):** Restructured `backend/migrate_sqlite_to_postgres.py` to order and copy all 37 database tables. Ready for Supabase and Hugging Face deployment.
@@ -502,7 +514,7 @@ This is a **strong core, not yet a finished product.** The hard, easy-to-get-wro
 
 **Ecosystem Deployment & Postgres Migration Script Update · S · low risk · backend-only — [✅ DONE 2026-06-21]**
 - *Problem:* The original `migrate_sqlite_to_postgres.py` script was written when only 19 basic tables existed. It lacked support for the 18 newer tables added during development (such as `period_locks`, `journal_entries`, `stock_ledger`, `b2b_orders`, etc.), resulting in major data loss on Supabase migration.
-- *Shipped:* Updated the `TABLE_ORDER` array in [migrate_sqlite_to_postgres.py](file:///d:/Dev%20Workspace/ai_agent_lab_google%281%29/bizassist-billing/backend/migrate_sqlite_to_postgres.py) with all 37 tables, sequenced in exact foreign-key dependency order.
+- *Shipped:* Updated the `TABLE_ORDER` array in [migrate_sqlite_to_postgres.py](../../backend/migrate_sqlite_to_postgres.py) with all 37 tables, sequenced in exact foreign-key dependency order.
 - *Verified:* Verified local Python syntax and schema dependency mapping.
 
 **R1 — Pagination + caps on unbounded list endpoints · S · low risk · backend-only — [✅ DONE 2026-06-20]**
@@ -841,7 +853,7 @@ On your sign-off of §13, I'll turn **Phase 1** into a concrete engineering task
   This happens because the `godown_id` column exists in the local SQLite database but was omitted from the Alembic migrations and the declarative startup migrations in `_COLUMN_MIGRATIONS`.
 - **Impact:** Crashes the dashboard summary, top-customers list, and smart insights snapshot retrieval.
 - **Recommended Action (to be executed later):**
-  1. Add `godown_id` to the declarative migration list (`_COLUMN_MIGRATIONS`) in [migration.py](file:///d:/Dev%20Workspace/ai_agent_lab_google(1)/bizassist-billing/backend/database/migration.py):
+  1. Add `godown_id` to the declarative migration list (`_COLUMN_MIGRATIONS`) in [migration.py](../../backend/database/migration.py):
      ```python
      {"table": "invoices", "column": "godown_id", "ddl": "ALTER TABLE invoices ADD COLUMN godown_id INTEGER"}
      ```

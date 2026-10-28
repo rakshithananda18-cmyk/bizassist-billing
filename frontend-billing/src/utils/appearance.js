@@ -332,6 +332,8 @@ export function appearanceTokens(preference, systemDark = false, user, storage =
     : (appearance.darkerSidebar ? blend(picked.sidebar, '#000000', .18) : picked.sidebar)
   const sidebarText = themeForeground(sidebar)
   const sidebarMuted = readableColour(blend(sidebarText, sidebar, .16), sidebar, sidebarText)
+  const sidebarHover = blend(sidebar, sidebarText, .1)
+  const sidebarHoverText = readableColour(colors.accent, sidebarHover, strongestForeground(sidebarHover))
   const headerText = themeForeground(picked.surface)
   const sidebarEnd = blend(sidebar, picked.surface, .35)
   const surfaceEnd = blend(picked.surface, picked.accent, .2)
@@ -383,7 +385,8 @@ export function appearanceTokens(preference, systemDark = false, user, storage =
       '--sidebar-surface': sidebar,
       '--sidebar-text': sidebarText,
       '--sidebar-muted': sidebarMuted,
-      '--sidebar-hover': blend(sidebar, sidebarText, .1),
+      '--sidebar-hover': sidebarHover,
+      '--sidebar-hover-text': sidebarHoverText,
       '--sidebar-border': blend(sidebar, sidebarText, .2),
       '--sidebar-active-bg': picked.selection,
       '--sidebar-active-text': themeForeground(picked.selection),

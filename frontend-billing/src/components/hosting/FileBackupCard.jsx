@@ -63,6 +63,13 @@ export default function FileBackupCard({
       const text = await file.text()
       let payload
       try { payload = JSON.parse(text) } catch { throw new Error('That file is not a valid BizAssist backup (.json).') }
+      // Match ImportBody: older exports may contain only `tables`, without
+      // export metadata. Reject unrelated JSON before sending any import.
+      const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+      if (!isRecord(payload) || !isRecord(payload.tables)
+        || !Object.values(payload.tables).every(rows => Array.isArray(rows) && rows.every(isRecord))) {
+        throw new Error('That file is not a valid BizAssist backup (.json).')
+      }
       const res = await fetch(`${API_BASE}/api/data-transfer/import?remap_ids=true`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
@@ -73,7 +80,7 @@ export default function FileBackupCard({
         throw new Error(err.detail || `Restore failed: HTTP ${res.status}`)
       }
       const out = await res.json().catch(() => ({}))
-      setMsg({ ok: true, text: out.message || 'Restore complete — backup merged into this device.' })
+      setMsg({ ok: true, restored: true, text: out.message || 'Restore complete — backup merged into this device.' })
     } catch (err) {
       logger.error('[BACKUP] restore failed:', err)
       setMsg({ ok: false, text: err.message || 'Restore failed — please try again.' })
@@ -85,7 +92,8 @@ export default function FileBackupCard({
   const lastBackup = (() => {
     try {
       const iso = localStorage.getItem('bizassist_last_file_backup')
-      return iso ? new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' }) : null
+      const date = iso ? new Date(iso) : null
+      return date && Number.isFinite(date.getTime()) ? date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' }) : null
     } catch { return null }
   })()
 
@@ -111,7 +119,7 @@ export default function FileBackupCard({
         </div>
         <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 10 }}>
           Download a complete copy of your business data as one file — your insurance against a
-          dead hard disk or a lost laptop. Restoring merges the file back in (newer records win, nothing is deleted).
+          dead hard disk or a lost laptop. Restoring adds missing records; existing records are kept and nothing is deleted.
           {lastBackup && <span> Last file backup: <b>{lastBackup}</b>.</span>}
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -126,6 +134,11 @@ export default function FileBackupCard({
         {msg && (
           <div style={{ marginTop: 8, fontSize: '0.74rem', fontWeight: 600, color: msg.ok ? '#22c55e' : '#ef4444' }}>
             {msg.ok ? '✓ ' : ''}{msg.text}
+            {msg.restored && (
+              <button onClick={() => window.location.reload()} disabled={!!busy} style={{ ...btnStyle(false), marginTop: 8 }}>
+                Reload restored data
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -11,13 +11,15 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=Outfit:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <script>
       (function () {
         var t = null;
-        try { t = localStorage.getItem('task_theme'); } catch (e) {}
+        try { t = localStorage.getItem('task_theme') || localStorage.getItem('billing_theme'); } catch (e) {}
         if (!t) t = 'system';
         var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
         if (dark) document.documentElement.classList.add('dark-mode');
+        else document.documentElement.classList.remove('dark-mode');
       })();
     </script>
   </head>

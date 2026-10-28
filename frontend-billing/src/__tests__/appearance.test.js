@@ -93,6 +93,28 @@ describe('personal appearance preferences', () => {
   })
 })
 
+describe('sidebar hover contrast', () => {
+  it('matches the profile accent on sidebar hover while keeping it readable across palettes', () => {
+    const accents = [...APPEARANCE_PALETTES.map(palette => ({ accent: palette.id })),
+      ...['#ffffff', '#000000', '#777777'].map(accent => ({
+        accent: 'custom', customColors: { ...CUSTOM_THEME_DEFAULTS, sidebar: '#777777', accent },
+      }))]
+    for (const preference of accents) {
+      for (const theme of ['light', 'dark']) {
+        for (const darkerSidebar of [false, true]) {
+          const { tokens } = appearanceTokens({ ...preference, theme, darkerSidebar })
+          const background = tokens['--sidebar-hover']
+          const text = tokens['--sidebar-hover-text']
+          expect(contrastRatio(text, background)).toBeGreaterThanOrEqual(4.5)
+          if (contrastRatio(tokens['--accent'], background) >= 4.5) {
+            expect(text).toBe(tokens['--accent'])
+          }
+        }
+      }
+    }
+  })
+})
+
 describe('personal custom palette libraries', () => {
   it('lists, updates, and deletes palettes only within the current account and business', () => {
     const disk = storage()

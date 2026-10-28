@@ -902,9 +902,10 @@ body,
   color: inherit;
   transition: color var(--dur) var(--ease);
 }
-.nav-link:hover {
+.nav-link:hover,
+.nav-link:focus-visible {
   background: var(--sidebar-hover, var(--bg-3));
-  color: var(--sidebar-text, var(--text-primary));
+  color: var(--sidebar-hover-text, var(--accent));
 }
 .nav-link:hover .nav-icon {
   color: inherit;
@@ -3493,9 +3494,10 @@ input[type="checkbox"] {
 }
 
 .auth-progress {
+  --progress-gap: 6px;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--progress-gap);
   width: 100%;
   padding: 0;
   margin: 0 0 20px;
@@ -3503,19 +3505,24 @@ input[type="checkbox"] {
 }
 
 .auth-progress li {
+  position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 5px;
   min-width: 0;
   color: var(--text-muted);
   font-size: 0.69rem;
   font-weight: 600;
+  text-align: center;
 }
 
 .auth-progress li::after {
+  position: absolute;
+  top: 9px;
+  left: calc(50% + 15px);
+  right: calc(-50% - var(--progress-gap) + 15px);
   height: 2px;
-  flex: 1;
-  margin-left: 2px;
   border-radius: 999px;
   background: var(--border);
   content: '';
@@ -3524,6 +3531,8 @@ input[type="checkbox"] {
 .auth-progress li:last-child::after { display: none; }
 
 .auth-progress li span {
+  position: relative;
+  z-index: 1;
   display: grid;
   width: 18px;
   height: 18px;
@@ -3533,6 +3542,7 @@ input[type="checkbox"] {
   border-radius: 50%;
   background: var(--bg-2);
   font-size: 0.67rem;
+  line-height: 1;
 }
 
 .auth-progress li.is-current,
@@ -3569,7 +3579,7 @@ input[type="checkbox"] {
   .login-container { padding: 14px; }
   .login-card { padding: 30px 22px; }
   .auth-progress small { display: none; }
-  .auth-progress { gap: 4px; }
+  .auth-progress { --progress-gap: 4px; }
 }
 
 .admin-link {
