@@ -163,7 +163,7 @@ export default function CheckoutModal({
     const handleFocusIn = (e) => {
       // Confirmation dialogs are portalled above checkout, and PDF print
       // frames need focus. Neither should be pulled back into the cart.
-      if (e.target.closest?.('[role="alertdialog"]') || e.target.matches?.('iframe[data-invoice-print]')) return
+      if (e.target.closest?.('[role="alertdialog"], .pos-receipt-print-dialog') || e.target.matches?.('iframe[data-invoice-print]')) return
       if (modalRef.current && !modalRef.current.contains(e.target)) {
         e.preventDefault()
         e.stopPropagation()

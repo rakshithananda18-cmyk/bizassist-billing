@@ -26,6 +26,7 @@ import InvoiceBreakdownCard from '../components/sales/InvoiceBreakdownCard'
 import TenderChips from '../components/sales/TenderChips'
 import CheckoutModal from '../components/sales/CheckoutModal'
 import ThermalReceipt from '../components/sales/ThermalReceipt'
+import PrintReceiptModal from '../components/sales/PrintReceiptModal'
 import PosTopBar from '../components/sales/PosTopBar'
 import ProductSearchBar from '../components/sales/ProductSearchBar'
 import CartTableHeader from '../components/sales/CartTableHeader'
@@ -1481,7 +1482,27 @@ export default function Sales(props = {}) {
   // discount, payable === grandTotal, so this is unchanged for existing flows.
   const changeToReturn = changeDue(amountReceivedNum, payable)
 
+  const [receiptSnapshot, setReceiptSnapshot] = useState(null)
+  const liveReceipt = {
+    settings, profile, activeTab, form, customers, user, isIntrastate,
+    subtotal, billDiscountAmt, cgstAmt, sgstAmt, igstAmt, cashDiscountAmt,
+    roundOff, grandTotal, payable, changeToReturn, colFooter,
+  }
+  const preserveReceipt = ({ invoiceNo, form: savedForm }) => {
+    setReceiptSnapshot({
+      ...liveReceipt,
+      activeTab: { ...activeTab, name: invoiceNo },
+      form: { ...savedForm, items: savedForm.items.map(item => ({ ...item })) },
+      changeToReturn: changeDue(parseFloat(savedForm.amount_received) || 0, payable),
+    })
+  }
+  const clearReceipt = useCallback(() => setReceiptSnapshot(null), [])
+
   const {
+    printJob,
+    printSavedInvoice,
+    prepareSavedPdf,
+    closePrintJob,
     showPaymentPopup,
     setShowPaymentPopup,
     paymentFocusTarget,
@@ -1510,6 +1531,8 @@ export default function Sales(props = {}) {
     setSubmitting,
     barcodeRef,
     enqueueOffline,
+    onReceiptReady: preserveReceipt,
+    onReceiptClosed: clearReceipt,
   })
 
   // Live Counters presence (plan §9.2 Stage 1): publish a lightweight READ-ONLY
@@ -1995,7 +2018,7 @@ export default function Sales(props = {}) {
 
       if (showSettingsModal || showBreakupModal) return
 
-      if (showPaymentPopup) {
+      if (showPaymentPopup || printJob) {
         return
       }
 
@@ -2122,14 +2145,14 @@ export default function Sales(props = {}) {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [showSettingsModal, showBreakupModal, settingsInitialTab, showPayConfirmModal, searchQuery, handleSaveInvoice, activeTabId, closeTab, handleNewBill, funcKeys, bindingAction, priceSelectorIndex, selectedPriceOptIndex, form.items, matchesKey, showPaymentPopup, openPaymentFlow, executeSaveInvoice])
+  }, [showSettingsModal, showBreakupModal, settingsInitialTab, showPayConfirmModal, searchQuery, handleSaveInvoice, activeTabId, closeTab, handleNewBill, funcKeys, bindingAction, priceSelectorIndex, selectedPriceOptIndex, form.items, matchesKey, showPaymentPopup, openPaymentFlow, executeSaveInvoice, printJob])
 
   // Auto refocus barcode input when modals close
   useEffect(() => {
-    if (!showPaymentPopup && !showSettingsModal && !showBreakupModal) {
+    if (!showPaymentPopup && !showSettingsModal && !showBreakupModal && !printJob) {
       setTimeout(() => barcodeRef.current?.focus(), 100)
     }
-  }, [showPaymentPopup, showSettingsModal, showBreakupModal])
+  }, [showPaymentPopup, showSettingsModal, showBreakupModal, printJob])
 
   // ── Fold-collapsible columns (paper-fold strips) ──────────────────────────
   // Collapse ≠ hide: hiding lives in Settings; collapsing is the cashier's
@@ -2537,6 +2560,8 @@ export default function Sales(props = {}) {
         funcKeys={funcKeys}
       />
 
+      <PrintReceiptModal job={printJob} onPrint={printSavedInvoice} onPreparePdf={prepareSavedPdf} onDone={closePrintJob} />
+
       {/* Main Settings Modal */}
       {showSettingsModal && (
         <PosCounterSettingsModal
@@ -2560,26 +2585,7 @@ export default function Sales(props = {}) {
 
       
       {/* Print-only thermal receipt container rendered via Portal directly in document.body */}
-      <ThermalReceipt
-        settings={settings}
-        profile={profile}
-        activeTab={activeTab}
-        form={form}
-        customers={customers}
-        user={user}
-        isIntrastate={isIntrastate}
-        subtotal={subtotal}
-        billDiscountAmt={billDiscountAmt}
-        cgstAmt={cgstAmt}
-        sgstAmt={sgstAmt}
-        igstAmt={igstAmt}
-        cashDiscountAmt={cashDiscountAmt}
-        roundOff={roundOff}
-        grandTotal={grandTotal}
-        payable={payable}
-        changeToReturn={changeToReturn}
-        colFooter={colFooter}
-      />
+      <ThermalReceipt {...(receiptSnapshot || liveReceipt)} />
 
       {showRemoteRequestModal && (
         <RemoteEditRequestModal

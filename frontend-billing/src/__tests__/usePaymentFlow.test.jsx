@@ -4,7 +4,8 @@ import usePaymentFlow from '../hooks/usePaymentFlow'
 import { playSuccessChime } from '../utils/posAudio'
 import { printInvoicePdf } from '../utils/printInvoicePdf'
 const confirmMock = vi.hoisted(() => vi.fn())
-vi.mock('../config', () => ({ IS_LOCAL_APP: true }))
+const configMock = vi.hoisted(() => ({ local: true }))
+vi.mock('../config', () => ({ get IS_LOCAL_APP() { return configMock.local } }))
 vi.mock('../utils/posAudio', () => ({ playSuccessChime: vi.fn() }))
 vi.mock('../contexts/ConfirmContext', () => ({ useConfirm: () => confirmMock }))
 vi.mock('../utils/printInvoicePdf', () => ({ printInvoicePdf: vi.fn(async () => {}) }))
@@ -18,11 +19,13 @@ function setup(overrides = {}, invoice = `POS-${++serial}`) {
     activeTab: { name: invoice }, activeTabId: 1, closeTab: vi.fn(), setTabs: vi.fn(), syncTabNames: vi.fn(),
     setDbInvoices: vi.fn(), settings: { print: { thermal_printer_mode: true } },
     authFetch: vi.fn(async () => ok(invoice)), setAlert: vi.fn(), setSubmitting: vi.fn(),
-    barcodeRef: { current: { focus: vi.fn() } }, enqueueOffline: vi.fn(), ...overrides,
+    barcodeRef: { current: { focus: vi.fn() } }, enqueueOffline: vi.fn(),
+    onReceiptReady: vi.fn(), onReceiptClosed: vi.fn(),
+    ...overrides,
   }
   return { ...renderHook(() => usePaymentFlow(props)), props }
 }
-beforeEach(() => { vi.useFakeTimers(); confirmMock.mockReset().mockResolvedValue('paid'); vi.mocked(printInvoicePdf).mockReset().mockResolvedValue(); vi.mocked(playSuccessChime).mockReset(); vi.spyOn(window, 'print').mockImplementation(() => {}) })
+beforeEach(() => { configMock.local = true; vi.useFakeTimers(); confirmMock.mockReset().mockResolvedValue('paid'); vi.mocked(printInvoicePdf).mockReset().mockResolvedValue(); vi.mocked(playSuccessChime).mockReset(); vi.spyOn(window, 'print').mockImplementation(() => {}) })
 afterEach(() => { cleanup(); vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks() })
 describe('POS invoice save safety', () => {
   it('does not queue an acknowledged sale if sound fails', async () => {
@@ -106,18 +109,22 @@ describe('POS invoice save safety', () => {
     await act(async () => expect(await hook.result.current.handleSaveInvoice(false, false)).toBe(true))
     expect(JSON.parse(hook.props.authFetch.mock.calls[0][1].body)).toEqual(expect.objectContaining({ paid_amount: 0, mark_paid: false, payment_mode: 'credit' }))
   })
-  it('holds the saved cart until the PDF print document is ready', async () => {
+  it('preserves the receipt snapshot before resetting the cart and keeps printing separate', async () => {
     const printReady = deferred()
     vi.mocked(printInvoicePdf).mockReturnValue(printReady.promise)
     const hook = setup({ settings: { print: { thermal_printer_mode: false } } })
     hook.props.authFetch.mockResolvedValueOnce(ok()).mockResolvedValueOnce({ ok: true, blob: async () => new Blob(['%PDF-test'], { type: 'application/pdf' }) })
     await act(async () => expect(await hook.result.current.handleSaveInvoice(true, true)).toBe(true))
     expect(printInvoicePdf).toHaveBeenCalledOnce()
-    expect(hook.props.closeTab).not.toHaveBeenCalled()
+    expect(hook.props.onReceiptReady).toHaveBeenCalledWith(expect.objectContaining({ invoiceNo: 'POS-1', form: expect.objectContaining({ amount_received: '100' }) }))
+    expect(hook.props.onReceiptReady.mock.invocationCallOrder[0]).toBeLessThan(hook.props.closeTab.mock.invocationCallOrder[0])
+    expect(hook.props.closeTab).toHaveBeenCalledOnce()
+    expect(hook.result.current.printJob.status).toBe('preparing')
     await act(async () => expect(await hook.result.current.handleSaveInvoice(true, true)).toBe(false))
     await act(async () => printReady.resolve())
     expect(hook.props.closeTab).toHaveBeenCalledOnce()
     expect(hook.props.enqueueOffline).not.toHaveBeenCalled()
+    expect(hook.result.current.printJob.status).toBe('ready')
   })
   it('refuses a credit balance without a customer and releases the save lock', async () => {
     const hook = setup()
@@ -140,5 +147,90 @@ describe('POS invoice save safety', () => {
     const update = hook.props.setForm.mock.calls[0][0]
     expect(update(hook.props.form).amount_received).toBe('100.00')
     expect(JSON.parse(hook.props.authFetch.mock.calls[0][1].body).paid_amount).toBe(100)
+  })
+  it('keeps a visible print job when native printing silently returns and retries without saving', async () => {
+    const hook = setup()
+    await act(async () => hook.result.current.handleSaveInvoice(true, true))
+    await act(async () => vi.advanceTimersByTimeAsync(800))
+    expect(hook.result.current.printJob).toEqual(expect.objectContaining({ format: 'thermal', status: 'ready' }))
+    act(() => hook.result.current.printSavedInvoice())
+    expect(window.print).toHaveBeenCalledTimes(2)
+    expect(hook.props.authFetch).toHaveBeenCalledOnce()
+    act(() => hook.result.current.closePrintJob())
+    expect(hook.result.current.printJob).toBeNull()
+    expect(hook.props.onReceiptClosed).toHaveBeenCalledOnce()
+    expect(hook.props.closeTab).toHaveBeenCalledOnce()
+  })
+  it('cancels a scheduled auto-print when the user clicks Print first', async () => {
+    const hook = setup()
+    await act(async () => hook.result.current.handleSaveInvoice(true, true))
+    act(() => hook.result.current.printSavedInvoice())
+    await act(async () => vi.advanceTimersByTimeAsync(800))
+    expect(window.print).toHaveBeenCalledOnce()
+  })
+  it('prepares a real PDF link and reuses the loaded PDF controller for printing', async () => {
+    const directPrint = vi.fn(), dispose = vi.fn()
+    vi.mocked(printInvoicePdf).mockResolvedValue({ print: directPrint, dispose })
+    const hook = setup({ settings: { print: { thermal_printer_mode: false } } })
+    hook.props.authFetch.mockResolvedValueOnce(ok('PDF-SAVED')).mockResolvedValueOnce({ ok: true, blob: async () => new Blob(['%PDF-test'], { type: 'application/pdf' }) })
+    await act(async () => hook.result.current.handleSaveInvoice(true, true))
+    expect(hook.result.current.printJob.pdfUrl).toBeTruthy()
+    expect(printInvoicePdf).toHaveBeenCalledWith(expect.any(Blob), expect.objectContaining({ retainUntilDisposed: true }))
+    act(() => hook.result.current.printSavedInvoice())
+    expect(directPrint).toHaveBeenCalledOnce()
+    expect(hook.props.authFetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
+    act(() => hook.result.current.closePrintJob())
+    expect(dispose).toHaveBeenCalledOnce()
+  })
+  it('does not print later when the saved-receipt screen is closed during PDF loading', async () => {
+    const pending = deferred()
+    const hook = setup({ settings: { print: { thermal_printer_mode: false } } })
+    hook.props.authFetch.mockResolvedValueOnce(ok()).mockReturnValueOnce(pending.promise)
+    await act(async () => hook.result.current.handleSaveInvoice(true, true))
+    act(() => hook.result.current.closePrintJob())
+    await act(async () => pending.resolve({ ok: true, blob: async () => new Blob(['%PDF-test']) }))
+    expect(printInvoicePdf).not.toHaveBeenCalled()
+    expect(hook.result.current.printJob).toBeNull()
+  })
+  it('keeps the saved invoice available after a PDF error and only retries the PDF GET', async () => {
+    const hook = setup({ settings: { print: { thermal_printer_mode: false } } })
+    hook.props.authFetch.mockResolvedValueOnce(ok()).mockResolvedValueOnce({ ok: false })
+    await act(async () => hook.result.current.handleSaveInvoice(true, true))
+    expect(hook.result.current.printJob.error).toContain('invoice is saved')
+    hook.props.authFetch.mockResolvedValueOnce({ ok: true, blob: async () => new Blob(['%PDF-test']) })
+    await act(async () => hook.result.current.prepareSavedPdf())
+    expect(hook.result.current.printJob.pdfUrl).toBeTruthy()
+    expect(hook.props.authFetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
+    expect(hook.props.enqueueOffline).not.toHaveBeenCalled()
+  })
+  it.each([
+    ['HTML', new Blob(['<html>Fallback</html>'], { type: 'text/html' })],
+    ['empty PDF', new Blob([], { type: 'application/pdf' })],
+  ])('rejects an %s PDF fallback and can still print the saved receipt without another sale', async (_, blob) => {
+    const hook = setup({ settings: { print: { thermal_printer_mode: false } } })
+    hook.props.authFetch.mockResolvedValueOnce(ok()).mockResolvedValueOnce({ ok: true, blob: async () => blob })
+    await act(async () => hook.result.current.handleSaveInvoice(true, true))
+    expect(hook.result.current.printJob).toEqual(expect.objectContaining({ status: 'ready', pdfUrl: null, pdfLoading: false }))
+    expect(hook.result.current.printJob.error).toContain('PDF generation is unavailable')
+    expect(printInvoicePdf).not.toHaveBeenCalled()
+    act(() => hook.result.current.printSavedInvoice())
+    expect(window.print).toHaveBeenCalledOnce()
+    expect(hook.props.authFetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
+    expect(hook.props.enqueueOffline).not.toHaveBeenCalled()
+  })
+  it('retires a cloud cart before Done even while the invoice refresh is delayed', async () => {
+    configMock.local = false
+    const refresh = deferred()
+    const hook = setup()
+    hook.props.closeTab.mockImplementation(() => { hook.props.form = { ...hook.props.form, items: [] } })
+    hook.props.authFetch.mockResolvedValueOnce(ok()).mockReturnValueOnce(refresh.promise)
+    await act(async () => hook.result.current.handleSaveInvoice(true, true))
+    expect(hook.props.closeTab).toHaveBeenCalledOnce()
+    hook.rerender()
+    act(() => hook.result.current.closePrintJob())
+    await act(async () => expect(await hook.result.current.handleSaveInvoice(true, true)).toBe(false))
+    expect(hook.props.authFetch.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
+    await act(async () => refresh.resolve({ ok: true, json: async () => [] }))
+    expect(hook.props.closeTab).toHaveBeenCalledOnce()
   })
 })

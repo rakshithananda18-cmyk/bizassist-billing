@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { logger } from '../utils/logger'
 import { buildInvoicePayload } from '../utils/invoiceMath'
 import { newClientRequestId } from '../sync/uuid'
@@ -7,6 +7,7 @@ import { getFromDateStr } from '../utils/format'
 import { useConfirm } from '../contexts/ConfirmContext'
 import { playSuccessChime } from '../utils/posAudio'
 import { printInvoicePdf } from '../utils/printInvoicePdf'
+import { requestReceiptPrint } from '../utils/receiptPrintEvents'
 
 // Module-level save lock — shared across ALL instances of this hook.
 // Prevents duplicate POSTs when React StrictMode mounts two instances
@@ -35,10 +36,115 @@ export default function usePaymentFlow({
   setSubmitting,
   barcodeRef,
   enqueueOffline,
+  onReceiptReady,
+  onReceiptClosed,
 }) {
   const confirm = useConfirm()
   const [showPaymentPopup, setShowPaymentPopup] = useState(false)
   const [paymentFocusTarget, setPaymentFocusTarget] = useState('amountReceived')
+  const [printJob, setPrintJob] = useState(null)
+  const printWorkRef = useRef(null)
+  const mountedRef = useRef(true)
+
+  const disposePrintWork = useCallback(work => {
+    if (!work) return
+    clearTimeout(work.autoTimer)
+    work.pendingAbort?.abort()
+    work.pdfController?.dispose?.()
+    if (work.info.pdfUrl) URL.revokeObjectURL(work.info.pdfUrl)
+    work.releaseLock()
+  }, [])
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      const work = printWorkRef.current
+      printWorkRef.current = null
+      disposePrintWork(work)
+    }
+  }, [disposePrintWork])
+
+  const updatePrintJob = useCallback((work, patch) => {
+    if (printWorkRef.current !== work) return
+    work.info = { ...work.info, ...patch }
+    setPrintJob(work.info)
+  }, [])
+
+  const prepareSavedPdf = useCallback(async (work = printWorkRef.current) => {
+    if (!work || work.info.offline || work.info.pdfLoading || work.info.pdfUrl) return
+    updatePrintJob(work, { pdfLoading: true, error: null })
+    const pending = new AbortController()
+    work.pendingAbort = pending
+    const timeout = setTimeout(() => pending.abort(), 20000)
+    try {
+      const response = await authFetch(`/sales/${encodeURIComponent(work.info.invoiceNo)}/pdf`, { signal: pending.signal })
+      if (!response.ok) throw new Error('PDF request failed')
+      const blob = await response.blob()
+      clearTimeout(timeout)
+      if (printWorkRef.current !== work) return
+      if (pending.signal.aborted) throw new DOMException('PDF preparation cancelled', 'AbortError')
+      // The server can return an HTML fallback with HTTP 200 when PDF rendering
+      // is unavailable. Never expose that as a PDF download or active blob page.
+      const mime = (blob.type || response.headers?.get?.('content-type') || '').split(';')[0].trim().toLowerCase()
+      if (!blob.size || (mime && mime !== 'application/pdf')) throw new Error('PDF_UNAVAILABLE')
+      const pdfUrl = URL.createObjectURL(blob)
+      updatePrintJob(work, { pdfUrl, pdfLoading: false })
+      if (work.info.format === 'pdf') {
+        const controller = await printInvoicePdf(blob, { signal: pending.signal, retainUntilDisposed: true })
+        if (printWorkRef.current !== work) { controller?.dispose?.(); return }
+        work.pdfController = controller
+      }
+      updatePrintJob(work, { status: 'ready' })
+    } catch (error) {
+      if (printWorkRef.current === work) {
+        logger.warn('[SALES] saved invoice PDF could not open', error)
+        updatePrintJob(work, { pdfLoading: false, status: 'ready', error: error.message === 'PDF_UNAVAILABLE'
+          ? 'The invoice is saved, but PDF generation is unavailable. Use Print receipt now, or retry Prepare PDF later.'
+          : 'The invoice is saved. The PDF print window could not open. Retry Print, or open/download the PDF if available.' })
+      }
+    } finally { clearTimeout(timeout) }
+  }, [authFetch, updatePrintJob])
+
+  const printSavedInvoice = useCallback(() => {
+    const work = printWorkRef.current
+    if (!work) return
+    clearTimeout(work.autoTimer)
+    try {
+      // Keep this call synchronous with the explicit Print click. A delayed
+      // post-save print request can be ignored by browser/embedded policies.
+      if (work.info.format === 'pdf' && work.pdfController) work.pdfController.print()
+      else if (work.info.format === 'pdf' && work.info.pdfUrl) window.open(work.info.pdfUrl, '_blank', 'noopener')
+      else requestReceiptPrint(() => window.print())
+      updatePrintJob(work, { error: null })
+    } catch (error) {
+      updatePrintJob(work, { error: 'No print window opened. Open or download the PDF and print it from your browser.' })
+    }
+  }, [updatePrintJob])
+
+  const closePrintJob = useCallback(() => {
+    const work = printWorkRef.current
+    printWorkRef.current = null
+    disposePrintWork(work)
+    setPrintJob(null)
+    onReceiptClosed?.()
+  }, [disposePrintWork, onReceiptClosed])
+
+  const beginPrintJob = useCallback(({ invoiceNo, receiptForm, offline, releaseLock }) => {
+    if (!mountedRef.current) return false
+    disposePrintWork(printWorkRef.current)
+    onReceiptReady?.({ invoiceNo, form: receiptForm })
+    const format = offline || settings?.print?.thermal_printer_mode === true ? 'thermal' : 'pdf'
+    const work = { releaseLock, info: { invoiceNo, format, offline, status: format === 'pdf' ? 'preparing' : 'ready', pdfLoading: false, pdfUrl: null, error: null } }
+    printWorkRef.current = work
+    setPrintJob(work.info)
+    if (format === 'pdf') void prepareSavedPdf(work)
+    else work.autoTimer = setTimeout(() => {
+      if (printWorkRef.current !== work) return
+      try { requestReceiptPrint(() => window.print()) } catch { updatePrintJob(work, { error: 'Automatic printing did not open. Use Print or open/download the PDF.' }) }
+    }, 800)
+    return true
+  }, [disposePrintWork, onReceiptReady, prepareSavedPdf, settings, updatePrintJob])
 
   // Exactly-once save (R7b): one stable X-Client-Request-Id per bill (keyed by the
   // tab's invoice number). A retry after an ambiguous NETWORK failure reuses the
@@ -183,8 +289,8 @@ export default function usePaymentFlow({
     // refetch (which would fail offline). The next bill's number is still kept
     // unique because Sales feeds the queued (pending) invoice numbers back into
     // the number allocator.
-    const offlineReset = () => {
-      try { closeTab(activeTabId, null, true) } finally { releaseLock() }
+    const offlineReset = (keepPrintLock = false) => {
+      try { closeTab(activeTabId, null, true) } finally { if (!keepPrintLock) releaseLock() }
       setTimeout(() => barcodeRef.current?.focus(), 100)
     }
 
@@ -201,19 +307,9 @@ export default function usePaymentFlow({
       _saveLock.set(lockKey, 'saved')
       reqIdRef.current.delete(reqKey) // safely persisted in the outbox now
       logger.info('[SALES] invoice queued offline', activeTab.name)
-      const isThermal = settings?.print?.thermal_printer_mode === true
-      if (printAfterSave && isThermal) {
-        setAlert({ type: 'warning', msg: 'Saved offline — printing locally; will sync when back online.' })
-        setTimeout(() => {
-          try { window.print() } catch (error) { logger.warn('[SALES] offline print failed', error) }
-          finally { offlineReset() }
-        }, 500)
-      } else {
-        setAlert({ type: 'warning', msg: printAfterSave
-          ? 'Saved offline — PDF printing needs a connection; the bill will sync automatically.'
-          : 'Saved offline — will sync automatically when you’re back online.' })
-        offlineReset()
-      }
+      setAlert({ type: 'warning', msg: 'Saved offline — will sync automatically when you’re back online.' })
+      const keepPrintLock = printAfterSave && beginPrintJob({ invoiceNo: activeTab.name, receiptForm: formForSave, offline: true, releaseLock })
+      offlineReset(keepPrintLock)
       return true
     }
 
@@ -247,58 +343,30 @@ export default function usePaymentFlow({
         try { playSuccessChime() } catch (error) { logger.warn('[SALES] success sound unavailable', error) }
         setAlert({ type: 'success', msg: printAfterSave ? 'Invoice saved. Preparing print…' : 'Invoice created successfully!' })
         
-        const finishReset = () => {
-          if (IS_LOCAL_APP) {
-            // Local app: skip the full invoice list re-fetch after every save.
-            // The list is stale by at most one entry and refreshes naturally when
-            // the user navigates to /payments. Removing this round-trip makes POS
-            // feel noticeably snappier (saves 100-400ms per bill on the hybrid path).
-            try { closeTab(activeTabId, null, true) } finally { releaseLock() }
-          } else {
-            // Cloud mode: refresh the 7-day invoice window only (not all invoices ever).
+        const finishReset = (keepPrintLock = false) => {
+          // Retire the committed cart immediately. A slow cloud list refresh must
+          // not leave it editable after Done releases the saved-receipt lock.
+          try { closeTab(activeTabId, null, true) } finally { if (!keepPrintLock) releaseLock() }
+          if (!IS_LOCAL_APP) {
+            // Refresh list/numbering in the background without closing another
+            // tab later, when the cashier may already be working on a new sale.
             const fromDate = getFromDateStr(7)
             authFetch(`/billing/invoices?from_date=${fromDate}&per_page=500&sort=desc`)
               .then(r => r.ok ? r.json() : [])
               .then(invs => {
                 setDbInvoices(invs)
                 setTabs(prev => syncTabNames(prev, invs))
-                closeTab(activeTabId, null, true)
-              }).catch(() => closeTab(activeTabId, null, true)).finally(releaseLock)
+              }).catch(error => logger.warn('[SALES] invoice list refresh failed after save', error))
           }
           setTimeout(() => barcodeRef.current?.focus(), 100)
         }
 
 
-        if (printAfterSave) {
-          const invoiceNo = serverInvoiceNo
-          const isThermal = settings?.print?.thermal_printer_mode === true
-          if (isThermal) {
-            // 800ms delay: ensures the ThermalReceipt Portal is fully painted in the
-            // DOM before window.print() fires. 500ms was occasionally too short on
-            // slower machines / hybrid mode (more state updates before render).
-            setTimeout(() => {
-              try { window.print() } catch (error) { logger.warn('[SALES] print failed after saving', error) }
-              finally { finishReset() }
-            }, 800)
-          } else {
-            (async () => {
-              try {
-                const pdfRes = await authFetch(`/sales/${invoiceNo}/pdf`)
-                if (!pdfRes.ok) throw new Error('Failed to fetch invoice PDF')
-                const blob = await pdfRes.blob()
-                await printInvoicePdf(blob)
-              } catch (err) {
-                logger.error('[SALES] PDF print failed, falling back to window.print()', err)
-                setAlert({ type: 'warning', msg: 'Invoice saved. PDF print could not open; trying the receipt view. You can reprint from Invoices.' })
-                try { window.print() } catch (printError) { logger.warn('[SALES] print unavailable', printError) }
-              } finally {
-                finishReset()
-              }
-            })()
-          }
-        } else {
-          finishReset()
-        }
+        // The saved receipt owns a stable snapshot independent of the next
+        // cart. Keep its print/retry screen until Done, even if print() silently
+        // returns without opening a native dialog.
+        const keepPrintLock = printAfterSave && beginPrintJob({ invoiceNo: serverInvoiceNo, receiptForm: formForSave, offline: false, releaseLock })
+        finishReset(keepPrintLock)
         return true
       } else {
         // Definitive server rejection (validation etc.) — won't fix itself on
@@ -337,7 +405,7 @@ export default function usePaymentFlow({
       if (_saveLock.get(lockKey) === 'saving') releaseLock()
       setSubmitting(false)
     }
-  }, [form, authFetch, activeTab.name, activeTabId, closeTab, gstAmt, settings, grandTotal, payable, cashDiscountAmt, billDiscountAmt, setAlert, setSubmitting, setDbInvoices, setTabs, syncTabNames, barcodeRef, enqueueOffline, confirm])
+  }, [form, authFetch, activeTab.name, activeTabId, closeTab, gstAmt, settings, grandTotal, payable, cashDiscountAmt, billDiscountAmt, setAlert, setSubmitting, setDbInvoices, setTabs, syncTabNames, barcodeRef, enqueueOffline, confirm, beginPrintJob])
 
   const openPaymentFlow = useCallback((focusTarget = 'amountReceived') => {
     if (form.items.length === 0) return
@@ -360,6 +428,10 @@ export default function usePaymentFlow({
   }, [handleSaveInvoice])
 
   return {
+    printJob,
+    printSavedInvoice,
+    prepareSavedPdf: () => prepareSavedPdf(),
+    closePrintJob,
     showPaymentPopup,
     setShowPaymentPopup,
     paymentFocusTarget,

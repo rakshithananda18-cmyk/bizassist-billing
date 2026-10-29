@@ -4,7 +4,7 @@
 // ONCE and freezes it: switching templates re-renders only — the payload object
 // is never refetched or mutated (the core no-mutation guarantee). Unknown or
 // crashing templates fall back to Classic and report `template_fallback_used`.
-import { Component, useCallback, useEffect, useState } from 'react'
+import { Component, useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { logger } from '../utils/logger'
@@ -18,6 +18,7 @@ import { PhoneIcon, DownloadIcon } from '../components/Icons'
 import { useDocLabels } from '../hooks/useDocLabels'
 import { useConfirm } from '../contexts/ConfirmContext'
 const LAST_USED_KEY = (bizId) => `invoice.template.${bizId || 'default'}`
+const PDF_DOWNLOAD_STYLE = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: '50%', border: '1px solid var(--border)', cursor: 'pointer', background: 'var(--bg-2)', color: 'var(--text-secondary)' }
 
 /** WhatsApp glyph (no dedicated icon in Icons.jsx). */
 function WhatsAppIcon({ size = 15 }) {
@@ -91,6 +92,23 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
   const [error, setError] = useState(null)
   const [template, setTemplate] = useState(null)   // resolved after payload load
   const [savingDefault, setSavingDefault] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [pdfUrl, setPdfUrl] = useState(null)
+  const [pdfError, setPdfError] = useState(null)
+  const pdfAbortRef = useRef(null)
+  const pdfUrlRef = useRef(null)
+
+  useEffect(() => {
+    setDownloadingPdf(false)
+    setPdfUrl(null)
+    setPdfError(null)
+    return () => {
+      pdfAbortRef.current?.abort()
+      pdfAbortRef.current = null
+      if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
+      pdfUrlRef.current = null
+    }
+  }, [invoiceNo])
 
   // ── Load the payload ONCE. Freeze it. ──────────────────────────────────────
   useEffect(() => {
@@ -147,11 +165,43 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
     triggerPrint()
   }, [invoiceNo, entry.key])
 
-  const onDownloadPdf = useCallback(() => {
-    // Phase 1: browser print-to-PDF via the same pixel-exact print CSS.
-    // (Server-rendered PDF arrives in Phase 3.)
-    beacon('pdf_generated', { invoice_no: invoiceNo, template_type: entry.key })
-    triggerPrint()
+  const onDownloadPdf = useCallback(async () => {
+    if (pdfAbortRef.current) return
+    const controller = new AbortController()
+    pdfAbortRef.current = controller
+    setDownloadingPdf(true)
+    setPdfError(null)
+    try {
+      const response = await api.raw(`/sales/${encodeURIComponent(invoiceNo)}/pdf`, undefined, { signal: controller.signal })
+      const blob = await response.blob()
+      if (controller.signal.aborted) return
+      // The server can return printable HTML with HTTP 200 when PDF generation
+      // is unavailable. Never save that as a corrupt .pdf or open raw HTML.
+      if (!blob.size || blob.type.toLowerCase().split(';')[0].trim() !== 'application/pdf') {
+        throw new Error('PDF download is unavailable right now. Please try again shortly.')
+      }
+      const url = URL.createObjectURL(blob)
+      pdfUrlRef.current = url
+      setPdfUrl(url)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${invoiceNo}.pdf`
+      document.body.appendChild(link)
+      try { link.click() } finally { link.remove() }
+      beacon('pdf_generated', { invoice_no: invoiceNo, template_type: entry.key })
+      // Keep the visible download link alive for a direct retry if this browser
+      // ignores the initial download request. Printing is a separate action.
+    } catch (error) {
+      if (controller.signal.aborted) return
+      logger.warn('Invoice PDF download failed', error)
+      setPdfError('PDF download could not start. Your invoice is saved; try Download PDF again.')
+      beacon('pdf_failed', { invoice_no: invoiceNo, template_type: entry.key, success: false })
+    } finally {
+      if (pdfAbortRef.current === controller) {
+        pdfAbortRef.current = null
+        if (!controller.signal.aborted) setDownloadingPdf(false)
+      }
+    }
   }, [invoiceNo, entry.key])
 
   const onShare = useCallback(async () => {
@@ -284,6 +334,8 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
         </button>
       </div>
 
+      {pdfError && <div className="no-print" role="alert" style={{ padding: '10px 14px', color: 'var(--danger)', background: 'var(--danger-dim)', borderBottom: '1px solid var(--border)', fontSize: '0.83rem' }}>{pdfError}</div>}
+
       {/* ── Body: preview + side panel ────────────────────────────────────────── */}
       <div className="no-print" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
 
@@ -346,10 +398,17 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
                         style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: '50%', border: 'none', cursor: 'pointer', background: '#25D366', color: '#fff' }}>
                         <WhatsAppIcon size={15} />
                       </button>
-                      <button onClick={onDownloadPdf} title="Download PDF" aria-label="Download PDF"
-                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: '50%', border: '1px solid var(--border)', cursor: 'pointer', background: 'var(--bg-2)', color: 'var(--text-secondary)' }}>
-                        <DownloadIcon size={14} />
-                      </button>
+                      {pdfUrl ? (
+                        <a href={pdfUrl} download={`${invoiceNo}.pdf`} title="Download saved invoice PDF" aria-label="Download PDF" style={PDF_DOWNLOAD_STYLE}>
+                          <DownloadIcon size={14} />
+                        </a>
+                      ) : (
+                        <button type="button" onClick={onDownloadPdf} title="Download saved invoice PDF"
+                          aria-label={downloadingPdf ? 'Preparing PDF' : 'Download PDF'} disabled={downloadingPdf}
+                          aria-busy={downloadingPdf} style={{ ...PDF_DOWNLOAD_STYLE, ...(downloadingPdf ? { cursor: 'wait' } : {}) }}>
+                          {downloadingPdf ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <DownloadIcon size={14} />}
+                        </button>
+                      )}
                     </div>
                   </div>
                   {buyer.phone && (

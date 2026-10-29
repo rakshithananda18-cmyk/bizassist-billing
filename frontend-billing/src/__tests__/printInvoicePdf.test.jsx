@@ -9,6 +9,14 @@ beforeEach(() => {
 afterEach(() => { document.querySelectorAll('iframe[data-invoice-print]').forEach(el => el.remove()); vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('PDF receipt print lifecycle', () => {
+  it.each([
+    ['HTML', new Blob(['<html>PDF unavailable</html>'], { type: 'text/html' })],
+    ['empty PDF', new Blob([], { type: 'application/pdf' })],
+  ])('rejects %s fallback content without opening a frame or creating a PDF URL', async (_, blob) => {
+    await expect(printInvoicePdf(blob)).rejects.toThrow('non-PDF')
+    expect(document.querySelector('iframe[data-invoice-print]')).toBeNull()
+    expect(URL.createObjectURL).not.toHaveBeenCalled()
+  })
   it('waits for PDF load, requests printing, then cleans up after preview', async () => {
     const ready = printInvoicePdf(new Blob(['%PDF-test'], { type: 'application/pdf' }))
     const frame = document.querySelector('iframe[data-invoice-print]')
@@ -27,6 +35,30 @@ describe('PDF receipt print lifecycle', () => {
     const ready = printInvoicePdf(new Blob(['%PDF-test']), { timeoutMs: 100 })
     const failed = expect(ready).rejects.toThrow('timed out')
     await vi.advanceTimersByTimeAsync(100)
+    await failed
+    expect(document.querySelector('iframe[data-invoice-print]')).toBeNull()
+    expect(URL.revokeObjectURL).toHaveBeenCalledOnce()
+  })
+  it('keeps a saved receipt printable until its owner closes it', async () => {
+    const ready = printInvoicePdf(new Blob(['%PDF-test'], { type: 'application/pdf' }), { retainUntilDisposed: true })
+    const frame = document.querySelector('iframe[data-invoice-print]')
+    vi.spyOn(frame.contentWindow, 'focus').mockImplementation(() => {})
+    const print = vi.spyOn(frame.contentWindow, 'print').mockImplementation(() => {})
+    frame.onload()
+    const controller = await ready
+    await vi.advanceTimersByTimeAsync(120000)
+    controller.print()
+    expect(print).toHaveBeenCalledTimes(2)
+    expect(frame).toBeInTheDocument()
+    controller.dispose()
+    expect(frame).not.toBeInTheDocument()
+    expect(URL.revokeObjectURL).toHaveBeenCalledOnce()
+  })
+  it('aborts a pending print when its saved-receipt screen closes', async () => {
+    const controller = new AbortController()
+    const ready = printInvoicePdf(new Blob(['%PDF-test']), { signal: controller.signal })
+    const failed = expect(ready).rejects.toThrow('cancelled')
+    controller.abort()
     await failed
     expect(document.querySelector('iframe[data-invoice-print]')).toBeNull()
     expect(URL.revokeObjectURL).toHaveBeenCalledOnce()

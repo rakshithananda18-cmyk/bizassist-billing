@@ -4107,9 +4107,12 @@ input[type="checkbox"] {
   }
 }
 
-/* Hide print-only container on normal screens */
-#thermal-receipt {
-  display: none !important;
+/* Screen-only: an unconditional !important hide here overrides the earlier
+   print rule and produces a blank page after the app itself is hidden. */
+@media screen {
+  #thermal-receipt {
+    display: none !important;
+  }
 }
 
 /* ── Home Page / Prompt Chips ── */
