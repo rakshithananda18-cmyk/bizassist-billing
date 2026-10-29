@@ -596,9 +596,12 @@ def _connect_postgres(url: str, readonly: bool) -> Conn:
     try:
         import psycopg2
     except ImportError:
-        sys.exit(
-            "psycopg2 is not installed, so this database cannot be opened.\n"
-            "  pip install psycopg2-binary")
+        try:
+            import psycopg as psycopg2
+        except ImportError:
+            sys.exit(
+                "Neither psycopg2 nor psycopg is installed, so this database cannot be opened.\n"
+                "  pip install psycopg2-binary  OR  pip install psycopg")
 
     if _looks_like_a_placeholder(url):        # belt; connect() is the braces
         sys.exit(_placeholder_message(url))

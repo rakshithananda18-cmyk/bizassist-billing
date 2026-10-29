@@ -252,7 +252,7 @@ def queue_child_with_parent(db, *, business_id: int, entity: str, row_id: int,
     return queued
 
 
-def find_unqueued_syncable_rows(db, business_id: int, entities=None, limit=200):
+def find_unqueued_syncable_rows(db, business_id: int, entities=None, limit=200, ignore_since=False):
     """Syncable rows this device has NEVER put in the outbox.
 
     THE SAFETY NET FOR M-20a, and deliberately NOT a theory about its cause.
@@ -302,24 +302,29 @@ def find_unqueued_syncable_rows(db, business_id: int, entities=None, limit=200):
         top_level = [e for e in entities if e not in _CHILD_TABLE_PARENT_MAP]
         child     = [e for e in entities if e     in _CHILD_TABLE_PARENT_MAP]
 
-    floor = db.query(func.min(_SQ.id)).filter(_SQ.business_id == business_id).scalar()
-    if floor is None:
-        return out                      # nothing has ever been queued; not our call
-    oldest = db.query(_SQ.created_at).filter(_SQ.id == floor).scalar()
-    if oldest is None:
-        return out
+    oldest = None
+    if not ignore_since:
+        floor = db.query(func.min(_SQ.id)).filter(_SQ.business_id == business_id).scalar()
+        if floor is None:
+            return out                      # nothing has ever been queued; not our call
+        oldest = db.query(_SQ.created_at).filter(_SQ.id == floor).scalar()
+        if oldest is None:
+            return out
 
     # ── Scan top-level tables (direct business_id filter) ─────────────────────
     for entity in top_level:
         try:
+            since_clause = "AND r.created_at >= :since " if oldest is not None else ""
+            params = {"bid": business_id, "ent": entity, "lim": limit}
+            if oldest is not None:
+                params["since"] = oldest
             rows = db.execute(text(
                 f"SELECT r.id FROM {entity} r "
-                f"WHERE r.business_id = :bid AND r.created_at >= :since "
+                f"WHERE r.business_id = :bid {since_clause}"
                 f"AND NOT EXISTS (SELECT 1 FROM sync_queue q "
                 f"                 WHERE q.entity = :ent AND q.entity_id = r.id) "
                 f"ORDER BY r.id LIMIT :lim"),
-                {"bid": business_id, "since": oldest, "ent": entity,
-                 "lim": limit}).fetchall()
+                params).fetchall()
         except Exception as e:
             logger.warning("[SYNC_HEAL] could not scan %s for biz=%s: %s",
                            entity, business_id, e)
@@ -331,15 +336,18 @@ def find_unqueued_syncable_rows(db, business_id: int, entities=None, limit=200):
     for entity in child:
         parent_tbl, fk_col = _CHILD_TABLE_PARENT_MAP[entity]
         try:
+            since_clause = "AND r.created_at >= :since " if oldest is not None else ""
+            params = {"bid": business_id, "ent": entity, "lim": limit}
+            if oldest is not None:
+                params["since"] = oldest
             rows = db.execute(text(
                 f"SELECT r.id FROM {entity} r "
                 f"JOIN {parent_tbl} p ON p.id = r.{fk_col} "
-                f"WHERE p.business_id = :bid AND r.created_at >= :since "
+                f"WHERE p.business_id = :bid {since_clause}"
                 f"AND NOT EXISTS (SELECT 1 FROM sync_queue q "
                 f"                 WHERE q.entity = :ent AND q.entity_id = r.id) "
                 f"ORDER BY r.id LIMIT :lim"),
-                {"bid": business_id, "since": oldest, "ent": entity,
-                 "lim": limit}).fetchall()
+                params).fetchall()
         except Exception as e:
             logger.warning("[SYNC_HEAL] could not scan child table %s for biz=%s: %s",
                            entity, business_id, e)
@@ -1021,7 +1029,7 @@ def trigger_sync_run(business_id: int, *, pull: bool = False):
 # ============================================================================
 # ── SYNC BUSINESS TRANSACTION LOGIC ──
 # ============================================================================
-def _heal_unqueued_rows(db: Session, business_id: int) -> int:
+def _heal_unqueued_rows(db: Session, business_id: int, entities=None, ignore_since: bool = False) -> int:
     """Scan for syncable rows that are missing from the outbox and queue them.
 
     Safety net that runs at the top of every push cycle. Catches rows whose
@@ -1038,7 +1046,7 @@ def _heal_unqueued_rows(db: Session, business_id: int) -> int:
     Returns the number of rows queued so the caller can log it.
     """
     from database.models import _serialize_orm_obj
-    missing = find_unqueued_syncable_rows(db, business_id)
+    missing = find_unqueued_syncable_rows(db, business_id, entities=entities, ignore_since=ignore_since)
     if not missing:
         return 0
 
@@ -2889,18 +2897,38 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                     # the outbox. Trigger the heal scan for the parent entity types
                     # so the parent is queued in the SAME cycle and unblocks the
                     # child on the next push, instead of deferring indefinitely.
+                    _ENTITY_PARENTS_MAP = {
+                        "invoices": ["register_shifts", "customers"],
+                        "invoice_payments": ["invoices", "register_shifts"],
+                        "invoice_line_items": ["invoices", "products"],
+                        "purchase_invoices": ["vendors"],
+                        "purchase_invoice_line_items": ["purchase_invoices", "products"],
+                        "purchase_orders": ["vendors"],
+                        "purchase_order_line_items": ["purchase_orders", "products"],
+                        "shift_cash_movements": ["register_shifts"],
+                        "stock_transfers": ["godowns"],
+                        "stock_transfer_line_items": ["stock_transfers", "products"],
+                        "stock_ledger": ["products"],
+                        "inventory": ["products"],
+                        "b2b_orders": ["b2b_connections"],
+                        "b2b_order_line_items": ["b2b_orders", "products"],
+                    }
                     _deferred_parents = set()
                     for _d in _deferred:
                         _reason = (_d.get("reason") or "").lower()
-                        # Cloud returns: "parent register_shifts id=X not in this DB yet"
                         for _parent_ent in list(_MODEL_MAP.keys()):
                             if _parent_ent in _reason:
                                 _deferred_parents.add(_parent_ent)
                                 break
+                        _entity = _d.get("entity")
+                        if _entity in _ENTITY_PARENTS_MAP:
+                            for _p in _ENTITY_PARENTS_MAP[_entity]:
+                                _deferred_parents.add(_p)
+
                     if _deferred_parents:
                         try:
                             _parent_missing = find_unqueued_syncable_rows(
-                                db, business_id, entities=list(_deferred_parents))
+                                db, business_id, entities=list(_deferred_parents), ignore_since=True)
                             if _parent_missing:
                                 logger.warning(
                                     "[SYNC_HEAL] biz=%s: auto-heal found %s missing "
@@ -2909,7 +2937,18 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                                     business_id, len(_parent_missing),
                                     [f"{m['entity']}#{m['row_id']}" for m in _parent_missing[:5]],
                                 )
-                                _heal_unqueued_rows(db, business_id)
+                                _heal_unqueued_rows(db, business_id, entities=list(_deferred_parents), ignore_since=True)
+                                # Clear retry backoff on deferred items so they try again immediately with parent
+                                from database.models import SyncQueue as _SQ
+                                for _d in _deferred:
+                                    _d_ent, _d_id = _d.get("entity"), _d.get("row_id")
+                                    if _d_ent and _d_id:
+                                        db.query(_SQ).filter(
+                                            _SQ.business_id == business_id,
+                                            _SQ.entity == _d_ent,
+                                            _SQ.entity_id == _d_id,
+                                        ).update({"next_attempt_at": None, "attempts": 0}, synchronize_session=False)
+                                db.commit()
                         except Exception as _auto_heal_err:
                             logger.warning(
                                 "[SYNC_HEAL] biz=%s auto-heal for deferred parents failed: %s",

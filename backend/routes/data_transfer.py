@@ -74,6 +74,9 @@ _EXPORT_ORDER: list[str] = [
     "customers",            # buyer-side parties
     "vendors",              # supplier-side parties
     "products",
+    # Tier 2.5 – register shifts (parents of invoices and cash movements)
+    "register_shifts",
+    "shift_cash_movements",
     # Tier 3 – transactional documents (parents before children)
     "invoices",
     "purchase_invoices",    # received bills / purchases
@@ -794,6 +797,35 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
             reason = str(orig).strip().splitlines()[0] if orig else str(exc)
             logger.warning("migrate/import[remap]: row skip in %s (old_id=%s): %s",
                            table_name, old_id, reason)
+            is_overfill_rejection = any(
+                phrase in reason.lower() for phrase in (
+                    "overfill guard", "would exceed", "completed document", "completed invoice"
+                )
+            )
+            if is_overfill_rejection and table_name in ("invoice_line_items", "b2b_order_line_items"):
+                parent_table = "invoices" if table_name == "invoice_line_items" else "b2b_orders"
+                fk_col = "invoice_id" if table_name == "invoice_line_items" else "order_id"
+                parent_id = filtered.get(fk_col)
+                if parent_id:
+                    try:
+                        parent_row = db.execute(
+                            text(f'SELECT total_amount FROM "{parent_table}" WHERE id = :pid'),
+                            {"pid": parent_id}
+                        ).first()
+                        if parent_row:
+                            current_sum = db.execute(
+                                text(f'SELECT COALESCE(SUM(line_total), 0) FROM "{table_name}" WHERE "{fk_col}" = :pid'),
+                                {"pid": parent_id}
+                            ).scalar() or 0.0
+                            target_total = float(parent_row[0] or 0.0)
+                            if current_sum >= target_total - 1.0:
+                                logger.info(
+                                    "migrate/import[remap]: safely ignored overfill phantom line item (old_id=%s) for already complete %s id=%s",
+                                    old_id, parent_table, parent_id
+                                )
+                                continue
+                    except Exception:
+                        pass
             skipped_out.append({"table": table_name, "source_id": old_id, "reason": "destination rejected the record; check its required fields and references"})
 
     return count
