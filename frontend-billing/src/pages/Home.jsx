@@ -3,13 +3,15 @@
 // Description: Cashier landing portal. Provides quick nav cards to the POS counter,
 //              inventory, and reports. Scopes features based on staff credentials.
 // ============================================================================
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
 import { fmt } from '../utils/format'
 import { BuildingMark } from '../components/Logo'
 import AnnouncementsCard from '../components/AnnouncementsCard'
+import { useForegroundRefresh } from '../hooks/useForegroundRefresh'
+import { logger } from '../utils/logger'
 import {
   CounterIcon,
   DashboardIcon,
@@ -30,25 +32,60 @@ const QUICK_LINKS = [
 ]
 
 export default function Home() {
-  const { profile, user, authFetch } = useAuth()
+  const { profile, user, authFetch, settings } = useAuth()
   const navigate = useNavigate()
 
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
   const OWNER_ONLY_PATHS = React.useMemo(() => new Set(['/purchases', '/b2b', '/b2b-network', '/b2b-orders', '/reports', '/import', '/staff', '/dashboard']), [])
   const visibleLinks = QUICK_LINKS.filter(link => !isCashier || !OWNER_ONLY_PATHS.has(link.href))
 
-  // Today at a glance - owners only (business totals), from the same summary
-  // the Dashboard uses. A failed load just hides the numbers.
+  // Today at a glance uses the Dashboard's authoritative summary. Keep it
+  // current after a committed change or returning from another window.
   const [today, setToday] = useState(null)
+  const [todayError, setTodayError] = useState(false)
+  const loadTodayRef = useRef(null)
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
+  useForegroundRefresh({ onResume: () => loadTodayRef.current?.() })
   useEffect(() => {
+    setToday(null)
+    setTodayError(false)
     if (isCashier || !authFetch) return undefined
     let live = true
-    authFetch('/dashboard-summary')
-      .then(r => (r.ok ? r.json() : null))
-      .then(s => { if (live) setToday(s) })
-      .catch(() => {})
-    return () => { live = false }
-  }, [isCashier, authFetch])
+    let pending = null
+    const load = () => {
+      if (pending) return pending
+      pending = Promise.resolve().then(() => authFetch('/dashboard-summary'))
+        .then(r => {
+          if (!r.ok) throw new Error(`Summary unavailable: HTTP ${r.status}`)
+          return r.json()
+        })
+        .then(s => { if (live) { setToday(s); setTodayError(false) } })
+        .catch(error => {
+          if (!live) return
+          setToday(null)
+          setTodayError(true)
+          logger.warn('[HOME] Could not refresh today summary:', error)
+        })
+        .finally(() => { pending = null })
+      return pending
+    }
+    loadTodayRef.current = load
+    load()
+    const onSync = event => {
+      if (settingsRef.current?.general?.realtime_sync_global === false) return
+      const { entity, type } = event.detail || {}
+      if (type === 'sync.reconnect' || ['invoice', 'payment', 'purchase', 'product', 'party', 'order', 'godown'].includes(entity)) load()
+    }
+    window.addEventListener('sync-event', onSync)
+    window.addEventListener('sync-flushed', load)
+    return () => {
+      live = false
+      loadTodayRef.current = null
+      window.removeEventListener('sync-event', onSync)
+      window.removeEventListener('sync-flushed', load)
+    }
+  }, [isCashier, authFetch, user?.id])
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
@@ -127,6 +164,12 @@ export default function Home() {
             <section className="home-today-card" aria-labelledby="home-today-title">
               <p className="home-section-kicker">Today</p>
               <h2 id="home-today-title">Your business at a glance</h2>
+              {todayError && (
+                <p role="status">
+                  Today&apos;s totals couldn&apos;t refresh.{' '}
+                  <button type="button" className="home-secondary-action" onClick={() => loadTodayRef.current?.()}>Retry totals</button>
+                </p>
+              )}
               <div className="home-today-grid">
                 <button type="button" className="home-today-stat" onClick={() => navigate('/parties/payments')}>
                   <small>Collected today</small>

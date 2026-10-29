@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
 import { useAuth, lastBizId } from '../lib/auth'
 import { BuildingMark } from '../components/Logo'
+import { getBillingUrl } from '../lib/theme'
 
 export default function Login() {
-  const { ownerLogin, ownerSignup, staffLogin, notice } = useAuth()
+  const { ownerLogin, staffLogin, notice } = useAuth()
   const [mode, setModeState] = useState(() => {
     try { return localStorage.getItem('task_login_mode') || 'staff' } catch { return 'staff' }
   })
@@ -11,8 +12,7 @@ export default function Login() {
     setModeState(m)
     try { localStorage.setItem('task_login_mode', m) } catch { /* ignore */ }
   }
-  const [signup, setSignup] = useState(false)
-  const [f, setF] = useState({ username: '', password: '', business_name: '', phone: '', business: lastBizId(), login_name: '' })
+  const [f, setF] = useState({ username: '', password: '', business: lastBizId(), login_name: '' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [showPw, setShowPw] = useState(false)
@@ -24,7 +24,6 @@ export default function Login() {
     setError(null)
     try {
       if (mode === 'staff') await staffLogin(f.business.trim(), f.login_name.trim(), f.password)
-      else if (signup) await ownerSignup({ username: f.username.trim(), password: f.password, business_name: f.business_name.trim(), phone: f.phone.trim() || null })
       else await ownerLogin(f.username.trim(), f.password)
     } catch (err) {
       setError(err.message)
@@ -85,7 +84,7 @@ export default function Login() {
               role="tab"
               aria-selected={mode === 'staff'}
               className={`login-tab-btn ${mode === 'staff' ? 'active' : ''}`}
-              onClick={() => { setMode('staff'); setSignup(false); setError(null) }}
+              onClick={() => { setMode('staff'); setError(null) }}
             >
               Staff Login
             </button>
@@ -157,34 +156,8 @@ export default function Login() {
                     required
                     autoFocus
                   />
-                  {!signup && <span className="form-hint">Same account as BizAssist Billing.</span>}
+                  <span className="form-hint">Same account as BizAssist Billing.</span>
                 </div>
-                {signup && (
-                  <>
-                    <div className="form-group" style={{ textAlign: 'left', marginTop: 10 }}>
-                      <label htmlFor="owner-bizname" className="form-label">Business name</label>
-                      <input
-                        id="owner-bizname"
-                        className="form-input"
-                        value={f.business_name}
-                        onChange={set('business_name')}
-                        placeholder="My Store / Distribution"
-                        required
-                      />
-                    </div>
-                    <div className="form-group" style={{ textAlign: 'left', marginTop: 10 }}>
-                      <label htmlFor="owner-phone" className="form-label">Phone (optional)</label>
-                      <input
-                        id="owner-phone"
-                        className="form-input"
-                        value={f.phone}
-                        onChange={set('phone')}
-                        placeholder="10-digit mobile"
-                        inputMode="tel"
-                      />
-                    </div>
-                  </>
-                )}
               </>
             )}
 
@@ -198,7 +171,7 @@ export default function Login() {
                   value={f.password}
                   onChange={set('password')}
                   placeholder="••••••••"
-                  autoComplete={signup ? 'new-password' : 'current-password'}
+                  autoComplete="current-password"
                   required
                 />
                 <button
@@ -221,25 +194,24 @@ export default function Login() {
                   )}
                 </button>
               </div>
-              {signup && <span className="form-hint">8+ characters with upper, lower &amp; numbers.</span>}
             </div>
 
             <button type="submit" className="login-submit-btn" disabled={busy} style={{ marginTop: 16 }}>
-              {busy ? 'Signing in…' : mode === 'staff' ? 'Start Shift' : signup ? 'Create Account' : 'Sign In as Owner'}
+              {busy ? 'Signing in…' : mode === 'staff' ? 'Start Shift' : 'Sign In as Owner'}
             </button>
 
             {mode === 'owner' && (
               <div style={{ textAlign: 'center', marginTop: 14 }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 6 }}>
-                  {signup ? 'Already have an owner account?' : "New business owner?"}
+                  New business owner?
                 </span>
-                <button
-                  type="button"
-                  onClick={() => { setSignup(!signup); setError(null) }}
+                <a
+                  href={getBillingUrl('/register')}
                   style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
                 >
-                  {signup ? 'Sign In' : 'Create Account'}
-                </button>
+                  Register in Billing
+                </a>
+                <div className="form-hint" style={{ marginTop: 6 }}>Create your business and activate its 14-day Pro trial in Billing, then return here with the same account.</div>
               </div>
             )}
 

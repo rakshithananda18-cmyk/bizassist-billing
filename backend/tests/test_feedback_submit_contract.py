@@ -25,14 +25,16 @@ sys.path.insert(0, backend_path)
 from fastapi.testclient import TestClient
 from main_groq import app
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def _signup():
     uname = f"own_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": "Support Co",
-    })
+    }))
     assert r.status_code == 200, r.text
     return {"Authorization": f"Bearer {r.json()['token']}"}
 

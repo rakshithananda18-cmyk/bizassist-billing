@@ -27,13 +27,15 @@ from database.db import SessionLocal
 from database.models import User, Product
 from core.models import B2BConnection, B2BOrder, B2BOrderLineItem
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def _signup(prefix):
     username = f"{prefix}_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={"username": username, "password": "TestPass123!",
-                                     "business_name": f"{prefix} Biz"})
+    r = client.post("/signup", json=signup_payload({"username": username, "password": "TestPass123!",
+                                     "business_name": f"{prefix} Biz"}))
     assert r.status_code == 200, r.text
     b = r.json()
     return {"headers": {"Authorization": f"Bearer {b['token']}"}, "bid": b["id"]}

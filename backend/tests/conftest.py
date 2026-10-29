@@ -110,7 +110,8 @@ os.environ["ADMIN_API_ENABLED"] = "1"
 # subscription tests flip it on explicitly.
 # No signup trial either. The Postgres CI runs make every backend "cloud", which
 # would quietly put each test account on Pro; test_pro_trial.py opts back in.
-os.environ["PRO_TRIAL_DAYS"] = "0"
+# Trial grants are disabled explicitly by the fixture below for unrelated
+# workflow tests; production signup always offers the fixed 14-day policy.
 # Dynamic mocking of ChromaDB and SentenceTransformer to prevent thread-safety
 # access violations/crashes on Windows while preserving real behavior for RAG/router tests.
 from unittest.mock import MagicMock
@@ -160,6 +161,13 @@ def pytest_runtest_setup(item):
         embeddings.search_chat_memories = lambda *a, **kw: []
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def isolate_signup_trial_policy(request, monkeypatch):
+    if request.path.name != "test_pro_trial.py":
+        import routes.auth as auth_routes
+        monkeypatch.setattr(auth_routes, "_trial_days", lambda: 0)
 
 
 def pytest_configure(config):

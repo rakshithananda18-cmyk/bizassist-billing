@@ -45,6 +45,7 @@ describe('Billing business handoff', () => {
     mocks.get.mockResolvedValueOnce({ kind: 'owner', public_id: 'BA-ONE', business_name: 'Old name' })
     await mount()
     await screen.findByText('BA-ONE')
+    await waitFor(() => expect(mocks.bridge.mock.calls.some(([identity]) => identity?.public_id === 'BA-ONE')).toBe(true))
     const bridges = mocks.bridge.mock.calls.length
     mocks.get.mockResolvedValue({ kind: 'owner', public_id: 'BA-ONE', business_name: 'Billing updated name' })
     now = 17000

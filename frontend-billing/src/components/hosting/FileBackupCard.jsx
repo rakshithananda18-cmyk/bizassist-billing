@@ -12,6 +12,7 @@
 import React, { useState, useRef } from 'react'
 import { API_BASE } from '../../config'
 import { logger } from '../../utils/logger'
+import { assertCompleteImport } from '../../utils/dataTransferResult'
 import { downloadBackupFile } from '../../utils/backupFile'
 import { ShieldIcon } from '../Icons'
 import { useConfirm } from '../../contexts/ConfirmContext'
@@ -79,7 +80,8 @@ export default function FileBackupCard({
         const err = await res.json().catch(() => ({}))
         throw new Error(err.detail || `Restore failed: HTTP ${res.status}`)
       }
-      const out = await res.json().catch(() => ({}))
+      const out = await res.json()
+      assertCompleteImport(out)
       setMsg({ ok: true, restored: true, text: out.message || 'Restore complete — backup merged into this device.' })
     } catch (err) {
       logger.error('[BACKUP] restore failed:', err)

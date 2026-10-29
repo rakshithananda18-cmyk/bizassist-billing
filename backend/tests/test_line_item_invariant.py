@@ -57,6 +57,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__),
                                                 "..", "scripts")))
 import repair_line_items_by_invariant as RLI          # noqa: E402
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 R2 = lambda x: round(float(x or 0.0), 2)
 
@@ -72,8 +74,8 @@ def _target(total, disc=0.0, roff=0.0):
 @pytest.fixture(scope="module")
 def shop():
     uname = f"linv_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={"username": uname, "password": "TestPass123!",
-                                     "business_name": "Line Invariant Co"})
+    r = client.post("/signup", json=signup_payload({"username": uname, "password": "TestPass123!",
+                                     "business_name": "Line Invariant Co"}))
     assert r.status_code == 200, r.text
     body = r.json()
     h = {"Authorization": f"Bearer {body['token']}"}
@@ -308,8 +310,10 @@ def test_the_money_snapshot_covers_the_totals_that_must_not_move():
     db = SessionLocal()
     try:
         raw = db.get_bind().raw_connection()
-        raw.row_factory = sqlite3.Row
-        snap = RLI.money_snapshot(raw)
+        try:
+            snap = RLI.money_snapshot(raw)
+        finally:
+            raw.close()
     finally:
         db.close()
     for key in ("invoices", "invoice_value", "paid_total", "payments",
@@ -428,7 +432,7 @@ def test_lines_may_be_added_ONE_AT_A_TIME_up_to_the_header_total(guard):
     for amt in (100.0, 200.0, 300.0):          # cumulative 100 -> 300 -> 600
         _add_line(guard, inv, amt)
     got = guard.execute(_sql(
-        "SELECT ROUND(SUM(line_total),2) FROM invoice_line_items "
+        "SELECT SUM(line_total) FROM invoice_line_items "
         "WHERE invoice_id = :i"), {"i": inv}).scalar()
     assert R2(got) == 600.0
 

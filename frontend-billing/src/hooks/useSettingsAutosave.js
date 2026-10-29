@@ -13,6 +13,9 @@ export function useSettingsAutosave({ authFetch, onSaved, onManualResult }) {
   const [settings, setSettingsState] = useState(null)
   const [saveStatus, setSaveStatus] = useState('saved')
   const [saving, setSaving] = useState(false)
+  const [loadError, setLoadError] = useState(null)
+  const [loadRevision, setLoadRevision] = useState(0)
+  const retryLoad = useCallback(() => setLoadRevision(value => value + 1), [])
   const latest = useRef(null)
   const saved = useRef(null)
   const timer = useRef(null)
@@ -108,6 +111,7 @@ export function useSettingsAutosave({ authFetch, onSaved, onManualResult }) {
 
   useEffect(() => {
     let cancelled = false
+    setLoadError(null)
     const snapshotAtStart = JSON.stringify(latest.current)
     const load = async () => {
       let previous = sessionWrites.get(authFetch)
@@ -126,8 +130,9 @@ export function useSettingsAutosave({ authFetch, onSaved, onManualResult }) {
         return
       }
       const res = await authFetch('/settings')
-      if (!res.ok) return
+      if (!res.ok) throw new Error(`Settings unavailable: HTTP ${res.status}`)
       const data = await res.json()
+      if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Settings response was invalid')
       const currentSnapshot = JSON.stringify(latest.current)
       const clean = latest.current === null || currentSnapshot === saved.current
       // A refresh or an auth callback change must not replace an unsaved edit.
@@ -137,9 +142,13 @@ export function useSettingsAutosave({ authFetch, onSaved, onManualResult }) {
         setSaveStatus('saved')
       }
     }
-    load().catch(error => logger.error('[Settings] Failed to fetch settings:', error))
+    load().catch(error => {
+      if (cancelled) return
+      setLoadError('Your app settings could not be loaded. Check the connection and retry.')
+      logger.error('[Settings] Failed to fetch settings:', error)
+    })
     return () => { cancelled = true }
-  }, [authFetch, setSettings])
+  }, [authFetch, setSettings, loadRevision])
 
   useEffect(() => {
     clearTimeout(timer.current)
@@ -163,5 +172,5 @@ export function useSettingsAutosave({ authFetch, onSaved, onManualResult }) {
     return () => clearTimeout(timer.current)
   }, [settings, save, authFetch])
 
-  return { settings, setSettings, saveStatus, saving, save }
+  return { settings, setSettings, saveStatus, saving, save, loadError, retryLoad }
 }

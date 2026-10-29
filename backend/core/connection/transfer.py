@@ -21,14 +21,17 @@ on import:
 Import is defensive and idempotent:
   • a side whose BizID doesn't exist in the destination → row skipped + logged
     (never a crash, never a dangling FK)
-  • connections upsert on (seller_business_id, buyer_business_id)
-  • orders upsert on order_number
-  • line items inserted only when the parent order is newly created here
+  • existing connections/orders keep their destination state
+  • orders match on order_number and verified business pair
+  • lines match UID first, then a float-tolerant multiset; conflicts roll back
 Composes within the caller's transaction — data_transfer.import_data owns the
 commit, like every other command in this codebase.
 """
 import logging
 import uuid as _uuid
+from collections import defaultdict
+from sqlalchemy import func
+from decimal import Decimal, InvalidOperation
 
 from database.models import User, Invoice, Product
 from core.models import B2BConnection, B2BOrder, B2BOrderLineItem
@@ -38,8 +41,45 @@ logger = logging.getLogger("bizassist.b2b_transfer")
 B2B_RELATIONSHIP_TABLES = ("b2b_connections", "b2b_orders", "b2b_order_line_items")
 
 # Helper columns added at export time; stripped before insert on import.
-_EXPORT_ONLY_FIELDS = {"buyer_bizid", "seller_bizid", "buyer_name", "seller_name",
-                       "seller_invoice_no", "order_number_ref", "product_uid"}
+_EXPORT_ONLY_FIELDS = {"buyer_name", "seller_name",
+                       "seller_invoice_no", "order_number_ref", "product_uid", "order_uid"}
+
+
+class B2BImportConflict(ValueError):
+    """A financial document cannot be safely merged; caller must roll back."""
+
+
+def _number(value):
+    try:
+        number = Decimal(str(value if value is not None else 0))
+    except (InvalidOperation, ValueError):
+        raise B2BImportConflict("B2B document contains an invalid amount.") from None
+    if not number.is_finite() or number < 0:
+        raise B2BImportConflict("B2B document contains an invalid amount.")
+    return number
+
+
+def _same_line(source, target):
+    # Float representations can differ after a SQLite/Postgres round trip.
+    # Compare all financial fields, never just the displayed name and total.
+    for key in ("quantity", "unit_price", "cgst_rate", "sgst_rate", "igst_rate", "line_total"):
+        other = target.get(key) if isinstance(target, dict) else getattr(target, key)
+        if abs(_number(source.get(key)) - _number(other)) > Decimal("0.000001"):
+            return False
+    return all(str(source.get(key) or default).strip().lower() ==
+               str((target.get(key) if isinstance(target, dict) else getattr(target, key)) or default).strip().lower()
+               for key, default in (("product_name", ""), ("unit", "Nos"), ("hsn_sac", "")))
+
+
+def validate_new_orders(db, state):
+    """Never commit a newly restored header with missing/conflicting children."""
+    db.flush()
+    for order_id in state.get("new_order_ids", ()):
+        order = db.get(B2BOrder, order_id)
+        lines = db.query(B2BOrderLineItem).filter_by(order_id=order_id).all()
+        total = sum((_number(line.line_total) for line in lines), Decimal(0))
+        if not lines or abs(total - _number(order.total_amount)) > Decimal("0.01"):
+            raise B2BImportConflict("B2B order lines do not match the order total. Nothing was imported; reconcile the source order and retry.")
 
 
 def _row_dict(obj) -> dict:
@@ -69,8 +109,12 @@ def export_b2b_tables(db, business_id: int) -> dict:
     )
     for c in conns:
         row = _row_dict(c)
-        row["seller_bizid"], row["seller_name"] = _bizid_of(db, bizids, c.seller_business_id)
-        row["buyer_bizid"], row["buyer_name"] = _bizid_of(db, bizids, c.buyer_business_id)
+        s_biz, s_name = _bizid_of(db, bizids, c.seller_business_id)
+        b_biz, b_name = _bizid_of(db, bizids, c.buyer_business_id)
+        row["seller_bizid"] = getattr(c, "seller_bizid", None) or s_biz
+        row["seller_name"] = s_name
+        row["buyer_bizid"] = getattr(c, "buyer_bizid", None) or b_biz
+        row["buyer_name"] = b_name
         out["b2b_connections"].append(row)
 
     orders = (
@@ -81,8 +125,12 @@ def export_b2b_tables(db, business_id: int) -> dict:
     )
     for o in orders:
         row = _row_dict(o)
-        row["seller_bizid"], row["seller_name"] = _bizid_of(db, bizids, o.seller_business_id)
-        row["buyer_bizid"], row["buyer_name"] = _bizid_of(db, bizids, o.buyer_business_id)
+        s_biz, s_name = _bizid_of(db, bizids, o.seller_business_id)
+        b_biz, b_name = _bizid_of(db, bizids, o.buyer_business_id)
+        row["seller_bizid"] = getattr(o, "seller_bizid", None) or s_biz
+        row["seller_name"] = s_name
+        row["buyer_bizid"] = getattr(o, "buyer_bizid", None) or b_biz
+        row["buyer_name"] = b_name
         # portable natural key for the completed order's seller invoice
         row["seller_invoice_no"] = None
         if o.seller_invoice_id:
@@ -93,6 +141,9 @@ def export_b2b_tables(db, business_id: int) -> dict:
         for li in o.line_items:
             lrow = _row_dict(li)
             lrow["order_number_ref"] = o.order_number
+            lrow["order_uid"] = o.uid
+            lrow["seller_bizid"] = row["seller_bizid"]
+            lrow["buyer_bizid"] = row["buyer_bizid"]
             p = db.query(Product).filter(Product.id == li.product_id).first()
             lrow["product_uid"] = getattr(p, "uid", None) if p else None
             out["b2b_order_line_items"].append(lrow)
@@ -118,7 +169,7 @@ def _resolve_user(db, cache: dict, bizid, name=None, create_stub=True):
     if not bizid:
         return None
     if bizid not in cache:
-        u = db.query(User).filter(User.public_id == bizid).first()
+        u = db.query(User).filter(User.public_id == bizid, User.parent_business_id.is_(None)).first()
         if u is None and create_stub:
             try:
                 from services.auth import hash_password
@@ -128,8 +179,9 @@ def _resolve_user(db, cache: dict, bizid, name=None, create_stub=True):
                     business_name=name or bizid,
                     public_id=bizid,
                 )
-                db.add(u)
-                db.flush()
+                with db.begin_nested():
+                    db.add(u)
+                    db.flush()
                 logger.info("[B2B_TRANSFER] created counterparty stub %s (%s) id=%s",
                             bizid, name or "?", u.id)
             except Exception as exc:
@@ -215,7 +267,7 @@ def _claim_uid(db, data: dict, model) -> dict:
 
 
 def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int,
-                      skipped_out: list = None) -> int:
+                      skipped_out: list = None, state: dict = None) -> int:
     """Upsert one B2B relationship table from an export payload. Returns the
     number of rows APPLIED (created or updated).
 
@@ -236,6 +288,12 @@ def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int,
     users: dict = {}
     applied = skipped = 0
     skipped_out = skipped_out if skipped_out is not None else []
+    state = state if state is not None else {}
+    owner = db.get(User, dest_owner_id)
+
+    def _owns(row):
+        return owner is not None and owner.public_id in (
+            row.get("seller_bizid"), row.get("buyer_bizid"))
 
     def _skip(kind: str, reason: str, **ident):
         skipped_out.append({"table": table_name, "kind": kind,
@@ -243,6 +301,14 @@ def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int,
 
     if table_name == "b2b_connections":
         for row in rows:
+            if not row.get("seller_bizid") or not row.get("buyer_bizid"):
+                _skip("connection", "party unresolvable in this database")
+                skipped += 1
+                continue
+            if row.get("seller_bizid") and row.get("buyer_bizid") and not _owns(row):
+                _skip("connection", "relationship does not belong to this business")
+                skipped += 1
+                continue
             seller = _resolve_user(db, users, row.get("seller_bizid"), row.get("seller_name"))
             buyer = _resolve_user(db, users, row.get("buyer_bizid"), row.get("buyer_name"))
             if not seller or not buyer:
@@ -264,29 +330,27 @@ def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int,
             data["requested_by_business_id"] = _remap_requester(
                 row, seller_local=seller, buyer_local=buyer)
             data["seller_business_id"], data["buyer_business_id"] = seller, buyer
+            data["seller_bizid"] = row.get("seller_bizid")
+            data["buyer_bizid"] = row.get("buyer_bizid")
             existing = (
                 db.query(B2BConnection)
                 .filter(B2BConnection.seller_business_id == seller,
                         B2BConnection.buyer_business_id == buyer)
                 .first()
             )
-            if existing:
-                for k in ("price_tier", "discount_pct", "credit_limit",
-                          "outstanding_balance", "stock_visibility",
-                          "catalog_category", "status"):
-                    if k in data and data[k] is not None:
-                        setattr(existing, k, data[k])
-                # Only ever FILL a missing requester — never overwrite one this
-                # database already recorded, which is the local consent trail.
-                if (getattr(existing, "requested_by_business_id", None) is None
-                        and data["requested_by_business_id"] is not None):
-                    existing.requested_by_business_id = data["requested_by_business_id"]
-            else:
+            if not existing:
                 db.add(B2BConnection(**_claim_uid(db, data, B2BConnection)))
+                db.flush()
             applied += 1
 
     elif table_name == "b2b_orders":
         for row in rows:
+            if not row.get("seller_bizid") or not row.get("buyer_bizid"):
+                _skip("order", "party unresolvable in this database", order_number=row.get("order_number"))
+                skipped += 1
+                continue
+            if row.get("seller_bizid") and row.get("buyer_bizid") and not _owns(row):
+                raise B2BImportConflict("B2B order does not belong to this business.")
             seller = _resolve_user(db, users, row.get("seller_bizid"), row.get("seller_name"))
             buyer = _resolve_user(db, users, row.get("buyer_bizid"), row.get("buyer_name"))
             if not seller or not buyer:
@@ -298,6 +362,8 @@ def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int,
                 continue
             data = _clean(row, B2BOrder)
             data["seller_business_id"], data["buyer_business_id"] = seller, buyer
+            data["seller_bizid"] = row.get("seller_bizid")
+            data["buyer_bizid"] = row.get("buyer_bizid")
             # seller_invoice_id: source PK is meaningless here — re-resolve via
             # the invoice's natural number within the SELLER's business.
             data["seller_invoice_id"] = None
@@ -315,72 +381,103 @@ def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int,
                 .first()
             )
             if existing:
-                if data.get("status"):
-                    existing.status = data["status"]
-                if data.get("seller_invoice_id") and not existing.seller_invoice_id:
-                    existing.seller_invoice_id = data["seller_invoice_id"]
+                if (existing.seller_business_id != seller or existing.buyer_business_id != buyer
+                        or abs(_number(existing.total_amount) - _number(data.get("total_amount"))) > Decimal("0.01")):
+                    raise B2BImportConflict("B2B order identity or total conflicts with the destination. Nothing was imported; reconcile the order and retry.")
+                # Backup import only adds missing data. Existing status, balance
+                # and consent are authoritative; edits belong to the sync worker.
             else:
-                db.add(B2BOrder(**_claim_uid(db, data, B2BOrder)))
+                _number(data.get("total_amount"))
+                if data.get("uid") and db.query(B2BOrder.id).filter_by(uid=data["uid"]).first():
+                    raise B2BImportConflict("B2B order identity is already assigned to a different order.")
+                new_order = B2BOrder(**data)
+                db.add(new_order)
+                db.flush()
+                state.setdefault("new_order_ids", set()).add(new_order.id)
             applied += 1
         db.flush()   # line items (next table in order) need the new order ids
 
     elif table_name == "b2b_order_line_items":
+        groups = defaultdict(list)
         for row in rows:
+            groups[row.get("order_number_ref")].append(row)
+        for order_number, group in groups.items():
             order = (
                 db.query(B2BOrder)
-                .filter(B2BOrder.order_number == row.get("order_number_ref"))
+                .filter(B2BOrder.order_number == order_number,
+                        (B2BOrder.seller_business_id == dest_owner_id)
+                        | (B2BOrder.buyer_business_id == dest_owner_id))
+                .with_for_update()
                 .first()
             )
             if order is None:
-                # The FOURTH skip site, and it had no log line at all — a line
-                # item whose parent order is absent vanished with nothing but a
-                # counter bump. Found because a test asserted the reported count
-                # and the reported LIST agreed, and they did not.
-                skipped += 1
-                _skip("order_line", "parent order not present in this database",
-                      product_name=row.get("product_name"),
-                      order_number=row.get("order_number_ref"))
-                logger.warning(
-                    "[B2B_TRANSFER] skip line '%s' — parent order %s not in this DB",
-                    row.get("product_name"), row.get("order_number_ref"))
+                for row in group:
+                    skipped += 1
+                    _skip("order_line", "parent order not present in this database",
+                          order_number=order_number)
                 continue
-            # Idempotency per line (not per parent — several lines of the same
-            # new order import in one pass): same order + name + qty + total
-            # already present → nothing to do.
-            dup = (
-                db.query(B2BOrderLineItem)
-                .filter(B2BOrderLineItem.order_id == order.id,
-                        B2BOrderLineItem.product_name == row.get("product_name"),
-                        B2BOrderLineItem.quantity == row.get("quantity"),
-                        B2BOrderLineItem.line_total == row.get("line_total"))
-                .first()
-            )
-            if dup is not None:
-                continue
-            product = None
-            if row.get("product_uid"):
-                product = db.query(Product).filter(Product.uid == row["product_uid"]).first()
-            if product is None and row.get("product_name"):
-                product = (
-                    db.query(Product)
-                    .filter(Product.business_id == order.seller_business_id,
-                            Product.name == row["product_name"])
-                    .first()
-                )
-            if product is None:
-                skipped += 1
-                # Dropping a line leaves its order's lines no longer summing to
-                # the header — audit check J will report that order.
-                _skip("order_line", "product not present in this database",
-                      product_name=row.get("product_name"),
-                      order_number=row.get("order_number_ref"))
-                logger.warning("[B2B_TRANSFER] skip line '%s' on %s — product not in this DB",
-                               row.get("product_name"), row.get("order_number_ref"))
-                continue
-            data = _clean(row, B2BOrderLineItem)
-            data["order_id"], data["product_id"] = order.id, product.id
-            db.add(B2BOrderLineItem(**_claim_uid(db, data, B2BOrderLineItem)))
-            applied += 1
+            existing_lines = db.query(B2BOrderLineItem).filter_by(order_id=order.id).all()
+            unmatched = list(existing_lines)
+            pending, seen_uids = [], {}
+            seller_id = db.get(User, order.seller_business_id).public_id
+            buyer_id = db.get(User, order.buyer_business_id).public_id
+            for row in group:
+                if any(row.get(key) and row[key] != value for key, value in
+                       (("seller_bizid", seller_id), ("buyer_bizid", buyer_id))):
+                    raise B2BImportConflict("B2B line belongs to a different business pair.")
+                uid = row.get("uid")
+                if uid in seen_uids:
+                    if not _same_line(row, seen_uids[uid]):
+                        raise B2BImportConflict("B2B line identity has conflicting amounts.")
+                    continue
+                if uid:
+                    seen_uids[uid] = row
+                by_uid = db.query(B2BOrderLineItem).filter_by(uid=uid).first() if uid else None
+                if by_uid is not None:
+                    if by_uid.order_id != order.id or not _same_line(row, by_uid):
+                        raise B2BImportConflict("B2B line identity conflicts with the destination.")
+                    if by_uid in unmatched:
+                        unmatched.remove(by_uid)
+                    continue
+                # Multiset matching retains two legitimate identical lines while
+                # recognising older copies that did not preserve durable UIDs.
+                match = next((line for line in unmatched if _same_line(row, line)), None)
+                if match is not None:
+                    unmatched.remove(match)
+                    continue
+                product = None
+                if row.get("product_uid"):
+                    product = db.query(Product).filter_by(
+                        uid=row["product_uid"], business_id=order.seller_business_id).first()
+                if product is None and row.get("product_name"):
+                    pname = str(row["product_name"]).strip()
+                    product = db.query(Product).filter_by(
+                        name=row["product_name"], business_id=order.seller_business_id).first()
+                    if product is None:
+                        product = db.query(Product).filter(
+                            func.lower(func.trim(Product.name)) == pname.lower(),
+                            Product.business_id == order.seller_business_id,
+                        ).first()
+                if product is None:
+                    raise B2BImportConflict("B2B order product is missing from the seller catalogue. Nothing was imported; restore the products and retry.")
+                # Validate even a zero-total header (the database guard exempts it).
+                _same_line(row, row)
+                data = _clean(row, B2BOrderLineItem)
+                data["order_id"], data["product_id"] = order.id, product.id
+                pending.append(data)
+            current = sum((_number(line.line_total) for line in existing_lines), Decimal(0))
+            addition = sum((_number(line["line_total"]) for line in pending), Decimal(0))
+            if pending and abs(current - _number(order.total_amount)) <= Decimal("0.01"):
+                # Destination already holds the complete billed order lines; ignore redundant incoming items
+                pending.clear()
+            elif pending and current + addition > _number(order.total_amount) + Decimal("0.01"):
+                raise B2BImportConflict("B2B order already contains billed lines or has conflicting totals. Nothing was imported; reconcile the order and retry.")
+            # No dangerous rows are pending before entering the savepoint.
+            with db.begin_nested():
+                for data in pending:
+                    db.add(B2BOrderLineItem(**data))
+                db.flush()
+            applied += len(pending)
 
     if skipped:
         # ERROR, not INFO: these rows are MISSING from this database.

@@ -310,15 +310,18 @@ Billing = acquisition (cheap/free). The money is in the **network plan + AI + (l
 
 ---
 
-### 10.0 — BUILD STATUS TRACKER  ·  *summary reconciled 2026-10-28*
+### 10.0 — BUILD STATUS TRACKER  ·  *summary reconciled 2026-10-29*
 
-**Current evidence:** [2026-10-28 release checks](../release/2026-10-28-verification.md). Record test counts, skips, commands, build sizes and browser checks there rather than copying totals into this plan.
+**Current evidence:** [29 October complete app survey](../release/2026-10-29-complete-app-survey.md), its three agent page/sector matrices, and the [import/lifecycle review](../release/2026-10-29-sync-import-lifecycle-review.md). Earlier [28 October release checks](../release/2026-10-28-verification.md) remain historical evidence. Record counts, commands and verification limits in the dated records rather than treating a built feature as production proof.
 
 | Area | Reconciled state |
 |---|---|
 | Billing, purchase/stock and B2B core | Implemented; named test suites and the current verification scope are recorded in the release checks |
 | S-1 fail-closed RLS | Implementation closed: migration `9c2f4b8a1d3e` and subsequent policy hardening; transaction-local tenant binding and pooled-connection reset are present. `test_rls_policies.py`, `test_rls_postgres.py` and the Postgres CI gate exist. A passing SQLite/mock suite does not prove a live Postgres deployment |
 | Offline client sync and hosting modes | Built with automated tests. Live offline/reconnect, two-server local/cloud switching and multi-terminal checks remain pending unless the dated record supplies that evidence |
+| 29 October import/lifecycle review | B2B replay/financial conflict guards, atomic SQLite import, explicit partial results, purge FK safety and two-choice registration implemented. Named regression scope and remaining account-retirement/delete propagation gaps: [review record](../release/2026-10-29-sync-import-lifecycle-review.md). Cloud deletion does not automatically wipe local copies |
+| First-time signup | Fixed 14-day Pro trial, mandatory valid phone for fresh signup, atomic account/trial grant and durable phone eligibility implemented. Legacy local mirrors remain compatible; phone ownership verification and live cloud enforcement configuration remain deployment priorities |
+| 29 October money and Field survey | Return allocations/balances, finite amounts, shift/stock guards and Field integrity/privacy/shared-cloud cleanup strengthened. Standalone advances, supplier-payment ledger, historical COGS and remaining async/scale/live-device checks are explicitly open in the complete survey; no blanket financial release clearance |
 | UI and initial loading | Accepted UI fixes, responsive/theme results and route-loading measurements are tracked in the current verification record; the colour experiments were reverted |
 | Physical printing and deployed recovery | Require separate printer and deployment/restore evidence; do not infer completion from generated PDF or isolated database tests |
 
@@ -398,6 +401,9 @@ The [August platform ledger](../PLATFORM_STATE_AND_PENDING_WORK_2026-08-03.md) a
 ---
 
 ### 10.1 — SMARTEST-APP RECOMMENDATIONS (running list)
+
+- **Migration conflict guidance (29 October 2026):** group unresolved records by document UID and show a reconciliation preview before another upload. Explain which existing receipt/order is authoritative and offer a retry after the missing parent/catalogue is restored; never use an AI guess to rewrite a financial total. Account retirement should surface a verified business status with backup/export and per-device acknowledgement, independent of session expiry.
+- **Reconciliation inbox (29 October survey):** turn saved receipt, return, advance and cost-snapshot discrepancies into one owner queue with the source document, exact deterministic difference and permitted next action. Add a read-only return quote using the same allocation code as saving the note; estimates must never promise a cash refund that has not been posted.
 
 > The bar is **smart, easy, fully synced, automated, solid.** This is the backlog of ideas that make BizAssist *the smartest* billing app — not just at parity with Vyapar. Add one every time we finish work (Gate 3). Pull the strongest into a phase.
 

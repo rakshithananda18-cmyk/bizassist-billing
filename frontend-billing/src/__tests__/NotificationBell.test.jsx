@@ -46,6 +46,18 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllTimers() })
 
 describe('NotificationBell', () => {
+  it('does not claim all-clear after an initial HTTP failure and supports retry', async () => {
+    authFetch.mockImplementation(async path => path === '/alerts/notifications'
+      ? { ok: false, status: 503 } : ok({ halt: null }))
+    draw()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Notifications' })).toHaveAttribute('title', 'Notifications could not refresh'))
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+    await screen.findByRole('button', { name: 'Retry notifications' })
+    expect(screen.queryByText('Nothing needs attention.')).not.toBeInTheDocument()
+    authFetch.mockImplementation(route(EMPTY))
+    fireEvent.click(screen.getByRole('button', { name: 'Retry notifications' }))
+    await screen.findByText('Nothing needs attention.')
+  })
   it('asks the endpoint through authFetch, not a raw URL', async () => {
     // authFetch attaches THIS session's token and pins the request to THIS
     // backend — a bare fetch to the cloud would resolve the id in the wrong DB.

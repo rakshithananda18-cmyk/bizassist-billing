@@ -512,8 +512,8 @@ export function AuthProvider({ children }) {
         // Local orphan: the cloud accepted this username (so its old cloud account
         // was deleted → username free on the cloud), but a stale LOCAL mirror still
         // holds it → the local /signup 400s. Re-key that orphan to the new BizID
-        // instead of failing — same person, same device. (Non-destructive: any
-        // existing local data on the row is kept.)
+        // instead of failing — the backend verifies the new cloud identity and
+        // purges stale data before rekeying this retired local business.
         if (err.status === 400) {
           logger.warn('[SIGNUP] Local username is orphaned — reclaiming it onto the new cloud BizID.')
           const res = await fetch(`${LOCAL_URL}/api/auth/reclaim_local`, {
@@ -575,6 +575,8 @@ export function AuthProvider({ children }) {
     await _applyTemplate(API_BASE, data.token || data.access_token, template_key)
     logger.info('Signup successful (web/cloud) for user:', data.username)
     _saveSession(data)
+    return { hosting: 'cloud', trial: data.trial || null,
+      trialUnavailable: Object.prototype.hasOwnProperty.call(data, 'trial') && !data.trial }
   }, [_saveSession, _applyTemplate, _doSignup, _provisionCloudSyncToken])
 
   const logout = useCallback(() => {

@@ -7,7 +7,8 @@ FROM python:3.11-slim
 
 # HF Spaces: create a non-root user (recommended by HF docs)
 RUN useradd -m -u 1000 user
-ENV PATH="/home/user/.local/bin:$PATH" \
+ENV HOME=/home/user \
+    PATH="/home/user/.local/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     HF_HOME=/home/user/.cache/huggingface \
@@ -69,7 +70,12 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements_hf.txt
 
 # Pre-bake the embedding model into the image (22MB — avoids cold-start download)
+# Download as the runtime user: root-owned HF cache metadata caused permission
+# errors when the SDK tried to record missing optional model files at runtime.
+RUN mkdir -p /home/user/.cache && chown user:user /home/user/.cache
+USER user
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+USER root
 
 # Copy ONLY the backend directory to /app
 COPY --chown=user backend/ /app/

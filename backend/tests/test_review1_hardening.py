@@ -30,6 +30,8 @@ from fastapi.testclient import TestClient
 from main_groq import app
 from services.auth import create_access_token, clear_token_version_cache
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 OWNER = {"username": "own_r1_owner", "password": "Password123", "business_name": "R1 Hardening Store"}
@@ -44,7 +46,7 @@ def clear_rate_limit_windows():
 
 
 def _signup_or_login(creds):
-    r = client.post("/signup", json=creds)
+    r = client.post("/signup", json=signup_payload(creds))
     if r.status_code != 200:
         r = client.post("/login", json={"username": creds["username"], "password": creds["password"]})
     assert r.status_code == 200, r.text

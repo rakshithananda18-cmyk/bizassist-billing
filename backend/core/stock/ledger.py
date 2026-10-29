@@ -18,6 +18,7 @@ No business logic about *why* a movement happens lives here — that belongs to 
 billing/purchase/order modules, which call `record_movement()`.
 """
 import logging
+import math
 from typing import Optional
 
 from sqlalchemy import func
@@ -104,6 +105,9 @@ def record_movement(db, *, business_id: int, movement_type: str, qty_delta: floa
         raise ValueError(f"unknown movement_type '{movement_type}'")
     if product_id is None and not product_name:
         raise ValueError("record_movement needs product_id or product_name")
+    qty_delta = float(qty_delta)
+    if not math.isfinite(qty_delta):
+        raise ValueError("Stock movement quantity must be finite")
 
     # Flush so earlier movements added in THIS transaction (not yet committed)
     # are visible to the SUM below — otherwise `prior` ignores them and the
@@ -112,6 +116,8 @@ def record_movement(db, *, business_id: int, movement_type: str, qty_delta: floa
     prior = current_stock(db, business_id, product_id=product_id, product_name=product_name,
                           godown_id=godown_id, batch_no=batch_no)
     balance_after = prior + float(qty_delta)
+    if not math.isfinite(balance_after):
+        raise ValueError("Stock balance is invalid; reconcile existing movements before adding more")
 
     row = StockLedger(
         business_id=business_id,
@@ -175,7 +181,7 @@ def _refresh_inventory_cache(db, business_id: int, *, product_id, product_name, 
                     business_id=business_id,
                     product_id=product_id,
                     product_name=prod.name,
-                    stock=int(round(new_balance)),
+                    stock=float(new_balance),
                     godown_id=godown_id,
                     batch_no=batch_no,
                     expiry_date=expiry_date,

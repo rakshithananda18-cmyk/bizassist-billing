@@ -28,6 +28,8 @@ from fastapi.testclient import TestClient
 from main_groq import app
 from core import templates as T
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 ALL_KEYS = {"general", "supermarket", "pharmacy", "restaurant", "wholesale",
@@ -37,10 +39,10 @@ ALL_KEYS = {"general", "supermarket", "pharmacy", "restaurant", "wholesale",
 
 def _signup(prefix: str) -> dict:
     username = f"{prefix}_{uuid.uuid4().hex[:8]}"
-    resp = client.post("/signup", json={
+    resp = client.post("/signup", json=signup_payload({
         "username": username, "password": "TestPass123!",
         "business_name": f"{prefix} Biz",
-    })
+    }))
     assert resp.status_code == 200, f"Signup failed: {resp.text}"
     body = resp.json()
     return {"headers": {"Authorization": f"Bearer {body['token']}"}, "bid": body["id"]}

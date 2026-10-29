@@ -2,9 +2,9 @@ import React from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import { MemoryRouter, useLocation } from 'react-router-dom'
-const hooks = vi.hoisted(() => ({ resume: null, fetch: vi.fn() }))
+const hooks = vi.hoisted(() => ({ resume: null, fetch: vi.fn(), userId: 1 }))
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({
-  authFetch: hooks.fetch, user: { id: 1 }, profile: { business_name: 'QA workspace' }, settings: { general: { privacy_mode: true } },
+  authFetch: hooks.fetch, user: { id: hooks.userId }, profile: { business_name: 'QA workspace' }, settings: { general: { privacy_mode: true } },
 }) }))
 vi.mock('../layouts/AppLayout', () => ({ default: ({ children }) => <main>{children}</main> }))
 vi.mock('../components/ActivityFeed', () => ({ default: () => null }))
@@ -12,7 +12,7 @@ vi.mock('../components/common/HeaderSearchSlot', () => ({ default: () => null })
 vi.mock('../components/invoice/InvoiceViewerModal', () => ({ default: ({ invoiceNo }) => invoiceNo ? <div role="dialog" aria-label={`Invoice ${invoiceNo}`} /> : null }))
 vi.mock('../hooks/usePageLifecycle', () => ({ usePageLifecycle: ({ onResume }) => { hooks.resume = onResume; return { isRefreshing: false } } }))
 import Dashboard from '../pages/Dashboard'
-afterEach(cleanup)
+afterEach(() => { cleanup(); hooks.userId = 1 })
 const response = data => ({ ok: true, json: async () => data })
 it('keeps an explicit temporary chart reveal through a background refresh', async () => {
   hooks.fetch.mockImplementation(async path => response(path === '/payments?limit=5' ? [] : path === '/dashboard-charts'
@@ -41,4 +41,52 @@ it('opens invoices and payment history from the new feed actions with the keyboa
   expect(screen.getByRole('dialog', { name: 'Invoice QA-42' })).toBeInTheDocument()
   fireEvent.keyDown(screen.getByRole('button', { name: /Payment Received/ }), { key: ' ' })
   expect(screen.getByTestId('location')).toHaveTextContent('/parties/payments')
+})
+
+it('shows a retry state instead of zero totals when the business summary fails', async () => {
+  hooks.fetch.mockReset().mockImplementation(async path => path === '/dashboard-summary'
+    ? { ok: false, status: 503 } : response([]))
+  render(<MemoryRouter><Dashboard /></MemoryRouter>)
+  expect(await screen.findByRole('alert')).toHaveTextContent('Business summary is unavailable')
+  expect(screen.queryByRole('button', { name: /Total Revenue/ })).not.toBeInTheDocument()
+  hooks.fetch.mockImplementation(async path => response(path === '/dashboard-summary' ? { total_revenue: 100 } : []))
+  fireEvent.click(screen.getByRole('button', { name: 'Retry dashboard' }))
+  await screen.findByRole('button', { name: /Total Revenue.*₹100/ })
+})
+
+it('distinguishes unavailable payment activity from an empty business day', async () => {
+  hooks.fetch.mockReset().mockImplementation(async path => path === '/payments?limit=5'
+    ? { ok: false, status: 503 } : response({}))
+  render(<MemoryRouter><Dashboard /></MemoryRouter>)
+  await screen.findByRole('button', { name: 'Retry activity' })
+  expect(screen.queryByText('No recent activity')).not.toBeInTheDocument()
+})
+
+it('opens actual invoice and purchase routes from the KPI cards', async () => {
+  hooks.fetch.mockReset().mockImplementation(async () => response({}))
+  function Location() { return <output data-testid="location">{useLocation().pathname}</output> }
+  render(<MemoryRouter initialEntries={['/dashboard']}><Dashboard /><Location /></MemoryRouter>)
+  fireEvent.click(await screen.findByRole('button', { name: /Total Revenue/ }))
+  expect(screen.getByTestId('location')).toHaveTextContent('/parties/invoices')
+  fireEvent.click(screen.getByRole('button', { name: /Purchases \(30d\)/ }))
+  expect(screen.getByTestId('location')).toHaveTextContent('/stock/purchase')
+})
+
+it('ignores an earlier business summary that arrives after switching accounts', async () => {
+  let release
+  const previous = new Promise(resolve => { release = resolve })
+  let first = true
+  hooks.fetch.mockReset().mockImplementation(async path => {
+    if (path !== '/dashboard-summary') return response([])
+    if (first) { first = false; return previous }
+    return response({ total_revenue: 2400 })
+  })
+  const view = () => <MemoryRouter><Dashboard /></MemoryRouter>
+  const root = render(view())
+  await waitFor(() => expect(hooks.fetch).toHaveBeenCalledWith('/dashboard-summary'))
+  hooks.userId = 2
+  root.rerender(view())
+  await screen.findByRole('button', { name: /Total Revenue.*₹2,400/ })
+  await act(async () => { release(response({ total_revenue: 1500 })); await previous })
+  expect(screen.queryByRole('button', { name: /Total Revenue.*₹1,500/ })).not.toBeInTheDocument()
 })

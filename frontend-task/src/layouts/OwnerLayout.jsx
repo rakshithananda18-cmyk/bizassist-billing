@@ -2,13 +2,15 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { planBanner } from '../lib/plan'
-import { cycleTheme, getBillingUrl, getTheme } from '../lib/theme'
+import { getTheme, setTheme } from '../lib/theme'
 import { BuildingMark } from '../components/Logo'
 import { useToast } from '../components/ui'
 import {
-  AwardIcon, ClipboardIcon, ClockIcon, CloseIcon, ContactsIcon, DashboardIcon, ListIcon, LogoutIcon, MapPinIcon,
-  MenuIcon, MonitorIcon, MoonIcon, OrderIcon, RouteIcon, SettingsIcon, SunIcon, TruckIcon, UserIcon,
+  AwardIcon, CheckIcon, ClipboardIcon, ClockIcon, CloseIcon, ContactsIcon, CopyIcon, DashboardIcon,
+  ListIcon, LogoutIcon, MapPinIcon, MenuIcon, MonitorIcon, MoonIcon, OrderIcon, RouteIcon,
+  SettingsIcon, SunIcon, TruckIcon, UserIcon,
 } from '../components/Icons'
+import WorkspaceSwitcher from '../components/WorkspaceSwitcher'
 
 const NAV = [
   { section: 'Today', items: [
@@ -31,13 +33,12 @@ const NAV = [
   ] },
 ]
 
-const THEME_ICON = { system: <MonitorIcon size={16} />, light: <SunIcon size={16} />, dark: <MoonIcon size={16} /> }
-
 function BusinessName({ children }) {
   const ref = useRef(null)
   const [distance, setDistance] = useState(0)
   useEffect(() => {
     const element = ref.current
+    if (!element || !element.firstElementChild) return undefined
     const measure = () => setDistance(Math.max(0, element.firstElementChild.scrollWidth - element.clientWidth))
     measure()
     if (typeof ResizeObserver === 'undefined') return undefined
@@ -57,11 +58,13 @@ function BusinessName({ children }) {
 
 export default function OwnerLayout() {
   const { me, logout } = useAuth()
-  const businessName = me.billing_business?.business_name || me.business_name || 'Your business'
+  const businessName = me?.billing_business?.business_name || me?.business_name || 'Your business'
   const toast = useToast()
   const location = useLocation()
   const [theme, setThemeState] = useState(getTheme())
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [copiedBizId, setCopiedBizId] = useState(false)
   const [isMobileViewport, setIsMobileViewport] = useState(() => {
     try { return window.matchMedia('(max-width: 860px)').matches } catch { return false }
   })
@@ -69,6 +72,8 @@ export default function OwnerLayout() {
     try { return localStorage.getItem('task_sidebar_collapsed') === 'true' } catch { return false }
   })
   const sidebarRef = useRef(null)
+  const profileMenuRef = useRef(null)
+  const mobileProfileMenuRef = useRef(null)
 
   // Sync theme changes if triggered externally
   useEffect(() => {
@@ -88,10 +93,36 @@ export default function OwnerLayout() {
     return () => mql.removeEventListener('change', handler)
   }, [])
 
-  // Close mobile drawer on route change
+  // Close mobile drawer and profile popover on route change
   useEffect(() => {
     setMobileMenuOpen(false)
+    setShowProfileMenu(false)
   }, [location.pathname])
+
+  // Close profile popover when clicking outside or pressing Escape
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (
+        profileMenuRef.current &&
+        !profileMenuRef.current.contains(e.target) &&
+        !e.target.closest('.user-chip') &&
+        !e.target.closest('.mobile-user-avatar')
+      ) {
+        setShowProfileMenu(false)
+      }
+    }
+    function handleKeyDown(e) {
+      if (e.key === 'Escape') {
+        setShowProfileMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [])
 
   // Mobile drawer focus trap & Escape key
   useEffect(() => {
@@ -142,10 +173,140 @@ export default function OwnerLayout() {
 
   const copyBizId = async () => {
     try {
-      await navigator.clipboard.writeText(me.public_id)
+      await navigator.clipboard.writeText(me?.public_id || '')
+      setCopiedBizId(true)
       toast('BizID copied — share it with your staff', 'success')
+      setTimeout(() => setCopiedBizId(false), 2000)
     } catch { /* ignore */ }
   }
+
+  const handleSetTheme = (mode) => {
+    setTheme(mode)
+    setThemeState(mode)
+  }
+
+  const displayName = me?.billing_business?.business_name || me?.business_name || me?.name || 'Owner'
+  const initials = (displayName || 'FT')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(w => w[0]?.toUpperCase())
+    .join('') || 'FT'
+  const logo = me?.billing_business?.logo || me?.logo || null
+
+  const renderProfileMenu = (isMobileDropdown = false) => (
+    <div
+      className={`profile-menu ${isMobileDropdown ? 'mobile-dropdown' : ''}`}
+      ref={isMobileDropdown ? mobileProfileMenuRef : profileMenuRef}
+      onClick={e => e.stopPropagation()}
+      onMouseDown={e => e.stopPropagation()}
+    >
+      <div className="profile-menu-header">
+        <div className="profile-menu-biz" title={businessName}>{businessName}</div>
+        <div className="profile-menu-sub">Field Team Workspace</div>
+      </div>
+
+      <div className="profile-menu-sep" />
+
+      {/* Workspace Switcher Pill */}
+      <div style={{ padding: '8px 12px', display: 'flex', justifyContent: 'center' }}>
+        <WorkspaceSwitcher activeWorkspace="field" />
+      </div>
+
+      <div className="profile-menu-sep" />
+
+      {/* BizID Click-to-copy */}
+      {me?.public_id && (
+        <button
+          type="button"
+          className="profile-menu-item"
+          onClick={copyBizId}
+          title="Click to copy BizID"
+          style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: '0.82rem' }}
+        >
+          {copiedBizId ? <CheckIcon size={14} style={{ color: 'var(--success, #16a34a)' }} /> : <CopyIcon size={14} />}
+          <span>BizID: {me.public_id}</span>
+        </button>
+      )}
+
+      <div className="profile-menu-sep" />
+
+      {/* Menu items */}
+      <Link
+        className="profile-menu-item"
+        to="/settings"
+        onClick={() => setShowProfileMenu(false)}
+      >
+        <SettingsIcon size={14} /> <span>App Settings</span>
+      </Link>
+
+      <Link
+        className="profile-menu-item"
+        to="/activity"
+        onClick={() => setShowProfileMenu(false)}
+      >
+        <ListIcon size={14} /> <span>Activity Log</span>
+      </Link>
+
+      <Link
+        className="profile-menu-item"
+        to="/attendance"
+        onClick={() => setShowProfileMenu(false)}
+      >
+        <ClockIcon size={14} /> <span>Attendance</span>
+      </Link>
+
+      <Link
+        className="profile-menu-item"
+        to="/scorecard"
+        onClick={() => setShowProfileMenu(false)}
+      >
+        <AwardIcon size={14} /> <span>Scorecard</span>
+      </Link>
+
+      <button
+        type="button"
+        className="profile-menu-item logout"
+        onClick={() => {
+          setShowProfileMenu(false)
+          logout()
+        }}
+      >
+        <LogoutIcon size={14} /> <span>Sign Out</span>
+      </button>
+
+      {/* Theme Selector */}
+      <div className="profile-menu-theme">
+        <span className="profile-menu-theme-label">Theme</span>
+        <div className="profile-theme-toggle">
+          <button
+            type="button"
+            className={`theme-opt-btn ${theme === 'light' ? 'active' : ''}`}
+            onClick={() => handleSetTheme('light')}
+            title="Light Mode"
+          >
+            <SunIcon size={14} />
+          </button>
+          <button
+            type="button"
+            className={`theme-opt-btn ${theme === 'dark' ? 'active' : ''}`}
+            onClick={() => handleSetTheme('dark')}
+            title="Dark Mode"
+          >
+            <MoonIcon size={14} />
+          </button>
+          <button
+            type="button"
+            className={`theme-opt-btn ${theme === 'system' ? 'active' : ''}`}
+            onClick={() => handleSetTheme('system')}
+            title="System Mode"
+          >
+            <MonitorIcon size={14} />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 
   return (
     <div className="app-shell">
@@ -225,52 +386,36 @@ export default function OwnerLayout() {
           ))}
         </nav>
 
+        {/* Sidebar Footer with User Profile Chip & Popover */}
         <div className="sidebar-footer">
-          {(!sidebarCollapsed || isMobileViewport) ? (
-            <>
-              <div className="business-profile-name"><BusinessName>{businessName}</BusinessName></div>
-              <div className="row" style={{ gap: 6 }}>
-                <button type="button" className="bizid-chip" onClick={copyBizId} title="Copy BizID">
-                  {me.public_id}
-                </button>
-                <span className="xs muted">tap to copy</span>
+          {showProfileMenu && !isMobileViewport && renderProfileMenu(false)}
+
+          <div className="sidebar-profile-row">
+            <button
+              type="button"
+              className="user-chip"
+              title="Settings & Profile Menu"
+              aria-label="Settings and profile menu"
+              aria-expanded={showProfileMenu}
+              onClick={() => setShowProfileMenu(prev => !prev)}
+            >
+              <div className="user-avatar">
+                {logo ? (
+                  <img src={logo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }} />
+                ) : (
+                  initials
+                )}
               </div>
-              <div className="row-between" style={{ marginTop: 2 }}>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setThemeState(cycleTheme())}
-                  title={`Current theme: ${theme}`}
-                >
-                  {THEME_ICON[theme]} <span style={{ textTransform: 'capitalize' }}>{theme}</span>
-                </button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={logout}>
-                  <LogoutIcon size={15} /> Sign out
-                </button>
-              </div>
-            </>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => setThemeState(cycleTheme())}
-                title={`Theme: ${theme}`}
-                style={{ padding: 6 }}
-              >
-                {THEME_ICON[theme]}
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={logout}
-                title="Sign out"
-                style={{ padding: 6 }}
-              >
-                <LogoutIcon size={16} />
-              </button>
-            </div>
-          )}
+              {(!sidebarCollapsed || isMobileViewport) && (
+                <div className="user-info">
+                  <div className="user-name">
+                    <BusinessName>{businessName}</BusinessName>
+                  </div>
+                  <div className="user-role">Settings Menu</div>
+                </div>
+              )}
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -290,33 +435,30 @@ export default function OwnerLayout() {
           <BuildingMark size={24} />
           <strong className="ellipsis" title={businessName} style={{ fontSize: '0.95rem' }}>{businessName}</strong>
         </div>
-        <div className="row" style={{ gap: 6 }}>
-          <button type="button" className="bizid-chip" onClick={copyBizId} title="Copy BizID">
-            {me.public_id}
-          </button>
+        <div className="row" style={{ gap: 6, position: 'relative' }}>
           <button
             type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => setThemeState(cycleTheme())}
-            title={`Theme: ${theme}`}
-            style={{ padding: 6 }}
+            className="user-avatar mobile-user-avatar"
+            onClick={() => setShowProfileMenu(prev => !prev)}
+            style={{ width: 32, height: 32, fontSize: 12, cursor: 'pointer' }}
+            title="Settings & Profile Menu"
+            aria-label="Settings and profile menu"
+            aria-expanded={showProfileMenu}
           >
-            {THEME_ICON[theme]}
+            {logo ? (
+              <img src={logo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }} />
+            ) : (
+              initials
+            )}
           </button>
+          {isMobileViewport && showProfileMenu && renderProfileMenu(true)}
         </div>
       </header>
 
-      {/* Main Content Area */}
+      {/* Main Content Area — No top bar, clean aligned layout */}
       <div className="main-area">
-        <div className="workspace-context">
-          <div className="workspace-business"><BusinessName>{businessName}</BusinessName></div>
-          <nav className="workspace-switch" aria-label="BizAssist workspaces">
-            <a href={getBillingUrl()}><MonitorIcon size={15} /><span>Billing</span></a>
-            <Link to="/" className="active" aria-current="page"><TruckIcon size={15} /><span>Field Team</span></Link>
-          </nav>
-        </div>
         <main className="page-content">
-          {planBanner(me.plan) && (
+          {planBanner(me?.plan) && (
             <div className="alert alert-warning" role="status" style={{ margin: '14px 0 6px' }}>
               {planBanner(me.plan)}
             </div>

@@ -29,6 +29,8 @@ from main_groq import app  # noqa: F401  (side effect: create_all)
 from database.db import SessionLocal, engine
 from database.models import Customer, Invoice, InvoiceLineItem
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 # The tables that carry `uid` (all 24 synced tables).
@@ -106,9 +108,9 @@ def test_backfill_fills_null_uid():
 
 def test_sync_cross_db_no_collision():
     uname = f"own_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": "No Collision Shop",
-    })
+    }))
     assert r.status_code == 200
     b = r.json()
     headers = {"Authorization": f"Bearer {b['token']}"}
@@ -172,9 +174,9 @@ def test_sync_child_fk_by_parent_uid():
         db.close()
 
     uname = f"own_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": "FK Shop",
-    })
+    }))
     assert r.status_code == 200
     b = r.json()
     headers = {"Authorization": f"Bearer {b['token']}"}
@@ -237,9 +239,9 @@ def test_sync_child_fk_by_parent_uid():
 
 def test_sync_merge_lww_uid():
     uname = f"own_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": "LWW Shop",
-    })
+    }))
     assert r.status_code == 200
     b = r.json()
     headers = {"Authorization": f"Bearer {b['token']}"}
@@ -313,9 +315,9 @@ def test_sync_merge_lww_uid():
 
 def test_sync_id_fallback():
     uname = f"own_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": "Fallback Shop",
-    })
+    }))
     assert r.status_code == 200
     b = r.json()
     headers = {"Authorization": f"Bearer {b['token']}"}

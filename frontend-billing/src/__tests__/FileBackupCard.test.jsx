@@ -41,6 +41,14 @@ afterEach(() => {
 })
 
 describe('FileBackupCard', () => {
+  it('reports a partially committed restore without claiming completion', async () => {
+    fetch.mockResolvedValue({ ok: true, json: async () => ({ total: 2, complete: false,
+      b2b_skipped: [{ reason: 'missing party' }] }) })
+    const { container } = render(<FileBackupCard token="test-token" />)
+    selectBackup(container, backupFile())
+    await waitFor(() => expect(screen.getByText(/Import incomplete:/i)).toBeInTheDocument())
+    expect(screen.queryByText(/Restore complete/i)).not.toBeInTheDocument()
+  })
   it('keeps file recovery available without rendering an unusable reminder toggle', () => {
     render(<FileBackupCard token="test-token" />)
 

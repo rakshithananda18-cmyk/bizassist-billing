@@ -25,6 +25,8 @@ from database.db import get_db, SessionLocal
 from database.models import User, Product, Inventory
 from core.models import B2BConnection, B2BInviteCode, B2BOrder
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 @pytest.fixture(scope="session", autouse=True)
@@ -52,11 +54,11 @@ def get_auth_headers(username, password):
 
 def test_signup_bizid_generation():
     username = "seller_test_1"
-    resp = client.post("/signup", json={
+    resp = client.post("/signup", json=signup_payload({
         "username": username,
         "password": "SellerPassword123",
         "business_name": "Test Seller One"
-    })
+    }))
     assert resp.status_code == 200
     data = resp.json()
     assert "token" in data
@@ -82,11 +84,11 @@ def test_get_my_bizid():
 
 def test_lookup_bizid():
     # Sign up another user
-    client.post("/signup", json={
+    client.post("/signup", json=signup_payload({
         "username": "buyer_test_1",
         "password": "BuyerPassword123",
         "business_name": "Test Buyer One"
-    })
+    }))
     
     # Get seller's BizID
     headers_buyer = get_auth_headers("buyer_test_1", "BuyerPassword123")

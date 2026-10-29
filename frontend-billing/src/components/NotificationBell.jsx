@@ -45,6 +45,9 @@ export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
   const [open, setOpen] = React.useState(false)
   const [data, setData] = React.useState({ items: [], count: 0, severity: null })
   const [loading, setLoading] = React.useState(false)
+  const [loadError, setLoadError] = React.useState(false)
+  const [checked, setChecked] = React.useState(false)
+  const requestRef = React.useRef(0)
   const boxRef = React.useRef(null)
   const popoverRef = React.useRef(null)
   const [popoverPosition, setPopoverPosition] = React.useState({})
@@ -119,29 +122,45 @@ export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
   const [haltReason, setHaltReason] = React.useState(null)
 
   const load = React.useCallback(async () => {
+    const request = ++requestRef.current
     setLoading(true)
+    setLoadError(false)
     try {
       const res = await authFetch('/alerts/notifications')
-      if (res.ok) setData(await res.json())
+      if (!res.ok) throw new Error(`Notifications unavailable: HTTP ${res.status}`)
+      const next = await res.json()
+      if (!next || !Array.isArray(next.items)) throw new Error('Notifications response was invalid')
+      if (request === requestRef.current) {
+        setData(next)
+        setChecked(true)
+      }
     } catch (err) {
+      if (request !== requestRef.current) return
+      setLoadError(true)
       // A failed check is not itself news — leave the last known list up rather
       // than flashing "all clear", which is the one wrong answer here.
       logger.error('[NOTIFY] could not load notifications:', err)
     } finally {
-      setLoading(false)
+      if (request === requestRef.current) setLoading(false)
     }
     try {
       const r = await authFetch('/api/sync/queue-depth')
-      if (r.ok) setHaltReason((await r.json())?.halt?.reason || null)
+      if (r.ok) {
+        const next = (await r.json())?.halt?.reason || null
+        if (request === requestRef.current) setHaltReason(next)
+      }
     } catch {
       // Same rule: a failed probe leaves the last known answer standing.
     }
-  }, [authFetch])
+  }, [authFetch, user?.id])
 
   React.useEffect(() => {
+    setData({ items: [], count: 0, severity: null })
+    setHaltReason(null)
+    setChecked(false)
     load()
     const t = setInterval(load, POLL_MS)
-    return () => clearInterval(t)
+    return () => { requestRef.current++; clearInterval(t) }
   }, [load])
 
   // Close on outside click / Escape — same affordance as the sync popover.
@@ -211,7 +230,7 @@ export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
         }}
         aria-label={count ? `${count} notification${count === 1 ? '' : 's'}` : 'Notifications'}
         aria-expanded={open}
-        title={count ? `${count} thing${count === 1 ? '' : 's'} need attention` : 'Nothing needs attention'}
+        title={loadError ? 'Notifications could not refresh' : count ? `${count} thing${count === 1 ? '' : 's'} need attention` : checked && !loading ? 'Nothing needs attention' : 'Checking notifications'}
         style={{
           position: 'relative', display: 'inline-flex', alignItems: 'center',
           justifyContent: 'center', width: 28, height: 28, padding: 0,
@@ -246,13 +265,19 @@ export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
             </button>
           </div>
 
-          {count === 0 ? (
+          {loadError && (
+            <div role="status" style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 10 }}>
+              Notifications couldn&apos;t refresh. The current alert status is unavailable.{' '}
+              <button type="button" className="btn btn-secondary btn-sm" onClick={load}>Retry notifications</button>
+            </div>
+          )}
+          {count === 0 ? loadError ? null : (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8, padding: '10px 2px',
               fontSize: '0.78rem', color: 'var(--text-muted)',
             }}>
-              <CheckIcon size={14} strokeWidth={2} style={{ color: 'var(--success, #22c55e)' }} />
-              {loading ? 'Checking…' : 'Nothing needs attention.'}
+              {checked && !loading && <CheckIcon size={14} strokeWidth={2} style={{ color: 'var(--success, #22c55e)' }} />}
+              {loading || !checked ? 'Checking…' : 'Nothing needs attention.'}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

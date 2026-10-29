@@ -38,6 +38,8 @@ from database.db import SessionLocal
 from database.models import User
 from main_groq import app
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -63,8 +65,8 @@ class _Lines(logging.Handler):
 def _owner(mode):
     """A real owner (via /signup) with hosting_mode `mode` (None = no settings)."""
     uname = f"own_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={"username": uname, "password": "TestPass123!",
-                                     "business_name": "Sri Lakshmi Medicals"})
+    r = client.post("/signup", json=signup_payload({"username": uname, "password": "TestPass123!",
+                                     "business_name": "Sri Lakshmi Medicals"}))
     assert r.status_code == 200, r.text
     bid, token = r.json()["id"], r.json()["token"]
     with SessionLocal() as s:

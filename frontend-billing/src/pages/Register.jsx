@@ -20,6 +20,7 @@ import { BuildingMark } from '../components/Logo'
 import CustomSelect from '../components/common/CustomSelect'
 import { DESKTOP_DOWNLOAD_URL } from '../config/downloadApp'
 import './registration.css'
+import { normalizeRegistrationPhone } from '../utils/registrationPhone'
 
 export default function Register() {
   const { signup } = useAuth()
@@ -45,29 +46,13 @@ export default function Register() {
   // Where should this business's data live? Chosen at signup in the desktop
   // app (web always runs on cloud). 'local' just proceeds; 'cloud'/'hybrid'
   // route into the guarded switch flow after signup (never a silent switch).
-  const [hostingChoice, setHostingChoice] = useState(IS_LOCAL_APP ? 'local' : 'cloud')
-  // The cloud's Pro trial offer, asked before sign-up. While new businesses get
-  // a trial, Local + Cloud (a Pro feature) is preselected; Local stays a click
-  // away. An older cloud without /trial-offer, or no connection: Local, as before.
-  const [trialDays, setTrialDays] = useState(0)
-  const hostingTouched = useRef(false)
+  const [hostingChoice, setHostingChoice] = useState('hybrid')
+  // First-time phone registrations receive the mandatory 14-day cloud trial.
+  // Local + Cloud is preselected; choosing Local still keeps sync off by choice.
+  const trialDays = 14
   // Set when Local + Cloud fell back to Local (no trial for this business):
   // say so before going in, instead of letting the sync quietly not happen.
   const [fallbackNote, setFallbackNote] = useState(null)
-  useEffect(() => {
-    if (!IS_LOCAL_APP) return undefined
-    let alive = true
-    fetch(`${CLOUD_URL}/trial-offer`)
-      .then(r => (r.ok ? r.json() : null))
-      .then(d => {
-        const days = Number(d?.days) || 0
-        if (!alive || days <= 0) return
-        setTrialDays(days)
-        if (!hostingTouched.current) setHostingChoice('hybrid')
-      })
-      .catch(() => { /* keep Local */ })
-    return () => { alive = false }
-  }, [])
   // Multi-type business (Phase 2): optional secondary business types. The
   // primary drives defaults; secondaries add counter modes (e.g. a shop that
   // is Retail + Repair). Registered via POST /business/setup after signup.
@@ -144,7 +129,6 @@ export default function Register() {
       businessName: form.businessName,
       username: form.username,
       country: form.country,
-      phone: form.phone,
       agreeTerms: form.agreeTerms
     })
 
@@ -162,6 +146,13 @@ export default function Register() {
       setError('Passwords do not match.')
       return
     }
+    let phone
+    try {
+      phone = normalizeRegistrationPhone(form.phone, form.country)
+    } catch (err) {
+      setError(err.message)
+      return
+    }
     logger.info('Client validation passed. Calling signup API for username:', form.username)
     setLoading(true)
     try {
@@ -171,7 +162,7 @@ export default function Register() {
         business_name: form.businessName,
         template_key: selectedTemplate,
         hosting: IS_LOCAL_APP ? hostingChoice : 'cloud',
-        phone: (form.phone || '').trim() || null,   // if given, lands on the profile
+        phone,
       })
       // Multi-type (Phase 2): register secondary business types after signup.
       // Non-fatal — the account works single-type if this call fails; types
@@ -190,6 +181,10 @@ export default function Register() {
       if (result?.fellBackToLocal) {
         setFallbackNote('This business did not get a Pro trial (for example, the phone number already had one), '
           + 'so your data stays on this computer (Local). You can turn on Local + Cloud in Settings once you have Pro.')
+        return
+      }
+      if (result?.trialUnavailable) {
+        setFallbackNote('This phone number has already used its first-time trial. Your account is ready on the cloud. Upgrade to Pro for Local + Cloud sync, or download the desktop app for Local billing.')
         return
       }
       // Hosting is auto-configured inside signup() from the choice above (Local, or
@@ -258,10 +253,10 @@ export default function Register() {
     </div>
 
     {/* Split Page Container (placed on top of backdrop) */}
-    <div className="split-page" style={{ position: 'relative', zIndex: 2 }}>
+    <div className="split-page registration-page" style={{ position: 'relative', zIndex: 2 }}>
       {/* Left Panel: Registration Card */}
       <div className="split-left" style={{ position: 'relative', background: 'transparent', padding: '16px 20px' }}>
-        <div className="login-card" style={{ maxWidth: '440px', width: '100%', margin: '0 auto', padding: '24px 28px' }}>
+        <div className="login-card" style={{ maxWidth: '440px', width: '100%', margin: 'auto', padding: '24px 28px' }}>
           <div className="login-glow"></div>
           <div className="login-symbol" style={{ marginBottom: 4 }}><BuildingMark size={32} /></div>
           <h1 className="login-title" style={{ fontSize: 24 }}>Create your account</h1>
@@ -358,38 +353,43 @@ export default function Register() {
 
               <fieldset className="registration-storage">
                 <legend>Where should your data live?</legend>
-                <div data-testid="hosting-choice" className={`registration-storage-grid ${IS_LOCAL_APP ? '' : 'is-cloud'}`}>
+                <div data-testid="hosting-choice" className="registration-storage-grid">
                   {[
-                    ...(!IS_LOCAL_APP ? [{ key: 'cloud', title: 'Cloud', desc: 'Selected for browser registration. Available securely online.' }] : []),
-                    { key: 'local',  title: 'Local only',     desc: 'Nothing goes to the cloud. Fast, fully offline. Field Team and web access need Local + Cloud.' },
-                    { key: 'hybrid', title: 'Local + Cloud',  desc: 'Local speed + automatic cloud sync, backup & multi-device.' },
+                    { key: 'local',  title: 'Local only',     desc: 'Billing records stay on this computer. Daily billing works offline; account registration connects once. Field Team and web access need Local + Cloud.' },
+                    { key: 'hybrid', title: 'Local + Cloud',  desc: IS_LOCAL_APP
+                      ? 'Local speed + automatic cloud sync, backup & multi-device.'
+                      : 'Use the cloud in your browser. Download the desktop app to add offline billing and Pro cloud sync.' },
                   ].map(opt => (
+                    <div key={opt.key} className="registration-storage-choice">
                     <button
                       type="button"
-                      key={opt.key}
                       className={`registration-storage-option ${hostingChoice === opt.key ? 'is-selected' : ''}`}
                       aria-pressed={hostingChoice === opt.key}
-                      disabled={!IS_LOCAL_APP}
+                      disabled={!IS_LOCAL_APP && opt.key === 'local'}
                       aria-describedby={!IS_LOCAL_APP ? 'cloud-storage-help' : undefined}
-                      onClick={() => { hostingTouched.current = true; setHostingChoice(opt.key) }}
+                      onClick={() => setHostingChoice(opt.key)}
                     >
                       <div style={{ fontWeight: 700, fontSize: '0.86rem' }}>
                         {opt.title}
                         {opt.key === 'hybrid' && trialDays > 0 && (
                           <span style={{ marginLeft: 6, fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.04em', padding: '1px 6px', borderRadius: 6, background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', verticalAlign: 'middle' }}>
-                            FREE IN TRIAL
+                            14 DAYS FREE
                           </span>
                         )}
                       </div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.3 }}>{opt.desc}</div>
                     </button>
+                    {!IS_LOCAL_APP && opt.key === 'local' && (
+                      <a className="registration-local-download" href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">Download app for Local</a>
+                    )}
+                    </div>
                   ))}
                 </div>
                 {!IS_LOCAL_APP && (
                   <div className="registration-storage-help" id="cloud-storage-help">
-                    <p>You’re registering in the browser, so this business uses the cloud database. Local options are available in the desktop app.</p>
-                    <a href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">Download desktop app</a>
-                    <p>Already registered? Sign in with the same account in the desktop app and choose your storage mode in Settings.</p>
+                    <p>Local + Cloud includes browser access. This browser uses the cloud database; offline Local billing runs in the downloaded app.</p>
+                    <p>Sign in with the same account in the desktop app to add Local billing. Automatic Local + Cloud sync requires Pro or an eligible trial.</p>
+                    <p>Your first registration with a phone number includes 14 days of Pro access, including Local + Cloud and Field Team.</p>
                   </div>
                 )}
                 {IS_LOCAL_APP && hostingChoice === 'hybrid' && (
@@ -519,14 +519,19 @@ export default function Register() {
               </div>
 
               <div className="form-group">
-                <label htmlFor="phone">Phone (Optional)</label>
+                <label htmlFor="phone">Phone</label>
                 <input
                   id="phone"
-                  type="text"
+                  type="tel"
+                  required
+                  autoComplete="tel"
+                  maxLength={30}
+                  aria-describedby="registration-phone-help"
                   placeholder="+91 9999999999"
                   value={form.phone}
                   onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
                 />
+                <small id="registration-phone-help" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Required. One first-time trial per phone number.</small>
               </div>
             </div>
 
@@ -571,7 +576,7 @@ export default function Register() {
       </div>
 
       {/* Right Panel: Value Showcase */}
-      <div className="split-right" style={{ background: 'var(--bg-2)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+      <div className="split-right" style={{ background: 'var(--bg-2)', borderLeft: '1px solid var(--border)' }}>
         <div style={{ maxWidth: '480px', margin: '0 auto' }}>
           <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 16, lineHeight: 1.25 }}>
             Manage all your businesses from one unified platform.

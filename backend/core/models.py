@@ -378,6 +378,8 @@ class B2BConnection(Base, TimestampMixin):
     uid                 = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     seller_business_id  = Column(Integer, ForeignKey("users.id"), nullable=False)
     buyer_business_id   = Column(Integer, ForeignKey("users.id"), nullable=False)
+    seller_bizid        = Column(String, nullable=True, index=True)
+    buyer_bizid         = Column(String, nullable=True, index=True)
 
     price_tier          = Column(String, nullable=False, default="standard")  # standard|wholesale|distributor
     discount_pct        = Column(Float, nullable=False, default=0.0)          # direct percentage discount (e.g. 5.0)
@@ -433,6 +435,8 @@ class B2BOrder(Base, TimestampMixin):
     uid                = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     buyer_business_id  = Column(Integer, ForeignKey("users.id"), nullable=False)
     seller_business_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    seller_bizid       = Column(String, nullable=True, index=True)
+    buyer_bizid        = Column(String, nullable=True, index=True)
     
     order_number       = Column(String, unique=True, index=True, nullable=False)
     order_date         = Column(String, nullable=False)  # YYYY-MM-DD

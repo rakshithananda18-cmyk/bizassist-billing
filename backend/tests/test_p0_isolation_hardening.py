@@ -17,16 +17,18 @@ from routes.sync_profile import ProfilePushRequest, sync_profile_push
 from routes.sync_staff import StaffPushRequest, StaffRecord, sync_staff_push
 
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def _signup(label: str):
     username = f"p0_{uuid.uuid4().hex[:10]}"
-    response = client.post("/signup", json={
+    response = client.post("/signup", json=signup_payload({
         "username": username,
         "password": "P0TestPass123!",
         "business_name": label,
-    })
+    }))
     assert response.status_code == 200, response.text
     body = response.json()
     return body, {"Authorization": f"Bearer {body['token']}"}

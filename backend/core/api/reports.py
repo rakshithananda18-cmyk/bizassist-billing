@@ -331,11 +331,14 @@ def report_pnl(
     jl_q = jl_q.group_by(JournalLine.account)
     jl_rows = {row.account: (float(row.dr or 0.0), float(row.cr or 0.0)) for row in jl_q.all()}
 
-    journal_sales_credit = jl_rows.get(ACC_SALES, (0.0, 0.0))[1]
-    journal_gst_payable = jl_rows.get(ACC_GST_OUT, (0.0, 0.0))[1]
-    journal_discount_allowed = jl_rows.get("Discount Allowed", (0.0, 0.0))[0]
+    sales_dr, sales_cr = jl_rows.get(ACC_SALES, (0.0, 0.0))
+    gst_dr, gst_cr = jl_rows.get(ACC_GST_OUT, (0.0, 0.0))
+    discount_dr, discount_cr = jl_rows.get("Discount Allowed", (0.0, 0.0))
+    journal_sales_credit = sales_cr - sales_dr
+    journal_gst_payable = gst_cr - gst_dr
+    journal_discount_allowed = discount_dr - discount_cr
     journal_net_revenue = journal_sales_credit - journal_discount_allowed
-    journal_recon_delta = round(net_revenue - (journal_sales_credit + journal_gst_payable), 2)
+    journal_recon_delta = round(net_revenue - (journal_sales_credit + journal_gst_payable - journal_discount_allowed), 2)
     if abs(journal_recon_delta) > 0.01:
         logger.warning(
             "[REPORT][M-14] P&L reconciliation gap bid=%s: invoice_net=%.2f "

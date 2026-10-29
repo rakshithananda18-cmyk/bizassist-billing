@@ -69,6 +69,14 @@
   .mobile-only-header-tabs {
     display: none !important;
   }
+  /* A collapsed rail removes the sidebar sub-page tree. Keep one visible
+     switcher in the workspace header so those pages remain discoverable. */
+  .app-shell:has(.sidebar.collapsed) .mobile-only-header-tabs {
+    display: flex !important;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+  }
 }
 
 @media (max-width: 768px) {

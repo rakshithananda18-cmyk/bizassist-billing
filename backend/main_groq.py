@@ -309,6 +309,19 @@ app.add_middleware(
 )
 
 # ── Error contract ────────────────────────────────────────────────────────────
+from fastapi.exceptions import RequestValidationError
+
+
+@app.exception_handler(RequestValidationError)
+async def _request_validation_handler(_request: Request, exc: RequestValidationError):
+    # Pydantic error inputs may contain NaN/Infinity or private form values.
+    # Neither belongs in a JSON response; nonfinite inputs otherwise turn a
+    # deliberate validation rejection into a JSON serialization 500.
+    detail = [{"loc": list(error.get("loc", ())), "msg": error.get("msg", "Invalid value"),
+               "type": error.get("type", "value_error")} for error in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": detail})
+
+
 @app.exception_handler(AskError)
 async def _ask_error_handler(_request: Request, exc: AskError):
     """Render AskError as a real HTTP status code with the canonical envelope (H1)."""

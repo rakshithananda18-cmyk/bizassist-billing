@@ -396,6 +396,10 @@ def ensure(con):
     """
     if isinstance(con, Conn):
         return con
+    # SQLAlchemy raw_connection() returns a pool proxy, whose module name is
+    # sqlalchemy even when its underlying driver is psycopg2. Inspect the actual
+    # driver so Postgres audits do not issue SQLite metadata/placeholder SQL.
+    con = getattr(con, "driver_connection", con)
     dialect = POSTGRES if con.__class__.__module__.startswith("psycopg") else SQLITE
     return Conn(con, dialect, f"<{type(con).__name__}>", readonly=False)
 

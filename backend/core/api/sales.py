@@ -87,6 +87,7 @@ def _line_out(li: InvoiceLineItem) -> dict:
         "product_id": li.product_id, "product_name": li.product_name,
         "hsn_sac": li.hsn_sac, "unit": li.unit,
         "quantity": li.quantity, "unit_price": li.unit_price,
+        "returned_qty": li.returned_qty or 0.0,
         "discount": li.discount, "taxable_value": li.taxable_value,
         "cgst_amount": li.cgst_amount, "sgst_amount": li.sgst_amount,
         "igst_amount": li.igst_amount, "cess_amount": li.cess_amount,
@@ -106,6 +107,7 @@ def _invoice_out(inv: Invoice) -> dict:
         "cgst_total": inv.cgst_total, "sgst_total": inv.sgst_total,
         "igst_total": inv.igst_total, "cess_total": inv.cess_total,
         "round_off": inv.round_off, "total_amount": inv.total_amount,
+        "cash_discount": inv.cash_discount,
         "paid_amount": inv.paid_amount, "payment_mode": inv.payment_mode,
         "godown_id": inv.godown_id,
         "lines": [_line_out(li) for li in inv.line_items],
@@ -434,12 +436,16 @@ class FrontendInvoiceRequest(BaseModel):
     payment_mode: Optional[str] = None  # cash|upi|card|credit — drives shift drawer tallies (Phase 3)
 
 
-def _invoice_out_for_frontend(inv: Invoice) -> dict:
+def _invoice_out_for_frontend(inv: Invoice, balance: Optional[dict] = None) -> dict:
     total = round(inv.total_amount or inv.amount or 0.0, 2)
     paid = round(inv.paid_amount or 0.0, 2)
     outstanding = round(max(total - paid, 0.0), 2)
     itype = inv.invoice_type or "B2C"
     is_note = itype in ("credit_note", "debit_note")
+    if balance is not None:
+        paid = balance["paid"]
+        outstanding = balance["outstanding"]
+    from core.billing.balances import collection_status
     return {
         "id": inv.id,
         "invoice_number": inv.invoice_id,
@@ -451,10 +457,13 @@ def _invoice_out_for_frontend(inv: Invoice) -> dict:
         "invoice_date": inv.invoice_date,
         # Full timestamp (naive UTC) → UI renders date + time in IST.
         "created_at": inv.created_at.isoformat() if inv.created_at else None,
-        "status": inv.status,
+        "status": collection_status(balance, inv.status or "Pending") if balance is not None and not is_note else inv.status,
         "total_amount": total,
         "paid_amount": paid,
         "outstanding": outstanding,
+        "credited_amount": balance["credited"] if balance else 0.0,
+        "effective_total": balance["effective_total"] if balance else total,
+        "return_credit": balance["credit_due"] if balance else 0.0,
         "item_count": len(inv.line_items) if inv.line_items else 0,
         "notes": inv.notes,
         "invoice_type": itype,
@@ -540,7 +549,9 @@ def list_invoices(
         q = q.limit(per_page)
 
     invoices = q.all()
-    return [_invoice_out_for_frontend(inv) for inv in invoices]
+    from core.billing.balances import invoice_balances
+    balances = invoice_balances(db, invoices)
+    return [_invoice_out_for_frontend(inv, balances[inv.id]) for inv in invoices]
 
 
 
@@ -670,7 +681,8 @@ def create_sale_invoice_frontend(
 
         background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "invoice"})
         background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "payment"})
-        return guard.store(_invoice_out_for_frontend(inv), status_code=201)
+        from core.billing.balances import invoice_balance
+        return guard.store(_invoice_out_for_frontend(inv, invoice_balance(db, inv)), status_code=201)
     except ValueError as ve:
         raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:

@@ -246,7 +246,8 @@ def _detect_source_owner_id(tables: dict) -> int | None:
     return None
 
 
-def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_tables: set) -> int:
+def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_tables: set,
+                  skipped_out: list = None) -> int:
     """
     Upsert the users table carefully:
     - Owner row (parent_business_id IS NULL): UPDATE the existing cloud owner row
@@ -255,7 +256,9 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
     - Staff rows (parent_business_id IS NOT NULL): upsert by username, remapping
       parent_business_id → dest_owner_id.
     """
+    skipped_out = skipped_out if skipped_out is not None else []
     if "users" not in existing_tables:
+        skipped_out.append({"table": "users", "reason": "destination table unavailable"})
         return 0
 
     count = 0
@@ -266,7 +269,7 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
         bool_cols = {c["name"] for c in col_info if isinstance(c["type"], sa.Boolean)}
     except Exception as exc:
         logger.warning("migrate/import: cannot inspect users for boolean coercion — %s", exc)
-        bool_cols = set()
+        raise
 
     allowed_staff_roles = {"cashier", "supply adder"}
     allowed_staff_fields = {
@@ -314,6 +317,7 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
                 count += 1
             except Exception as exc:
                 logger.warning("migrate/import: owner user update failed for %s — %s", r.get("username"), exc)
+                skipped_out.append({"table": "users", "reason": "owner profile could not be restored"})
         else:
             # Staff: remap parent → cloud owner
             r = {k: v for k, v in r.items() if k in user_columns and k in allowed_staff_fields}
@@ -321,6 +325,7 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
             r["role"] = (r.get("role") or "cashier").lower()
             if not r.get("username") or r["role"] not in allowed_staff_roles:
                 logger.warning("migrate/import: refused invalid staff record for destination owner %s", dest_owner_id)
+                skipped_out.append({"table": "users", "reason": "invalid staff record"})
                 continue
 
             # ── MATCH ON THE PER-BUSINESS LOGIN NAME, NOT THE INTERNAL ONE ───
@@ -366,6 +371,7 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
                 with db.begin_nested():   # (M-1) per-row savepoint
                     if existing:
                         if existing[1] != dest_owner_id:
+                            skipped_out.append({"table": "users", "reason": "staff identity belongs to another business"})
                             logger.warning(
                                 "migrate/import: refused staff username collision for '%s' outside business %s",
                                 r["username"], dest_owner_id,
@@ -396,6 +402,7 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
                 count += 1
             except Exception as exc:
                 logger.warning("migrate/import: staff user upsert failed for %s — %s", r.get("username"), exc)
+                skipped_out.append({"table": "users", "reason": "staff record could not be restored"})
 
     return count
 
@@ -559,7 +566,7 @@ def _uid_lookup(db: Session, table: str, col_names: set, business_id: int, filte
 
 def _import_with_remap(db: Session, table_name: str, rows: list[dict],
                        dest_owner_id: int, source_owner_id: int,
-                       existing_tables: set[str], id_maps: dict) -> int:
+                       existing_tables: set[str], id_maps: dict, skipped_out: list = None) -> int:
     """
     (R-3) Import rows WITHOUT forcing their source ids. The destination assigns
     fresh ids; we record old→new per table in `id_maps` and rewrite every
@@ -570,7 +577,11 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
     has its own rows without overwriting them — the cross-DB-safe path.
     Process tables parent-before-child (the caller uses _EXPORT_ORDER).
     """
-    if not rows or table_name not in existing_tables:
+    skipped_out = skipped_out if skipped_out is not None else []
+    if not rows:
+        return 0
+    if table_name not in existing_tables:
+        skipped_out.append({"table": table_name, "reason": "destination table unavailable"})
         return 0
     try:
         insp = inspect(db.bind)
@@ -578,7 +589,7 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
         fks = insp.get_foreign_keys(table_name)
     except Exception as exc:
         logger.warning("migrate/import[remap]: cannot inspect %s — %s", table_name, exc)
-        return 0
+        raise
 
     col_names = {c["name"] for c in col_info}
     nullable_cols = {c["name"]: c.get("nullable", True) for c in col_info}
@@ -603,6 +614,7 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
         old_id = row.get("id")
         filtered = {k: v for k, v in row.items() if k in col_names and k != "id"}
         if not filtered:
+            skipped_out.append({"table": table_name, "source_id": old_id, "reason": "no supported fields"})
             continue
         # Tenant fields come exclusively from the authenticated destination
         # owner.  Do not preserve a foreign value merely because it differs from
@@ -662,6 +674,7 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
                             break
 
         if invalid_required_fk:
+            skipped_out.append({"table": table_name, "source_id": old_id, "reason": "required parent is missing or belongs to another business"})
             continue
 
         # Idempotent dedup. (Phase C) Match strictly on the durable `uid`.
@@ -781,6 +794,7 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
             reason = str(orig).strip().splitlines()[0] if orig else str(exc)
             logger.warning("migrate/import[remap]: row skip in %s (old_id=%s): %s",
                            table_name, old_id, reason)
+            skipped_out.append({"table": table_name, "source_id": old_id, "reason": "destination rejected the record; check its required fields and references"})
 
     return count
 
@@ -935,6 +949,8 @@ def import_data(
     # can report them; the importer used to log skips and discard the count, so a
     # partial import was indistinguishable from a complete one.
     b2b_skipped: list = []
+    b2b_state: dict = {}
+    skipped_records: list = []
 
     # Detect the source owner id embedded in the exported payload. Direction-
     # neutral: for a local→cloud upload this is the local owner; for a cloud→local
@@ -957,6 +973,13 @@ def import_data(
     id_maps: dict[str, dict] = {}
 
     try:
+        # Python sqlite3's legacy transaction mode does not BEGIN for reads or
+        # SAVEPOINT. Without an explicit outer BEGIN, releasing the first row's
+        # savepoint commits it, so a later conflict cannot roll back the import.
+        if db.bind.dialect.name == "sqlite":
+            connection = db.connection()
+            if not connection.connection.driver_connection.in_transaction:
+                connection.exec_driver_sql("BEGIN")
         for table_name in process_order:
             rows = body.tables.get(table_name, [])
             if not rows:
@@ -965,7 +988,7 @@ def import_data(
             if table_name == "users":
                 # Users are always identity-matched by username (owner/staff),
                 # never id-remapped — they define the business scope itself.
-                n = _upsert_users(db, rows, dest_owner_id, existing)
+                n = _upsert_users(db, rows, dest_owner_id, existing, skipped_out=skipped_records)
             elif table_name in b2b_transfer.B2B_RELATIONSHIP_TABLES:
                 # Two-sided B2B rows: both parties re-resolved by BizID; rows
                 # whose counterparty isn't in this DB are skipped + logged.
@@ -977,23 +1000,36 @@ def import_data(
                     # breaks the order's header/lines invariant (audit check J).
                     n = b2b_transfer.import_b2b_tables(
                         db, table_name, rows, dest_owner_id,
-                        skipped_out=b2b_skipped)
+                        skipped_out=b2b_skipped, state=b2b_state)
                 else:
                     n = 0
+                    skipped_records.append({"table": table_name, "reason": "destination table unavailable"})
             else:
                 n = _import_with_remap(
-                    db, table_name, rows, dest_owner_id, source_owner_id, existing, id_maps
+                    db, table_name, rows, dest_owner_id, source_owner_id, existing, id_maps,
+                    skipped_out=skipped_records
                 )
 
             if n > 0:
                 imported[table_name] = n
 
+        b2b_transfer.validate_new_orders(db, b2b_state)
+        financial_tables = {"invoices", "invoice_line_items", "invoice_payments", "payments",
+                            "purchase_invoices", "purchase_invoice_line_items", "purchase_orders",
+                            "purchase_order_line_items", "journal_entries", "journal_lines",
+                            "register_shifts", "shift_cash_movements", "b2b_orders", "b2b_order_line_items"}
+        if any(row["table"] in financial_tables for row in skipped_records):
+            raise b2b_transfer.B2BImportConflict("A financial record could not be restored. Nothing was imported. Resolve the source record's fields or references and retry.")
         db.commit()
 
+    except b2b_transfer.B2BImportConflict as exc:
+        db.rollback()
+        logger.warning("migrate/import: rejected conflicting financial document — %s", exc)
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     except Exception as exc:
         db.rollback()
         logger.error("migrate/import: fatal error — %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Import failed: {exc}")
+        raise HTTPException(status_code=500, detail="Import failed. Nothing was imported. Check the server logs and retry after resolving the conflict.") from None
 
     total = sum(imported.values())
     # Still reported, now constant: the other two values ("mirror", "merge-lww")
@@ -1005,7 +1041,11 @@ def import_data(
         "migrate/import: dest_owner_id=%s imported=%s total=%s remap=%s mode=%s",
         dest_owner_id, imported, total, remap_info, _mode,
     )
-    result = {"imported": imported, "total": total, "mode": _mode}
+    result = {"imported": imported, "total": total, "mode": _mode,
+              "complete": not (b2b_skipped or skipped_records)}
+    if skipped_records:
+        result["skipped_records"] = skipped_records
+        logger.warning("migrate/import: %d record(s) not restored", len(skipped_records))
     if remap_info:
         result["id_remap"] = remap_info
     if b2b_skipped:

@@ -3,7 +3,11 @@ import os
 import sys
 import uuid
 from datetime import datetime
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args, **kwargs):
+        pass
 from sqlalchemy import create_engine, MetaData, Column, Integer, DateTime, String, event as sa_event
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker

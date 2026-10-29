@@ -11,6 +11,9 @@ import B2B from '../pages/B2B'
 import Reports from '../pages/Reports'
 
 const mockAuthFetchImpl = async (path) => {
+  if (path === '/settings') {
+    return { ok: true, json: async () => ({ general: {}, transactions: {}, inventory: {}, print: {}, subscription: { plan: 'pro' } }) }
+  }
   if (typeof path === 'string' && path.includes('/bizid')) {
     return {
       ok: true,

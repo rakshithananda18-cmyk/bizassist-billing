@@ -18,6 +18,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect, text
@@ -182,6 +183,16 @@ async def _unhandled_exception(request: Request, exc: Exception):
     """Log every unhandled error with its route, so no crash goes silent."""
     logger.error("%s unhandled %s %s", TAG.HTTP, request.method, request.url.path, exc_info=exc)
     return JSONResponse({"detail": "Internal server error"}, status_code=500)
+
+
+@app.exception_handler(RequestValidationError)
+async def _invalid_request(request: Request, exc: RequestValidationError):
+    # Echoing raw rejected inputs can expose credentials and cannot JSON-encode
+    # non-finite numbers. Preserve useful field errors without returning inputs.
+    detail = [{"type": error["type"], "loc": error["loc"], "msg": error["msg"]}
+              for error in exc.errors()]
+    logger.info("%s validation refused %s %s", TAG.HTTP, request.method, request.url.path)
+    return JSONResponse({"detail": detail}, status_code=422)
 
 
 for r in (auth, staff, attendance, shops, runs, tasks, requests, tracking, dashboard):

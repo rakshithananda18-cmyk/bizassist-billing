@@ -421,10 +421,12 @@ def create_debit_note(
     orig = db.query(PurchaseInvoice).filter(
         PurchaseInvoice.id == original_purchase_id,
         PurchaseInvoice.business_id == business_id
-    ).first()
+    ).with_for_update().first()
     
     if not orig:
         raise ValueError(f"Purchase invoice {original_purchase_id} not found.")
+    if orig.invoice_type == "debit_note":
+        raise ValueError("A return must refer to an original purchase, not another debit note.")
 
     # 2. Auto-generate debit note number
     dn_number = (debit_note_no or "").strip()
@@ -437,31 +439,35 @@ def create_debit_note(
 
     # 3. Process line items
     dn_lines = []
+    requested_products = set()
     for ln in lines:
         pid = ln.get("product_id")
-        qty = float(ln.get("quantity") or ln.get("qty") or 0)
+        qty = _finite_number(ln.get("quantity") or ln.get("qty") or 0, "Return quantity", minimum=0)
         reason = ln.get("reason", "return")
         if qty <= 0:
             raise ValueError(f"Return quantity must be > 0 for product ID {pid}")
+        if pid in requested_products:
+            raise ValueError("Combine duplicate product rows before submitting a return.")
+        requested_products.add(pid)
 
         # Find the original line item to get price and tax rates
-        orig_line = None
-        for li in orig.line_items:
-            if li.product_id == pid:
-                orig_line = li
-                break
+        candidates = [li for li in orig.line_items if li.product_id == pid]
+        if len(candidates) > 1:
+            raise ValueError("This product has multiple original purchase lines. Select a specific source line before returning it; a product-only return is ambiguous.")
+        orig_line = candidates[0] if candidates else None
         
         if not orig_line:
             raise ValueError(f"Product ID {pid} was not found on the original purchase invoice.")
 
-        already_returned = float(db.query(func.coalesce(func.sum(PurchaseInvoiceLineItem.quantity), 0.0)).join(
+        prior_lines = db.query(PurchaseInvoiceLineItem).join(
             PurchaseInvoice, PurchaseInvoice.id == PurchaseInvoiceLineItem.purchase_invoice_id
         ).filter(
             PurchaseInvoice.business_id == business_id,
             PurchaseInvoice.parent_invoice_id == original_purchase_id,
             PurchaseInvoice.invoice_type == "debit_note",
             PurchaseInvoiceLineItem.product_id == pid,
-        ).scalar() or 0.0)
+        ).all()
+        already_returned = sum(float(line.quantity or 0) for line in prior_lines)
         max_returnable = round(float(orig_line.quantity) - already_returned, 4)
         if qty > max_returnable:
             raise ValueError(
@@ -472,15 +478,32 @@ def create_debit_note(
 
         orig_line.returned_qty = round(already_returned + qty, 4)
 
+        original_qty = _finite_number(orig_line.quantity, "Original quantity", minimum=0)
+        if not original_qty:
+            raise ValueError("Original purchase quantity is invalid; reconcile it before returning.")
+        original_components = sum(_finite_number(getattr(orig_line, field) or 0, "Original " + field, minimum=0)
+                                  for field in ("taxable_value", "cgst_amount", "sgst_amount", "igst_amount"))
+        if abs(round(original_components, 2) - round(float(orig_line.line_total or 0), 2)) > 0.01:
+            raise ValueError("Original purchase line has incomplete financial snapshots; reconcile it before returning.")
+        ratio = min((already_returned + qty) / original_qty, 1.0)
+
+        def remaining_snapshot(field):
+            value = _finite_number(getattr(orig_line, field) or 0, "Original " + field, minimum=0)
+            credited = sum(_finite_number(getattr(line, field) or 0, "Returned " + field, minimum=0) for line in prior_lines)
+            result = round(round(value * ratio, 2) - round(credited, 2), 2)
+            if result < 0:
+                raise ValueError("Existing returns exceed the original purchase snapshot; reconcile them before returning more.")
+            return max(result, 0.0)
+
         unit_price = orig_line.unit_price or 0.0
-        taxable = round(qty * unit_price, 2)
+        taxable = remaining_snapshot("taxable_value")
         cgst_r = orig_line.cgst_rate or 0.0
         sgst_r = orig_line.sgst_rate or 0.0
         igst_r = orig_line.igst_rate or 0.0
         
-        cgst_a = round(taxable * cgst_r / 100.0, 2)
-        sgst_a = round(taxable * sgst_r / 100.0, 2)
-        igst_a = round(taxable * igst_r / 100.0, 2)
+        cgst_a = remaining_snapshot("cgst_amount")
+        sgst_a = remaining_snapshot("sgst_amount")
+        igst_a = remaining_snapshot("igst_amount")
         line_total = round(taxable + cgst_a + sgst_a + igst_a, 2)
 
         # We also need conversion factor
@@ -512,7 +535,29 @@ def create_debit_note(
     cgst_t   = round(sum(l["cgst_amount"]   for l in dn_lines), 2)
     sgst_t   = round(sum(l["sgst_amount"]   for l in dn_lines), 2)
     igst_t   = round(sum(l["igst_amount"]   for l in dn_lines), 2)
-    grand    = round(subtotal + cgst_t + sgst_t + igst_t, 2)
+    raw_total = round(subtotal + cgst_t + sgst_t + igst_t, 2)
+    original_raw = round(sum(float(line.line_total or 0) for line in orig.line_items), 2)
+    expected_raw = round(float(orig.total_amount or 0) + float(orig.discount_total or 0)
+                         - float(orig.round_off or 0) - float(orig.cess_total or 0), 2)
+    if not math.isfinite(original_raw) or not math.isfinite(expected_raw) or abs(original_raw - expected_raw) > 0.01:
+        raise ValueError("Original purchase lines do not reconcile with its billed total; reconcile it before returning.")
+    prior_notes = db.query(PurchaseInvoice).filter(
+        PurchaseInvoice.business_id == business_id, PurchaseInvoice.parent_invoice_id == orig.id,
+        PurchaseInvoice.invoice_type == "debit_note").all()
+    prior_raw = round(sum(float(note.total_amount or 0) + float(note.discount_total or 0)
+                          - float(note.round_off or 0) - float(note.cess_total or 0) for note in prior_notes), 2)
+    if prior_raw + raw_total > original_raw + 0.01:
+        raise ValueError("Return value exceeds the original purchase's remaining billed value.")
+    ratio = min((prior_raw + raw_total) / original_raw, 1.0) if original_raw else 0.0
+    discount = round(round(float(orig.discount_total or 0) * ratio, 2)
+                     - sum(float(note.discount_total or 0) for note in prior_notes), 2)
+    round_off = round(round(float(orig.round_off or 0) * ratio, 2)
+                      - sum(float(note.round_off or 0) for note in prior_notes), 2)
+    cess = round(round(float(orig.cess_total or 0) * ratio, 2)
+                 - sum(float(note.cess_total or 0) for note in prior_notes), 2)
+    grand = round(raw_total + cess + round_off - discount, 2)
+    if not math.isfinite(grand) or discount < 0 or cess < 0 or grand < 0:
+        raise ValueError("Return amount is invalid after allocating the original purchase discount.")
 
     # 4. Create the Debit Note header
     dn = PurchaseInvoice(
@@ -520,6 +565,7 @@ def create_debit_note(
         parent_invoice_id=orig.id,
         supplier_id=orig.supplier_id,
         supplier_name=orig.supplier_name,
+        godown_id=orig.godown_id,
         invoice_number=dn_number,
         invoice_type="debit_note",
         invoice_date=datetime.today().strftime("%Y-%m-%d"),
@@ -529,6 +575,7 @@ def create_debit_note(
         cgst_total=cgst_t,
         sgst_total=sgst_t,
         igst_total=igst_t,
+        cess_total=cess, discount_total=discount, round_off=round_off,
         notes=f"Debit note against purchase invoice #{orig.invoice_number}. {note or ''}".strip(),
     )
     db.add(dn)
@@ -579,7 +626,10 @@ def create_debit_note(
                 product_name=ln["product_name"],
                 reference_type="purchase_invoice",
                 reference_id=dn.id,
-                note=f"Purchase return for invoice #{orig.invoice_number}"
+                note=f"Purchase return for invoice #{orig.invoice_number}",
+                godown_id=orig.godown_id,
+                batch_no=ln["batch"],
+                expiry_date=ln["expiry"],
             )
 
     # Post the reversal to the journal (Dr Cash/AP, Cr Purchases/GST Input).

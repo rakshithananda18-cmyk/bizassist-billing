@@ -17,6 +17,8 @@ from services.self_healing import (
     heal_staff_and_tenant_integrity, diagnose_and_heal_tenant
 )
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -24,7 +26,7 @@ def test_master_self_healing_endpoint():
     """Verify POST /reports/integrity/self-heal executes all 4 repair domains cleanly and safely."""
     # 1. Sign up owner
     owner_uname = f"owner_{uuid.uuid4().hex[:8]}"
-    r_owner = client.post("/signup", json={"username": owner_uname, "password": "OwnerPass123!", "business_name": "Self Healing Test Shop"})
+    r_owner = client.post("/signup", json=signup_payload({"username": owner_uname, "password": "OwnerPass123!", "business_name": "Self Healing Test Shop"}))
     assert r_owner.status_code == 200, r_owner.text
     token = r_owner.json()["token"]
     headers = {"Authorization": f"Bearer {token}"}

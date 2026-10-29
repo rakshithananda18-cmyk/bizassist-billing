@@ -26,6 +26,8 @@ from database.db import SessionLocal
 from database.models import Base, Customer, Vendor
 from tests._fk_cleanup import wipe_tables
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -45,11 +47,11 @@ def _schema():
 
 @pytest.fixture(scope="module")
 def owner():
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": f"own_{uuid.uuid4().hex[:6]}",
         "password": "Password123!",
         "business_name": "Preview Biz",
-    })
+    }))
     assert r.status_code == 200, r.text
     return {"headers": {"Authorization": f"Bearer {r.json()['token']}"}, "bid": r.json()["id"]}
 

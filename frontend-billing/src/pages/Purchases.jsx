@@ -5,6 +5,7 @@
 //              new batches, and records debit note purchase returns.
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { prepareReturnLines } from '../utils/returnPreview'
 import { useSearchParams } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import { useAuth } from '../contexts/AuthContext'
@@ -406,19 +407,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
     const origBill = bills.find(b => String(b.id) === String(returnBillId))
     if (!origBill) return
     
-    const lines = (origBill.lines || []).map(li => ({
-      product_id: li.product_id,
-      product_name: li.product_name,
-      quantity: 0,
-      max_quantity: li.quantity || 1,
-      unit_price: li.unit_price || 0,
-      cgst_rate: li.cgst_rate || 0,
-      sgst_rate: li.sgst_rate || 0,
-      igst_rate: li.igst_rate || 0,
-      hsn_sac: li.hsn_sac,
-      unit: li.unit || 'Nos',
-      reason: 'Damaged'
-    }))
+    const lines = prepareReturnLines(origBill.lines).map(line => ({ ...line, reason: 'Damaged' }))
     
     setReturnLines(lines)
     setReturnStep('enter_items')

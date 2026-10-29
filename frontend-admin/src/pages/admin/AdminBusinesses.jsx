@@ -744,8 +744,9 @@ export default function AdminBusinesses() {
               <span>Permanently wipe {wipeTarget.name}?</span>
             </div>
             <p style={{ fontSize: 13, color: 'var(--secondary-text)', marginTop: 12, lineHeight: 1.5 }}>
-              This deletes the account and ALL its business data — invoices, inventory,
+              This deletes the account and its business data from this server — invoices, inventory,
               payments, uploads, embeddings and chat history. This cannot be undone.
+              Downloaded app copies are not automatically erased.
               Type the business name <strong style={{ color: 'var(--text-color)' }}>{wipeTarget.name}</strong> to confirm.
             </p>
             <div className="form-group" style={{ marginTop: 12 }}>

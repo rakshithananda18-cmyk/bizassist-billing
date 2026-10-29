@@ -36,7 +36,7 @@ export default function StaffLayout() {
   const onDuty = !!(today?.attendance && !today.attendance.check_out_at)
   useEffect(() => {
     if (!onDuty) { tracker.current?.stop(); setTrack({ state: 'idle' }); return }
-    if (!tracker.current) tracker.current = new Tracker({ onStatus: setTrack })
+    if (!tracker.current) tracker.current = new Tracker({ onStatus: setTrack, scope: `${me.public_id}:${me.staff.id}` })
     tracker.current.start(today.settings.ping_interval_s)
     return () => tracker.current?.stop()
   }, [onDuty, today?.settings?.ping_interval_s])

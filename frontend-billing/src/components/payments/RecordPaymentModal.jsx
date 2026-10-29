@@ -21,8 +21,9 @@ export default function RecordPaymentModal({ form, setField, onSubmit, submittin
                 <label className="form-label">Payment Type</label>
                 <CustomSelect className="form-select" value={form.type} onChange={e => setField('type', e.target.value)}>
                   <option value="received">Received (from customer)</option>
-                  <option value="made">Made (to supplier)</option>
+                  <option value="made" disabled>Supplier payments — unavailable</option>
                 </CustomSelect>
+                <small style={{ color: 'var(--text-muted)' }}>This form records customer receipts. Supplier settlement is not supported here.</small>
               </div>
               <div className="form-group">
                 <label className="form-label">Date</label>
@@ -55,7 +56,7 @@ export default function RecordPaymentModal({ form, setField, onSubmit, submittin
           </div>
           <div className="modal-footer">
             <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
+            <button type="submit" className="btn btn-primary" disabled={submitting || form.type !== 'received'}>
               {submitting ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Recording…</> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CheckIcon size={14} /> Record Payment</span>}
             </button>
           </div>

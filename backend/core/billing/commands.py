@@ -47,6 +47,19 @@ def _round2(x: float) -> float:
         return round(float(x or 0.0) + 1e-9, 2)
 
 
+def _positive_money(value, name):
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a finite amount greater than 0") from None
+    if not math.isfinite(amount) or amount <= 0:
+        raise ValueError(f"{name} must be a finite amount greater than 0")
+    amount = _round2(amount)
+    if amount <= 0:
+        raise ValueError(f"{name} must be at least 0.01")
+    return amount
+
+
 def _state_code(value: Optional[str]) -> Optional[str]:
     """Pull the 2-digit GST state code from '29' or '29-Karnataka' etc."""
     if not value:
@@ -652,6 +665,8 @@ def record_payment(db, *, business_id: int, invoice_id: int,
 
     NEVER deletes or overwrites a payment row — corrections are new rows.
     """
+    amount_paid = _positive_money(amount_paid, "amount_paid")
+
     # ── Idempotency: same key → return existing row ───────────────────────────
     if idempotency_key:
         existing = (
@@ -677,6 +692,8 @@ def record_payment(db, *, business_id: int, invoice_id: int,
     )
     if inv is None:
         raise ValueError(f"Invoice {invoice_id} not found for this business")
+    if inv.invoice_type == "credit_note":
+        raise ValueError("A credit note is not a collectible sales invoice.")
 
     # A duplicate request may have committed while this transaction waited for
     # the invoice lock.  Re-check under the lock before doing money arithmetic.
@@ -696,14 +713,17 @@ def record_payment(db, *, business_id: int, invoice_id: int,
         raise ValueError("amount_paid must be greater than 0")
 
     # ── Invariant: a receipt must not push cumulative payments PAST the invoice
-    # total (P0). This catches the data-entry typo (₹10,000 for ₹1,000) that
+    # net total after linked credit notes (P0). This catches a data-entry typo
+    # and prevents collecting money for goods that have already been returned.
     # would otherwise silently mark an invoice grossly over-paid and corrupt the
-    # receivables ledger. A ₹1 tolerance absorbs rounding across partials.
+    # receivables ledger. Compare rounded paise; no extra rupee is collectible.
     # Advances/deposits that legitimately exceed the bill opt in with
     # allow_overpayment=True. ──────────────────────────────────────────────────
     if not allow_overpayment:
         grand_due = _round2(inv.total_amount or inv.amount or 0.0)
-        if grand_due > 0:
+        from core.billing.balances import invoice_balance
+        effective_total = invoice_balance(db, inv)["effective_total"]
+        if grand_due >= 0:
             already_paid = (
                 db.query(func.coalesce(func.sum(InvoicePayment.amount_paid), 0.0))
                 .filter(
@@ -713,11 +733,11 @@ def record_payment(db, *, business_id: int, invoice_id: int,
                 .scalar()
             ) or 0.0
             projected = _round2(already_paid + amount_paid)
-            if projected > grand_due + 1.0:
+            if projected > effective_total:
                 raise ValueError(
                     f"Payment of {_round2(amount_paid)} exceeds the outstanding balance "
-                    f"(invoice total {grand_due}, already paid {_round2(already_paid)}, "
-                    f"remaining {_round2(grand_due - already_paid)}). Pass allow_overpayment "
+                    f"(invoice total after returns {effective_total}, already paid {_round2(already_paid)}, "
+                    f"remaining {_round2(max(effective_total - already_paid, 0))}). Pass allow_overpayment "
                     f"to record an advance/deposit."
                 )
 
@@ -763,7 +783,8 @@ def record_payment(db, *, business_id: int, invoice_id: int,
         .scalar()
     )
     inv.paid_amount = _round2(total_paid)
-    grand = _round2(inv.total_amount or inv.amount or 0.0)
+    from core.billing.balances import invoice_balance
+    grand = invoice_balance(db, inv)["effective_total"]
     if inv.paid_amount >= grand > 0:
         inv.status = "Paid"
     elif inv.paid_amount > 0:
@@ -821,9 +842,8 @@ def settle_customer_dues(db, *, business_id: int, customer_id: int,
     retry short-circuit below).
     """
     from database.models import Customer
-    amount = _round2(amount)
-    if amount <= 0:
-        raise ValueError("settlement amount must be greater than 0")
+    from core.billing.balances import invoice_balance, invoice_balances
+    amount = _positive_money(amount, "settlement amount")
 
     # Serialize all settlements/prepayments for a customer. This protects both
     # FIFO allocation and credit_balance from two cashiers accepting money at
@@ -837,8 +857,12 @@ def settle_customer_dues(db, *, business_id: int, customer_id: int,
     if cust is None:
         raise ValueError(f"customer {customer_id} not found for this business")
 
+    balance_cache = {}
+
     def _remaining(inv):
-        return _round2((inv.total_amount or inv.amount or 0.0) - (inv.paid_amount or 0.0))
+        if inv.id not in balance_cache:
+            balance_cache[inv.id] = invoice_balance(db, inv)
+        return balance_cache[inv.id]["outstanding"]
 
     # ── Idempotency short-circuit ────────────────────────────────────────────
     # A retried settle (same key) must NOT re-bank the advance. The per-invoice
@@ -889,14 +913,20 @@ def settle_customer_dues(db, *, business_id: int, customer_id: int,
         .filter(
             Invoice.business_id == business_id,
             Invoice.customer_id == customer_id,
-            Invoice.invoice_type != "credit_note",
+            func.coalesce(Invoice.invoice_type, "") != "credit_note",
         )
         .order_by(Invoice.invoice_date.asc(), Invoice.id.asc())
         .with_for_update()
         .all()
     )
 
+    balance_cache.update(invoice_balances(db, invoices))
+
     due = [inv for inv in invoices if _remaining(inv) > 0.005]
+    if any(balance["credit_due"] > 0.005 for balance in balance_cache.values()):
+        raise ValueError("This customer has credit due after a return or overpayment. Resolve that credit or refund before accepting another automatic settlement.")
+    if not due and any(balance["credited"] > 0 for balance in balance_cache.values()):
+        raise ValueError("There are no outstanding invoices after returns. A new advance requires a separate receipt workflow.")
 
     allocations = []
     money_left = amount
@@ -921,6 +951,7 @@ def settle_customer_dues(db, *, business_id: int, customer_id: int,
         )
         last_pay_id = billing_pay.id
         db.refresh(inv)
+        balance_cache[inv.id]["outstanding"] = _round2(max(rem - apply, 0))
         allocations.append({
             "invoice_id": inv.id,
             "invoice_no": inv.invoice_id,
@@ -1003,10 +1034,13 @@ def create_credit_note(db, *, business_id: int,
     orig = (
         db.query(Invoice)
         .filter(Invoice.id == original_invoice_id, Invoice.business_id == business_id)
+        .with_for_update()
         .first()
     )
     if orig is None:
         raise ValueError(f"Invoice {original_invoice_id} not found for this business")
+    if orig.invoice_type == "credit_note":
+        raise ValueError("A return must refer to an original sale, not another credit note.")
 
     # Auto-generate credit note number.
     # Same monotonic counter as sales (F-3): the old COUNT(credit notes) + 1
@@ -1023,12 +1057,16 @@ def create_credit_note(db, *, business_id: int,
 
     # ── Collect product info and compute lines ─────────────────────────────────
     cn_lines = []
+    requested_products = set()
     for ln in lines:
         pid = ln.get("product_id")
         qty = float(ln.get("qty") or ln.get("quantity") or 0)
         reason = ln.get("reason", "return")
-        if qty <= 0:
-            raise ValueError(f"Return qty must be > 0 for product {pid}")
+        if not math.isfinite(qty) or qty <= 0:
+            raise ValueError(f"Return qty must be finite and > 0 for product {pid}")
+        if pid in requested_products:
+            raise ValueError("Combine duplicate product rows before submitting a return.")
+        requested_products.add(pid)
 
         product = None
         if pid:
@@ -1037,24 +1075,23 @@ def create_credit_note(db, *, business_id: int,
             ).first()
 
         # Find the original line to get pricing and enforce return quantity limits
-        orig_line = None
-        if pid and orig.line_items:
-            for li in orig.line_items:
-                if li.product_id == pid:
-                    orig_line = li
-                    break
+        candidates = [li for li in orig.line_items if pid and li.product_id == pid]
+        if len(candidates) > 1:
+            raise ValueError("This product has multiple original invoice lines. Select a specific source line before returning it; a product-only return is ambiguous.")
+        orig_line = candidates[0] if candidates else None
 
         if not orig_line:
             raise ValueError(f"Product ID {pid} is not part of original invoice {original_invoice_id}")
 
-        already_returned = float(db.query(func.coalesce(func.sum(InvoiceLineItem.quantity), 0.0)).join(
+        prior_lines = db.query(InvoiceLineItem).join(
             Invoice, Invoice.id == InvoiceLineItem.invoice_id
         ).filter(
             Invoice.business_id == business_id,
             Invoice.parent_invoice_id == original_invoice_id,
             Invoice.invoice_type == "credit_note",
             InvoiceLineItem.product_id == pid,
-        ).scalar() or 0.0)
+        ).all()
+        already_returned = sum(float(line.quantity or 0) for line in prior_lines)
         max_returnable = round(float(orig_line.quantity) - already_returned, 4)
         if qty > max_returnable:
             raise ValueError(
@@ -1065,29 +1102,57 @@ def create_credit_note(db, *, business_id: int,
 
         orig_line.returned_qty = round(already_returned + qty, 4)
 
-        unit_price = (orig_line.unit_price if orig_line else 0.0) or 0.0
-        taxable = _round2(qty * unit_price)
-        cgst_r = (orig_line.cgst_rate if orig_line else 0.0) or 0.0
-        sgst_r = (orig_line.sgst_rate if orig_line else 0.0) or 0.0
-        igst_r = (orig_line.igst_rate if orig_line else 0.0) or 0.0
-        cgst_a = _round2(taxable * cgst_r / 100.0)
-        sgst_a = _round2(taxable * sgst_r / 100.0)
-        igst_a = _round2(taxable * igst_r / 100.0)
-        line_total = _round2(taxable + cgst_a + sgst_a + igst_a)
+        original_qty = float(orig_line.quantity or 0)
+        if not math.isfinite(original_qty) or original_qty <= 0:
+            raise ValueError("Original invoice quantity is invalid; reconcile it before returning.")
+        original_components = sum(float(getattr(orig_line, field) or 0) for field in (
+            "taxable_value", "cgst_amount", "sgst_amount", "igst_amount", "cess_amount"))
+        if not math.isfinite(original_components) or abs(_round2(original_components) - _round2(orig_line.line_total)) > 0.01:
+            raise ValueError("Original invoice line has incomplete financial snapshots; reconcile it before returning.")
+        ratio = min((already_returned + qty) / original_qty, 1.0)
+
+        def remaining_snapshot(field):
+            value = float(getattr(orig_line, field) or 0)
+            credited = sum(float(getattr(line, field) or 0) for line in prior_lines)
+            if not math.isfinite(value) or not math.isfinite(credited):
+                raise ValueError("Original invoice contains invalid financial values.")
+            result = _round2(_round2(value * ratio) - _round2(credited))
+            if result < 0:
+                raise ValueError("Existing returns exceed the original invoice snapshot; reconcile them before returning more.")
+            return max(result, 0.0)
+
+        # Refund sale-time net amounts, including bill/line discounts and
+        # tax-inclusive back-calculation. Cumulative allocation consumes the
+        # remaining paise on the final return instead of rounding every slice.
+        taxable = remaining_snapshot("taxable_value")
+        discount = remaining_snapshot("discount")
+        cgst_a = remaining_snapshot("cgst_amount")
+        sgst_a = remaining_snapshot("sgst_amount")
+        igst_a = remaining_snapshot("igst_amount")
+        cess_a = remaining_snapshot("cess_amount")
+        line_total = _round2(taxable + cgst_a + sgst_a + igst_a + cess_a)
 
         cn_lines.append({
             "product_id": pid,
-            "product_name": (product.name if product else
-                             (orig_line.product_name if orig_line else f"Product {pid}")),
-            "hsn_sac": (product.hsn_sac if product else
-                        (orig_line.hsn_sac if orig_line else None)),
-            "unit": (product.unit if product else
-                     (orig_line.unit if orig_line else "Nos")),
+            "product_name": orig_line.product_name,
+            "hsn_sac": orig_line.hsn_sac,
+            "unit": orig_line.unit,
             "quantity": qty,
-            "unit_price": _round2(unit_price),
+            "unit_price": _round2(orig_line.unit_price),
+            "discount": discount,
+            "discount_pct": orig_line.discount_pct or 0.0,
+            "batch_no": orig_line.batch_no,
+            "serial_no": orig_line.serial_no,
+            "expiry_date": orig_line.expiry_date,
+            "mrp": orig_line.mrp,
+            "attributes": orig_line.attributes,
             "taxable_value": taxable,
-            "cgst_rate": cgst_r, "sgst_rate": sgst_r, "igst_rate": igst_r,
+            "cgst_rate": orig_line.cgst_rate or 0.0,
+            "sgst_rate": orig_line.sgst_rate or 0.0,
+            "igst_rate": orig_line.igst_rate or 0.0,
+            "cess_rate": orig_line.cess_rate or 0.0,
             "cgst_amount": cgst_a, "sgst_amount": sgst_a, "igst_amount": igst_a,
+            "cess_amount": cess_a,
             "line_total": line_total,
             "description": reason,
             "_product": product,
@@ -1097,7 +1162,27 @@ def create_credit_note(db, *, business_id: int,
     cgst_t   = _round2(sum(l["cgst_amount"]   for l in cn_lines))
     sgst_t   = _round2(sum(l["sgst_amount"]   for l in cn_lines))
     igst_t   = _round2(sum(l["igst_amount"]   for l in cn_lines))
-    grand    = _round2(subtotal + cgst_t + sgst_t + igst_t)
+    cess_t   = _round2(sum(l["cess_amount"]   for l in cn_lines))
+    raw_total = _round2(subtotal + cgst_t + sgst_t + igst_t + cess_t)
+    original_raw = _round2(sum(float(line.line_total or 0) for line in orig.line_items))
+    expected_raw = _round2(float(orig.total_amount or 0) + float(orig.cash_discount or 0) - float(orig.round_off or 0))
+    if not math.isfinite(original_raw) or not math.isfinite(expected_raw) or abs(original_raw - expected_raw) > 0.01:
+        raise ValueError("Original invoice lines do not reconcile with its billed total; reconcile it before returning.")
+    prior_notes = db.query(Invoice).filter(
+        Invoice.business_id == business_id, Invoice.parent_invoice_id == orig.id,
+        Invoice.invoice_type == "credit_note").all()
+    prior_raw = _round2(sum(float(note.total_amount or 0) + float(note.cash_discount or 0)
+                           - float(note.round_off or 0) for note in prior_notes))
+    if prior_raw + raw_total > original_raw + 0.01:
+        raise ValueError("Return value exceeds the original invoice's remaining billed value.")
+    ratio = min((prior_raw + raw_total) / original_raw, 1.0) if original_raw else 0.0
+    cash_discount = _round2(_round2(float(orig.cash_discount or 0) * ratio)
+                            - sum(float(note.cash_discount or 0) for note in prior_notes))
+    round_off = _round2(_round2(float(orig.round_off or 0) * ratio)
+                        - sum(float(note.round_off or 0) for note in prior_notes))
+    grand = _round2(raw_total + round_off - cash_discount)
+    if not math.isfinite(grand) or cash_discount < 0 or grand < 0:
+        raise ValueError("Return amount is invalid after allocating the original discount.")
 
     # ── Write credit note header ───────────────────────────────────────────────
     cn = Invoice(
@@ -1106,13 +1191,17 @@ def create_credit_note(db, *, business_id: int,
         parent_invoice_id=orig.id,
         customer=orig.customer,
         customer_id=orig.customer_id,
+        godown_id=orig.godown_id,
         invoice_type="credit_note",
         invoice_date=biz_today_str(),
         status="Paid",  # a credit note is immediately settled
         amount=grand,
         total_amount=grand,
         subtotal=subtotal,
-        cgst_total=cgst_t, sgst_total=sgst_t, igst_total=igst_t,
+        cgst_total=cgst_t, sgst_total=sgst_t, igst_total=igst_t, cess_total=cess_t,
+        discount_total=_round2(sum(line["discount"] for line in cn_lines)),
+        cash_discount=cash_discount, round_off=round_off,
+        is_tax_inclusive=orig.is_tax_inclusive,
         paid_amount=grand,
         notes=f"Credit note against {orig.invoice_id}. {note or ''}".strip(),
     )
@@ -1122,9 +1211,7 @@ def create_credit_note(db, *, business_id: int,
     # ── Write line items + return_in stock movements ───────────────────────────
     for ln in cn_lines:
         product = ln.pop("_product", None)
-        db.add(InvoiceLineItem(invoice_id=cn.id, discount=0.0, discount_pct=0.0,
-                               batch_no=None, serial_no=None, cess_rate=0.0,
-                               cess_amount=0.0, **{k: v for k, v in ln.items()}))
+        db.add(InvoiceLineItem(invoice_id=cn.id, **{k: v for k, v in ln.items()}))
 
         # Return stock for tracked products
         tracks = True if product is None else (product.track_inventory is not False)
@@ -1138,6 +1225,9 @@ def create_credit_note(db, *, business_id: int,
                 reference_type="credit_note",
                 reference_id=cn.id,
                 note=f"return for {orig.invoice_id}",
+                godown_id=orig.godown_id,
+                batch_no=ln["batch_no"],
+                expiry_date=ln["expiry_date"],
             )
 
     # Post the reversal to the journal (Dr Sales/GST, Cr Accounts Receivable).

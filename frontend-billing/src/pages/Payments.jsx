@@ -68,6 +68,8 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
   const [pendingDues, setPendingDues] = useState([])
   const [creditNotes, setCreditNotes] = useState([])
   const [loading, setLoading]       = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const loadRequestRef = useRef(0)
   const [activeTab, setActiveTab]   = useState('All')
   const [isFullScreen, setIsFullScreen] = useState(false)
   const [showModal, setShowModal]   = useState(false)
@@ -96,22 +98,34 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
 
 
   const load = useCallback(() => {
+    const request = ++loadRequestRef.current
     setLoading(true)
-    Promise.all([
-      authFetch('/billing/payments').then(r => r.ok ? r.json() : []),
-      authFetch('/billing/expenses').then(r => r.ok ? r.json() : []),
-      authFetch('/billing/pending-invoices').then(r => r.ok ? r.json() : []),
-      authFetch('/billing/credit-notes').then(r => r.ok ? r.json() : [])
+    setLoadError(false)
+    const read = async path => {
+      const response = await authFetch(path)
+      if (!response.ok) throw new Error(`Transactions unavailable: HTTP ${response.status}`)
+      return response.json()
+    }
+    return Promise.all([
+      read('/billing/payments'),
+      read('/billing/expenses'),
+      read('/billing/pending-invoices'),
+      read('/billing/credit-notes')
     ])
       .then(([payData, expData, duesData, cnData]) => {
+        if (request !== loadRequestRef.current) return
         setPayments(Array.isArray(payData) ? payData : [])
         setExpenses(Array.isArray(expData) ? expData : [])
         setPendingDues(Array.isArray(duesData) ? duesData : [])
         setCreditNotes(Array.isArray(cnData) ? cnData : [])
       })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [authFetch])
+      .catch(error => {
+        if (request !== loadRequestRef.current) return
+        setLoadError(true)
+        logger.warn('[PAYMENTS] Transaction data could not load:', error)
+      })
+      .finally(() => { if (request === loadRequestRef.current) setLoading(false) })
+  }, [authFetch, user?.id])
 
   // Page lifecycle: guard form + silent refresh on tab resume
   const { blocker, isRefreshing, dirtyMessage } = usePageLifecycle({
@@ -135,6 +149,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
     // throttled — no separate 'focus' listener here (that caused a double reload).
     window.addEventListener('sync-event', handleSync)
     return () => {
+      loadRequestRef.current++
       window.removeEventListener('sync-event', handleSync)
     }
   }, [load])
@@ -494,6 +509,10 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (form.type !== 'received') {
+      setAlert({ type: 'danger', msg: 'This form records customer receipts. Supplier settlement is not supported here.' })
+      return
+    }
     setSubmitting(true)
     try {
       const nowIso = new Date().toISOString()
@@ -874,10 +893,10 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
 
         {/* Cash Flow Summary Cards */}
         <div style={{
-          maxHeight: showStats ? '500px' : '0px',
+          maxHeight: showStats && !loadError ? '500px' : '0px',
           overflow: 'hidden',
           transition: 'max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease, margin-bottom 0.3s ease',
-          opacity: showStats ? 1 : 0,
+          opacity: showStats && !loadError ? 1 : 0,
           marginBottom: showStats ? 20 : 0,
         }}>
           <div style={{
@@ -989,6 +1008,12 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
         {/* Table & Content */}
         {loading ? (
           <div className="page-loader"><span className="spinner" /> Loading…</div>
+        ) : loadError ? (
+          <div className="empty-state" role="alert">
+            <h3>Transactions are unavailable</h3>
+            <p>Payments, expenses or dues could not be loaded. Retry before relying on these totals.</p>
+            <button type="button" className="btn btn-secondary" onClick={load}>Retry transactions</button>
+          </div>
         ) : activeTab === 'Invoices' ? (
           <div className="slide-up">
             <InvoicesListView

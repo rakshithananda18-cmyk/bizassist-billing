@@ -6,7 +6,7 @@ List endpoints prime it in batches; nested run/task serializers reuse it.
 from sqlalchemy.orm import object_session
 
 from app.billing_models import BillingCustomer, BillingInvoice
-from app.invoices import CREDIT_NOTE, balance_due, invoice_total
+from app.invoices import CREDIT_NOTE, invoice_balances
 
 
 class BillingReadContext:
@@ -14,6 +14,7 @@ class BillingReadContext:
         self.db = db
         self.customers = {}
         self.invoices = {}
+        self.balances = {}
 
     def prime(self, *, shops=(), tasks=()):
         tasks = list(tasks)
@@ -34,9 +35,11 @@ class BillingReadContext:
                 self.customers[(bid, row.id)] = row
         for bid, ids in invoices.items():
             self.invoices.update({(bid, iid): None for iid in ids})
-            for row in self.db.query(BillingInvoice).filter(
-                    BillingInvoice.business_id == bid, BillingInvoice.id.in_(ids)).all():
+            rows = self.db.query(BillingInvoice).filter(
+                BillingInvoice.business_id == bid, BillingInvoice.id.in_(ids)).all()
+            for row in rows:
                 self.invoices[(bid, row.id)] = row
+            self.balances.update({(bid, iid): balance for iid, balance in invoice_balances(self.db, rows).items()})
 
     def customer(self, shop):
         self.prime(shops=[shop])
@@ -51,11 +54,15 @@ class BillingReadContext:
             available = bool(customer and inv and inv.customer_id == customer.id
                              and (inv.invoice_type or "") != CREDIT_NOTE
                              and (inv.status or "").lower() not in {"cancelled", "canceled", "void", "draft"})
+            balance = self.balances.get((task.business_id, line.invoice_id), {})
             live[line.invoice_id] = {
                 "available": available,
-                "current_total": invoice_total(inv) if available else None,
-                "current_paid": round(float(inv.paid_amount or 0), 2) if available else None,
-                "current_balance_due": balance_due(inv) if available else None,
+                "current_total": balance.get("total") if available else None,
+                "current_paid": balance.get("paid") if available else None,
+                "current_credited": balance.get("credited") if available else None,
+                "current_effective_total": balance.get("effective_total") if available else None,
+                "current_credit_due": balance.get("credit_due") if available else None,
+                "current_balance_due": balance.get("outstanding") if available else None,
                 "current_status": inv.status if available else None,
             }
         available = all(row["available"] for row in live.values()) if live else None

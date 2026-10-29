@@ -2,6 +2,16 @@
 
 *Scope: the field-staff app of the BizAssist ecosystem (Billing → **Field Team** → AI). First customer profile: medical / pharma **wholesale distributor** delivering daily to retail medical shops.*
 
+> **29 October 2026 survey:** the [Field agent audit](release/2026-10-29-field-app-agent-audit.md)
+> inventories every owner/staff page, confirmed fixes, current test evidence and
+> remaining device/deployment checks. The [complete app survey](release/2026-10-29-complete-app-survey.md)
+> is the cross-app summary. This evidence supersedes the historical 50-backend /
+> 9-frontend test snapshot below. Registration now leads to Billing's required-phone,
+> first-time 14-day Pro trial flow. Field dues use Billing's linked-return/receipt
+> projection. The centralized Billing purge now explicitly clears the same
+> business's shared-cloud Field tree with guarded tenant checks; this does **not**
+> mean cloud account deletion remotely erases offline local Billing copies.
+
 ---
 
 ## 1. MVP requirements → what is built

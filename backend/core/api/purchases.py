@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from database.db import get_db
@@ -27,6 +27,7 @@ def _line_out(li: PurchaseInvoiceLineItem) -> dict:
         "hsn_sac": li.hsn_sac,
         "unit": li.unit,
         "quantity": li.quantity,
+        "returned_qty": li.returned_qty or 0.0,
         "purchase_unit": li.purchase_unit,
         "conversion_factor": li.conversion_factor,
         "unit_price": li.unit_price,
@@ -215,7 +216,7 @@ def get_purchase_detail(
 
 class DebitNoteLine(BaseModel):
     product_id: int
-    quantity: float
+    quantity: float = Field(gt=0, allow_inf_nan=False)
     reason: Optional[str] = "return"
 
 

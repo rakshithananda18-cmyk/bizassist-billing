@@ -124,6 +124,35 @@ describe('MigrationModal', () => {
     vi.unstubAllGlobals()
   })
 
+  it.each(['partial', 'unavailable', 'unknown', 'settings'])('does not switch mode when migration result is %s', async failure => {
+    let counts = 0
+    const mockFetch = vi.fn(async url => {
+      if (url.endsWith('/api/data-transfer/count')) {
+        counts++
+        if (counts > 1 && failure === 'unavailable') return { ok: false, status: 503 }
+        return { ok: true, json: async () => counts > 1 && failure === 'unknown' ? {} : { customers: 1 } }
+      }
+      if (url.endsWith('/api/data-transfer/export')) return { ok: true, json: async () => ({ tables: { customers: [{ id: 1 }] } }) }
+      if (url.includes('/api/data-transfer/import')) return { ok: true, json: async () => ({
+        imported: { customers: 1 }, total: 1,
+        ...(failure === 'partial' ? { complete: false, b2b_skipped: [{ reason: 'missing party' }] } : {}),
+      }) }
+      if (url.endsWith('/settings')) return { ok: failure !== 'settings', status: 503, json: async () => ({}) }
+      return { ok: false, status: 404 }
+    })
+    vi.stubGlobal('fetch', mockFetch)
+    const onComplete = vi.fn()
+    render(<MigrationModal fromMode="local" toMode="cloud" token="test-token" onComplete={onComplete} onError={vi.fn()} />)
+    if (failure === 'unknown') {
+      await waitFor(() => expect(screen.getByText(/Continue anyway/i)).toBeInTheDocument())
+    } else {
+      await waitFor(() => expect(screen.getByText(/Migration Failed/i)).toBeInTheDocument())
+    }
+    expect(screen.queryByText(/Sign out & continue/i)).not.toBeInTheDocument()
+    expect(onComplete).not.toHaveBeenCalled()
+    if (failure !== 'settings') expect(mockFetch.mock.calls.some(([url]) => url.endsWith('/settings'))).toBe(false)
+  })
+
   it('runs through the migration steps successfully', async () => {
     const mockFetch = vi.fn().mockImplementation(async (url) => {
       if (url.endsWith('/api/data-transfer/count')) {

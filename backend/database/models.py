@@ -149,6 +149,13 @@ class DeletedBusiness(Base):
     deleted_at    = Column(DateTime, default=utc_now, nullable=False)
 
 
+class TrialPhoneClaim(Base):
+    """Private signup eligibility ledger; survives deletion without an account FK."""
+    __tablename__ = "trial_phone_claims"
+    phone_hash = Column(String(64), primary_key=True)
+    claimed_at = Column(DateTime, default=utc_now, nullable=False)
+
+
 class UploadedFile(Base, TimestampMixin):
     __tablename__ = "uploaded_files"
 

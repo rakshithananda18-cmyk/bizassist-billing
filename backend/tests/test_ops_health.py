@@ -28,13 +28,15 @@ from main_groq import app
 from database.db import SessionLocal
 from database.models import ConflictLog
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def _signup():
     u = f"own_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={"username": u, "password": "TestPass123!",
-                                     "business_name": "Ops Co"})
+    r = client.post("/signup", json=signup_payload({"username": u, "password": "TestPass123!",
+                                     "business_name": "Ops Co"}))
     assert r.status_code == 200, r.text
     return r.json()
 

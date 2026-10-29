@@ -306,6 +306,11 @@ _COLUMN_MIGRATIONS = [
     # without these it is re-sent every cycle forever — see SyncQueue.attempts.
     {"table": "sync_queue", "column": "attempts",        "ddl": "ALTER TABLE sync_queue ADD COLUMN attempts INTEGER DEFAULT 0"},
     {"table": "sync_queue", "column": "next_attempt_at", "ddl": "ALTER TABLE sync_queue ADD COLUMN next_attempt_at DATETIME"},
+    # B2B seller_bizid and buyer_bizid — cross-database portable identity
+    {"table": "b2b_connections", "column": "seller_bizid", "ddl": "ALTER TABLE b2b_connections ADD COLUMN seller_bizid TEXT"},
+    {"table": "b2b_connections", "column": "buyer_bizid",  "ddl": "ALTER TABLE b2b_connections ADD COLUMN buyer_bizid TEXT"},
+    {"table": "b2b_orders",      "column": "seller_bizid", "ddl": "ALTER TABLE b2b_orders ADD COLUMN seller_bizid TEXT"},
+    {"table": "b2b_orders",      "column": "buyer_bizid",  "ddl": "ALTER TABLE b2b_orders ADD COLUMN buyer_bizid TEXT"},
 ]
 
 
@@ -1588,6 +1593,28 @@ def _step(conn, fn):
         return None
 
 
+def _backfill_b2b_bizids(conn):
+    """Backfill seller_bizid and buyer_bizid on b2b_orders and b2b_connections from users.public_id."""
+    for tbl in ("b2b_orders", "b2b_connections"):
+        try:
+            conn.execute(text(f"""
+                UPDATE {tbl}
+                SET seller_bizid = (SELECT public_id FROM users WHERE users.id = {tbl}.seller_business_id)
+                WHERE (seller_bizid IS NULL OR seller_bizid = '')
+                  AND seller_business_id IS NOT NULL;
+            """))
+            conn.execute(text(f"""
+                UPDATE {tbl}
+                SET buyer_bizid = (SELECT public_id FROM users WHERE users.id = {tbl}.buyer_business_id)
+                WHERE (buyer_bizid IS NULL OR buyer_bizid = '')
+                  AND buyer_business_id IS NOT NULL;
+            """))
+            conn.commit()
+        except Exception as e:
+            _rollback_quietly(conn, f"_backfill_b2b_bizids on {tbl}")
+            logger.warning("[Migration] _backfill_b2b_bizids on %s: %s", tbl, e)
+
+
 def run_migrations_and_seed():
     """Called on app startup. Idempotent — safe to run on every boot."""
     logger.info("[Migration] Starting...")
@@ -1615,6 +1642,7 @@ def run_migrations_and_seed():
         _step(conn, _ensure_sync_queue_dedup_index)  # same shape, for the outbox pending window
         _step(conn, _backfill_staff_login_name)
         _step(conn, _backfill_b2b_connection_consent)
+        _step(conn, _backfill_b2b_bizids)
         # M-7: re-derive any invoice whose paid state drifted from its ledger
         # (pull-side reconciliation was missing until Jul-2026).
         _step(conn, _repair_invoice_paid_state)

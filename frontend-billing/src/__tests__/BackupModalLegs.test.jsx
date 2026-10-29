@@ -32,6 +32,20 @@ beforeEach(() => { vi.restoreAllMocks() })
 afterEach(() => { delete global.fetch })
 
 describe('two-leg sync', () => {
+  it('stops on skipped B2B records without stamping success or starting the next leg', async () => {
+    localStorage.removeItem('bizassist_last_sync_cloud-to-local')
+    const calls = mockFetch(url => {
+      if (url.includes('/export')) return ok(exportBody(2))
+      if (url.includes('/import')) return ok({ imported: { customers: 1 }, total: 1,
+        complete: false, b2b_skipped: [{ reason: 'missing party' }] })
+      return null
+    })
+    render(<BackupModal token="t" direction="both" />)
+    await waitFor(() => expect(screen.getByText(/Import incomplete:/i)).toBeTruthy())
+    expect(screen.queryByText(/Sync complete/i)).toBeNull()
+    expect(calls.filter(url => url.includes('/import'))).toHaveLength(1)
+    expect(localStorage.getItem('bizassist_last_sync_cloud-to-local')).toBeNull()
+  })
   it('pulls before it pushes', async () => {
     // Order is deliberate: if the upload dies, the device is already whole. The
     // reverse leaves the owner billing against a device still missing rows.

@@ -11,11 +11,22 @@ export default function Live() {
   const [selected, setSelected] = useState(null)
   const [day, setDay] = useState(todayIST())
   const [trail, setTrail] = useState(null)
+  const [trailError, setTrailError] = useState(null)
+  const [trailLoading, setTrailLoading] = useState(false)
 
   useEffect(() => { const t = setInterval(reload, 30000); return () => clearInterval(t) }, [reload])
   useEffect(() => {
-    if (!selected) { setTrail(null); return }
-    api.get('/api/track/trail', { staff_id: selected, day }).then(setTrail).catch(() => setTrail(null))
+    let current = true
+    setTrail(null)
+    setTrailError(null)
+    setTrailLoading(Boolean(selected))
+    if (selected) {
+      api.get('/api/track/trail', { staff_id: selected, day })
+        .then(value => { if (current) setTrail(value) })
+        .catch(error => { if (current) setTrailError(error) })
+        .finally(() => { if (current) setTrailLoading(false) })
+    }
+    return () => { current = false }
   }, [selected, day, data])
 
   const staff = data?.staff || []
@@ -36,6 +47,8 @@ export default function Live() {
         {selected && <button className="btn btn-secondary" onClick={() => setSelected(null)}>Show everyone</button>}
       </PageHeader>
       <ErrorNote error={error} />
+      <ErrorNote error={trailError} />
+      {trailLoading && <div className="small muted" role="status">Loading route trail…</div>}
       <div className="stack" style={{ gap: 16 }}>
         <MapView markers={selected ? [...trailMarkers, ...markers.filter(m => m.id === selected)] : markers} paths={paths} fitKey={`${selected}-${day}`} />
         {selected && trail && <div className="xs muted">{trail.points.length} points on {day}. The trail has gaps while the agent's phone is locked or the app is closed.</div>}

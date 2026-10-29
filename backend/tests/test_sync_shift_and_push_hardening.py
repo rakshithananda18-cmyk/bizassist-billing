@@ -42,6 +42,8 @@ from database.models import (
 )
 import services.sync_worker as sw
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -50,9 +52,9 @@ client = TestClient(app)
 # ---------------------------------------------------------------------------
 def _signup(business_name="Shift Sync Shop"):
     uname = f"own_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": business_name,
-    })
+    }))
     assert r.status_code == 200, r.text
     b = r.json()
     return {"headers": {"Authorization": f"Bearer {b['token']}"}, "bid": b["id"], "username": uname}

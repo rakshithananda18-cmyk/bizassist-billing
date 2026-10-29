@@ -8,7 +8,7 @@
 //   /money/:view      → parties | invoices | cashbook
 // Reuses existing components/endpoints — no new backend.
 // ============================================================================
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import PageTabs from '../components/common/PageTabs'
@@ -20,6 +20,7 @@ import CashbookView from '../components/money/CashbookView'
 import PartyAccount from '../components/money/PartyAccount'
 import SettleDuesModal from '../components/payments/SettleDuesModal'
 import useInvoiceActions from '../hooks/useInvoiceActions'
+import { logger } from '../utils/logger'
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 
@@ -33,6 +34,9 @@ export default function Money() {
   const setView = (v) => { setSelectedParty(null); navigate(`/money/${v}`) }
 
   const [customers, setCustomers] = useState([])
+  const [partiesLoading, setPartiesLoading] = useState(true)
+  const [partiesError, setPartiesError] = useState(false)
+  const partiesRequestRef = useRef(0)
   const [q, setQ] = useState('')
   const [selectedParty, setSelectedParty] = useState(null)
   const [reloadKey, setReloadKey] = useState(0)
@@ -44,14 +48,30 @@ export default function Money() {
   // Invoices view AND the party drill-down — identical behaviour everywhere.
   const invoiceActions = useInvoiceActions(authFetch, { onChanged: refreshAll })
 
-  const loadParties = useCallback(() => {
-    authFetch('/customers?per_page=500')
-      .then(r => r.ok ? r.json() : [])
-      .then(d => setCustomers(Array.isArray(d) ? d : (d.customers || d.items || [])))
-      .catch(() => setCustomers([]))
+  const loadParties = useCallback(async () => {
+    const request = ++partiesRequestRef.current
+    setPartiesLoading(true)
+    setPartiesError(false)
+    try {
+      const response = await authFetch('/customers?per_page=500')
+      if (!response.ok) throw new Error(`Customers unavailable: HTTP ${response.status}`)
+      const data = await response.json()
+      if (request === partiesRequestRef.current) setCustomers(Array.isArray(data) ? data : (data.customers || data.items || []))
+    } catch (error) {
+      if (request !== partiesRequestRef.current) return
+      setCustomers([])
+      setPartiesError(true)
+      logger.warn('[MONEY] Customer accounts could not load:', error)
+    } finally {
+      if (request === partiesRequestRef.current) setPartiesLoading(false)
+    }
   }, [authFetch])
 
-  useEffect(() => { loadParties() }, [loadParties, reloadKey])
+  useEffect(() => {
+    loadParties()
+    return () => { partiesRequestRef.current++ }
+  }, [loadParties, reloadKey, user?.id])
+  useEffect(() => { setSelectedParty(null); setCustomers([]) }, [user?.id])
 
   const sendReminder = (party) => {
     const phone = (party?.phone || '').replace(/\D/g, '')
@@ -109,7 +129,15 @@ export default function Money() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredCustomers.length === 0 ? (
+                    {partiesLoading ? (
+                      <tr><td colSpan={5}><div className="empty-state" role="status">Loading customer accounts…</div></td></tr>
+                    ) : partiesError ? (
+                      <tr><td colSpan={5}><div className="empty-state" role="alert">
+                        <h3>Customer accounts are unavailable</h3>
+                        <p>The accounts could not be loaded. No balances have been changed.</p>
+                        <button type="button" className="btn btn-secondary" onClick={loadParties}>Retry customers</button>
+                      </div></td></tr>
+                    ) : filteredCustomers.length === 0 ? (
                       <tr><td colSpan={5}>
                         <div className="empty-state">
                           <div className="empty-icon"><ContactsIcon size={24} /></div>

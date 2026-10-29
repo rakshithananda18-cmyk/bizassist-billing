@@ -77,6 +77,7 @@ class BillingInvoice(BillingBase):
     invoice_date = Column(String, nullable=True)  # YYYY-MM-DD
     status = Column(String, index=True, nullable=True)  # Pending | Partial | Paid
     invoice_type = Column(String, nullable=True)  # B2B | B2C | … | credit_note
+    parent_invoice_id = Column(Integer, nullable=True, index=True)
     amount = Column(Float, nullable=True)  # legacy total (CSV imports set only this)
     total_amount = Column(Float, nullable=True, default=0.0)
     paid_amount = Column(Float, nullable=True, default=0.0)

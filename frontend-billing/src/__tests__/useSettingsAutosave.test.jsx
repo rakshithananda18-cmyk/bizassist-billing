@@ -25,6 +25,18 @@ function setup(put = async (_path, options) => response(JSON.parse(options.body)
 }
 
 describe('Settings autosave', () => {
+  it('exposes an initial read failure and retries without writing default settings', async () => {
+    const authFetch = vi.fn().mockResolvedValueOnce({ ok: false, status: 503 }).mockResolvedValue(response(original))
+    const hook = renderHook(() => useSettingsAutosave({ authFetch }))
+    await settle()
+    expect(hook.result.current.settings).toBeNull()
+    expect(hook.result.current.loadError).toMatch(/could not be loaded/)
+    act(() => hook.result.current.retryLoad())
+    await settle()
+    expect(hook.result.current.settings).toEqual(original)
+    expect(hook.result.current.loadError).toBeNull()
+    expect(authFetch.mock.calls.every(([, options]) => options?.method !== 'PUT')).toBe(true)
+  })
   it('loads without writing, then debounces rapid edits into the latest value', async () => {
     const hook = setup()
     await settle()

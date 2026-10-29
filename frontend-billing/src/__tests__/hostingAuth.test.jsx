@@ -711,7 +711,7 @@ describe('Pro trial and Local + Cloud (T6)', () => {
     mockTrialOffer = { days: 14 }
     renderRegister()
     await waitFor(() => expect(hybridBtn()).toHaveAttribute('aria-pressed', 'true'))
-    expect(screen.getByText('FREE IN TRIAL')).toBeInTheDocument()
+    expect(screen.getByText('14 DAYS FREE')).toBeInTheDocument()
     expect(screen.getByText(/Included in your 14-day Pro trial/)).toBeInTheDocument()
     expect(screen.getByText(/When the trial ends, cloud sync stops unless you upgrade to Pro/)).toBeInTheDocument()
 
@@ -720,10 +720,10 @@ describe('Pro trial and Local + Cloud (T6)', () => {
     expect(screen.queryByText(/Included in your 14-day Pro trial/)).not.toBeInTheDocument()
   })
 
-  it('Register keeps Local when the cloud offers no trial', async () => {
+  it('Register keeps the mandatory Local + Cloud trial selected without a legacy offer response', async () => {
     renderRegister()
-    await waitFor(() => expect(localBtn()).toHaveAttribute('aria-pressed', 'true'))
-    expect(screen.queryByText('FREE IN TRIAL')).not.toBeInTheDocument()
+    await waitFor(() => expect(hybridBtn()).toHaveAttribute('aria-pressed', 'true'))
+    expect(screen.getByText('14 DAYS FREE')).toBeInTheDocument()
   })
 
   it('Register explains the switch to Local when no trial was given, then lets you in', async () => {
@@ -732,6 +732,7 @@ describe('Pro trial and Local + Cloud (T6)', () => {
     const { container } = renderRegister()
     await waitFor(() => expect(hybridBtn()).toHaveAttribute('aria-pressed', 'true'))
     fireEvent.change(screen.getByPlaceholderText('e.g. store'), { target: { value: 'repeatphone' } })
+    fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '9876543210' } })
     fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'Password123!' } })
     fireEvent.change(container.querySelector('#confirmPassword'), { target: { value: 'Password123!' } })
     fireEvent.click(screen.getByLabelText(/I agree to/i))

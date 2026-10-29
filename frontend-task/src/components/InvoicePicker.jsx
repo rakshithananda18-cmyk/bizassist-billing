@@ -22,7 +22,8 @@ export default function InvoicePicker({ shop, taskType = 'delivery', initial = [
   )
   const [picked, setPicked] = useState(() => new Set(initial))
   const rows = data?.invoices || []
-  const chosen = rows.filter(i => picked.has(i.id))
+  const chosen = rows.filter(i => picked.has(i.id) && !takenBy(i, taskType)
+    && (taskType !== 'payment_collect' || i.balance_due > 0.005))
   const sum = summarizeInvoices(chosen)
   const toggle = (id) => { const s = new Set(picked); s.has(id) ? s.delete(id) : s.add(id); setPicked(s) }
 
@@ -48,16 +49,20 @@ export default function InvoicePicker({ shop, taskType = 'delivery', initial = [
             <div className="list" style={{ maxHeight: 420, overflowY: 'auto' }}>
               {rows.map(inv => {
                 const taken = takenBy(inv, taskType)
+                const nothingToCollect = taskType === 'payment_collect' && !(inv.balance_due > 0.005)
                 return (
                   <label key={inv.id} className="list-item checkbox" style={taken ? { opacity: 0.6 } : undefined}>
-                    <input type="checkbox" disabled={!!taken} checked={picked.has(inv.id)} onChange={() => toggle(inv.id)} />
+                    <input type="checkbox" disabled={!!taken || nothingToCollect} checked={picked.has(inv.id)} onChange={() => toggle(inv.id)} />
                     <span className="grow">
                       <strong>{inv.number}</strong>{inv.date && <span className="xs muted"> · {fmtDay(inv.date)}</span>}
                       {inv.lines.length > 0 && <div className="xs muted">{lineText(inv.lines)}</div>}
                       {taken && <div className="xs">Already on {TASK_TYPES[taken.task_type]?.toLowerCase()} task #{taken.task_id} ({taken.status})</div>}
+                      {nothingToCollect && <div className="xs muted">No amount due to collect</div>}
                     </span>
                     <span className="num small">
                       {rupees(inv.total)}
+                      {inv.credited > 0 && <div className="xs muted">{rupees(inv.credited)} returned</div>}
+                      {inv.credit_due > 0 && <div className="xs muted">{rupees(inv.credit_due)} credit in Billing</div>}
                       {inv.balance_due > 0
                         ? <div className="xs" style={{ color: 'var(--warning)' }}>{rupees(inv.balance_due)} due</div>
                         : <div className="xs muted">paid</div>}

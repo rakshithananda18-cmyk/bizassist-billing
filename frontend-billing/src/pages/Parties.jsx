@@ -5,6 +5,7 @@
 //              payment reminders/UPI payment links via WhatsApp.
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
+import { prepareReturnLines } from '../utils/returnPreview'
 import { useNavigate } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import { useAuth } from '../contexts/AuthContext'
@@ -68,6 +69,8 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
   const [invoices, setInvoices]     = useState([])
   const [purchases, setPurchases]   = useState([])
   const [loading, setLoading]       = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const loadRequestRef = useRef(0)
   const [activeTab, setActiveTab]   = useState('Customers')
   const [isFullScreen, setIsFullScreen] = useState(false)
   // Seeded from ?q= — see Stock.jsx. Two customers with the same name show as
@@ -96,18 +99,26 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
   const [ctxMenu, setCtxMenu] = useState(null)
 
   const load = useCallback(() => {
+    const request = ++loadRequestRef.current
     setLoading(true)
-    Promise.all([
+    setLoadError(false)
+    const read = async path => {
+      const response = await authFetch(path)
+      if (!response.ok) throw new Error(`Contacts data unavailable: HTTP ${response.status}`)
+      return response.json()
+    }
+    return Promise.all([
       // per_page is REQUIRED here. The endpoints default to 20 and this page has
       // no pagination control, so without it the list silently stopped at the
       // 20th contact alphabetically and the tab badge reported that truncated
       // count as the total — 23 customers displayed as "Customers (20)".
       // Matches InvoicesListView's `/invoices?per_page=500`.
-      authFetch('/billing/customers?per_page=500').then(r => r.ok ? r.json() : []).catch(() => []),
-      authFetch('/billing/vendors?per_page=500').then(r => r.ok ? r.json() : []).catch(() => []),
-      authFetch('/billing/invoices').then(r => r.ok ? r.json() : []).catch(() => []),
-      authFetch('/purchases').then(r => r.ok ? r.json() : []).catch(() => []),
+      read('/billing/customers?per_page=500'),
+      read('/billing/vendors?per_page=500'),
+      read('/billing/invoices'),
+      read('/purchases'),
     ]).then(([c, v, invs, purchs]) => {
+      if (request !== loadRequestRef.current) return
       const custItems = Array.isArray(c) ? c : (c && Array.isArray(c.items) ? c.items : [])
       const vendItems = Array.isArray(v) ? v : (v && Array.isArray(v.items) ? v.items : [])
       const invItems = Array.isArray(invs) ? invs : (invs && Array.isArray(invs.items) ? invs.items : [])
@@ -116,8 +127,12 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
       setVendors(vendItems)
       setInvoices(invItems)
       setPurchases(purchItems)
-    }).finally(() => setLoading(false))
-  }, [authFetch])
+    }).catch(error => {
+      if (request !== loadRequestRef.current) return
+      setLoadError(true)
+      logger.warn('[PARTIES] Contact data could not load:', error)
+    }).finally(() => { if (request === loadRequestRef.current) setLoading(false) })
+  }, [authFetch, user?.id])
 
   // Page lifecycle: guard when form modal is open with typed data
   const { blocker, isRefreshing, dirtyMessage } = usePageLifecycle({
@@ -156,6 +171,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
     // throttled — no separate 'focus' listener here (that caused a double reload).
     window.addEventListener('sync-event', handleSync)
     return () => {
+      loadRequestRef.current++
       window.removeEventListener('sync-event', handleSync)
     }
   }, [load])
@@ -408,19 +424,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
         const detail = await res.json()
         setReturningInvoice(detail)
         // Map lines
-        const lines = detail.lines.map(li => ({
-          product_id: li.product_id,
-          product_name: li.product_name,
-          quantity: 0,
-          max_quantity: li.quantity,
-          unit_price: li.unit_price,
-          cgst_rate: li.cgst_rate || 0,
-          sgst_rate: li.sgst_rate || 0,
-          igst_rate: li.igst_rate || 0,
-          cess_rate: li.cess_rate || 0,
-          unit: li.unit || 'Nos',
-          hsn_sac: li.hsn_sac || ''
-        }))
+        const lines = prepareReturnLines(detail.lines)
         setReturnLines(lines)
         setReturnNote('')
         setShowReturnModal(true)
@@ -847,6 +851,11 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
             </table>
           )
           if (loading) return <div className="page-loader"><span className="spinner" /> Loading…</div>
+          if (loadError) return <div className="empty-state" role="alert">
+            <h3>Contacts are unavailable</h3>
+            <p>Customer, supplier or balance data could not be loaded. Retry before relying on account balances.</p>
+            <button type="button" className="btn btn-secondary" onClick={load}>Retry contacts</button>
+          </div>
           if (isFullScreen) return (
             <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>
               <div className="table-fullscreen-panel">

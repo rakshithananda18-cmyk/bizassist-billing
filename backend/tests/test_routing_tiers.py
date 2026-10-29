@@ -36,6 +36,8 @@ from tests.planhelpers import grant_pro
 from services.query_router import classify
 from services.context_cache import invalidate
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -59,11 +61,11 @@ def auth_headers():
     import uuid
     username = f"test_routing_{uuid.uuid4().hex[:8]}"
     password = "TestPass123!"
-    resp = client.post("/signup", json={
+    resp = client.post("/signup", json=signup_payload({
         "username": username,
         "password": password,
         "business_name": "Routing Test Biz",
-    })
+    }))
     assert resp.status_code == 200, f"Signup failed: {resp.text}"
     # The AI endpoints are Pro-only and now enforce it; this suite tests the
     # ROUTER, so it must provision a plan (tests/planhelpers.py).

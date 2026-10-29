@@ -18,6 +18,8 @@ import pytest
 from fastapi.testclient import TestClient
 from main_groq import app
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -37,8 +39,8 @@ def _admin_headers():
 
 def _signup():
     u = f"own_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={"username": u, "password": "TestPass123!",
-                                     "business_name": "Fleet Co"})
+    r = client.post("/signup", json=signup_payload({"username": u, "password": "TestPass123!",
+                                     "business_name": "Fleet Co"}))
     assert r.status_code == 200, r.text
     return r.json()
 

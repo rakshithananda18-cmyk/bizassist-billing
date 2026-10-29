@@ -344,7 +344,7 @@ export default function Settings() {
   const [toast, setToast] = useState(null)
   const [templates, setTemplates] = useState([])
   const toastTimerRef = useRef(null)
-  const { settings, setSettings, saveStatus, saving, save } = useSettingsAutosave({
+  const { settings, setSettings, saveStatus, saving, save, loadError: settingsLoadError, retryLoad: retrySettingsLoad } = useSettingsAutosave({
     authFetch,
     onSaved: fetchSettings,
     onManualResult: result => {
@@ -523,7 +523,13 @@ export default function Settings() {
   if (!settings) {
     return (
       <AppLayout title="App Settings">
-        <BrandLoader message="Loading your app settings…" />
+        {settingsLoadError ? (
+          <div className="empty-state" role="alert">
+            <h2>Settings are unavailable</h2>
+            <p>{settingsLoadError}</p>
+            <button type="button" className="btn btn-primary" onClick={retrySettingsLoad}>Retry settings</button>
+          </div>
+        ) : <BrandLoader message="Loading your app settings…" />}
       </AppLayout>
     )
   }

@@ -30,7 +30,7 @@ from app.routers.attendance import require_checked_in
 from app.routers.runs import _check_task_type, maybe_complete_run, maybe_complete_stop
 from app.security import Principal, current_principal, get_settings, require_owner, require_staff
 from app.services import award_task_points, get_scoped, log_activity, optional_staff, prime_billing_reads, record_fix, task_out
-from app.timeutil import biz_local_to_utc, day_bounds_utc
+from app.timeutil import biz_local_to_utc, biz_now, day_bounds_utc
 
 router = APIRouter(prefix="/api", tags=["tasks"])
 
@@ -47,7 +47,7 @@ class TaskIn(BaseModel):
     boxes_planned: Optional[int] = Field(None, ge=0, le=10000)
     orders_count: Optional[int] = Field(None, ge=0, le=1000)
     reference: Optional[str] = Field(None, max_length=200)
-    amount_expected: Optional[float] = Field(None, ge=0)
+    amount_expected: Optional[float] = Field(None, ge=0, allow_inf_nan=False)
     invoice_ids: List[int] = Field(default_factory=list, max_length=MAX_PER_TASK,
                                    description="Billing invoices of the shop's linked customer")
 
@@ -139,20 +139,37 @@ class TaskPatch(BaseModel):
     boxes_planned: Optional[int] = Field(None, ge=0, le=10000)
     orders_count: Optional[int] = Field(None, ge=0, le=1000)
     reference: Optional[str] = Field(None, max_length=200)
-    amount_expected: Optional[float] = Field(None, ge=0)
+    amount_expected: Optional[float] = Field(None, ge=0, allow_inf_nan=False)
     status: Optional[Literal["cancelled", "pending"]] = None
 
 
 @router.patch("/tasks/{task_id}")
 def update_task(task_id: int, req: TaskPatch, p: Principal = Depends(require_owner), db: Session = Depends(get_db)):
-    task = get_scoped(db, FieldTask, p.business_id, task_id, "Task")
+    task = (db.query(FieldTask).filter(FieldTask.business_id == p.business_id, FieldTask.id == task_id)
+            .with_for_update(of=FieldTask).populate_existing().first())
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
     if task.status == "done":
         raise HTTPException(status_code=409, detail="Completed tasks are part of the points ledger and cannot be edited")
     data = req.model_dump(exclude_unset=True)
+    for field in ("title", "staff_id", "points", "status"):
+        if field in data and (data[field] is None or (field == "title" and not data[field].strip())):
+            raise HTTPException(status_code=422, detail=f"{field} cannot be empty")
     if "staff_id" in data:
-        task.staff_id = optional_staff(db, p.business_id, data.pop("staff_id")).id
+        staff = optional_staff(db, p.business_id, data.pop("staff_id"))
+        if task.run_id:
+            run = get_scoped(db, FieldRun, p.business_id, task.run_id, "Run")
+            if staff.id != run.staff_id:
+                raise HTTPException(status_code=409, detail="Reassign the whole run so its route and pending tasks stay with the same person")
+        task.staff_id = staff.id
     if "due_date" in data or "due_time" in data:
-        task.due_at = _due(data.pop("due_date", None), data.pop("due_time", None))
+        previous = biz_now(task.due_at) if task.due_at else None
+        day = data.pop("due_date", previous.date().isoformat() if previous else None)
+        default_clock = previous.strftime("%H:%M") if previous and day else None
+        clock = data.pop("due_time", default_clock)
+        if not day and clock:
+            raise HTTPException(status_code=422, detail="Choose a due date before setting a due time")
+        task.due_at = _due(day, clock)
     for k, v in data.items():
         setattr(task, k, v.strip() if isinstance(v, str) and k == "title" else v)
     log_activity(db, p, "task.update", entity="task", entity_id=task.id, summary=", ".join(sorted(req.model_dump(exclude_unset=True))))
@@ -186,7 +203,7 @@ class CompleteBody(BaseModel):
     geo: GeoFix
     note: Optional[str] = Field(None, max_length=1000)
     boxes_delivered: Optional[int] = Field(None, ge=0, le=10000)
-    amount_collected: Optional[float] = Field(None, ge=0)
+    amount_collected: Optional[float] = Field(None, ge=0, allow_inf_nan=False)
     payment_mode: Optional[Literal[PAYMENT_MODES]] = None  # default Cash when money was collected
     payment_ref: Optional[str] = Field(None, max_length=60)
 
@@ -197,8 +214,13 @@ def complete_task(task_id: int, body: CompleteBody, p: Principal = Depends(requi
     settings = get_settings(db, p.business_id)
     fix = validate_fix(body.geo, settings.max_accuracy_m)
     require_checked_in(db, p.staff)
-    task = get_scoped(db, FieldTask, p.business_id, task_id, "Task")
-    if task.staff_id != p.staff.id:
+    # Two in-flight retries must not both observe pending and award points or
+    # overwrite the amount collected. Lock only ft_tasks: joined optional shop
+    # rows cannot be FOR UPDATE targets on PostgreSQL.
+    task = (db.query(FieldTask).filter(FieldTask.business_id == p.business_id,
+                                     FieldTask.id == task_id, FieldTask.staff_id == p.staff.id)
+            .with_for_update(of=FieldTask).populate_existing().first())
+    if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     if task.status != "pending":
         raise HTTPException(status_code=409, detail=f"Task is already {task.status}")

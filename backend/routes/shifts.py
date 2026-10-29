@@ -20,7 +20,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from database.db import get_db
@@ -52,22 +52,22 @@ def _safe_uid(current_user: dict, db: Session) -> int:
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
 class OpenShiftRequest(BaseModel):
-    opening_cash: float
+    opening_cash: float = Field(ge=0, allow_inf_nan=False)
     notes: Optional[str] = None
 
 
 class CashMovementRequest(BaseModel):
     movement_type: str                       # paid_in | paid_out
     category: str                            # change_top_up | bank_deposit | expense | owner_withdrawal
-    amount: float
+    amount: float = Field(gt=0, allow_inf_nan=False)
     note: Optional[str] = None
     expense_category: Optional[str] = None   # for category='expense': Rent|Utilities|…|Others
 
 
 class CloseShiftRequest(BaseModel):
-    closing_cash_actual: float
-    closing_upi_actual: float = 0.0
-    leave_in_drawer: Optional[float] = None      # default: leave everything
+    closing_cash_actual: float = Field(ge=0, allow_inf_nan=False)
+    closing_upi_actual: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    leave_in_drawer: Optional[float] = Field(default=None, ge=0, allow_inf_nan=False)  # default: leave everything
     removal_destination: str = "bank_deposit"    # bank_deposit | owner_withdrawal
     notes: Optional[str] = None
 

@@ -10,7 +10,7 @@ import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -29,7 +29,7 @@ logger = logging.getLogger("bizassist.core.api.payments")
 
 class RecordPaymentRequest(BaseModel):
     invoice_id: int
-    amount_paid: float
+    amount_paid: float = Field(gt=0, allow_inf_nan=False)
     payment_mode: Optional[str] = "Cash"
     payment_date: Optional[str] = None
     note: Optional[str] = None
@@ -39,7 +39,7 @@ class RecordPaymentRequest(BaseModel):
 class RecordPaymentRequestFlexible(BaseModel):
     # Backend native fields
     invoice_id: Optional[int] = None
-    amount_paid: Optional[float] = None
+    amount_paid: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
     payment_mode: Optional[str] = None
     payment_date: Optional[str] = None
     note: Optional[str] = None
@@ -48,7 +48,7 @@ class RecordPaymentRequestFlexible(BaseModel):
     # Frontend compatibility fields
     type: Optional[str] = None
     invoice_ref: Optional[str] = None
-    amount: Optional[float] = None
+    amount: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
     method: Optional[str] = None
     reference: Optional[str] = None
     date: Optional[str] = None
@@ -57,11 +57,11 @@ class RecordPaymentRequestFlexible(BaseModel):
 class CreditNoteLine(BaseModel):
     product_id: Optional[int] = None
     product_name: str
-    quantity: float
-    unit_price: float
-    cgst_rate: float = 0.0
-    sgst_rate: float = 0.0
-    igst_rate: float = 0.0
+    quantity: float = Field(gt=0, allow_inf_nan=False)
+    unit_price: float = Field(ge=0, allow_inf_nan=False)
+    cgst_rate: float = Field(default=0.0, ge=0, le=100, allow_inf_nan=False)
+    sgst_rate: float = Field(default=0.0, ge=0, le=100, allow_inf_nan=False)
+    igst_rate: float = Field(default=0.0, ge=0, le=100, allow_inf_nan=False)
     hsn_sac: Optional[str] = None
     unit: str = "Nos"
 
@@ -110,6 +110,8 @@ def _invoice_out(inv: Invoice) -> dict:
         "sgst_total": inv.sgst_total,
         "igst_total": inv.igst_total,
         "cess_total": inv.cess_total,
+        "cash_discount": inv.cash_discount,
+        "discount_total": inv.discount_total,
         "round_off": inv.round_off,
         "total_amount": inv.total_amount,
         "paid_amount": inv.paid_amount,
@@ -215,14 +217,16 @@ def invoice_account(
         .all()
     )
 
-    total = round(inv.total_amount or inv.amount or 0.0, 2)
+    from core.billing.balances import invoice_balance, collection_status
+    balance = invoice_balance(db, inv)
+    total = balance["total"]
     # Derive paid from the payment ledger (source of truth), not inv.paid_amount —
     # a stale synced invoice can leave that column at 0 while receipts exist (the
     # "Pending but already paid" bug). Fall back to the column only when there are
     # no ledger rows.
-    paid = round(sum(p.amount_paid or 0.0 for p in payments), 2) if payments else round(inv.paid_amount or 0.0, 2)
-    outstanding = round(max(total - paid, 0.0), 2)
-    status = "Paid" if (total > 0 and paid >= total) else ("Partial" if paid > 0 else (inv.status or "Pending"))
+    paid = balance["paid"]
+    outstanding = balance["outstanding"]
+    status = collection_status(balance, inv.status or "Pending")
 
     def _date_only(d):
         return str(d).split("T")[0].split(" ")[0] if d else None
@@ -264,6 +268,9 @@ def invoice_account(
         "total": total,
         "paid": paid,
         "outstanding": outstanding,
+        "credited_amount": balance["credited"],
+        "effective_total": balance["effective_total"],
+        "return_credit": balance["credit_due"],
         "payments": payment_rows,
         "returns": returns,
     }
@@ -281,7 +288,11 @@ def record_payment(
     Idempotent on the body `idempotency_key` (inner wall) AND, when sent, on the
     `X-Client-Request-Id` header (offline outbox replay — see core.sync.idempotency)."""
     bid = current_user["id"]
-    payment_type = req.type or "received"
+    payment_type = (req.type or "received").strip().lower()
+    if payment_type != "received":
+        raise HTTPException(status_code=422, detail=(
+            "This endpoint records customer receipts only. Supplier payments require "
+            "a purchase-payment workflow and cannot be posted as customer receipts."))
 
     hit = guard.replay()
     if hit is not None:
@@ -323,7 +334,7 @@ def record_payment(
     # shift counts toward that shift's drawer tally (credit collections too).
     from core.shifts import service as shifts_svc
     operator_id = current_user.get("user_id") or bid
-    active_shift = shifts_svc.get_open_shift(db, business_id=bid, user_id=operator_id)
+    active_shift = shifts_svc.get_open_shift(db, business_id=bid, user_id=operator_id, lock=True)
 
     try:
         p = billing.record_payment(
@@ -408,7 +419,7 @@ class CreateExpenseRequest(BaseModel):
     expense_date: str  # YYYY-MM-DD
     category: str
     expense_type: str  # Direct|Indirect
-    amount: float
+    amount: float = Field(gt=0, allow_inf_nan=False)
     payment_mode: str  # Cash|UPI|Bank
     note: Optional[str] = None
 

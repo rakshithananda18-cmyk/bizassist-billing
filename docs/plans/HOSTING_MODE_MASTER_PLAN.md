@@ -1,6 +1,20 @@
 # BizAssist Hosting Mode Master Plan
 > **Version**: 1.0 | **Status**: Planning | **Scope**: Full Product Lifecycle
 
+> **29 October 2026 registration decision:** signup presents **Local only** and
+> **Local + Cloud**. A public web URL uses the cloud portion of Local + Cloud;
+> Local only is disabled there with a desktop download link. Internal `cloud`
+> routing and existing account modes remain supported for compatibility; there
+> is no separate Cloud-only signup card. Automatic sync remains Pro/trial gated.
+> First-time phone registrations receive the mandatory 14-day Pro trial, with
+> Local + Cloud preselected. Fresh signup requires a valid phone; account and
+> trial commit atomically. Reused phones do not receive a new trial. This is
+> contact-format validation, not SMS ownership verification.
+> Cloud account deletion records a tombstone but does not remotely erase local
+> desktop copies. See the [current lifecycle review](../release/2026-10-29-sync-import-lifecycle-review.md)
+> for verified behavior and the remaining deletion-propagation work. Historical
+> three-mode diagrams below describe backend residency, not current signup choices.
+
 ---
 
 ## 1. Vision

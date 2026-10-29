@@ -50,6 +50,8 @@ from database.models import User, Product, Customer, Invoice, InvoicePayment, Ex
 from core.models import StockLedger
 from core.stock import ledger as SL
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -57,9 +59,9 @@ client = TestClient(app)
 def auth_owner():
     """Sign up a business owner (non-cashier role)."""
     username = f"owner_{uuid.uuid4().hex[:8]}"
-    resp = client.post("/signup", json={
+    resp = client.post("/signup", json=signup_payload({
         "username": username, "password": "TestPass123!", "business_name": "Owner Biz"
-    })
+    }))
     assert resp.status_code == 200
     body = resp.json()
     return {"headers": {"Authorization": f"Bearer {body['token']}"}, "bid": body["id"]}
@@ -69,9 +71,9 @@ def auth_owner():
 def auth_cashier():
     """Sign up a user and change their role to cashier in the DB."""
     username = f"cashier_{uuid.uuid4().hex[:8]}"
-    resp = client.post("/signup", json={
+    resp = client.post("/signup", json=signup_payload({
         "username": username, "password": "TestPass123!", "business_name": "Cashier Biz"
-    })
+    }))
     assert resp.status_code == 200
     body = resp.json()
     bid = body["id"]
@@ -427,7 +429,7 @@ def test_credit_note_tenant_isolation(auth_owner):
 
     # A second, unrelated business signs up
     uname = f"ownerB_{uuid.uuid4().hex[:8]}"
-    b = client.post("/signup", json={"username": uname, "password": "TestPass123!", "business_name": "Other Biz"}).json()
+    b = client.post("/signup", json=signup_payload({"username": uname, "password": "TestPass123!", "business_name": "Other Biz"})).json()
     headers_b = {"Authorization": f"Bearer {b['token']}"}
 
     # ...and tries to credit-note business A's invoice → rejected (not their invoice)

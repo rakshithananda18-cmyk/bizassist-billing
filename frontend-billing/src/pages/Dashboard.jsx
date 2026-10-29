@@ -56,6 +56,8 @@ export default function Dashboard() {
   const [payments, setPayments] = useState([])
   const [chartsData, setChartsData] = useState(null)
   const [loading, setLoading]   = useState(true)
+  const [summaryError, setSummaryError] = useState(false)
+  const [paymentsError, setPaymentsError] = useState(false)
   const [viewingInvoiceNo, setViewingInvoiceNo] = useState(null)
   const [ctxMenu, setCtxMenu]   = useState(null)
 
@@ -64,23 +66,44 @@ export default function Dashboard() {
   // requests on top — that's what produced the "hundreds of pending calls".
   const loadingRef = useRef(false)
   const loadedRef = useRef(false)
+  const requestScopeRef = useRef(0)
   const load = useCallback(() => {
     if (loadingRef.current) return
     loadingRef.current = true
+    const scope = requestScopeRef.current
     // Keep the chart panel mounted during background refreshes so an explicit
     // temporary privacy reveal lasts for this dashboard visit.
     setLoading(!loadedRef.current)
     Promise.all([
-      authFetch('/dashboard-summary').then(r => r.ok ? r.json() : null).catch(() => null),
+      authFetch('/dashboard-summary').then(r => r.ok ? r.json() : undefined).catch(() => undefined),
       // Dashboard only shows the 5 most recent — don't pull the whole history.
-      authFetch('/payments?limit=5').then(r => r.ok ? r.json() : []).catch(() => []),
+      authFetch('/payments?limit=5').then(r => r.ok ? r.json() : undefined).catch(() => undefined),
       authFetch('/dashboard-charts').then(r => r.ok ? r.json() : null).catch(() => null),
     ]).then(([summaryData, paymentsData, chartData]) => {
+      if (scope !== requestScopeRef.current) return
+      setSummaryError(!summaryData)
+      setPaymentsError(paymentsData == null)
+      if (!summaryData || paymentsData == null) logger.warn('[DASHBOARD] Summary or payment activity is unavailable; showing a retry state')
       setStats(summaryData)
       setPayments(Array.isArray(paymentsData) ? paymentsData : (paymentsData?.items ?? []))
       setChartsData(chartData)
-    }).finally(() => { loadedRef.current = true; setLoading(false); loadingRef.current = false })
-  }, [authFetch])
+    }).finally(() => {
+      if (scope !== requestScopeRef.current) return
+      loadedRef.current = true; setLoading(false); loadingRef.current = false
+    })
+  }, [authFetch, user?.id])
+
+  useEffect(() => {
+    requestScopeRef.current++
+    loadedRef.current = false
+    loadingRef.current = false
+    setStats(null)
+    setPayments([])
+    setChartsData(null)
+    setSummaryError(false)
+    setPaymentsError(false)
+    return () => { requestScopeRef.current++ }
+  }, [authFetch, user?.id])
 
   // Page lifecycle: refresh when tab regains focus (onResume)
   // Must be declared AFTER load() to avoid TDZ ReferenceError.
@@ -199,6 +222,12 @@ export default function Dashboard() {
 
         {loading ? (
           <div className="page-loader"><span className="spinner" />Loading business summary…</div>
+        ) : summaryError ? (
+          <div className="empty-state" role="alert">
+            <h2>Business summary is unavailable</h2>
+            <p>Totals could not be loaded. Retry before relying on dashboard figures.</p>
+            <button type="button" className="btn btn-primary" onClick={load}>Retry dashboard</button>
+          </div>
         ) : (
           <>
             {/* KPI Summary Strip 1 — every card is CLICKABLE and jumps to its data */}
@@ -211,7 +240,7 @@ export default function Dashboard() {
                   tabIndex={to ? 0 : undefined}
                   title={to ? 'Click to open the underlying data' : undefined}
                   onClick={() => to && navigate(to)}
-                  onKeyDown={e => { if (to && (e.key === 'Enter' || e.key === ' ')) navigate(to) }}
+                  onKeyDown={e => { if (to && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); navigate(to) } }}
                   onMouseEnter={e => { if (to) e.currentTarget.style.transform = 'translateY(-1px)' }}
                   onMouseLeave={e => { if (to) e.currentTarget.style.transform = 'none' }}
                 >
@@ -230,14 +259,14 @@ export default function Dashboard() {
               return (
                 <>
                   <div className="vsummary-strip mb-6">
-                    {kpiCard('Total Revenue', fmt(s.total_revenue), `${s.invoice_count || 0} invoices — view all`, 'var(--accent)', '/payments', {}, true)}
-                    {kpiCard('Pending', s.pending_count ?? 0, s.pending_amount ? `${fmt(s.pending_amount)} outstanding` : 'invoices awaiting', '#c97c22', '/payments', {}, true)}
-                    {kpiCard('Overdue', fmt(s.overdue_amount), `${s.overdue_count ?? 0} invoices at risk`, '#c02a2a', '/payments', { color: '#c02a2a' }, true)}
+                    {kpiCard('Total Revenue', fmt(s.total_revenue), `${s.invoice_count || 0} invoices — view all`, 'var(--accent)', '/parties/invoices', {}, true)}
+                    {kpiCard('Pending', s.pending_count ?? 0, s.pending_amount ? `${fmt(s.pending_amount)} outstanding` : 'invoices awaiting', '#c97c22', '/parties/invoices', {}, true)}
+                    {kpiCard('Overdue', fmt(s.overdue_amount), `${s.overdue_count ?? 0} invoices at risk`, '#c02a2a', '/parties/invoices', { color: '#c02a2a' }, true)}
                     {kpiCard('Inventory', s.inventory_count ?? 0, 'products tracked — open', '#3a9a5c', '/stock')}
                   </div>
                   <div className="vsummary-strip mb-6">
                     {kpiCard('Low Stock Items', s.low_stock_count ?? 0, 'need restocking — open', '#c97c22', '/stock')}
-                    {kpiCard('Purchases (30d)', fmt(s.purchases_30d), 'total purchase value — open', 'var(--accent)', '/purchases', {}, true)}
+                    {kpiCard('Purchases (30d)', fmt(s.purchases_30d), 'total purchase value — open', 'var(--accent)', '/stock/purchase', {}, true)}
                     {kpiCard('Active Customers', s.active_customers ?? 0, 'in last 30 days — open', '#3a9a5c', '/parties')}
                     {kpiCard('Gross Margin', s.gross_margin ? `${s.gross_margin}%` : '—', 'estimated margin — reports', 'var(--accent)', '/reports', {}, true)}
                   </div>
@@ -262,7 +291,10 @@ export default function Dashboard() {
                   <h2 style={{ fontSize: '0.98rem', fontWeight: 700, margin: 0 }}>Live Business Day Feed</h2>
                   <span className="badge badge-accent" style={{ fontSize: '0.68rem', fontWeight: 600 }}>Real-time Feed</span>
                 </div>
-                {dayFeed.length === 0 ? (
+                {paymentsError && (
+                  <p role="status">Payment activity couldn&apos;t refresh. <button type="button" className="btn btn-secondary btn-sm" onClick={load}>Retry activity</button></p>
+                )}
+                {dayFeed.length === 0 ? paymentsError ? null : (
                   <div className="empty-state" style={{ flex: 1 }}>
                     <div className="empty-icon"><SummaryIcon size={20} /></div>
                     <h3>No recent activity</h3>

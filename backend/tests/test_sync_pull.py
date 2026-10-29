@@ -30,6 +30,8 @@ from main_groq import app
 from database.db import SessionLocal
 from database.models import Product, Inventory, User
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -42,7 +44,7 @@ def _clear_rate_limit():
 
 def _signup(name="Pull Biz"):
     uname = f"pull_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={"username": uname, "password": "TestPass123!", "business_name": name})
+    r = client.post("/signup", json=signup_payload({"username": uname, "password": "TestPass123!", "business_name": name}))
     assert r.status_code == 200, r.text
     b = r.json()
     bid = b["id"]

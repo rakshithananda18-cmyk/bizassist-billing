@@ -29,6 +29,8 @@ from fastapi.testclient import TestClient          # noqa: E402
 from main_groq import app                           # noqa: E402
 import services.sync_worker as sw                   # noqa: E402
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 FLAGS = ("_SELF_SIGNED_REJECTED", "_PULL_AUTH_BLOCKED", "_PLAN_BLOCKED", "_OFFLINE_STATE")
@@ -42,9 +44,9 @@ def biz():
     another test's answer.
     """
     uname = f"hs_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": "Halt Co",
-    })
+    }))
     assert r.status_code == 200, r.text
     acct = r.json()
     bid = acct["user"]["id"] if isinstance(acct.get("user"), dict) else acct["id"]
@@ -113,10 +115,10 @@ def test_a_halt_on_one_business_does_not_leak_to_another(biz):
     bid, auth = biz
     sw._PLAN_BLOCKED[bid] = True
 
-    other = client.post("/signup", json={
+    other = client.post("/signup", json=signup_payload({
         "username": f"hs2_{uuid.uuid4().hex[:8]}", "password": "TestPass123!",
         "business_name": "Other Co",
-    }).json()
+    })).json()
     other_auth = {"Authorization": f"Bearer {other['token']}"}
     try:
         assert _halt(other_auth)["reason"] is None

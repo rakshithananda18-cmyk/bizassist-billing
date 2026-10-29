@@ -23,6 +23,8 @@ sys.path.insert(0, backend_path)
 from fastapi.testclient import TestClient
 from main_groq import app
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -47,7 +49,7 @@ def _signup(uname, public_id=None):
     body = {"username": uname, "password": "TestPass123!", "business_name": "Orphan Co"}
     if public_id:
         body["public_id"] = public_id
-    return client.post("/signup", json=body)
+    return client.post("/signup", json=signup_payload(body))
 
 
 def test_reclaim_rekeys_orphan_and_logs_in(monkeypatch):

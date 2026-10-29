@@ -31,14 +31,16 @@ from database.db import SessionLocal            # noqa: E402
 from database.models import Inventory           # noqa: E402
 from core.models import Godown                  # noqa: E402
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def _hybrid_business():
     uname = f"gd_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": "Godown Co",
-    })
+    }))
     assert r.status_code == 200, r.text
     acct = r.json()
     bid = acct["user"]["id"] if isinstance(acct.get("user"), dict) else acct["id"]

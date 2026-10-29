@@ -9,6 +9,7 @@ from database.db import get_db, DATABASE_URL
 from database.models import User
 from services.auth import hash_password, verify_password, create_access_token, get_active_user, create_sse_ticket, require_owner, get_active_user_or_ticket, redeem_sse_ticket
 from services.rate_limiter import check_ip_rate_limit
+from services.registration_policy import TRIAL_DAYS, normalize_phone, phone_key
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.auth")
@@ -223,7 +224,7 @@ class SignupRequest(BaseModel):
     username: str
     password: str
     business_name: str
-    phone: Optional[str] = None            # captured at registration → stored on the profile
+    phone: Optional[str] = None  # required for fresh signup; legacy local mirrors may omit it
     # Optional cloud-issued BizID. When the downloaded app registers, it creates
     # the account on the cloud first (the single authority), then mirrors it
     # locally passing the cloud's public_id here so both sides share one BizID.
@@ -407,30 +408,24 @@ def staff_login(req: StaffLoginRequest, request: Request, db: Session = Depends(
 # ---------------------------------------------------------------------------
 # PRO TRIAL FOR NEW BUSINESSES
 # ---------------------------------------------------------------------------
-# Every business registered on the CLOUD starts on Pro for PRO_TRIAL_DAYS
-# (default 14), so a new owner can work on the web straight away, then install
+# Every eligible first-time business registered on the CLOUD starts on Pro for
+# 14 days, so a new owner can work on the web straight away, then install
 # the desktop app and bring their data down while sync is still Pro. The grant
 # is the ordinary `settings.subscription` shape with status "trial", so
 # effective_plan() — and every gate built on it, Field Team included — turns it
 # on now and off at the end date with no extra plumbing.
 #
-# Cloud only, and never for a local mirror (a signup carrying the cloud's
-# public_id): the cloud is the plan authority, and the desktop copies the plan
+# Cloud only, and never on the local mirror backend: the cloud is the plan
+# authority, and the desktop copies the plan
 # down through _sync_subscription_from_cloud like any admin grant.
 
 def _trial_days() -> int:
-    import os
-    try:
-        return max(0, int(os.environ.get("PRO_TRIAL_DAYS", "14")))
-    except ValueError:
-        return 14
+    return TRIAL_DAYS
 
 
 def _phone_key(phone: Optional[str]) -> Optional[str]:
-    """Last 10 digits of a phone number, or None when it has fewer. The signup
-    field is free text, so '+91 94947 47419' and '9494747419' must match."""
-    digits = "".join(c for c in (phone or "") if c.isdigit())
-    return digits[-10:] if len(digits) >= 10 else None
+    """Canonical, country-aware fingerprint; equivalent formatting matches."""
+    return phone_key(phone)
 
 
 @router.get("/trial-offer")
@@ -453,9 +448,13 @@ def _start_trial(user: User, phone: Optional[str], db: Session) -> Optional[dict
     if days <= 0:
         return None
     key = _phone_key(phone)
+    if not key:
+        raise ValueError("A valid phone number is required for the first-time trial.")
     if key:
-        # One trial per phone number. The field is optional and unverified, so
-        # this only stops the easy case: a second username on the same number.
+        from database.models import TrialPhoneClaim
+        from sqlalchemy.exc import IntegrityError
+        if db.get(TrialPhoneClaim, key) is not None:
+            return None
         others = db.query(User.phone).filter(
             User.id != user.id,
             User.parent_business_id.is_(None),
@@ -464,6 +463,16 @@ def _start_trial(user: User, phone: Optional[str], db: Session) -> Optional[dict
         if any(_phone_key(p) == key for (p,) in others):
             logger.info(f"[TRIAL] No trial for '{user.username}': phone already registered to another business.")
             return None
+        # The unique key serialises simultaneous registrations with one phone.
+        # The caller owns the outer account+trial transaction.
+        try:
+            with db.begin_nested():
+                db.add(TrialPhoneClaim(phone_hash=key))
+                db.flush()
+        except IntegrityError:
+            if db.get(TrialPhoneClaim, key) is not None:
+                return None
+            raise
 
     now = utc_now()
     sub = {
@@ -479,7 +488,7 @@ def _start_trial(user: User, phone: Optional[str], db: Session) -> Optional[dict
     s = json.loads(user.settings) if user.settings else {}
     s["subscription"] = sub
     user.settings = json.dumps(s)
-    db.commit()
+    db.flush()
     logger.info(f"[TRIAL] '{user.username}' (BizID {user.public_id}) started a {days}-day Pro trial, ends {sub['expires_at']}.")
     return sub
 
@@ -488,6 +497,14 @@ def _start_trial(user: User, phone: Optional[str], db: Session) -> Optional[dict
 def signup(req: SignupRequest, db: Session = Depends(get_db)):
     logger.info(f"[AUTH] Signup attempt for username '{req.username}'...")
     try:
+        # Legacy local mirrors may have no phone on their older cloud account.
+        # Fresh registrations on either platform always require a valid contact.
+        phone = None
+        if req.phone or _DB_MODE == "cloud" or not (req.public_id or "").strip():
+            try:
+                phone = normalize_phone(req.phone)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from None
         # Enforce password strength policy
         password = req.password
         if len(password) < 8:
@@ -539,11 +556,11 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             business_name=req.business_name,
             role="enterprise",
             public_id=bizid,
-            phone=(req.phone or None),   # captured at registration → shows on the profile
+            phone=phone,
         )
         db.add(user)
         try:
-            db.commit()
+            db.flush()
         except IntegrityError as e:
             err_str = str(e)
             if "pk_users" in err_str or "users_id_seq" in err_str or "Key (id)=" in err_str:
@@ -557,26 +574,22 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
                         business_name=req.business_name,
                         role="enterprise",
                         public_id=bizid,
-                        phone=(req.phone or None),
+                        phone=phone,
                     )
                     db.add(user)
-                    db.commit()
+                    db.flush()
                 else:
                     raise
             else:
                 raise
         db.refresh(user)
 
-        # A brand-new cloud business starts on the Pro trial. A local mirror
-        # (public_id given) takes its plan from the cloud instead. The account
-        # already exists, so a failed grant must not fail the signup.
+        # Account, phone claim and trial grant commit together. A grant failure
+        # must not leave an eligible new owner stranded on a free account.
         trial = None
-        if _DB_MODE == "cloud" and not (req.public_id or "").strip():
-            try:
-                trial = _start_trial(user, req.phone, db)
-            except Exception as e:
-                db.rollback()
-                logger.error(f"[TRIAL] Could not start the trial for '{req.username}': {e}", exc_info=True)
+        if _DB_MODE == "cloud":
+            trial = _start_trial(user, phone, db)
+        db.commit()
 
         token = create_access_token({
             "id": user.id,
@@ -604,6 +617,7 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             "trial": ({"days": _trial_days(), "expires_at": trial["expires_at"]} if trial else None),
         }
     except HTTPException:
+        db.rollback()
         raise
     except Exception as e:
         db.rollback()

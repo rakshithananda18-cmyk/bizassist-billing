@@ -908,6 +908,32 @@ def record_business_tombstone(db: Session, *, public_id: str = None, username: s
         logger.warning("[TOMBSTONE] failed to record (non-fatal): %s", e)
 
 
+def _prepare_product_purge(user_id: int, db: Session):
+    """Keep other businesses' historical snapshots while removing optional FKs.
+
+    Required product references cannot be detached. Refuse before mutating any
+    rows so an operator can repair the cross-business reference explicitly.
+    """
+    product_ids = [r[0] for r in db.query(Product.id).filter(Product.business_id == user_id).all()]
+    if not product_ids:
+        return
+    foreign_b2b = db.query(B2BOrderLineItem.id).join(B2BOrder).filter(
+        B2BOrderLineItem.product_id.in_(product_ids),
+        B2BOrder.seller_business_id != user_id,
+        B2BOrder.buyer_business_id != user_id).first()
+    foreign_transfer = db.query(StockTransferLineItem.id).join(StockTransfer).filter(
+        StockTransferLineItem.product_id.in_(product_ids),
+        StockTransfer.business_id != user_id).first()
+    if foreign_b2b or foreign_transfer:
+        raise HTTPException(status_code=409, detail=(
+            "Business deletion stopped: another business has a required product reference. "
+            "Repair that reference before retrying. No business data was deleted."))
+    for model in (InvoiceLineItem, PurchaseInvoiceLineItem, PurchaseOrderLineItem,
+                  Inventory, StockLedger):
+        db.query(model).filter(model.product_id.in_(product_ids)).update(
+            {model.product_id: None}, synchronize_session=False)
+
+
 def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False,
                         delete_staff: bool = True) -> dict:
     """Thorough, dependency-ordered purge of ALL data owned by business `user_id`.
@@ -923,6 +949,14 @@ def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False
     (and any re-key the caller performs) commits or rolls back atomically.
     Returns a summary dict.
     """
+    from services.field_business_cleanup import purge_field_business
+    field_deleted = purge_field_business(db, user_id)
+    _prepare_product_purge(user_id, db)
+    from services.registration_policy import retain_trial_claim
+    target_owner = db.get(User, user_id)
+    if target_owner is not None:
+        retain_trial_claim(db, target_owner)
+
     # 1. Delete child lines that do NOT have business_id directly
     db.query(InvoiceLineItem).filter(
         InvoiceLineItem.invoice_id.in_(
@@ -1059,6 +1093,7 @@ def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False
         "business_id": user_id,
         "staff_deleted": staff_deleted or 0,
         "owner_deleted": owner_deleted,
+        "field_deleted": field_deleted,
     }
 
 

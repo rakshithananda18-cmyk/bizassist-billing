@@ -387,7 +387,11 @@ def resolve_parent_fk_uids(
             # arriving from the cloud failed with "FOREIGN KEY constraint
             # failed" and took its line items down with it (they defer waiting
             # for a parent order that could never land).
-            bizid = data.get(f"{fk_col}_bizid")
+            bizid = data.get(f"{fk_col}_bizid") or (
+                data.get("seller_bizid") if "seller" in fk_col else (
+                    data.get("buyer_bizid") if "buyer" in fk_col else None
+                )
+            )
             if not bizid:
                 continue          # legacy payload or a same-business user FK
             try:
@@ -408,6 +412,10 @@ def resolve_parent_fk_uids(
                             log_prefix, table_name, bizid)
                 return True
             data[fk_col] = resolved
+            if "seller" in fk_col and not data.get("seller_bizid"):
+                data["seller_bizid"] = bizid
+            elif "buyer" in fk_col and not data.get("buyer_bizid"):
+                data["buyer_bizid"] = bizid
             continue
 
         try:

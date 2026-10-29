@@ -33,6 +33,8 @@ from fastapi.testclient import TestClient
 import routes.auth as auth_routes
 from main_groq import app
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 OLD_PW, NEW_PW = "TestPass123!", "NewPass456!"
 
@@ -46,8 +48,8 @@ def clear_rate_limit_windows():
 
 def _owner_with_product(public_id):
     uname = f"own_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={"username": uname, "password": OLD_PW,
-                                     "business_name": "Sri Lakshmi Medicals", "public_id": public_id})
+    r = client.post("/signup", json=signup_payload({"username": uname, "password": OLD_PW,
+                                     "business_name": "Sri Lakshmi Medicals", "public_id": public_id}))
     assert r.status_code == 200, r.text
     h = {"Authorization": f"Bearer {r.json()['token']}"}
     assert client.post("/products", headers=h, json={"name": "Paracetamol 500", "selling_price": 20.0}).status_code in (200, 201)

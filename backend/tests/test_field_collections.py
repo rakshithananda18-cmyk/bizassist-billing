@@ -24,6 +24,8 @@ from core.field_team import FieldTeamBase, FtShop, FtStaff, FtTask, FtTaskInvoic
 from database.db import SessionLocal, engine
 from database.models import Customer, Invoice, InvoicePayment, Product
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -36,8 +38,8 @@ def field_team_tables():
 
 def _signup(role=None):
     username = f"fc_owner_{uuid.uuid4().hex[:8]}"
-    body = client.post("/signup", json={"username": username, "password": "TestPass123!",
-                                        "business_name": "Field Biz"}).json()
+    body = client.post("/signup", json=signup_payload({"username": username, "password": "TestPass123!",
+                                        "business_name": "Field Biz"})).json()
     headers = {"Authorization": f"Bearer {body['token']}"}
     if role:
         from services.auth import create_access_token

@@ -21,13 +21,15 @@ from main_groq import app
 from database.db import SessionLocal
 from database.models import Product, Invoice
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def test_serial_no_flows_from_pos_to_print_payload():
     username = f"test_serial_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={"username": username, "password": "TestPass123!",
-                                     "business_name": "Mobile Shop"})
+    r = client.post("/signup", json=signup_payload({"username": username, "password": "TestPass123!",
+                                     "business_name": "Mobile Shop"}))
     assert r.status_code == 200, r.text
     headers = {"Authorization": f"Bearer {r.json()['token']}"}
     bid = r.json()["id"]

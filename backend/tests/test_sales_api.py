@@ -27,15 +27,17 @@ from database.db import SessionLocal
 from database.models import Product, Inventory, User
 from core.catalog import barcode as PB
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 @pytest.fixture(scope="module")
 def auth():
     username = f"test_sales_{uuid.uuid4().hex[:8]}"
-    resp = client.post("/signup", json={
+    resp = client.post("/signup", json=signup_payload({
         "username": username, "password": "TestPass123!", "business_name": "Sales Test Biz",
-    })
+    }))
     assert resp.status_code == 200, f"Signup failed: {resp.text}"
     body = resp.json()
     bid = body["id"]

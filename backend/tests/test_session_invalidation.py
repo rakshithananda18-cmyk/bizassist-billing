@@ -14,6 +14,8 @@ from main_groq import app
 from database.db import SessionLocal
 from database.models import User
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -22,7 +24,7 @@ def test_staff_role_update_invalidates_old_jwt():
     their existing JWT receives a 401 Session Revoked response."""
     # 1. Sign up owner
     owner_uname = f"owner_{uuid.uuid4().hex[:8]}"
-    r_owner = client.post("/signup", json={"username": owner_uname, "password": "OwnerPass123!", "business_name": "Test Revoke Biz"})
+    r_owner = client.post("/signup", json=signup_payload({"username": owner_uname, "password": "OwnerPass123!", "business_name": "Test Revoke Biz"}))
     assert r_owner.status_code == 200, r_owner.text
     owner_data = r_owner.json()
     owner_headers = {"Authorization": f"Bearer {owner_data['token']}"}
@@ -56,11 +58,11 @@ def test_staff_role_update_invalidates_old_jwt():
 def test_deleted_staff_token_fails_closed_even_with_a_warm_version_cache():
     """Deleting a staff row must revoke its JWT immediately, not after cache TTL."""
     owner_uname = f"owner_delete_{uuid.uuid4().hex[:8]}"
-    owner = client.post("/signup", json={
+    owner = client.post("/signup", json=signup_payload({
         "username": owner_uname,
         "password": "OwnerPass123!",
         "business_name": "Deleted Staff Test",
-    })
+    }))
     assert owner.status_code == 200, owner.text
     owner_headers = {"Authorization": f"Bearer {owner.json()['token']}"}
 
@@ -89,11 +91,11 @@ def test_deleted_staff_token_fails_closed_even_with_a_warm_version_cache():
 
 def test_staff_cannot_run_owner_sync_pull_or_discover_accounts_anonymously():
     owner_uname = f"owner_sync_{uuid.uuid4().hex[:8]}"
-    owner = client.post("/signup", json={
+    owner = client.post("/signup", json=signup_payload({
         "username": owner_uname,
         "password": "OwnerPass123!",
         "business_name": "Sync Guard Test",
-    })
+    }))
     assert owner.status_code == 200, owner.text
     owner_headers = {"Authorization": f"Bearer {owner.json()['token']}"}
 

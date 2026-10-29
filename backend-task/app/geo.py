@@ -21,12 +21,13 @@ import math
 from typing import Optional
 
 from fastapi import HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 EARTH_RADIUS_M = 6_371_008.8
 
 
 class GeoFix(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
     lat: float = Field(..., ge=-90, le=90)
     lng: float = Field(..., ge=-180, le=180)
     accuracy: Optional[float] = Field(None, ge=0, description="metres, from the browser")

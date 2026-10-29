@@ -32,14 +32,16 @@ from main_groq import app                           # noqa: E402
 from database.db import SessionLocal                # noqa: E402
 from database.models import Inventory, UploadedFile  # noqa: E402
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def test_file_id_never_leaves_the_database_that_issued_it():
     uname = f"loc_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": "Local Col Co",
-    })
+    }))
     assert r.status_code == 200, r.text
     acct = r.json()
     bid = acct["user"]["id"] if isinstance(acct.get("user"), dict) else acct["id"]

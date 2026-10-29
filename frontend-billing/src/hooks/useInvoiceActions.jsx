@@ -16,6 +16,7 @@ import { logger } from '../utils/logger'
 import { buildUpiUri, buildWhatsAppShareUrl } from '../utils/share'
 import InvoiceViewerModal from '../components/invoice/InvoiceViewerModal'
 import SaleReturnModal from '../components/parties/SaleReturnModal'
+import { prepareReturnLines } from '../utils/returnPreview'
 import RecordPaymentModal from '../components/payments/RecordPaymentModal'
 
 const toast = (type, msg) => window.dispatchEvent(new CustomEvent('show_toast', { detail: { type, msg } }))
@@ -110,13 +111,7 @@ export default function useInvoiceActions(authFetch, { onChanged } = {}) {
       if (!res.ok) { toast('error', 'Failed to fetch invoice details.'); return }
       const detail = await res.json()
       setReturningInvoice(detail)
-      setReturnLines((detail.lines || []).map(li => ({
-        product_id: li.product_id, product_name: li.product_name, quantity: 0,
-        max_quantity: li.quantity, unit_price: li.unit_price,
-        cgst_rate: li.cgst_rate || 0, sgst_rate: li.sgst_rate || 0,
-        igst_rate: li.igst_rate || 0, cess_rate: li.cess_rate || 0,
-        unit: li.unit || 'Nos', hsn_sac: li.hsn_sac || '',
-      })))
+      setReturnLines(prepareReturnLines(detail.lines))
       setReturnNote('')
       setShowReturnModal(true)
     } catch (e) {
