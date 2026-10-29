@@ -57,6 +57,30 @@ afterEach(() => {
 })
 
 describe('InvoiceViewer', () => {
+  it.each([
+    [0, 100],
+    [10, 0],
+  ])('shows finite progress for a zero-value invoice with %s balance due', async (balanceDue, expectedProgress) => {
+    const data = gstPayload()
+    apiGet.mockResolvedValue(gstPayload({ totals: { ...data.totals, grand_total: 0, amount_paid: 0, balance_due: balanceDue } }))
+    mount()
+    const progress = await screen.findByRole('progressbar', { name: 'Invoice payment progress' })
+    expect(progress).toHaveAttribute('aria-valuenow', String(expectedProgress))
+    expect(progress.firstElementChild).toHaveStyle({ width: `${expectedProgress}%` })
+    expect(progress.innerHTML).not.toContain('NaN')
+    expect(apiPost.mock.calls.some(([path]) => path === '/billing/invoices')).toBe(false)
+  })
+  it('keeps the integrated close action available during loading and uses the latest callback', async () => {
+    apiGet.mockReturnValue(new Promise(() => {}))
+    const firstClose = vi.fn(), latestClose = vi.fn()
+    const view = render(<MemoryRouter><InvoiceViewer invoiceNo="INV-42" embedded onClose={firstClose} /></MemoryRouter>)
+    await userEvent.click(screen.getByRole('button', { name: 'Close invoice viewer' }))
+    expect(firstClose).toHaveBeenCalledOnce()
+    view.rerender(<MemoryRouter><InvoiceViewer invoiceNo="INV-42" embedded onClose={latestClose} /></MemoryRouter>)
+    await userEvent.click(screen.getByRole('button', { name: 'Close invoice viewer' }))
+    expect(latestClose).toHaveBeenCalledOnce()
+    expect(firstClose).toHaveBeenCalledOnce()
+  })
   it('fetches the payload once and renders the default (classic) template', async () => {
     mount()
     await waitFor(() => expect(screen.getAllByTestId('invoice-classic').length).toBeGreaterThan(0))
@@ -79,6 +103,7 @@ describe('InvoiceViewer', () => {
     await waitFor(() => expect(screen.getAllByTestId('invoice-classic').length).toBeGreaterThan(0))
 
     expect(apiGet).toHaveBeenCalledTimes(1)                 // never refetched
+    expect(apiRaw.mock.calls.filter(([path]) => path.endsWith('/account'))).toHaveLength(1)
     expect(payload).toEqual(snapshot)                       // never mutated
     expect(Object.isFrozen(payload)).toBe(true)             // frozen on load
     // template_selected beacon fired for the switch

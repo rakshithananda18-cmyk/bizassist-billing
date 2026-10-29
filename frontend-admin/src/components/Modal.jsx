@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { Icon } from './icons'
 
 /**
  * Generic modal shell — the shared template for popups/forms.
@@ -43,8 +44,9 @@ export default function Modal({
                 onClick={onClose}
                 title="Close"
                 aria-label="Close"
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                ×
+                <Icon name="x" size={16} />
               </button>
             )}
           </div>

@@ -250,17 +250,22 @@ export default function AdminCampaigns() {
   return (
     <div className="admin-main" style={{ margin: 0, padding: 0 }}>
       {/* Header */}
-      <div className="admin-header-row" style={{ borderBottom: '1.5px solid var(--border-color)', paddingBottom: 20 }}>
+      <div className="admin-header-row">
         <div className="admin-title-group">
-          <h1>✦ CAMPAIGNS & OFFERS</h1>
-          <p>Author announcements, target the fleet, ship offers — and watch the funnel</p>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="rocket" size={22} style={{ color: 'var(--accent)' }} />
+            <span>Campaigns & Offers</span>
+          </h1>
+          <p>Author promotions, broadcast in-app announcements, target audiences, and track funnel redemptions</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn-flush" onClick={() => { setOfferError(''); setShowOfferModal(true) }} style={{ padding: '10px 16px', fontSize: 13 }}>
-            + New Offer
+          <button className="btn-flush" onClick={() => { setOfferError(''); setShowOfferModal(true) }}>
+            <Icon name="plus" size={14} />
+            <span>New Offer Code</span>
           </button>
-          <button className="btn-flush" onClick={() => { setCampaignError(''); setAudiencePreview(null); setShowCampaignModal(true) }} style={{ padding: '10px 16px', fontSize: 13 }}>
-            + New Campaign
+          <button className="btn-primary" onClick={() => { setCampaignError(''); setAudiencePreview(null); setShowCampaignModal(true) }}>
+            <Icon name="plus" size={14} />
+            <span>New Campaign</span>
           </button>
         </div>
       </div>

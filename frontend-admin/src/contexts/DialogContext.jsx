@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react'
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { Icon } from '../components/icons'
 
 const DialogContext = createContext(null)
@@ -9,6 +9,32 @@ export function useDialog() {
 
 export function DialogProvider({ children }) {
   const [dialog, setDialog] = useState(null) // { type: 'alert'|'confirm', message, resolve }
+  const dialogRef = useRef(null)
+
+  useEffect(() => {
+    if (!dialog) return undefined
+    const previousFocus = document.activeElement
+    const controls = () => Array.from(dialogRef.current?.querySelectorAll('button:not([disabled])') || [])
+    controls()[0]?.focus()
+    const onKey = event => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        dialog.resolve(false)
+        setDialog(null)
+      } else if (event.key === 'Tab') {
+        const buttons = controls()
+        const index = buttons.indexOf(document.activeElement)
+        if (event.shiftKey && index <= 0) { event.preventDefault(); buttons.at(-1)?.focus() }
+        else if (!event.shiftKey && (index < 0 || index === buttons.length - 1)) { event.preventDefault(); buttons[0]?.focus() }
+      }
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('keydown', onKey, true)
+      if (previousFocus?.isConnected) previousFocus.focus?.()
+    }
+  }, [dialog])
 
   const showAlert = (message) => {
     return new Promise((resolve) => {
@@ -49,31 +75,31 @@ export function DialogProvider({ children }) {
       {children}
       {dialog && (
         <div className="custom-modal-overlay" style={{ zIndex: 99999 }}>
-          <div className="custom-modal-card" style={{ maxWidth: 420 }}>
+          <div className="custom-modal-card" ref={dialogRef} role="alertdialog" aria-modal="true" aria-label={dialog.type === 'confirm' ? 'Confirm Action' : 'Notification'} style={{ maxWidth: 420 }}>
             <div className="custom-modal-title">
               {dialog.type === 'confirm' ? (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <Icon name="warn" size={18} style={{ color: 'var(--warning-color, #f59e0b)' }} /> Confirm Action
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <Icon name="warn" size={18} style={{ color: 'var(--warning)' }} /> Confirm Action
                 </span>
               ) : (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <Icon name="alert" size={18} style={{ color: 'var(--info-color, #3b82f6)' }} /> Notification
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <Icon name="alert" size={18} style={{ color: 'var(--accent)' }} /> Notification
                 </span>
               )}
             </div>
-            <div className="custom-modal-body" style={{ margin: '8px 0', fontSize: '14px', lineHeight: '1.5' }}>
+            <div className="custom-modal-body" style={{ margin: '10px 0 16px', fontSize: '13.5px', lineHeight: '1.5', color: 'var(--text-primary)' }}>
               {dialog.message.split('\n').map((line, idx) => (
-                <div key={idx} style={{ marginBottom: line ? '6px' : '12px' }}>{line}</div>
+                <div key={idx} style={{ marginBottom: line ? '6px' : '10px' }}>{line}</div>
               ))}
             </div>
-            <div className="custom-modal-actions">
+            <div className="custom-modal-actions" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               {dialog.type === 'confirm' && (
-                <button className="custom-modal-btn cancel-btn" onClick={() => handleClose(false)}>
+                <button className="btn-flush" onClick={() => handleClose(false)}>
                   Cancel
                 </button>
               )}
-              <button className="custom-modal-btn confirm-btn" onClick={() => handleClose(true)}>
-                OK
+              <button className="btn-primary" onClick={() => handleClose(true)}>
+                {dialog.type === 'confirm' ? 'Confirm' : 'OK'}
               </button>
             </div>
           </div>

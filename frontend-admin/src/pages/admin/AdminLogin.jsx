@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
+import { BuildingMark } from '../../components/Logo'
 
 export default function AdminLogin() {
   const { adminLogin } = useAuth()
@@ -41,12 +42,16 @@ export default function AdminLogin() {
     {/* Decorative blurred admin interface behind the login card */}
     <div className="login-backdrop lb-admin" aria-hidden="true">
       <div className="lb-topbar">
-        <div className="lb-logo" style={{ margin: 0, fontSize: 18 }}>✦ BIZASSIST</div>
+        <div className="lb-logo" style={{ margin: 0, fontSize: 18, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <BuildingMark size={18} /> BIZASSIST
+        </div>
         <div className="lb-pill" /><div className="lb-pill" />
         <div className="lb-pill wide" /><div className="lb-pill" />
       </div>
       <main className="lb-main">
-        <div className="lb-h1">✦ BizAssist Admin Workspace</div>
+        <div className="lb-h1" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <BuildingMark size={20} /> BizAssist Admin Workspace
+        </div>
         <div className="lb-row">
           <div className="lb-card" /><div className="lb-card" /><div className="lb-card" />
         </div>
@@ -57,7 +62,9 @@ export default function AdminLogin() {
     <div className="login-container" id="admin-login-container">
       <div className="login-card">
         <div className="login-glow"></div>
-        <div className="login-symbol">✦</div>
+        <div className="login-symbol" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <BuildingMark size={32} />
+        </div>
         <h1 className="login-title">BIZASSIST</h1>
         <p className="login-subtitle">Admin Monitoring Workspace</p>
 

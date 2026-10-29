@@ -226,6 +226,16 @@ export function SidebarIcon({ size, strokeWidth, className }) {
   )
 }
 
+export function PanelLeftIcon({ size, strokeWidth, className }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth, className)}>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <line x1="9" y1="3" x2="9" y2="21" />
+    </svg>
+  )
+}
+export const SidebarToggleIcon = PanelLeftIcon
+
 export function EditIcon({ size, strokeWidth, className }) {
   return (
     <svg {...defaultSvgProps(size, strokeWidth, className)}>
@@ -696,6 +706,35 @@ export function ReturnArrowIcon({ size = 14, strokeWidth, className, style }) {
     <svg {...defaultSvgProps(size, strokeWidth ?? 2, className)} style={style}>
       <polyline points="9 14 4 9 9 4" />
       <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+    </svg>
+  )
+}
+
+/** Bug / Issue outlined SVG icon */
+export function BugIcon({ size = 16, strokeWidth = 1.7, className, style }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth, className)} style={style}>
+      <path d="m8 2 1.88 1.88" />
+      <path d="M14.12 3.88 16 2" />
+      <path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1" />
+      <path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6" />
+      <path d="M12 20v-9" />
+      <path d="M6.53 9C4.6 8.8 3 7.1 3 5" />
+      <path d="M6 13H2" />
+      <path d="M3 21c0-2.1 1.7-3.9 3.8-4" />
+      <path d="M20.97 5c0 2.1-1.6 3.8-3.5 4" />
+      <path d="M22 13h-4" />
+      <path d="M17.2 17c2.1.1 3.8 1.9 3.8 4" />
+    </svg>
+  )
+}
+
+/** WhatsApp chat outline SVG icon */
+export function WhatsAppOutlineIcon({ size = 16, strokeWidth = 1.7, className, style }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth, className)} style={style}>
+      <path d="M3 21l1.65-3.8a9 9 0 1 1 3.4 2.9L3 21" />
+      <path d="M9 10a.5.5 0 0 0 1 0V9a.5.5 0 0 0-1 0v1a5 5 0 0 0 5 5h1a.5.5 0 0 0 0-1h-1a.5.5 0 0 0 0 1" />
     </svg>
   )
 }

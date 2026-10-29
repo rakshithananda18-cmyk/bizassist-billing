@@ -1,28 +1,42 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
 import { API_BASE } from '../../config'
+import { Icon } from '../../components/icons'
 
 export default function AdminUsage() {
   const { authFetch } = useAuth()
-  const [stats, setStats] = useState([])
+  const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
+  const usageRequest = useRef(0)
 
   useEffect(() => {
     loadUsage()
+    return () => { ++usageRequest.current }
   }, [])
 
   async function loadUsage() {
+    const requestId = ++usageRequest.current
     setLoading(true)
+    setLoadError(null)
     try {
       const res = await authFetch(`${API_BASE}/admin/usage-stats`)
       if (!res.ok) throw new Error('Failed to load usage statistics')
       const data = await res.json()
+      const fields = ['queries_today', 'queries_limit', 'tokens_today', 'tokens_limit', 'complex_today', 'complex_limit', 'requests_per_minute']
+      if (!Array.isArray(data) || data.some(s => !s || fields.some(field =>
+        s[field] == null || typeof s[field] !== 'number' || !Number.isFinite(s[field]) || s[field] < 0))) {
+        throw new Error('Invalid usage statistics response')
+      }
+      if (requestId !== usageRequest.current) return
       setStats(data)
     } catch (err) {
+      if (requestId !== usageRequest.current) return
       logger.error(err)
+      setLoadError('Usage statistics could not be loaded.')
     } finally {
-      setLoading(false)
+      if (requestId === usageRequest.current) setLoading(false)
     }
   }
 
@@ -32,35 +46,48 @@ export default function AdminUsage() {
     return 'green'
   }
 
+  // The admin API accepts zero quotas. They have no percentage denominator;
+  // avoid 0/0 while still showing any usage recorded against that quota.
+  const quotaPercent = (used, limit) => limit > 0 ? Math.max(0, Math.min((used / limit) * 100, 100)) : (used > 0 ? 100 : 0)
+
   return (
     <div className="admin-main" style={{ margin: 0, padding: 0 }}>
       {/* Header */}
-      <div className="admin-header-row" style={{ borderBottom: '1.5px solid var(--border-color)', paddingBottom: 20 }}>
+      <div className="admin-header-row">
         <div className="admin-title-group">
-          <h1>✦ TODAY'S USAGE DASHBOARD</h1>
-          <p>Real-time tracking of API queries, tokens used, and complex reasoning runs per merchant</p>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="chart" size={22} style={{ color: 'var(--accent)' }} />
+            <span>Today's Usage & Rate Limits</span>
+          </h1>
+          <p>Real-time tracking of API queries, tokens consumed, and complex reasoning runs per merchant</p>
         </div>
-        <button className="btn-flush" onClick={loadUsage} style={{ padding: '10px 16px', fontSize: 13 }}>
-          Refresh Stats ⟳
+        <button className="btn-flush" onClick={loadUsage} disabled={loading} style={{ padding: '8px 14px', fontSize: 13 }}>
+          <Icon name="refresh" size={13} />
+          <span>Refresh Stats</span>
         </button>
       </div>
 
+      {loadError && <div role="alert" style={{ marginTop: 16, color: 'var(--danger)' }}>
+        <p>{loadError}{stats ? ' Showing the last loaded usage data.' : ''}</p>
+        <button type="button" className="btn-flush" onClick={loadUsage} disabled={loading}>Retry usage</button>
+      </div>}
+
       {/* Usage Cards Grid */}
-      <div className="admin-table-widget" style={{ marginTop: 24 }}>
-        <div className="admin-table-title" style={{ marginBottom: 16 }}>Live Merchant Usage Stats</div>
+      <div className="admin-table-widget" style={{ marginTop: 20 }}>
+        <div className="admin-table-title" style={{ marginBottom: 16 }}>Live Merchant Usage Statistics</div>
         
-        {loading ? (
+        {loading && !stats ? (
           <div className="vskel"></div>
-        ) : stats.length === 0 ? (
-          <div style={{ color: 'var(--secondary-text)', fontSize: 13, padding: 10 }}>
+        ) : stats?.length === 0 ? (
+          <div style={{ color: 'var(--text-muted)', fontSize: 13, padding: 20, textAlign: 'center' }}>
             No usage data logged yet today.
           </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        ) : stats ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {stats.map(s => {
-              const qPct = Math.min((s.queries_today / s.queries_limit) * 100, 100)
-              const tPct = Math.min((s.tokens_today / s.tokens_limit) * 100, 100)
-              const cPct = Math.min((s.complex_today / s.complex_limit) * 100, 100)
+              const qPct = quotaPercent(s.queries_today, s.queries_limit)
+              const tPct = quotaPercent(s.tokens_today, s.tokens_limit)
+              const cPct = quotaPercent(s.complex_today, s.complex_limit)
 
               return (
                 <div key={s.username} style={{ border: '1px solid var(--border-color)', borderRadius: 10, padding: 16 }}>
@@ -142,7 +169,7 @@ export default function AdminUsage() {
               )
             })}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   )

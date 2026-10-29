@@ -1,0 +1,20 @@
+.support-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.support-workspace > *, .support-subject-row > * { min-width: 0; }
+.support-subject-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+.support-section input, .support-section select { min-width: 0; max-width: 100%; }
+.support-submit-row { flex-wrap: wrap; gap: 14px; }
+.support-section button:focus-visible, .support-section a:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 3px;
+}
+@media (max-width: 1000px) {
+  .support-workspace { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 540px) {
+  .support-subject-row { grid-template-columns: minmax(0, 1fr); }
+  .support-form-card { padding: 18px !important; }
+}

@@ -403,9 +403,9 @@ html[data-logged="true"] .login-symbol {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -414,84 +414,83 @@ html[data-logged="true"] .login-symbol {
 }
 
 .custom-modal-card {
-    background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--glass-border);
-    border-radius: 12px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg, 12px);
     padding: 24px;
-    max-width: 400px;
-    width: 85%;
-    box-shadow: var(--glass-highlight), var(--shadow-lg);
+    max-width: 440px;
+    width: 90%;
+    box-shadow: var(--shadow-lg);
     animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 14px;
 }
 
 .custom-modal-title {
     font-size: 16px;
     font-weight: 700;
-    color: var(--accent-color);
-    border-bottom: 1.5px solid var(--border-color);
-    padding-bottom: 8px;
+    font-family: var(--font-serif);
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px;
 }
 
 .custom-modal-body {
     font-size: 13.5px;
     line-height: 1.6;
-    color: var(--text-color);
+    color: var(--text-primary);
     word-break: break-word;
 }
 
 .custom-modal-actions {
     display: flex;
     justify-content: flex-end;
-    gap: 12px;
+    gap: 10px;
     margin-top: 8px;
 }
 
 .custom-modal-btn {
-    padding: 9px 18px;
-    border-radius: 8px;
+    padding: 8px 16px;
+    border-radius: var(--radius-md, 8px);
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
-    border: 1px solid var(--glass-border);
-    background: var(--glass-bg);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    color: var(--text-color);
-    box-shadow: var(--glass-highlight), var(--shadow-sm);
+    transition: all 0.15s ease;
+    border: 1px solid var(--border);
+    background: var(--bg-2);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
 }
 
 .custom-modal-btn:hover {
-    background: var(--glass-bg-hover);
-    border-color: var(--accent-color);
-    color: var(--accent-color);
-    box-shadow: var(--glass-highlight), var(--glass-shadow);
+    background: var(--bg-1);
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
 .custom-modal-btn.confirm-btn {
-    background: rgba(201, 83, 42, 0.85);
+    background: var(--accent);
     color: #ffffff;
-    border-color: rgba(255, 255, 255, 0.25);
-    box-shadow: inset 0 1px 1.5px rgba(255, 255, 255, 0.45), 0 3px 10px rgba(193,95,60,0.25);
+    border-color: var(--accent);
 }
 
 .custom-modal-btn.confirm-btn:hover {
-    background: rgba(168, 64, 26, 0.95);
-    border-color: rgba(255, 255, 255, 0.25);
-    box-shadow: inset 0 1px 1.5px rgba(255, 255, 255, 0.45), 0 5px 16px rgba(193,95,60,0.35);
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+    color: #ffffff;
 }
 
 .custom-modal-btn.cancel-btn {
-    opacity: 0.8;
+    background: var(--bg-2);
+    color: var(--text-primary);
+    border-color: var(--border);
 }
 
 .custom-modal-btn.cancel-btn:hover {
-    opacity: 1;
+    background: var(--bg-1);
+    border-color: var(--text-muted);
+    color: var(--text-primary);
 }
 
 @keyframes fadeIn {

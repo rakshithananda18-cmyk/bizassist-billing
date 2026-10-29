@@ -75,7 +75,7 @@ export function AppRoutes() {
       <Route path="/stock"        element={<ProtectedRoute><StockWorkspace /></ProtectedRoute>} />
       <Route path="/stock/:tab"   element={<ProtectedRoute><StockWorkspace /></ProtectedRoute>} />
       <Route path="/reports"  element={<ProtectedRoute><Reports   /></ProtectedRoute>} />
-      <Route path="/import"   element={<ProtectedRoute><Import    /></ProtectedRoute>} />
+      <Route path="/import"   element={<ProtectedRoute><Navigate to="/settings?tab=migration" replace /></ProtectedRoute>} />
       {/* Unified B2B workspace (Order · Outgoing · Incoming · Connections).
           The two legacy routes redirect into the matching tab so existing
           bookmarks, nav links and help deep-links keep working. */}
@@ -84,7 +84,7 @@ export function AppRoutes() {
       <Route path="/b2b-orders"  element={<Navigate to="/b2b?tab=outgoing" replace />} />
       <Route path="/profile"     element={<ProtectedRoute><Navigate to="/settings?tab=profile" replace /></ProtectedRoute>} />
       <Route path="/settings"    element={<ProtectedRoute><Settings    /></ProtectedRoute>} />
-      <Route path="/support"     element={<ProtectedRoute><Support     /></ProtectedRoute>} />
+      <Route path="/support"     element={<Navigate to="/settings?tab=support" replace />} />
       <Route path="/pos-live-counter"    element={<ProtectedRoute><POSLiveCounter    /></ProtectedRoute>} />
       <Route path="/invoice/:invoiceNo/view" element={<ProtectedRoute><AppLayout title="Invoice"><InvoiceViewer /></AppLayout></ProtectedRoute>} />
       <Route path="/staff"       element={<Navigate to="/settings?tab=staff" replace />} />

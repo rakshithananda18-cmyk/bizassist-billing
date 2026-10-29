@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
 import { useDialog } from '../../contexts/DialogContext'
@@ -9,8 +9,10 @@ import { Icon } from '../../components/icons'
 export default function AdminDashboard() {
   const { authFetch, adminLogout } = useAuth()
   const { showAlert, showConfirm, showError } = useDialog()
-  const [stats, setStats] = useState({ businesses: 0, revenue: 0, files: 0 })
+  const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
+  const statsRequest = useRef(0)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [routerMode, setRouterMode] = useState(null)      // 'legacy' | 'shadow' | 'new'
   const [routerBusy, setRouterBusy] = useState(false)
@@ -18,6 +20,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     loadDashboardStats()
     loadRouterMode()
+    return () => { ++statsRequest.current }
   }, [])
 
   async function loadRouterMode() {
@@ -59,15 +62,22 @@ export default function AdminDashboard() {
   }
 
   async function loadDashboardStats() {
+    const requestId = ++statsRequest.current
     setLoading(true)
+    setLoadError(null)
     try {
       const res = await authFetch(`${API_BASE}/admin/businesses`)
       if (!res.ok) throw new Error('Failed to load merchant directory')
       const data = await res.json()
+      if (!Array.isArray(data) || data.some(b => !b || b.total_revenue == null || b.upload_count == null
+        || !Number.isFinite(Number(b.total_revenue)) || !Number.isFinite(Number(b.upload_count)))) {
+        throw new Error('Invalid merchant directory response')
+      }
+      if (requestId !== statsRequest.current) return
       
       const count = data.length
-      const combinedRevenue = data.reduce((sum, b) => sum + (b.total_revenue || 0), 0)
-      const combinedFiles = data.reduce((sum, b) => sum + (b.upload_count || 0), 0)
+      const combinedRevenue = data.reduce((sum, b) => sum + Number(b.total_revenue), 0)
+      const combinedFiles = data.reduce((sum, b) => sum + Number(b.upload_count), 0)
 
       setStats({
         businesses: count,
@@ -75,9 +85,11 @@ export default function AdminDashboard() {
         files: combinedFiles
       })
     } catch (err) {
+      if (requestId !== statsRequest.current) return
       logger.error(err)
+      setLoadError('Business overview could not be loaded.')
     } finally {
-      setLoading(false)
+      if (requestId === statsRequest.current) setLoading(false)
     }
   }
 
@@ -86,6 +98,7 @@ export default function AdminDashboard() {
     try {
       const res = await authFetch(`${API_BASE}/admin/flush-all-cache`, { method: 'POST' })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || data.error || 'Cache flush failed')
       await showAlert(data.message || 'All caches flushed successfully.')
     } catch (err) {
       await showError(err)
@@ -97,6 +110,7 @@ export default function AdminDashboard() {
     try {
       const res = await authFetch(`${API_BASE}/admin/reset-chroma-documents`, { method: 'POST' })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || data.error || 'Chroma reset failed')
       await showAlert(data.message || 'Chroma documents reset successfully.')
     } catch (err) {
       await showError(err)
@@ -108,6 +122,7 @@ export default function AdminDashboard() {
     try {
       const res = await authFetch(`${API_BASE}/admin/wipe-all-data`, { method: 'DELETE' })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || data.error || 'Data wipe failed')
       await showAlert(data.message || 'All dynamic business data wiped successfully.')
       loadDashboardStats()
     } catch (err) {
@@ -128,118 +143,200 @@ export default function AdminDashboard() {
     <div className="admin-main" style={{ margin: 0, padding: 0 }}>
       <div className="admin-header-row">
         <div className="admin-title-group">
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><BuildingMark size={24} /> BIZASSIST ADMIN WORKSPACE</h1>
-          <p>Aggregated tracking & telemetry for all enterprise business accounts</p>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <BuildingMark size={24} /> BizAssist Admin Workspace
+          </h1>
+          <p>Aggregated tracking, limits, and telemetry for all enterprise business accounts</p>
         </div>
         <div className="admin-header-actions">
+          <button type="button" className="btn-flush" onClick={loadDashboardStats} disabled={loading}>
+            <Icon name="refresh" size={14} /> Refresh overview
+          </button>
           {/* Flush Cache Dropdown */}
           <div className={`flush-dropdown ${dropdownOpen ? 'open' : ''}`} onClick={e => e.stopPropagation()}>
-            <button className="btn-flush" style={{ padding: '10px 16px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => setDropdownOpen(!dropdownOpen)}>
-              <Icon name="trash" size={14} /> System Cache <Icon name="chevronDown" size={12} />
+            <button className="btn-flush" style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => setDropdownOpen(!dropdownOpen)}>
+              <Icon name="trash" size={14} />
+              <span>System Cache</span>
+              <Icon name="chevronDown" size={12} />
             </button>
             <div className="flush-dropdown-menu">
               <button className="flush-dropdown-item" onClick={() => { setDropdownOpen(false); handleFlushAll(); }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="refresh" size={14} /> Flush All Query Cache</span>
-                <span style={{ fontSize: 11, color: 'var(--secondary-text)', marginLeft: 'auto' }}>All users</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Icon name="refresh" size={14} /> Flush All Query Cache</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>All users</span>
               </button>
               <button className="flush-dropdown-item" onClick={() => { setDropdownOpen(false); handleResetChroma(); }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Icon name="brain" size={14} /> Reset Chroma Documents</span>
-                <span style={{ fontSize: 11, color: 'var(--secondary-text)', marginLeft: 'auto' }}>Fix dim errors</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Icon name="brain" size={14} /> Reset Chroma Documents</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>Fix dim errors</span>
               </button>
-              <button className="flush-dropdown-item" onClick={() => { setDropdownOpen(false); handleWipeAllData(); }} style={{ borderTop: '1px solid var(--border-color)' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--danger-color)' }}><Icon name="warn" size={14} /> Wipe All Business Data</span>
-                <span style={{ fontSize: 11, color: 'var(--secondary-text)', marginLeft: 'auto' }}>Wipe DB</span>
+              <div className="flush-dropdown-divider" />
+              <button className="flush-dropdown-item danger" onClick={() => { setDropdownOpen(false); handleWipeAllData(); }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Icon name="warn" size={14} /> Wipe All Business Data</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>Wipe DB</span>
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      {loading ? (
+      {loadError && <div role="alert" style={{ marginTop: 16, color: 'var(--danger)' }}>
+        <p>{loadError}{stats ? ' Showing the last loaded overview.' : ''}</p>
+        <button type="button" className="btn-flush" onClick={loadDashboardStats} disabled={loading}>Retry overview</button>
+      </div>}
+      {loading && !stats ? (
         <div className="vskel"></div>
-      ) : (
+      ) : stats ? (
         <>
           {/* STATS STRIP */}
-          <div className="vsummary-strip-three" style={{ marginTop: 24 }}>
-            <div className="vsummary-card" style={{ borderLeftColor: 'var(--accent-color)', cursor: 'default' }}>
-              <div className="vsummary-label">Registered Businesses</div>
-              <div className="vsummary-value">{stats.businesses}</div>
-              <div className="vsummary-sub">active sandboxes</div>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: 16,
+            marginTop: 18,
+          }}>
+            <div style={{
+              background: 'var(--bg-2)',
+              border: '1px solid var(--border)',
+              borderLeft: '4px solid var(--accent)',
+              borderRadius: 'var(--radius-lg, 12px)',
+              padding: '18px 20px',
+              boxShadow: 'var(--shadow-sm)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Registered Businesses</span>
+                <Icon name="users" size={16} style={{ color: 'var(--accent)' }} />
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "var(--font-serif)", color: 'var(--text-primary)' }}>{stats.businesses}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>active sandboxes</div>
             </div>
-            <div className="vsummary-card" style={{ borderLeftColor: '#3a9a5c', cursor: 'default' }}>
-              <div className="vsummary-label">Combined Revenue</div>
-              <div className="vsummary-value">₹{stats.revenue.toLocaleString('en-IN')}</div>
-              <div className="vsummary-sub">across all accounts</div>
+
+            <div style={{
+              background: 'var(--bg-2)',
+              border: '1px solid var(--border)',
+              borderLeft: '4px solid var(--success)',
+              borderRadius: 'var(--radius-lg, 12px)',
+              padding: '18px 20px',
+              boxShadow: 'var(--shadow-sm)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Combined Revenue</span>
+                <Icon name="wallet" size={16} style={{ color: 'var(--success)' }} />
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "var(--font-serif)", color: 'var(--text-primary)' }}>₹{stats.revenue.toLocaleString('en-IN')}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>across all accounts</div>
             </div>
-            <div className="vsummary-card" style={{ borderLeftColor: '#c97c22', cursor: 'default' }}>
-              <div className="vsummary-label">Total Files Logged</div>
-              <div className="vsummary-value">{stats.files}</div>
-              <div className="vsummary-sub">datasets uploaded</div>
+
+            <div style={{
+              background: 'var(--bg-2)',
+              border: '1px solid var(--border)',
+              borderLeft: '4px solid var(--warning)',
+              borderRadius: 'var(--radius-lg, 12px)',
+              padding: '18px 20px',
+              boxShadow: 'var(--shadow-sm)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Total Files Logged</span>
+                <Icon name="file" size={16} style={{ color: 'var(--warning)' }} />
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "var(--font-serif)", color: 'var(--text-primary)' }}>{stats.files}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>datasets uploaded</div>
             </div>
           </div>
 
           {/* AI Router Mode switch */}
-          <div className="admin-table-widget" style={{ marginTop: 24 }}>
-            <div className="admin-table-title">
-              AI Router Mode
-              {routerMode && (
-                <span style={{
-                  marginLeft: 10, fontSize: 12, padding: '3px 10px', borderRadius: 12,
-                  background: routerMode === 'new' ? 'rgba(99,102,241,.15)'
-                            : routerMode === 'shadow' ? 'rgba(201,124,34,.15)'
-                            : 'rgba(100,116,139,.15)',
-                  color: routerMode === 'new' ? '#6366f1'
-                       : routerMode === 'shadow' ? '#c97c22'
-                       : 'var(--secondary-text)',
-                }}>
-                  ● {routerMode.toUpperCase()}
-                </span>
-              )}
-            </div>
-            <div style={{ color: 'var(--secondary-text)', fontSize: '13.5px', lineHeight: 1.6, margin: '10px 0 14px' }}>
-              Switch how chat questions are routed — takes effect on the next message, no restart.
-              Resets to the .env default (<code>LLM_ROUTER</code>) on server restart.
-            </div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              {[
-                { key: 'legacy', icon: <Icon name="building" size={16} />, label: 'Legacy',  desc: 'exact previous behaviour' },
-                { key: 'shadow', icon: <Icon name="eye" size={16} />, label: 'Shadow',  desc: 'legacy answers + comparison logs' },
-                { key: 'new',    icon: <Icon name="brain" size={16} />, label: 'New',     desc: 'LLM router steers, legacy fallback' },
-              ].map(opt => (
-                <button
-                  key={opt.key}
-                  className="btn-flush"
-                  disabled={routerBusy}
-                  onClick={() => handleRouterMode(opt.key)}
-                  style={{
-                    padding: '10px 16px', fontSize: 13, textAlign: 'left',
-                    opacity: routerBusy ? 0.6 : 1,
-                    border: routerMode === opt.key
-                      ? '2px solid var(--accent-color)' : '1px solid var(--border-color)',
-                    fontWeight: routerMode === opt.key ? 700 : 500,
-                  }}
-                >
-                  {opt.icon} {opt.label}
-                  <span style={{ display: 'block', fontSize: 11, color: 'var(--secondary-text)', fontWeight: 400 }}>
-                    {opt.desc}
+          <div className="admin-table-widget" style={{ marginTop: 20 }}>
+            <div className="admin-table-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>AI Router Mode</span>
+                {routerMode && (
+                  <span className="tag" style={{
+                    background: routerMode === 'new' ? 'rgba(99,102,241,.12)'
+                              : routerMode === 'shadow' ? 'var(--warning-dim)'
+                              : 'var(--bg-1)',
+                    color: routerMode === 'new' ? '#6366f1'
+                         : routerMode === 'shadow' ? 'var(--warning)'
+                         : 'var(--text-secondary)',
+                    border: '1px solid var(--border)',
+                  }}>
+                    {routerMode.toUpperCase()}
                   </span>
-                </button>
-              ))}
+                )}
+              </div>
+            </div>
+            <div style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5, margin: '8px 0 14px' }}>
+              Switch how chat questions are routed — takes effect on the next message without restart.
+              Resets to the environment default (<code>LLM_ROUTER</code>) on server reboot.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+              {[
+                { key: 'legacy', icon: 'building', label: 'Legacy Mode',  desc: 'Exact previous deterministic behaviour' },
+                { key: 'shadow', icon: 'eye',      label: 'Shadow Mode',  desc: 'Legacy answers + silent comparison logs' },
+                { key: 'new',    icon: 'brain',    label: 'New AI Router', desc: 'LLM router steers with automatic fallback' },
+              ].map(opt => {
+                const isSelected = routerMode === opt.key
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    disabled={routerBusy}
+                    onClick={() => handleRouterMode(opt.key)}
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: 'var(--radius-md, 8px)',
+                      textAlign: 'left',
+                      cursor: routerBusy ? 'wait' : 'pointer',
+                      opacity: routerBusy ? 0.6 : 1,
+                      border: isSelected ? '1.5px solid var(--accent)' : '1px solid var(--border)',
+                      background: isSelected ? 'var(--accent-dim)' : 'var(--bg-2)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: isSelected ? 600 : 500, color: isSelected ? 'var(--accent)' : 'var(--text-primary)', fontSize: 13.5 }}>
+                      <Icon name={opt.icon} size={15} />
+                      <span>{opt.label}</span>
+                    </div>
+                    <span style={{ display: 'block', fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4 }}>
+                      {opt.desc}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           </div>
 
-          {/* Quick guide card */}
-          <div className="admin-table-widget" style={{ marginTop: 24 }}>
+          {/* Quick operations guide */}
+          <div className="admin-table-widget" style={{ marginTop: 20 }}>
             <div className="admin-table-title">Admin Quick Operations</div>
-            <div style={{ color: 'var(--secondary-text)', fontSize: '13.5px', lineHeight: 1.6, marginTop: 12 }}>
-              Welcome to the BizAssist Admin portal. Use the navigation sidebar to:
-              <br />• View and manage merchant users, inspect databases, wipe user data, or modify rate limits in **Businesses**.
-              <br />• Monitor API requests limits, queries count, token logs, and AI runs in **Usage & Limits**.
-              <br />• Inspect active cache memory states and execute database schema resets in **Cache & System**.
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, marginTop: 12 }}>
+              <div style={{ padding: '12px 14px', background: 'var(--bg-1)', borderRadius: 'var(--radius-md, 8px)', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', marginBottom: 4 }}>
+                  <Icon name="users" size={14} style={{ color: 'var(--accent)' }} /> Businesses
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  View registered merchants, audit user limits, inspect database tables, and manage Pro plans.
+                </div>
+              </div>
+
+              <div style={{ padding: '12px 14px', background: 'var(--bg-1)', borderRadius: 'var(--radius-md, 8px)', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', marginBottom: 4 }}>
+                  <Icon name="chart" size={14} style={{ color: 'var(--accent)' }} /> Usage & Limits
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  Monitor daily API request allowances, token burn, queries count, and AI execution times.
+                </div>
+              </div>
+
+              <div style={{ padding: '12px 14px', background: 'var(--bg-1)', borderRadius: 'var(--radius-md, 8px)', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', marginBottom: 4 }}>
+                  <Icon name="trash" size={14} style={{ color: 'var(--accent)' }} /> Cache & System
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  Inspect active context and query memory caches, flush stale embeddings, and run schema resets.
+                </div>
+              </div>
             </div>
           </div>
         </>
-      )}
+      ) : null}
     </div>
   )
 }

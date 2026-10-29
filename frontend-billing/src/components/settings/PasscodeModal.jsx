@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { LockIcon } from '../Icons'
+import { LockIcon, EditIcon, DeleteIcon } from '../Icons'
 import { overlayStyle, boxStyle, inputStyle } from './SettingsPrimitives'
 
 // ── Passcode Setup Modal ──────────────────────────────────────────────────
@@ -43,10 +43,10 @@ export default function PasscodeModal({ open, hasLock, onClose, setupPasscode, c
         {step === 'menu' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <button className="btn btn-secondary" onClick={() => { setStep('set'); setNewPin(''); setError('') }}
-              style={{ justifyContent: 'flex-start' }}>✏️ Change Passcode</button>
+              style={{ justifyContent: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 7 }}><EditIcon size={14} /> Change Passcode</button>
             <button className="btn" onClick={() => setStep('clear')}
-              style={{ background: 'var(--danger-muted,rgba(239,68,68,.12))', color: 'var(--danger,#ef4444)', border: '1px solid var(--danger,#ef4444)', justifyContent: 'flex-start' }}
-            >🗑️ Remove Passcode</button>
+              style={{ background: 'var(--danger-muted,rgba(239,68,68,.12))', color: 'var(--danger,#ef4444)', border: '1px solid var(--danger,#ef4444)', justifyContent: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 7 }}
+            ><DeleteIcon size={14} /> Remove Passcode</button>
             <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
           </div>
         )}

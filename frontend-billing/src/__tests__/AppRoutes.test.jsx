@@ -51,6 +51,23 @@ describe('deferred workspace routes', () => {
     expect(screen.getByLabelText('Current page')).toHaveTextContent('/settings?tab=profile')
   })
 
+  it.each([
+    ['/import', 'migration', 'owner'],
+    ['/support', 'support', 'owner'],
+    ['/support', 'support', 'cashier'],
+  ])('keeps the legacy %s route in its settings section for %s (%s)', async (path, tab, role) => {
+    auth.user = { id: 1, role }
+    renderAt(path)
+    expect(await screen.findByRole('heading', { name: 'App settings' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Current page')).toHaveTextContent(`/settings?tab=${tab}`)
+  })
+
+  it('requires authentication for the relocated support workspace', async () => {
+    renderAt('/support')
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Current page')).toHaveTextContent('/login')
+  })
+
   it('keeps the offline billing counter immediately available as a core route', () => {
     auth.user = { id: 1, role: 'cashier' }
     renderAt('/sales')

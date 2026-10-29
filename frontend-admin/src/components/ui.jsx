@@ -12,6 +12,7 @@
 //  outline icons in ./icons.)
 // ============================================================================
 import { logger } from '../utils/logger'
+import { Icon } from './icons'
 
 export function PageHeader({ title, subtitle, actions, badge, style }) {
   return (
@@ -200,26 +201,26 @@ export function Section({
             style={{
               background: 'transparent',
               border: 'none',
-              padding: '4px 8px',
-              fontSize: 16,
+              padding: '4px 6px',
               cursor: 'pointer',
-              color: 'var(--secondary-text)',
+              color: 'var(--text-muted)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0,
               lineHeight: 1,
-              transition: 'color 0.2s ease',
+              transition: 'color 0.15s ease',
             }}
-            onMouseOver={e => e.currentTarget.style.color = 'var(--accent-color)'}
-            onMouseOut={e => e.currentTarget.style.color = 'var(--secondary-text)'}
+            onMouseOver={e => e.currentTarget.style.color = 'var(--accent)'}
+            onMouseOut={e => e.currentTarget.style.color = 'var(--text-muted)'}
           >
             <span style={{
-              display: 'inline-block',
+              display: 'inline-flex',
               transition: 'transform 0.22s ease',
               transform: open ? 'rotate(0deg)' : 'rotate(180deg)',
-              fontWeight: 600,
-            }}>^</span>
+            }}>
+              <Icon name="chevronDown" size={14} />
+            </span>
           </button>
         )}
       </div>

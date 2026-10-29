@@ -4,7 +4,7 @@
 // sync → AI) · activity cohorts · churn-risk list. Everything reads from
 // GET /admin/metrics; churn rows deep-link to the business drill-down and the
 // Campaigns page (target at-risk merchants with an offer — the loop closes).
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
@@ -14,10 +14,18 @@ import { Icon } from '../../components/icons'
 
 function Big({ label, value, sub, tone }) {
   return (
-    <div className="widget" style={{ flex: 1, minWidth: 170 }}>
-      <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--secondary-text)', marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 30, fontWeight: 700, fontFamily: "'Crimson Pro',serif", color: tone || 'var(--text-color)' }}>{value}</div>
-      {sub && <div style={{ fontSize: 12, color: 'var(--secondary-text)', marginTop: 2 }}>{sub}</div>}
+    <div style={{
+      flex: 1,
+      minWidth: 180,
+      background: 'var(--bg-2)',
+      border: '1px solid var(--border)',
+      borderRadius: 'var(--radius-lg, 12px)',
+      padding: '16px 20px',
+      boxShadow: 'var(--shadow-sm)',
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "var(--font-serif)", color: tone || 'var(--text-primary)' }}>{value}</div>
+      {sub && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
     </div>
   )
 }
@@ -52,36 +60,58 @@ export default function AdminMetrics() {
   const { authFetch } = useAuth()
   const [m, setM] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
+  const metricsRequest = useRef(0)
 
   const load = useCallback(async () => {
+    const requestId = ++metricsRequest.current
     setLoading(true)
+    setLoadError(null)
     try {
       const res = await authFetch(`${API_BASE}/admin/metrics`)
-      if (res.ok) setM(await res.json())
+      if (!res.ok) throw new Error('Failed to load fleet metrics')
+      const data = await res.json()
+      const isCount = value => typeof value === 'number' && Number.isFinite(value) && value >= 0
+      if (!data || !['total', 'active_7d', 'active_30d'].every(key => isCount(data.activity?.[key]))
+        || !['free', 'pro'].every(key => isCount(data.plan_mix?.[key]))
+        || !['registered', 'first_invoice', 'ten_invoices', 'sync_enabled', 'used_ai'].every(key => isCount(data.funnel?.[key]))
+        || !Array.isArray(data.churn_risk) || data.churn_risk.some(row => !row || typeof row !== 'object')
+        || !Array.isArray(data.expiring_within_14d) || data.expiring_within_14d.some(row => !row || typeof row !== 'object')) throw new Error('Invalid fleet metrics response')
+      if (requestId !== metricsRequest.current) return
+      setM(data)
     } catch (err) {
+      if (requestId !== metricsRequest.current) return
       logger.error(err)
+      setLoadError('Fleet metrics could not be loaded.')
     } finally {
-      setLoading(false)
+      if (requestId === metricsRequest.current) setLoading(false)
     }
   }, [authFetch])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(); return () => { ++metricsRequest.current } }, [load])
 
   return (
     <div className="admin-main" style={{ margin: 0, padding: 0 }}>
-      <div className="admin-header-row" style={{ borderBottom: '1.5px solid var(--border-color)', paddingBottom: 20 }}>
+      <div className="admin-header-row">
         <div className="admin-title-group">
-          <h1>✦ BUSINESS METRICS</h1>
-          <p>Plan mix, activation funnel, activity cohorts and churn risk — across the fleet</p>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="sparkle" size={22} style={{ color: 'var(--accent)' }} />
+            <span>Fleet Growth & Metrics</span>
+          </h1>
+          <p>Plan mix, activation funnel, activity cohorts, and churn risk detection across the network</p>
         </div>
-        <button className="btn-flush" onClick={load} disabled={loading} style={{ padding: '10px 16px', fontSize: 13 }}>
-          <Icon name="refresh" size={14} /> Refresh
+        <button className="btn-flush" onClick={load} disabled={loading} style={{ padding: '8px 14px', fontSize: 13 }}>
+          <Icon name="refresh" size={14} /> <span>Refresh</span>
         </button>
       </div>
 
-      {loading || !m ? (
+      {loadError && <div role="alert" style={{ marginTop: 16, color: 'var(--danger)' }}>
+        <p>{loadError}{m ? ' Showing the last loaded fleet metrics.' : ''}</p>
+        <button type="button" className="btn-flush" onClick={load} disabled={loading}>Retry metrics</button>
+      </div>}
+      {loading && !m ? (
         <div className="vskel" style={{ padding: 20, marginTop: 24 }}></div>
-      ) : (
+      ) : m ? (
         <>
           {/* Headline cards */}
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 24 }}>
@@ -173,7 +203,7 @@ export default function AdminMetrics() {
             </Section>
           )}
         </>
-      )}
+      ) : null}
     </div>
   )
 }

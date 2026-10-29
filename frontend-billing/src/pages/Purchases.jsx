@@ -4,7 +4,7 @@
 //              bills, supports parsing scanned PDFs via Claude/Groq OCR, creates
 //              new batches, and records debit note purchase returns.
 // ============================================================================
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import { useAuth } from '../contexts/AuthContext'
@@ -493,6 +493,58 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
   // Search box, defined once. It goes INSIDE the workspace toolbar when
   // embedded — otherwise this view spends a whole 48px row on a single input,
   // which is what the other three tabs stopped doing.
+  const isReturnsTab = activeTab === 'Returns (Debit Notes)'
+
+  // Context-aware action buttons aligned to the active purchase sub-view
+  const purchaseActions = useMemo(() => {
+    if (isReturnsTab) {
+      return [
+        {
+          label: '+ Manual Bill',
+          icon: <PlusIcon size={13} />,
+          action: () => openModal(true),
+          secondary: true,
+          title: 'Create purchase bill manually without OCR',
+        },
+        {
+          label: 'Upload Bill',
+          icon: <UploadIcon size={13} />,
+          action: () => openModal(),
+          badge: !isPro ? 'PRO' : null,
+          secondary: true,
+        },
+        {
+          label: 'Record Return',
+          icon: <SyncIcon size={13} />,
+          action: openReturnModal,
+          primary: true,
+        },
+      ]
+    }
+    return [
+      {
+        label: 'Record Return',
+        icon: <SyncIcon size={13} />,
+        action: openReturnModal,
+        secondary: true,
+      },
+      {
+        label: '+ Manual Bill',
+        icon: <PlusIcon size={13} />,
+        action: () => openModal(true),
+        secondary: true,
+        title: 'Create purchase bill manually without OCR',
+      },
+      {
+        label: 'Upload Bill',
+        icon: <UploadIcon size={13} />,
+        action: () => openModal(),
+        primary: true,
+        badge: !isPro ? 'PRO' : null,
+      },
+    ]
+  }, [isReturnsTab, isPro, openReturnModal, openModal])
+
   const searchBox = (
     <div className="search-bar" style={{ margin: 0, height: 34, boxSizing: 'border-box', display: 'flex', alignItems: 'center', flex: '1 1 170px', minWidth: 150, maxWidth: 280 }}>
       <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
@@ -519,21 +571,38 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
             actions={
               <>
                 {searchBox}
-                <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={openReturnModal}>
-                  <SyncIcon size={13} /> Record Return
-                </button>
+                {purchaseActions.map((a, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className={`btn ${a.primary ? 'btn-primary' : 'btn-secondary'} btn-sm ${a.primary ? '' : 'ws-bar-action'}`}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                    onClick={a.action}
+                    title={a.title}
+                  >
+                    {a.icon} {a.label}
+                    {a.badge && <span className="pro-chip">{a.badge}</span>}
+                  </button>
+                ))}
                 <button
                   type="button"
-                  className="btn btn-secondary btn-sm"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
-                  onClick={() => openModal(true)}
-                  title="Create purchase bill manually without OCR"
+                  className="btn btn-secondary btn-sm ws-bar-more"
+                  title="More actions"
+                  aria-label="More actions"
+                  onClick={e => {
+                    const r = e.currentTarget.getBoundingClientRect()
+                    setCtxMenu({
+                      x: r.right - 210,
+                      y: r.bottom,
+                      items: purchaseActions.filter(a => !a.disabled).map(a => ({
+                        label: a.label,
+                        icon: a.icon,
+                        action: a.action,
+                      })),
+                    })
+                  }}
                 >
-                  <PlusIcon size={13} /> + Manual Bill
-                </button>
-                <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={openModal}>
-                  <UploadIcon size={13} /> Upload Bill
-                  {!isPro && <span className="pro-chip">PRO</span>}
+                  &#8943;
                 </button>
               </>
             }
@@ -583,13 +652,13 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
               <p className="page-subtitle">Upload and manage supplier bills with AI-powered extraction</p>
             </div>
             <div className="page-actions">
-              <button className="btn btn-secondary" style={{ marginRight: 8 }} onClick={openReturnModal}>
+              <button className={`btn ${isReturnsTab ? 'btn-primary' : 'btn-secondary'}`} style={{ marginRight: 8 }} onClick={openReturnModal}>
                 <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Record Return
               </button>
               <button className="btn btn-secondary" style={{ marginRight: 8 }} onClick={() => openModal(true)}>
                 <PlusIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> + Manual Bill
               </button>
-              <button className="btn btn-primary" onClick={openModal}>
+              <button className={`btn ${isReturnsTab ? 'btn-secondary' : 'btn-primary'}`} onClick={openModal}>
                 ⬆ Upload Bill
                 {!isPro && <span className="pro-chip">PRO</span>}
               </button>

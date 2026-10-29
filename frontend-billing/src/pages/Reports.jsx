@@ -4,11 +4,29 @@
 //              GST slab breakdowns (GSTR-1, GSTR-3B), and bookkeeping summaries
 //              (Day Book, Trial Balance, General Ledger, Balance Sheet).
 // ============================================================================
-import React, { useState } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
+import PageTabs from '../components/common/PageTabs'
 import { useAuth } from '../contexts/AuthContext'
-import { AlertIcon, BillsIcon, CashIcon, ChevronDownIcon, ChevronRightIcon, CloseIcon, CounterIcon, DownloadIcon, InventoryIcon, SummaryIcon, TaxIcon, ExpandIcon } from '../components/Icons'
+import {
+  AlertIcon,
+  BillsIcon,
+  CashIcon,
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  CounterIcon,
+  DownloadIcon,
+  InventoryIcon,
+  SummaryIcon,
+  TaxIcon,
+  ExpandIcon,
+  SyncIcon,
+  SidebarToggleIcon,
+} from '../components/Icons'
 import DayBookView from '../components/reports/DayBookView'
 import BalanceSheetView from '../components/reports/BalanceSheetView'
 import TrialBalanceView from '../components/reports/TrialBalanceView'
@@ -18,21 +36,17 @@ import GeneralLedgerView from '../components/reports/GeneralLedgerView'
 import RegisterView from '../components/reports/RegisterView'
 import CustomSelect from '../components/common/CustomSelect'
 import { reportPeriod } from '../utils/reportPeriods'
+import './reports-shell.css'
 
-const REPORTS = [
-  {
-    id: 'pnl',
-    title: 'P&L Statement',
-    description: 'Profit & Loss overview — revenue, expenses, and net income for the period.',
-    endpoint: '/billing/reports/profit-loss',
-    color: 'accent',
-  },
+export const REPORTS = [
+  // ── GST & Compliance ──
   {
     id: 'gst',
     title: 'GST Report',
     description: 'GST summary with CGST, SGST, IGST breakdowns for filing.',
     endpoint: '/billing/reports/gst',
     color: 'warning',
+    category: 'GST & Compliance',
   },
   {
     id: 'gstr1-b2b',
@@ -40,6 +54,7 @@ const REPORTS = [
     description: 'B2B outward supplies (sales to registered taxpayers) segmented by GSTIN and tax rate.',
     endpoint: '/billing/reports/gstr1-b2b',
     color: 'success',
+    category: 'GST & Compliance',
   },
   {
     id: 'gstr1-b2cs',
@@ -47,6 +62,7 @@ const REPORTS = [
     description: 'B2C outward supplies (sales to unregistered consumers) consolidated by POS and tax rate.',
     endpoint: '/billing/reports/gstr1-b2cs',
     color: 'success',
+    category: 'GST & Compliance',
   },
   {
     id: 'gstr1-hsn',
@@ -54,6 +70,7 @@ const REPORTS = [
     description: 'HSN-wise summary of outward supplies, listing unit quantities and tax breakdowns.',
     endpoint: '/billing/reports/gstr1-hsn',
     color: 'success',
+    category: 'GST & Compliance',
   },
   {
     id: 'gstr3b',
@@ -61,20 +78,17 @@ const REPORTS = [
     description: 'Monthly self-declaration summary of outward supplies, inward reverse charge, and Net ITC.',
     endpoint: '/billing/reports/gstr3b',
     color: 'info',
+    category: 'GST & Compliance',
   },
-  {
-    id: 'stock-movement',
-    title: 'Stock Movement',
-    description: 'Complete inventory movement history — in, out, and adjustments.',
-    endpoint: '/billing/reports/stock-movement',
-    color: 'info',
-  },
+
+  // ── Operations & Registers ──
   {
     id: 'sales-register',
     title: 'Sales Register',
     description: 'Itemized list of all sales invoices with totals and tax details.',
     endpoint: '/billing/reports/sales-register',
     color: 'success',
+    category: 'Operations & Registers',
   },
   {
     id: 'purchase-register',
@@ -82,20 +96,7 @@ const REPORTS = [
     description: 'All purchase bills with supplier, items, and payment status.',
     endpoint: '/billing/reports/purchase-register',
     color: 'warning',
-  },
-  {
-    id: 'outstanding',
-    title: 'Outstanding Ledger',
-    description: 'Pending receivables from customers and payables to vendors.',
-    endpoint: '/billing/reports/outstanding',
-    color: 'danger',
-  },
-  {
-    id: 'shift-reconciliations',
-    title: 'Shift Reconciliations',
-    description: 'Register shifts — who operated the counter, opening float, expected vs counted cash/UPI, and short/over discrepancies.',
-    endpoint: '/billing/reports/shift-reconciliations',
-    color: 'danger',
+    category: 'Operations & Registers',
   },
   {
     id: 'day-book',
@@ -103,6 +104,41 @@ const REPORTS = [
     description: 'Chronological transaction registry for a specific day or date range — sales, purchases, opex, receipts.',
     endpoint: '/billing/reports/day-book',
     color: 'info',
+    category: 'Operations & Registers',
+  },
+  {
+    id: 'outstanding',
+    title: 'Outstanding Ledger',
+    description: 'Pending receivables from customers and payables to vendors.',
+    endpoint: '/billing/reports/outstanding',
+    color: 'danger',
+    category: 'Operations & Registers',
+  },
+  {
+    id: 'stock-movement',
+    title: 'Stock Movement',
+    description: 'Complete inventory movement history — in, out, and adjustments.',
+    endpoint: '/billing/reports/stock-movement',
+    color: 'info',
+    category: 'Operations & Registers',
+  },
+  {
+    id: 'shift-reconciliations',
+    title: 'Shift Reconciliations',
+    description: 'Register shifts — opening float, expected vs counted cash/UPI, and discrepancies.',
+    endpoint: '/billing/reports/shift-reconciliations',
+    color: 'danger',
+    category: 'Operations & Registers',
+  },
+
+  // ── Financial Statements ──
+  {
+    id: 'pnl',
+    title: 'P&L Statement',
+    description: 'Profit & Loss overview — revenue, expenses, and net income for the period.',
+    endpoint: '/billing/reports/profit-loss',
+    color: 'accent',
+    category: 'Financial Statements',
   },
   {
     id: 'balance-sheet',
@@ -110,21 +146,26 @@ const REPORTS = [
     description: 'Real-time statement of assets (cash, receivables, stock) vs. liabilities (payables) and Net Worth.',
     endpoint: '/billing/reports/balance-sheet',
     color: 'accent',
+    category: 'Financial Statements',
   },
   {
     id: 'trial-balance',
     title: 'Trial Balance',
-    description: 'Every ledger account on its Dr/Cr side, with a Capital plug — the books-balance check that Debits = Credits.',
+    description: 'Every ledger account on its Dr/Cr side, with a Capital plug — books-balance check that Debits = Credits.',
     endpoint: '/billing/reports/trial-balance',
     color: 'accent',
+    category: 'Financial Statements',
   },
+
+  // ── Books & Ledgers ──
   {
     id: 'party-ledger',
     title: 'Party Ledger',
-    description: 'A single customer or vendor’s running account statement — every bill, payment & return with a running balance.',
+    description: 'A single customer or vendor’s running account statement with running balance.',
     endpoint: '/billing/reports/party-ledger',
     color: 'info',
     needsParty: true,
+    category: 'Books & Ledgers',
   },
   {
     id: 'journal',
@@ -132,6 +173,7 @@ const REPORTS = [
     description: 'Every transaction as balanced double-entry Dr/Cr postings — sales, purchases, returns & expenses.',
     endpoint: '/billing/reports/journal',
     color: 'accent',
+    category: 'Books & Ledgers',
   },
   {
     id: 'general-ledger',
@@ -139,45 +181,58 @@ const REPORTS = [
     description: 'Journal postings regrouped per account (Cash, Sales, GST, parties…) with a running balance.',
     endpoint: '/billing/reports/general-ledger',
     color: 'accent',
+    category: 'Books & Ledgers',
   },
   {
     id: 'audit-journal',
     title: 'Audit Journal',
-    description: 'The POSTED journal — written at transaction time, append-only. The permanent, tamper-evident audit trail.',
+    description: 'The POSTED journal — append-only, tamper-evident audit trail.',
     endpoint: '/billing/reports/audit-journal',
     color: 'accent',
+    category: 'Books & Ledgers',
   },
 ]
 
-// Reports grouped into clean, recommended-order categories for the selector.
-// (Source of intra-group order — does NOT touch the REPORTS array above.)
-const REPORT_GROUPS = [
-  { label: 'Operations', ids: ['day-book', 'sales-register', 'purchase-register', 'outstanding', 'stock-movement', 'shift-reconciliations'] },
-  { label: 'GST & Compliance', ids: ['gst', 'gstr1-b2b', 'gstr1-b2cs', 'gstr1-hsn', 'gstr3b'] },
-  { label: 'Financial Statements', ids: ['pnl', 'balance-sheet', 'trial-balance'] },
-  { label: 'Books & Ledgers', ids: ['party-ledger', 'journal', 'general-ledger', 'audit-journal'] },
+const REPORT_CATEGORIES = [
+  {
+    title: 'GST & Compliance',
+    ids: ['gst', 'gstr1-b2b', 'gstr1-b2cs', 'gstr1-hsn', 'gstr3b'],
+  },
+  {
+    title: 'Operations & Registers',
+    ids: ['sales-register', 'purchase-register', 'day-book', 'outstanding', 'stock-movement', 'shift-reconciliations'],
+  },
+  {
+    title: 'Financial Statements',
+    ids: ['pnl', 'balance-sheet', 'trial-balance'],
+  },
+  {
+    title: 'Books & Ledgers',
+    ids: ['party-ledger', 'journal', 'general-ledger', 'audit-journal'],
+  },
 ]
+
 const REPORTS_BY_ID = Object.fromEntries(REPORTS.map(r => [r.id, r]))
 
 const reportIcons = {
-  pnl: <SummaryIcon size={18} />,
-  gst: <TaxIcon size={18} />,
-  'gstr1-b2b': <TaxIcon size={18} />,
-  'gstr1-b2cs': <TaxIcon size={18} />,
-  'gstr1-hsn': <TaxIcon size={18} />,
-  gstr3b: <TaxIcon size={18} />,
-  'stock-movement': <InventoryIcon size={18} />,
-  'sales-register': <CounterIcon size={18} />,
-  'purchase-register': <BillsIcon size={18} />,
-  outstanding: <CashIcon size={18} />,
-  'day-book': <CounterIcon size={18} />,
-  'shift-reconciliations': <CashIcon size={18} />,
-  'balance-sheet': <SummaryIcon size={18} />,
-  'trial-balance': <SummaryIcon size={18} />,
-  'party-ledger': <CashIcon size={18} />,
-  journal: <BillsIcon size={18} />,
-  'general-ledger': <SummaryIcon size={18} />,
-  'audit-journal': <BillsIcon size={18} />
+  pnl: <SummaryIcon size={16} />,
+  gst: <TaxIcon size={16} />,
+  'gstr1-b2b': <TaxIcon size={16} />,
+  'gstr1-b2cs': <TaxIcon size={16} />,
+  'gstr1-hsn': <TaxIcon size={16} />,
+  gstr3b: <TaxIcon size={16} />,
+  'stock-movement': <InventoryIcon size={16} />,
+  'sales-register': <CounterIcon size={16} />,
+  'purchase-register': <BillsIcon size={16} />,
+  outstanding: <CashIcon size={16} />,
+  'day-book': <CounterIcon size={16} />,
+  'shift-reconciliations': <CashIcon size={16} />,
+  'balance-sheet': <SummaryIcon size={16} />,
+  'trial-balance': <SummaryIcon size={16} />,
+  'party-ledger': <CashIcon size={16} />,
+  journal: <BillsIcon size={16} />,
+  'general-ledger': <SummaryIcon size={16} />,
+  'audit-journal': <BillsIcon size={16} />,
 }
 
 const getThisMonth = () => reportPeriod('month')
@@ -205,100 +260,230 @@ const fmt = (val) => {
   return `₹${Number(val).toFixed(2)}`
 }
 
-// One placeholder, two mount points (full-screen and normal). The wording turns
-// on whether a report is already chosen: after a date-range change the report is
-// still selected and only needs re-running, so "Select a report" would be wrong.
-// Deliberately says nothing about WHY there is no data — it also covers a party
-// report waiting on a party pick, and a guess there would be a lie half the time.
-function ReportPlaceholder({ report }) {
+function ReportPlaceholder({ report, onGenerate, generating }) {
   return (
-    <div className="empty-state card">
-      <div className="empty-icon"><TaxIcon size={32} /></div>
-      <h3>{report ? `Run ${report.title}` : 'Select a report'}</h3>
-      <p>
+    <div className="empty-state card" style={{ margin: 'auto', maxWidth: 440, padding: 32, textAlign: 'center' }}>
+      <div className="empty-icon" style={{ display: 'inline-flex', marginBottom: 12 }}><TaxIcon size={32} /></div>
+      <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
+        {report ? `Run ${report.title}` : 'Select a report'}
+      </h3>
+      <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)', lineHeight: 1.5, margin: 0 }}>
         {report
-          ? 'Generate the report to see results for the selected period.'
-          : 'Pick a report above and set your date range — the results appear here.'}
+          ? 'Generate the report to see detailed metrics and ledger records for the selected period.'
+          : 'Pick a report from the directory on the left and set your date range to begin.'}
       </p>
+      {report && (
+        <button
+          type="button"
+          className="btn btn-primary"
+          style={{ marginTop: 16, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          onClick={onGenerate}
+          disabled={generating}
+        >
+          {generating
+            ? <><span className="spinner" style={{ width: 13, height: 13, borderWidth: 2 }} /> Generating…</>
+            : `Generate ${report.title}`}
+        </button>
+      )}
     </div>
   )
 }
 
 export default function Reports() {
   const { authFetch } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const reportRequestRef = useRef(0)
+  const reportAbortRef = useRef(null)
+  const partyRequestRef = useRef(0)
+  const partyAbortRef = useRef(null)
 
-  const [dateRange, setDateRange] = useState(getThisMonth())
-  const [activeReport, setActiveReport] = useState(null)
+  // Initial tab resolution: supports ?tab=gst or bare /reports
+  const [activeReport, setActiveReport] = useState(() => {
+    try {
+      const tab = searchParams.get('tab')
+      return REPORTS.find(r => r.id === tab) || null
+    } catch {
+      return null
+    }
+  })
+
+  // Active category for mobile switcher
+  const [mobileCategory, setMobileCategory] = useState(activeReport?.category || 'Operations & Registers')
+  const activeCategory = mobileCategory
+
+  const [dateRange, setDateRange] = useState(getThisMonth)
   const [isFullScreen, setIsFullScreen] = useState(false)
-  const [isMenuCollapsed, setIsMenuCollapsed] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('reports_sidebar_collapsed') === 'true'
+    } catch {
+      return false
+    }
+  })
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev
+      try {
+        localStorage.setItem('reports_sidebar_collapsed', String(next))
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }
+
+  // Vertical collapse state per head topic
+  const [collapsedCategories, setCollapsedCategories] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('reports_collapsed_categories')) || {}
+    } catch {
+      return {}
+    }
+  })
+
+  const toggleCategory = (title) => {
+    setCollapsedCategories(prev => {
+      const next = { ...prev, [title]: !prev[title] }
+      try {
+        localStorage.setItem('reports_collapsed_categories', JSON.stringify(next))
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }
+
+  // Recent reports tracked on top of directory
+  const [recentReportIds, setRecentReportIds] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('reports_recent_ids'))
+      return Array.isArray(saved) ? saved : []
+    } catch {
+      return []
+    }
+  })
+
+  const recordRecentReport = (id) => {
+    if (!id) return
+    setRecentReportIds(prev => {
+      const filtered = prev.filter(rId => rId !== id)
+      const next = [id, ...filtered].slice(0, 4)
+      try {
+        localStorage.setItem('reports_recent_ids', JSON.stringify(next))
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }
+
+  const recentReports = useMemo(() => {
+    return recentReportIds.map(id => REPORTS_BY_ID[id]).filter(Boolean)
+  }, [recentReportIds])
+
   const [reportData, setReportData] = useState(null)
   const [generating, setGenerating] = useState(null)
   const [alert, setAlert] = useState(null)
 
-  // Recently-used reports (persisted) for the left rail quick-access.
-  const [recent, setRecent] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('reports_recent') || '[]') } catch { return [] }
-  })
-  const reportById = (id) => REPORTS.find(r => r.id === id)
-  const pushRecent = (id) => setRecent(prev => {
-    const next = [id, ...prev.filter(x => x !== id)].slice(0, 6)
-    try { localStorage.setItem('reports_recent', JSON.stringify(next)) } catch { /* ignore */ }
-    return next
-  })
-
   // Party Ledger picker state
-  const [openGroup, setOpenGroup] = useState('Operations')
   const [partyType, setPartyType] = useState('customer')
   const [partyId, setPartyId] = useState('')
   const [parties, setParties] = useState([])
   const [partiesLoading, setPartiesLoading] = useState(false)
 
-  const loadParties = async (type) => {
-    setPartiesLoading(true)
-    setPartyId('')
-    try {
-      const res = await authFetch(`/billing/${type === 'vendor' ? 'vendors' : 'customers'}`)
-      const data = res.ok ? await res.json() : []
-      setParties(Array.isArray(data) ? data : (data.items || []))
-    } catch {
-      setParties([])
-    } finally {
-      setPartiesLoading(false)
-    }
-  }
-
-  // Changing the range INVALIDATES whatever is on screen. The section header and
-  // every CSV filename below are built from the CURRENT `dateRange`, so keeping
-  // the previous result would label old rows with a period they don't cover —
-  // and export them under that name. Clearing drops back to the placeholder,
-  // which prompts to re-run. (The reported symptom was the narrower one: a stale
-  // "No transactions recorded for this period" surviving a range change.)
-  const changeRange = (next) => {
-    setDateRange(next)
+  const invalidateReport = () => {
+    reportRequestRef.current += 1
+    reportAbortRef.current?.abort()
+    setGenerating(null)
     setReportData(null)
   }
 
-  const setDate = (k, v) => changeRange(d => ({ ...d, [k]: v }))
+  useEffect(() => () => {
+    reportRequestRef.current += 1
+    partyRequestRef.current += 1
+    reportAbortRef.current?.abort()
+    partyAbortRef.current?.abort()
+  }, [])
 
+  const loadParties = async (type) => {
+    const request = ++partyRequestRef.current
+    partyAbortRef.current?.abort()
+    const controller = new AbortController()
+    partyAbortRef.current = controller
+    invalidateReport()
+    setPartiesLoading(true)
+    setPartyId('')
+    setParties([])
+    try {
+      const res = await authFetch(`/billing/${type === 'vendor' ? 'vendors' : 'customers'}`, { signal: controller.signal })
+      const data = res.ok ? await res.json() : []
+      if (request !== partyRequestRef.current) return
+      setParties(Array.isArray(data) ? data : (data.items || []))
+    } catch {
+      if (request === partyRequestRef.current) setParties([])
+    } finally {
+      if (request === partyRequestRef.current) setPartiesLoading(false)
+    }
+  }
+
+  // Query changes from search/deep links must also update an already mounted
+  // reports page; window.history alone leaves React Router out of sync.
+  useEffect(() => {
+    const report = REPORTS_BY_ID[searchParams.get('tab')] || null
+    if (report?.id !== activeReport?.id) {
+      invalidateReport()
+      setActiveReport(report)
+      setAlert(null)
+      if (report) setMobileCategory(report.category)
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    if (activeReport?.needsParty) loadParties(partyType)
+  }, [activeReport?.needsParty])
+
+  // Range change drops stale report data
+  const changeRange = (next) => {
+    invalidateReport()
+    setDateRange(next)
+  }
+
+  const setDate = (k, v) => changeRange(d => ({ ...d, [k]: v }))
   const applyQuick = (fn) => changeRange(fn())
 
-  // Selecting a report from the nav: party reports wait for a party pick in the
-  // left rail; everything else generates immediately.
+  const setTabInUrl = (tabId) => {
+    setSearchParams(previous => {
+      const next = new URLSearchParams(previous)
+      next.set('tab', tabId)
+      return next
+    }, { replace: true })
+  }
+
   const selectReport = (report) => {
+    if (!report) return
+    invalidateReport()
+    recordRecentReport(report.id)
     setActiveReport(report)
+    setMobileCategory(report.category)
+    setTabInUrl(report.id)
     if (report.needsParty) {
       setReportData(null)
-      if (!parties.length) loadParties(partyType)
     } else {
       handleGenerate(report)
     }
   }
 
   const handleGenerate = async (report) => {
+    if (!report) return
     if (report.needsParty && !partyId) {
       setAlert({ type: 'warning', msg: 'Select a customer or vendor first.' })
       return
     }
+    const request = ++reportRequestRef.current
+    reportAbortRef.current?.abort()
+    const controller = new AbortController()
+    reportAbortRef.current = controller
     setGenerating(report.id)
     setReportData(null)
     setAlert(null)
@@ -308,31 +493,26 @@ export default function Reports() {
         params.set('party_type', partyType)
         params.set('party_id', partyId)
       }
-      // Paginated endpoints (registers, stock ledger, day book) cap at the
-      // server max; request it so we don't silently drop rows, then warn the
-      // user to narrow the date range if the result is still truncated.
       const PAGE_MAX = 2000
       params.set('limit', String(PAGE_MAX))
-      const res = await authFetch(`${report.endpoint}?${params}`)
+      const res = await authFetch(`${report.endpoint}?${params}`, { signal: controller.signal })
+      if (request !== reportRequestRef.current) return
       if (res.ok) {
         const data = await res.json()
-        setActiveReport(report)
-        pushRecent(report.id)
-        setIsMenuCollapsed(true)
+        if (request !== reportRequestRef.current) return
         if (['day-book', 'balance-sheet', 'trial-balance', 'party-ledger', 'journal', 'general-ledger', 'audit-journal'].includes(report.id)) {
           setReportData(data)
         } else {
           const rows = Array.isArray(data) ? data : (data.rows || data.data || data.items || [data])
           setReportData(rows)
         }
-        // Truncation notice: total comes from X-Total-Count header (arrays) or
-        // the `total` field (day-book object).
-        const headerTotal = parseInt(res.headers.get('X-Total-Count'), 10)
+
+        const headerTotal = parseInt(res.headers?.get?.('X-Total-Count'), 10)
         const total = Number.isFinite(headerTotal) ? headerTotal
           : (data && typeof data.total === 'number' ? data.total : null)
-        const shown = report.id === 'day-book'
-          ? (data?.transactions?.length || 0)
-          : (Array.isArray(data) ? data.length : 0)
+        const shownRows = Array.isArray(data) ? data
+          : data?.transactions || data?.rows || data?.data || data?.items || data?.entries || data?.ledgers
+        const shown = Array.isArray(shownRows) ? shownRows.length : 0
         if (total != null && total > shown) {
           setAlert({ type: 'warning', msg: `Showing first ${shown} of ${total} rows. Narrow the date range to see the rest.` })
         }
@@ -342,218 +522,464 @@ export default function Reports() {
         setAlert({ type: 'danger', msg: 'Failed to generate report.' })
       }
     } catch {
-      setAlert({ type: 'danger', msg: 'Network error. Please check server.' })
+      if (request === reportRequestRef.current) setAlert({ type: 'danger', msg: 'Network error. Please check server.' })
     } finally {
-      setGenerating(null)
+      if (request === reportRequestRef.current) setGenerating(null)
+    }
+  }
+
+  const triggerExport = () => {
+    if (!reportData || !activeReport) return
+    const id = activeReport.id
+    const from = dateRange.from
+    const to = dateRange.to
+    if (id === 'day-book') {
+      downloadCSV(reportData.transactions, `day_book_${from}_${to}.csv`)
+    } else if (id === 'balance-sheet') {
+      downloadCSV([
+        { SECTION: 'ASSETS', ITEM: 'Cash & Bank Balance', AMOUNT: reportData.assets?.cash_bank },
+        { SECTION: 'ASSETS', ITEM: 'Accounts Receivable', AMOUNT: reportData.assets?.receivables },
+        { SECTION: 'ASSETS', ITEM: 'Inventory Valuation', AMOUNT: reportData.assets?.inventory_valuation },
+        { SECTION: 'ASSETS', ITEM: 'TOTAL ASSETS', AMOUNT: reportData.assets?.total_assets },
+        { SECTION: 'LIABILITIES', ITEM: 'Accounts Payable', AMOUNT: reportData.liabilities?.payables },
+        { SECTION: 'LIABILITIES', ITEM: 'Total Liabilities', AMOUNT: reportData.liabilities?.total_liabilities },
+        { SECTION: 'EQUITY', ITEM: 'Net Worth / Equity', AMOUNT: reportData.net_worth },
+      ], `balance_sheet_${from}_${to}.csv`)
+    } else if (id === 'trial-balance') {
+      downloadCSV([
+        ...reportData.accounts.map(a => ({
+          ACCOUNT: a.account, GROUP: a.group, DEBIT: a.debit, CREDIT: a.credit,
+        })),
+        { ACCOUNT: 'TOTAL', GROUP: '', DEBIT: reportData.totals?.total_debit, CREDIT: reportData.totals?.total_credit },
+      ], `trial_balance_${from}_${to}.csv`)
+    } else if (id === 'party-ledger') {
+      downloadCSV([
+        { DATE: '', TYPE: 'Opening Balance', REF: '', DEBIT: '', CREDIT: '', BALANCE: reportData.opening_balance },
+        ...reportData.entries.map(e => ({
+          DATE: e.date, TYPE: e.type, REF: e.ref_no, DEBIT: e.debit, CREDIT: e.credit, BALANCE: e.balance,
+        })),
+        { DATE: '', TYPE: `Closing (${reportData.summary?.balance_type})`, REF: '', DEBIT: reportData.summary?.total_debit, CREDIT: reportData.summary?.total_credit, BALANCE: reportData.summary?.closing_balance },
+      ], `party_ledger_${reportData.party?.name || 'statement'}_${from}_${to}.csv`)
+    } else if (id === 'journal' || id === 'audit-journal') {
+      downloadCSV(
+        reportData.entries.flatMap(e => e.lines.map(l => ({
+          DATE: e.date, TYPE: e.type, REF: e.ref_no, NARRATION: e.narration,
+          ACCOUNT: l.account, DEBIT: l.debit, CREDIT: l.credit,
+        }))),
+        `${id}_${from}_${to}.csv`
+      )
+    } else if (id === 'general-ledger') {
+      downloadCSV(
+        reportData.ledgers.flatMap(g => g.postings.map(p => ({
+          ACCOUNT: g.account, DATE: p.date, TYPE: p.type, REF: p.ref_no,
+          DEBIT: p.debit, CREDIT: p.credit, BALANCE: p.balance,
+        }))),
+        `general_ledger_${from}_${to}.csv`
+      )
+    } else {
+      downloadCSV(reportData, `${id}_${from}_${to}.csv`)
     }
   }
 
   const colKeys = reportData?.length ? Object.keys(reportData[0]) : []
 
+  const reportGroups = useMemo(() => {
+    return REPORT_CATEGORIES.map(cat => ({
+      title: cat.title,
+      reports: cat.ids.map(id => REPORTS_BY_ID[id]).filter(Boolean),
+    })).filter(g => g.reports.length > 0)
+  }, [])
+
   return (
     <AppLayout title="GST & Tax Reports">
-      <div className="slide-up">
-
-        {alert && (
-          <div className={`alert alert-${alert.type} mb-4`} style={{ alignItems: 'center' }}>
-            <AlertIcon size={16} style={{ flexShrink: 0 }} />
-            <span style={{ marginLeft: 4 }}>{alert.msg}</span>
-            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }} aria-label="Close"><CloseIcon size={16} /></button>
-          </div>
-        )}
+      <div className="slide-up reports-shell">
 
         {/* Header */}
-        <div className="page-header">
+        <div className="page-header" style={{ flexShrink: 0 }}>
           <div className="page-header-left">
-            <h1 className="page-title">GST & Tax Reports</h1>
-            <p className="page-subtitle">Generate financial statements and tax filings for your business</p>
+            <h1 className="page-title">
+              <TaxIcon size={20} style={{ color: 'var(--accent)' }} /> GST &amp; Tax Reports
+            </h1>
+            <p className="page-subtitle">Generate financial statements, tax filings, and bookkeeping ledgers</p>
           </div>
           <div className="page-actions"><HeaderSearchSlot /></div>
         </div>
 
-        {/* Container 1 — filters + report selector, pinned under the header. */}
-        <div className="reports-controls">
-          {/* Filters */}
-          <div className="reports-filterbar">
-            <div className="reports-filterbar-dates">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>From</span>
-                <input type="date" className="form-input" style={{ width: 155 }} value={dateRange.from} onChange={e => setDate('from', e.target.value)} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>To</span>
-                <input type="date" className="form-input" style={{ width: 155 }} value={dateRange.to} onChange={e => setDate('to', e.target.value)} />
-              </div>
+        {alert && (
+          <div className={`alert alert-${alert.type} mb-3`} style={{ alignItems: 'center', flexShrink: 0 }}>
+            <AlertIcon size={16} style={{ flexShrink: 0 }} />
+            <span style={{ marginLeft: 4 }}>{alert.msg}</span>
+            <button onClick={() => setAlert(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'inherit', cursor: 'pointer' }} aria-label="Close">
+              <CloseIcon size={16} />
+            </button>
+          </div>
+        )}
+
+        {/* Master-Detail Split Layout */}
+        <div className="card reports-panel reports-split-layout">
+          {/* Mobile-only tab strip */}
+          <div className="reports-mobile-tabs">
+            <PageTabs
+              label="Report categories"
+              tabs={REPORT_CATEGORIES.map(c => ({ id: c.title, label: c.title }))}
+              active={activeCategory}
+              onChange={setMobileCategory}
+            />
+            <div style={{ marginTop: 8 }}>
+              <CustomSelect
+                className="form-input"
+                style={{ width: '100%', height: 34, fontSize: '0.84rem' }}
+                value={activeReport?.id || ''}
+                onChange={e => selectReport(REPORTS_BY_ID[e.target.value])}
+              >
+                <option value="">Select a report…</option>
+                {REPORT_CATEGORIES.find(c => c.title === activeCategory)?.ids.map(id => {
+                  const r = REPORTS_BY_ID[id]
+                  return <option key={id} value={id}>{r.title}</option>
+                })}
+              </CustomSelect>
             </div>
-            <div className="divider filterbar-divider" style={{ width: 1, height: 32, margin: 0 }} />
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {[
-                { label: 'Today', fn: () => reportPeriod('today') },
-                { label: 'This Month', fn: getThisMonth },
-                { label: 'Last Month', fn: getLastMonth },
-                { label: 'This Quarter', fn: getThisQuarter },
-                { label: 'This FY', fn: getThisFY },
-                { label: 'Previous FY', fn: getPreviousFY },
-              ].map(({ label, fn }) => (
-                <button
-                  key={label}
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => applyQuick(fn)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {activeReport?.needsParty && (
-              <div className="reports-filterbar-party" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <div className="divider filterbar-divider" style={{ width: 1, height: 32, margin: 0 }} />
-                <div style={{ display: 'flex', gap: 4 }}>
-                  {['customer', 'vendor'].map(t => (
-                    <button
-                      key={t}
-                      type="button"
-                      className={`btn btn-xs ${partyType === t ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ textTransform: 'capitalize', padding: '2px 8px', fontSize: '0.72rem' }}
-                      onClick={() => { setPartyType(t); loadParties(t) }}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-                <CustomSelect
-                  className="form-input"
-                  value={partyId}
-                  onChange={e => setPartyId(e.target.value)}
-                  style={{ fontSize: '0.8rem', height: 32, width: 160 }}
-                >
-                  <option value="">
-                    {partiesLoading ? 'Loading…' : (parties.length ? `Select ${partyType}…` : `No ${partyType}s`)}
-                  </option>
-                  {parties.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </CustomSelect>
-                <button
-                  className="btn btn-primary btn-sm"
-                  disabled={!partyId || generating === activeReport.id}
-                  onClick={() => handleGenerate(activeReport)}
-                >
-                  {generating === activeReport.id ? 'Generating…' : 'Generate'}
-                </button>
-              </div>
-            )}
           </div>
 
-          {/* Report selector — group buttons in one row; click to expand one (others close). */}
-          {!isMenuCollapsed && (
-            <div className="report-nav-groups" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {/* Row of group tab-buttons */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {REPORT_GROUPS.map(group => {
-                  const reports = group.ids.map(id => REPORTS_BY_ID[id]).filter(Boolean)
-                  if (!reports.length) return null
-                  const isOpen = openGroup === group.label
-                  const activeInGroup = reports.some(r => r.id === activeReport?.id)
-                  return (
-                    <button
-                      key={group.label}
-                      type="button"
-                      onClick={() => setOpenGroup(o => (o === group.label ? null : group.label))}
-                      aria-expanded={isOpen}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
-                        borderRadius: 'var(--radius-md)', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem',
-                        border: `1px solid ${isOpen ? 'var(--accent)' : 'var(--border)'}`,
-                        background: isOpen ? 'var(--accent-solid, var(--accent))' : 'var(--bg-2)',
-                        color: isOpen ? 'var(--accent-foreground, #fff)' : 'var(--text-primary)',
-                      }}
-                    >
-                      <span>{group.label}</span>
-                      <span style={{
-                        fontSize: '0.66rem', fontWeight: 600, borderRadius: 10, padding: '1px 7px',
-                        color: isOpen ? 'var(--accent-foreground, #fff)' : 'var(--text-muted)',
-                        background: isOpen ? 'rgba(255,255,255,0.22)' : 'var(--bg-3)',
-                      }}>{reports.length}</span>
-                      {activeInGroup && !isOpen && (
-                        <span title="Active report in this group" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)' }} />
-                      )}
-                      <span style={{ display: 'inline-flex', color: isOpen ? 'var(--accent-foreground, #fff)' : 'var(--text-muted)', transition: 'transform .18s ease', transform: isOpen ? 'rotate(180deg)' : 'none' }}>
-                        <ChevronDownIcon size={14} />
-                      </span>
-                    </button>
-                  )
-                })}
+          {/* Desktop & Tablet: Left Directory Sub-Sidebar */}
+          <aside className={`reports-sub-sidebar${sidebarCollapsed ? ' is-collapsed' : ''}`} aria-label="Reports directory">
+            <div className="reports-sub-sidebar-header">
+              <span className="reports-sub-sidebar-title">Reports Directory</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="reports-sub-sidebar-count">{REPORTS.length} reports</span>
+                <button
+                  type="button"
+                  className="reports-sidebar-toggle-btn"
+                  onClick={toggleSidebar}
+                  title="Collapse Reports Directory"
+                  aria-label="Collapse Reports Directory"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '3px 5px',
+                    cursor: 'pointer',
+                    color: 'var(--text-muted)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    borderRadius: 4,
+                  }}
+                >
+                  <SidebarToggleIcon size={16} />
+                </button>
               </div>
-
-              {/* Chips for the currently-open group */}
-              {(() => {
-                const group = REPORT_GROUPS.find(g => g.label === openGroup)
-                if (!group) return null
-                const reports = group.ids.map(id => REPORTS_BY_ID[id]).filter(Boolean)
-                return (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {reports.map(report => (
-                      <button
-                        key={report.id}
-                        className={`report-chip ${activeReport?.id === report.id ? 'active' : ''}`}
-                        disabled={generating === report.id}
-                        onClick={() => selectReport(report)}
-                        title={report.description}
-                      >
-                        <span className="report-chip-icon">{reportIcons[report.id]}</span>
-                        <span>{report.title}</span>
-                        {generating === report.id && (
-                          <span className="spinner" style={{ width: 12, height: 12, borderWidth: 2 }} />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )
-              })()}
             </div>
-          )}
 
-          {(recent.length > 0 || isMenuCollapsed) && (
-            <div className="reports-recent-strip" style={{ display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
-              {recent.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Recently Used:</span>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {recent.map(id => {
-                      const r = reportById(id)
-                      if (!r) return null
+            <nav className="reports-nav-groups" role="tablist" aria-label="Reports sections">
+              {/* On top: Recently viewed reports */}
+              {recentReports.length > 0 && (
+                <div className="reports-nav-group reports-recent-group">
+                  <div className="reports-nav-group-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 6px' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                      <SummaryIcon size={11} style={{ opacity: 0.8 }} />
+                      <span>Recent</span>
+                    </span>
+                    <span style={{ fontSize: '0.65rem', textTransform: 'none', color: 'var(--text-muted)' }}>{recentReports.length}</span>
+                  </div>
+                  <div className="reports-nav-items">
+                    {recentReports.map(r => {
+                      const isSelected = activeReport?.id === r.id
                       return (
                         <button
-                          key={id}
+                          key={`recent-${r.id}`}
                           type="button"
-                          className={`btn btn-xs ${activeReport?.id === id ? 'btn-primary' : 'btn-secondary'}`}
-                          style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                          role="tab"
+                          aria-selected={isSelected}
+                          className={`reports-nav-item reports-recent-item${isSelected ? ' active' : ''}`}
                           onClick={() => selectReport(r)}
+                          disabled={generating === r.id}
+                          title={r.description}
                         >
-                          <span>{reportIcons[id]}</span>
-                          <span>{r.title}</span>
+                          <span className="reports-nav-icon">{reportIcons[r.id]}</span>
+                          <div className="reports-nav-text">
+                            <span className="reports-nav-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                              <span>{r.title}</span>
+                              {generating === r.id && (
+                                <span className="spinner" style={{ width: 11, height: 11, borderWidth: 2 }} />
+                              )}
+                            </span>
+                            <span className="reports-nav-desc">{r.category}</span>
+                          </div>
                         </button>
                       )
                     })}
                   </div>
+                  <div style={{ height: 1, background: 'var(--border)', margin: '8px 4px 4px' }} />
                 </div>
               )}
-              {isMenuCollapsed && (
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setIsMenuCollapsed(false)}
-                  style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700, padding: '4px 12px' }}
-                >
-                  Show All Reports ▾
-                </button>
+
+              {/* Head Topics with Vertical Collapse */}
+              {reportGroups.map(group => {
+                const isGroupCollapsed = Boolean(collapsedCategories[group.title])
+                return (
+                  <div key={group.title} className="reports-nav-group">
+                    <button
+                      type="button"
+                      className="reports-nav-group-header"
+                      onClick={() => toggleCategory(group.title)}
+                      aria-expanded={!isGroupCollapsed}
+                      title={`${isGroupCollapsed ? 'Expand' : 'Collapse'} ${group.title}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        width: '100%',
+                        background: 'none',
+                        border: 'none',
+                        padding: '4px 6px',
+                        cursor: 'pointer',
+                        borderRadius: 4,
+                        textAlign: 'left',
+                      }}
+                    >
+                      <span className="reports-nav-group-label" style={{ margin: 0 }}>{group.title}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{group.reports.length}</span>
+                        <ChevronDownIcon
+                          size={12}
+                          style={{
+                            color: 'var(--text-muted)',
+                            transform: isGroupCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                            transition: 'transform 0.15s ease',
+                          }}
+                        />
+                      </div>
+                    </button>
+
+                    {!isGroupCollapsed && (
+                      <div className="reports-nav-items">
+                        {group.reports.map(r => {
+                          const isSelected = activeReport?.id === r.id
+                          return (
+                            <button
+                              key={r.id}
+                              type="button"
+                              role="tab"
+                              aria-selected={isSelected}
+                              className={`reports-nav-item${isSelected ? ' active' : ''}`}
+                              onClick={() => selectReport(r)}
+                              disabled={generating === r.id}
+                              title={r.description}
+                            >
+                              <span className="reports-nav-icon">{reportIcons[r.id]}</span>
+                              <div className="reports-nav-text">
+                                <span className="reports-nav-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                                  <span>{r.title}</span>
+                                  {generating === r.id && (
+                                    <span className="spinner" style={{ width: 11, height: 11, borderWidth: 2 }} />
+                                  )}
+                                </span>
+                                <span className="reports-nav-desc">{r.description}</span>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </nav>
+          </aside>
+
+          {/* Right: Working Canvas */}
+          <main className="reports-canvas">
+            {/* Sticky Canvas Toolbar */}
+            <div className="reports-canvas-toolbar">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                {sidebarCollapsed && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm reports-sidebar-toggle-btn"
+                    onClick={toggleSidebar}
+                    title="Expand Reports Directory"
+                    aria-label="Expand Reports Directory"
+                    style={{ height: 32, padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.78rem' }}
+                  >
+                    <SidebarToggleIcon size={15} />
+                    <span>Reports</span>
+                  </button>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>From</span>
+                  <input
+                    aria-label="From date"
+                    type="date"
+                    className="form-input"
+                    style={{ width: 140, height: 32, fontSize: '0.8rem', padding: '0 8px' }}
+                    value={dateRange.from}
+                    onChange={e => setDate('from', e.target.value)}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>To</span>
+                  <input
+                    aria-label="To date"
+                    type="date"
+                    className="form-input"
+                    style={{ width: 140, height: 32, fontSize: '0.8rem', padding: '0 8px' }}
+                    value={dateRange.to}
+                    onChange={e => setDate('to', e.target.value)}
+                  />
+                </div>
+
+                <div style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 4px' }} />
+
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {[
+                    { label: 'Today', fn: () => reportPeriod('today') },
+                    { label: 'This Month', fn: getThisMonth },
+                    { label: 'Last Month', fn: getLastMonth },
+                    { label: 'This Quarter', fn: getThisQuarter },
+                    { label: 'This FY', fn: getThisFY },
+                    { label: 'Previous FY', fn: getPreviousFY },
+                  ].map(({ label, fn }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ height: 32, padding: '0 9px', fontSize: '0.75rem' }}
+                      onClick={() => applyQuick(fn)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {activeReport?.needsParty && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <div style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 4px' }} />
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {['customer', 'vendor'].map(t => (
+                        <button
+                          key={t}
+                          type="button"
+                          className={`btn btn-xs ${partyType === t ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ textTransform: 'capitalize', padding: '2px 8px', fontSize: '0.72rem', height: 30 }}
+                          onClick={() => { setPartyType(t); loadParties(t) }}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                    <CustomSelect
+                      className="form-input"
+                      value={partyId}
+                      onChange={e => { invalidateReport(); setPartyId(e.target.value) }}
+                      style={{ fontSize: '0.8rem', height: 32, width: 160 }}
+                    >
+                      <option value="">
+                        {partiesLoading ? 'Loading…' : (parties.length ? `Select ${partyType}…` : `No ${partyType}s`)}
+                      </option>
+                      {parties.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </CustomSelect>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      style={{ height: 32 }}
+                      disabled={!partyId || generating === activeReport.id}
+                      onClick={() => handleGenerate(activeReport)}
+                    >
+                      {generating === activeReport.id ? 'Generating…' : 'Generate'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Right: Actions */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {reportData !== null && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      style={{ height: 32, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                      onClick={triggerExport}
+                    >
+                      <DownloadIcon size={14} />
+                      <span>Export CSV</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ height: 32, width: 34, padding: 0, justifyContent: 'center' }}
+                      onClick={() => setIsFullScreen(true)}
+                      title="Full Screen View"
+                    >
+                      <ExpandIcon size={14} />
+                    </button>
+                  </>
+                )}
+                {activeReport && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ height: 32, display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                    onClick={() => handleGenerate(activeReport)}
+                    disabled={generating === activeReport.id}
+                    title="Re-run this report for the selected dates"
+                  >
+                    <SyncIcon size={13} className={generating === activeReport.id ? 'spin' : ''} />
+                    <span>{generating === activeReport.id ? 'Loading…' : 'Refresh'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Scrollable Canvas Body */}
+            <div className="reports-canvas-body">
+              {activeReport && (
+                <div className="reports-canvas-header">
+                  <div>
+                    <h2 className="reports-canvas-title">
+                      {reportIcons[activeReport.id]}
+                      <span>{activeReport.title}</span>
+                      <span className="reports-canvas-period-badge">
+                        {dateRange.from} to {dateRange.to}
+                      </span>
+                    </h2>
+                    <p className="reports-canvas-desc">{activeReport.description}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Data View or Placeholder */}
+              {reportData === null ? (
+                <ReportPlaceholder
+                  report={activeReport}
+                  onGenerate={() => activeReport && handleGenerate(activeReport)}
+                  generating={generating === activeReport?.id}
+                />
+              ) : (
+                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                  {(() => {
+                    const View = {
+                      'day-book': DayBookView,
+                      'balance-sheet': BalanceSheetView,
+                      'trial-balance': TrialBalanceView,
+                      'party-ledger': PartyLedgerView,
+                      'journal': JournalView,
+                      'audit-journal': JournalView,
+                      'general-ledger': GeneralLedgerView,
+                    }[activeReport?.id]
+                    return View
+                      ? <View reportData={reportData} fmt={fmt} isAudit={activeReport?.id === 'audit-journal'} />
+                      : <RegisterView reportData={reportData} colKeys={colKeys} />
+                  })()}
+                </div>
               )}
             </div>
-          )}
-        </div>{/* /reports-controls (container 1) */}
+          </main>
+        </div>
 
-        {/* Container 2 — report output (100% width) */}
-        {isFullScreen ? (
+        {/* Fullscreen Modal View */}
+        {isFullScreen && (
           <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>
             <div className="table-fullscreen-panel report-fullscreen-panel">
               <div className="table-fullscreen-header">
@@ -562,7 +988,7 @@ export default function Reports() {
               </div>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '16px 20px' }}>
                 {reportData === null ? (
-                  <ReportPlaceholder report={activeReport} />
+                  <ReportPlaceholder report={activeReport} onGenerate={() => activeReport && handleGenerate(activeReport)} generating={generating === activeReport?.id} />
                 ) : (() => {
                   const View = {
                     'day-book': DayBookView, 'balance-sheet': BalanceSheetView, 'trial-balance': TrialBalanceView,
@@ -575,107 +1001,8 @@ export default function Reports() {
               </div>
             </div>
           </div>
-        ) : (
-          <div className="reports-panel reports-workarea">
-            <section className="reports-output-col" style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column', height: '100%' }}>
-        {reportData === null ? (
-          <ReportPlaceholder report={activeReport} />
-        ) : (
-          <div className="slide-up" style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', overflow: 'hidden' }}>
-            <div className="flex items-center justify-between mb-4" style={{ flexShrink: 0 }}>
-              <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                {reportIcons[activeReport?.id]}
-                <span>{activeReport?.title}</span>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 400, marginLeft: 10 }}>
-                  ({dateRange.from} to {dateRange.to})
-                </span>
-              </h2>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <button
-                  type="button"
-                  onClick={() => setIsFullScreen(true)}
-                  style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 6, cursor: 'pointer', color: 'var(--text-secondary)' }}
-                  title="Full Screen"
-                >
-                  <ExpandIcon size={14} />
-                </button>
-
-                <button
-                  className="btn btn-primary btn-sm"
-                onClick={() => {
-                  if (activeReport?.id === 'day-book') {
-                    downloadCSV(reportData.transactions, `day_book_${dateRange.from}_${dateRange.to}.csv`)
-                  } else if (activeReport?.id === 'balance-sheet') {
-                    downloadCSV([
-                      { SECTION: 'ASSETS', ITEM: 'Cash & Bank Balance', AMOUNT: reportData.assets?.cash_bank },
-                      { SECTION: 'ASSETS', ITEM: 'Accounts Receivable', AMOUNT: reportData.assets?.receivables },
-                      { SECTION: 'ASSETS', ITEM: 'Inventory Valuation', AMOUNT: reportData.assets?.inventory_valuation },
-                      { SECTION: 'ASSETS', ITEM: 'TOTAL ASSETS', AMOUNT: reportData.assets?.total_assets },
-                      { SECTION: 'LIABILITIES', ITEM: 'Accounts Payable', AMOUNT: reportData.liabilities?.payables },
-                      { SECTION: 'LIABILITIES', ITEM: 'Total Liabilities', AMOUNT: reportData.liabilities?.total_liabilities },
-                      { SECTION: 'EQUITY', ITEM: 'Net Worth / Equity', AMOUNT: reportData.net_worth }
-                    ], `balance_sheet_${dateRange.from}_${dateRange.to}.csv`)
-                  } else if (activeReport?.id === 'trial-balance') {
-                    downloadCSV([
-                      ...reportData.accounts.map(a => ({
-                        ACCOUNT: a.account, GROUP: a.group, DEBIT: a.debit, CREDIT: a.credit,
-                      })),
-                      { ACCOUNT: 'TOTAL', GROUP: '', DEBIT: reportData.totals?.total_debit, CREDIT: reportData.totals?.total_credit },
-                    ], `trial_balance_${dateRange.from}_${dateRange.to}.csv`)
-                  } else if (activeReport?.id === 'party-ledger') {
-                    downloadCSV([
-                      { DATE: '', TYPE: 'Opening Balance', REF: '', DEBIT: '', CREDIT: '', BALANCE: reportData.opening_balance },
-                      ...reportData.entries.map(e => ({
-                        DATE: e.date, TYPE: e.type, REF: e.ref_no, DEBIT: e.debit, CREDIT: e.credit, BALANCE: e.balance,
-                      })),
-                      { DATE: '', TYPE: `Closing (${reportData.summary?.balance_type})`, REF: '', DEBIT: reportData.summary?.total_debit, CREDIT: reportData.summary?.total_credit, BALANCE: reportData.summary?.closing_balance },
-                    ], `party_ledger_${reportData.party?.name}_${dateRange.from}_${dateRange.to}.csv`)
-                  } else if (activeReport?.id === 'journal' || activeReport?.id === 'audit-journal') {
-                    downloadCSV(
-                      reportData.entries.flatMap(e => e.lines.map(l => ({
-                        DATE: e.date, TYPE: e.type, REF: e.ref_no, NARRATION: e.narration,
-                        ACCOUNT: l.account, DEBIT: l.debit, CREDIT: l.credit,
-                      }))),
-                      `${activeReport.id}_${dateRange.from}_${dateRange.to}.csv`)
-                  } else if (activeReport?.id === 'general-ledger') {
-                    downloadCSV(
-                      reportData.ledgers.flatMap(g => g.postings.map(p => ({
-                        ACCOUNT: g.account, DATE: p.date, TYPE: p.type, REF: p.ref_no,
-                        DEBIT: p.debit, CREDIT: p.credit, BALANCE: p.balance,
-                      }))),
-                      `general_ledger_${dateRange.from}_${dateRange.to}.csv`)
-                  } else {
-                    downloadCSV(reportData, `${activeReport?.id}_${dateRange.from}_${dateRange.to}.csv`)
-                  }
-                }}
-              >
-                <DownloadIcon size={14} />
-                <span>Export CSV</span>
-              </button>
-            </div>
-          </div>
-
-            {(() => {
-              // Registry replaces the old 7-branch render ternary: pick the view
-              // for the active report, else fall back to the generic register table.
-              const View = {
-                'day-book': DayBookView,
-                'balance-sheet': BalanceSheetView,
-                'trial-balance': TrialBalanceView,
-                'party-ledger': PartyLedgerView,
-                'journal': JournalView,
-                'audit-journal': JournalView,
-                'general-ledger': GeneralLedgerView,
-              }[activeReport?.id]
-              return View
-                ? <View reportData={reportData} fmt={fmt} isAudit={activeReport?.id === 'audit-journal'} />
-                : <RegisterView reportData={reportData} colKeys={colKeys} />
-            })()}
-          </div>
         )}
-          </section>
-        </div>
-        )}
+
       </div>
     </AppLayout>
   )

@@ -11,7 +11,7 @@ import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { formatIST } from '../utils/format'
 import { useLock } from '../contexts/LockContext'
 import { API_BASE, IS_LOCAL_APP, updateApiBase } from '../config'
-import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, CopyIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon, MonitorIcon, SyncIcon, ZapIcon, WifiOffIcon, RobotIcon, DevicesIcon, TruckIcon, PackageIcon, OrderIcon, CartIcon, CashIcon, ArrowDownIcon, ArrowUpIcon, TaxIcon, EditIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, ImportIcon, CloseIcon, ContactsIcon, CopyIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon, MonitorIcon, SyncIcon, ZapIcon, WifiOffIcon, RobotIcon, DevicesIcon, TruckIcon, PackageIcon, OrderIcon, CartIcon, CashIcon, ArrowDownIcon, ArrowUpIcon, TaxIcon, EditIcon, SummaryIcon, MessageIcon, AlertIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import { SkylineLoader } from '../components/Logo'
 import { getHeaderLayout, isHeaderLineEnabled, moveItem } from '../utils/printLayout'
@@ -42,6 +42,9 @@ import NetworkDiscoverySection from '../components/settings/NetworkDiscoverySect
 import PasscodeModal from '../components/settings/PasscodeModal'
 import HostingModeSection from '../components/settings/HostingModeSection'
 import OpsHealthPanel from '../components/settings/OpsHealthPanel'
+import DataMigrationSection from '../components/settings/DataMigrationSection'
+import SupportSection from '../components/settings/SupportSection'
+import ActivityFeed from '../components/ActivityFeed'
 import { trialState, daysLeftText } from '../utils/trialStatus'
 import PageTabs from '../components/common/PageTabs'
 import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
@@ -62,8 +65,11 @@ const TABS = [
   { id: 'print',        label: 'Print & PDF',           icon: <PrinterIcon size={16} />,  desc: 'Thermal & A4 layouts' },
 
   { id: 'network',      label: 'Network & Discovery',   icon: <ZapIcon size={16} />,      desc: 'LAN sync & hosting mode' },
-  { id: 'advanced',     label: 'Advanced',              icon: <ZapIcon size={16} />,      desc: 'Security & reset controls' },
+  { id: 'migration',    label: 'Data Migration',        icon: <ImportIcon size={16} />,   desc: 'Bulk import & export' },
+  { id: 'activity',     label: 'Business Activity',     icon: <SummaryIcon size={16} />,  desc: 'Audit trail & event log' },
   { id: 'ops_health',   label: 'Ops & Health',          icon: <CheckIcon size={16} />,    desc: 'System health & diagnostics' },
+  { id: 'support',      label: 'Feedback & Support',    icon: <MessageIcon size={16} />,  desc: 'Submit tickets & diagnostics' },
+  { id: 'advanced',     label: 'Advanced',              icon: <ZapIcon size={16} />,      desc: 'Security & reset controls' },
 ]
 
 const SETTINGS_CATEGORIES = [
@@ -77,7 +83,7 @@ const SETTINGS_CATEGORIES = [
   },
   {
     title: 'System & Connectivity',
-    ids: ['network', 'advanced', 'ops_health']
+    ids: ['network', 'migration', 'activity', 'ops_health', 'support', 'advanced']
   }
 ]
 
@@ -91,7 +97,7 @@ export default function Settings() {
   const { config, refreshConfig } = useBusinessConfig()
   const { hasLock, setupPasscode, clearPasscode } = useLock()
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
-  const visibleTabs = isCashier ? TABS.filter(t => t.id === 'general') : TABS
+  const visibleTabs = isCashier ? TABS.filter(t => ['general', 'support'].includes(t.id)) : TABS
   const settingsGroups = SETTINGS_CATEGORIES.map(cat => ({
     title: cat.title,
     tabs: cat.ids.map(id => visibleTabs.find(t => t.id === id)).filter(Boolean)
@@ -101,16 +107,16 @@ export default function Settings() {
   const [settingsSearchQuery, setSettingsSearchQuery] = useState('')
 
   const [activeTab, setActiveTab] = useState(() => {
-    let tabParam = new URLSearchParams(window.location.search).get('tab')
+    let tabParam = searchParams.get('tab')
     // Redirect legacy 'hosting' deep-link to the new network tab
     if (tabParam === 'hosting') tabParam = 'network'
-    return (tabParam && (!isCashier || tabParam === 'general') && TABS.some(t => t.id === tabParam)) ? tabParam : 'general'
+    return (tabParam && (!isCashier || ['general', 'support'].includes(tabParam)) && TABS.some(t => t.id === tabParam)) ? tabParam : 'general'
   })
 
   useEffect(() => {
     let tabParam = searchParams.get('tab')
     if (tabParam === 'hosting') tabParam = 'network'
-    if (isCashier && tabParam && tabParam !== 'general') {
+    if (isCashier && tabParam && !['general', 'support'].includes(tabParam)) {
       setActiveTab('general')
       setSearchParams({ tab: 'general' }, { replace: true })
     } else if (tabParam && TABS.some(t => t.id === tabParam) && tabParam !== activeTab) {
@@ -566,7 +572,7 @@ export default function Settings() {
           </div>
           <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <HeaderSearchSlot />
-            {activeTab !== 'profile' && (
+            {activeTab !== 'profile' && activeTab !== 'migration' && activeTab !== 'activity' && activeTab !== 'ops_health' && activeTab !== 'support' && (
               <SettingsSaveButton saveStatus={saveStatus} saving={saving} onSave={() => save(true)} />
             )}
           </div>
@@ -647,6 +653,7 @@ export default function Settings() {
           <div className="settings-panel-body" style={{
             flex: 1,
             overflowY: 'auto',
+            scrollbarWidth: 'thin',
           }}>
 
           {/* ── Global card-group styles (shared by all tabs) ── */}
@@ -2378,6 +2385,16 @@ export default function Settings() {
             </>
           )}
 
+          {/* ═══════════════════════════ DATA MIGRATION ═════════════════════════ */}
+          {activeTab === 'migration' && !isCashier && (
+            <DataMigrationSection />
+          )}
+
+          {/* ═══════════════════════════ BUSINESS ACTIVITY ══════════════════════ */}
+          {activeTab === 'activity' && !isCashier && (
+            <ActivityFeed />
+          )}
+
           {/* ═══════════════════════════ OPS & HEALTH ═════════════════════════ */}
           {activeTab === 'ops_health' && !isCashier && (
             <>
@@ -2388,25 +2405,37 @@ export default function Settings() {
                 <SectionHeader title="Help Documentation & Diagnostics Guides" description="Reference guides for system self-healing, tamper-evident hash chains, stock ledger alignment, and outbox recovery." />
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginTop: 12 }}>
                   <div style={{ padding: 16, background: 'var(--bg-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>🔒 SHA-256 Tamper Evidence</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>
+                      <LockIcon size={16} />
+                      <span>SHA-256 Tamper Evidence</span>
+                    </div>
                     <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45, margin: 0 }}>
                       Every posted invoice and payment is linked sequentially via SHA-256 cryptographic hashes. If an entry is modified out-of-band, the chain flags "Broken". Running Auto-Repair re-links and re-seals the audit trail cleanly.
                     </p>
                   </div>
                   <div style={{ padding: 16, background: 'var(--bg-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>📦 Stock Ledger Alignment</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>
+                      <PackageIcon size={16} />
+                      <span>Stock Ledger Alignment</span>
+                    </div>
                     <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45, margin: 0 }}>
                       Catalog stock is backed by immutable <code>StockLedger</code> audit rows. Bulk CSV imports or offline edits can cause cache drift. Auto-Repair audits ledger movements and provisions missing opening balance records.
                     </p>
                   </div>
                   <div style={{ padding: 16, background: 'var(--bg-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>🔄 Sync Outbox &amp; Queue Draining</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>
+                      <SyncIcon size={16} />
+                      <span>Sync Outbox &amp; Queue Draining</span>
+                    </div>
                     <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45, margin: 0 }}>
                       Local mutations buffer in <code>SyncQueue</code> during offline billing. If a parent record is missing on the cloud, Auto-Repair enriches parent UIDs and clears transient network errors to unblock the queue.
                     </p>
                   </div>
                   <div style={{ padding: 16, background: 'var(--bg-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>👥 Staff &amp; Session Security</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>
+                      <ShieldIcon size={16} />
+                      <span>Staff &amp; Session Security</span>
+                    </div>
                     <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45, margin: 0 }}>
                       Staff sub-accounts are strictly scoped under the owner's Business ID. Updating a staff password or role immediately bumps their <code>token_version</code>, revoking active JWT sessions across terminals.
                     </p>
@@ -2414,6 +2443,11 @@ export default function Settings() {
                 </div>
               </div>
             </>
+          )}
+
+          {/* ═══════════════════════════ FEEDBACK & SUPPORT ═════════════════════ */}
+          {activeTab === 'support' && (
+            <SupportSection />
           )}
           </div>
         </div>
@@ -2494,7 +2528,7 @@ export default function Settings() {
           <div style={boxStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
               <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                ⚠️ Delete Account
+                <AlertIcon size={16} /> Delete Account
               </div>
               <button 
                 type="button" 

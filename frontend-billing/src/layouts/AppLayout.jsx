@@ -32,7 +32,7 @@ import { useDocLabels } from '../hooks/useDocLabels'
 import { HALT_COPY, resolveHaltReason } from '../utils/syncHalt'
 // HostingOnboardingModal removed: hosting is now chosen once, in Register.
 // The post-login onboarding pop-up duplicated that choice and was intrusive.
-import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, TruckIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon, DownloadIcon, PlusIcon } from '../components/Icons'
+import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, TruckIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon, DownloadIcon, PlusIcon, MessageIcon } from '../components/Icons'
 
 
 // Separate apps opened from the sidebar — a NAV item's `external` names one.
@@ -70,7 +70,6 @@ const NAV = [
           { to: '/b2b?tab=connections', label: 'Connections' },
         ],
       },
-      { to: '/import', icon: <ImportIcon size={16} className="nav-anim-import" />, label: 'Data Migration' },
     ]
   },
   {
@@ -136,11 +135,10 @@ const PAGE_TITLES = {
 // a list of ROUTES, not of nav objects: the icon and label are looked up from
 // the sidebar's own nav list at render time, so this can never drift into
 // showing a tab the sidebar has renamed or the plan has hidden.
-// Workspaces that open with the sidebar collapsed to its rail. Stock is a wide
-// data grid built as a full-bleed POS surface; the nav costs it 240px it has a
-// real use for. Prefix match, so /stock/inventory, /stock/purchases and any
-// future tab inherit it.
-const AUTO_COLLAPSE_ROUTES = ['/settings']
+// Settings and Reports have their own section navigation. Open the main
+// sidebar as a rail to leave room for those workspaces, restoring the saved
+// preference when the user leaves.
+const AUTO_COLLAPSE_ROUTES = ['/settings', '/reports']
 
 const BOTTOM_BAR_ROUTES = ['/', '/sales', '/stock', '/parties', '/reports']
 
@@ -201,7 +199,7 @@ export default function AppLayout({ children, title }) {
       { label: 'Connections',          icon: <ConnectionIcon size={14} />, action: () => nav('/b2b?tab=connections') },
     ],
     '/import':      (nav) => [
-      { label: 'Data Migration',       icon: <ImportIcon size={14} />,    action: () => nav('/import') },
+      { label: 'Data Migration',       icon: <ImportIcon size={14} />,    action: () => nav('/settings?tab=migration') },
     ],
     '/pos-live-counter': (nav) => [
       { label: 'Open Live Counter',    icon: <MonitorIcon size={14} />,   action: () => nav('/pos-live-counter') },
@@ -2527,10 +2525,10 @@ export default function AppLayout({ children, title }) {
                 </button>
                 <button
                   className="profile-menu-item"
-                  onClick={() => { setShowProfileMenu(false); navigate('/support'); }}
+                  onClick={() => { setShowProfileMenu(false); navigate('/settings?tab=support'); }}
                   style={{ display: 'flex', alignItems: 'center', gap: 8 }}
                 >
-                  <AlertIcon size={14} /> Feedback & Support
+                  <MessageIcon size={14} /> Feedback & Support
                 </button>
                 {!IS_DESKTOP_APP && (
                   <button
@@ -2715,10 +2713,10 @@ export default function AppLayout({ children, title }) {
                 </button>
                 <button
                   className="profile-menu-item"
-                  onClick={() => { setShowProfileMenu(false); navigate('/support'); }}
+                  onClick={() => { setShowProfileMenu(false); navigate('/settings?tab=support'); }}
                   style={{ display: 'flex', alignItems: 'center', gap: 8 }}
                 >
-                  <AlertIcon size={14} /> Feedback & Support
+                  <MessageIcon size={14} /> Feedback & Support
                 </button>
                 {!IS_DESKTOP_APP && (
                   <button

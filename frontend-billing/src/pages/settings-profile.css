@@ -8,11 +8,14 @@
 .settings-panel.card::after { display: none; }
 
 /* ── Settings Split-Pane Layout ── */
-.settings-split-layout {
+.settings-split-layout,
+.settings-shell.slide-up > .card.settings-split-layout {
   display: flex !important;
   flex-direction: row !important;
-  height: 100%;
-  min-height: 0;
+  flex: 1 1 0% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
   overflow: hidden;
 }
 
@@ -108,11 +111,11 @@
 }
 
 .settings-nav-item.active {
-  background: var(--bg-2);
-  color: var(--accent);
+  background: var(--page-selection-bg, var(--bg-2));
+  color: var(--page-selection-text, var(--accent));
   font-weight: 600;
-  border-color: var(--border);
-  border-left: 3px solid var(--accent);
+  border-color: var(--page-selection-border, var(--border));
+  border-left: 3px solid var(--page-selection-text, var(--accent));
   box-shadow: var(--shadow-sm);
 }
 
@@ -158,22 +161,18 @@
 .settings-shell .settings-panel-body {
   padding: clamp(16px, 2.2vw, 28px);
   min-width: 0;
-  overscroll-behavior: contain;
+  flex: 1;
+  overflow-y: auto !important;
   scroll-behavior: smooth;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }
 .settings-shell .settings-panel-body::-webkit-scrollbar {
-  width: 0px;
-  height: 0px;
-  display: none;
-  background: transparent;
-}
-.settings-shell .settings-panel-body::-webkit-scrollbar-track {
-  background: transparent;
+  width: 6px;
 }
 .settings-shell .settings-panel-body::-webkit-scrollbar-thumb {
-  background: transparent;
+  background: var(--border);
+  border-radius: 4px;
 }
 .settings-section-tabs {
   padding: 14px 16px;
@@ -311,7 +310,8 @@
 }
 
 @media (max-width: 768px) {
-  .settings-split-layout {
+  .settings-split-layout,
+  .settings-shell.slide-up > .card.settings-split-layout {
     flex-direction: column !important;
   }
   .settings-sub-sidebar {

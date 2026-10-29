@@ -15,6 +15,7 @@ import AdminUsage          from './pages/admin/AdminUsage'
 import AdminCache          from './pages/admin/AdminCache'
 import AdminTelemetry      from './pages/admin/AdminTelemetry'
 import AdminHealth         from './pages/admin/AdminHealth'
+import AdminSettings       from './pages/admin/AdminSettings'
 
 import { DialogProvider } from './contexts/DialogContext'
 
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="/admin/cache"        element={<AdminCache />} />
             <Route path="/admin/health"       element={<AdminHealth />} />
             <Route path="/admin/telemetry"    element={<AdminTelemetry />} />
+            <Route path="/admin/settings"     element={<AdminSettings />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />

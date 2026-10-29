@@ -36,6 +36,16 @@ export default function AdminBusinessDetail() {
   const [serverLog, setServerLog] = useState('')
   const [limits, setLimits] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [copiedId, setCopiedId] = useState(false)
+
+  async function copyBusinessId(bizid) {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard is unavailable. Select the BizID and copy it manually.')
+      await navigator.clipboard.writeText(bizid)
+      setCopiedId(true)
+      setTimeout(() => setCopiedId(false), 2000)
+    } catch (error) { await showError(error) }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -104,6 +114,7 @@ export default function AdminBusinessDetail() {
     try {
       const res = await authFetch(`${API_BASE}/admin/flush-cache/${id}`, { method: 'POST' })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || data.error || 'Cache flush failed')
       await showAlert(data.message || 'Cache flushed.')
     } catch (err) {
       await showError(err)
@@ -132,37 +143,62 @@ export default function AdminBusinessDetail() {
   return (
     <div className="admin-main" style={{ margin: 0, padding: 0 }}>
       {/* Header */}
-      <div className="admin-header-row" style={{ borderBottom: '1.5px solid var(--border-color)', paddingBottom: 20 }}>
+      <div className="admin-header-row">
         <div className="admin-title-group">
-          <div style={{ fontSize: 12, marginBottom: 6 }}>
-            <Link to="/admin/businesses" style={{ color: 'var(--secondary-text)', textDecoration: 'none' }}>← Businesses</Link>
+          <div style={{ marginBottom: 8 }}>
+            <Link to="/admin/businesses" className="back-to-app" style={{ margin: 0 }}>
+              <Icon name="chevronLeft" size={14} /> Back to Businesses
+            </Link>
           </div>
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {business?.business_name || `Business #${id}`}
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span>{business?.business_name || `Business #${id}`}</span>
             {business?.plan && (
               <span className="tag" style={{
-                background: business.plan === 'pro' ? 'rgba(58,154,92,0.12)' : 'var(--accent-soft)',
-                color: business.plan === 'pro' ? '#3a9a5c' : 'var(--secondary-text)',
-                fontWeight: 700, textTransform: 'uppercase', fontSize: 10,
+                background: business.plan === 'pro' ? 'var(--success-dim)' : 'var(--accent-dim)',
+                color: business.plan === 'pro' ? 'var(--success)' : 'var(--text-secondary)',
+                border: `1px solid ${business.plan === 'pro' ? 'rgba(31,107,58,0.2)' : 'rgba(193,95,60,0.2)'}`,
               }}>{business.plan}</span>
             )}
             {syncHealth && (
               <span className="tag" title={(syncHealth.reasons || []).join('; ') || 'Sync healthy'} style={{
-                background: `${HEALTH_COLORS[health]}22`, color: HEALTH_COLORS[health],
-                fontWeight: 700, textTransform: 'uppercase', fontSize: 10,
+                background: `${HEALTH_COLORS[health]}18`,
+                color: HEALTH_COLORS[health],
+                border: `1px solid ${HEALTH_COLORS[health]}40`,
               }}>SYNC {health}</span>
             )}
           </h1>
-          <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 12 }}>
-            {business?.bizid || '—'} · {business?.username || ''} · mode: {business?.hosting_mode || 'local'}
+          <p style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+            <span>BizID: {business?.bizid || '—'}</span>
+            {business?.bizid && (
+              <button
+                type="button"
+                onClick={() => copyBusinessId(business.bizid)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: copiedId ? 'var(--success)' : 'var(--text-muted)',
+                  padding: '2px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}
+                title={copiedId ? 'Copied!' : 'Copy BizID'}
+              >
+                <Icon name={copiedId ? 'check' : 'copy'} size={13} />
+              </button>
+            )}
+            <span>·</span>
+            <span>@{business?.username || ''}</span>
+            <span>·</span>
+            <span>hosting: {business?.hosting_mode || 'local'}</span>
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn-flush" onClick={load}><Icon name="refresh" size={12} /> Refresh</button>
-          <button className="btn-flush" onClick={handleDownloadLogs}>Download logs</button>
-          <button className="btn-flush" onClick={handleFlushCache}>Flush cache</button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button className="btn-flush" onClick={load}><Icon name="refresh" size={13} /> Refresh</button>
+          <button className="btn-flush" onClick={handleDownloadLogs}><Icon name="download" size={13} /> Logs</button>
+          <button className="btn-flush" onClick={handleFlushCache}><Icon name="trash" size={13} /> Flush Cache</button>
           <button className="btn-wipe-row" onClick={handleForceLogout} title="Revoke every active session for this business">
-            Force logout
+            <Icon name="logout" size={13} /> Force Logout
           </button>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
@@ -12,6 +12,9 @@ export default function AdminBusinesses() {
   const { showAlert, showConfirm, showError } = useDialog()
   const [businesses, setBusinesses] = useState([])
   const [loading, setLoading] = useState(true)
+  const [hasLoaded, setHasLoaded] = useState(false)
+  const [loadError, setLoadError] = useState(null)
+  const listRequest = useRef(0)
 
   // Modals visibility
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -44,21 +47,44 @@ export default function AdminBusinesses() {
   const [wipeTarget, setWipeTarget] = useState(null)   // { id, name }
   const [wipeTyped, setWipeTyped] = useState('')
 
+  // Search & Copy BizID
+  const [search, setSearch] = useState('')
+  const [copiedId, setCopiedId] = useState(null)
+
+  async function copyBusinessId(bizid) {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard is unavailable. Select the BizID and copy it manually.')
+      await navigator.clipboard.writeText(bizid)
+      setCopiedId(bizid)
+      setTimeout(() => setCopiedId(null), 2000)
+    } catch (error) { await showError(error) }
+  }
+
   useEffect(() => {
     loadBusinesses()
+    return () => { ++listRequest.current }
   }, [])
 
   async function loadBusinesses() {
+    const requestId = ++listRequest.current
     setLoading(true)
+    setLoadError(null)
     try {
       const res = await authFetch(`${API_BASE}/admin/businesses`)
       if (!res.ok) throw new Error('Failed to load merchant directory')
       const data = await res.json()
-      setBusinesses(data)
+      if (!Array.isArray(data) || data.some(b => !b || b.id == null || typeof b.username !== 'string'
+        || (b.business_name != null && typeof b.business_name !== 'string') || b.total_revenue == null
+        || !Number.isFinite(Number(b.total_revenue)))) throw new Error('Invalid merchant directory response')
+      if (requestId !== listRequest.current) return
+      setBusinesses(data.map(b => ({ ...b, total_revenue: Number(b.total_revenue) })))
+      setHasLoaded(true)
     } catch (err) {
+      if (requestId !== listRequest.current) return
       logger.error(err)
+      setLoadError('Business directory could not be loaded.')
     } finally {
-      setLoading(false)
+      if (requestId === listRequest.current) setLoading(false)
     }
   }
 
@@ -75,6 +101,7 @@ export default function AdminBusinesses() {
     try {
       const res = await authFetch(`${API_BASE}/admin/wipe-user-data/${id}`, { method: 'DELETE' })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || data.error || 'Data wipe failed')
       await showAlert(data.message || `Wiped all data for ${name} successfully.`)
       loadBusinesses()
     } catch (err) {
@@ -146,6 +173,7 @@ export default function AdminBusinesses() {
     try {
       const res = await authFetch(`${API_BASE}/admin/flush-cache/${id}`, { method: 'POST' })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || data.error || 'Cache flush failed')
       await showAlert(data.message || `Flushed cache for ${name} successfully.`)
     } catch (err) {
       await showError(err)
@@ -282,18 +310,42 @@ export default function AdminBusinesses() {
     }
   }
 
+  const filteredBusinesses = businesses.filter(b => {
+    if (!search.trim()) return true
+    const q = search.trim().toLowerCase()
+    return (
+      (b.business_name && b.business_name.toLowerCase().includes(q)) ||
+      (b.username && b.username.toLowerCase().includes(q)) ||
+      (b.bizid && b.bizid.toLowerCase().includes(q))
+    )
+  })
+
   return (
     <div className="admin-main" style={{ margin: 0, padding: 0 }}>
       {/* Header */}
-      <div className="admin-header-row" style={{ borderBottom: '1.5px solid var(--border-color)', paddingBottom: 20 }}>
+      <div className="admin-header-row">
         <div className="admin-title-group">
-          <h1>✦ REGISTERED ENTERPRISES</h1>
-          <p>Manage sandbox accounts, directory credentials, data wipe, and rate limits</p>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="users" size={22} style={{ color: 'var(--accent)' }} />
+            <span>Registered Enterprises</span>
+          </h1>
+          <p>Manage merchant accounts, access credentials, rate limits, and live data synchronization</p>
         </div>
-        <button className="btn-flush" onClick={() => setShowCreateModal(true)} style={{ padding: '10px 16px', fontSize: 13 }}>
-          + Add New Merchant
-        </button>
+        <div className="admin-header-actions">
+          <button type="button" className="btn-flush" onClick={loadBusinesses} disabled={loading}>
+            <Icon name="refresh" size={14} /> Refresh directory
+          </button>
+          <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
+            <Icon name="plus" size={14} />
+            <span>Add New Merchant</span>
+          </button>
+        </div>
       </div>
+
+      {loadError && <div role="alert" style={{ marginTop: 16, color: 'var(--danger)' }}>
+        <p>{loadError}{hasLoaded ? ' Showing the last loaded directory.' : ''}</p>
+        <button type="button" className="btn-flush" onClick={loadBusinesses} disabled={loading}>Retry directory</button>
+      </div>}
 
       {/* Directory Table */}
       <Section
@@ -301,27 +353,59 @@ export default function AdminBusinesses() {
         icon={<Icon name="database" size={16} />}
         collapsible
         noPad
-        style={{ marginTop: 24 }}
+        style={{ marginTop: 20 }}
       >
-        {loading ? (
+        {/* Search & Filter Toolbar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-1)', flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', flex: 1, minWidth: 260, maxWidth: 420 }}>
+            <Icon name="search" size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <input
+              type="text"
+              className="admin-input"
+              placeholder="Search by business name, username, or BizID..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ paddingLeft: 32, fontSize: 13, height: 36 }}
+            />
+          </div>
+          {search && (
+            <button
+              type="button"
+              className="btn-flush"
+              onClick={() => setSearch('')}
+              style={{ height: 36, padding: '0 12px', fontSize: 12 }}
+            >
+              Clear Filter
+            </button>
+          )}
+          {hasLoaded && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 'auto' }}>
+            Showing <b>{filteredBusinesses.length}</b> of <b>{businesses.length}</b> businesses
+          </span>}
+        </div>
+
+        {loading && !hasLoaded ? (
           <div className="vskel" style={{ padding: 20 }}></div>
-        ) : (
+        ) : hasLoaded ? (
           <div className="admin-table-wrap" style={{ overflowX: 'auto', width: '100%' }}>
             {(() => {
               const flagged = businesses.filter(b => b.needs_attention)
               if (flagged.length === 0) return null
               return (
                 <div style={{
-                  margin: '10px 0 4px', padding: '9px 14px', borderRadius: 8,
-                  background: 'rgba(180,70,47,0.10)', border: '1px solid rgba(180,70,47,0.30)',
-                  color: 'var(--danger, #b4462f)', fontSize: 13, fontWeight: 600,
+                  margin: '12px 18px 4px', padding: '10px 14px', borderRadius: 'var(--radius-md, 8px)',
+                  background: 'var(--danger-dim)', border: '1px solid rgba(155,28,28,0.25)',
+                  color: 'var(--danger)', fontSize: 13, fontWeight: 600,
+                  display: 'flex', alignItems: 'center', gap: 8,
                 }}>
-                  ⚠ {flagged.length} business{flagged.length > 1 ? 'es' : ''} need attention —
-                  {' '}sync errors or unreviewed financial conflicts. Look for the “Attention” tag below.
+                  <Icon name="alert" size={16} />
+                  <span>
+                    {flagged.length} business{flagged.length > 1 ? 'es' : ''} need attention —
+                    {' '}sync errors or unreviewed financial conflicts detected. Look for the Attention badge below.
+                  </span>
                 </div>
               )
             })()}
-            <table className="admin-table" style={{ width: '100%', marginTop: 12 }}>
+            <table className="admin-table" style={{ width: '100%', marginTop: 8 }}>
               <thead>
                 <tr>
                   <th>ID</th>
@@ -331,75 +415,99 @@ export default function AdminBusinesses() {
                   <th>Mode</th>
                   <th>Sync</th>
                   <th>Plan</th>
-                  <th>Total Invoices</th>
-                  <th>Tracked Revenue</th>
-                  <th>Inventory Stock Count</th>
-                  <th>Upload History</th>
+                  <th>Invoices</th>
+                  <th>Revenue</th>
+                  <th>Stock Items</th>
+                  <th>Uploads</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {businesses.length === 0 ? (
+                {filteredBusinesses.length === 0 ? (
                   <tr>
-                    <td colSpan="12" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 30 }}>
-                      No enterprise businesses registered yet.
+                    <td colSpan="12" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 36 }}>
+                      {search ? 'No businesses match the search query.' : 'No enterprise businesses registered yet.'}
                     </td>
                   </tr>
                 ) : (
-                  businesses.map(b => (
+                  filteredBusinesses.map(b => (
                     <tr key={b.id}>
-                      <td style={{ fontFamily: "'Geist Mono',monospace", opacity: 0.75 }}>{b.id}</td>
-                      <td style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, opacity: 0.85 }} title="Stable identity across cloud & local databases">{b.bizid || '—'}</td>
+                      <td style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 12, color: 'var(--text-muted)' }}>{b.id}</td>
+                      <td style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 11.5 }} title="Stable identity across cloud & local databases">
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <span>{b.bizid || '—'}</span>
+                          {b.bizid && (
+                            <button
+                              type="button"
+                              onClick={() => copyBusinessId(b.bizid)}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                color: copiedId === b.bizid ? 'var(--success)' : 'var(--text-muted)',
+                                padding: '2px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                              }}
+                              title={copiedId === b.bizid ? 'Copied!' : 'Copy BizID'}
+                            >
+                              <Icon name={copiedId === b.bizid ? 'check' : 'copy'} size={13} />
+                            </button>
+                          )}
+                        </span>
+                      </td>
                       <td style={{ fontWeight: 600 }}>
                         <Link to={`/admin/businesses/${b.id}`} title="Open drill-down: sync health, telemetry, logs, force logout"
-                          style={{ color: 'var(--accent-color)', textDecoration: 'none' }}>
+                          style={{ color: 'var(--accent)', textDecoration: 'none' }}>
                           {b.business_name}
                         </Link>
                         {b.needs_attention && (
                           <span
+                            className="tag"
                             title={`Needs attention — ${b.sync_errors || 0} sync error(s), ${b.unreviewed_conflicts || 0} unreviewed conflict(s)`}
                             style={{
-                              marginLeft: 8, fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
-                              letterSpacing: '0.04em', padding: '2px 7px', borderRadius: 10,
-                              background: 'rgba(180,70,47,0.12)', color: 'var(--danger, #b4462f)',
+                              marginLeft: 8,
+                              background: 'var(--danger-dim)',
+                              color: 'var(--danger)',
+                              border: '1px solid rgba(155,28,28,0.2)',
                             }}
                           >
-                            ⚠ Attention
+                            <Icon name="alert" size={11} /> Attention
                           </span>
                         )}
                       </td>
-                      <td>{b.username}</td>
-                      <td><span className="tag">{b.hosting_mode || 'local'}</span></td>
+                      <td style={{ color: 'var(--text-secondary)' }}>@{b.username}</td>
+                      <td><span className="tag" style={{ background: 'var(--bg-1)', border: '1px solid var(--border)' }}>{b.hosting_mode || 'local'}</span></td>
                       <td>
                         <span title={b.last_sync_at ? `Last sync ${b.last_sync_at}${b.sync_queue_depth ? ` · ${b.sync_queue_depth} queued` : ''}` : 'Never synced'} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12 }}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: b.online_last_24h ? '#3a9a5c' : 'var(--border-color)', display: 'inline-block' }}></span>
-                          {b.online_last_24h ? '24h' : (b.last_sync_at ? 'stale' : '—')}
-                          {b.sync_queue_depth > 0 && <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>+{b.sync_queue_depth}</span>}
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: b.online_last_24h ? 'var(--success)' : 'var(--border)', display: 'inline-block' }}></span>
+                          <span>{b.online_last_24h ? '24h' : (b.last_sync_at ? 'stale' : '—')}</span>
+                          {b.sync_queue_depth > 0 && <span style={{ color: 'var(--accent)', fontWeight: 600 }}>+{b.sync_queue_depth}</span>}
                         </span>
                       </td>
                       <td>
                         <span className="tag" style={{
-                          background: b.plan === 'pro' ? 'rgba(58,154,92,0.12)' : 'var(--accent-soft)',
-                          color: b.plan === 'pro' ? '#3a9a5c' : 'var(--secondary-text)',
-                          fontWeight: 700, textTransform: 'uppercase', fontSize: 10
+                          background: b.plan === 'pro' ? 'var(--success-dim)' : 'var(--accent-dim)',
+                          color: b.plan === 'pro' ? 'var(--success)' : 'var(--text-secondary)',
+                          border: `1px solid ${b.plan === 'pro' ? 'rgba(31,107,58,0.2)' : 'rgba(193,95,60,0.2)'}`,
                         }}>{b.plan || 'free'}</span>
                       </td>
                       <td>{b.invoice_count}</td>
-                      <td style={{ fontFamily: "'Crimson Pro',serif", fontSize: 16, fontWeight: 600 }}>
+                      <td style={{ fontFamily: "var(--font-serif)", fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
                         ₹{b.total_revenue.toLocaleString('en-IN')}
                       </td>
                       <td>{b.inventory_count} items</td>
                       <td>{b.upload_count} datasets</td>
                       <td>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <Link to={`/admin/businesses/${b.id}`} className="btn-flush" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>Open</Link>
-                          <button className="btn-flush" onClick={() => openInspectModal(b)}>Inspect</button>
-                          <button className="btn-flush" onClick={() => openEditModal(b)}>Edit</button>
-                          <button className="btn-flush" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => openLimitsModal(b)}><Icon name="settings" size={12} /> Limits</button>
-                          <button className="btn-flush" onClick={() => openPlanModal(b)}>Plan</button>
-                          <button className="btn-flush" onClick={() => handleFlushCache(b.id, b.business_name)}>Flush Cache</button>
-                          <button className="btn-flush" onClick={() => handleDownloadLogs(b.id, b.business_name)}>Logs</button>
-                          <button className="btn-wipe-row" onClick={() => handleWipeUser(b.id, b.business_name)}>Wipe Data</button>
+                        <div className="admin-business-actions">
+                          <Link to={`/admin/businesses/${b.id}`} className="btn-flush" style={{ textDecoration: 'none', padding: '5px 10px', fontSize: 12 }}>Open</Link>
+                          <button className="btn-flush" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => openInspectModal(b)}>Inspect</button>
+                          <button className="btn-flush" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => openEditModal(b)}>Edit</button>
+                          <button className="btn-flush" style={{ padding: '5px 10px', fontSize: 12, gap: 4 }} onClick={() => openLimitsModal(b)}><Icon name="settings" size={12} /> Limits</button>
+                          <button className="btn-flush" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => openPlanModal(b)}>Plan</button>
+                          <button className="btn-flush" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => handleFlushCache(b.id, b.business_name)}>Flush</button>
+                          <button className="btn-flush" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => handleDownloadLogs(b.id, b.business_name)}>Logs</button>
+                          <button className="btn-wipe-row" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => handleWipeUser(b.id, b.business_name)}>Wipe</button>
                         </div>
                       </td>
                     </tr>
@@ -408,7 +516,7 @@ export default function AdminBusinesses() {
               </tbody>
             </table>
           </div>
-        )}
+        ) : null}
       </Section>
 
       {/* CREATE MERCHANT MODAL */}
@@ -631,7 +739,10 @@ export default function AdminBusinesses() {
       {wipeTarget && (
         <div className="custom-modal-overlay">
           <div className="custom-modal-card admin-modal-card" style={{ maxWidth: 460 }}>
-            <div className="custom-modal-title" style={{ color: 'var(--accent-color)' }}>⚠ Permanently wipe {wipeTarget.name}?</div>
+            <div className="custom-modal-title" style={{ color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="warn" size={18} />
+              <span>Permanently wipe {wipeTarget.name}?</span>
+            </div>
             <p style={{ fontSize: 13, color: 'var(--secondary-text)', marginTop: 12, lineHeight: 1.5 }}>
               This deletes the account and ALL its business data — invoices, inventory,
               payments, uploads, embeddings and chat history. This cannot be undone.

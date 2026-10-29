@@ -3,14 +3,15 @@
 // Description: Inventory & Catalog Manager. Handles product item catalog creation,
 //              stock adjustments, barcode bindings, and stock transfers between godowns — v9.
 // ============================================================================
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
-import { AlertIcon, CheckIcon, CopyIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon, ExpandIcon, SidebarIcon } from '../components/Icons'
+import { AlertIcon, CheckIcon, PrinterIcon, CopyIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon, ExpandIcon, SidebarIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import { formatApiError } from '../utils/apiError'
+import { getTodayDateStr } from '../utils/format'
 import CustomSelect from '../components/common/CustomSelect'
 import AdjustStockModal from '../components/stock/AdjustStockModal'
 import TransferStockModal from '../components/stock/TransferStockModal'
@@ -594,6 +595,9 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
 
   const clearIntakeState = useCallback(() => {
     setIntakeRows([])
+    setIntakeDistributor({ vendor_id: null, name: '', gstin: '', pan: '', fssai: '', phone: '', address: '', invoice_no: '', invoice_date: getTodayDateStr() })
+    setIntakeAdjustments({ item_disc: '', cess: '', cash_disc: '' })
+    setIntakePayment({ mode: 'Credit', due_date: '' })
     localStorage.removeItem('bizassist_intake_rows')
     localStorage.removeItem('bizassist_intake_distributor')
     localStorage.removeItem('bizassist_intake_adjustments')
@@ -624,6 +628,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   }
 
   const printGRN = () => {
+    const escapeText = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]))
     const gstOfLocal = (r) => (parseFloat(r.cgst_rate) || 0) + (parseFloat(r.sgst_rate) || 0) || (parseFloat(r.igst_rate) || 0)
     const money = (n) =>
       n != null
@@ -658,13 +663,16 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
     const payable = taxable + taxTotal + cess - cashDisc
 
     const w = window.open('', '_blank', 'width=800,height=900')
-    if (!w) return
+    if (!w) {
+      setAlert({ type: 'warning', msg: 'Allow pop-ups for BizAssist, then use Print GRN again.' })
+      return
+    }
     const rowsHtml = intakeRows.map((r, i) => {
       const q = parseFloat(r.qty) || 0, f = parseFloat(r.free) || 0
       const c = parseFloat(r.cost_price) || 0, g = gstOfLocal(r)
       const amt = q * c, taxAmt = amt * g / 100
       return `<tr>
-        <td>${i + 1}</td><td>${r.name || ''}</td><td style="text-align:right">${q}</td>
+        <td>${i + 1}</td><td>${escapeText(r.name)}</td><td style="text-align:right">${q}</td>
         <td style="text-align:right">${f}</td><td style="text-align:right">${c.toFixed(2)}</td>
         <td style="text-align:right">${g}%</td><td style="text-align:right">${taxAmt.toFixed(2)}</td>
         <td style="text-align:right">${(amt + taxAmt).toFixed(2)}</td></tr>`
@@ -684,16 +692,16 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
       <div style="color:#555">${new Date().toLocaleString('en-IN')}</div>
       <div class="grid">
         <div><h2>Distributor</h2>
-          <div>${intakeDistributor.name || '—'}</div>
-          <div>GSTIN: ${intakeDistributor.gstin || '—'}</div>
-          <div>PAN: ${intakeDistributor.pan || '—'}</div>
-          <div>FSSAI: ${intakeDistributor.fssai || '—'}</div>
-          <div>Phone: ${intakeDistributor.phone || '—'}</div>
-          <div>Address: ${intakeDistributor.address || '—'}</div>
+          <div>${escapeText(intakeDistributor.name || '—')}</div>
+          <div>GSTIN: ${escapeText(intakeDistributor.gstin || '—')}</div>
+          <div>PAN: ${escapeText(intakeDistributor.pan || '—')}</div>
+          <div>FSSAI: ${escapeText(intakeDistributor.fssai || '—')}</div>
+          <div>Phone: ${escapeText(intakeDistributor.phone || '—')}</div>
+          <div>Address: ${escapeText(intakeDistributor.address || '—')}</div>
         </div>
         <div><h2>Invoice / Payment</h2>
-          <div>Invoice No: ${intakeDistributor.invoice_no || '—'}</div><div>Invoice Date: ${intakeDistributor.invoice_date || '—'}</div>
-          <div>Payment: ${intakePayment.mode}${intakePayment.due_date ? ' · due ' + intakePayment.due_date : ''}</div></div>
+          <div>Invoice No: ${escapeText(intakeDistributor.invoice_no || '—')}</div><div>Invoice Date: ${escapeText(intakeDistributor.invoice_date || '—')}</div>
+          <div>Payment: ${escapeText(intakePayment.mode)}${intakePayment.due_date ? ' · due ' + escapeText(intakePayment.due_date) : ''}</div></div>
       </div>
       <h2>Items</h2>
       <table><thead><tr><th>#</th><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Free</th>
@@ -774,14 +782,122 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   // hold these CLIPS the trailing ones. Below the breakpoint the buttons are
   // hidden and the same list is handed to the ⋯ menu instead (see index.css).
   // One array so the two renderings cannot drift apart.
-  const toolbarActions = [
-    { label: 'Adjust Stock',   icon: <ZapIcon size={13} />,      action: () => { setAdjustForm(defaultAdjust); setShowAdjustModal(true) } },
-    { label: 'Transfer Stock', icon: <SyncIcon size={13} />,     action: () => { setTransferForm(defaultTransfer); setShowTransferModal(true) } },
-    { label: 'Labels',                                           action: () => setShowLabelModal(true) },
-    { label: exporting ? 'Exporting…' : 'Export',
-      icon: <DownloadIcon size={13} />, action: handleExport, disabled: exporting },
-    { label: 'New Product',    icon: <PlusIcon size={13} />,     action: () => { setEditProduct(null); setShowAddModal(true) }, primary: true },
-  ]
+  // Smart toolbar actions aligned to the current active sub-view
+  const toolbarActions = useMemo(() => {
+    if (activeView === 'intake') {
+      if (intakeRows.length > 0) {
+        return [
+          {
+            label: 'Clear Intake',
+            icon: <CloseIcon size={13} />,
+            action: () => {
+              if (window.confirm('Clear all unsaved intake items?')) {
+                clearIntakeState()
+              }
+            },
+            secondary: true,
+          },
+          {
+            label: 'New Product',
+            icon: <PlusIcon size={13} />,
+            action: () => { setEditProduct(null); setShowAddModal(true) },
+            secondary: true,
+          },
+          {
+            label: 'Print GRN',
+            icon: <PrinterIcon size={13} />,
+            action: printGRN,
+            primary: true,
+          },
+        ]
+      }
+      return [
+        {
+          label: 'Adjust Stock',
+          icon: <ZapIcon size={13} />,
+          action: () => { setAdjustForm(defaultAdjust); setShowAdjustModal(true) },
+          secondary: true,
+        },
+        {
+          label: exporting ? 'Exporting…' : 'Export',
+          icon: <DownloadIcon size={13} />,
+          action: handleExport,
+          disabled: exporting,
+          secondary: true,
+        },
+        {
+          label: 'New Product',
+          icon: <PlusIcon size={13} />,
+          action: () => { setEditProduct(null); setShowAddModal(true) },
+          primary: true,
+        },
+      ]
+    }
+
+    if (activeView === 'godowns') {
+      return [
+        {
+          label: 'Adjust Stock',
+          icon: <ZapIcon size={13} />,
+          action: () => { setAdjustForm(defaultAdjust); setShowAdjustModal(true) },
+          secondary: true,
+        },
+        {
+          label: exporting ? 'Exporting…' : 'Export',
+          icon: <DownloadIcon size={13} />,
+          action: handleExport,
+          disabled: exporting,
+          secondary: true,
+        },
+        {
+          label: 'New Product',
+          icon: <PlusIcon size={13} />,
+          action: () => { setEditProduct(null); setShowAddModal(true) },
+          secondary: true,
+        },
+        {
+          label: 'Transfer Stock',
+          icon: <SyncIcon size={13} />,
+          action: () => { setTransferForm(defaultTransfer); setShowTransferModal(true) },
+          primary: true,
+        },
+      ]
+    }
+
+    // Default: 'catalogue' view
+    return [
+      {
+        label: 'Adjust Stock',
+        icon: <ZapIcon size={13} />,
+        action: () => { setAdjustForm(defaultAdjust); setShowAdjustModal(true) },
+        secondary: true,
+      },
+      {
+        label: 'Transfer Stock',
+        icon: <SyncIcon size={13} />,
+        action: () => { setTransferForm(defaultTransfer); setShowTransferModal(true) },
+        secondary: true,
+      },
+      {
+        label: 'Labels',
+        action: () => setShowLabelModal(true),
+        secondary: true,
+      },
+      {
+        label: exporting ? 'Exporting…' : 'Export',
+        icon: <DownloadIcon size={13} />,
+        action: handleExport,
+        disabled: exporting,
+        secondary: true,
+      },
+      {
+        label: 'New Product',
+        icon: <PlusIcon size={13} />,
+        action: () => { setEditProduct(null); setShowAddModal(true) },
+        primary: true,
+      },
+    ]
+  }, [activeView, intakeRows.length, exporting, handleExport, clearIntakeState, printGRN, defaultAdjust, defaultTransfer])
 
   return (
     <PageShell embedded={embedded} title="Stock & Inventory">
@@ -891,7 +1007,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
               {toolbarActions.map((a, i) => (
                 <button
                   key={i}
-                  className={`btn ${a.primary ? 'btn-primary' : 'btn-secondary'} btn-sm ws-bar-action`}
+                  className={`btn ${a.primary ? 'btn-primary' : 'btn-secondary'} btn-sm ${a.primary ? '' : 'ws-bar-action'}`}
                   disabled={a.disabled}
                   onClick={a.action}
                 >

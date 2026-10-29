@@ -24,7 +24,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useConfirm } from '../contexts/ConfirmContext'
 import { logger } from '../utils/logger'
 import {
-  AlertIcon, BellIcon, CartIcon, CheckIcon, CloseIcon, ConnectionIcon,
+  AlertIcon, BellIcon, CartIcon, CheckIcon, CloseIcon, ConnectionIcon, CopyIcon,
   DownloadIcon, ImportIcon, TruckIcon,
 } from '../components/Icons'
 import PageTabs from '../components/common/PageTabs'
@@ -283,12 +283,17 @@ export default function B2B() {
     }
   }, [authFetch, confirm, notifyError, notifyOk, outgoing])
 
-  const copyBizId = useCallback(() => {
+  const copyBizId = useCallback(async () => {
     if (!myBizId) return
-    navigator.clipboard.writeText(myBizId)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }, [myBizId])
+    try {
+      await navigator.clipboard.writeText(myBizId)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(false)
+      notifyError('Clipboard access is unavailable. Select and copy the displayed BizID manually.')
+    }
+  }, [myBizId, notifyError])
 
   const pendingCount = connections.counts?.incoming || 0
   const badges = useMemo(() => ({
@@ -339,15 +344,48 @@ export default function B2B() {
           </div>
           <div className="page-actions">
             <HeaderSearchSlot />
+            {myBizId && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={copyBizId}
+                title={copied ? 'Copied to clipboard!' : `Click to copy BizID: ${myBizId}`}
+                aria-label={`Copy BizID: ${myBizId}`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  height: 34,
+                  padding: '0 10px',
+                  borderRadius: 'var(--radius-md, 8px)',
+                  fontWeight: 600,
+                  fontSize: '0.78rem',
+                  whiteSpace: 'nowrap',
+                  cursor: 'pointer',
+                  background: copied ? 'rgba(34, 197, 94, 0.12)' : undefined,
+                  borderColor: copied ? 'rgba(34, 197, 94, 0.4)' : undefined,
+                  color: copied ? 'var(--success, #22c55e)' : undefined,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {copied ? (
+                  <>
+                    <CheckIcon size={13} style={{ color: 'var(--success, #22c55e)' }} />
+                    <span>Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ color: 'var(--text-muted)' }}>BizID</span>
+                    <span className="td-mono" style={{ color: 'var(--accent)', fontWeight: 700 }}>{myBizId}</span>
+                    <CopyIcon size={12} style={{ color: 'var(--text-muted)', marginLeft: 2 }} />
+                  </>
+                )}
+              </button>
+            )}
             <div className="mobile-only-header-tabs">
               <PageTabs inline label="B2B pages" tabs={TABS.map(({ key, label, icon: Icon }) => ({ id: key, label, icon: <Icon size={15} />, badge: badges[key] }))} active={tab} onChange={goTab} />
             </div>
           </div>
-        </div>
-        <div className="workspace-context-row">
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-              {myBizId ? <>BizID <span className="td-mono" style={{ color: 'var(--accent)', fontWeight: 700 }}>{myBizId}</span></> : null}
-            </span>
         </div>
 
         <div className="b2b-body">
