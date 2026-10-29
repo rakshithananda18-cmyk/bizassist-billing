@@ -20,7 +20,9 @@ Usage:
 import atexit
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor as PyThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.executors.pool import ThreadPoolExecutor as APSThreadPoolExecutor
 from apscheduler.triggers.cron import CronTrigger
 
 logger = logging.getLogger("bizassist.scheduler")
@@ -39,18 +41,43 @@ _scheduler: BackgroundScheduler = None
 # still ticking at that point, it raises on every single tick and logs a full
 # traceback each time.
 #
-# Normally `stop_scheduler()` runs from the FastAPI lifespan and this never
-# arises. But under `uvicorn --reload` the app runs in a spawned CHILD process
-# that the reloader terminates directly — on Windows especially, the child can
-# die without the lifespan shutdown ever completing. The scheduler thread then
-# outlives the orderly shutdown and spams until the process is finally reaped.
-#
-# The fix is ordering: atexit handlers run LIFO, and `concurrent.futures.thread`
-# registered its hook when it was first imported (early). Registering ours AT
-# MODULE IMPORT — before any scheduler exists — therefore guarantees we run
-# BEFORE the pool is torn down, so the scheduler is already stopped by the time
-# `submit()` would start failing.
+# We solve this in three layers:
+# 1. Register atexit at module import time (LIFO before concurrent.futures).
+# 2. In stop_scheduler(), clear all jobs immediately and shutdown(wait=False).
+# 3. Use SafeAPSchedulerExecutor / SafePyThreadPoolExecutor so that any submit()
+#    call after interpreter shutdown or during _SHUTTING_DOWN silently no-ops
+#    instead of spamming the console.
 _SHUTTING_DOWN = threading.Event()
+
+
+class SafePyThreadPoolExecutor(PyThreadPoolExecutor):
+    def submit(self, fn, *args, **kwargs):
+        if _SHUTTING_DOWN.is_set():
+            return None
+        try:
+            return super().submit(fn, *args, **kwargs)
+        except RuntimeError as exc:
+            if "interpreter shutdown" in str(exc).lower():
+                _SHUTTING_DOWN.set()
+                return None
+            raise
+
+
+class SafeAPSchedulerExecutor(APSThreadPoolExecutor):
+    def __init__(self, max_workers=10):
+        super().__init__()
+        self._pool = SafePyThreadPoolExecutor(int(max_workers))
+
+    def _do_submit_job(self, job, run_times):
+        if _SHUTTING_DOWN.is_set():
+            return
+        try:
+            super()._do_submit_job(job, run_times)
+        except RuntimeError as exc:
+            if "interpreter shutdown" in str(exc).lower():
+                _SHUTTING_DOWN.set()
+                return
+            raise
 
 
 def start_scheduler():
@@ -76,7 +103,10 @@ def start_scheduler():
     )
     from services.sync_worker import run_hybrid_sync
 
-    _scheduler = BackgroundScheduler(timezone="Asia/Kolkata")
+    _scheduler = BackgroundScheduler(
+        timezone="Asia/Kolkata",
+        executors={"default": SafeAPSchedulerExecutor(10)},
+    )
 
     _scheduler.add_job(
         run_daily_summary,
@@ -250,6 +280,10 @@ def stop_scheduler():
         return
     try:
         if sched.running:
+            try:
+                sched.remove_all_jobs()
+            except Exception:
+                pass
             # wait=False: never block shutdown on an in-flight job. A sync tick
             # is fully restartable — its work is queue-driven and idempotent.
             sched.shutdown(wait=False)

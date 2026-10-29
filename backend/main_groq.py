@@ -239,15 +239,29 @@ async def lifespan(_app):
             await asyncio.sleep(INTERVAL)
             await _register_once()
 
-    asyncio.create_task(_discovery_registration_loop())
+    discovery_task = asyncio.create_task(_discovery_registration_loop())
 
     start_scheduler()
     preload_model_async()
-    yield
-    
-    watcher_task.cancel()
-    realtime_manager.shutdown()
-    stop_scheduler()
+    try:
+        yield
+    finally:
+        try:
+            watcher_task.cancel()
+        except Exception:
+            pass
+        try:
+            discovery_task.cancel()
+        except Exception:
+            pass
+        try:
+            realtime_manager.shutdown()
+        except Exception:
+            pass
+        try:
+            stop_scheduler()
+        except Exception:
+            pass
 
 
 # ── CORS ──────────────────────────────────────────────────────────────────────

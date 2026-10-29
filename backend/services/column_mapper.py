@@ -40,7 +40,10 @@ from dataclasses import dataclass, field
 from difflib import get_close_matches
 from typing import Optional
 
-import pandas as pd
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 
 logger = logging.getLogger("bizassist.column_mapper")
 

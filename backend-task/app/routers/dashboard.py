@@ -225,3 +225,65 @@ def my_today(p: Principal = Depends(require_staff), db: Session = Depends(get_db
         "points_today": int(pts_today),
         "points_total": int(pts_total),
     }
+
+
+@router.get("/notifications")
+def field_notifications(p: Principal = Depends(require_owner), db: Session = Depends(get_db)):
+    """Field App notifications: store requests, route deliveries, and overdue tasks."""
+    bid = p.business_id
+    items = []
+
+    # 1. New store requests
+    open_requests = db.query(FieldItemRequest).filter(
+        FieldItemRequest.business_id == bid,
+        FieldItemRequest.status.in_(["new", "pending"])
+    ).order_by(FieldItemRequest.id.desc()).all()
+    if open_requests:
+        plural = "" if len(open_requests) == 1 else "s"
+        items.append({
+            "kind": "field_requests",
+            "category": "field",
+            "severity": "info",
+            "title": f"{len(open_requests)} new shop request{plural}",
+            "detail": f"{len(open_requests)} store requirement/order request(s) waiting for review.",
+            "count": len(open_requests),
+            "route": "/requests",
+            "app": "field",
+        })
+
+    # 2. Overdue field tasks
+    now = utc_now()
+    overdue_tasks = db.query(FieldTask).filter(
+        FieldTask.business_id == bid,
+        FieldTask.status == "pending",
+        FieldTask.due_at < now
+    ).all()
+    if overdue_tasks:
+        plural = "" if len(overdue_tasks) == 1 else "s"
+        items.append({
+            "kind": "field_tasks_overdue",
+            "category": "field",
+            "severity": "warning",
+            "title": f"{len(overdue_tasks)} overdue field task{plural}",
+            "detail": f"{len(overdue_tasks)} delivery / collection tasks past their due time.",
+            "count": len(overdue_tasks),
+            "route": "/tasks",
+            "app": "field",
+        })
+
+    # 3. What's new release update
+    items.append({
+        "kind": "release_update",
+        "category": "updates",
+        "severity": "info",
+        "title": "Field Team v1.2.5 Update",
+        "detail": "Unified smart notifications, store request syncing, and GPS live tracker hardening.",
+        "route": "/settings",
+        "action": "view_release_notes",
+    })
+
+    return {
+        "items": items,
+        "count": len(items),
+        "severity": items[0]["severity"] if items else None,
+    }

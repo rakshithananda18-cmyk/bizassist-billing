@@ -1128,6 +1128,7 @@ def count_records(
 
     for table_name in _EXPORT_ORDER:
         if table_name not in existing:
+            counts[table_name] = 0
             continue
         try:
             col_names = {c["name"] for c in insp.get_columns(table_name)}

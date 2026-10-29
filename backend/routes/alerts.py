@@ -10,7 +10,10 @@ Endpoints:
   GET  /alerts/scheduler       — view scheduler job statuses
 """
 
+import json
 import logging
+import uuid
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
@@ -21,6 +24,26 @@ from database.db import get_db
 from database.models import AlertConfig, User
 from services.auth import get_active_user, restrict_cashier
 from services.scheduler import get_scheduler
+
+# ── Customer Offer Schemas ────────────────────────────────────
+
+class CustomerOfferIn(BaseModel):
+    title: str
+    discount_text: str
+    description: Optional[str] = None
+    valid_until: Optional[str] = None
+    customer_id: Optional[int] = None
+    coupon_code: Optional[str] = None
+
+
+class CustomerNoticeIn(BaseModel):
+    customer_id: int
+    customer_name: Optional[str] = None
+    phone: Optional[str] = None
+    offer_id: Optional[str] = None
+    message: str
+    channel: str = "whatsapp"
+
 
 logger = logging.getLogger("bizassist.routes.alerts")
 
@@ -244,7 +267,7 @@ def list_notifications(
         if overdue:
             total = sum(inv.amount or 0 for inv in overdue)
             items.append({
-                "kind": "overdue", "severity": "warning",
+                "kind": "overdue", "severity": "warning", "category": "billing",
                 "title": f"{len(overdue)} overdue invoice{'' if len(overdue) == 1 else 's'}",
                 "detail": f"₹{total:,.0f} outstanding. Largest: {overdue[0].customer or 'unnamed'}.",
                 "count": len(overdue),
@@ -265,6 +288,7 @@ def list_notifications(
                 detail = f"{len(out_of_stock)} already out of stock. " + detail
             items.append({
                 "kind": "low_stock",
+                "category": "billing",
                 # Out of stock is not the same warning as running low — you
                 # cannot sell it at all, so it outranks the rest of the list.
                 "severity": "danger" if out_of_stock else "warning",
@@ -285,7 +309,7 @@ def list_notifications(
         # off — a different instruction, so a different line.
         if expired:
             items.append({
-                "kind": "expired", "severity": "danger",
+                "kind": "expired", "severity": "danger", "category": "billing",
                 "title": f"{len(expired)} batch{'' if len(expired) == 1 else 'es'} past expiry",
                 "detail": f"Still counted in stock. Oldest: {expired[0][0]}.",
                 "count": len(expired),
@@ -294,7 +318,7 @@ def list_notifications(
         if expiring:
             name, _date, left = expiring[0]
             items.append({
-                "kind": "expiring", "severity": "warning",
+                "kind": "expiring", "severity": "warning", "category": "billing",
                 "title": f"{len(expiring)} batch{'' if len(expiring) == 1 else 'es'} expiring soon",
                 "detail": f"Within {days} days. Soonest: {name} "
                           f"({left} day{'' if left == 1 else 's'}).",
@@ -302,13 +326,110 @@ def list_notifications(
                 "route": "/stock",
             })
 
-    # Most-urgent first, so the bell's colour and the first row agree.
-    order = {"danger": 0, "warning": 1, "info": 2}
-    items.sort(key=lambda i: order.get(i["severity"], 3))
+    # ── Field Team Activities (when present) ────────────────────
+    try:
+        from sqlalchemy import inspect as sa_insp, text as sa_text
+        t_names = set(sa_insp(db.bind).get_table_names())
+        if "ft_item_requests" in t_names:
+            field_req_cnt = db.execute(
+                sa_text("SELECT COUNT(*) FROM ft_item_requests WHERE business_id = :bid AND status IN ('new', 'pending')"),
+                {"bid": bid}
+            ).scalar() or 0
+            if field_req_cnt > 0:
+                plural = "" if field_req_cnt == 1 else "s"
+                items.append({
+                    "kind": "field_requests",
+                    "category": "field",
+                    "severity": "info",
+                    "title": f"{field_req_cnt} new store request{plural}",
+                    "detail": f"{field_req_cnt} shop order/requirement request(s) awaiting review in Field Team.",
+                    "count": field_req_cnt,
+                    "route": "/requests",
+                    "app": "field",
+                })
+        if "ft_tasks" in t_names:
+            now_utc = datetime.now(timezone.utc)
+            overdue_task_cnt = db.execute(
+                sa_text("SELECT COUNT(*) FROM ft_tasks WHERE business_id = :bid AND status = 'pending' AND due_at < :now"),
+                {"bid": bid, "now": now_utc}
+            ).scalar() or 0
+            if overdue_task_cnt > 0:
+                plural = "" if overdue_task_cnt == 1 else "s"
+                items.append({
+                    "kind": "field_tasks_overdue",
+                    "category": "field",
+                    "severity": "warning",
+                    "title": f"{overdue_task_cnt} overdue field task{plural}",
+                    "detail": f"{overdue_task_cnt} delivery / collection task(s) past their scheduled time.",
+                    "count": overdue_task_cnt,
+                    "route": "/tasks",
+                    "app": "field",
+                })
+    except Exception as e:
+        logger.debug("[Alerts] Field tables scan skipped: %s", e)
+
+    # ── Active Customer Offers ──────────────────────────────────
+    user_row = db.query(User).filter(User.id == bid).first()
+    if user_row and user_row.settings:
+        try:
+            s_obj = json.loads(user_row.settings) if isinstance(user_row.settings, str) else user_row.settings
+            c_offers = s_obj.get("customer_offers", [])
+            for off in c_offers[:2]:
+                items.append({
+                    "kind": f"offer_{off.get('id', 'deal')}",
+                    "category": "offers",
+                    "severity": "offer",
+                    "title": f"Offer: {off.get('title', 'Special Deal')}",
+                    "detail": f"{off.get('discount_text', '')} - {off.get('description', '')}".strip(" -"),
+                    "route": "/parties",
+                    "action": "send_offer",
+                    "offer_id": off.get("id"),
+                    "offer_data": off,
+                })
+        except Exception:
+            pass
+
+    # ── Active Admin Campaigns & Announcements ──────────────────
+    try:
+        from services import campaign_service as camp
+        announcements = camp.announcements_for(bid, db)
+        for a in announcements:
+            items.append({
+                "kind": f"campaign_{a['id']}",
+                "category": "offers",
+                "severity": "offer",
+                "title": a.get("title", "Special Announcement"),
+                "detail": (a.get("body_md", "") or "Special announcement from BizAssist Admin.").replace("#", "").replace("*", "").strip()[:140],
+                "route": "/",
+                "action": "view_campaign",
+                "campaign_id": a["id"],
+                "offer_code": a.get("offer_code"),
+            })
+    except Exception as e:
+        logger.debug("[Alerts] Campaign fetch skipped: %s", e)
+
+    # Most-urgent first: danger (red) -> warning (amber) -> offer (purple) -> update (emerald) -> info (blue)
+    order = {"danger": 0, "warning": 1, "offer": 2, "update": 3, "info": 4}
+    items.sort(key=lambda i: order.get(i.get("severity", "info"), 5))
+
+    # Calculate category counts
+    counts = {
+        "all": len(items),
+        "billing": sum(1 for i in items if i.get("category") == "billing"),
+        "field": sum(1 for i in items if i.get("category") == "field"),
+        "offers": sum(1 for i in items if i.get("category") == "offers"),
+        "updates": sum(1 for i in items if i.get("category") == "updates"),
+    }
+
+    # Operational severity (danger or warning) lights up the main trigger
+    active_op_severity = next((i["severity"] for i in items if i.get("severity") in ("danger", "warning")), None)
+
     return {
         "items": items,
         "count": len(items),
-        "severity": items[0]["severity"] if items else None,
+        "severity": active_op_severity or (items[0]["severity"] if items else None),
+        "categories": ["all", "billing", "field", "offers", "updates"],
+        "counts": counts,
     }
 
 
@@ -401,3 +522,72 @@ def delete_memory_fact(fact_id: int, current_user: dict = Depends(restrict_cashi
         return {"deleted": fact_id}
     finally:
         db.close()
+
+
+# ── Customer Offer Endpoints ──────────────────────────────────
+
+@router.get("/customer-offers")
+def list_customer_offers(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """List active customer promotional offers configured for this business."""
+    user = db.query(User).filter(User.id == current_user["id"]).first()
+    if not user:
+        return {"offers": []}
+    settings = json.loads(user.settings or "{}") if isinstance(user.settings, str) else (user.settings or {})
+    return {"offers": settings.get("customer_offers", [])}
+
+
+@router.post("/customer-offers")
+def create_customer_offer(body: CustomerOfferIn, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """Create a new customer offer that can be sent to individual customers via WhatsApp/SMS."""
+    user = db.query(User).filter(User.id == current_user["id"]).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    settings = json.loads(user.settings or "{}") if isinstance(user.settings, str) else (user.settings or {})
+    offers = settings.get("customer_offers", [])
+    new_offer = {
+        "id": f"off_{uuid.uuid4().hex[:6]}",
+        "title": body.title,
+        "discount_text": body.discount_text,
+        "description": body.description or "",
+        "valid_until": body.valid_until,
+        "customer_id": body.customer_id,
+        "coupon_code": body.coupon_code or "",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "business_name": user.business_name or "BizAssist Store",
+    }
+    offers.insert(0, new_offer)
+    settings["customer_offers"] = offers[:20]
+    user.settings = json.dumps(settings)
+    db.commit()
+    return {"success": True, "offer": new_offer}
+
+
+@router.post("/send-customer-notice")
+def send_customer_notice(body: CustomerNoticeIn, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """Generate a direct WhatsApp click-to-chat URL with pre-filled offer text for an individual customer."""
+    from services.auth import resolve_business_id_in_db
+    bid = resolve_business_id_in_db(current_user, db)
+    user = db.query(User).filter(User.id == bid).first()
+    biz_name = user.business_name if user else "Our Store"
+
+    phone = (body.phone or "").strip().replace(" ", "").replace("-", "")
+    if phone.startswith("+"):
+        phone = phone[1:]
+    elif len(phone) == 10:
+        phone = "91" + phone
+
+    msg = body.message.strip()
+    if not msg:
+        msg = f"Special Offer from {biz_name}! Get exclusive savings on your next visit."
+
+    import urllib.parse
+    encoded_text = urllib.parse.quote(msg)
+    wa_url = f"https://api.whatsapp.com/send?phone={phone}&text={encoded_text}" if phone else None
+
+    return {
+        "success": True,
+        "customer_id": body.customer_id,
+        "phone": phone,
+        "whatsapp_url": wa_url,
+        "message": msg,
+    }

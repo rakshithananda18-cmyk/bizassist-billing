@@ -282,7 +282,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
               const expected = Array.isArray(rows) ? rows.length : 0
               // Destination may legitimately hold MORE (pre-existing data merged
               // in) — a shortfall is the only red flag.
-              const found = Number(destCounts?.[entity] ?? NaN)
+              const found = Number.isFinite(Number(destCounts?.[entity])) ? Number(destCounts[entity]) : 0
               return { entity, expected, found, ok: Number.isFinite(found) && found >= expected }
             })
             .filter(v => v.expected > 0)

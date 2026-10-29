@@ -1,5 +1,8 @@
 import logging
-import pandas as pd
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 from database.models import (
     Invoice,
     Inventory,

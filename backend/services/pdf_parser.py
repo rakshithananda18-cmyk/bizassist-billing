@@ -1,7 +1,10 @@
 import os
 import json
 import logging
-import pypdf
+try:
+    import pypdf
+except ImportError:
+    pypdf = None
 import io
 from groq import Groq
 from database.db import SessionLocal

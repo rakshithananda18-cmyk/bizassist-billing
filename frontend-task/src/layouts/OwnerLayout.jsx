@@ -11,6 +11,7 @@ import {
   SettingsIcon, SunIcon, TruckIcon, UserIcon,
 } from '../components/Icons'
 import WorkspaceSwitcher from '../components/WorkspaceSwitcher'
+import NotificationBell from '../components/NotificationBell'
 
 const NAV = [
   { section: 'Today', items: [
@@ -390,10 +391,11 @@ export default function OwnerLayout() {
         <div className="sidebar-footer">
           {showProfileMenu && !isMobileViewport && renderProfileMenu(false)}
 
-          <div className="sidebar-profile-row">
+          <div className="sidebar-profile-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
             <button
               type="button"
               className="user-chip"
+              style={{ flex: 1, minWidth: 0 }}
               title="Settings & Profile Menu"
               aria-label="Settings and profile menu"
               aria-expanded={showProfileMenu}
@@ -415,6 +417,7 @@ export default function OwnerLayout() {
                 </div>
               )}
             </button>
+            <NotificationBell placement="sidebar" onOpen={() => setShowProfileMenu(false)} />
           </div>
         </div>
       </aside>
@@ -436,6 +439,7 @@ export default function OwnerLayout() {
           <strong className="ellipsis" title={businessName} style={{ fontSize: '0.95rem' }}>{businessName}</strong>
         </div>
         <div className="row" style={{ gap: 6, position: 'relative' }}>
+          <NotificationBell onOpen={() => setShowProfileMenu(false)} />
           <button
             type="button"
             className="user-avatar mobile-user-avatar"

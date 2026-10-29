@@ -3,9 +3,15 @@ import io
 import json
 import base64
 import logging
-import pypdf
+try:
+    import pypdf
+except ImportError:
+    pypdf = None
 from groq import Groq
-from PIL import Image
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 
 logger = logging.getLogger("bizassist.purchase_ocr")
 
