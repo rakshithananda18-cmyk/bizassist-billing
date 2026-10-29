@@ -570,7 +570,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
                 {validation.filter(v => !v.ok).map(v => (
                   <div key={v.entity} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
                     <span>{v.entity}</span>
-                    <span style={{ fontWeight: 700, color: '#f97316' }}>{v.found}/{v.expected}</span>
+                    <span style={{ fontWeight: 700, color: '#f97316' }}>{Number.isFinite(v.found) ? v.found : 0}/{v.expected}</span>
                   </div>
                 ))}
               </div>

@@ -1133,6 +1133,26 @@ def count_records(
                     )
                     counts[table_name] = result.scalar() or 0
 
+            elif table_name in ("b2b_connections", "b2b_orders"):
+                result = db.execute(
+                    text(
+                        f'SELECT COUNT(*) FROM "{table_name}" '
+                        f'WHERE seller_business_id = :bid OR buyer_business_id = :bid'
+                    ),
+                    {"bid": business_id},
+                )
+                counts[table_name] = result.scalar() or 0
+
+            elif table_name == "b2b_order_line_items":
+                result = db.execute(
+                    text(
+                        'SELECT COUNT(*) FROM b2b_order_line_items WHERE order_id IN '
+                        '(SELECT id FROM b2b_orders WHERE seller_business_id = :bid OR buyer_business_id = :bid)'
+                    ),
+                    {"bid": business_id},
+                )
+                counts[table_name] = result.scalar() or 0
+
             # Other tables without business_id are not counted (system/global)
 
         except Exception as exc:
