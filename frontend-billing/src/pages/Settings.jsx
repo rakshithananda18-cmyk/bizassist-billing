@@ -195,15 +195,36 @@ export default function Settings() {
 
   const counterOptions = getAvailableCounterOptions(staffList)
 
+  const syncStaffToRecentLogins = useCallback((list) => {
+    try {
+      const raw = localStorage.getItem('bizassist_recent_logins')
+      if (!raw || !user?.username) return
+      const recents = JSON.parse(raw)
+      const match = recents.find(r => r.username === user.username)
+      if (match) {
+        match.staffAccounts = (list || []).map(s => ({
+          username: s.staff_login_name || s.username,
+          role: s.role || 'cashier',
+          counter_prefix: s.counter_prefix || ''
+        }))
+        localStorage.setItem('bizassist_recent_logins', JSON.stringify(recents))
+      }
+    } catch { /* ignore */ }
+  }, [user?.username])
+
   const loadStaff = useCallback(async () => {
     setStaffLoading(true)
     try {
       const res = await authFetch('/staff')
-      if (res.ok) setStaffList(await res.json())
+      if (res.ok) {
+        const list = await res.json()
+        setStaffList(list)
+        syncStaffToRecentLogins(list)
+      }
       else if (res.status === 403) setStaffError('Only the business owner can manage staff.')
     } catch { setStaffError('Could not load staff.') }
     finally   { setStaffLoading(false) }
-  }, [authFetch])
+  }, [authFetch, syncStaffToRecentLogins])
 
   // Load staff when Staff tab becomes active
   useEffect(() => {
@@ -313,7 +334,9 @@ export default function Settings() {
       const res = await authFetch(`/staff/${removeTarget.id}`, { method: 'DELETE' })
       if (res.ok) {
         setStaffSuccess(`Removed "${removeTarget.username}".`)
-        setStaffList(prev => prev.filter(x => x.id !== removeTarget.id))
+        const nextList = staffList.filter(x => x.id !== removeTarget.id)
+        setStaffList(nextList)
+        syncStaffToRecentLogins(nextList)
         setRemoveTarget(null)
       } else {
         const err = await res.json().catch(() => ({}))

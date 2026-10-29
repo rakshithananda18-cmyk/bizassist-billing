@@ -128,8 +128,15 @@ export default function Login() {
         businessName: loggedUser?.business_name || 'My Business',
         staffAccounts: [],
       }
-      if (!entry.staffAccounts.some(s => s.username === staffName)) {
-        entry.staffAccounts.push({ username: staffName, role: loggedUser?.role || 'cashier' })
+      const existing = entry.staffAccounts.find(s => s.username === staffName)
+      if (!existing) {
+        entry.staffAccounts.push({
+          username: staffName,
+          role: loggedUser?.role || 'cashier',
+          counter_prefix: loggedUser?.counter_prefix || ''
+        })
+      } else if (loggedUser?.counter_prefix) {
+        existing.counter_prefix = loggedUser.counter_prefix
       }
       entry.lastStaff = staffName
       saveRecentLogins([entry, ...recent.filter(item => item.username !== ownerUsername)])
@@ -144,7 +151,11 @@ export default function Login() {
       updatedRecent.unshift({
         username: loggedUser.username,
         businessName: loggedUser.business_name || 'My Business',
-        staffAccounts: staffAccounts.map(s => ({ username: s.username, role: s.role })),
+        staffAccounts: staffAccounts.map(s => ({
+          username: s.username || s.staff_login_name,
+          role: s.role || 'cashier',
+          counter_prefix: s.counter_prefix || ''
+        })),
         // The counter last used here survives the owner signing in.
         ...(previous?.lastStaff ? { lastStaff: previous.lastStaff } : {}),
       })
@@ -537,8 +548,13 @@ export default function Login() {
                     <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {item.businessName}
                     </div>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      Owner: {item.username}
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>Owner: {item.username}</span>
+                      {item.staffAccounts && item.staffAccounts.length > 0 && (
+                        <span style={{ fontSize: '0.7rem', color: 'var(--accent)', fontWeight: 600, background: 'var(--accent-dim)', padding: '1px 6px', borderRadius: 4 }}>
+                          {item.staffAccounts.length} Staff {item.staffAccounts.length === 1 ? 'Counter' : 'Counters'}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -785,26 +801,24 @@ export default function Login() {
             </button>
 
             {/* Inline Staff Login Mention */}
-            {selectedOwner?.staffAccounts && selectedOwner.staffAccounts.length > 0 && (
-              <div style={{ textAlign: 'center', marginTop: 8 }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 6 }}>
-                  Are you a staff member?
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    setSelectedStaffUser(defaultStaffFor(selectedOwner))
-                    setPassword('')
-                    setError('')
-                    setView('staff')
-                  }}
-                  style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
-                >
-                  Staff Login
-                </button>
-              </div>
-            )}
+            <div style={{ textAlign: 'center', marginTop: 8 }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 6 }}>
+                Are you a staff member?
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setSelectedStaffUser(defaultStaffFor(selectedOwner))
+                  setPassword('')
+                  setError('')
+                  setView('staff')
+                }}
+                style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
+              >
+                Staff Login
+              </button>
+            </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
               <button
@@ -882,18 +896,33 @@ export default function Login() {
             </div>
 
             <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
-              <label htmlFor="staff-user-select" style={{ fontSize: '10.5px' }}>Select Staff User</label>
-              <CustomSelect
-                id="staff-user-select"
-                value={selectedStaffUser}
-                onChange={e => setSelectedStaffUser(e.target.value)}
-              >
-                {selectedOwner?.staffAccounts?.map((s, idx) => (
-                  <option key={idx} value={s.username}>
-                    {s.username} ({s.role || 'cashier'})
-                  </option>
-                ))}
-              </CustomSelect>
+              <label htmlFor="staff-user-select" style={{ fontSize: '10.5px' }}>Select Staff User & Counter</label>
+              {selectedOwner?.staffAccounts && selectedOwner.staffAccounts.length > 0 ? (
+                <CustomSelect
+                  id="staff-user-select"
+                  value={selectedStaffUser}
+                  onChange={e => setSelectedStaffUser(e.target.value)}
+                >
+                  {selectedOwner.staffAccounts.map((s, idx) => {
+                    const counterLabel = s.counter_prefix ? ` — Counter: ${s.counter_prefix}` : ''
+                    return (
+                      <option key={idx} value={s.username}>
+                        {s.username}{counterLabel} ({s.role || 'cashier'})
+                      </option>
+                    )
+                  })}
+                </CustomSelect>
+              ) : (
+                <input
+                  type="text"
+                  id="staff-user-select"
+                  placeholder="e.g. cashier1"
+                  value={selectedStaffUser}
+                  onChange={e => setSelectedStaffUser(e.target.value)}
+                  required
+                  autoFocus
+                />
+              )}
             </div>
 
             <div className="form-group" style={{ marginTop: '10px', width: '100%', boxSizing: 'border-box' }}>

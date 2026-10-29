@@ -53,14 +53,6 @@ export default function Register() {
   // Set when Local + Cloud fell back to Local (no trial for this business):
   // say so before going in, instead of letting the sync quietly not happen.
   const [fallbackNote, setFallbackNote] = useState(null)
-  // Multi-type business (Phase 2): optional secondary business types. The
-  // primary drives defaults; secondaries add counter modes (e.g. a shop that
-  // is Retail + Repair). Registered via POST /business/setup after signup.
-  const [extraTypes, setExtraTypes] = useState([])
-
-  const toggleExtraType = (key) => {
-    setExtraTypes(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
-  }
 
   useEffect(() => {
     // Templates come from the active backend; if the local (desktop) backend
@@ -164,19 +156,6 @@ export default function Register() {
         hosting: IS_LOCAL_APP ? hostingChoice : 'cloud',
         phone,
       })
-      // Multi-type (Phase 2): register secondary business types after signup.
-      // Non-fatal — the account works single-type if this call fails; types
-      // can be added later from Settings.
-      const extras = extraTypes.filter(k => k !== selectedTemplate)
-      if (extras.length > 0) {
-        try {
-          const { api } = await import('../api/client')
-          await api.post('/business/setup', { template_keys: [selectedTemplate, ...extras] })
-          logger.info('Secondary business types registered:', extras)
-        } catch (e) {
-          logger.warn('Could not register secondary business types (add them later in Settings):', e?.message)
-        }
-      }
       logger.info('Registration completed successfully!')
       if (result?.fellBackToLocal) {
         setFallbackNote('This business did not get a Pro trial (for example, the phone number already had one), '
@@ -326,80 +305,50 @@ export default function Register() {
                 ))}
               </CustomSelect>
 
-              {/* Multi-type (Phase 2): optional secondary business types */}
-              {templates.length > 1 && (
-                <details className="registration-extra-types" style={{ marginTop: 8 }}>
-                  <summary style={{ fontSize: '0.78rem', color: 'var(--text-muted)', cursor: 'pointer', userSelect: 'none' }}>
-                    Also runs as… (optional — adds extra billing modes)
-                  </summary>
-                  <div
-                    data-testid="extra-types"
-                    className="registration-extra-grid"
-                  >
-                    {templates.filter(t => t.key !== selectedTemplate).map(t => (
-                      <label key={t.key} className="registration-extra-option">
-                        <input
-                          type="checkbox"
-                          checked={extraTypes.includes(t.key)}
-                          onChange={() => toggleExtraType(t.key)}
-                        />
-                        <span>{t.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </details>
-              )}
             </div>
 
-              <fieldset className="registration-storage">
-                <legend>Where should your data live?</legend>
-                <div data-testid="hosting-choice" className="registration-storage-grid">
-                  {[
-                    { key: 'local',  title: 'Local only',     desc: 'Billing records stay on this computer. Daily billing works offline; account registration connects once. Field Team and web access need Local + Cloud.' },
-                    { key: 'hybrid', title: 'Local + Cloud',  desc: IS_LOCAL_APP
-                      ? 'Local speed + automatic cloud sync, backup & multi-device.'
-                      : 'Use the cloud in your browser. Download the desktop app to add offline billing and Pro cloud sync.' },
-                  ].map(opt => (
-                    <div key={opt.key} className="registration-storage-choice">
-                    <button
-                      type="button"
-                      className={`registration-storage-option ${hostingChoice === opt.key ? 'is-selected' : ''}`}
-                      aria-pressed={hostingChoice === opt.key}
-                      disabled={!IS_LOCAL_APP && opt.key === 'local'}
-                      aria-describedby={!IS_LOCAL_APP ? 'cloud-storage-help' : undefined}
-                      onClick={() => setHostingChoice(opt.key)}
-                    >
-                      <div style={{ fontWeight: 700, fontSize: '0.86rem' }}>
-                        {opt.title}
-                        {opt.key === 'hybrid' && trialDays > 0 && (
-                          <span style={{ marginLeft: 6, fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.04em', padding: '1px 6px', borderRadius: 6, background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', verticalAlign: 'middle' }}>
-                            14 DAYS FREE
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.3 }}>{opt.desc}</div>
-                    </button>
-                    {!IS_LOCAL_APP && opt.key === 'local' && (
-                      <a className="registration-local-download" href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">Download app for Local</a>
-                    )}
+            <fieldset className="registration-storage">
+              <legend>Where should your data live?</legend>
+              <div data-testid="hosting-choice" className="registration-storage-grid">
+                {[
+                  { key: 'local',  title: 'Local only',     desc: 'Fast & offline on this PC.' },
+                  { key: 'hybrid', title: 'Local + Cloud',  desc: IS_LOCAL_APP
+                    ? 'Local speed + automatic cloud sync, backup & multi-device.'
+                    : 'Use cloud in browser + desktop app sync.' },
+                ].map(opt => (
+                  <div key={opt.key} className="registration-storage-choice">
+                  <button
+                    type="button"
+                    className={`registration-storage-option ${hostingChoice === opt.key ? 'is-selected' : ''}`}
+                    aria-pressed={hostingChoice === opt.key}
+                    disabled={!IS_LOCAL_APP && opt.key === 'local'}
+                    aria-describedby={!IS_LOCAL_APP ? 'cloud-storage-help' : undefined}
+                    onClick={() => setHostingChoice(opt.key)}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: '0.86rem' }}>
+                      {opt.title}
+                      {opt.key === 'hybrid' && trialDays > 0 && (
+                        <span style={{ marginLeft: 6, fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.04em', padding: '1px 6px', borderRadius: 6, background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', verticalAlign: 'middle' }}>
+                          14 DAYS FREE
+                        </span>
+                      )}
                     </div>
-                  ))}
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.3 }}>{opt.desc}</div>
+                  </button>
+                  {!IS_LOCAL_APP && opt.key === 'local' && (
+                    <a className="registration-local-download" href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">Download app for Local</a>
+                  )}
+                  </div>
+                ))}
+              </div>
+              {IS_LOCAL_APP && hostingChoice === 'hybrid' && (
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>
+                  {trialDays > 0
+                    ? `Included in your ${trialDays}-day Pro trial and set up automatically: billing stays fast and offline while your data syncs to the cloud. When the trial ends, cloud sync stops unless you upgrade to Pro. Everything stays on this computer and keeps working offline.`
+                    : 'Set up automatically — no extra steps. Billing stays fast and offline while your data syncs to the cloud in the background.'}
                 </div>
-                {!IS_LOCAL_APP && (
-                  <div className="registration-storage-help" id="cloud-storage-help">
-                    <p>Local + Cloud includes browser access. This browser uses the cloud database; offline Local billing runs in the downloaded app.</p>
-                    <p>Sign in with the same account in the desktop app to add Local billing. Automatic Local + Cloud sync requires Pro or an eligible trial.</p>
-                    <p>Your first registration with a phone number includes 14 days of Pro access, including Local + Cloud and Field Team.</p>
-                  </div>
-                )}
-                {IS_LOCAL_APP && hostingChoice === 'hybrid' && (
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>
-                    {trialDays > 0
-                      ? `Included in your ${trialDays}-day Pro trial and set up automatically: billing stays fast and offline while your data syncs to the cloud. When the trial ends, cloud sync stops unless you upgrade to Pro. Everything stays on this computer and keeps working offline.`
-                      : 'Set up automatically — no extra steps. Billing stays fast and offline while your data syncs to the cloud in the background.'}
-                  </div>
-                )}
-              </fieldset>
+              )}
+            </fieldset>
 
             <div className="form-group" style={{ marginTop: '4px' }}>
               <label htmlFor="username">Username or Email</label>
@@ -575,13 +524,94 @@ export default function Register() {
         </div>
       </div>
 
-      {/* Right Panel: Value Showcase */}
+      {/* Right Panel: Value Showcase & Storage Guide */}
       <div className="split-right" style={{ background: 'var(--bg-2)', borderLeft: '1px solid var(--border)' }}>
-        <div style={{ maxWidth: '480px', margin: '0 auto' }}>
-          <h2 style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 16, lineHeight: 1.25 }}>
+        <div style={{ maxWidth: '480px', margin: '0 auto', width: '100%' }}>
+
+          {/* In Cloud URL: Highlight Desktop App Download */}
+          {!IS_LOCAL_APP && (
+            <div style={{
+              background: 'linear-gradient(135deg, var(--bg-1, #f4f4f1) 0%, var(--accent-dim) 100%)',
+              border: '1.5px solid var(--accent)',
+              borderRadius: 14,
+              padding: '16px 18px',
+              marginBottom: 24,
+              boxShadow: 'var(--shadow-sm)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <span style={{
+                  fontSize: '0.65rem',
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  background: 'var(--accent)',
+                  color: '#ffffff',
+                  padding: '2px 8px',
+                  borderRadius: 5
+                }}>
+                  Recommended for POS &amp; Counters
+                </span>
+              </div>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 6px' }}>
+                Want 100% Offline Billing? Download the Desktop App
+              </h3>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 12px', lineHeight: 1.45 }}>
+                Create your account here in the browser, then install the desktop app to get zero-latency local billing that syncs automatically with your cloud store.
+              </p>
+              <a
+                href={DESKTOP_DOWNLOAD_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-primary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '7px 14px',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  textDecoration: 'none'
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Download Desktop App
+              </a>
+            </div>
+          )}
+
+          {/* Storage & Hosting Explanation in Right Panel */}
+          <div className="registration-storage-help" id="cloud-storage-help" style={{
+            background: 'var(--bg-3)',
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            padding: '14px 16px',
+            marginBottom: 24,
+            marginTop: 0
+          }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 8 }}>
+              Where should your data live?
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.8rem', lineHeight: 1.45, color: 'var(--text-secondary)' }}>
+              <p style={{ margin: 0 }}>
+                <strong style={{ color: 'var(--text-primary)' }}>• Local only:</strong> Billing records stay on this computer. Works offline without internet. Ideal for isolated single-counter setups.
+              </p>
+              <p style={{ margin: 0 }}>
+                <strong style={{ color: 'var(--text-primary)' }}>• Local + Cloud:</strong> This browser uses the cloud database; offline Local billing runs in the downloaded app. Sign in with the same account in the desktop app to add Local billing.
+              </p>
+              <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: 6 }}>
+                Your first registration with a phone number includes 14 days of Pro access, including Local + Cloud and Field Team.
+              </p>
+            </div>
+          </div>
+
+          <h2 style={{ fontSize: '1.45rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12, lineHeight: 1.25 }}>
             Manage all your businesses from one unified platform.
           </h2>
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: 36, lineHeight: 1.5 }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 24, lineHeight: 1.5 }}>
             Supercharge your administration with multi-business GST invoices, automated expense ingestion, and dynamic reporting.
           </p>
 

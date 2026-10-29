@@ -2,6 +2,7 @@ import React from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from './lib/auth'
 import { Loader } from './components/ui'
+import { getBillingUrl } from './lib/theme'
 import Login from './pages/Login'
 import OwnerLayout from './layouts/OwnerLayout'
 import StaffLayout from './layouts/StaffLayout'
@@ -25,7 +26,13 @@ import MyScore from './pages/staff/MyScore'
 export default function App() {
   const { me, loading } = useAuth()
   if (loading) return <div className="login-page"><Loader label="Opening BizAssist…" /></div>
-  if (!me) return <Login />
+  if (!me) {
+    if (typeof window !== 'undefined' && window.location.pathname.startsWith('/register')) {
+      window.location.href = getBillingUrl('/register')
+      return <div className="login-page"><Loader label="Opening Billing Registration…" /></div>
+    }
+    return <Login />
+  }
   if (me.kind === 'staff') {
     return (
       <Routes>

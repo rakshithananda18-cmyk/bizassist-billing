@@ -97,6 +97,13 @@ export default function Login() {
             >
               Owner Login
             </button>
+            <a
+              href={getBillingUrl('/register')}
+              className="login-tab-btn"
+              style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              Register
+            </a>
           </div>
 
           {notice && (
@@ -200,20 +207,18 @@ export default function Login() {
               {busy ? 'Signing in…' : mode === 'staff' ? 'Start Shift' : 'Sign In as Owner'}
             </button>
 
-            {mode === 'owner' && (
-              <div style={{ textAlign: 'center', marginTop: 14 }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 6 }}>
-                  New business owner?
-                </span>
-                <a
-                  href={getBillingUrl('/register')}
-                  style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
-                >
-                  Register in Billing
-                </a>
-                <div className="form-hint" style={{ marginTop: 6 }}>Create your business and activate its 14-day Pro trial in Billing, then return here with the same account.</div>
-              </div>
-            )}
+            <div style={{ textAlign: 'center', marginTop: 14 }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 6 }}>
+                New business owner?
+              </span>
+              <a
+                href={getBillingUrl('/register')}
+                style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
+              >
+                Register in Billing
+              </a>
+              <div className="form-hint" style={{ marginTop: 6 }}>Create your business and activate its 14-day Pro trial in Billing, then return here with the same account.</div>
+            </div>
 
             <p className="login-reassurance">
               <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

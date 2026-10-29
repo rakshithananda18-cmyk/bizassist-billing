@@ -39,10 +39,13 @@ const CATEGORY_TABS = [
   { id: 'offers',  label: 'Offers & Updates' },
 ]
 
-const POLL_MS = 5 * 60 * 1000
+const POLL_MS = 30 * 1000 // 30s background polling + instant SSE/websocket push
 
 export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
   const { authFetch, settings, user } = useAuth()
+  const authFetchRef = useRef(authFetch)
+  authFetchRef.current = authFetch
+
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [data, setData] = useState({ items: [], count: 0, severity: null })
@@ -126,7 +129,8 @@ export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
     setLoading(true)
     setLoadError(false)
     try {
-      const res = await authFetch('/alerts/notifications')
+      const fetcher = authFetchRef.current || authFetch
+      const res = await fetcher('/alerts/notifications')
       if (!res.ok) throw new Error(`Notifications unavailable: HTTP ${res.status}`)
       const next = await res.json()
       if (!next || !Array.isArray(next.items)) throw new Error('Notifications response was invalid')
@@ -142,24 +146,56 @@ export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
       if (request === requestRef.current) setLoading(false)
     }
     try {
-      const r = await authFetch('/api/sync/queue-depth')
+      const fetcher = authFetchRef.current || authFetch
+      const r = await fetcher('/api/sync/queue-depth')
       if (r.ok) {
         const next = (await r.json())?.halt?.reason || null
-        if (request === requestRef.current) setHaltReason(next)
+        if (request === requestRef.current) {
+          setHaltReason(next)
+        }
       }
     } catch {
       /* ignore */
     }
-  }, [authFetch, user?.id])
+  }, [authFetch])
 
   useEffect(() => {
-    setData({ items: [], count: 0, severity: null })
-    setHaltReason(null)
-    setChecked(false)
     load()
     const t = setInterval(load, POLL_MS)
-    return () => { requestRef.current++; clearInterval(t) }
-  }, [load])
+
+    // Event-driven reactive update on data changes (SSE real-time events, syncs, background flush, focus)
+    let debounceTimer = null
+    const handleDataEvent = (e) => {
+      const type = e?.detail?.type
+      if (type && type !== 'sync.trigger' && type !== 'sync.progress' && type !== 'sync.pull_ping' && type !== 'notification' && type !== 'campaign') return
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(load, 300)
+    }
+    const handleSyncFlushed = () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(load, 300)
+    }
+    const handleFocus = () => {
+      if (document.visibilityState === 'visible') load()
+    }
+
+    window.addEventListener('sync-event', handleDataEvent)
+    window.addEventListener('sync-flushed', handleSyncFlushed)
+    window.addEventListener('notification-refresh', handleSyncFlushed)
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleFocus)
+
+    return () => {
+      requestRef.current++
+      clearInterval(t)
+      if (debounceTimer) clearTimeout(debounceTimer)
+      window.removeEventListener('sync-event', handleDataEvent)
+      window.removeEventListener('sync-flushed', handleSyncFlushed)
+      window.removeEventListener('notification-refresh', handleSyncFlushed)
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleFocus)
+    }
+  }, [user?.id, load])
 
   // Outside click / Escape handler
   useEffect(() => {
@@ -419,12 +455,12 @@ export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
                       }}>
                         {isOffer ? (
                           <>
-                            <WhatsAppOutlineIcon size={13} /> Send on WhatsApp &rarr;
+                            <WhatsAppOutlineIcon size={13} /> Send on WhatsApp →
                           </>
                         ) : isRelease ? (
-                          'What Changed &rarr;'
+                          "What's New →"
                         ) : (
-                          'View &rarr;'
+                          'View →'
                         )}
                       </span>
                     </div>
@@ -489,7 +525,7 @@ export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
                 onClick={() => handleSendWhatsApp(offerModalData)}
                 style={{ background: '#25d366', color: '#fff', border: 'none', fontWeight: 700 }}
               >
-                Open WhatsApp &rarr;
+                Open WhatsApp →
               </button>
             </div>
           </div>

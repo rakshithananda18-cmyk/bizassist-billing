@@ -65,14 +65,11 @@ describe('Cloud registration storage and business types', () => {
     expect(fetch.mock.calls.every(([url]) => !url.endsWith('/trial-offer'))).toBe(true)
   })
 
-  it('keeps each optional category label paired to its own checkbox', async () => {
+  it('highlights the desktop app download in cloud registration', async () => {
     renderRegister()
-    const checkbox = await screen.findByLabelText('Hardware / Electricals')
-    expect(checkbox).toHaveAttribute('type', 'checkbox')
-    expect(checkbox.closest('label')).toHaveClass('registration-extra-option')
-    fireEvent.click(checkbox)
-    expect(checkbox).toBeChecked()
-    expect(screen.getByLabelText('B2B Supplier')).not.toBeChecked()
+    await screen.findByText('General Business')
+    expect(screen.getByRole('link', { name: /Download Desktop App/i })).toHaveAttribute('href', DESKTOP_DOWNLOAD_URL)
+    expect(screen.getByText(/Recommended for POS & Counters/i)).toBeInTheDocument()
   })
 
   it('uses the cloud backend safely for the browser part of Local + Cloud', async () => {

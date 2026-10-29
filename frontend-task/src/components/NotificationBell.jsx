@@ -31,7 +31,7 @@ const CATEGORY_TABS = [
   { id: 'offers',  label: 'Offers & Updates' },
 ]
 
-const POLL_MS = 3 * 60 * 1000
+const POLL_MS = 30 * 1000 // 30s quick polling + instant refresh on tab focus
 
 export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
   const navigate = useNavigate()
@@ -118,7 +118,14 @@ export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
   useEffect(() => {
     load()
     const timer = setInterval(load, POLL_MS)
-    return () => clearInterval(timer)
+    const handleFocus = () => { if (document.visibilityState === 'visible') load() }
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleFocus)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleFocus)
+    }
   }, [load])
 
   const allItems = useMemo(() => {

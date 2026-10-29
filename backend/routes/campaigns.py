@@ -88,7 +88,15 @@ def admin_create_campaign(body: CampaignCreateRequest,
         admin = svc.require_admin(current_user["id"], db, action="create_campaign",
                                   details={"title": body.title, "channel": body.channel,
                                            "status": body.status})
-        return camp.create_campaign(body, admin, db)
+        res = camp.create_campaign(body, admin, db)
+        if body.status == "active":
+            try:
+                from services.realtime import realtime_manager
+                for bid in list(realtime_manager.connections.keys()):
+                    realtime_manager.broadcast_threadsafe(bid, {"type": "sync.trigger", "entity": "notification"})
+            except Exception as ex:
+                logger.warning("[CAMPAIGN] Realtime broadcast failed: %s", ex)
+        return res
     except HTTPException: db.rollback(); raise
     except Exception as e:
         db.rollback(); logger.error("admin/campaigns POST: %s", e, exc_info=True)
@@ -101,7 +109,15 @@ def admin_set_campaign_status(campaign_id: int, body: CampaignStatusRequest,
     try:
         svc.require_admin(current_user["id"], db, action="set_campaign_status",
                           details={"campaign_id": campaign_id, "status": body.status})
-        return camp.set_campaign_status(campaign_id, body.status, db)
+        res = camp.set_campaign_status(campaign_id, body.status, db)
+        if body.status == "active":
+            try:
+                from services.realtime import realtime_manager
+                for bid in list(realtime_manager.connections.keys()):
+                    realtime_manager.broadcast_threadsafe(bid, {"type": "sync.trigger", "entity": "notification"})
+            except Exception as ex:
+                logger.warning("[CAMPAIGN] Realtime broadcast failed: %s", ex)
+        return res
     except HTTPException: db.rollback(); raise
     except Exception as e:
         db.rollback(); logger.error("admin/campaigns/%s/status: %s", campaign_id, e, exc_info=True)
