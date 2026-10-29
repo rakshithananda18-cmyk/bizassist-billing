@@ -14,6 +14,7 @@
 // ============================================================================
 import React, { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import PaymentConfirmationSummary from '../sales/PaymentSummary'
 
 const ICONS = {
   alert: { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.3)',
@@ -44,6 +45,7 @@ export default function ConfirmChangesModal({
   changes = [],           // update: [{ label, from, to }]
   summary = [],           // create: [{ label, value }]
   message,                // overrides the auto description
+  paymentSummary,         // POS-only large received / change / credit figures
   confirmText,
   cancelText,
   tertiaryText,           // optional middle button (e.g. "Add to credit")
@@ -57,7 +59,14 @@ export default function ConfirmChangesModal({
     if (!open) return
     const onKey = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCancel?.() }
-      else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); onConfirm?.() }
+      else if (e.key === 'Enter') {
+        e.stopPropagation()
+        // A focused secondary/credit button must keep its native Enter action;
+        // overriding it would silently run the primary payment confirmation.
+        if (e.target?.closest?.('[role="alertdialog"] button')) return
+        e.preventDefault()
+        onConfirm?.()
+      }
     }
     window.addEventListener('keydown', onKey, true)
     const t = setTimeout(() => confirmRef.current?.focus(), 40)
@@ -101,27 +110,29 @@ export default function ConfirmChangesModal({
         aria-labelledby="ccm-title"
         style={{
           position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-          zIndex: 999993, width: 'min(440px, calc(100vw - 32px))',
+          zIndex: 999993, width: `min(${paymentSummary ? '560' : '440'}px, calc(100vw - 32px))`,
           background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 14,
           boxShadow: '0 24px 60px rgba(0,0,0,0.35)', padding: '26px 26px 22px',
           maxHeight: 'calc(100vh - 48px)', display: 'flex', flexDirection: 'column',
+          ...(paymentSummary ? { overflowY: 'auto' } : {}),
           animation: 'ccm-slide-in 0.18s cubic-bezier(.34,1.56,.64,1)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ width: 44, height: 44, borderRadius: 12, background: ic.bg,
+        {!paymentSummary && <div style={{ width: 44, height: 44, borderRadius: 12, background: ic.bg,
           border: `1px solid ${ic.border}`, display: 'flex', alignItems: 'center',
           justifyContent: 'center', marginBottom: 14, flexShrink: 0 }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={ic.color}
             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{ic.path}</svg>
-        </div>
+        </div>}
 
-        <h3 id="ccm-title" style={{ margin: '0 0 8px', fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+        <h3 id="ccm-title" style={{ margin: '0 0 8px', fontSize: paymentSummary ? '1.3rem' : '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
           {heading}
         </h3>
         <p style={{ margin: '0 0 16px', fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
           {autoMessage}
         </p>
+        {paymentSummary && <PaymentConfirmationSummary {...paymentSummary} />}
 
         {/* Change / summary list */}
         {(changes.length > 0 || summary.length > 0) && (
@@ -149,7 +160,7 @@ export default function ConfirmChangesModal({
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+        <div className={paymentSummary ? 'pos-confirm-actions' : undefined} style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
           {!isAlert && (
             <button type="button" className="btn btn-secondary" onClick={onCancel} style={{ minWidth: 90 }}>
               {secondaryLabel}
@@ -157,7 +168,7 @@ export default function ConfirmChangesModal({
           )}
           {tertiaryText && (
             <button type="button" className="btn btn-secondary" onClick={onTertiary}
-              style={{ minWidth: 110, borderColor: '#eab308', color: '#eab308' }}>
+              style={{ minWidth: 110, borderColor: paymentSummary ? 'var(--warning)' : '#eab308', color: paymentSummary ? 'var(--warning)' : '#eab308' }}>
               {tertiaryText}
             </button>
           )}

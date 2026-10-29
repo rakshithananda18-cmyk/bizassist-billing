@@ -1,0 +1,13 @@
+.settings-save-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 8px;
+  min-width: 138px;
+}
+
+.settings-save-button .settings-save-spinner {
+  width: 15px;
+  height: 15px;
+}

@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react'
-import { AlertIcon, CashIcon, CloseIcon, EditIcon, PhoneIcon, PlusIcon, UserIcon } from '../../components/Icons'
+import { AlertIcon, CashIcon, CloseIcon, EditIcon, PhoneIcon, PlusIcon, PrinterIcon, UserIcon } from '../../components/Icons'
 import InvoiceBreakdownCard from './InvoiceBreakdownCard'
 import TenderChips from './TenderChips'
 import { changeDue, paymentBalance } from '../../utils/invoiceMath'
@@ -10,6 +10,7 @@ import { useBillingProfile } from '../../hooks/useBillingProfile'
 import { useAuth } from '../../contexts/AuthContext'
 import { useConfirm } from '../../contexts/ConfirmContext'
 import { diffFields, summariseFields } from '../../utils/diffFields'
+import { PaymentAmountRow, PaymentBalanceRow } from './PaymentSummary'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -80,6 +81,16 @@ export default function CheckoutModal({
   // b2b_supplier) require a customer before the bill can be saved.
   const { profile: billingProfile } = useBillingProfile()
   const guardedSave = useCallback((paidAndPrint) => {
+    const isCreditMode = form.payment_mode === 'credit'
+    const received = (form.amount_received !== '' && form.amount_received != null)
+      ? (parseFloat(form.amount_received) || 0)
+      : (isCreditMode ? 0 : (payable ?? grandTotal))
+    const due = paymentBalance(received, payable ?? grandTotal) < 0
+    if (due && !String(form.customer_id || '').trim()) {
+      setAlert?.({ type: 'danger', msg: 'Select a customer before saving a balance on credit.' })
+      customerRef.current?.focus()
+      return
+    }
     if (billingProfile?.customer_required && !form.customer_id) {
       const who = billingProfile?.terminology?.customer || 'Customer'
       logger.info('checkout blocked: customer required by billing profile', billingProfile.mode_key)
@@ -88,7 +99,7 @@ export default function CheckoutModal({
       return
     }
     onSaveInvoice(paidAndPrint)
-  }, [billingProfile, form.customer_id, onSaveInvoice, setAlert])
+  }, [billingProfile, form.customer_id, form.amount_received, form.payment_mode, payable, grandTotal, onSaveInvoice, setAlert])
 
   const [showCustDrawer, setShowCustDrawer] = useState(false)
   const [custModalFields, setCustModalFields] = useState({
@@ -150,6 +161,9 @@ export default function CheckoutModal({
     if (!open) return
 
     const handleFocusIn = (e) => {
+      // Confirmation dialogs are portalled above checkout, and PDF print
+      // frames need focus. Neither should be pulled back into the cart.
+      if (e.target.closest?.('[role="alertdialog"]') || e.target.matches?.('iframe[data-invoice-print]')) return
       if (modalRef.current && !modalRef.current.contains(e.target)) {
         e.preventDefault()
         e.stopPropagation()
@@ -170,11 +184,14 @@ export default function CheckoutModal({
   // payable === grandTotal when there's no cash discount, so all existing flows
   // (tenders, change-due, amount-received) are unchanged.
   const pay = (payable ?? grandTotal)
-  const amountReceivedNum = parseFloat(form.amount_received) || 0
+  const isCredit = form.payment_mode === 'credit'
+  const effectiveAmountReceived = (form.amount_received !== '' && form.amount_received != null)
+    ? (parseFloat(form.amount_received) || 0)
+    : (isCredit ? 0 : pay)
+  const amountReceivedNum = effectiveAmountReceived
   const changeToReturn = changeDue(amountReceivedNum, pay)
   // Signed balance: negative = short (still owed), shown in red below.
   const balance = paymentBalance(amountReceivedNum, pay)
-  const isCredit = form.payment_mode === 'credit'
 
   // Autofocus logic
   useEffect(() => {
@@ -1197,38 +1214,22 @@ export default function CheckoutModal({
                 </div>
 
               {/* Amount Received Input */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Amount received</label>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  background: 'var(--bg-3)',
-                  border: '1.5px solid var(--accent)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: '8px 14px'
-                }}>
-                  <span style={{ fontSize: '1.25rem', color: 'var(--text-muted)', marginRight: '6px' }}>₹</span>
+              <PaymentAmountRow label="Amount received" hint="Enter the amount collected now">
+                <div className="pos-payment-amount-input">
+                  <span aria-hidden="true">₹</span>
                   <input
                     ref={amountReceivedRef}
+                    aria-label="Amount received"
                     type="number"
                     min="0"
                     step="any"
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-primary)',
-                      fontSize: '1.5rem',
-                      fontWeight: '700',
-                      width: '100%',
-                      outline: 'none'
-                    }}
                     placeholder="0.00"
                     value={form.amount_received}
                     onChange={e => setField('amount_received', e.target.value)}
                     onKeyDown={handlePaymentPopupKeyDown}
                   />
                 </div>
-              </div>
+              </PaymentAmountRow>
 
               {/* Tender Chips — target the payable (= grand − cash discount) */}
               <TenderChips
@@ -1339,42 +1340,10 @@ export default function CheckoutModal({
               <div style={{ borderTop: '1px dotted var(--border)', margin: '4px 0' }} />
 
               {/* Hero Change / Due Status Banner */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '12px 16px',
-                borderRadius: 'var(--radius-md)',
-                background: balance < 0 ? 'var(--danger-dim, rgba(239, 68, 68, 0.12))' : 'var(--success-dim, rgba(34, 197, 94, 0.14))',
-                border: `1.5px solid ${balance < 0 ? 'var(--danger)' : 'var(--success)'}`,
-                margin: '4px 0'
-              }}>
-                <div>
-                  <div style={{
-                    fontSize: '0.78rem',
-                    fontWeight: 800,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.04em',
-                    color: balance < 0 ? 'var(--danger)' : 'var(--success)'
-                  }}>
-                    {balance < 0 ? 'Balance still due' : 'Change to return'}
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                    {balance < 0 ? 'Collect remaining from customer' : 'Hand exact change to customer'}
-                  </div>
-                </div>
-                <div style={{
-                  fontSize: '1.75rem',
-                  fontWeight: 900,
-                  letterSpacing: '-0.02em',
-                  color: balance < 0 ? 'var(--danger)' : 'var(--success)'
-                }}>
-                  {balance < 0 ? `− ${fmt(Math.abs(balance))}` : fmt(balance)}
-                </div>
-              </div>
+              <PaymentBalanceRow amountReceived={amountReceivedNum} payable={pay} isCredit={isCredit} />
 
               {/* Actions */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+              <div className="pos-checkout-actions">
                 <button
                   type="button"
                   disabled={submitting}
@@ -1391,7 +1360,8 @@ export default function CheckoutModal({
                   }}
                   onClick={() => guardedSave(true)}
                 >
-                  {submitting ? 'Saving Invoice...' : (isCredit ? 'Save & Print · Enter' : 'Paid & Print · Enter')}
+                  <PrinterIcon size={18} aria-hidden="true" />
+                  {submitting ? 'Saving Invoice...' : (isCredit || balance < 0 ? 'Save & Print · Enter' : 'Paid & Print · Enter')}
                 </button>
                 
                 <button

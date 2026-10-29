@@ -49,6 +49,7 @@ import AppearanceSettings from '../components/settings/AppearanceSettings'
 import Profile from './Profile'
 import './settings-profile.css'
 import SettingsSearch from '../components/settings/SettingsSearch'
+import SettingsSaveButton from '../components/settings/SettingsSaveButton'
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 const TABS = [
@@ -127,19 +128,6 @@ export default function Settings() {
   // the target row is not mounted yet and getElementById would find nothing.
   // The param is then stripped one-shot, so a refresh does not re-scroll —
   // same teardown as ?switch= further down.
-  useEffect(() => {
-    const field = searchParams.get('field')
-    if (!field) return
-    const t = setTimeout(() => {
-      jumpToSetting(field)
-      setSearchParams(prev => {
-        const next = new URLSearchParams(prev)
-        next.delete('field')
-        return next
-      }, { replace: true })
-    }, 120)
-    return () => clearTimeout(t)
-  }, [searchParams, activeTab])
   // Which format the print preview shows (independent of the saved thermal_printer_mode).
   const [previewMode, setPreviewMode] = useState('thermal')
   const [dragKey, setDragKey] = useState(null)   // header line being dragged in the preview
@@ -359,6 +347,22 @@ export default function Settings() {
       toastTimerRef.current = setTimeout(() => setToast(null), 3500)
     },
   })
+  useEffect(() => {
+    const field = searchParams.get('field')
+    if (!field || !settings) return
+    // A cloud settings read can take longer than the tab-render delay. Keep
+    // the deep link until its actual setting row has mounted.
+    const timer = setTimeout(() => {
+      if (!document.getElementById('set-' + field)) return
+      jumpToSetting(field)
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev)
+        next.delete('field')
+        return next
+      }, { replace: true })
+    }, 120)
+    return () => clearTimeout(timer)
+  }, [searchParams, activeTab, Boolean(settings)])
   useEffect(() => () => clearTimeout(toastTimerRef.current), [])
 
   useEffect(() => {
@@ -563,32 +567,7 @@ export default function Settings() {
           <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <HeaderSearchSlot />
             {activeTab !== 'profile' && (
-              <>
-                <div
-                  className={`save-status-badge ${saveStatus}`}
-                  title={saveStatus === 'error' ? 'Click to retry saving' : undefined}
-                  onClick={saveStatus === 'error' ? () => save(true) : undefined}
-                  role="status"
-                  aria-live="polite"
-                >
-                  <span className="save-status-dot" />
-                  <span>
-                    {saveStatus === 'saved' && 'Saved'}
-                    {saveStatus === 'saving' && 'Saving...'}
-                    {saveStatus === 'unsaved' && 'Unsaved changes'}
-                    {saveStatus === 'error' && 'Save failed · Retry'}
-                  </span>
-                </div>
-                <button
-                  className={`btn ${saveStatus === 'error' ? 'btn-danger' : 'btn-primary'}`}
-                  onClick={() => save(true)}
-                  disabled={saving}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}
-                >
-                  {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <CheckIcon size={14} />}
-                  {saveStatus === 'error' ? 'Retry Save' : 'Save Changes'}
-                </button>
-              </>
+              <SettingsSaveButton saveStatus={saveStatus} saving={saving} onSave={() => save(true)} />
             )}
           </div>
         </div>
@@ -809,12 +788,12 @@ export default function Settings() {
                     })}
                   </div>
                 </div>
-                <div className="inv-row">
+                <div className="inv-row" id="set-privacy_mode">
                   <div className="inv-row-body">
                     <div className="inv-row-label">
                       Privacy Mode  <span className={`inv-tag ${g.privacy_mode === true ? 'inv-tag-on' : 'inv-tag-off'}`}>{g.privacy_mode === true ? 'ON' : 'OFF'}</span>
                     </div>
-                    <div className="inv-row-hint">Blurs revenue &amp; profit on the dashboard — protects sensitive data from passersby.</div>
+                    <div className="inv-row-hint">Hides financial charts and blurs sensitive dashboard amounts — protects your data from passersby.</div>
                   </div>
                   <Toggle id="privacy_mode" checked={g.privacy_mode === true} onChange={v => patch('general', 'privacy_mode', v)} />
                 </div>

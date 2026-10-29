@@ -222,6 +222,16 @@ function readableOnSurfaces(colour, backgrounds, target) {
 
 const strongestForeground = background => contrastRatio('#ffffff', background) >= contrastRatio('#000000', background) ? '#ffffff' : '#000000'
 
+function softNavigationSelection(selection, surface) {
+  // The navigation selection can intentionally differ from action buttons
+  // (gold navigation with blue actions, for example). Tint a neutral surface
+  // so a coloured sidebar cannot turn the selected hue into another colour.
+  const base = strongestForeground(surface) === '#ffffff' ? '#17191d' : '#ffffff'
+  const background = blend(base, selection, .2)
+  const foreground = readableColour(selection, background, strongestForeground(background))
+  return { background, foreground, border: blend(background, foreground, .3) }
+}
+
 export function appearanceThemeColors(preference, user, storage = browserStorage()) {
   const appearance = normalizeAppearance(preference, user, storage)
   if (appearance.accent === 'custom') return { ...appearance.customColors }
@@ -332,8 +342,8 @@ export function appearanceTokens(preference, systemDark = false, user, storage =
     : (appearance.darkerSidebar ? blend(picked.sidebar, '#000000', .18) : picked.sidebar)
   const sidebarText = themeForeground(sidebar)
   const sidebarMuted = readableColour(blend(sidebarText, sidebar, .16), sidebar, sidebarText)
-  const sidebarSubSelection = blend(sidebar, colors.accent, .12)
-  const sidebarSubText = readableColour(colors.accent, sidebarSubSelection, strongestForeground(sidebarSubSelection))
+  const sidebarSubSelection = softNavigationSelection(picked.selection, sidebar)
+  const pageSelection = softNavigationSelection(picked.selection, colors.card)
   const sidebarHover = blend(sidebar, sidebarText, .1)
   const sidebarHoverText = readableColour(colors.accent, sidebarHover, strongestForeground(sidebarHover))
   const headerText = themeForeground(picked.surface)
@@ -390,8 +400,11 @@ export function appearanceTokens(preference, systemDark = false, user, storage =
       '--sidebar-hover': sidebarHover,
       '--sidebar-hover-text': sidebarHoverText,
       '--sidebar-border': blend(sidebar, sidebarText, .2),
-      '--sidebar-active-bg-sub': sidebarSubSelection,
-      '--sidebar-active-text-sub': sidebarSubText,
+      '--sidebar-active-bg-sub': sidebarSubSelection.background,
+      '--sidebar-active-text-sub': sidebarSubSelection.foreground,
+      '--page-selection-bg': pageSelection.background,
+      '--page-selection-text': pageSelection.foreground,
+      '--page-selection-border': pageSelection.border,
       '--sidebar-active-bg': picked.selection,
       '--sidebar-active-text': themeForeground(picked.selection),
       '--theme-surface': picked.surface,

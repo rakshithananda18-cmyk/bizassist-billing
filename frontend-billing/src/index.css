@@ -678,10 +678,10 @@ body,
   background: var(--bg-3);
 }
 .app-subnav-link.active {
-  color: var(--accent);
+  color: var(--page-selection-text, var(--accent));
   font-weight: 600;
-  border-bottom-color: var(--accent);
-  background: var(--accent-glow);
+  border-bottom-color: var(--page-selection-text, var(--accent));
+  background: var(--page-selection-bg, var(--accent-glow));
 }
 .app-subnav-icon {
   display: flex;
@@ -792,9 +792,9 @@ body,
 }
 
 .tabs.page-subbar .tab.active {
-  background: var(--accent-solid, var(--accent)) !important;
-  border-color: var(--accent-solid, var(--accent)) !important;
-  color: var(--accent-foreground, #fff) !important;
+  background: var(--page-selection-bg, var(--accent-dim)) !important;
+  border-color: var(--page-selection-border, var(--accent)) !important;
+  color: var(--page-selection-text, var(--accent)) !important;
   box-shadow: var(--shadow-sm) !important;
 }
 

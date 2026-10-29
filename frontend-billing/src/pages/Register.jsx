@@ -18,6 +18,8 @@ import {
 } from '../components/Icons'
 import { BuildingMark } from '../components/Logo'
 import CustomSelect from '../components/common/CustomSelect'
+import { DESKTOP_DOWNLOAD_URL } from '../config/downloadApp'
+import './registration.css'
 
 export default function Register() {
   const { signup } = useAuth()
@@ -43,7 +45,7 @@ export default function Register() {
   // Where should this business's data live? Chosen at signup in the desktop
   // app (web always runs on cloud). 'local' just proceeds; 'cloud'/'hybrid'
   // route into the guarded switch flow after signup (never a silent switch).
-  const [hostingChoice, setHostingChoice] = useState('local')
+  const [hostingChoice, setHostingChoice] = useState(IS_LOCAL_APP ? 'local' : 'cloud')
   // The cloud's Pro trial offer, asked before sign-up. While new businesses get
   // a trial, Local + Cloud (a Pro feature) is preselected; Local stays a click
   // away. An older cloud without /trial-offer, or no connection: Local, as before.
@@ -168,7 +170,7 @@ export default function Register() {
         password: form.password,
         business_name: form.businessName,
         template_key: selectedTemplate,
-        hosting: hostingChoice,   // 'local' | 'hybrid' — auto-configured in signup()
+        hosting: IS_LOCAL_APP ? hostingChoice : 'cloud',
         phone: (form.phone || '').trim() || null,   // if given, lands on the profile
       })
       // Multi-type (Phase 2): register secondary business types after signup.
@@ -331,21 +333,20 @@ export default function Register() {
 
               {/* Multi-type (Phase 2): optional secondary business types */}
               {templates.length > 1 && (
-                <details style={{ marginTop: 8 }}>
+                <details className="registration-extra-types" style={{ marginTop: 8 }}>
                   <summary style={{ fontSize: '0.78rem', color: 'var(--text-muted)', cursor: 'pointer', userSelect: 'none' }}>
                     Also runs as… (optional — adds extra billing modes)
                   </summary>
                   <div
                     data-testid="extra-types"
-                    style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px', marginTop: 10, maxHeight: 110, overflowY: 'auto' }}
+                    className="registration-extra-grid"
                   >
                     {templates.filter(t => t.key !== selectedTemplate).map(t => (
-                      <label key={t.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.8rem', cursor: 'pointer', margin: 0, lineHeight: 1.3 }}>
+                      <label key={t.key} className="registration-extra-option">
                         <input
                           type="checkbox"
                           checked={extraTypes.includes(t.key)}
                           onChange={() => toggleExtraType(t.key)}
-                          style={{ cursor: 'pointer', accentColor: 'var(--accent)', marginTop: 2, flexShrink: 0 }}
                         />
                         <span>{t.label}</span>
                       </label>
@@ -355,25 +356,22 @@ export default function Register() {
               )}
             </div>
 
-            {IS_LOCAL_APP && (
-              <div className="form-group" style={{ marginTop: '4px' }}>
-                <label>Where should your data live?</label>
-                <div data-testid="hosting-choice" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 4 }}>
+              <fieldset className="registration-storage">
+                <legend>Where should your data live?</legend>
+                <div data-testid="hosting-choice" className={`registration-storage-grid ${IS_LOCAL_APP ? '' : 'is-cloud'}`}>
                   {[
+                    ...(!IS_LOCAL_APP ? [{ key: 'cloud', title: 'Cloud', desc: 'Selected for browser registration. Available securely online.' }] : []),
                     { key: 'local',  title: 'Local only',     desc: 'Nothing goes to the cloud. Fast, fully offline. Field Team and web access need Local + Cloud.' },
                     { key: 'hybrid', title: 'Local + Cloud',  desc: 'Local speed + automatic cloud sync, backup & multi-device.' },
                   ].map(opt => (
                     <button
                       type="button"
                       key={opt.key}
+                      className={`registration-storage-option ${hostingChoice === opt.key ? 'is-selected' : ''}`}
                       aria-pressed={hostingChoice === opt.key}
+                      disabled={!IS_LOCAL_APP}
+                      aria-describedby={!IS_LOCAL_APP ? 'cloud-storage-help' : undefined}
                       onClick={() => { hostingTouched.current = true; setHostingChoice(opt.key) }}
-                      style={{
-                        textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
-                        border: `1.5px solid ${hostingChoice === opt.key ? 'var(--accent)' : 'var(--border)'}`,
-                        background: hostingChoice === opt.key ? 'var(--accent-dim)' : 'var(--bg-2)',
-                        color: 'var(--text-primary)',
-                      }}
                     >
                       <div style={{ fontWeight: 700, fontSize: '0.86rem' }}>
                         {opt.title}
@@ -387,15 +385,21 @@ export default function Register() {
                     </button>
                   ))}
                 </div>
-                {hostingChoice === 'hybrid' && (
+                {!IS_LOCAL_APP && (
+                  <div className="registration-storage-help" id="cloud-storage-help">
+                    <p>You’re registering in the browser, so this business uses the cloud database. Local options are available in the desktop app.</p>
+                    <a href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">Download desktop app</a>
+                    <p>Already registered? Sign in with the same account in the desktop app and choose your storage mode in Settings.</p>
+                  </div>
+                )}
+                {IS_LOCAL_APP && hostingChoice === 'hybrid' && (
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>
                     {trialDays > 0
                       ? `Included in your ${trialDays}-day Pro trial and set up automatically: billing stays fast and offline while your data syncs to the cloud. When the trial ends, cloud sync stops unless you upgrade to Pro. Everything stays on this computer and keeps working offline.`
                       : 'Set up automatically — no extra steps. Billing stays fast and offline while your data syncs to the cloud in the background.'}
                   </div>
                 )}
-              </div>
-            )}
+              </fieldset>
 
             <div className="form-group" style={{ marginTop: '4px' }}>
               <label htmlFor="username">Username or Email</label>

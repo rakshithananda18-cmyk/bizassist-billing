@@ -1,0 +1,10 @@
+.dashboard-chart-notice {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  padding: 20px; margin-bottom: 20px;
+}
+.dashboard-chart-notice h2 { margin: 0 0 6px; font-size: 1rem; }
+.dashboard-chart-notice p { margin: 0; color: var(--text-secondary); font-size: .84rem; line-height: 1.5; max-width: 560px; }
+.dashboard-chart-notice-actions { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+.dashboard-chart-visibility { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; font-size: .8rem; color: var(--text-secondary); }
+@media (max-width: 900px) { .dashboard-chart-notice { align-items: flex-start; flex-direction: column; gap: 14px; } }
+@media (max-width: 520px) { .dashboard-chart-notice-actions, .dashboard-chart-notice-actions .btn { width: 100%; } .dashboard-chart-visibility { align-items: flex-start; } }

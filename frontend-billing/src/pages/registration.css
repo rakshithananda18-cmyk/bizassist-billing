@@ -1,0 +1,126 @@
+#register-form .registration-extra-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+  max-height: 210px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+#register-form .registration-extra-option {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  min-width: 0;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: var(--bg-2);
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
+}
+
+#register-form .registration-extra-option:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--text-primary);
+}
+
+#register-form .registration-extra-option:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+#register-form .registration-extra-option input[type="checkbox"] {
+  appearance: auto;
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 2px 0 0;
+  border-radius: 3px;
+  box-shadow: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+#register-form .registration-extra-option span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+#register-form .registration-storage {
+  min-width: 0;
+  margin: 4px 0 0;
+  padding: 0;
+  border: 0;
+  text-align: left;
+}
+
+#register-form .registration-storage legend {
+  width: 100%;
+  padding: 0;
+  text-align: left;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.registration-storage-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.registration-storage-grid.is-cloud .is-selected {
+  grid-column: 1 / -1;
+}
+
+#register-form .registration-storage-option {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-primary);
+  background: var(--bg-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+#register-form .registration-storage-option.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+#register-form .registration-storage-option:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+#register-form .registration-storage-option.is-selected:disabled { opacity: 1; }
+
+.registration-storage-help {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.registration-storage-help p { margin: 0 0 6px; }
+.registration-storage-help a { display: inline-block; margin-bottom: 6px; font-weight: 600; }
+
+@media (max-width: 420px) {
+  #register-form .registration-extra-grid,
+  .registration-storage-grid { grid-template-columns: minmax(0, 1fr); }
+}

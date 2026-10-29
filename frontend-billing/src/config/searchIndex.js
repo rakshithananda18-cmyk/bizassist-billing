@@ -67,6 +67,7 @@ export const PAGE_INDEX = [
  */
 export const SETTINGS_INDEX = [
   { tab: 'general', key: 'ai_search_enabled',    label: 'Ask AI from Search' },
+  { tab: 'general', key: 'privacy_mode',         label: 'Privacy Mode' },
   { tab: 'print', key: 'theme_color',            label: 'Invoice Theme Colour' },
   { tab: 'print', key: 'text_size',              label: 'Text Size' },
   { tab: 'print', key: 'thermal_page_size',      label: 'Thermal Page Size' },

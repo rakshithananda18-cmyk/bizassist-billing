@@ -38,10 +38,9 @@
 }
 .page-tab:hover { background: var(--bg-2); color: var(--text-primary); }
 .page-tab.is-active {
-  background: var(--accent-solid, var(--accent));
-  color: var(--accent-foreground, #fff);
-  border-color: var(--accent-solid, var(--accent));
-  box-shadow: 0 2px 5px var(--accent-dim);
+  background: var(--page-selection-bg, var(--accent-dim));
+  color: var(--page-selection-text, var(--accent));
+  border-color: var(--page-selection-border, var(--border));
 }
 .page-tab > svg { flex-shrink: 0; }
 .page-tab-count {
@@ -52,7 +51,7 @@
   background: var(--bg-2);
   color: var(--text-primary);
 }
-.page-tab.is-active .page-tab-count { background: rgba(255,255,255,0.2); color: inherit; }
+.page-tab.is-active .page-tab-count { background: transparent; color: inherit; border: 1px solid currentColor; }
 @media (max-width: 768px) {
   .page-tabs { flex: 1 1 auto; border-radius: 10px; }
   .page-tab { min-height: 36px; padding: 7px 10px; font-size: 0.77rem; }

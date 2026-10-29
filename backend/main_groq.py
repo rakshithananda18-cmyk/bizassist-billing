@@ -268,6 +268,7 @@ _default_origins = (
     "http://127.0.0.1:8451,http://localhost:8451,"
     "https://bizassist-react.vercel.app,"
     "https://bizassist.vercel.app,"
+    "https://bizassist-billing.vercel.app,"
     "https://rakshit-dev-bizassist.hf.space"
 )
 _allowed_origins = [

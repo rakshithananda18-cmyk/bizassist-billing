@@ -12,7 +12,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { logger } from '../utils/logger'
 import InvoiceViewerModal from '../components/invoice/InvoiceViewerModal'
-import DashboardCharts from '../components/dashboard/DashboardCharts'
+import DashboardChartPanel from '../components/dashboard/DashboardChartPanel'
 import {
   SummaryIcon,
   CounterIcon,
@@ -43,7 +43,7 @@ function StatCard({ icon, label, value, sub, variant = 'accent', badge, badgeTyp
 }
 
 export default function Dashboard() {
-  const { authFetch, profile, settings } = useAuth()
+  const { authFetch, profile, settings, user } = useAuth()
   const privacyMode = settings?.general?.privacy_mode === true
   const label = useDocLabels()
 
@@ -64,10 +64,13 @@ export default function Dashboard() {
   // of sync events, or a slow cloud response), don't stack another pair of
   // requests on top — that's what produced the "hundreds of pending calls".
   const loadingRef = useRef(false)
+  const loadedRef = useRef(false)
   const load = useCallback(() => {
     if (loadingRef.current) return
     loadingRef.current = true
-    setLoading(true)
+    // Keep the chart panel mounted during background refreshes so an explicit
+    // temporary privacy reveal lasts for this dashboard visit.
+    setLoading(!loadedRef.current)
     Promise.all([
       authFetch('/dashboard-summary').then(r => r.ok ? r.json() : null).catch(() => null),
       // Dashboard only shows the 5 most recent — don't pull the whole history.
@@ -77,7 +80,7 @@ export default function Dashboard() {
       setStats(summaryData)
       setPayments(Array.isArray(paymentsData) ? paymentsData : (paymentsData?.items ?? []))
       setChartsData(chartData)
-    }).finally(() => { setLoading(false); loadingRef.current = false })
+    }).finally(() => { loadedRef.current = true; setLoading(false); loadingRef.current = false })
   }, [authFetch])
 
   // Page lifecycle: refresh when tab regains focus (onResume)
@@ -238,7 +241,12 @@ export default function Dashboard() {
             })()}
 
             {/* Visual Analytics */}
-            {privacyMode ? <p className="muted">Charts hidden in Privacy Mode.</p> : <DashboardCharts chartData={chartsData} />}
+            <DashboardChartPanel
+              key={`${user?.public_id || user?.id || 'workspace'}:${privacyMode}`}
+              chartData={chartsData}
+              privacyMode={privacyMode}
+              onRetry={load}
+            />
 
             {/* Feed & Alerts grid */}
             <div className="dashboard-grid">

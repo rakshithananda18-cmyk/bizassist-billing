@@ -6,6 +6,7 @@ import { IS_LOCAL_APP } from '../config'
 import { getFromDateStr } from '../utils/format'
 import { useConfirm } from '../contexts/ConfirmContext'
 import { playSuccessChime } from '../utils/posAudio'
+import { printInvoicePdf } from '../utils/printInvoicePdf'
 
 // Module-level save lock — shared across ALL instances of this hook.
 // Prevents duplicate POSTs when React StrictMode mounts two instances
@@ -69,12 +70,19 @@ export default function usePaymentFlow({
     _saveLock.set(lockKey, 'saving')
     
     const pay = (payable ?? grandTotal)
-    // Both may flip to credit if the cashier chooses "Add to credit" at the
-    // confirmation step below, so they're mutable.
-    let isCredit = form.payment_mode === 'credit'
-    // Credit → record only what was actually received now (may be 0 / partial).
-    // Any other mode → "Paid": the full payable is settled at the counter.
-    let paidNow = isCredit ? (parseFloat(form.amount_received) || 0) : pay
+    const creditMode = form.payment_mode === 'credit'
+    const tendered = form.amount_received !== '' && form.amount_received != null
+      ? Number(form.amount_received) : (creditMode ? 0 : pay)
+    if (!Number.isFinite(tendered) || tendered < 0 || !Number.isFinite(pay) || pay < 0) {
+      _saveLock.delete(lockKey)
+      setAlert({ type: 'danger', msg: 'Enter a valid amount received before saving.' })
+      return false
+    }
+    // Preserve the actual partial tender and its cash/card/UPI method. Only
+    // the amount applied to this bill is capped; the summary shows full cash
+    // tender so change remains correct.
+    let paidNow = Math.min(Math.round((tendered + Number.EPSILON) * 100) / 100, pay)
+    let isCredit = creditMode || paidNow < pay
     // The form values that actually get saved. setForm is async, so when the
     // cashier flips to credit below we can't rely on the state update landing
     // before we build the payload — carry the override explicitly.
@@ -85,16 +93,22 @@ export default function usePaymentFlow({
     if (!skipConfirm) {
       // Wrap in try/finally: if confirm() throws (e.g. the ConfirmProvider is
       // unmounted mid-flight) the lock must still be released so the POS isn't
-      // frozen until the 5s safety timer fires.
+      // left blocking the next save attempt.
       try {
-        if (isCredit) {
+        if (creditMode) {
           // Already on credit — just confirm the amount going on the books.
           const ok = await confirm({
             mode: 'update',
             title: 'Save on credit?',
             message: `Save on CREDIT — ₹${(pay - paidNow).toFixed(2)} will be due.`,
-            confirmText: 'Save on credit',
+            confirmText: printAfterSave ? 'Save & print on credit' : 'Save on credit',
             cancelText: 'Go back & edit',
+            paymentSummary: {
+              amountReceived: tendered,
+              payable: pay,
+              isCredit: true,
+              paymentMode: form.payment_mode,
+            },
           })
           if (!ok) { releaseLock(); return false }
         } else {
@@ -102,14 +116,24 @@ export default function usePaymentFlow({
           // credit instead, or does the cashier want to keep editing?
           const choice = await confirm({
             mode: 'update',
-            title: 'Payment received?',
-            message: `Collect ₹${pay.toFixed(2)} via ${(form.payment_mode || 'cash').toUpperCase()}? Confirm you received it, or put it on the customer's credit.`,
-            confirmText: 'Yes, received — print',
+            title: paidNow < pay ? 'Confirm partial payment' : 'Confirm payment',
+            message: paidNow < pay
+              ? `Record ₹${paidNow.toFixed(2)} received and ₹${(pay - paidNow).toFixed(2)} still due on this customer's account.`
+              : `Confirm the amount received via ${(form.payment_mode || 'cash').toUpperCase()} and return any change shown below.`,
+            confirmText: paidNow < pay
+              ? (printAfterSave ? 'Save partial payment & print' : 'Save partial payment')
+              : (printAfterSave ? 'Received · Print invoice' : 'Received · Save invoice'),
             confirmValue: 'paid',
-            tertiaryText: 'Add to credit',
+            tertiaryText: 'No payment · Add to credit',
             tertiaryValue: 'credit',
             cancelText: 'Go back & edit',
             cancelValue: 'cancel',
+            paymentSummary: {
+              amountReceived: tendered,
+              payable: pay,
+              isCredit: paidNow < pay,
+              paymentMode: form.payment_mode,
+            },
           })
           if (choice === 'cancel' || !choice) { releaseLock(); return false }
           if (choice === 'credit') {
@@ -127,6 +151,18 @@ export default function usePaymentFlow({
         releaseLock()
         return false
       }
+    }
+
+    if (paidNow < pay && !String(formForSave.customer_id || '').trim()) {
+      releaseLock()
+      setAlert({ type: 'danger', msg: 'Select a customer before saving a balance on credit.' })
+      return false
+    }
+    if (formForSave.amount_received === '' || formForSave.amount_received == null) {
+      // Quick-save shortcuts confirm a full payment without opening checkout.
+      // Paint that confirmed amount into the receipt before printing it.
+      formForSave = { ...formForSave, amount_received: tendered.toFixed(2) }
+      setForm(current => ({ ...current, amount_received: tendered.toFixed(2) }))
     }
 
     setSubmitting(true)
@@ -209,7 +245,7 @@ export default function usePaymentFlow({
         }
         logger.info('[SALES] invoice saved', serverInvoiceNo, printAfterSave ? '(print)' : '')
         try { playSuccessChime() } catch (error) { logger.warn('[SALES] success sound unavailable', error) }
-        setAlert({ type: 'success', msg: printAfterSave ? 'Invoice created and print triggered!' : 'Invoice created successfully!' })
+        setAlert({ type: 'success', msg: printAfterSave ? 'Invoice saved. Preparing print…' : 'Invoice created successfully!' })
         
         const finishReset = () => {
           if (IS_LOCAL_APP) {
@@ -233,9 +269,7 @@ export default function usePaymentFlow({
         }
 
 
-        if (printAfterSave && !isCredit) {
-          // Credit bills do not trigger a print — there is no cash collected to
-          // hand over a receipt for. Only print when the sale was paid now.
+        if (printAfterSave) {
           const invoiceNo = serverInvoiceNo
           const isThermal = settings?.print?.thermal_printer_mode === true
           if (isThermal) {
@@ -247,35 +281,20 @@ export default function usePaymentFlow({
               finally { finishReset() }
             }, 800)
           } else {
-            setTimeout(async () => {
+            (async () => {
               try {
                 const pdfRes = await authFetch(`/sales/${invoiceNo}/pdf`)
                 if (!pdfRes.ok) throw new Error('Failed to fetch invoice PDF')
                 const blob = await pdfRes.blob()
-                const url = URL.createObjectURL(blob)
-
-                let iframe = document.getElementById('print-iframe')
-                if (!iframe) {
-                  iframe = document.createElement('iframe')
-                  iframe.id = 'print-iframe'
-                  iframe.style.position = 'absolute'
-                  iframe.style.width = '0px'
-                  iframe.style.height = '0px'
-                  iframe.style.border = 'none'
-                  document.body.appendChild(iframe)
-                }
-                iframe.src = url
-                iframe.onload = () => {
-                  iframe.contentWindow.focus()
-                  iframe.contentWindow.print()
-                }
-                finishReset()
+                await printInvoicePdf(blob)
               } catch (err) {
                 logger.error('[SALES] PDF print failed, falling back to window.print()', err)
+                setAlert({ type: 'warning', msg: 'Invoice saved. PDF print could not open; trying the receipt view. You can reprint from Invoices.' })
                 try { window.print() } catch (printError) { logger.warn('[SALES] print unavailable', printError) }
-                finally { finishReset() }
+              } finally {
+                finishReset()
               }
-            }, 300)
+            })()
           }
         } else {
           finishReset()

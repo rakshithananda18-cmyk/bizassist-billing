@@ -21,6 +21,37 @@ describe('personal appearance preferences', () => {
       for (const theme of ['light', 'dark']) {
         const { tokens } = appearanceTokens({ theme, accent: palette.id }, theme === 'dark', owner, storage())
         expect(contrastRatio(tokens['--sidebar-active-text-sub'], tokens['--sidebar-active-bg-sub'])).toBeGreaterThanOrEqual(4.5)
+        expect(contrastRatio(tokens['--page-selection-text'], tokens['--page-selection-bg'])).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+
+  it('uses the configured navigation selection for sub-pages independently of the action accent', () => {
+    const customColors = { sidebar: '#224466', surface: '#ffffff', accent: '#186b4b', selection: '#edc46e' }
+    for (const theme of ['light', 'dark']) {
+      const chosen = appearanceTokens({ theme, accent: 'custom', customColors }).tokens
+      const newAction = appearanceTokens({ theme, accent: 'custom', customColors: { ...customColors, accent: '#77489e' } }).tokens
+      const newSelection = appearanceTokens({ theme, accent: 'custom', customColors: { ...customColors, selection: '#a73a64' } }).tokens
+      expect(chosen['--sidebar-active-bg']).toBe(customColors.selection)
+      for (const key of ['--sidebar-active-bg-sub', '--sidebar-active-text-sub', '--page-selection-bg', '--page-selection-text']) {
+        expect(newAction[key], key).toBe(chosen[key])
+        expect(newSelection[key], key).not.toBe(chosen[key])
+      }
+      // A dark coloured sidebar and light content need independent foregrounds,
+      // rather than reusing light labels on a pale page tab.
+      expect(chosen['--sidebar-active-bg-sub']).not.toBe(chosen['--page-selection-bg'])
+    }
+  })
+
+  it('keeps custom navigation selections readable on contrasting sidebar and content surfaces', () => {
+    for (const selection of ['#ffffff', '#000000', '#777777', '#edc46e', '#a65471']) {
+      for (const sidebar of ['#111111', '#ffffff', '#356676']) {
+        for (const theme of ['light', 'dark']) {
+          const customColors = { sidebar, surface: '#ffffff', accent: '#245eac', selection }
+          const { tokens } = appearanceTokens({ theme, accent: 'custom', customColors })
+          expect(contrastRatio(tokens['--sidebar-active-text-sub'], tokens['--sidebar-active-bg-sub'])).toBeGreaterThanOrEqual(4.5)
+          expect(contrastRatio(tokens['--page-selection-text'], tokens['--page-selection-bg'])).toBeGreaterThanOrEqual(4.5)
+        }
       }
     }
   })
