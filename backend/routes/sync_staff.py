@@ -25,7 +25,12 @@ from sqlalchemy.orm import Session
 
 from database.db import get_db
 from database.models import User
-from services.auth import require_business_owner, resolve_business_id_in_db
+from services.auth import (
+    require_business_owner,
+    resolve_business_id_in_db,
+    bump_token_version,
+    clear_token_version_cache,
+)
 
 logger = logging.getLogger("bizassist.sync.staff")
 router = APIRouter(tags=["sync"])
@@ -94,21 +99,27 @@ def sync_staff_push(
 
         if rec.deleted:
             if existing:
+                clear_token_version_cache(existing.id)
                 db.delete(existing)
                 deleted += 1
                 logger.info("[STAFF-SYNC] Deleted staff '%s' for business %s", bare, owner_id)
             continue
 
         if existing:
-            # Update — always overwrite password hash, role, counter_prefix
+            # Update — overwrite password hash, role, counter_prefix
+            # TS-04 fix: If password or role materially changed, invalidate existing cloud sessions
+            material_change = (existing.password != rec.hashed_password) or (existing.role != rec.role)
             existing.password        = rec.hashed_password
             existing.role            = rec.role
             existing.counter_prefix  = rec.counter_prefix
+            if material_change:
+                bump_token_version(db, existing)
             # Ensure internal username stays consistent
             if existing.username != rec.internal_username:
                 existing.username = rec.internal_username
             upserted += 1
-            logger.info("[STAFF-SYNC] Updated staff '%s' for business %s", bare, owner_id)
+            logger.info("[STAFF-SYNC] Updated staff '%s' for business %s (material_change=%s)",
+                        bare, owner_id, material_change)
         else:
             # Insert — resolve global username collision on cloud side
             internal = _resolve_username(db, rec.internal_username)

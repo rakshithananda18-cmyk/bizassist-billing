@@ -7,6 +7,31 @@
 // what real UPI apps expect).
 
 /**
+ * Resolves the authenticated business's UPI payment recipient VPA.
+ * Prevents cross-business leaks and hardcoded fallbacks (WEB-02).
+ * Priority:
+ * 1. profile.upi_vpa (trimmed)
+ * 2. user.upi_vpa (trimmed)
+ * 3. Business-scoped local override (pos_upi_vpa_<bizId>)
+ * Never falls back to a device-global foreign VPA or a hardcoded company handle for client money collection.
+ */
+export function resolvePaymentVpa({ profile, user } = {}) {
+  const profileVpa = profile?.upi_vpa?.trim()
+  if (profileVpa) return profileVpa
+
+  const userVpa = user?.upi_vpa?.trim()
+  if (userVpa) return userVpa
+
+  const bizId = user?.id || user?.business_id
+  if (bizId && typeof localStorage !== 'undefined') {
+    const scopedOverride = localStorage.getItem(`pos_upi_vpa_${bizId}`)?.trim()
+    if (scopedOverride) return scopedOverride
+  }
+
+  return ''
+}
+
+/**
  * UPI payment deep-link: `upi://pay?pa=&pn=&am=&cu=INR[&tn=]`.
  * @param {{vpa:string, payeeName?:string, amount?:number, note?:string}} args
  * @returns {string}

@@ -972,6 +972,15 @@ def settle_customer_dues(db, *, business_id: int, customer_id: int,
     # until the next sale (the application then draws the liability down).
     advance = _round2(money_left) if money_left > 0.005 else 0.0
     if advance > 0.005:
+        if last_pay_id is None:
+            # BD-09: Pure advance with no invoice dues has no durable receipt, no journal,
+            # and no idempotent retry tracking. Disable standalone advance entry until
+            # an append-only advance receipt command is implemented.
+            raise ValueError(
+                "Standalone customer advances without invoice dues are disabled (BD-09) "
+                "until durable advance receipts are implemented. Please settle payments "
+                "against outstanding invoices."
+            )
         cust.credit_balance = _round2((cust.credit_balance or 0.0) + advance)
         # Journal the advance receipt (idempotent on the last per-invoice
         # receipt id, so a retried settle can't post it twice). When there

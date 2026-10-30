@@ -3574,17 +3574,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         # A PARTIAL pull is different and still holds — see below. Those rows
         # were never received at all, so there is nothing in the inbox to retry.
         if _cloud_cursor:
-            _failed_now = len(_pull_row_failures)
-            if _failed_now:
-                logger.warning(
-                    "[SYNC_WORKER] biz=%s: %s row(s) could not be applied this "
-                    "cycle. Advancing the cursor anyway — they are held in the "
-                    "inbox with their payloads and retry independently, so later "
-                    "rows are not blocked behind them.",
-                    business_id, _failed_now)
-                _PULL_FAILED_STREAK[business_id] = 0
-                _set_pull_cursor(db, business_id, _cloud_cursor)
-            elif _pull_failed_tables:
+            if _pull_failed_tables:
                 # ── PARTIAL PULL: hold the cursor (rule 58 / M-12 shape) ──────
                 #
                 # The cloud could not read some tables — on Postgres, one failed
@@ -3601,6 +3591,10 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 # cycle. Unlike a rejected row, this needs no bound: a table that
                 # fails forever is a cloud-side defect that must be fixed, and
                 # re-reading a window costs nothing but a query.
+                #
+                # TS-03 FIX: We MUST check this before advancing the cursor.
+                # Even if received rows failed to apply (_failed_now > 0), unread
+                # table rows are NOT in the inbox and would be permanently lost.
                 logger.error(
                     "[SYNC_WORKER] PARTIAL PULL for biz=%s: the cloud could not "
                     "read %s table(s) — %s. HOLDING the pull cursor so the same "
@@ -3610,6 +3604,14 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                     [t.get("table") for t in _pull_failed_tables][:10],
                 )
             else:
+                _failed_now = len(_pull_row_failures)
+                if _failed_now:
+                    logger.warning(
+                        "[SYNC_WORKER] biz=%s: %s row(s) could not be applied this "
+                        "cycle. Advancing the cursor anyway — they are held in the "
+                        "inbox with their payloads and retry independently, so later "
+                        "rows are not blocked behind them.",
+                        business_id, _failed_now)
                 _PULL_FAILED_STREAK[business_id] = 0
                 _set_pull_cursor(db, business_id, _cloud_cursor)
 

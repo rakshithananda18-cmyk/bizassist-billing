@@ -55,17 +55,9 @@ for inv in orphans:
     donor = cur.fetchone()
 
     if not donor:
-        # Also try matching by total + business where the old row has line items
-        cur.execute("""
-            SELECT i.id, i.invoice_id
-            FROM   invoices i
-            JOIN   invoice_line_items li ON li.invoice_id = i.id
-            WHERE  i.business_id = ? AND ABS(i.total_amount - ?) < 0.05
-            GROUP  BY i.id
-            HAVING COUNT(li.id) > 0
-            LIMIT  1
-        """, (business_id, total))
-        donor = cur.fetchone()
+        # OPS-01: Disallow guessing donors by matching total amount alone.
+        # Matching purely by amount fabricates unrelated invoice lines.
+        donor = None
 
     if not donor:
         print(f"  SKIP  {lcl_inv_no}: no donor invoice found")

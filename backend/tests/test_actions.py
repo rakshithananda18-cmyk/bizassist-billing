@@ -113,27 +113,20 @@ def test_execute_sends_and_is_idempotent(mock_send, _cfg):
 # ── mark_invoice_paid ───────────────────────────────────────────────
 
 def test_mark_paid_preview_and_execute():
+    # BD-01: Status-only payments are disabled to protect accounting integrity
     pv = actions.preview("mark_invoice_paid", BID, {"query": "mark TST-INV-1 as paid"})
-    assert pv["executable"] is True
-    assert pv["params"]["invoice_id"] == "TST-INV-1"
+    assert pv["executable"] is False
+    assert "disabled" in pv.get("warning", "").lower()
 
     res = actions.execute("mark_invoice_paid", BID, {"invoice_id": "TST-INV-1"})
-    assert res["ok"] and res["executed"] == 1
-
-    db = SessionLocal()
-    try:
-        inv = db.query(Invoice).filter(Invoice.business_id == BID,
-                                       Invoice.invoice_id == "TST-INV-1").first()
-        assert inv.status == "Paid"
-    finally:
-        db.close()
+    assert res["ok"] is False and res["executed"] == 0
+    assert "disabled" in res["markdown"].lower()
 
 
 def test_mark_paid_is_noop_when_already_paid():
-    actions.execute("mark_invoice_paid", BID, {"invoice_id": "TST-INV-1"})
-    again = actions.execute("mark_invoice_paid", BID, {"invoice_id": "TST-INV-1"})
-    assert again["ok"] and again["executed"] == 0
-    assert "already" in again["markdown"].lower()
+    # BD-01: Status-only execution is disabled
+    res = actions.execute("mark_invoice_paid", BID, {"invoice_id": "TST-INV-1"})
+    assert res["ok"] is False and res["executed"] == 0
 
 
 def test_mark_paid_unknown_invoice():

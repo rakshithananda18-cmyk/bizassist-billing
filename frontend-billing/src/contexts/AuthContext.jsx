@@ -602,6 +602,7 @@ export function AuthProvider({ children }) {
     tokenStorage.removeItem('bizassist_cloud_token')
     syncManager.clearScope()
     localStorage.removeItem('bizassist_user_home_mode')  // clear home mode — next user gets their own
+    localStorage.removeItem('pos_upi_vpa')  // clear device payment handle so next business doesn't inherit it
     setToken(null)
     setUser(null)
     setAppReady(false)

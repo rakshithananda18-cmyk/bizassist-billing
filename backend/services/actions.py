@@ -266,7 +266,8 @@ def _mark_paid_preview(user_id: int, params: dict) -> dict:
             "items": [{"invoice_id": r.invoice_id, "customer": r.customer,
                        "amount": float(r.amount or 0), "status": r.status}],
             "confirm_label": "Mark as Paid",
-            "executable": not already,
+            "executable": False,
+            "warning": "Status-only payment updates are disabled (BD-01). Please record payments through the POS/Billing screen.",
             "params": {"invoice_id": r.invoice_id},
         }
     finally:
@@ -274,41 +275,13 @@ def _mark_paid_preview(user_id: int, params: dict) -> dict:
 
 
 def _mark_paid_execute(user_id: int, params: dict) -> dict:
-    inv_id = (params or {}).get("invoice_id")
-    if not inv_id:
-        pv = _mark_paid_preview(user_id, params)
-        inv_id = (pv.get("params") or {}).get("invoice_id")
-    if not inv_id:
-        return {"ok": False, "executed": 0, "markdown": "❌ No invoice specified."}
-    db = SessionLocal()
-    try:
-        r = (db.query(Invoice)
-             .filter(Invoice.business_id == user_id,
-                     func.lower(Invoice.invoice_id) == inv_id.lower())
-             .first())
-        if not r:
-            return {"ok": False, "executed": 0, "markdown": f"❌ Invoice {inv_id} not found."}
-        if r.status == "Paid":
-            return {"ok": True, "executed": 0, "markdown": f"✅ {r.invoice_id} was already marked Paid."}
-        prev = r.status
-        r.status = "Paid"
-        db.add(ActionLog(business_id=user_id, action="mark_invoice_paid",
-                         target=r.invoice_id, amount=r.amount,
-                         detail=f"status {prev} → Paid", status="done"))
-        db.commit()
-        try:
-            from services.context_cache import invalidate_user_cache
-            invalidate_user_cache(user_id)   # invoice data changed
-        except Exception:
-            pass
-        return {"ok": True, "executed": 1,
-                "markdown": f"✅ **{r.invoice_id}** marked **Paid** (was {prev})."}
-    except Exception as e:
-        db.rollback()
-        logger.error(f"[ACTION] mark_invoice_paid failed: {e}", exc_info=True)
-        return {"ok": False, "executed": 0, "markdown": "❌ Could not update the invoice."}
-    finally:
-        db.close()
+    # BD-01: Status-only payment updates bypass receipts, journals, and period locks.
+    # Refuse execution until routed through a complete idempotent receipt command.
+    return {
+        "ok": False,
+        "executed": 0,
+        "markdown": "❌ Status-only payment updates are disabled (BD-01). Please record payments through Billing so receipts and ledger entries are posted."
+    }
 
 
 # ── email_reminder_digest (owner digest — works without customer emails) ───

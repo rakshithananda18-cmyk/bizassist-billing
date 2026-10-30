@@ -13,7 +13,7 @@
 import React, { useCallback, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
-import { buildUpiUri, buildWhatsAppShareUrl } from '../utils/share'
+import { buildUpiUri, buildWhatsAppShareUrl, resolvePaymentVpa } from '../utils/share'
 import InvoiceViewerModal from '../components/invoice/InvoiceViewerModal'
 import SaleReturnModal from '../components/parties/SaleReturnModal'
 import { prepareReturnLines } from '../utils/returnPreview'
@@ -23,7 +23,7 @@ const toast = (type, msg) => window.dispatchEvent(new CustomEvent('show_toast', 
 const emptyPay = () => ({ type: 'received', invoice_ref: '', amount: '', method: 'UPI', reference: '', date: new Date().toISOString().slice(0, 10) })
 
 export default function useInvoiceActions(authFetch, { onChanged } = {}) {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
 
   // Viewer
   const [viewingInvoiceNo, setViewingInvoiceNo] = useState(null)
@@ -86,23 +86,29 @@ export default function useInvoiceActions(authFetch, { onChanged } = {}) {
     const invoiceNo = invoice.invoice_number || invoice.invoice_no
     const total = parseFloat(invoice.total_amount || 0)
     const paid = parseFloat(invoice.paid_amount || 0)
-    const balance = Math.max(total - paid, 0)
+    const balance = invoice.outstanding != null ? parseFloat(invoice.outstanding) : Math.max(total - paid, 0)
     let phone = customer?.phone || invoice.customer_phone || ''
     if (!phone) {
       const input = window.prompt("Enter Customer's WhatsApp Number (10 digits):")
       if (!input) return
       phone = input
     }
-    const upiVpa = localStorage.getItem('pos_upi_vpa') || 'bizassist@upi'
+    const upiVpa = resolvePaymentVpa({ profile, user })
     const businessName = (user?.business_name || 'BizAssist Merchant').toUpperCase()
     let message = `Hi ${customer?.name || 'Customer'},\n\nHere is your Invoice ${invoiceNo} from ${businessName}:\nDate: ${invoice.date || invoice.invoice_date}\nTotal Amount: ₹${total.toLocaleString('en-IN')}\n`
     if (balance > 0) {
-      const upiLink = buildUpiUri({ vpa: upiVpa, payeeName: businessName, amount: balance, note: `INV-${invoiceNo}` })
-      message += `Balance Due: ₹${balance.toLocaleString('en-IN')}.\nYou can pay online using this UPI link: ${upiLink}\n`
+      if (upiVpa) {
+        const upiLink = buildUpiUri({ vpa: upiVpa, payeeName: businessName, amount: balance, note: `INV-${invoiceNo}` })
+        message += `Balance Due: ₹${balance.toLocaleString('en-IN')}.\nYou can pay online using this UPI link: ${upiLink}\n`
+  
+      } else {
+        message += `Balance Due: ₹${balance.toLocaleString('en-IN')}.\n`
+      }
+
     }
     message += `\nThank you for your business!`
     window.open(buildWhatsAppShareUrl(phone, message), '_blank')
-  }, [user])
+  }, [user, profile])
 
   const openReturn = useCallback(async (invoice) => {
     const invoiceNo = invoice.invoice_number || invoice.invoice_no

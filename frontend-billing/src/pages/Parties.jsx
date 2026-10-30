@@ -15,7 +15,7 @@ import SaleReturnModal from '../components/parties/SaleReturnModal'
 import PartyCreditDrawer from '../components/parties/PartyCreditDrawer'
 import { logger } from '../utils/logger'
 import { formatApiError } from '../utils/apiError'
-import { buildUpiUri, buildWhatsAppShareUrl, normalizePhoneIN } from '../utils/share'
+import { buildUpiUri, buildWhatsAppShareUrl, normalizePhoneIN, resolvePaymentVpa } from '../utils/share'
 import { applyDelta, hasDelta } from '../sync/applyDelta'
 import FilterDropdown from '../components/common/FilterDropdown'
 import SortDropdown from '../components/common/SortDropdown'
@@ -54,7 +54,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
   // older arrangement where the tabs were injected into that toolbar; both are
   // "embedded", hence the combined flag.
   const inWorkspace = Boolean(headerTabs) || inlinePage
-  const { authFetch, user, settings } = useAuth()
+  const { authFetch, user, settings, profile } = useAuth()
   const navigate = useNavigate()
   const label = useDocLabels()
   const confirm = useConfirm()
@@ -376,11 +376,13 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
     const balance = parseFloat(party.outstanding_balance || 0)
     if (balance <= 0) return
 
-    const upiVpa = localStorage.getItem('pos_upi_vpa') || 'bizassist@upi'
+    const upiVpa = resolvePaymentVpa({ profile, user })
     const businessName = (user?.business_name || 'BizAssist Merchant').toUpperCase()
 
-    const upiLink = buildUpiUri({ vpa: upiVpa, payeeName: businessName, amount: balance })
-    const message = `Hi ${party.name}, a friendly reminder that you have an outstanding balance of ₹${balance.toLocaleString('en-IN')} with ${businessName}. Please clear it via UPI to: ${upiVpa}. Click to pay directly: ${upiLink}. Thank you!`
+    const upiLink = upiVpa ? buildUpiUri({ vpa: upiVpa, payeeName: businessName, amount: balance }) : ''
+    const message = upiVpa
+      ? `Hi ${party.name}, a friendly reminder that you have an outstanding balance of ₹${balance.toLocaleString('en-IN')} with ${businessName}. Please clear it via UPI to: ${upiVpa}. Click to pay directly: ${upiLink}. Thank you!`
+      : `Hi ${party.name}, a friendly reminder that you have an outstanding balance of ₹${balance.toLocaleString('en-IN')} with ${businessName}. Thank you!`
 
     window.open(buildWhatsAppShareUrl(party.phone, message), '_blank')
   }
@@ -389,7 +391,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
     const invoiceNo = invoice.invoice_number || invoice.invoice_no
     const total = parseFloat(invoice.total_amount || 0)
     const paid = parseFloat(invoice.paid_amount || 0)
-    const balance = Math.max(total - paid, 0)
+    const balance = invoice.outstanding != null ? parseFloat(invoice.outstanding) : Math.max(total - paid, 0)
     
     let phone = ''
     if (customer && customer.phone) {
@@ -402,13 +404,17 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
       phone = input
     }
     
-    const upiVpa = localStorage.getItem('pos_upi_vpa') || 'bizassist@upi'
+    const upiVpa = resolvePaymentVpa({ profile, user })
     const businessName = (user?.business_name || 'BizAssist Merchant').toUpperCase()
     
     let message = `Hi ${customer?.name || 'Customer'},\n\nHere is your Invoice ${invoiceNo} from ${businessName}:\nDate: ${invoice.date || invoice.invoice_date}\nTotal Amount: ₹${total.toLocaleString('en-IN')}\n`
     if (balance > 0) {
-      const upiLink = buildUpiUri({ vpa: upiVpa, payeeName: businessName, amount: balance, note: `INV-${invoiceNo}` })
-      message += `Balance Due: ₹${balance.toLocaleString('en-IN')}.\nYou can pay online using this UPI link: ${upiLink}\n`
+      if (upiVpa) {
+        const upiLink = buildUpiUri({ vpa: upiVpa, payeeName: businessName, amount: balance, note: `INV-${invoiceNo}` })
+        message += `Balance Due: ₹${balance.toLocaleString('en-IN')}.\nYou can pay online using this UPI link: ${upiLink}\n`
+      } else {
+        message += `Balance Due: ₹${balance.toLocaleString('en-IN')}.\n`
+      }
     }
     message += `\nThank you for your business!`
     

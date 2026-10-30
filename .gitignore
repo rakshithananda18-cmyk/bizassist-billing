@@ -102,7 +102,9 @@ logs/
 # customer names, invoice numbers, line items — written before a destructive
 # repair. Useful locally, must never be committed.
 backend/fk_orphans_export_*.json
-backend/quarantined_payments_*.json
+backend/voided_payment_*.json
+backend/voided_payment_*.json
+quarantined_payments_*.json
 backend/phantom_line_items_export_*.json
 fk_orphans_export_*.json
 quarantined_payments_*.json

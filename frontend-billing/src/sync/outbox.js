@@ -65,16 +65,28 @@ const isPermanent = (status) => status >= 400 && status < 500
  * error carrying a numeric `status` (0 = network down) on failure; resolve on
  * success. Returns a summary.
  */
-export async function flush(store, sender, { maxAttempts = DEFAULT_MAX_ATTEMPTS, scope } = {}) {
+export async function flush(store, sender, { maxAttempts = DEFAULT_MAX_ATTEMPTS, scope, shouldContinue } = {}) {
   const summary = { sent: 0, deadLettered: 0, stopped: false, remaining: 0, scopeSkipped: 0 }
   const ops = await pending(store, { scope })
 
   for (const op of ops) {
+    if (shouldContinue && !shouldContinue()) {
+      summary.stopped = true
+      break
+    }
     try {
       await sender(op)
+      if (shouldContinue && !shouldContinue()) {
+        summary.stopped = true
+        break
+      }
       await store.remove(op.id)
       summary.sent++
     } catch (err) {
+      if (err && err.scopeChanged) {
+        summary.stopped = true
+        break
+      }
       const status = err && typeof err.status === 'number' ? err.status : 0
       const attempts = (op.attempts || 0) + 1
       const reason = (err && (err.detail || err.message)) || String(status)
