@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-30",
+  "tracked_files_verified": 1261,
+  "issue_count": 40,
+  "priorities": {
+    "P1": 21,
+    "P2": 17,
+    "P3": 2
+  },
+  "checks": [
+    "unique issue IDs",
+    "CSV/JSON parity",
+    "issue source files and line bounds",
+    "baseline file hashes",
+    "Markdown source bounds",
+    "local Markdown links",
+    "audit Python/JSON syntax"
+  ],
+  "errors": []
+}

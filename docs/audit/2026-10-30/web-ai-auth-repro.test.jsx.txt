@@ -1,0 +1,30 @@
+// Audit-only reproductions. Moved to docs/audit after isolated execution.
+import React from 'react'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, act, waitFor, cleanup } from '@testing-library/react'
+import { AuthProvider, useAuth } from '../contexts/AuthContext'
+let current
+function Probe() { current = useAuth(); return <div>{current.user?.username || 'signed out'}</div> }
+afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks() })
+describe('Audit reproductions: AI authentication handoff', () => {
+  it('CURRENT BUG: accepts a ticket message from a public localhost-prefix attacker origin', async () => {
+    const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => ({ username: 'attacker-owned-business', token: 'attacker-token' }) })
+    render(<AuthProvider><Probe /></AuthProvider>)
+    await act(async () => window.dispatchEvent(new MessageEvent('message', { origin: 'http://localhost.attacker.invalid', data: { type: 'SSO_TICKET', ticket: 'mock-valid-attacker-business-ticket' } })))
+    await screen.findByText('attacker-owned-business')
+    expect(fetcher).toHaveBeenCalledWith(expect.stringContaining('/redeem-ticket'), expect.anything())
+  })
+  it('CURRENT BUG: another AI window clearing storage on Billing logout does not sign out the already-open AI tab', async () => {
+    localStorage.setItem('user', JSON.stringify({ username: 'owner-A', token: 'TOKEN_A' }))
+    const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, status: 200 })
+    render(<AuthProvider><Probe /></AuthProvider>)
+    await screen.findByText('owner-A')
+    await act(async () => {
+      localStorage.removeItem('user')
+      window.dispatchEvent(new StorageEvent('storage', { key: 'user', oldValue: JSON.stringify({ username: 'owner-A', token: 'TOKEN_A' }), newValue: null, storageArea: localStorage }))
+    })
+    expect(screen.getByText('owner-A')).toBeInTheDocument()
+    await act(async () => current.authFetch('https://mock-api.invalid/dashboard-summary'))
+    expect(fetcher).toHaveBeenLastCalledWith('https://mock-api.invalid/dashboard-summary', expect.objectContaining({ headers: { Authorization: 'Bearer TOKEN_A' } }))
+  })
+})

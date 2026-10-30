@@ -1,0 +1,51 @@
+// Audit-only reproduction. Moved to docs/audit after the isolated run.
+import React from 'react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, act, cleanup, waitFor } from '@testing-library/react'
+import { TextDecoder, TextEncoder } from 'node:util'
+const mocks = vi.hoisted(() => ({ authFetch: vi.fn() }))
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { business_name: 'Audit' }, authFetch: mocks.authFetch }) }))
+vi.mock('../contexts/DialogContext', () => ({ useDialog: () => ({ showAlert: vi.fn(), showConfirm: vi.fn(), showError: vi.fn() }) }))
+vi.mock('../components/chat/MessageBubble', () => ({ default: ({ msg, query }) => <div data-testid={msg.role} data-query={query || ''}>{msg.content}</div> }))
+vi.mock('../components/chat/ChatInput', () => ({ default: () => null }))
+vi.mock('../components/chat/TypingIndicator', () => ({ default: () => null }))
+import Chat from '../pages/Chat'
+
+function deferredReader() {
+  let resolve
+  const read = vi.fn(() => new Promise(r => { resolve = r }))
+  return {
+    response: { ok: true, body: { getReader: () => ({ read }) } },
+    emit: data => resolve({ done: false, value: new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`) }),
+    end: () => resolve({ done: true }), read,
+  }
+}
+beforeEach(() => {
+  localStorage.clear()
+  globalThis.TextDecoder = TextDecoder
+  globalThis.TextEncoder = TextEncoder
+  Element.prototype.scrollTo = vi.fn()
+})
+afterEach(cleanup)
+describe('Audit reproduction: AI streaming turn ownership', () => {
+  it('CURRENT BUG: a second turn starts during stream one, and stream-one text goes into turn two', async () => {
+    const one = deferredReader(), two = deferredReader()
+    let requests = 0
+    mocks.authFetch.mockImplementation(async url => {
+      if (url.endsWith('/ask/stream')) return ++requests === 1 ? one.response : two.response
+      return { ok: true, json: async () => url.includes('memory-facts') ? { facts: [] } : [] }
+    })
+    render(<Chat />)
+    await act(async () => { window.dispatchEvent(new CustomEvent('ai-shortcut', { detail: { query: 'first question' } })) })
+    await waitFor(() => expect(one.read).toHaveBeenCalledOnce())
+    await act(async () => { window.dispatchEvent(new CustomEvent('ai-shortcut', { detail: { query: 'second question' } })) })
+    await waitFor(() => expect(two.read).toHaveBeenCalledOnce())
+    expect(requests).toBe(2)
+    await act(async () => { one.emit({ type: 'token', content: 'ANSWER FROM FIRST STREAM' }) })
+    const assistants = screen.getAllByTestId('assistant')
+    expect(assistants[0]).toHaveTextContent('')
+    expect(assistants[1]).toHaveTextContent('ANSWER FROM FIRST STREAM')
+    expect(assistants[1]).toHaveAttribute('data-query', 'second question')
+    await act(async () => { one.end(); two.end() })
+  })
+})

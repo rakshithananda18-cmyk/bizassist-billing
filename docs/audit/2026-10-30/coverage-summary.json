@@ -1,0 +1,11 @@
+{
+  "baseline_files": 1261,
+  "coverage_gaps": [],
+  "review_depth_counts": {
+    "automated-or-test-source-screen": 946,
+    "targeted-source-trace": 189,
+    "binary-metadata": 13,
+    "test-file-exercised": 113
+  },
+  "meaning": "Depth describes selected evidence, not a guarantee that every line or branch is correct. Test-file coverage does not imply every test passed or none skipped."
+}

@@ -1,0 +1,25 @@
+{
+  "baseline": "f90ea1f8de4be2b44cf2144954692a1094f08dab",
+  "date": "2026-10-30",
+  "timezone": "Asia/Kolkata",
+  "tracked_files": 1261,
+  "roots": {
+    "(root)": 24,
+    ".github": 5,
+    "backend-task": 60,
+    "backend": 496,
+    "bizassist-landing": 13,
+    "desktop": 17,
+    "dev": 4,
+    "docs": 76,
+    "frontend-admin": 61,
+    "frontend-ai": 61,
+    "frontend-billing": 365,
+    "frontend-task": 68,
+    "ops": 5,
+    "sample_data": 6
+  },
+  "binary_files": 13,
+  "text_lines": 315315,
+  "syntax_errors": []
+}

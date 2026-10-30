@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-30",
+  "scope": "Full Field Team SQLite mirror suite, disposable generated fixtures",
+  "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 scratch/core-workflow-venv/Scripts/python.exe -u scratch/field_audit_runner.py -q",
+  "exit_code": 0,
+  "total": 163,
+  "passed": 153,
+  "failed": 0,
+  "skipped": 10,
+  "duration_seconds": 93.203,
+  "skips": {
+    "billing_source_contract": 4,
+    "actual_billing_schema_deletion_lifecycle": 2,
+    "live_postgresql_tenant_role": 2,
+    "live_postgresql_task_planning_concurrency": 2
+  },
+  "contract_followup": {
+    "command": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 scratch/core-workflow-venv/Scripts/python.exe -u scratch/field_contract_runner.py -q tests/test_billing_contract.py tests/test_business_delete_lifecycle.py",
+    "scope": "Fresh actual Billing-model SQLite schema, generated fixtures",
+    "passed": 6,
+    "failed": 0,
+    "exit_code": 0
+  },
+  "limits": "Run outside Windows socket restriction; external network blocked. No deployed PostgreSQL, RLS, row-lock concurrency or real-phone evidence. Follow-up runs overlap and must not be added as unique coverage."
+}

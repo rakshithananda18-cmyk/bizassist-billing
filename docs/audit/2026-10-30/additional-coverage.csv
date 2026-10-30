@@ -1,0 +1,6 @@
+path,review_depth,notes
+backend/coverage.xml,metadata-only,Tracked generated coverage report; inventoried as historical metadata; not accepted as current audit coverage evidence
+backend/services/field_business_cleanup.py,deep,Read purge whitelist and foreign-reference/maintenance-role guards; exercised by six-test Billing contract/deletion follow-up on disposable actual-model SQLite
+backend/voided_payment_6326fb2a_20260801-073807.json,screened,Sanitized structure/provenance inspection only; financial values not copied; OPS-02
+backend/voided_payment_6326fb2a_20260801-073808.json,screened,Sanitized structure/provenance inspection only; financial values not copied; OPS-02
+backend/voided_payment_e10f6d92_20260801-073825.json,screened,Sanitized structure/provenance inspection only; financial values not copied; OPS-02

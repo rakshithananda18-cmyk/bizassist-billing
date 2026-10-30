@@ -1,0 +1,75 @@
+{
+  "stats": {
+    "domain_text_screened": 400,
+    "domain_python_parsed": 379,
+    "parse_errors": [],
+    "manual_deep": 29
+  },
+  "large_functions": [
+    {
+      "path": "backend/core/billing/commands.py",
+      "function": "create_sale_invoice",
+      "lines": 295
+    },
+    {
+      "path": "backend/core/billing/commands.py",
+      "function": "create_credit_note",
+      "lines": 230
+    },
+    {
+      "path": "backend/core/billing/print_payload.py",
+      "function": "build_print_payload",
+      "lines": 220
+    },
+    {
+      "path": "backend/core/connection/transfer.py",
+      "function": "import_b2b_tables",
+      "lines": 223
+    },
+    {
+      "path": "backend/core/purchase/commands.py",
+      "function": "accept_supplier_invoice",
+      "lines": 238
+    },
+    {
+      "path": "backend/core/purchase/commands.py",
+      "function": "create_debit_note",
+      "lines": 235
+    },
+    {
+      "path": "backend/database/models.py",
+      "function": "_queue_change",
+      "lines": 237
+    },
+    {
+      "path": "backend/routes/upload.py",
+      "function": "upload_file",
+      "lines": 222
+    },
+    {
+      "path": "backend/scripts/audit_money_integrity.py",
+      "function": "audit",
+      "lines": 364
+    },
+    {
+      "path": "backend/scripts/prune_unused_staff.py",
+      "function": "main",
+      "lines": 223
+    },
+    {
+      "path": "backend/scripts/repair_line_items_by_invariant.py",
+      "function": "main",
+      "lines": 214
+    },
+    {
+      "path": "backend/services/ai_router.py",
+      "function": "process_query",
+      "lines": 541
+    },
+    {
+      "path": "backend/tests/test_accounting.py",
+      "function": "test_accounting_depth_calculations",
+      "lines": 216
+    }
+  ]
+}
